@@ -57,10 +57,12 @@ class StudentPasswordResetIT {
         return m;
     }
 
-    private void policy(String head, boolean enabled, String ticket, int hourly) {
-        ResponseEntity<Map> r = it.call(head, HttpMethod.PUT, "/api/v1/helpdesk/admin/settings/password-reset",
-                Map.of("enabled", enabled, "unlockByDefault", true, "ticket", ticket, "hourly", hourly,
-                       "statuses", List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED")));
+    /** the desk's reset policy; hourly null is no limit (V526) */
+    private void policy(String head, boolean enabled, String ticket, Integer hourly) {
+        Map<String, Object> b = new HashMap<>(Map.of("enabled", enabled, "unlockByDefault", true, "ticket", ticket,
+                "statuses", List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED")));
+        b.put("hourly", hourly);
+        ResponseEntity<Map> r = it.call(head, HttpMethod.PUT, "/api/v1/helpdesk/admin/settings/password-reset", b);
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
     }
 
@@ -92,7 +94,7 @@ class StudentPasswordResetIT {
             return null;
         });
         String base = "/api/v1/helpdesk/support/students/" + student;
-        policy(head, true, "OPTIONAL", 30);
+        policy(head, true, "OPTIONAL", null);
         try {
             // TEST 1 · the student found and read before the reset: the record and the account, never a hash
             ResponseEntity<Map> state = it.get(agentTok, base + "/password");
@@ -206,11 +208,16 @@ class StudentPasswordResetIT {
             assertThat(reset(agentTok, student, body("Student forgot portal password")).getBody().get("code")).isEqualTo("SUPPORT_TICKET_REQUIRED");
             policy(head, true, "OPTIONAL", 1);
             assertThat(reset(agentTok, student, body("Student forgot portal password")).getBody().get("code")).isEqualTo("SUPPORT_RESET_RATE");
+            // V526: no limit when none is stated — the same agent's next reset goes through
+            policy(head, true, "OPTIONAL", null);
+            assertThat(((Map<?, ?>) it.get(head, "/api/v1/helpdesk/admin/settings").getBody().get("passwordReset")).get("hourly")).as("no limit").isNull();
+            ResponseEntity<Map> unlimited = reset(agentTok, student, body("Student forgot portal password"));
+            assertThat(unlimited.getStatusCode().value()).as(String.valueOf(unlimited.getBody())).isEqualTo(200);
             policy(head, false, "OPTIONAL", 30);
             assertThat(it.get(agentTok, base + "/password").getBody()).containsEntry("refusal", "RESET_DISABLED");
             assertThat(reset(agentTok, student, body("Student forgot portal password")).getBody().get("code")).isEqualTo("RESET_DISABLED");
         } finally {
-            policy(head, true, "OPTIONAL", 30);
+            policy(head, true, "OPTIONAL", null);
         }
     }
 }

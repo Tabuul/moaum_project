@@ -1,7 +1,8 @@
 "use client";
 
 /** The desk's policy for a student's password reset to the default credential (V485): on or off, the lockout cleared unless the
- *  agent unticks it, a ticket optional or required, each agent's hourly limit, and the statuses it may reach. The default credential
+ *  agent unticks it, a ticket optional or required, each agent's hourly limit (V526: none when left empty, the default), and the
+ *  statuses it may reach. The default credential
  *  is the matriculation number and the change at the next sign-in is always forced — neither is a setting. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,15 +19,16 @@ export function ResetPolicyPanel({ policy }: { policy: ResetPolicy }) {
   const [enabled, setEnabled] = useState(policy.enabled);
   const [unlock, setUnlock] = useState(policy.unlock_by_default);
   const [ticket, setTicket] = useState(policy.ticket);
-  const [hourly, setHourly] = useState(String(policy.hourly));
+  // V526: empty is no limit (the default); a number from 1 to 500 limits each agent's resets in an hour
+  const [hourly, setHourly] = useState(policy.hourly == null ? "" : String(policy.hourly));
   const [statuses, setStatuses] = useState<string[]>(policy.statuses);
-  const bad = !statuses.length || !/^\d+$/.test(hourly) || Number(hourly) < 1 || Number(hourly) > 500;
+  const bad = !statuses.length || (hourly !== "" && (!/^\d+$/.test(hourly) || Number(hourly) < 1 || Number(hourly) > 500));
 
   async function save() {
     const r = await fetch("/api/bff/api/v1/helpdesk/admin/settings/password-reset", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Student support password reset policy saved") },
-      body: JSON.stringify({ enabled, unlockByDefault: unlock, ticket, hourly: Number(hourly), statuses }),
+      body: JSON.stringify({ enabled, unlockByDefault: unlock, ticket, hourly: hourly === "" ? null : Number(hourly), statuses }),
     });
     if (!r.ok) { notifyProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }); return; }
     notify("Student support password reset policy saved");
@@ -51,8 +53,8 @@ export function ResetPolicyPanel({ policy }: { policy: ResetPolicy }) {
                 <option value="REQUIRED">Required</option>
               </select>
             </Field>
-            <Field id="rp-hourly" label="Resets an agent may make in an hour" hint="1 to 500" style={{ width: 240 }}>
-              <input id="rp-hourly" className="ctl tnum" inputMode="numeric" value={hourly} onChange={(e) => setHourly(e.target.value.replace(/[^0-9]/g, ""))} />
+            <Field id="rp-hourly" label="Resets an agent may make in an hour" hint="Leave empty for no limit, or 1 to 500" style={{ width: 280 }}>
+              <input id="rp-hourly" className="ctl tnum" inputMode="numeric" placeholder="No limit" value={hourly} onChange={(e) => setHourly(e.target.value.replace(/[^0-9]/g, ""))} />
             </Field>
           </div>
           <Field id="rp-statuses" label="Student statuses the reset may reach">

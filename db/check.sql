@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 365
+\set EXPECTED 366
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17125,6 +17125,34 @@ BEGIN
     PERFORM pg_temp.assert('V524: the unpaid registrations read once for each fee profile name the unpaid and the unstated, not the paid, and agree with each registration''s own clearance, statement and due; the session''s charges agree',
         coalesce(NOT has_a AND has_b AND has_c AND b_ok AND c_ok AND disagree = 0 AND charges_agree, false),
         format('paid %s | unpaid %s %s | unstated %s %s | disagree %s | charges agree %s', has_a, has_b, b_row, has_c, c_row, disagree, charges_agree));
+END $$;
+-- ── V526. ICT Support's student password resets have no hourly limit unless the Director of ICT states one: the desk's
+--          setting is empty (no limit), a limit may still be stated (1 to 500), and a limit outside that is refused. The block
+--          undoes its writes ──
+DO $$
+DECLARE now_limit int; nullable boolean; stated int; refused boolean := false; msg text;
+BEGIN
+    SELECT g.student_reset_hourly INTO now_limit FROM helpdesk.setting g WHERE g.row_no;
+    nullable := (SELECT c.is_nullable = 'YES' FROM information_schema.columns c
+                  WHERE c.table_schema = 'helpdesk' AND c.table_name = 'setting' AND c.column_name = 'student_reset_hourly');
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V526', true);
+        UPDATE helpdesk.setting SET student_reset_hourly = 40 WHERE row_no;
+        SELECT g.student_reset_hourly INTO stated FROM helpdesk.setting g WHERE g.row_no;
+        BEGIN
+            UPDATE helpdesk.setting SET student_reset_hourly = 0 WHERE row_no;
+        EXCEPTION WHEN check_violation THEN refused := true;
+        END;
+        RAISE EXCEPTION 'the V526 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V526 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V526: ICT Support''s student password resets have no hourly limit unless one is stated (1 to 500)',
+        coalesce(now_limit IS NULL AND nullable AND stated = 40 AND refused, false),
+        format('limit now %s | nullable %s | stated %s | 0 refused %s', coalesce(now_limit::text, 'none'), nullable, stated, refused));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -619,7 +619,7 @@ class StudentSupportController {
     private Map<String, Object> resetPolicy() {
         return jdbc.sql("""
                 SELECT coalesce(g.student_reset_enabled, true) AS enabled, coalesce(g.student_reset_unlock, true) AS unlock_by_default,
-                       coalesce(g.student_reset_ticket, 'OPTIONAL') AS ticket, coalesce(g.student_reset_hourly, 30) AS hourly,
+                       coalesce(g.student_reset_ticket, 'OPTIONAL') AS ticket, g.student_reset_hourly AS hourly,
                        coalesce(g.student_reset_statuses, ARRAY['ACTIVE', 'PROBATION', 'DEFERRED', 'DORMANT', 'GRADUATED']) AS statuses
                   FROM (SELECT 1) one LEFT JOIN helpdesk.setting g ON g.row_no
                 """).query().singleRow();
@@ -666,13 +666,14 @@ class StudentSupportController {
             case "DEFAULT", "DEFAULT_CREDENTIAL", "MATRIC_NUMBER" -> {
                 Map<String, Object> policy = resetPolicy();
                 UUID ticket = support.ticketFor(a, body.ticket(), id, "REQUIRED".equals(policy.get("ticket")));
-                // the desk's hourly limit for each agent: a run of resets is refused before it is made, not noticed after
-                int hourly = ((Number) policy.get("hourly")).intValue();
-                long lastHour = jdbc.sql("""
+                // the desk's hourly limit for each agent, when the Director of ICT states one (V526: none by default): a run of resets
+                // is refused before it is made, not noticed after
+                Number hourly = (Number) policy.get("hourly");
+                long lastHour = hourly == null ? 0 : jdbc.sql("""
                         SELECT count(*) FROM helpdesk.support_action
                          WHERE agent_id = :me AND action = 'PASSWORD_RESET' AND method = 'DEFAULT_CREDENTIAL' AND at >= now() - interval '1 hour'
                         """).param("me", a.agent()).query(Long.class).single();
-                if (lastHour >= hourly) {
+                if (hourly != null && lastHour >= hourly.intValue()) {
                     throw new DomainRuleViolation("SUPPORT_RESET_RATE", "You have reset " + lastHour + " student passwords in the last hour, the desk's limit.",
                             new DomainRuleViolation.Remedy("Wait a while, or ask the Head of the ICT Support Desk; the limit is in ICT Support Settings.", "Head of ICT Support Desk"));
                 }

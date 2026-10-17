@@ -1219,11 +1219,11 @@ class HelpdeskController {
     static final List<String> RESET_STATUSES = List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED", "SUSPENDED");
 
     public record PasswordResetPolicyIn(@NotNull Boolean enabled, @NotNull Boolean unlockByDefault, @NotBlank String ticket,
-                                        @NotNull @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses) {
+                                        @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses) {
     }
 
     /** V485: the desk's policy for resets to the default student credential — on or off, the lockout cleared unless the agent says
-     *  otherwise, a ticket optional or required, each agent's hourly limit, the statuses it may reach. The default credential is the
+     *  otherwise, a ticket optional or required, each agent's hourly limit (V526: none when left empty), the statuses it may reach. The default credential is the
      *  matriculation number and the change is always forced: neither is a setting. */
     @PutMapping("/admin/settings/password-reset")
     @PreAuthorize(DIRECTOR)
@@ -1242,7 +1242,7 @@ class HelpdeskController {
                 UPDATE helpdesk.setting SET student_reset_enabled = :e, student_reset_unlock = :u, student_reset_ticket = :t, student_reset_hourly = :h,
                        student_reset_statuses = string_to_array(:s, ',')
                  WHERE row_no
-                """).param("e", body.enabled()).param("u", body.unlockByDefault()).param("t", ticket).param("h", body.hourly())
+                """).param("e", body.enabled()).param("u", body.unlockByDefault()).param("t", ticket).param("h", body.hourly(), Types.INTEGER)
                 .param("s", String.join(",", statuses)).update();
         return settings();
     }

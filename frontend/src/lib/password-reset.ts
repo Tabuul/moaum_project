@@ -12,7 +12,8 @@ export interface ResetPolicy {
   unlock_by_default: boolean;
   /** OPTIONAL or REQUIRED */
   ticket: string;
-  hourly: number;
+  /** V526: null is no limit (the default) */
+  hourly: number | null;
   statuses: string[];
 }
 
