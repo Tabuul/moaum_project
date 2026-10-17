@@ -44,6 +44,11 @@ class MeController {
     public record Submit(@NotBlank String session, @Min(1) @Max(3) int semester) {
     }
 
+    /** V528: the bank account a refund raised to the student is paid into (the account number is the ten-digit NUBAN) */
+    public record RefundAccount(@NotBlank @Size(max = 120) String bank, @NotBlank @Size(max = 200) String accountName,
+                                @NotBlank @Size(max = 20) String accountNumber) {
+    }
+
     private final StudentPortalService portal;
 
     MeController(StudentPortalService portal) {
@@ -68,6 +73,12 @@ class MeController {
     @PostMapping("/fees/references")
     Map<String, Object> reference(Authentication auth, @RequestBody(required = false) NewReference body) {
         return portal.newReference(id(auth), body == null ? null : body.session(), body == null ? null : body.amount());
+    }
+
+    /** V528: the student gives (or, while it awaits approval, changes) the account a refund of overpaid fees is paid into */
+    @PostMapping("/fees/refunds/{reference}/account")
+    Map<String, Object> refundAccount(Authentication auth, @PathVariable String reference, @Valid @RequestBody RefundAccount body) {
+        return portal.giveRefundAccount(id(auth), reference, body.bank(), body.accountName(), body.accountNumber());
     }
 
     @GetMapping("/fees/receipts/{reference}")

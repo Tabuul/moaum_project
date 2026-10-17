@@ -10,12 +10,44 @@
 import { useState } from "react";
 import Link from "next/link";
 import { type Fees, type Me, type Receipt, receiptPurpose, semesterName } from "@/lib/student-portal";
-import { overpaymentWords } from "@/lib/overpayment";
+import { type StudentOverpayment, accountNumberProblem, overpaymentWords, refundAccountWords } from "@/lib/overpayment";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { ProblemNotice } from "@/components/ProblemNotice";
+
+/** V528: the student gives the bank account a refund of overpaid fees is paid into — while it awaits approval (and may change it
+ *  then), or once after approval when none was given; the database refuses anything else */
+function RefundAccountForm({ o, act, busy }: { o: StudentOverpayment; act: ReturnType<typeof useAct>["act"]; busy: string | null }) {
+  const given = !!o.account_last4;
+  const [open, setOpen] = useState(!given);
+  const [bank, setBank] = useState(o.bank_name ?? "");
+  const [name, setName] = useState(o.account_name ?? "");
+  const [number, setNumber] = useState("");
+  const numberProblem = number ? accountNumberProblem(number) : null;
+  const key = `acct-${o.reference}`;
+  if (!open) {
+    return <span className="blk"><Btn kind="ghost" size="sm" onClick={() => setOpen(true)}>Change the account</Btn> <span className="sub2">You may change it until the refund is approved.</span></span>;
+  }
+  return (
+    <span className="blk">
+      <span className="blk sub2">{given ? "Change the account the refund is paid into." : "Give the bank account the refund should be paid into. It must be in your name."}{o.refund_state === "APPROVED" ? " Once given, it cannot be changed here." : ""}</span>
+      <span className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+        <input aria-label="Bank" className="ctl" style={{ flex: "1 1 160px", maxWidth: 220 }} placeholder="Bank, e.g. First Bank" value={bank} onChange={(e) => setBank(e.target.value)} autoComplete="off" />
+        <input aria-label="Account name" className="ctl" style={{ flex: "1 1 200px", maxWidth: 260 }} placeholder="Name on the account" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+        <input aria-label="Account number" className="ctl tnum" style={{ flex: "1 1 200px", maxWidth: 220 }} placeholder="10-digit account number" inputMode="numeric" maxLength={14} value={number} onChange={(e) => setNumber(e.target.value.replace(/[^0-9 -]/g, ""))} autoComplete="off" />
+        <Btn kind="primary" size="sm" disabled={busy !== null || !bank.trim() || !name.trim() || !number || numberProblem !== null}
+          onClick={() => void act(key, "POST", `/me/fees/refunds/${encodeURIComponent(o.reference)}/account`, { bank: bank.trim(), accountName: name.trim(), accountNumber: number.replace(/[\s-]/g, "") },
+            `Bank account for refund ${o.reference} given by the student`, "Account saved").then((j) => { if (j) { setOpen(false); setNumber(""); } })}>
+          {busy === key ? "Saving…" : given ? "Save the new account" : "Save the account"}
+        </Btn>
+        {given ? <Btn kind="ghost" size="sm" onClick={() => setOpen(false)}>Keep the current one</Btn> : null}
+      </span>
+      {numberProblem ? <span className="blk sub2 ink-red">{numberProblem}</span> : null}
+    </span>
+  );
+}
 
 export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string | null }) {
   const { act, busy, problem } = useAct();
@@ -52,7 +84,15 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
       {(fees.overpayments ?? []).map((o) => {
         // V519: school fees paid beyond a session's charge — carried into the next session, or refunded
         const w = overpaymentWords(o);
-        return <Note key={o.reference} kind={o.decision === "CARRY" || o.refund_state === "PAID" ? "ok" : "info"} title={w.title}>{w.text}</Note>;
+        const account = refundAccountWords(o);
+        return (
+          <Note key={o.reference} kind={o.decision === "CARRY" || o.refund_state === "PAID" ? "ok" : "info"} title={w.title}>
+            {w.text}
+            {/* V528: the bank account the refund is paid into, given here by the student */}
+            {account ? <span className="blk">{account}</span> : null}
+            {o.decision === "REFUND" && o.account_open ? <RefundAccountForm o={o} act={act} busy={busy} /> : null}
+          </Note>
+        );
       })}
       {unstated.length ? (
         <Note kind="info" title={`Your ${unstatedWords} semester school fees for ${fees.session} are not yet stated`}>

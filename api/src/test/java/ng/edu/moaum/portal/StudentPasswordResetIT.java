@@ -25,8 +25,9 @@ import org.springframework.transaction.PlatformTransactionManager;
  * matriculation number, reaches nothing but the change until it is made (the server refuses the rest), changes it, and from then
  * the number opens nothing while the new password does; a later reset ends the sessions the student holds and leaves a locked
  * account locked unless the agent unlocks it; a posting without the capability, a student outside the posting's scope, another
- * office and a student without a matriculation number are refused; the policy's ticket rule, hourly limit and switch hold. Each
- * run uses its own students. Needs DATABASE_URL.
+ * office and a student without a matriculation number are refused; the policy's ticket rule, hourly limit and switch hold; V528:
+ * the Head sees each agent's resets and is told once when one agent's day reaches the figure set, nothing refused. Each run uses
+ * its own students. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -59,9 +60,15 @@ class StudentPasswordResetIT {
 
     /** the desk's reset policy; hourly null is no limit (V526) */
     private void policy(String head, boolean enabled, String ticket, Integer hourly) {
+        policy(head, enabled, ticket, hourly, null);
+    }
+
+    /** V528: with the day's count of one agent's resets at which the Head is told (null: no one) */
+    private void policy(String head, boolean enabled, String ticket, Integer hourly, Integer alertDaily) {
         Map<String, Object> b = new HashMap<>(Map.of("enabled", enabled, "unlockByDefault", true, "ticket", ticket,
                 "statuses", List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED")));
         b.put("hourly", hourly);
+        b.put("alertDaily", alertDaily);
         ResponseEntity<Map> r = it.call(head, HttpMethod.PUT, "/api/v1/helpdesk/admin/settings/password-reset", b);
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
     }
@@ -77,9 +84,17 @@ class StudentPasswordResetIT {
         UUID viewer = it.person("ZZ-PWR-VIEWER", "ZZPWRVIEWER");
         String agentTok = TestTokens.token(agent, List.of("ictagent"));
         String viewerTok = TestTokens.token(viewer, List.of("ictagent"));
-        String head = TestTokens.token(it.person("ZZ-PWR-HEAD", "ZZPWRHEAD"), List.of("helpdeskhead"));
+        UUID headPerson = it.person("ZZ-PWR-HEAD", "ZZPWRHEAD");
+        String head = TestTokens.token(headPerson, List.of("helpdeskhead"));
+        // V528: an agent of this run alone, so the day's count (and the once-a-day notice) is the run's own
+        UUID alerter = it.person("ZZ-PWR-AL-" + n, "ZZPWRAL" + n);
+        String alerterTok = TestTokens.token(alerter, List.of("ictagent"));
         it.db(() -> {
             jdbc.sql("DELETE FROM helpdesk.agent_assignment WHERE person_id IN (:a, :b)").param("a", agent).param("b", viewer).update();
+            jdbc.sql("""
+                    INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities)
+                    VALUES (:p, 'ICT_SUPPORT', 'FACULTY', 'SC', ARRAY['VIEW_STUDENT','RESET_PASSWORD'])
+                    """).param("p", alerter).update();
             // a CPO over the Faculty of Science who resets passwords, and one who only reads records
             jdbc.sql("""
                     INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities)
@@ -213,11 +228,37 @@ class StudentPasswordResetIT {
             assertThat(((Map<?, ?>) it.get(head, "/api/v1/helpdesk/admin/settings").getBody().get("passwordReset")).get("hourly")).as("no limit").isNull();
             ResponseEntity<Map> unlimited = reset(agentTok, student, body("Student forgot portal password"));
             assertThat(unlimited.getStatusCode().value()).as(String.valueOf(unlimited.getBody())).isEqualTo(200);
+
+            // V528: the Head sees each agent's resets today and this week, and is told once when one agent's day reaches the figure;
+            // nothing is refused
+            assertThat(it.get(agentTok, "/api/v1/helpdesk/admin/password-resets/by-agent").getStatusCode().value()).as("the Head's view").isEqualTo(403);
+            it.db(() -> jdbc.sql("""
+                    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+                    VALUES (gen_random_uuid(), :p, 'helpdeskhead', 'institution', 'StudentPasswordResetIT', :p, current_date - 1)
+                    """).param("p", headPerson).update());
+            policy(head, true, "OPTIONAL", null, 2);
+            assertThat(((Map<?, ?>) it.get(head, "/api/v1/helpdesk/admin/settings").getBody().get("passwordReset")).get("alert_daily")).isEqualTo(2);
+            String toldHead = "SELECT count(*) FROM platform.notice WHERE template_key = 'SUPPORT_RESET_ALERT' AND about_id = :h AND event_key LIKE 'reset-alert:' || :a || ':%'";
+            long[] told = new long[3];
+            for (int i = 0; i < 3; i++) {
+                it.db(() -> jdbc.sql("UPDATE iam.student_account SET support_reset_at = now() - interval '5 minutes' WHERE student_id = :s").param("s", student).update());
+                ResponseEntity<Map> r = reset(alerterTok, student, body("Student forgot portal password"));
+                assertThat(r.getStatusCode().value()).as("nothing is refused: " + r.getBody()).isEqualTo(200);
+                told[i] = jdbc.sql(toldHead).param("h", headPerson).param("a", alerter.toString()).query(Long.class).single();
+            }
+            assertThat(told).as("not before the second, once at it, not again").containsExactly(0L, 1L, 1L);
+            ResponseEntity<Map> byAgent = it.get(head, "/api/v1/helpdesk/admin/password-resets/by-agent");
+            assertThat(byAgent.getStatusCode().value()).as(String.valueOf(byAgent.getBody())).isEqualTo(200);
+            assertThat(byAgent.getBody()).containsEntry("alert_daily", 2);
+            assertThat((List<Map>) byAgent.getBody().get("agents")).filteredOn(r -> alerter.toString().equals(r.get("agent_id")))
+                    .extracting(r -> r.get("name") + ":" + r.get("today") + ":" + r.get("week")).containsExactly("ZZPWRAL" + n + ", Invented:3:3");
             policy(head, false, "OPTIONAL", 30);
             assertThat(it.get(agentTok, base + "/password").getBody()).containsEntry("refusal", "RESET_DISABLED");
             assertThat(reset(agentTok, student, body("Student forgot portal password")).getBody().get("code")).isEqualTo("RESET_DISABLED");
         } finally {
             policy(head, true, "OPTIONAL", null);
+            it.db(() -> jdbc.sql("UPDATE iam.office_assignment SET valid_to = valid_from WHERE person_id = :p AND instrument = 'StudentPasswordResetIT' AND valid_to IS NULL")
+                    .param("p", headPerson).update());
         }
     }
 }

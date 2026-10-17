@@ -13,10 +13,12 @@ import { Field } from "@/components/proto/blocks";
 import { RESULT_WORD } from "@/lib/support";
 import { METHOD_WORD } from "@/lib/password-reset";
 import type { AuditList } from "@/app/helpdesk/audit/SupportAudit";
+import type { ResetsByAgent as Counts } from "@/lib/password-reset";
+import { ResetsByAgent } from "./ResetsByAgent";
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function ResetHistory({ list, page, from, to }: { list: AuditList; page: number; from: string; to: string }) {
+export function ResetHistory({ list, page, from, to, byAgent }: { list: AuditList; page: number; from: string; to: string; byAgent?: Counts | null }) {
   const go = useQueryNav();
   const nav = (patch: Record<string, string>) => {
     const qs = new URLSearchParams();
@@ -44,6 +46,8 @@ export function ResetHistory({ list, page, from, to }: { list: AuditList; page: 
       <PageHead title="Password reset history" eyebrow="ICT Support Desk"
         description="Every student password reset and account unlock made at the desk, newest first. Passwords are never recorded or shown."
         actions={<><LinkBtn href="/helpdesk/password-reset">Student password reset</LinkBtn><LinkBtn href="/helpdesk/audit?module=AUTHENTICATION">Support action history</LinkBtn></>} />
+      {/* V528: the Head's view of each agent's resets (the Head, the Director of ICT, admin, super) */}
+      {byAgent ? <ResetsByAgent counts={byAgent} /> : null}
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ from: String(f.get("from") ?? ""), to: String(f.get("to") ?? "") }); }}>
         <Field id="rh-from" label="From"><input id="rh-from" name="from" type="date" className="ctl" defaultValue={from} /></Field>
         <Field id="rh-to" label="To"><input id="rh-to" name="to" type="date" className="ctl" defaultValue={to} /></Field>

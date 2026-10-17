@@ -66,7 +66,7 @@ automatic deletion — records are ended, archived or superseded, never silently
 |---|---|---|---|---|---|---|---|
 | Fee references, amounts, purpose, session, status, channel, the provider's transaction reference | `finance.*`, `reporting.payments` | Fees, receipts, clearance of windows | Bursary, Audit, the student/applicant (own), departments (paid/unpaid lists), ICT Support (diagnosis, never a status change) | DB | Statutory (tax) retention | Paystack, Flutterwave, Interswitch (Quickteller / WebPAY / PAYDirect) — whichever ICT has configured | P |
 | Card or bank details | **Not held.** Card details are entered on the provider's own page (hosted checkout); PAYDirect pays at the bank | — | — | — | — | The provider | — |
-| Refunds and wallet withdrawals: bank name, account number | `finance.refund`, `finance.wallet_withdrawal` | Paying money back | Bursary | DB | Statutory | The bank | S |
+| Refunds and wallet withdrawals: bank name, account number | `finance.refund`, `finance.refund_account` (V528: the ten-digit account a student gives for a refund of overpaid fees), `finance.wallet_withdrawal` | Paying money back | Bursary, and Internal Audit and admin reading the refunds desk (the full number); the student (own, the last four digits) | DB | Statutory | The bank | S |
 | NELFUND loan wallet imports | `finance.*` (NELFUND source) | Loan-funded fees | Bursary, the student | DB | Statutory | NELFUND (origin) | P |
 | Staff payroll and expenditure | `hrm.payslip`, `expenditure.*` | Payroll, grants | HRM, Bursary | DB | Statutory | — | S |
 

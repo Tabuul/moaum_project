@@ -27,7 +27,7 @@ The server checks each of these in order:
 3. The agent holds `RESET_PASSWORD` for the student: every agent in service does (V500), and a posting covering the student may carry it; otherwise 422 `SUPPORT_CAPABILITY`. An agent taken off the desk (every posting ended) holds nothing.
 4. The reason has 10 characters or more; otherwise 422 `SUPPORT_REASON_SHORT`.
 5. The ticket is the student's own and within reach, and is required when the policy says so; otherwise `SUPPORT_TICKET_REQUIRED`.
-6. The agent is under the policy's hourly limit for resets to the default credential; otherwise `SUPPORT_RESET_RATE`.
+6. The agent is under the policy's hourly limit for resets to the default credential, when one is stated (none by default since V526); otherwise `SUPPORT_RESET_RATE`.
 7. `iam.student_reset_check(student)` allows the reset:
    - `RESET_DISABLED`: the policy is switched off.
    - `RESET_MERGED_RECORD`: the record was merged into another (V431).
@@ -73,8 +73,9 @@ The public sign-in page no longer says that the number is the first password (`A
   
   The same component (`components/support/PasswordReset.tsx`) replaces the old reset dialog on the student's support record, so the desk has one reset screen.
 - **Password Reset History** (`/helpdesk/password-reset/history`): the ledger's Authentication acts, showing S/N, student, matriculation number, who reset it, role, method, reason, ticket, date and result. No password, hash or download is offered.
+  - V528: for the Head of the desk (and the Director of ICT, admin, super), **Resets by agent** above the list: each agent's resets today and in the last seven days (Lagos days), the daily average and the last one (`helpdesk.reset_counts`, `GET /api/v1/helpdesk/admin/password-resets/by-agent`), an agent at or past the alert figure marked.
 - **ICT Support Settings → Student support password reset**:
-  - can be changed: on or off, unlock by default, ticket optional or required, the hourly limit per agent, and the statuses reached;
+  - can be changed: on or off, unlock by default, ticket optional or required, the hourly limit per agent (none by default, V526), the statuses reached, and (V528) the day's count of one agent's resets at which the Head is told — once an agent a day, by e-mail and on the portal (`SUPPORT_RESET_ALERT`; the Director of ICT where no Head is in office); empty tells no one, and nothing is refused;
   - fixed, not settings: the default password is the matriculation number, the change is always forced, and a reason is always required.
 
 ## Other reset paths found in the codebase

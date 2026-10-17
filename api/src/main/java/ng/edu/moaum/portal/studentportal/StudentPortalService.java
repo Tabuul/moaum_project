@@ -403,6 +403,17 @@ public class StudentPortalService {
         return out;
     }
 
+    /** V528: the bank account a refund raised to the student is paid into — the database refuses another student's refund, a
+     *  number that is not ten digits and an account already fixed by approval or payment */
+    @Transactional
+    public Map<String, Object> giveRefundAccount(UUID id, String reference, String bank, String accountName, String accountNumber) {
+        repo.giveRefundAccount(id, reference, bank, accountName, accountNumber);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("reference", reference == null ? null : reference.trim().toUpperCase());
+        out.put("overpayments", repo.overpayments(id));
+        return out;
+    }
+
     /** the portal's school-fees window (V288): a new reference is generated only while it is open; one already generated is paid as before */
     private void assertFeesWindowOpen(UUID id, String session) {
         Map<String, Object> w = repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null);

@@ -55,8 +55,13 @@ class RefundsController {
                        coalesce(st.matric_no, st.admission_no, ja.application_no) AS number,
                        pp.surname || ', ' || pp.given_names AS proposed_by_name,
                        CASE WHEN ap.id IS NULL THEN NULL ELSE ap.surname || ', ' || ap.given_names END AS approved_by_name,
-                       r.proposed_by = nullif(current_setting('moaum.actor_id', true), '')::uuid AS proposed_by_me
+                       r.proposed_by = nullif(current_setting('moaum.actor_id', true), '')::uuid AS proposed_by_me,
+                       -- V528: the account the student gave for a refund of overpaid fees, and whether one is awaited from them
+                       ra.account_number, ra.given_at AS account_given_at,
+                       EXISTS (SELECT 1 FROM finance.overpayment_decision d
+                                WHERE d.reference = r.reference AND d.decision = 'REFUND' AND d.superseded_at IS NULL) AS from_overpayment
                   FROM finance.refund r
+                  LEFT JOIN finance.refund_account ra ON ra.refund_id = r.id
                   LEFT JOIN people.student st ON st.id = r.student_id
                   LEFT JOIN jupeb.fee_reference jf ON jf.reference = r.source_reference
                   LEFT JOIN jupeb.application ja ON ja.id = jf.application_id

@@ -15,6 +15,34 @@ export interface ResetPolicy {
   /** V526: null is no limit (the default) */
   hourly: number | null;
   statuses: string[];
+  /** V528: the day's count of one agent's resets at which the Head is told; absent is never (the default) */
+  alert_daily?: number | null;
+}
+
+/** V528: one agent's student password resets, for the Head's oversight (helpdesk.reset_counts) */
+export interface AgentResets {
+  agent_id: string;
+  name: string;
+  /** today and the last seven days, Lagos days */
+  today: number;
+  week: number;
+  last_at: string | null;
+}
+
+export interface ResetsByAgent {
+  /** absent: no one is told */
+  alert_daily?: number | null;
+  agents: AgentResets[];
+}
+
+/** V528: whether an agent's count today has reached the figure at which the Head is told */
+export function pastAlert(a: AgentResets, alertDaily: number | null | undefined): boolean {
+  return alertDaily != null && alertDaily > 0 && a.today >= alertDaily;
+}
+
+/** V528: an agent's daily average over the last seven days, to one decimal place */
+export function weekAverage(a: AgentResets): string {
+  return (Math.round((a.week / 7) * 10) / 10).toFixed(1);
 }
 
 /** iam.student_reset_check, with the desk's own additions — never a hash, never a password */

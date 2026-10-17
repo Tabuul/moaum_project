@@ -912,11 +912,24 @@ class HelpdeskController {
         // V485: the policy for resets to the default student credential
         Map<String, Object> reset = new LinkedHashMap<>(jdbc.sql("""
                 SELECT student_reset_enabled AS enabled, student_reset_unlock AS unlock_by_default, student_reset_ticket AS ticket,
-                       student_reset_hourly AS hourly, array_to_string(student_reset_statuses, ',') AS statuses
+                       student_reset_hourly AS hourly, array_to_string(student_reset_statuses, ',') AS statuses,
+                       student_reset_alert_daily AS alert_daily
                   FROM helpdesk.setting WHERE row_no
                 """).query().singleRow());
         reset.put("statuses", List.of(String.valueOf(reset.get("statuses")).split(",")));
         out.put("passwordReset", reset);
+        return out;
+    }
+
+    /** V528: each agent's student password resets today and in the last seven days (Lagos days), the last one, and the daily
+     *  figure at which the Head is told — the Head's oversight now the hourly limit is gone (V526); nothing is refused */
+    @GetMapping("/admin/password-resets/by-agent")
+    @PreAuthorize(DIRECTOR)
+    @Transactional(readOnly = true)
+    Map<String, Object> resetsByAgent() {
+        Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT student_reset_alert_daily AS alert_daily FROM helpdesk.setting WHERE row_no")
+                .query().singleRow());
+        out.put("agents", jdbc.sql("SELECT agent_id, name, today, week, last_at FROM helpdesk.reset_counts()").query().listOfRows());
         return out;
     }
 
@@ -1219,12 +1232,14 @@ class HelpdeskController {
     static final List<String> RESET_STATUSES = List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED", "SUSPENDED");
 
     public record PasswordResetPolicyIn(@NotNull Boolean enabled, @NotNull Boolean unlockByDefault, @NotBlank String ticket,
-                                        @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses) {
+                                        @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses,
+                                        @Min(1) @Max(10000) Integer alertDaily) {
     }
 
     /** V485: the desk's policy for resets to the default student credential — on or off, the lockout cleared unless the agent says
-     *  otherwise, a ticket optional or required, each agent's hourly limit (V526: none when left empty), the statuses it may reach. The default credential is the
-     *  matriculation number and the change is always forced: neither is a setting. */
+     *  otherwise, a ticket optional or required, each agent's hourly limit (V526: none when left empty), the statuses it may reach,
+     *  and (V528) the day's count of one agent's resets at which the Head is told (none when left empty). The default credential is
+     *  the matriculation number and the change is always forced: neither is a setting. */
     @PutMapping("/admin/settings/password-reset")
     @PreAuthorize(DIRECTOR)
     @Transactional
@@ -1240,10 +1255,10 @@ class HelpdeskController {
         }
         jdbc.sql("""
                 UPDATE helpdesk.setting SET student_reset_enabled = :e, student_reset_unlock = :u, student_reset_ticket = :t, student_reset_hourly = :h,
-                       student_reset_statuses = string_to_array(:s, ',')
+                       student_reset_statuses = string_to_array(:s, ','), student_reset_alert_daily = :al
                  WHERE row_no
                 """).param("e", body.enabled()).param("u", body.unlockByDefault()).param("t", ticket).param("h", body.hourly(), Types.INTEGER)
-                .param("s", String.join(",", statuses)).update();
+                .param("s", String.join(",", statuses)).param("al", body.alertDaily(), Types.INTEGER).update();
         return settings();
     }
 

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 370
+\set EXPECTED 371
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17399,6 +17399,103 @@ BEGIN
                  AND pos_n = 3 AND pos_differ = 0 AND a_full AND NOT c_stated, false),
         format('cgpa: %s students, %s with one, %s differ, results student %s/%s | positions: %s, %s differ, paid in full %s, unstated %s',
                students, with_cgpa, cgpa_differ, chk_cgpa, chk_each, pos_n, pos_differ, a_full, c_stated));
+END $$;
+-- ── V528. The student's bank account for a refund, and the oversight of password resets. A student overpaid ₦25,000 is refunded:
+--          refused for another student's refund and a short account number; given while the refund awaits approval (the refund
+--          takes bank, name and the last four digits, the fees page shows it) and changed then; once approved with it, refused. A
+--          second refund approved with no account takes one, once. The notice asks for the account. An agent's resets in a day:
+--          the Head told when they reach the figure set (once), not before nor again, and at the next reset when the figure is
+--          lowered below the day's count; each agent's counts read. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); second uuid := gen_random_uuid(); s uuid := gen_random_uuid(); other uuid := gen_random_uuid();
+        a text := '9977/9978'; b text := '9978/9979'; pa text; rf text; rf2 text; e_mine text; e_short text; e_closed text; e_closed2 text;
+        snap text; page_shows text; changed text; second_given text; asks boolean; agent uuid := gen_random_uuid(); head uuid := gen_random_uuid();
+        told_before int; told_at int; told_after int; counts text; agent2 uuid := gen_random_uuid(); lowered text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V528', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), a, date '9977-10-01', date '9978-08-31'), (gen_random_uuid(), b, date '9978-10-01', date '9979-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, kind) VALUES (a, 'School fees', 100000, NULL, pa, 'FEE');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+          (s, 'MOAUM/ADM/77/977101', 'MOAUM/CHK/77/9771', 'ZZCHKV528A', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now()),
+          (other, 'MOAUM/ADM/77/977102', 'MOAUM/CHK/77/9772', 'ZZCHKV528B', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (s, a, 'MOAUM-CHKV528-1', 'School fees ' || a, 125000, '9977-11-02', '9977-11-02', who, 'INTERSWITCH', 'RCT-MOAUM-CHKV528-1', 'check V528');
+        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s], 'CHECK V528: refunded to the student');
+        SELECT d.reference INTO rf FROM finance.overpayment_decision d WHERE d.student_id = s AND d.superseded_at IS NULL;
+        asks := (SELECT t.sms_body LIKE '%Give your bank account%' FROM platform.notice_template t WHERE t.key = 'OVERPAYMENT_REFUND_RAISED');
+
+        BEGIN PERFORM finance.give_refund_account(other, rf, 'First Bank', 'Invented Other', '0123456789');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_mine = MESSAGE_TEXT; END;
+        BEGIN PERFORM finance.give_refund_account(s, rf, 'First Bank', 'ZZCHKV528A Invented', '12345');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_short = MESSAGE_TEXT; END;
+        PERFORM finance.give_refund_account(s, rf, 'First Bank', 'ZZCHKV528A Invented', '0123 456 789');
+        snap := (SELECT f.bank_name || ':' || f.account_name || ':' || f.account_last4 FROM finance.refund f WHERE f.reference = rf);
+        page_shows := (SELECT x.bank_name || ':' || x.account_last4 || ':' || x.account_open FROM finance.student_overpayments(s) x WHERE x.reference = rf);
+        PERFORM finance.give_refund_account(s, rf, 'Access Bank', 'ZZCHKV528A Invented', '9876543210');
+        changed := (SELECT f.bank_name || ':' || f.account_last4 || '|' || ra.account_number FROM finance.refund f JOIN finance.refund_account ra ON ra.refund_id = f.id WHERE f.reference = rf);
+        -- approved by a second officer: the account is fixed
+        PERFORM set_config('moaum.actor_id', second::text, true);
+        PERFORM finance.approve_refund((SELECT f.id FROM finance.refund f WHERE f.reference = rf));
+        BEGIN PERFORM finance.give_refund_account(s, rf, 'Zenith Bank', 'ZZCHKV528A Invented', '1111111111');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_closed = MESSAGE_TEXT; END;
+        -- a refund approved with no account takes one, once
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        rf2 := finance.propose_refund(s, 'ZZCHKV528A, Invented', 'check V528: a second refund', 1000, NULL, NULL, NULL, NULL);
+        PERFORM set_config('moaum.actor_id', second::text, true);
+        PERFORM finance.approve_refund((SELECT f.id FROM finance.refund f WHERE f.reference = rf2));
+        PERFORM finance.give_refund_account(s, rf2, 'GTBank', 'ZZCHKV528A Invented', '2222222222');
+        second_given := (SELECT f.state || ':' || f.account_last4 FROM finance.refund f WHERE f.reference = rf2);
+        BEGIN PERFORM finance.give_refund_account(s, rf2, 'GTBank', 'ZZCHKV528A Invented', '3333333333');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS e_closed2 = MESSAGE_TEXT; END;
+
+        -- the oversight: the Head told when an agent's resets in a day reach the figure, once
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (agent, 'ZZCHKV528AGENT', 'Invented', NULL), (head, 'ZZCHKV528HEAD', 'Invented', 'zzchkv528head@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), head, 'helpdeskhead', 'institution', 'check V528', who, current_date - 1);
+        UPDATE helpdesk.setting SET student_reset_alert_daily = 2 WHERE row_no;
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        VALUES (s, agent, 'ictagent', 'PASSWORD_RESET', 'check V528: reset', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED');
+        told_before := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'SUPPORT_RESET_ALERT' AND n.about_id = head);
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        VALUES (other, agent, 'ictagent', 'PASSWORD_RESET', 'check V528: reset', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED');
+        told_at := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'SUPPORT_RESET_ALERT' AND n.about_id = head AND n.channel = 'EMAIL'
+                     AND n.subject = 'ZZCHKV528AGENT, Invented has reset 2 student passwords today');
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        VALUES (s, agent, 'ictagent', 'PASSWORD_RESET', 'check V528: reset', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED');
+        told_after := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'SUPPORT_RESET_ALERT' AND n.about_id = head AND n.channel = 'EMAIL');
+        counts := (SELECT c.name || ':' || c.today || ':' || c.week || ':' || c.alert_at FROM helpdesk.reset_counts() c WHERE c.agent_id = agent);
+        -- a second agent past a figure set during the day: told at the next reset, with the day's count
+        INSERT INTO iam.person (id, surname, given_names) VALUES (agent2, 'ZZCHKV528AGENTB', 'Invented');
+        UPDATE helpdesk.setting SET student_reset_alert_daily = NULL WHERE row_no;
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        SELECT x, agent2, 'ictagent', 'PASSWORD_RESET', 'check V528: reset', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED' FROM unnest(ARRAY[s, other]) x;
+        UPDATE helpdesk.setting SET student_reset_alert_daily = 1 WHERE row_no;
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        VALUES (s, agent2, 'ictagent', 'PASSWORD_RESET', 'check V528: reset', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED');
+        lowered := (SELECT string_agg(n.subject, ',') FROM platform.notice n WHERE n.template_key = 'SUPPORT_RESET_ALERT' AND n.about_id = head AND n.channel = 'EMAIL'
+                     AND n.event_key LIKE 'reset-alert:' || agent2 || ':%');
+        RAISE EXCEPTION 'the V528 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V528 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V528: a student gives the bank account a refund is paid into (while it awaits approval, or once after approval with none), never redirecting approved money; and the Head of ICT Support is told, once, when an agent''s resets in a day reach the figure set, each agent''s counts read',
+        coalesce(e_mine LIKE 'REFUND_ACCOUNT_NOT_YOURS%' AND e_short LIKE 'REFUND_ACCOUNT_NUMBER%' AND asks
+                 AND snap = 'First Bank:ZZCHKV528A Invented:6789' AND page_shows = 'First Bank:6789:true'
+                 AND changed = 'Access Bank:3210|9876543210' AND e_closed LIKE 'REFUND_ACCOUNT_CLOSED%'
+                 AND second_given = 'APPROVED:2222' AND e_closed2 LIKE 'REFUND_ACCOUNT_CLOSED%'
+                 AND told_before = 0 AND told_at = 1 AND told_after = 1 AND counts = 'ZZCHKV528AGENT, Invented:3:3:2'
+                 AND lowered = 'ZZCHKV528AGENTB, Invented has reset 3 student passwords today', false),
+        format('not yours %s | short %s | asks %s | snapshot %s | page %s | changed %s | closed %s | second %s, again %s | told %s/%s/%s | counts %s | lowered %s',
+               left(e_mine, 26), left(e_short, 24), asks, snap, page_shows, changed, left(e_closed, 24), second_given, left(e_closed2, 24),
+               told_before, told_at, told_after, counts, lowered));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

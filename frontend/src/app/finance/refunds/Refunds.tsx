@@ -20,7 +20,19 @@ export interface Refund {
   proposed_at: string; approved_at: string | null; rejected_why: string | null; paid_at: string | null;
   number: string | null; proposed_by_name: string | null; approved_by_name: string | null; proposed_by_me: boolean;
   source_reference: string | null;
+  /** V528: the account the student gave for a refund of overpaid fees (full number, for the desk that pays), and whether it is one */
+  account_number?: string | null; account_given_at?: string | null; from_overpayment?: boolean;
 }
+
+/** V528: where a refund is paid — the student's own account for overpaid fees, or what was recorded when it was raised */
+function payInto(r: Refund): { text: string; sub: string | null } | null {
+  if (r.account_number) return { text: `${r.bank_name ?? ""} · ${r.account_number}`, sub: `${r.account_name ?? ""}${r.account_given_at ? ` · given by the student ${new Date(r.account_given_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}` };
+  if (r.account_last4) return { text: `${r.bank_name ?? "Bank"} · ending ${r.account_last4}`, sub: r.account_name };
+  return null;
+}
+
+/** V528: a refund of overpaid fees waits on the student's bank details before it is paid */
+const awaitsAccount = (r: Refund) => !!r.from_overpayment && !r.account_number && !r.account_last4;
 
 interface Txn { kind: string; amount: number; confirmed_at: string | null; channel: string | null; receipt_no: string | null; payer: string | null; number: string | null; student_id: string | null; purpose: string | null }
 
@@ -108,7 +120,7 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
   return (
     <>
       <Note kind="info" title="Maker and checker are always different people">
-        The officer who raises a refund cannot approve it. It is paid only after a second officer approves, into the account recorded when it was raised.
+        The officer who raises a refund cannot approve it. It is paid only after a second officer approves, into the account recorded when it was raised. A refund of overpaid school fees is paid into the account the student gives on their fees page.
       </Note>
 
       {said ? <Note kind="ok" title={said}>It waits for a second officer to approve it before any money leaves the University.</Note> : null}
@@ -126,20 +138,24 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
 
       <Panel title="Refund requests" right={may ? undefined : "You are reading this queue"}>
         {refunds.length ? (
-          <DTable cols={["Reference", "Payer", "Reason", "Amount|num", "Stage", "Action|num"]} rows={refunds.map((r) => [
+          <DTable cols={["Reference", "Payer", "Reason", "Amount|num", "Pay into", "Stage", "Action|num"]} rows={refunds.map((r) => [
             <span key="r"><span className="tnum">{r.reference}</span>{r.source_reference ? <div className="sub2">against <span className="tnum">{r.source_reference}</span></div> : null}</span>,
             <Two key="p" a={r.payer} b={r.number ?? ""} />,
             <span className="sub2" key="rs">{r.reason}</span>,
             <b className="tnum" key="a">{money(Number(r.amount))}</b>,
+            (() => { const p = payInto(r); return p ? <Two key="pi" a={<span className="tnum">{p.text}</span>} b={p.sub ?? ""} />
+              : awaitsAccount(r) && r.state !== "PAID" && r.state !== "REJECTED" ? <span key="pi" className="sub2">Waiting for the student&rsquo;s bank details</span>
+              : <span key="pi" className="sub2">—</span>; })(),
             <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.proposed_by_name ? <div className="sub2">Raised by {r.proposed_by_me ? "you" : r.proposed_by_name}</div> : null}{r.rejected_why ? <div className="sub2">{r.rejected_why}</div> : null}</span>,
             <span key="ac" className="row row--inline row--tight">
               {may && r.state === "PROPOSED" && !r.proposed_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/${r.id}/approve`, {}, `Approve refund ${r.reference}`).then((j) => { if (j) setSaid(`${r.reference} approved`); })}>Approve</Btn> : null}
               {may && r.state === "PROPOSED" && r.proposed_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}
               {may && r.state === "PROPOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Why is this refund rejected? The reason is recorded."); if (w) void send(`/${r.id}/reject`, { why: w }, `Reject refund ${r.reference}`); }}>Reject</Btn> : null}
-              {may && r.state === "APPROVED" ? <Btn kind="primary" disabled={busy} onClick={() => { if (window.confirm(`Mark ${r.reference} paid? Record this once the money has left, into ${r.account_name ?? "the account on file"}.`)) void send(`/${r.id}/pay`, {}, `Refund ${r.reference} paid`).then((j) => { if (j) setSaid(`${r.reference} recorded paid`); }); }}>Mark paid</Btn> : null}
+              {may && r.state === "APPROVED" && awaitsAccount(r) ? <Btn kind="ghost" disabled>Waiting for the account</Btn> : null}
+              {may && r.state === "APPROVED" && !awaitsAccount(r) ? <Btn kind="primary" disabled={busy} onClick={() => { if (window.confirm(`Mark ${r.reference} paid? Record this once the money has left, into ${r.account_name ?? "the account on file"}${r.account_number ? ` (${r.bank_name ?? ""} ${r.account_number})` : ""}.`)) void send(`/${r.id}/pay`, {}, `Refund ${r.reference} paid`).then((j) => { if (j) setSaid(`${r.reference} recorded paid`); }); }}>Mark paid</Btn> : null}
               {!may || (r.state !== "PROPOSED" && r.state !== "APPROVED") ? <span className="sub2">{r.paid_at ? "Disbursed" : r.approved_by_name ? `Approved by ${r.approved_by_name}` : ""}</span> : null}
             </span>,
-          ])} texts={refunds.map((r) => `${r.reference} ${r.payer} ${r.reason}`)} />
+          ])} texts={refunds.map((r) => `${r.reference} ${r.payer} ${r.reason} ${r.account_number ?? ""}`)} />
         ) : <PBody><div className="sub2">No refund has been raised.</div></PBody>}
       </Panel>
 
