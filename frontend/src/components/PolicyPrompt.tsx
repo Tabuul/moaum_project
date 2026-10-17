@@ -5,7 +5,7 @@
  * by the person's own act, recorded on the server; never again for an unchanged version. "Not now" puts it off for this
  * browser session only — the next sign-in asks again until it is accepted. An examination room is left alone.
  */
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -26,11 +26,17 @@ const PATH: Record<string, string> = { PRIVACY_POLICY: "/privacy-policy", TERMS_
 function putOff(): boolean {
   try { return sessionStorage.getItem(PUT_OFF_KEY) === "1"; } catch { return false; }
 }
+const noSubscription = () => () => {};
 
 export function PolicyPrompt({ p }: { p: PolicyPromptData }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [open, setOpen] = useState(() => !putOff());
+  // whether this browser session put the prompt off is known only in the browser: the server (and the first render that
+  // hydrates its page) draws nothing, and the prompt appears just after, so the two never disagree (a dialog drawn on the
+  // server but put off in the browser made React throw the whole page away and draw it again)
+  const putOffHere = useSyncExternalStore(noSubscription, putOff, () => true);
+  const [dismissed, setDismissed] = useState(false);
+  const open = !putOffHere && !dismissed;
   const [read, setRead] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -48,7 +54,7 @@ export function PolicyPrompt({ p }: { p: PolicyPromptData }) {
         });
         if (!r.ok) { setProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }); return; }
       }
-      setOpen(false);
+      setDismissed(true);
       router.refresh();
     } finally {
       setBusy(false);
@@ -57,7 +63,7 @@ export function PolicyPrompt({ p }: { p: PolicyPromptData }) {
 
   function later() {
     try { sessionStorage.setItem(PUT_OFF_KEY, "1"); } catch { /* fine */ }
-    setOpen(false);
+    setDismissed(true);
   }
 
   return (

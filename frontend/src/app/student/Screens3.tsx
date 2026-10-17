@@ -19,6 +19,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 import { CATEGORY_LABEL, addedAsLabel, courseCategory, inUniversityOrder, type Categorised } from "@/lib/course-order";
 import { AddOtherCourse } from "./AddOtherCourse";
+import { OverloadRequest } from "./OverloadRequest";
 
 /** the academic type shown on the form: GST, Elective or Core (Core/Required → Core).
  *  Prefer the per-programme offer basis (an elective borrowed from another department that owns
@@ -312,6 +313,8 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="sub2">{meter.hint}</div>
         </div>
       </div></div>
+      {/* V508: an overload asked of the Head of Department, and where it stands (not in the SIWES semester) */}
+      {v.limit.basis !== "SIWES" && (!locked || v.addDropOpen) ? <OverloadRequest session={v.session} semester={v.semester} total={total} max={max} /> : null}
       {locked ? (
         <Panel title="Your registered courses" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg!.units} units`}>
           <PBody>

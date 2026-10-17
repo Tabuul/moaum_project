@@ -113,6 +113,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "4" },
           { "id": "t/approvals", "icon": "check", "label": "Departmental Approvals" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
@@ -199,6 +200,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/allocate", "icon": "swap", "label": "Teaching Allocation" },
           { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "7" },
           { "id": "t/approvals", "icon": "check", "label": "Faculty Board" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
@@ -290,6 +292,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/movement", "icon": "doc", "label": "Open a Movement" },
           { "id": "t/staff", "icon": "user", "label": "Staff Records" },
+          { "id": "t/appoint", "icon": "user", "label": "New Appointments" },
           { "id": "t/recruit", "icon": "user", "label": "Recruitment" },
           { "id": "t/leave", "icon": "cal", "label": "Leave Requests", "badge": "2" },
           { "id": "t/appraisal", "icon": "chart", "label": "Appraisal" },
@@ -608,6 +611,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
@@ -1040,7 +1044,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
-          { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" }
+          { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" }
         ]
       },
       {
@@ -1153,7 +1158,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
-          { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" }
+          { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" }
         ]
       },
       {
@@ -1248,6 +1254,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/approvals", "icon": "check", "label": "Senate Business" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
@@ -1366,6 +1373,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
         ]
       },
       {

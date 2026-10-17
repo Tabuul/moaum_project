@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** API consumers and their keys (V047). */
+/** API consumers and their keys (V047); the scopes they may hold and the calls on the integration door (V511). */
 @RestController
 @RequestMapping("/api/v1/apimgmt")
 class ApiKeysController {
@@ -44,7 +44,13 @@ class ApiKeysController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> consumers() {
         List<Map<String, Object>> consumers = jdbc.sql("""
-                SELECT c.id, c.name, c.owner, c.scopes, c.quota_day, c.status, c.created_at
+                SELECT c.id, c.name, c.owner, c.scopes, c.quota_day, c.status, c.created_at,
+                       -- V511: the calls on the integration door today (Lagos day) and the last one
+                       (SELECT count(*) FROM apimgmt.request_log l WHERE l.consumer_id = c.id AND l.outcome IN ('OK', 'NOT_FOUND')
+                          AND l.at >= ((now() AT TIME ZONE 'Africa/Lagos')::date::timestamp AT TIME ZONE 'Africa/Lagos')) AS calls_today,
+                       (SELECT max(l.at) FROM apimgmt.request_log l WHERE l.consumer_id = c.id) AS last_call_at,
+                       (SELECT count(*) FROM apimgmt.request_log l WHERE l.consumer_id = c.id AND l.outcome NOT IN ('OK', 'NOT_FOUND')
+                          AND l.at >= now() - interval '7 days') AS refused_week
                   FROM apimgmt.consumer c ORDER BY c.status, c.name
                 """).query().listOfRows();
         List<Map<String, Object>> keys = jdbc.sql("""
@@ -57,6 +63,26 @@ class ApiKeysController {
             c.put("keys", keys.stream().filter(k -> c.get("id").equals(k.get("consumer_id"))).toList());
         }
         return consumers;
+    }
+
+    /** V511: the scopes a consumer may hold, what each reads and the integration path it opens */
+    @GetMapping("/scopes")
+    @PreAuthorize(OPERATORS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> scopes() {
+        return jdbc.sql("SELECT code, label, reads, path FROM apimgmt.scope ORDER BY code").query().listOfRows();
+    }
+
+    /** V511: the latest calls on the integration door (refused and answered), newest first */
+    @GetMapping("/calls")
+    @PreAuthorize(OPERATORS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> calls() {
+        return jdbc.sql("""
+                SELECT l.at, c.name AS consumer, k.last4, l.scope, l.subject, l.outcome, l.ip
+                  FROM apimgmt.request_log l LEFT JOIN apimgmt.consumer c ON c.id = l.consumer_id LEFT JOIN apimgmt.key k ON k.id = l.key_id
+                 ORDER BY l.at DESC LIMIT 100
+                """).query().listOfRows();
     }
 
     @PostMapping("/consumers")

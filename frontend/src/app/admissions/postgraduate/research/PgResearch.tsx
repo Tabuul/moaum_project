@@ -13,6 +13,7 @@ import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { Btn, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface ResearchRow {
@@ -26,8 +27,17 @@ export interface ResearchList {
   counts: { total: number; supervision: number; proposal: number; seminar: number; examination: number; finishing: number; awarded: number };
   rows: ResearchRow[];
 }
-interface Supervisor { name: string; role: string; is_external: boolean; assigned_at: string }
-interface PanelMember { name: string; role: string; is_external: boolean }
+interface Supervisor { id: string; name: string; role: string; is_external: boolean; assigned_at: string }
+interface PanelMember { id: string; name: string; role: string; is_external: boolean }
+/** V509: a supervision that ended, or a member taken off the panel: when, why, and who took the role over */
+interface SupervisorPast { id: string; name: string; role: string; is_external: boolean; assigned_at: string; ended_at: string; ended_on: string | null; end_reason: string | null; replaced_by: string | null }
+interface PanelPast { id: string; name: string; role: string; is_external: boolean; added_at: string; removed_at: string; removed_on: string; removed_reason: string; replaced_by: string | null }
+/** V509: the change being made: a supervisor ended or replaced, a panel member removed (with another in the role or not) */
+type Change = { kind: "END" | "REPLACE" | "REMOVE"; id: string; name: string; role: string };
+const ROLE_WORD: Record<string, string> = { FIRST: "first", SECOND: "second", CO: "co-" };
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
+/** the panel that examined is the record: no member leaves it once the viva is held */
+const EXAMINED = ["VIVA_HELD", "CORRECTIONS", "FINAL_SUBMITTED", "CLEARED", "AWARD_RECOMMENDED", "AWARDED", "WITHDRAWN"];
 interface Event { stage: string; note: string | null; at: string }
 const PANEL_ROLE: Record<string, string> = {
   CHAIR: "chair / HOD", EXTERNAL: "external examiner", SUPERVISOR: "supervisor", CO_SUPERVISOR: "co-supervisor",
@@ -45,6 +55,7 @@ interface Detail extends Omit<ResearchRow, "supervisors"> {
   viva_held_at: string | null; viva_score: number | null; corrections_due: string | null;
   final_submitted_at: string | null; cleared_at: string | null; award_recommended_at: string | null; awarded_at: string | null;
   supervisors: Supervisor[]; panel: PanelMember[]; events: Event[];
+  supervisorHistory?: SupervisorPast[]; panelHistory?: PanelPast[];
 }
 
 const STAGES: [string, string][] = [
@@ -105,6 +116,9 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
   const [plag, setPlag] = useState("");
   const [viva, setViva] = useState({ score: "", outcome: "PASS_MINOR" });
   const [due, setDue] = useState("");
+  // V509: the supervisor or panel change being made
+  const [change, setChange] = useState<Change | null>(null);
+  const [chg, setChg] = useState({ on: today(), reason: "", name: "", external: false });
 
   function onStage(s: string) {
     setStage(s);
@@ -216,9 +230,24 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
               <div className="stack" style={{ gap: "var(--s-3)" }}>
                 <div>
                   <div className="b600 mb-2">Supervisors</div>
-                  {sups.length ? sups.map((s, i) => (
-                    <div key={i} className="sub2">{s.name} — {s.role.toLowerCase()}{s.is_external ? " (external)" : ""}</div>
+                  {sups.length ? sups.map((s) => (
+                    <div key={s.id} className="row row--tight" style={{ alignItems: "center" }}>
+                      <span className="sub2 grow">{s.name} — {s.role.toLowerCase()}{s.is_external ? " (external)" : ""} · since {fmt(s.assigned_at)}</span>
+                      {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
+                        <span className="row row--inline row--tight">
+                          <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setChg({ on: today(), reason: "", name: "", external: false }); setChange({ kind: "REPLACE", id: s.id, name: s.name, role: s.role }); }}>Replace</Btn>
+                          <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setChg({ on: today(), reason: "", name: "", external: false }); setChange({ kind: "END", id: s.id, name: s.name, role: s.role }); }}>End</Btn>
+                        </span>
+                      ) : null}
+                    </div>
                   )) : <div className="sub2">None assigned yet.</div>}
+                  {detail.supervisorHistory?.length ? (
+                    <details className="mt-2"><summary className="sub2">Earlier supervisors ({detail.supervisorHistory.length})</summary>
+                      {detail.supervisorHistory.map((h) => (
+                        <div key={h.id} className="sub2">{h.name} — {h.role.toLowerCase()}, {fmt(h.assigned_at)} to {h.ended_on ? fmt(h.ended_on) : fmt(h.ended_at)}{h.replaced_by ? ` · replaced by ${h.replaced_by}` : ""}{h.end_reason ? ` · ${h.end_reason}` : ""}</div>
+                      ))}
+                    </details>
+                  ) : null}
                   {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
                     <div className="row row--tight mt-2">
                       <input className="ctl" placeholder="Supervisor name" value={sup.name} onChange={(e) => setSup({ ...sup, name: e.target.value })} style={{ maxWidth: 200 }} />
@@ -235,9 +264,21 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
 
                 <div>
                   <div className="b600 mb-2">Panel of examiners</div>
-                  {panel.length ? panel.map((p, i) => (
-                    <div key={i} className="sub2">{p.name} — {PANEL_ROLE[p.role] ?? p.role.toLowerCase()}{p.is_external ? " (external)" : ""}</div>
+                  {panel.length ? panel.map((p) => (
+                    <div key={p.id} className="row row--tight" style={{ alignItems: "center" }}>
+                      <span className="sub2 grow">{p.name} — {PANEL_ROLE[p.role] ?? p.role.toLowerCase()}{p.is_external ? " (external)" : ""}</span>
+                      {may && !EXAMINED.includes(detail.stage) ? (
+                        <Btn kind="ghost" size="sm" disabled={busy} onClick={() => { setChg({ on: today(), reason: "", name: "", external: p.is_external }); setChange({ kind: "REMOVE", id: p.id, name: p.name, role: p.role }); }}>Remove</Btn>
+                      ) : null}
+                    </div>
                   )) : <div className="sub2">Not constituted yet — six for a Master&rsquo;s, seven for a PhD (Policy 24.3).</div>}
+                  {detail.panelHistory?.length ? (
+                    <details className="mt-2"><summary className="sub2">Removed from the panel ({detail.panelHistory.length})</summary>
+                      {detail.panelHistory.map((h) => (
+                        <div key={h.id} className="sub2">{h.name} — {PANEL_ROLE[h.role] ?? h.role.toLowerCase()}, off from {fmt(h.removed_on)}{h.replaced_by ? ` · ${h.replaced_by} in the role` : ""} · {h.removed_reason}</div>
+                      ))}
+                    </details>
+                  ) : null}
                   {may && !["AWARDED", "WITHDRAWN"].includes(detail.stage) ? (
                     <div className="row row--tight mt-2">
                       <input className="ctl" placeholder="Member name" value={pan.name} onChange={(e) => setPan({ ...pan, name: e.target.value })} style={{ maxWidth: 190 }} />
@@ -316,6 +357,49 @@ export function PgResearch({ initialStage, view, problem, actingOffice }: { init
             </div>
           </PBody>
         </Panel>
+      ) : null}
+      {change ? (
+        <Modal title={change.kind === "END" ? "END THE SUPERVISION" : change.kind === "REPLACE" ? "REPLACE THE SUPERVISOR" : "REMOVE FROM THE PANEL"} onClose={() => setChange(null)}
+          foot={<><Btn kind="ghost" onClick={() => setChange(null)}>Cancel</Btn>
+            <Btn kind="primary" disabled={busy || chg.reason.trim().length < 10 || !chg.on || (change.kind === "REPLACE" && chg.name.trim().length < 3)} onClick={async () => {
+              const c = change;
+              const path = c.kind === "REMOVE" ? `/panel/${c.id}/remove` : `/supervisors/${c.id}/${c.kind === "END" ? "end" : "replace"}`;
+              const body = c.kind === "END" ? { on: chg.on, reason: chg.reason.trim() }
+                : c.kind === "REPLACE" ? { on: chg.on, reason: chg.reason.trim(), name: chg.name.trim(), external: chg.external }
+                : { on: chg.on, reason: chg.reason.trim(), replacement: chg.name.trim() || null, external: chg.external };
+              const said = c.kind === "END" ? `Supervision by ${c.name} ended` : c.kind === "REPLACE" ? `${chg.name.trim()} replaces ${c.name}` : `${c.name} removed from the panel`;
+              setChange(null);
+              await post(path, body, said);
+            }}>{change.kind === "END" ? "End" : change.kind === "REPLACE" ? "Replace" : "Remove"}</Btn></>}>
+          <div className="stack">
+            <div><b>{change.name}</b> · {change.kind === "REMOVE" ? (PANEL_ROLE[change.role] ?? change.role.toLowerCase()) : `${ROLE_WORD[change.role] ?? change.role.toLowerCase()} supervisor`}</div>
+            {change.kind === "END" ? <div className="sub2">The supervision ends on the date; the record keeps it with the reason. A candidate always has a first supervisor: replace the first supervisor instead of ending the supervision.</div> : null}
+            {change.kind === "REPLACE" ? (
+              <>
+                <Field id="pgc-name" label="Supervisor who takes the role over" required>
+                  <input id="pgc-name" className="ctl" value={chg.name} maxLength={200} onChange={(e) => setChg({ ...chg, name: e.target.value })} placeholder="e.g. Prof. A. Tersoo" />
+                </Field>
+                <label className="sub2 row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={chg.external} onChange={(e) => setChg({ ...chg, external: e.target.checked })} /> external</label>
+              </>
+            ) : null}
+            {change.kind === "REMOVE" ? (
+              <>
+                <Field id="pgc-rep" label="Another member in the role (optional)" hint="Leave it empty to remove the member only">
+                  <input id="pgc-rep" className="ctl" value={chg.name} maxLength={200} onChange={(e) => setChg({ ...chg, name: e.target.value })} />
+                </Field>
+                {chg.name.trim() ? <label className="sub2 row" style={{ gap: "var(--s-1)" }}><input type="checkbox" checked={chg.external} onChange={(e) => setChg({ ...chg, external: e.target.checked })} /> external</label> : null}
+              </>
+            ) : null}
+            <Field id="pgc-on" label="Takes effect on" required hint="Today or an earlier day">
+              <input id="pgc-on" type="date" className="ctl" value={chg.on} max={today()} onChange={(e) => setChg({ ...chg, on: e.target.value })} />
+            </Field>
+            <Field id="pgc-reason" label="Reason" required hint="Ten characters or more; kept on the record">
+              <input id="pgc-reason" className="ctl" value={chg.reason} maxLength={1000} onChange={(e) => setChg({ ...chg, reason: e.target.value })}
+                placeholder={change.kind === "REMOVE" ? "e.g. the external examiner declined the invitation" : "e.g. the supervisor retired from the University"} />
+            </Field>
+            {change.kind !== "REMOVE" ? <div className="sub2">The candidate is told of the change.</div> : null}
+          </div>
+        </Modal>
       ) : null}
     </>
   );

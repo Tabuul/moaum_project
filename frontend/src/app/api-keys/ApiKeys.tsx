@@ -1,7 +1,8 @@
 "use client";
 
 /** pApi — proto/part…: every API consumer is named, scoped and rate-limited, and no key
- *  lives longer than a year. A key is shown once at issue; only its hash is kept. */
+ *  lives longer than a year. A key is shown once at issue; only its hash is kept. V511: the key is checked on the integration
+ *  door (/api/integration/v1, header X-API-Key) within its consumer's scopes and daily quota, and every call is logged. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
@@ -13,11 +14,20 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Key { id: string; last4: string; issued_at: string; expires_at: string; revoked_at: string | null; live: boolean; due: boolean }
-export interface Consumer { id: string; name: string; owner: string; scopes: string; quota_day: number | null; status: string; created_at: string; keys: Key[] }
+export interface Consumer {
+  id: string; name: string; owner: string; scopes: string; quota_day: number | null; status: string; created_at: string; keys: Key[];
+  /** V511: the calls answered today (Lagos day), the last call, the calls refused in the last seven days */
+  calls_today?: number; last_call_at?: string | null; refused_week?: number;
+}
+/** V511: a scope a consumer may hold, what it reads, and the integration path it opens */
+export interface Scope { code: string; label: string; reads: string; path: string }
+/** V511: a call on the integration door */
+export interface Call { at: string; consumer: string | null; last4: string | null; scope: string; subject: string | null; outcome: string; ip: string | null }
+const OUTCOME: Record<string, string> = { OK: "Answered", NOT_FOUND: "Not found", BAD_KEY: "Bad key", NO_SCOPE: "No scope", OVER_QUOTA: "Over quota", BAD_REQUEST: "Bad request" };
 
 function day(iso: string): string { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
 
-export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
+export function ApiKeys({ consumers, scopes = [], calls = [] }: { consumers: Consumer[]; scopes?: Scope[]; calls?: Call[] }) {
   const router = useRouter();
   const [add, setAdd] = useState(false);
   const [f, setF] = useState({ name: "", owner: "", scopes: "", quotaDay: "" });
@@ -50,6 +60,15 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
         A key is shown once, at issue; only its hash is kept. To rotate, issue the new key, then revoke the old one once the consumer has switched.
       </Note>
 
+      <Panel title="The integration door" right={`${scopes.length} scope${scopes.length === 1 ? "" : "s"}`}>
+        <PBody>
+          <div className="sub2">A consumer calls with its key in the <span className="tnum">X-API-Key</span> header. The key answers only within its consumer&rsquo;s scopes and daily quota (counted to midnight, Lagos time); a key revoked or expired answers nothing; every call, answered or refused, is logged below.</div>
+          {scopes.map((s) => (
+            <div key={s.code} className="mt-2"><b className="tnum">{s.code}</b> · {s.label}<div className="sub2 tnum">{s.path}</div><div className="sub2">{s.reads}</div></div>
+          ))}
+        </PBody>
+      </Panel>
+
       {said ? <Note kind="ok" title={said} /> : null}
       {err ? <ProblemNotice problem={err} /> : null}
 
@@ -69,6 +88,9 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
               ["Scopes", <span className="sub2 tnum" key="s">{c.scopes}</span>],
               ["Daily quota", <span className="tnum" key="q">{c.quota_day ? c.quota_day.toLocaleString() : "—"}</span>],
               ["Registered", day(c.created_at)],
+              ["Calls today", <span className="tnum" key="t">{(c.calls_today ?? 0).toLocaleString()}{c.quota_day ? ` of ${c.quota_day.toLocaleString()}` : ""}</span>],
+              ["Last call", c.last_call_at ? day(c.last_call_at) : "—"],
+              ["Refused, last 7 days", <span className={`tnum${c.refused_week ? " ink-red b700" : ""}`} key="r">{(c.refused_week ?? 0).toLocaleString()}</span>],
             ]} />
             <div className="row mt-1">
               {c.status === "ACTIVE" ? <Btn kind="primary" disabled={busy} onClick={() => { const dstr = window.prompt("Days until this key expires (max 366):", "365"); if (dstr === null) return; void send(`/consumers/${c.id}/keys`, { days: Number(dstr) || 365 }, `Issue an API key for ${c.name}`).then((j) => { if (j && typeof j.key === "string") setIssued(j.key); }); }}>Issue a key</Btn> : null}
@@ -86,6 +108,18 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
         </Panel>
       )) : <Panel title="Consumers"><PBody><div className="sub2">No consumer is registered. Register one to issue it a scoped, dated key.</div></PBody></Panel>}
 
+      <Panel title="Latest calls on the integration door" right={`${calls.length} shown`}>
+        {calls.length ? (
+          <DTable pageSize={25} cols={["When|mid", "Consumer", "Key", "Scope", "Asked", "Outcome", "From"]} rows={calls.map((c, i) => [
+            <span key={`w${i}`} className="tnum sub2">{new Date(c.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>,
+            <span key={`c${i}`}>{c.consumer ?? "—"}</span>, <span key={`k${i}`} className="tnum sub2">{c.last4 ? `••••${c.last4}` : "—"}</span>,
+            <span key={`s${i}`} className="tnum sub2">{c.scope}</span>, <span key={`a${i}`} className="tnum">{c.subject ?? "—"}</span>,
+            <Pil key={`o${i}`} kind={c.outcome === "OK" ? "ok" : c.outcome === "NOT_FOUND" ? "grey" : "bad"}>{OUTCOME[c.outcome] ?? c.outcome}</Pil>,
+            <span key={`f${i}`} className="tnum sub2">{c.ip ?? "—"}</span>,
+          ])} />
+        ) : <PBody><div className="sub2">No call yet.</div></PBody>}
+      </Panel>
+
       {add ? (
         <Modal title="Register a consumer" sub="A scope without a lawful basis is rejected at design review" onClose={() => setAdd(false)}
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={busy || !f.name.trim() || !f.owner.trim() || !f.scopes.trim()} onClick={async () => { const j = await send("/consumers", { name: f.name, owner: f.owner, scopes: f.scopes, quotaDay: f.quotaDay ? Number(f.quotaDay) : null }, `Register consumer ${f.name}`); if (j) { setSaid(`${f.name} registered`); setAdd(false); } }}>Register</Btn></>}>
@@ -94,7 +128,18 @@ export function ApiKeys({ consumers }: { consumers: Consumer[] }) {
             <Field id="ac-name" label="Client name"><input id="ac-name" className="ctl" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Mobile app" autoComplete="off" /></Field>
             <Field id="ac-owner" label="Owner"><input id="ac-owner" className="ctl" value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} placeholder="ICT Directorate" autoComplete="off" /></Field>
           </div>
-          <Field id="ac-scopes" label="Scopes" hint="Space-separated, e.g. catalogue:read verify:read"><input id="ac-scopes" className="ctl tnum" value={f.scopes} onChange={(e) => setF({ ...f, scopes: e.target.value })} autoComplete="off" /></Field>
+          <Field id="ac-scopes" label="Scopes" hint="Only a scope on the list; each grants exactly what it reads">
+            <div className="stack" id="ac-scopes" style={{ gap: 4 }}>
+              {scopes.map((s) => {
+                const on = f.scopes.split(/\s+/).includes(s.code);
+                return (
+                  <label key={s.code} className="row row--inline row--tight"><input type="checkbox" checked={on}
+                    onChange={(e) => { const set = new Set(f.scopes.split(/\s+/).filter(Boolean)); if (e.target.checked) set.add(s.code); else set.delete(s.code); setF({ ...f, scopes: Array.from(set).join(" ") }); }} />
+                    <span><b className="tnum">{s.code}</b> · {s.label}</span></label>
+                );
+              })}
+            </div>
+          </Field>
           <Field id="ac-quota" label="Daily quota" hint="Optional; requests per day"><input id="ac-quota" className="ctl tnum" value={f.quotaDay} inputMode="numeric" onChange={(e) => setF({ ...f, quotaDay: e.target.value })} /></Field>
         </Modal>
       ) : null}

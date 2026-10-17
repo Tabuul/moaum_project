@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 349
+\set EXPECTED 353
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16238,6 +16238,272 @@ BEGIN
                left(no_actor, 20), left(short_reason, 20), over_before, first.carried, first.refunds, first.remaining, carried_rec, jlines, unposted_free, pos_b,
                rec_after_carry, second.carried, second.refunds, second.remaining, rf, rec_after_refund, again.carried, again.refunds, redo.refunds, refunds_s2,
                prev, copied, after_copy, left(e_unknown, 25), left(e_empty, 20), left(e_self, 22)));
+END $$;
+
+-- ── V508: overload approval ──
+-- A student asks for a higher maximum for one semester (more than the maximum, at most the rule's extra above it), once at a time;
+-- the Head of Department of another department cannot decide; the student's own grants a ceiling, which registration.unit_rule
+-- then reads as the maximum (unit_rule_base keeps the rule before it); both are told. A withdrawn request may be asked again, a
+-- refused one leaves the maximum as it was, a closed rule refuses asking, and only the student asks and the Head decides.
+DO $$
+DECLARE ses text := '2397/2398'; pa text; pb text; da text; db text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        ha uuid := gen_random_uuid(); hb uuid := gen_random_uuid(); lmax int; st jsonb; q1 uuid; q2 uuid; q3 uuid;
+        too_many text; twice text; other text; granted text; max_after int; base_after int; told_hod int; told_student int;
+        withdrawn text; again uuid; refused text; max_b int; closed text; wrong_ask text; wrong_decide text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V508', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2397-10-01', DATE '2398-08-31');
+        SELECT p.code, p.dept_code INTO pa, da FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        SELECT p.code, p.dept_code INTO pb, db FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL AND p.dept_code <> da ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/97/950801', 'CHECKV508', 'Asks', pa, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/97/950802', 'CHECKV508', 'Withdraws', pa, 'UTME', ses, 100, 100, 'ADMITTED');
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (ha, 'CHECK/V508A', 'CHECKV508', 'Head A'), (hb, 'CHECK/V508B', 'CHECKV508', 'Head B');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to) VALUES
+            (gen_random_uuid(), ha, 'hod', 'department', da, 'check V508', gen_random_uuid(), current_date - 1, NULL),
+            (gen_random_uuid(), hb, 'hod', 'department', db, 'check V508', gen_random_uuid(), current_date - 1, NULL);
+        lmax := (SELECT u.max_units FROM registration.unit_rule(a, 100, ses, 1) u);
+        -- 1 · the student asks: too many refused, then within the ceiling, then not twice
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.actor_id', a::text, true);
+        st := registration.overload_state(a, ses, 1);
+        BEGIN PERFORM registration.request_overload(a, ses, 1, lmax + 7, 'Check: final year with two carry-overs'); too_many := 'ASKED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; too_many := split_part(msg, ':', 1); END;
+        q1 := registration.request_overload(a, ses, 1, lmax + 4, 'Check: final year with two carry-overs');
+        BEGIN PERFORM registration.request_overload(a, ses, 1, lmax + 2, 'Check: asking a second time'); twice := 'ASKED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; twice := split_part(msg, ':', 1); END;
+        -- 2 · the other department's Head cannot decide; the student's own grants less than asked
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        PERFORM set_config('moaum.actor_id', hb::text, true);
+        BEGIN PERFORM registration.decide_overload(q1, 'GRANTED', lmax + 2, 'Check: granted by another department'); other := 'DECIDED';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; other := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', ha::text, true);
+        granted := registration.decide_overload(q1, 'GRANTED', lmax + 2, 'Check: two units for the outstanding project');
+        max_after := (SELECT u.max_units FROM registration.unit_rule(a, 100, ses, 1) u);
+        base_after := (SELECT u.max_units FROM registration.unit_rule_base(a, 100, ses, 1) u);
+        told_hod := (SELECT count(*) FROM platform.notice x WHERE x.about_id = ha AND x.template_key = 'OVERLOAD_REQUESTED');
+        told_student := (SELECT count(*) FROM platform.notice x WHERE x.about_id = a AND x.template_key = 'OVERLOAD_GRANTED');
+        -- 3 · a withdrawn request is asked again; a refused one leaves the maximum as it was
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.actor_id', b::text, true);
+        q2 := registration.request_overload(b, ses, 1, lmax + 1, 'Check: asking, then withdrawing');
+        withdrawn := registration.withdraw_overload(b, q2);
+        again := registration.request_overload(b, ses, 1, lmax + 3, 'Check: asking again after withdrawing');
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        PERFORM set_config('moaum.actor_id', ha::text, true);
+        refused := registration.decide_overload(again, 'REFUSED', NULL, 'Check: the load is already heavy enough');
+        max_b := (SELECT u.max_units FROM registration.unit_rule(b, 100, ses, 1) u);
+        -- 4 · a closed rule refuses asking; only the student asks, only the Head decides
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM registration.set_overload_policy(false, 6, 'Check: overloads closed for the session');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.actor_id', b::text, true);
+        BEGIN PERFORM registration.request_overload(b, ses, 2, lmax + 1, 'Check: asking while closed'); closed := 'ASKED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; closed := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM registration.set_overload_policy(true, 6, 'Check: overloads open again');
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        BEGIN PERFORM registration.request_overload(b, ses, 2, lmax + 1, 'Check: a lecturer asks'); wrong_ask := 'ASKED';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; wrong_ask := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        q3 := registration.request_overload(b, ses, 2, lmax + 1, 'Check: asking for the second semester');
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        BEGIN PERFORM registration.decide_overload(q3, 'GRANTED', lmax + 1, 'Check: the Academic Office decides'); wrong_decide := 'DECIDED';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; wrong_decide := split_part(msg, ':', 1); END;
+        RAISE EXCEPTION 'the V508 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V508 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V508: a student asks for an overload within the ceiling, once at a time; only their own Head of Department grants it, and the grant is the semester''s maximum; withdrawn, refused, closed and wrong offices as the rule says',
+        coalesce((st->>'may_ask')::boolean AND (st->>'regular_max')::int = lmax AND (st->>'ceiling')::int = lmax + 6
+                 AND too_many = 'REG_OVERLOAD_UNITS' AND q1 IS NOT NULL AND twice = 'REG_OVERLOAD_WAITING'
+                 AND other = 'REG_OVERLOAD_OTHER_DEPT' AND granted = 'GRANTED' AND max_after = lmax + 2 AND base_after = lmax
+                 AND told_hod = 1 AND told_student >= 1
+                 AND withdrawn = 'WITHDRAWN' AND again IS NOT NULL AND refused = 'REFUSED' AND max_b = lmax
+                 AND closed = 'REG_OVERLOAD_CLOSED' AND wrong_ask = 'REG_OVERLOAD_STUDENT' AND wrong_decide = 'REG_OVERLOAD_HOD', false),
+        format('max %s state %s | too many %s, twice %s | other %s, granted %s -> max %s (base %s), told hod %s student %s | withdrawn %s, refused %s -> max %s | closed %s, lecturer %s, academic %s',
+               lmax, st, too_many, twice, other, granted, max_after, base_after, told_hod, told_student, withdrawn, refused, max_b, closed, wrong_ask, wrong_decide));
+END $$;
+
+-- ── V509: a PG supervisor ended or replaced, a panel member removed ──
+-- The last first supervisor is never ended alone (replaced instead); a change never takes effect in the future; a second
+-- supervisor ends with the date and reason kept; a replacement ends the first supervisor and names the successor in the same role;
+-- a panel member is removed (with or without another in the role) until the viva, never after it; only the School changes them;
+-- every change is on the research log and the candidate is told of a supervisor change. The block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); r uuid := gen_random_uuid(); prog text; a uuid; b uuid; x uuid; y uuid; c uuid; z uuid;
+        last_first text; future text; ended_b text; replaced uuid; live_first text; a_succ boolean; z2 uuid; y_off boolean; examined text;
+        wrong text; logged int; told int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        PERFORM set_config('moaum.reason', 'check V509', true);
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/98/950901', 'CHECKV509', 'Candidate', prog, 'POSTGRADUATE', '2025/2026', 700, 700, 'ADMITTED');
+        INSERT INTO admissions.pg_research (id, student_id, degree_kind, stage) VALUES (r, st, 'DISSERTATION', 'SUPERVISED');
+        INSERT INTO admissions.pg_research_supervisor (research_id, name, role, assigned_at) VALUES (r, 'Dr Check First', 'FIRST', now() - interval '200 days') RETURNING id INTO a;
+        INSERT INTO admissions.pg_research_supervisor (research_id, name, role, assigned_at) VALUES (r, 'Dr Check Second', 'SECOND', now() - interval '100 days') RETURNING id INTO b;
+        INSERT INTO admissions.pg_research_panel (research_id, name, role, is_external) VALUES (r, 'Prof Check External', 'EXTERNAL', true) RETURNING id INTO x;
+        INSERT INTO admissions.pg_research_panel (research_id, name, role) VALUES (r, 'Dr Check Internal', 'INTERNAL') RETURNING id INTO y;
+        -- 1 · supervisors
+        BEGIN PERFORM admissions.pg_end_supervisor(a, current_date, 'Check: the first supervisor retires'); last_first := 'ENDED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; last_first := split_part(msg, ':', 1); END;
+        BEGIN PERFORM admissions.pg_end_supervisor(b, current_date + 1, 'Check: ending tomorrow'); future := 'ENDED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; future := split_part(msg, ':', 1); END;
+        PERFORM admissions.pg_end_supervisor(b, current_date - 3, 'Check: the second supervisor left the University');
+        ended_b := (SELECT ended_on::text || '/' || end_reason FROM admissions.pg_research_supervisor WHERE id = b);
+        replaced := admissions.pg_replace_supervisor(a, 'Dr Check Successor', NULL, false, current_date, 'Check: the first supervisor retires');
+        live_first := (SELECT string_agg(name, ',') FROM admissions.pg_research_supervisor WHERE research_id = r AND ended_at IS NULL);
+        a_succ := (SELECT replaced_by = replaced AND ended_on = current_date FROM admissions.pg_research_supervisor WHERE id = a);
+        -- 2 · the panel
+        z2 := admissions.pg_remove_panel_member(x, current_date, 'Check: the external examiner declined', 'Prof Check Replacement', true);
+        PERFORM admissions.pg_remove_panel_member(y, current_date, 'Check: the internal examiner is on leave', NULL, NULL);
+        y_off := (SELECT removed_at IS NOT NULL AND replaced_by IS NULL FROM admissions.pg_research_panel WHERE id = y);
+        UPDATE admissions.pg_research SET stage = 'VIVA_HELD' WHERE id = r;
+        BEGIN PERFORM admissions.pg_remove_panel_member(z2, current_date, 'Check: after the viva', NULL, NULL); examined := 'REMOVED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; examined := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN PERFORM admissions.pg_end_supervisor(replaced, current_date, 'Check: a Head of Department tries'); wrong := 'ENDED';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; wrong := split_part(msg, ':', 1); END;
+        logged := (SELECT count(*) FROM admissions.pg_research_event WHERE research_id = r AND stage IN ('SUPERVISOR_ENDED', 'SUPERVISOR_REPLACED', 'PANEL_CHANGED'));
+        told := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'PG_SUPERVISOR_CHANGED');
+        RAISE EXCEPTION 'the V509 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V509 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V509: the School ends or replaces a supervisor and removes a panel member with the date and reason kept; never the last first supervisor alone, a future date or a panel that examined',
+        coalesce(last_first = 'PG_SUP_LAST_FIRST' AND future = 'PG_CHANGE_DATE' AND ended_b = (current_date - 3)::text || '/Check: the second supervisor left the University'
+                 AND replaced IS NOT NULL AND live_first = 'Dr Check Successor' AND a_succ AND z2 IS NOT NULL AND y_off AND examined = 'PG_PANEL_EXAMINED'
+                 AND wrong = 'PG_RESEARCH_SCHOOL' AND logged = 4 AND told >= 2, false),
+        format('last first %s, future %s, ended b %s, live %s succ %s | panel z2 %s y off %s, examined %s | hod %s | logged %s told %s',
+               last_first, future, ended_b, live_first, a_succ, z2, y_off, examined, wrong, logged, told));
+END $$;
+
+-- ── V510: a new appointment in HR ──
+-- Human Resources sets a salary grade, then appoints: a new person is made (and an existing one linked by staff number) with the
+-- establishment record and an ACTIVE employment record, keeping only the last four digits of an account; a second appointment of
+-- the same person, an academic appointment without a department, a grade not set up or of the other category are refused with
+-- their reasons; an upload appoints the rows that pass and lists the rest (a staff number repeated in the file refused); Excel day
+-- numbers and DD/MM/YYYY are read; a grade in use keeps its category; only Human Resources appoints. The block undoes its writes.
+DO $$
+DECLARE dept text; old uuid := gen_random_uuid(); e1 uuid; e2 uuid; chk jsonb; again text; noDept jsonb; noGrade jsonb; wrongCat jsonb; link jsonb;
+        many jsonb; dupes jsonb; emp record; rec record; inuse text; wrong text; d1 date; d2 date; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        PERFORM set_config('moaum.reason', 'check V510', true);
+        SELECT d.code INTO dept FROM ref.department d WHERE d.ended_on IS NULL ORDER BY d.code LIMIT 1;
+        PERFORM hrm.set_grade('checkuass 9', 1, 'academic', 200000, 50000, 20000, 0, 'Check: an academic grade for the check');
+        PERFORM hrm.set_grade('CHECKTISS 7', 2, 'NON-ACADEMIC', 90000, 20000, 10000, 0, 'Check: a non-academic grade for the check');
+        -- 1 · a new member of staff
+        chk := hrm.appointment_check(jsonb_build_object('staff_no', 'CHK/V510/1', 'surname', 'Checkvten', 'given_names', 'New Lecturer', 'category', 'ACADEMIC',
+                    'grade', 'CHECKUASS 9', 'step', '1', 'appointment_date', '2026-10-01', 'department', dept, 'sex', 'F', 'account_number', '0123456789'));
+        e1 := hrm.appoint(jsonb_build_object('staff_no', 'CHK/V510/1', 'surname', 'Checkvten', 'given_names', 'New Lecturer', 'category', 'ACADEMIC',
+                    'grade', 'CHECKUASS 9', 'step', '1', 'appointment_date', '2026-10-01', 'department', dept, 'sex', 'F', 'account_number', '0123456789'));
+        SELECT e.status, e.account_last4, e.grade, p.surname, sr.home_department AS dept INTO emp
+          FROM hrm.employment e JOIN iam.person p ON p.id = e.person_id LEFT JOIN hrm.staff_record sr ON sr.person_id = p.id WHERE e.id = e1;
+        BEGIN PERFORM hrm.appoint(jsonb_build_object('staff_no', 'CHK/V510/1', 'category', 'ACADEMIC', 'grade', 'CHECKUASS 9', 'step', '1',
+                    'appointment_date', '2026-10-01', 'department', dept)); again := 'APPOINTED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; again := split_part(msg, ':', 1); END;
+        -- 2 · the reasons a row is refused
+        noDept := hrm.appointment_check(jsonb_build_object('staff_no', 'CHK/V510/2', 'surname', 'Checkvten', 'given_names', 'No Department', 'category', 'ACADEMIC',
+                    'grade', 'CHECKUASS 9', 'step', '1', 'appointment_date', '2026-10-01'));
+        noGrade := hrm.appointment_check(jsonb_build_object('staff_no', 'CHK/V510/3', 'surname', 'Checkvten', 'given_names', 'No Grade', 'category', 'ACADEMIC',
+                    'grade', 'CHECKUASS 99', 'step', '1', 'appointment_date', '2026-10-01', 'department', dept));
+        wrongCat := hrm.appointment_check(jsonb_build_object('staff_no', 'CHK/V510/4', 'surname', 'Checkvten', 'given_names', 'Wrong Category', 'category', 'NON_ACADEMIC',
+                    'grade', 'CHECKUASS 9', 'step', '1', 'appointment_date', '2026-10-01', 'unit', dept));
+        -- 3 · an existing person is linked by the staff number
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (old, 'CHK/V510/OLD', 'CHECKVTEN', 'Already Here');
+        link := hrm.appointment_check(jsonb_build_object('staff_no', 'CHK/V510/OLD', 'category', 'NON_ACADEMIC', 'grade', 'checktiss 7', 'step', 2,
+                    'appointment_date', '45678', 'department', dept));
+        -- 4 · an upload: one passes, one fails, two repeat a staff number
+        dupes := hrm.appointments_check(jsonb_build_array(
+            jsonb_build_object('row', 2, 'staff_no', 'CHK/V510/5', 'surname', 'Checkvten', 'given_names', 'Twice A', 'category', 'NON_ACADEMIC', 'grade', 'CHECKTISS 7', 'step', 2, 'appointment_date', '01/10/2026', 'department', dept),
+            jsonb_build_object('row', 3, 'staff_no', 'chk/v510/5', 'surname', 'Checkvten', 'given_names', 'Twice B', 'category', 'NON_ACADEMIC', 'grade', 'CHECKTISS 7', 'step', 2, 'appointment_date', '01/10/2026', 'department', dept)));
+        many := hrm.appoint_many(jsonb_build_array(
+            jsonb_build_object('row', 2, 'staff_no', 'CHK/V510/OLD', 'category', 'NON_ACADEMIC', 'grade', 'CHECKTISS 7', 'step', 2, 'appointment_date', '45678', 'department', dept, 'email', 'checkv510@example.test'),
+            jsonb_build_object('row', 3, 'staff_no', 'CHK/V510/6', 'surname', 'Checkvten', 'given_names', 'No Date', 'category', 'NON_ACADEMIC', 'grade', 'CHECKTISS 7', 'step', 2, 'department', dept)));
+        SELECT p.email, e.appointment_date INTO rec FROM iam.person p JOIN hrm.employment e ON e.person_id = p.id WHERE p.id = old;
+        d1 := hrm.read_day('45678'); d2 := hrm.read_day('21/01/2025');
+        -- 5 · a grade in use keeps its category; only Human Resources appoints
+        BEGIN PERFORM hrm.set_grade('CHECKUASS 9', 1, 'NON_ACADEMIC', 1, 0, 0, 0, 'Check: changing a grade in use'); inuse := 'SET';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; inuse := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM hrm.appoint(jsonb_build_object('staff_no', 'CHK/V510/7')); wrong := 'APPOINTED';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; wrong := split_part(msg, ':', 1); END;
+        RAISE EXCEPTION 'the V510 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V510 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V510: Human Resources appoints from a form or an upload after the grade is set up; a person in employment, a missing department, an unknown or other-category grade and a repeated staff number are refused with reasons',
+        coalesce((chk->>'ok')::boolean AND chk->>'action' = 'CREATE' AND chk->>'account_last4' = '6789'
+                 AND emp.status = 'ACTIVE' AND emp.account_last4 = '6789' AND emp.grade = 'CHECKUASS 9' AND emp.surname = 'CHECKVTEN' AND emp.dept = dept
+                 AND again = 'HR_APPOINTMENT_INVALID'
+                 AND NOT (noDept->>'ok')::boolean AND noDept->>'problems' LIKE '%names the department%'
+                 AND NOT (noGrade->>'ok')::boolean AND noGrade->>'problems' LIKE '%not set up%'
+                 AND NOT (wrongCat->>'ok')::boolean AND wrongCat->>'problems' LIKE '%academic grade%'
+                 AND (link->>'ok')::boolean AND link->>'action' = 'LINK' AND link->>'person_id' = old::text
+                 AND NOT (dupes->0->>'ok')::boolean AND NOT (dupes->1->>'ok')::boolean AND dupes->0->>'problems' LIKE '%repeated in the file (rows 2, 3)%'
+                 AND (many->>'appointed')::int = 1 AND (many->>'skipped')::int = 1 AND many->'rows'->1->>'problems' LIKE '%date of appointment%'
+                 AND rec.email = 'checkv510@example.test' AND rec.appointment_date = DATE '2025-01-21'
+                 AND d1 = DATE '2025-01-21' AND d2 = DATE '2025-01-21' AND inuse = 'HR_GRADE_IN_USE' AND wrong = 'HR_APPOINT_OFFICE', false),
+        format('chk %s | emp %s | again %s | noDept %s | noGrade %s | wrongCat %s | link %s | dupes %s | many %s | rec %s | days %s %s | inuse %s wrong %s',
+               chk->>'ok', emp, again, noDept->'problems', noGrade->'problems', wrongCat->'problems', link->>'action', dupes->0->'problems', many, rec, d1, d2, inuse, wrong));
+END $$;
+
+-- ── V511: API keys checked on the integration door ──
+-- A consumer is registered only with scopes on the list; its key answers the student status lookup with the minimal record (name
+-- with initials, IN_STUDY), a matriculation number not on the register is NOT_FOUND, the daily quota refuses the call after it,
+-- a key that is not one (or revoked) is BAD_KEY, a consumer without the scope NO_SCOPE; every call is on the request log. The
+-- block undoes its writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); prog text; c uuid; other uuid; k text; ko text; unknown text; bad jsonb; ok jsonb; nf jsonb; over jsonb; noscope jsonb;
+        revoked jsonb; logged text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V511', true);
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/99/951101', 'CHK/V511/0001', 'CHECKVELEVEN', 'Ada Ngozi', prog, 'UTME', '2025/2026', 100, 200, 'ACTIVE', now());
+        BEGIN PERFORM apimgmt.register_consumer('Check consumer', 'Check owner', 'students:status payments:read', 2); unknown := 'REGISTERED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; unknown := split_part(msg, ':', 1); END;
+        c := apimgmt.register_consumer('Check consumer', 'Check owner', 'students:status', 2);
+        k := apimgmt.issue_key(c, 30);
+        INSERT INTO apimgmt.consumer (id, name, owner, scopes, created_by) VALUES (gen_random_uuid(), 'Check old consumer', 'Check owner', 'verify:read', '00000000-0000-0000-0000-000000000000') RETURNING id INTO other;
+        ko := apimgmt.issue_key(other, 30);
+        bad := apimgmt.student_status('mk_not_a_key', 'CHK/V511/0001', '127.0.0.1');
+        ok := apimgmt.student_status(k, 'chk/v511/0001', '127.0.0.1');
+        nf := apimgmt.student_status(k, 'CHK/V511/9999', '127.0.0.1');
+        over := apimgmt.student_status(k, 'CHK/V511/0001', '127.0.0.1');
+        noscope := apimgmt.student_status(ko, 'CHK/V511/0001', '127.0.0.1');
+        PERFORM apimgmt.revoke_key((SELECT id FROM apimgmt.key WHERE consumer_id = other));
+        revoked := apimgmt.student_status(ko, 'CHK/V511/0001', '127.0.0.1');
+        logged := (SELECT string_agg(outcome, ',' ORDER BY at, outcome) FROM apimgmt.request_log WHERE subject IN ('CHK/V511/0001', 'CHK/V511/9999'));
+        RAISE EXCEPTION 'the V511 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V511 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V511: an API key answers only within its consumer''s scope and quota on the integration door, the student told minimally, every call logged',
+        coalesce(unknown = 'API_SCOPE_UNKNOWN' AND bad->>'outcome' = 'BAD_KEY'
+                 AND ok->>'outcome' = 'OK' AND ok->'student'->>'name' = 'CHECKVELEVEN, A. N.' AND ok->'student'->>'status' = 'IN_STUDY'
+                 AND (ok->'student'->>'level')::int = 200 AND NOT (ok->'student' ? 'email') AND NOT (ok->'student' ? 'phone')
+                 AND nf->>'outcome' = 'NOT_FOUND' AND over->>'outcome' = 'OVER_QUOTA' AND noscope->>'outcome' = 'NO_SCOPE' AND revoked->>'outcome' = 'BAD_KEY'
+                 AND (SELECT count(*) FROM regexp_split_to_table(logged, ',')) = 6, false),
+        format('unknown %s | bad %s | ok %s | nf %s | over %s | noscope %s | revoked %s | log %s', unknown, bad, ok, nf, over, noscope, revoked, logged));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

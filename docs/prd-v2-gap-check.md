@@ -1,7 +1,8 @@
 # PRD v2.0 gap check
 
 The Product Requirements Document v2.0 (12 October 2026, written against `main` at 204a7f43 with migrations V001–V401) checked
-against `main` at 63a0045b with migrations to V503, on 16 October 2026.
+against `main` at 63a0045b with migrations to V503, on 16 October 2026. Updated 17 October 2026: items 1, 2, 4 and 5 of section A are
+closed by V508–V511 (below).
 
 The PRD marks every requirement not yet met as OPEN, PARTIAL or PLANNED, and lists them in its section 10.2. This note says where
 each stands now, what else is still open from `docs/portal-gap-audit.md`, and where the PRD no longer describes the portal.
@@ -10,11 +11,11 @@ each stands now, what else is still open from `docs/portal-gap-audit.md`, and wh
 
 | # | PRD item | Status on 16 Oct 2026 | What is missing | Effort |
 |---|---|---|---|---|
-| 1 | **FR-PLT-08** API keys are issued but not checked on incoming requests | **Still open** | `apimgmt/ApiKeysController` issues, hashes and lists keys; no filter reads a key on a request, so a key grants and denies nothing. Either wire a filter that admits a key to its scope (read-only integration endpoints), or stop issuing keys until it is. | Medium |
-| 2 | **FR-HR-04** an employment record cannot be created from the portal | **Still open** | `hrm.employment` is read by HR, payroll, identity cards and the HOD screen, but rows arrive only by import (or the demo). HR has no "new appointment" form or upload. | Medium |
+| 1 | **FR-PLT-08** API keys are issued but not checked on incoming requests | **Closed by V511** (17 Oct): keys are checked on the integration door (`/api/integration/v1`, header `X-API-Key`) within the consumer's scopes (a list, `apimgmt.scope`) and daily quota; the first read is the student status lookup (`students:status`, minimal fields); every call is logged (`apimgmt.request_log`). Before: | `apimgmt/ApiKeysController` issues, hashes and lists keys; no filter reads a key on a request, so a key grants and denies nothing. Either wire a filter that admits a key to its scope (read-only integration endpoints), or stop issuing keys until it is. | Medium |
+| 2 | **FR-HR-04** an employment record cannot be created from the portal | **Closed by V510** (17 Oct): Human Resources → New Appointments makes the employment record from a form or an Excel upload, each row checked first (`hrm.appointment_check`), and sets the salary grades it names (`hrm.set_grade`). Before: | `hrm.employment` is read by HR, payroll, identity cards and the HOD screen, but rows arrive only by import (or the demo). HR has no "new appointment" form or upload. | Medium |
 | 3 | **FR-IAM-06** single sign-on (Keycloak, MFA) coded, not deployed | **Still partial** | A deployment decision for the University (a Keycloak realm and its settings), not code. | — (University) |
-| 4 | **FR-PG-05** a PG supervisor cannot be ended or replaced, nor a panel member removed, from a screen | **Still open** | `PgResearchController` adds a supervisor and a panel member; nothing ends, replaces or removes one. | Small–medium |
-| 5 | **FR-REG-07** overload approval and probation ceiling not configured; a registration created by an office has no screen | **Partly moved on** | The probation ceiling can be set per level on Session & Semester Setup (`probation_max_units`) but none is set. **No overload approval exists anywhere**, yet a registration above the maximum is refused with "obtain an overload approval from the Head of Department": a dead end for, say, a final-year student with carry-overs. The office-created registration endpoint (`POST /registration/course-registrations`) still has no screen; ICT Support's override (V346) covers additions made on a student's behalf. | Medium (overload) |
+| 4 | **FR-PG-05** a PG supervisor cannot be ended or replaced, nor a panel member removed, from a screen | **Closed by V509** (17 Oct): the research desk ends or replaces a supervisor and removes a panel member, each on a date with a reason, the history kept; the candidate is told of a supervisor change. Before: | `PgResearchController` adds a supervisor and a panel member; nothing ends, replaces or removes one. | Small–medium |
+| 5 | **FR-REG-07** overload approval and probation ceiling not configured; a registration created by an office has no screen | **Overload closed by V508** (17 Oct): the student asks on Course registration, the Head of Department of the student's department grants a ceiling (at most the Academic Office's extra, 6 by default) or refuses on Overload Requests, and `registration.unit_rule` reads the grant as the semester's maximum. The probation ceiling and the office-created registration screen remain. Before: | The probation ceiling can be set per level on Session & Semester Setup (`probation_max_units`) but none is set. **No overload approval exists anywhere**, yet a registration above the maximum is refused with "obtain an overload approval from the Head of Department": a dead end for, say, a final-year student with carry-overs. The office-created registration endpoint (`POST /registration/course-registrations`) still has no screen; ICT Support's override (V346) covers additions made on a student's behalf. | Medium (overload) |
 | 6 | **FR-GOV-04** cloud-residency and research-ethics screens are frameworks only | **Still planned** | `/cloud` and `/ethics` say so themselves; no live data behind them. | Low priority |
 
 ## B. Still open in the portal gap audit
@@ -43,11 +44,11 @@ each stands now, what else is still open from `docs/portal-gap-audit.md`, and wh
 
 ## D. Recommended next, in order
 
-1. **Overload approval (FR-REG-07).** Students already meet the refusal that names it. A Head of Department grants a named student a
+1. ~~**Overload approval (FR-REG-07).**~~ Done (V508). Students already meet the refusal that names it. A Head of Department grants a named student a
    higher maximum for one semester, with a reason, on the audit spine; the unit rule reads it.
-2. **PG supervisor and panel changes (FR-PG-05).** End or replace a supervisor and remove a panel member, each with its date and
+2. ~~**PG supervisor and panel changes (FR-PG-05).**~~ Done (V509). End or replace a supervisor and remove a panel member, each with its date and
    reason, keeping the history.
-3. **A new appointment in HR (FR-HR-04).** A form and an upload that create the employment record the rest of the portal reads.
-4. **API keys (FR-PLT-08).** Wire the filter for a first read-only integration, or stop issuing keys until then.
+3. ~~**A new appointment in HR (FR-HR-04).**~~ Done (V510). A form and an upload that create the employment record the rest of the portal reads.
+4. ~~**API keys (FR-PLT-08).**~~ Done (V511). Wire the filter for a first read-only integration, or stop issuing keys until then.
 5. **PRD v2.1.** Bring section C into the document.
 6. **GAP-024.** The University's decision whether a document number alone should verify.

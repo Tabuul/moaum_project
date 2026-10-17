@@ -46,6 +46,7 @@ export const ROUTES: Record<string, string> = {
   "t/structurecheck": "/catalogue/structure/checks",
   "t/regapproval": "/registration/approval",
   "t/regoptions": "/registration/options",   // V504
+  "t/overloads": "/registration/overloads",   // V508
   "t/regsettings": "/registration/settings",
   "t/allocationtemplates": "/allocation/templates",
   "t/structureprogrammes": "/catalogue/structure/programmes",
@@ -264,6 +265,7 @@ export const ROUTES: Record<string, string> = {
   "t/payroll": "/payroll",
   "t/auditpayroll": "/payroll/variance",
   "t/staff": "/staff",
+  "t/appoint": "/hr/appointments",   // V510
   "t/transfers": "/transfers",
   "t/deferments": "/deferments",
   "s/deferment": "/student/deferment",

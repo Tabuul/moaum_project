@@ -202,6 +202,59 @@ class PgResearchController {
         return detail(id);
     }
 
+    /* ── V509: a supervisor ended or replaced, a panel member removed — each on a date with a reason, the history kept; the
+          database holds the rules (admissions.pg_end_supervisor, pg_replace_supervisor, pg_remove_panel_member) ── */
+
+    public record EndIn(@jakarta.validation.constraints.NotNull java.time.LocalDate on, @NotBlank @Size(min = 10, max = 1000) String reason) {
+    }
+
+    public record ReplaceIn(@NotBlank @Size(max = 200) String name, UUID personId, Boolean external,
+                            @jakarta.validation.constraints.NotNull java.time.LocalDate on, @NotBlank @Size(min = 10, max = 1000) String reason) {
+    }
+
+    public record RemoveIn(@jakarta.validation.constraints.NotNull java.time.LocalDate on, @NotBlank @Size(min = 10, max = 1000) String reason,
+                           @Size(max = 200) String replacement, Boolean external) {
+    }
+
+    private void belongs(String table, UUID research, UUID row) {
+        boolean ok = jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions." + table + " WHERE id = :row AND research_id = :r)").param("row", row).param("r", research)
+                .query(Boolean.class).single();
+        if (!ok) throw new NotFound("pg_research_panel".equals(table) ? "panel member" : "supervisor", row);
+    }
+
+    @PostMapping("/{id}/supervisors/{sup}/end")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> endSupervisor(@PathVariable UUID id, @PathVariable UUID sup, @Valid @RequestBody EndIn body) {
+        stageOrThrow(id);
+        belongs("pg_research_supervisor", id, sup);
+        jdbc.sql("SELECT admissions.pg_end_supervisor(:s, :on, :r)").param("s", sup).param("on", body.on()).param("r", body.reason().trim()).query(UUID.class).single();
+        return detail(id);
+    }
+
+    @PostMapping("/{id}/supervisors/{sup}/replace")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> replaceSupervisor(@PathVariable UUID id, @PathVariable UUID sup, @Valid @RequestBody ReplaceIn body) {
+        stageOrThrow(id);
+        belongs("pg_research_supervisor", id, sup);
+        jdbc.sql("SELECT admissions.pg_replace_supervisor(:s, :n, :p, :x, :on, :r)").param("s", sup).param("n", body.name().trim()).param("p", body.personId(), java.sql.Types.OTHER)
+                .param("x", Boolean.TRUE.equals(body.external())).param("on", body.on()).param("r", body.reason().trim()).query(UUID.class).single();
+        return detail(id);
+    }
+
+    @PostMapping("/{id}/panel/{member}/remove")
+    @PreAuthorize(SCHOOL)
+    @Transactional
+    Map<String, Object> removePanelMember(@PathVariable UUID id, @PathVariable UUID member, @Valid @RequestBody RemoveIn body) {
+        stageOrThrow(id);
+        belongs("pg_research_panel", id, member);
+        String rep = body.replacement() == null || body.replacement().isBlank() ? null : body.replacement().trim();
+        jdbc.sql("SELECT admissions.pg_remove_panel_member(:m, :on, :r, :rep, :x)").param("m", member).param("on", body.on()).param("r", body.reason().trim())
+                .param("rep", rep, java.sql.Types.VARCHAR).param("x", Boolean.TRUE.equals(body.external())).query(UUID.class).single();
+        return detail(id);
+    }
+
     public record ActionIn(@NotBlank String action, @Size(max = 1000) String note, @Size(max = 200) String pgsr,
                            BigDecimal plagiarismPct, BigDecimal vivaScore, @Size(max = 20) String vivaOutcome,
                            String correctionsDue, @Size(max = 120) String senateMinute, @Size(max = 9) String session) {
@@ -504,16 +557,29 @@ class PgResearchController {
         }
         Map<String, Object> r = found.get(0);
         List<Map<String, Object>> supervisors = jdbc.sql("""
-                SELECT name, role, is_external, assigned_at FROM admissions.pg_research_supervisor
+                SELECT id, name, role, is_external, assigned_at FROM admissions.pg_research_supervisor
                  WHERE research_id = :id AND ended_at IS NULL ORDER BY role
+                """).param("id", id).query().listOfRows();
+        // V509: the supervisions that ended and the members taken off the panel, with when, why and who took the role over
+        List<Map<String, Object>> supervisorHistory = jdbc.sql("""
+                SELECT s.id, s.name, s.role, s.is_external, s.assigned_at, s.ended_at, s.ended_on, s.end_reason,
+                       (SELECT n.name FROM admissions.pg_research_supervisor n WHERE n.id = s.replaced_by) AS replaced_by
+                  FROM admissions.pg_research_supervisor s
+                 WHERE s.research_id = :id AND s.ended_at IS NOT NULL ORDER BY s.ended_at DESC
+                """).param("id", id).query().listOfRows();
+        List<Map<String, Object>> panelHistory = jdbc.sql("""
+                SELECT m.id, m.name, m.role, m.is_external, m.added_at, m.removed_at, m.removed_on, m.removed_reason,
+                       (SELECT n.name FROM admissions.pg_research_panel n WHERE n.id = m.replaced_by) AS replaced_by
+                  FROM admissions.pg_research_panel m
+                 WHERE m.research_id = :id AND m.removed_at IS NOT NULL ORDER BY m.removed_at DESC
                 """).param("id", id).query().listOfRows();
         List<Map<String, Object>> events = jdbc.sql("""
                 SELECT stage, note, at FROM admissions.pg_research_event
                  WHERE research_id = :id ORDER BY at DESC LIMIT 50
                 """).param("id", id).query().listOfRows();
         List<Map<String, Object>> panel = jdbc.sql("""
-                SELECT name, role, is_external FROM admissions.pg_research_panel
-                 WHERE research_id = :id ORDER BY CASE role WHEN 'CHAIR' THEN 0 WHEN 'EXTERNAL' THEN 1
+                SELECT id, name, role, is_external FROM admissions.pg_research_panel
+                 WHERE research_id = :id AND removed_at IS NULL ORDER BY CASE role WHEN 'CHAIR' THEN 0 WHEN 'EXTERNAL' THEN 1
                         WHEN 'SUPERVISOR' THEN 2 WHEN 'CO_SUPERVISOR' THEN 3 WHEN 'INTERNAL' THEN 4
                         WHEN 'PGSR' THEN 5 ELSE 6 END, name
                 """).param("id", id).query().listOfRows();
@@ -526,6 +592,8 @@ class PgResearchController {
         out.put("name", r.get("surname") + ", " + r.get("other_names"));
         out.put("supervisors", supervisors);
         out.put("panel", panel);
+        out.put("supervisorHistory", supervisorHistory);
+        out.put("panelHistory", panelHistory);
         out.put("events", events);
         out.put("documents", documents);
         return out;
