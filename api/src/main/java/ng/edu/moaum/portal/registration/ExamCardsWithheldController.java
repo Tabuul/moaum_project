@@ -31,8 +31,9 @@ import org.springframework.web.bind.annotation.RestController;
  * V505: who cannot have the examination card, and why — every approved registration of a session (and semester) whose card the
  * card's own rule refuses (registration.exam_cards_withheld: not in study, no course, the Bursary's clearance refused, not
  * released), by faculty and department, for Exams & Records, the Bursary and the Registry, with a reminder to those students.
- * The list asks the Bursary's clearance of each student (some 12 s for a session on the live-shaped copy), so it is kept a few
- * minutes (shared.FigureCache) with the time it was worked out, and worked out again on Refresh.
+ * The list asks the Bursary's clearance of the session's approved students in one pass (V515: under 2 s for a session on the
+ * live-shaped copy, from 14 to 19 s one student at a time); it is kept a few minutes (shared.FigureCache) with the time it was worked
+ * out, and worked out again on Refresh.
  */
 @RestController
 @RequestMapping("/api/v1/registration/exam-cards/withheld")

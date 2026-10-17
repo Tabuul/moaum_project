@@ -21,6 +21,8 @@ export interface OverloadRow {
   faculty_code: string | null; session: string; semester: number; level: number; regular_max: number; requested_max: number;
   granted_max: number | null; reason: string; status: OverloadStatus; decision_reason: string | null; requested_at: string;
   decided_at: string | null; decided_office: string | null; decided_by: string | null; units: number | null;
+  /** V514: whether the student's department has a Head of Department on the portal to decide it */
+  has_head?: boolean;
 }
 
 export interface OverloadRule { open: boolean; max_extra: number; reason: string; set_at: string | null; set_office: string | null; set_by: string | null }
@@ -28,6 +30,8 @@ export interface OverloadRule { open: boolean; max_extra: number; reason: string
 export interface OverloadList {
   session: string; semester: number | null; current: string | null; sessions: string[]; dept: string | null; faculty: string | null;
   counts: Record<OverloadStatus, number>; total: number; page: number; size: number; rows: OverloadRow[]; rule: OverloadRule;
+  /** V514: waiting requests whose department has no Head of Department on the portal */
+  noHead?: number;
 }
 
 export const OVERLOAD_STATUSES: { status: OverloadStatus; label: string; who: string }[] = [

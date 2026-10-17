@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 354
+\set EXPECTED 359
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16582,6 +16582,241 @@ BEGIN
                  AND events = 'GST_CARRY_OVER_REGISTERED,GST_PAYMENT_VERIFIED', false),
         format('carry %s | hold %s/%s | draft %s | add %s | after cleanup %s | paid %s → %s (%s) | events %s',
                carry, hold_gst, hold_core, n_draft, add_refused, after_cleanup, hold_paid, after_paid, cat, events));
+END $$;
+
+-- ── V513: the staff without an employment record ──
+-- A lecturer on a department's establishment with no employment record is listed ACADEMIC with that department; a person on
+-- the establishment record with its unit and rank; a person in employment and a person whose record ended are not listed. The
+-- block undoes its writes.
+DO $$
+DECLARE dept text; unit text; lec uuid := gen_random_uuid(); est uuid := gen_random_uuid(); emp uuid := gen_random_uuid(); gone uuid := gen_random_uuid();
+        l record; e record; n_emp int; n_gone int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        PERFORM set_config('moaum.reason', 'check V513', true);
+        SELECT d.code INTO dept FROM ref.department d WHERE d.ended_on IS NULL ORDER BY d.code LIMIT 1;
+        SELECT u.code INTO unit FROM ref.unit u WHERE u.ended_on IS NULL ORDER BY u.code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, ended_on, ended_reason) VALUES
+            (lec, 'CHK/V513/L', 'Checkvthirteen', 'Lecturer', NULL, NULL), (est, 'CHK/V513/E', 'Checkvthirteen', 'Establishment', NULL, NULL),
+            (emp, 'CHK/V513/P', 'Checkvthirteen', 'Employed', NULL, NULL), (gone, 'CHK/V513/G', 'Checkvthirteen', 'Gone', current_date - 1, 'check V513: left');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), lec, 'lecturer', 'department', dept, 'check V513', gen_random_uuid(), current_date - 1);
+        INSERT INTO hrm.staff_record (person_id, home_unit, present_rank, category, sex) VALUES (est, unit, 'Senior Executive Officer', 'NON_ACADEMIC', 'F');
+        IF NOT EXISTS (SELECT 1 FROM hrm.grade WHERE grade = 'CHKV513' AND step = 1) THEN
+            INSERT INTO hrm.grade (grade, step, category, basic) VALUES ('CHKV513', 1, 'NON_ACADEMIC', 1);
+        END IF;
+        INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date) VALUES (emp, 'CHK/V513/P', 'CHKV513', 1, 'NON_ACADEMIC', current_date);
+        SELECT * INTO l FROM hrm.staff_without_employment() x WHERE x.person_id = lec;
+        SELECT * INTO e FROM hrm.staff_without_employment() x WHERE x.person_id = est;
+        n_emp := (SELECT count(*) FROM hrm.staff_without_employment() x WHERE x.person_id = emp);
+        n_gone := (SELECT count(*) FROM hrm.staff_without_employment() x WHERE x.person_id = gone);
+        RAISE EXCEPTION 'the V513 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V513 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V513: the staff without an employment record are listed with what the portal holds (a lecturer ACADEMIC in the grant''s department, the establishment''s unit and rank); the employed and the ended are not',
+        coalesce(l.category = 'ACADEMIC' AND l.department = dept AND l.source = 'LECTURER' AND l.surname = 'CHECKVTHIRTEEN'
+                 AND e.category = 'NON_ACADEMIC' AND e.unit = unit AND e.rank = 'Senior Executive Officer' AND e.sex = 'F' AND e.source = 'ESTABLISHMENT'
+                 AND n_emp = 0 AND n_gone = 0, false),
+        format('lecturer %s/%s/%s | establishment %s/%s/%s/%s | employed %s ended %s', l.category, l.department, l.source, e.category, e.unit, e.rank, e.source, n_emp, n_gone));
+END $$;
+
+-- ── V514: overload requests no Head can decide, and waiting ones reminded ──
+-- A request waiting five days in a department with a Head is reminded to that Head (once, not again the same day); a request in a
+-- department with no Head is counted and the Academic Office told once a day which departments; a request of today is not
+-- reminded yet. The block undoes its writes.
+DO $$
+DECLARE ses text := '2399/2400'; da text; pa text; dn text; pn text; head uuid := gen_random_uuid(); acad uuid := gen_random_uuid();
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); first jsonb; again jsonb; told_head int; told_head_again int; told_acad int; heads int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V514', true);
+        -- a department and programme with no Head on the portal, and another that gets one here
+        SELECT p.code, p.dept_code INTO pn, dn FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM registration.department_heads(p.dept_code)) ORDER BY p.code LIMIT 1;
+        SELECT p.code, p.dept_code INTO pa, da FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL AND p.dept_code <> dn ORDER BY p.code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (head, 'CHK/V514/H', 'Checkvfourteen', 'Head'), (acad, 'CHK/V514/A', 'Checkvfourteen', 'Academic');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), head, 'hod', 'department', da, 'check V514', gen_random_uuid(), current_date - 1),
+            (gen_random_uuid(), acad, 'academic', 'institution', NULL, 'check V514', gen_random_uuid(), current_date - 1);
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/99/951401', 'CHECKV514', 'Waiting', pa, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/99/951402', 'CHECKV514', 'No Head', pn, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (c, 'MOAUM/ADM/99/951403', 'CHECKV514', 'Today', pa, 'UTME', ses, 100, 100, 'ADMITTED');
+        INSERT INTO registration.overload_request (student_id, session, semester, level, regular_max, requested_max, reason, requested_at) VALUES
+            (a, ses, 1, 100, 24, 27, 'Check: waiting five days', now() - interval '5 days'),
+            (b, ses, 1, 100, 24, 26, 'Check: no Head to decide', now() - interval '1 day'),
+            (c, ses, 1, 100, 24, 25, 'Check: asked today', now());
+        heads := (SELECT count(*) FROM registration.department_heads(da) h WHERE h = head);
+        first := registration.remind_overloads(3);
+        told_head := (SELECT count(*) FROM platform.notice x WHERE x.about_id = head AND x.template_key = 'OVERLOAD_WAITING');
+        again := registration.remind_overloads(3);
+        told_head_again := (SELECT count(*) FROM platform.notice x WHERE x.about_id = head AND x.template_key = 'OVERLOAD_WAITING');
+        told_acad := (SELECT count(*) FROM platform.notice x WHERE x.about_id = acad AND x.template_key = 'OVERLOAD_NO_HEAD');
+        RAISE EXCEPTION 'the V514 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V514 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V514: a request waiting past the days is reminded to its department''s Head once a day at most, one in a department with no Head is counted and told to the Academic Office; one of today waits',
+        coalesce(heads = 1 AND (first->>'no_head')::int >= 1 AND told_head = 1 AND told_head_again = 1 AND told_acad = 1
+                 AND (first->>'reminded_requests')::int >= 1, false),
+        format('heads %s | first %s | again %s | told head %s then %s, academic %s', heads, first, again, told_head, told_head_again, told_acad));
+END $$;
+
+-- ── V515: the clearance in one pass agrees with the student's own ──
+-- finance.session_clears_for gives, for the students named, what finance.clears gives each (a paid student cleared, an unpaid one
+-- not), finance.session_clears the same for everyone, and the withheld list keeps the card's own code. The block undoes its writes.
+DO $$
+DECLARE ses text := '2398/2399'; sch uuid := gen_random_uuid(); prog text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); ref text;
+        one_a boolean; one_b boolean; each_a boolean; each_b boolean; all_a boolean; n int; agree boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V515', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2398-10-01', DATE '2399-08-31');
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/98/951501', 'CHECKV515', 'Paid', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/98/951502', 'CHECKV515', 'Unpaid', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V515)', 40000, 100, prog);
+        IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
+            INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by) VALUES (sch, 'clearance', 'UNIVERSITY', daterange(current_date - 1, NULL), 'CHECK V515', 'bursar');
+            INSERT INTO policy.clearance_scheme VALUES (sch, true);
+            INSERT INTO policy.clearance_rule SELECT sch, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END FROM ref.clearance_purpose p;
+        END IF;
+        ref := finance.new_purpose_reference(a, ses, 40000, 'School fees ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V515');
+        SELECT c.clears INTO one_a FROM finance.session_clears_for(ses, 'EXAMINATION', ARRAY[a, b]) c WHERE c.student_id = a;
+        SELECT c.clears INTO one_b FROM finance.session_clears_for(ses, 'EXAMINATION', ARRAY[a, b]) c WHERE c.student_id = b;
+        n := (SELECT count(*) FROM finance.session_clears_for(ses, 'EXAMINATION', ARRAY[a, b]));
+        each_a := finance.clears(a, ses, 'EXAMINATION');
+        each_b := finance.clears(b, ses, 'EXAMINATION');
+        SELECT c.clears INTO all_a FROM finance.session_clears(ses, 'EXAMINATION') c WHERE c.student_id = a;
+        agree := NOT EXISTS (SELECT 1 FROM finance.session_clears_or_null(ses, 'EXAMINATION', ARRAY[a, b]) c
+                              WHERE c.clears IS DISTINCT FROM finance.clears_or_null(c.student_id, ses, 'EXAMINATION'));
+        RAISE EXCEPTION 'the V515 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V515 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V515: the session''s clearance worked out at once for the students named agrees with each student''s own (paid cleared, unpaid not)',
+        coalesce(n = 2 AND one_a AND NOT one_b AND one_a = each_a AND one_b = each_b AND all_a = each_a AND agree, false),
+        format('n %s | one pass %s/%s | each %s/%s | all %s | agree %s', n, one_a, one_b, each_a, each_b, all_a, agree));
+END $$;
+
+-- ── V516: late registration by the Registry ──
+-- With the window closed, the Registry registers a cleared student's own courses (the window set aside, every other rule held):
+-- the registration is submitted, each entry names the Registry's reason, the late registration is recorded and the student told; a
+-- course not on the student's list is blocked; another office, or no reason, is refused. The block undoes its writes.
+DO $$
+DECLARE ses text := '2400/2401'; sch uuid := gen_random_uuid(); prog text; dept text; st uuid := gen_random_uuid(); ref text; o1 uuid; o2 uuid; o3 uuid; oth uuid;
+        win_aside boolean; win_blocks boolean; res jsonb; status text; reasons int; recorded int; told int; offlist text; wrong text; noreason text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V516', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2400-10-01', DATE '2401-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 100, 1) IS NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st, 'MOAUM/ADM/00/951601', 'CHECKV516', 'Late', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('ZQL 101', 'Check Late One', 6, 1, 100, dept, 'Core', 'LIVE'), ('ZQL 102', 'Check Late Two', 6, 1, 100, dept, 'Core', 'LIVE'),
+            ('ZQL 103', 'Check Late Three', 6, 1, 100, dept, 'Core', 'LIVE'), ('ZQL 199', 'Check Late Elsewhere', 3, 1, 100, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQL 101', prog, 100, 'Core'), ('ZQL 102', prog, 100, 'Core'), ('ZQL 103', prog, 100, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) SELECT gen_random_uuid(), c, ses, 1 FROM unnest(ARRAY['ZQL 101', 'ZQL 102', 'ZQL 103', 'ZQL 199']) c;
+        SELECT id INTO o1 FROM catalogue.offering WHERE course_code = 'ZQL 101' AND session = ses;
+        SELECT id INTO o2 FROM catalogue.offering WHERE course_code = 'ZQL 102' AND session = ses;
+        SELECT id INTO o3 FROM catalogue.offering WHERE course_code = 'ZQL 103' AND session = ses;
+        SELECT id INTO oth FROM catalogue.offering WHERE course_code = 'ZQL 199' AND session = ses;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V516)', 30000, 100, prog);
+        IF policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL THEN
+            INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by) VALUES (sch, 'clearance', 'UNIVERSITY', daterange(current_date - 1, NULL), 'CHECK V516', 'bursar');
+            INSERT INTO policy.clearance_scheme VALUES (sch, true);
+            INSERT INTO policy.clearance_rule SELECT sch, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END FROM ref.clearance_purpose p;
+        END IF;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        ref := finance.new_purpose_reference(st, ses, 30000, 'School fees ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V516');
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        -- the semester's registration window opened, then closed: the student missed it
+        PERFORM policy.window_act('COURSE_REGISTRATION', ses, 1, 'OPEN', NULL, NULL, NULL, false, 'check V516: window opened', '00000000-0000-0000-0000-000000000000', 'ict');
+        PERFORM policy.window_act('COURSE_REGISTRATION', ses, 1, 'CLOSE', NULL, NULL, NULL, NULL, 'check V516: window closed', '00000000-0000-0000-0000-000000000000', 'ict');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        -- the window is set aside; nothing else blocks
+        SELECT bool_or(c.set_aside) FILTER (WHERE c.rule = 'REGISTRATION_WINDOW'), bool_or(c.blocks) INTO win_aside, win_blocks
+          FROM registration.registry_late_checks(st, ses, 1, o1) c;
+        BEGIN PERFORM registration.registry_register(st, ses, 1, ARRAY[oth], 'Check: a course not on the student''s list'); offlist := 'REGISTERED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; offlist := split_part(msg, ':', 1); END;
+        BEGIN PERFORM registration.registry_register(st, ses, 1, ARRAY[o1], 'too short'); noreason := 'REGISTERED';
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; noreason := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN PERFORM registration.registry_register(st, ses, 1, ARRAY[o1], 'Check: a Head of Department tries'); wrong := 'REGISTERED';
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; wrong := split_part(msg, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        res := registration.registry_register(st, ses, 1, ARRAY[o1, o2, o3], 'Check: admitted late by Senate''s decision');
+        status := (SELECT r.status FROM registration.course_registration r WHERE r.id = (res->>'registrationId')::uuid);
+        reasons := (SELECT count(*) FROM registration.entry e WHERE e.registration_id = (res->>'registrationId')::uuid AND e.support_override_reason LIKE 'Late registration by the Registry:%');
+        recorded := (SELECT count(*) FROM registration.late_registration l WHERE l.student_id = st AND cardinality(l.offerings) = 3);
+        told := (SELECT count(*) FROM platform.notice x WHERE x.about_id = st AND x.template_key = 'REG_LATE_BY_REGISTRY');
+        RAISE EXCEPTION 'the V516 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V516 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V516: the Registry registers a cleared student late — the window set aside, every other rule held — recorded and told; a course off the list, another office and no reason refused',
+        coalesce(win_aside AND NOT win_blocks AND offlist = 'REG_LATE_BLOCKED' AND noreason = 'REG_LATE_REASON' AND wrong = 'REG_LATE_OFFICE'
+                 AND status IN ('SUBMITTED', 'APPROVED') AND (res->>'units')::int = 18 AND reasons = 3 AND recorded = 1 AND told = 1, false),
+        format('window aside %s blocks %s | off list %s | no reason %s | hod %s | res %s status %s | reasons %s recorded %s told %s',
+               win_aside, win_blocks, offlist, noreason, wrong, res, status, reasons, recorded, told));
+END $$;
+
+-- ── V517: the enrolment read for sponsors ──
+-- A consumer holding students:enrolment learns, for a matriculation number and a session, that the student is in study,
+-- registered (semester 1 submitted) and cleared or not by the Bursary — no amount; a consumer holding only students:status is
+-- refused it; every call logged. The block undoes its writes.
+DO $$
+DECLARE ses text := '2401/2402'; prog text; st uuid := gen_random_uuid(); c uuid; c2 uuid; k text; k2 text; r jsonb; noscope jsonb; logged int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'check V517', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2401-10-01', DATE '2402-08-31');
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/01/951701', 'CHK/V517/0001', 'CHECKVSEVENTEEN', 'Sponsored Student', prog, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (gen_random_uuid(), st, ses, 1, 100, 'SUBMITTED', now());
+        c := apimgmt.register_consumer('Check sponsor', 'Check owner', 'students:enrolment', NULL);
+        k := apimgmt.issue_key(c, 30);
+        c2 := apimgmt.register_consumer('Check status only', 'Check owner', 'students:status', NULL);
+        k2 := apimgmt.issue_key(c2, 30);
+        r := apimgmt.student_enrolment(k, 'chk/v517/0001', ses, '127.0.0.1');
+        noscope := apimgmt.student_enrolment(k2, 'CHK/V517/0001', ses, '127.0.0.1');
+        logged := (SELECT count(*) FROM apimgmt.request_log l WHERE l.scope = 'students:enrolment' AND l.subject LIKE 'CHK/V517/0001%');
+        RAISE EXCEPTION 'the V517 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V517 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V517: a sponsor with students:enrolment learns in study, registered (semesters) and the fee clearance — no amount; a key without the scope is refused; every call logged',
+        coalesce(r->>'outcome' = 'OK' AND (r->'student'->>'in_study')::boolean AND (r->'student'->>'registered')::boolean
+                 AND r->'student'->'semesters' = '[{"semester": 1, "status": "SUBMITTED"}]'::jsonb
+                 AND r->'student'->>'fees_cleared_for_examination' IN ('CLEARED', 'NOT_CLEARED', 'UNKNOWN')
+                 AND r->'student'->>'fees_cleared_for_registration' IN ('CLEARED', 'NOT_CLEARED', 'UNKNOWN') AND r->'student'->>'name' = 'CHECKVSEVENTEEN, S. S.'
+                 AND NOT (r->'student' ? 'amount') AND NOT (r->'student' ? 'balance') AND noscope->>'outcome' = 'NO_SCOPE' AND logged = 2, false),
+        format('r %s | noscope %s | logged %s', r, noscope, logged));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

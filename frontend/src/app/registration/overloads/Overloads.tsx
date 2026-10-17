@@ -113,6 +113,11 @@ export function Overloads({ o, status, q, mayDecide, maySetRule }: { o: Overload
         ))}
       </div>
 
+      {o.noHead ? (
+        <Note kind="bad" title={`${vz(o.noHead)} waiting request${o.noHead === 1 ? " is" : "s are"} in a department with no Head of Department on the portal`}>
+          Only the Head of the student&rsquo;s department grants or refuses an overload, so {o.noHead === 1 ? "it waits" : "they wait"} until the Head is given the office on Users &amp; roles (the Directorate of ICT). The Academic Office is told each morning while any waits; the Head is reminded of a request waiting three days or more.
+        </Note>
+      ) : null}
       {!o.rule.open ? <Note kind="info" title="Overload requests are closed">Students cannot ask until the Academic Office opens them again. Requests already made can still be decided.</Note> : null}
 
       <Panel title={status ? statusLabel(status) : "Every request"} right={`${vz(o.total)}${pages > 1 ? ` · page ${o.page + 1} of ${pages}` : ""}`}>
@@ -138,7 +143,10 @@ export function Overloads({ o, status, q, mayDecide, maySetRule }: { o: Overload
               <span key="g" className="tnum">{r.granted_max ?? "—"}</span>,
               <span key="u" className="tnum">{r.units ?? "—"}</span>,
               <span key="r" className="sub2" style={{ maxWidth: 320, display: "inline-block" }}>{r.reason}{r.decision_reason ? <div><b>Decision:</b> {r.decision_reason}{r.decided_by ? ` (${r.decided_by}, ${day(r.decided_at)})` : ""}</div> : null}</span>,
-              <Pil key="t" kind={r.status === "GRANTED" ? "ok" : r.status === "REFUSED" ? "bad" : r.status === "REQUESTED" ? "warn" : "grey"}>{statusLabel(r.status)}</Pil>,
+              <span key="t" className="stack" style={{ gap: 2 }}>
+                <Pil kind={r.status === "GRANTED" ? "ok" : r.status === "REFUSED" ? "bad" : r.status === "REQUESTED" ? "warn" : "grey"}>{statusLabel(r.status)}</Pil>
+                {r.status === "REQUESTED" && r.has_head === false ? <span className="sub2 ink-red">No Head on the portal</span> : null}
+              </span>,
               mayDecide && r.status === "REQUESTED"
                 ? <span key="d" className="row row--inline row--tight">
                     <Btn kind="ghost" size="sm" onClick={() => { setReason(""); setUnits(r.requested_max); setDeciding({ row: r, decision: "GRANTED" }); }}>Grant</Btn>

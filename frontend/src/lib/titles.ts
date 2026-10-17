@@ -68,6 +68,7 @@ export const TITLES: Record<string, string> = {
   "t/regapproval": "Course registration approval",
   "t/regoptions": "Course registration options",
   "t/overloads": "Overload requests",
+  "t/latereg": "Late registration",
   "t/appoint": "New appointments",
   "t/regsettings": "Course registration settings",
   "s/courses": "My courses",

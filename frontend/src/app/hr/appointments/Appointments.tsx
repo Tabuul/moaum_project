@@ -18,6 +18,7 @@ import { buildXlsx } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { readSheet } from "@/lib/jupeb";
 import { ALIASES, CATEGORY_LABEL, TEMPLATE_HEAD, type AppointmentsOverview, type RowCheck } from "@/lib/appointments";
+import { StaffWithoutEmployment } from "./StaffWithoutEmployment";
 
 const vz = (n: number | null | undefined) => Number(n ?? 0).toLocaleString("en-GB");
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -214,6 +215,9 @@ export function Appointments({ o, mayAppoint, maySetGrades }: { o: AppointmentsO
           </PBody>
         </Panel>
       ) : null}
+
+      {/* V513: the staff on the portal without one, downloaded as the template filled in */}
+      <StaffWithoutEmployment />
 
       <Panel title="Salary grades" right={`${vz(o.grades.length)} grade-step${o.grades.length === 1 ? "" : "s"}`}>
         {o.grades.length ? (

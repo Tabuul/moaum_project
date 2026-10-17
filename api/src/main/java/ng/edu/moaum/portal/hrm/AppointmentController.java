@@ -83,6 +83,40 @@ class AppointmentController {
         return out;
     }
 
+    /** V513: the staff on the portal with no employment record in service, with what the portal already holds of each (where it came
+     *  from: the establishment record, a lecturer's department grant, both, or the person alone), filtered and a page at a time; an
+     *  export asks for up to 5,000 at once and becomes the appointment template filled in */
+    @GetMapping("/appointments/without-employment")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> withoutEmployment(@org.springframework.web.bind.annotation.RequestParam(required = false) String q,
+                                          @org.springframework.web.bind.annotation.RequestParam(required = false) String source,
+                                          @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0") int page,
+                                          @org.springframework.web.bind.annotation.RequestParam(defaultValue = "50") int size) {
+        String t = q == null || q.isBlank() ? null : "%" + q.trim().toUpperCase(java.util.Locale.ROOT) + "%";
+        String src = source == null || source.isBlank() ? null : source.trim().toUpperCase(java.util.Locale.ROOT);
+        int sz = Math.max(1, Math.min(size, 5000)), pg = Math.max(0, page);
+        List<Map<String, Object>> all = jdbc.sql("""
+                SELECT * FROM hrm.staff_without_employment() x
+                 WHERE (CAST(:t AS text) IS NULL OR upper(x.staff_no || ' ' || x.surname || ' ' || x.given_names) LIKE CAST(:t AS text))
+                 ORDER BY x.surname, x.given_names, x.staff_no
+                """).param("t", t, java.sql.Types.VARCHAR).query().listOfRows();
+        Map<String, Object> counts = new LinkedHashMap<>();
+        for (String k : List.of("LECTURER", "ESTABLISHMENT", "ESTABLISHMENT_AND_LECTURER", "PERSON_ONLY")) counts.put(k, 0L);
+        List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (Map<String, Object> r : all) {
+            counts.merge(String.valueOf(r.get("source")), 1L, (x, y) -> ((Number) x).longValue() + ((Number) y).longValue());
+            if (src == null || src.equals(r.get("source"))) rows.add(r);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("counts", counts);
+        out.put("total", rows.size());
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("rows", rows.subList(Math.min(rows.size(), pg * sz), Math.min(rows.size(), (pg + 1) * sz)));
+        return out;
+    }
+
     public record Rows(@NotNull @Size(min = 1, max = 2000) List<Map<String, Object>> rows) {
     }
 

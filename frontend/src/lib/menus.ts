@@ -612,6 +612,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
+          { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
@@ -1045,7 +1046,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
-          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" }
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
+          { "id": "t/latereg", "icon": "check", "label": "Late Registration" }
         ]
       },
       {
@@ -1159,7 +1161,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
-          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" }
+          { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
+          { "id": "t/latereg", "icon": "check", "label": "Late Registration" }
         ]
       },
       {
@@ -1255,6 +1258,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
+          { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },

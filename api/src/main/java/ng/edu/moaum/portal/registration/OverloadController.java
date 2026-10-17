@@ -152,6 +152,8 @@ class OverloadController {
                        coalesce(s.matric_no, s.admission_no) AS matric_no, p.name AS programme, p.dept_code, coalesce(d.faculty_code, p.faculty_code) AS faculty_code,
                        r.session, r.semester, r.level, r.regular_max, r.requested_max, r.granted_max, r.reason, r.status, r.decision_reason,
                        r.requested_at, r.decided_at, r.decided_office,
+                       -- V514: whether the student's department has a Head on the portal to decide it
+                       EXISTS (SELECT 1 FROM registration.department_heads(p.dept_code)) AS has_head,
                        (SELECT btrim(pe.surname || ', ' || pe.given_names) FROM iam.person pe WHERE pe.id = r.decided_by) AS decided_by,
                        (SELECT registration.units_of(g.id) FROM registration.course_registration g
                          WHERE g.student_id = r.student_id AND g.session = r.session AND g.semester = r.semester) AS units
@@ -160,6 +162,10 @@ class OverloadController {
                 .param("s", s).param("m", m, Types.INTEGER).param("dept", b.dept(), Types.VARCHAR).param("fac", b.fac(), Types.VARCHAR)
                 .param("t", t, Types.VARCHAR).param("st", st, Types.VARCHAR).param("lim", sz).param("off", pg * sz).query().listOfRows();
         long total = st == null ? counts.values().stream().mapToLong(v -> ((Number) v).longValue()).sum() : ((Number) counts.get(st)).longValue();
+        // V514: the waiting requests no Head of Department on the portal can decide (their department has none)
+        long noHead = jdbc.sql("SELECT count(*) " + from + " AND r.status = 'REQUESTED' AND NOT EXISTS (SELECT 1 FROM registration.department_heads(p.dept_code))")
+                .param("s", s).param("m", m, Types.INTEGER).param("dept", b.dept(), Types.VARCHAR).param("fac", b.fac(), Types.VARCHAR).param("t", t, Types.VARCHAR)
+                .query(Long.class).single();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
         out.put("semester", m);
@@ -168,6 +174,7 @@ class OverloadController {
         out.put("dept", b.dept());
         out.put("faculty", b.fac());
         out.put("counts", counts);
+        out.put("noHead", noHead);
         out.put("total", total);
         out.put("page", pg);
         out.put("size", sz);

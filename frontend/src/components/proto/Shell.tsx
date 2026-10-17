@@ -47,6 +47,7 @@ export const ROUTES: Record<string, string> = {
   "t/regapproval": "/registration/approval",
   "t/regoptions": "/registration/options",   // V504
   "t/overloads": "/registration/overloads",   // V508
+  "t/latereg": "/registration/late",   // V516
   "t/regsettings": "/registration/settings",
   "t/allocationtemplates": "/allocation/templates",
   "t/structureprogrammes": "/catalogue/structure/programmes",
