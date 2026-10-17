@@ -26,7 +26,10 @@ import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
 import type { GstFeePage } from "@/lib/gst";
 
-import { brandedSheet } from "@/lib/exportbrand";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { printDocument } from "@/lib/document/html";
+import { logExport } from "@/lib/export-log";
+import { FEE_SHEET_HEADERS, feeGroups as reportSections, feeSetupBodyHtml, feeSheetRows } from "@/lib/fee-setup-report";
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
@@ -46,7 +49,6 @@ export interface ApplicantFees {
 }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
-const esc = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 /** Parse the approved-fees cross-tab (faculty blocks × 1st/2nd/Total rows × level bands × Indigene/Non-indigene)
  *  into one row per cell. A band like "100/200DE" is level 100 plus level 200 for Direct Entry. */
@@ -203,38 +205,38 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(filteredItems.length / pageSize)) : 1;
   const pageItems = pageSize > 0 ? filteredItems.slice(page * pageSize, page * pageSize + pageSize) : filteredItems;
 
+  /** the school fees setup as a report (Excel and PDF alike): grouped by faculty — by programme where a faculty's fees differ by
+   *  programme — each faculty's first and second semester together before the next, one serial number down the report, under the
+   *  University's official header with the session and the filters it was drawn with */
+  const reportTitle = "School Fees Setup";
+  function reportMeta(): [string, string][] {
+    const facLabel = filterFac === "__none__" ? "No faculty (all students)" : filterFac ? (faculties.find((f) => f.code === filterFac)?.name ?? filterFac) : "All faculties";
+    const groups = reportSections(filteredItems);
+    return [
+      ["Academic session", session],
+      ["Faculty", facLabel],
+      ["Semester", filterSem ? semesterText(Number(filterSem)).replace("Semester: ", "") : "All semesters"],
+      ["Students", filterRoute === "CCE" ? "CCE (part-time)" : filterRoute === "FULL_TIME" ? "Full-time" : "Full-time and CCE"],
+      ["Spillover", filterSpill === "spill" ? "Spillover lines only" : filterSpill === "normal" ? "Excluding spillover" : "Included"],
+      ["Fee lines", `${filteredItems.length.toLocaleString()} in ${new Set(groups.map((g) => g.faculty)).size} ${new Set(groups.map((g) => g.faculty)).size === 1 ? "faculty" : "faculties"}`],
+    ];
+  }
+
   async function exportExcel() {
-    const blob = await brandedSheet(
-      ["Item", "Applies to", "Level", "Semester", "Faculty", "Programme", "Entry mode", "Indigeneship", "Spillover", "Amount"],
-      filteredItems.map((i) => [i.item, appliesTo(i), i.spillover ? "Spillover" : i.level ? String(i.level) : "All", i.semester ? String(i.semester) : "Session", i.faculty_name ?? "All", i.programme_name ?? "All", i.entry_mode ?? "All", indigeneText(i) ?? "All", i.spillover ? "Yes" : "No", i.amount]),
-      `Fee schedule ${session.replace("/", "-")}`,
-    );
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `Fee schedule ${session.replace("/", "-")}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const blob = await brandedXlsx(reportTitle, FEE_SHEET_HEADERS, feeSheetRows(filteredItems), {
+      sheetName: `Fees ${session.replace("/", "-")}`, serial: docSerial("FEE"), sub: `${session} academic session`, meta: reportMeta(),
+    });
+    downloadBlob(blob, `School fees setup ${session.replace("/", "-")}.xlsx`);
   }
 
   function exportPdf() {
-    const facLabel = filterFac === "__none__" ? "No faculty (all students)" : filterFac ? (faculties.find((f) => f.code === filterFac)?.name ?? "") : "All faculties";
-    const rowsHtml = filteredItems.map((i) => `<tr><td>${esc(i.item)}</td><td>${esc(appliesTo(i))}</td><td style="text-align:right">${naira(i.amount)}</td></tr>`).join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Fee schedule ${esc(session)}</title>
-      <style>body{font:13px system-ui,Arial,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin:0 0 2px}.sub{color:#555;margin:0 0 14px}
-      table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
-      th{background:#f3f4f6}tfoot td{font-weight:700}</style></head><body>
-      <h1>Rev. Fr. Moses Orshio Adasu University, Makurdi</h1>
-      <p class="sub">Fee schedule — ${esc(session)} · ${esc(facLabel)}${filterSem ? ` · Semester ${esc(filterSem)}` : ""}${filterSpill === "spill" ? " · Spillover only" : filterSpill === "normal" ? " · Excluding spillover" : ""} · ${filteredItems.length} lines</p>
-      <table><thead><tr><th>Item</th><th>Applies to</th><th style="text-align:right">Amount</th></tr></thead>
-      <tbody>${rowsHtml}</tbody></table></body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) { setProblem({ status: 400, title: "Allow pop-ups to print", detail: "Your browser blocked the print window. Allow pop-ups for this site, or use Download Excel." }); notifyProblem({ status: 400, title: "Allow pop-ups to print", detail: "Your browser blocked the print window. Allow pop-ups for this site, or use Download Excel." }); return; }
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
+    const serial = docSerial("FEE");
+    logExport({ report: reportTitle, format: "PRINT", rows: filteredItems.length, meta: reportMeta(), sub: `${session} academic session`, serial });
+    void printDocument("STANDARD_REPORT", {
+      title: reportTitle, subtitle: `${session} academic session`, unit: "Bursary", meta: reportMeta(), reference: serial,
+      bodyHtml: feeSetupBodyHtml(filteredItems), orientation: "portrait",
+      footnote: "Amounts are per semester as stated by the Bursary; a line for a semester applies to students of that level, entry mode and indigeneship in the faculty or programme named.",
+    });
   }
 
   function openEdit(i: ScheduleItem) {
