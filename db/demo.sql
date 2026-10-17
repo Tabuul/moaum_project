@@ -798,7 +798,8 @@ BEGIN
     BEGIN
         IF s_paid IS NOT NULL AND v_appr IS NOT NULL AND v_payer IS NOT NULL THEN
             PERFORM set_config('moaum.actor_id', s_paid::text, true);
-            SELECT * INTO w FROM finance.request_withdrawal(s_paid, v_session, 50000, 'Zenith Bank', '1234567890', 'DEMO Student');
+            -- V534: a real Zenith Bank account number (the check digit is checked when a withdrawal is requested)
+            SELECT * INTO w FROM finance.request_withdrawal(s_paid, v_session, 50000, 'Zenith Bank', '1234567899', 'DEMO Student');
             PERFORM set_config('moaum.actor_id', v_appr::text, true);
             PERFORM finance.approve_withdrawal(w.id);
             PERFORM set_config('moaum.actor_id', v_payer::text, true);

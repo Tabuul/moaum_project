@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 373
+\set EXPECTED 374
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2722,7 +2722,7 @@ BEGIN
     -- more than the balance is refused
     BEGIN PERFORM finance.request_withdrawal(s3, '9999/0000', 90000, 'Bank', '0123456789', 'CHECKFUND Invented'); EXCEPTION WHEN OTHERS THEN ok_over := true; END;
     -- the excess is requested, approved and paid by a second officer
-    SELECT * INTO w FROM finance.request_withdrawal(s3, '9999/0000', 50000, 'Zenith', '0123456789', 'CHECKFUND Invented');
+    SELECT * INTO w FROM finance.request_withdrawal(s3, '9999/0000', 50000, 'Zenith', '0123456788', 'CHECKFUND Invented');
     PERFORM set_config('moaum.actor_id', a_appr::text, true);
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     PERFORM finance.approve_withdrawal(w.id);
@@ -5902,7 +5902,7 @@ BEGIN
         n_claim_other := (SELECT count(*) FROM jupeb.refund_claim WHERE application_id = other);
         BEGIN PERFORM jupeb.propose_claim_refund(claim, ref, 50000, 'Withdrawal');
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_details := split_part(msg, ':', 1); END;
-        UPDATE jupeb.refund_claim SET bank_name = 'First Bank', account_name = 'Ada Check', account_number = '3012345678', details_at = now() WHERE id = claim;
+        UPDATE jupeb.refund_claim SET bank_name = 'First Bank', account_name = 'Ada Check', account_number = '3012345671', details_at = now() WHERE id = claim;
         PERFORM set_config('moaum.actor_office', 'bursar', true);
         rf := jupeb.propose_claim_refund(claim, ref, 50000, 'Withdrawal before lectures');
         BEGIN PERFORM jupeb.propose_claim_refund(claim, ref, 30000, 'The rest');
@@ -5913,7 +5913,7 @@ BEGIN
         EXCEPTION WHEN check_violation THEN r_same := 'REFUSED'; END;
         PERFORM set_config('moaum.actor_id', checker::text, true);
         PERFORM finance.approve_refund(rf);
-        PERFORM finance.pay_refund(rf);
+        PERFORM finance.pay_refund(rf, 'CHK-TRF-PAID', (now() AT TIME ZONE 'Africa/Lagos')::date);
         v_status := jupeb.refund_claim_state(claim)->>'status';
         v_paid := (jupeb.refund_claim_state(claim)->>'paid')::numeric;
         n_ev := (SELECT count(*) FROM jupeb.application_event WHERE application_id = app AND kind IN ('REFUND_CLAIM_OPENED', 'REFUND_PROPOSED', 'REFUND_PAID'));
@@ -16909,7 +16909,7 @@ BEGIN
         PERFORM set_config('moaum.actor_id', second::text, true);
         PERFORM finance.approve_refund(rf);
         PERFORM finance.give_refund_account(s2, (SELECT f.reference FROM finance.refund f WHERE f.id = rf), 'First Bank', 'ZZCHKV519B Invented', '0000014579');
-        PERFORM finance.pay_refund(rf);
+        PERFORM finance.pay_refund(rf, 'CHK-TRF-PAID', (now() AT TIME ZONE 'Africa/Lagos')::date);
         told_paid := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
                        WHERE n.template_key = 'OVERPAYMENT_REFUND_PAID' AND n.about_id = s2);
         once := (SELECT count(*) FROM platform.notice n WHERE n.template_key LIKE 'OVERPAYMENT_%' AND n.about_id IN (s1, s2) AND n.channel = 'EMAIL');
@@ -17565,7 +17565,7 @@ BEGIN
         id1 := (SELECT id FROM finance.refund WHERE reference = rf1);
         PERFORM set_config('moaum.actor_id', checker::text, true);
         PERFORM finance.approve_refund(id1);
-        BEGIN PERFORM finance.pay_refund(id1);
+        BEGIN PERFORM finance.pay_refund(id1, 'CHK-TRF-PAID', (now() AT TIME ZONE 'Africa/Lagos')::date);
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_nopay := split_part(msg, ':', 1); END;
         -- the account recorded by an officer on the approved refund: back for approval, not by that officer
         st_after := finance.desk_refund_account(id1, 'GTB', 'ZZCHKV533 Invented', '2222222223');
@@ -17573,7 +17573,7 @@ BEGIN
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_same := split_part(msg, ':', 1); END;
         PERFORM set_config('moaum.actor_id', third::text, true);
         PERFORM finance.approve_refund(id1);
-        PERFORM finance.pay_refund(id1);
+        PERFORM finance.pay_refund(id1, 'CHK-TRF-PAID', (now() AT TIME ZONE 'Africa/Lagos')::date);
         paid1 := (SELECT f.state || ':' || a.source || ':' || a.bank_code || ':' || f.account_last4 FROM finance.refund f JOIN finance.refund_account a ON a.refund_id = f.id WHERE f.id = id1);
         -- raised with the last four digits: the desk completes the number without a new approval; a different account goes back
         PERFORM set_config('moaum.actor_id', maker::text, true);
@@ -17589,7 +17589,7 @@ BEGIN
         st_change := finance.desk_refund_account(id2, 'Access Bank', 'ZZCHKV533 Invented', '9876543215');
         PERFORM set_config('moaum.actor_id', third::text, true);
         PERFORM finance.approve_refund(id2);
-        PERFORM finance.pay_refund(id2);
+        PERFORM finance.pay_refund(id2, 'CHK-TRF-PAID', (now() AT TIME ZONE 'Africa/Lagos')::date);
         paid2 := (SELECT f.state || ':' || a.bank_name || ':' || a.account_number FROM finance.refund f JOIN finance.refund_account a ON a.refund_id = f.id WHERE f.id = id2);
         -- a microfinance bank's numbers are never checked by the banks' check digit
         BEGIN UPDATE finance.bank SET nuban_check = true WHERE code = '565';
@@ -17608,6 +17608,66 @@ BEGIN
                  AND paid2 = 'PAID:Access Bank:9876543215' AND share_yes AND NOT share_no AND mfb = 'REFUSED', false),
         format('example %s found %s slip %s opay %s | no account %s, recorded %s, same %s, paid %s | digit %s complete %s student %s change %s paid %s | names %s/%s | microfinance %s',
                example, found, slip, opay, e_nopay, st_after, e_same, paid1, e_digit, st_complete, e_student, st_change, paid2, share_yes, share_no, mfb));
+END $$;
+-- ── V534. A refund marked paid with its evidence; every payout account checked. A student overpaid ₦25,000 is refunded into the
+--          account they gave and approved: paid with no transfer reference, a date to come, or one before the approval is
+--          refused; a refund set PAID by hand without them is refused; paid with them, the student is told the reference and the
+--          date and the fees page shows them. A wallet withdrawal's account one digit off is refused, the right one kept with the
+--          bank as it is listed; a JUPEB claim's account is checked by its trigger. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); second uuid := gen_random_uuid(); s uuid := gen_random_uuid(); a text := '9975/9976'; b text := '9976/9977'; pa text;
+        rf text; rid uuid; e_ref text; e_future text; e_before text; e_hand text; paid text; told text; page text; e_wd text; wd text; claim_checked boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V534', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), a, date '9975-10-01', date '9976-08-31'), (gen_random_uuid(), b, date '9976-10-01', date '9977-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, kind) VALUES (a, 'School fees', 100000, NULL, pa, 'FEE');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (s, 'MOAUM/ADM/75/975101', 'MOAUM/CHK/75/9751', 'ZZCHKV534', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, email, updated_at) VALUES (s, 'zzchkv534@example.invalid', now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (s, a, 'MOAUM-CHKV534-1', 'School fees ' || a, 125000, '9975-11-02', '9975-11-02', who, 'INTERSWITCH', 'RCT-MOAUM-CHKV534-1', 'check V534');
+        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s], 'CHECK V534: refunded to the student');
+        SELECT f.reference, f.id INTO rf, rid FROM finance.refund f WHERE f.student_id = s;
+        PERFORM finance.give_refund_account(s, rf, '011', 'ZZCHKV534 Invented', '0000014579');
+        PERFORM set_config('moaum.actor_id', second::text, true);
+        PERFORM finance.approve_refund(rid);
+        BEGIN PERFORM finance.pay_refund(rid, '  ', current_date);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_ref := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.pay_refund(rid, 'FT-CHK-534', current_date + 2);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_future := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.pay_refund(rid, 'FT-CHK-534', current_date - 30);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_before := split_part(msg, ':', 1); END;
+        BEGIN UPDATE finance.refund SET state = 'PAID', paid_at = now(), paid_by = second WHERE id = rid;
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_hand := split_part(msg, ':', 1); END;
+        PERFORM finance.pay_refund(rid, ' FT-CHK-534 ', (now() AT TIME ZONE 'Africa/Lagos')::date);
+        paid := (SELECT f.state || ':' || f.paid_reference || ':' || (f.paid_on = (now() AT TIME ZONE 'Africa/Lagos')::date) FROM finance.refund f WHERE f.id = rid);
+        told := (SELECT n.body FROM platform.notice n WHERE n.template_key = 'OVERPAYMENT_REFUND_PAID' AND n.about_id = s AND n.channel = 'EMAIL');
+        page := (SELECT x.refund_state || ':' || x.paid_reference || ':' || (x.paid_on IS NOT NULL) FROM finance.student_overpayments(s) x);
+        -- a wallet withdrawal's account, checked as it is requested
+        BEGIN INSERT INTO finance.wallet_withdrawal (student_id, session, amount, bank_name, account_no, account_name, requested_by)
+              VALUES (s, a, 1000, 'Zenith', '0123456789', 'ZZCHKV534 Invented', who);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_wd := split_part(msg, ':', 1); END;
+        INSERT INTO finance.wallet_withdrawal (student_id, session, amount, bank_name, account_no, account_name, requested_by)
+        VALUES (s, a, 1000, 'zenith', '0123 4567-88', 'ZZCHKV534 Invented', who);
+        wd := (SELECT w.bank_name || ':' || w.account_no FROM finance.wallet_withdrawal w WHERE w.student_id = s);
+        claim_checked := EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgname = 'trg_claim_account_checked' AND t.tgrelid = 'jupeb.refund_claim'::regclass AND NOT t.tgisinternal);
+        RAISE EXCEPTION 'the V534 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V534 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V534: a refund is marked paid only with the bank transfer reference and the date the money left (not after today, not before approval), the student told both; every account money is paid out to is checked against its bank',
+        coalesce(e_ref = 'REFUND_PAID_REFERENCE' AND e_future = 'REFUND_PAID_DATE' AND e_before = 'REFUND_PAID_DATE' AND e_hand = 'REFUND_PAID_EVIDENCE'
+                 AND paid = 'PAID:FT-CHK-534:true' AND told LIKE '%transfer reference is FT-CHK-534%' AND page = 'PAID:FT-CHK-534:true'
+                 AND e_wd = 'REFUND_ACCOUNT_CHECK_DIGIT' AND wd = 'Zenith Bank:0123456788' AND claim_checked, false),
+        format('reference %s future %s before %s by hand %s | paid %s | told %s | page %s | wallet %s, %s | claim trigger %s',
+               e_ref, e_future, e_before, e_hand, paid, left(told, 160), page, e_wd, wd, claim_checked));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -2,6 +2,7 @@ package ng.edu.moaum.portal.finance;
 
 import java.math.BigDecimal;
 import java.sql.Types;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -58,6 +59,10 @@ class RefundsController {
     public record Why(@NotBlank @Size(max = 2000) String why) {
     }
 
+    /** V534: the evidence a refund is marked paid with — the bank transfer reference and the date the money left */
+    public record Paid(@NotBlank @Size(max = 60) String reference, @NotNull LocalDate paidOn) {
+    }
+
     @GetMapping
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -75,6 +80,10 @@ class RefundsController {
                                 WHERE d.reference = r.reference AND d.decision = 'REFUND' AND d.superseded_at IS NULL) AS from_overpayment,
                        -- V533: where the account came from (STUDENT, DESK, JUPEB), and whether its name shares a word with the person's
                        ra.bank_code, ra.source AS account_source,
+                       -- V534: the evidence of the payment, and how many other refunds carry the same transfer reference
+                       r.paid_reference, r.paid_on::text AS paid_on,
+                       CASE WHEN r.paid_reference IS NULL THEN NULL
+                            ELSE (SELECT count(*) FROM finance.refund o WHERE o.paid_reference = r.paid_reference AND o.id <> r.id) END AS paid_reference_others,
                        CASE WHEN r.account_name IS NULL THEN NULL
                             ELSE finance.names_share(r.account_name, coalesce(st.surname || ' ' || st.other_names,
                                                      ja.surname || ' ' || ja.first_name || coalesce(' ' || ja.middle_name, ''), r.payer)) END AS account_name_matches
@@ -198,8 +207,9 @@ class RefundsController {
     @PostMapping("/{id}/pay")
     @PreAuthorize(BURSARY)
     @Transactional
-    Map<String, Object> pay(@PathVariable UUID id) {
-        jdbc.sql("SELECT finance.pay_refund(:id)").param("id", id).query().singleRow();
+    Map<String, Object> pay(@PathVariable UUID id, @Valid @RequestBody Paid body) {
+        jdbc.sql("SELECT finance.pay_refund(:id, :r, :d)").param("id", id).param("r", body.reference()).param("d", body.paidOn())
+                .query().singleRow();
         return Map.of("id", id, "state", "PAID");
     }
 }

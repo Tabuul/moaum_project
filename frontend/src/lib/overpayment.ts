@@ -8,6 +8,8 @@ export interface StudentOverpayment {
   /** V528: the account given for a refund (the last four digits only), and whether the student may give or change it now */
   bank_name?: string | null; account_name?: string | null; account_last4?: string | null; account_given_at?: string | null;
   account_open?: boolean;
+  /** V534: when the refund was paid and the bank transfer reference */
+  paid_on?: string | null; paid_reference?: string | null;
 }
 
 const naira = (v: number | string) => {
@@ -25,7 +27,8 @@ export function overpaymentWords(o: StudentOverpayment): { title: string; text: 
       text: `You paid ${amt} more than your ${o.session} school fees. It counts as school fees already paid in ${o.to_session ?? "the next session"} (reference ${o.reference}).`,
     };
   }
-  const where = o.refund_state === "PAID" ? "has been paid to you"
+  const paidOn = o.paid_on ? new Date(`${o.paid_on}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : null;
+  const where = o.refund_state === "PAID" ? `has been paid to you${paidOn ? ` on ${paidOn}` : ""}${o.paid_reference ? ` (bank transfer reference ${o.paid_reference})` : ""}`
     : o.refund_state === "APPROVED" ? "is approved and waiting to be paid"
     : o.refund_state === "REJECTED" ? "was not approved; the Bursary will decide again"
     : "is waiting for the Bursary's approval";
@@ -39,5 +42,5 @@ export function overpaymentWords(o: StudentOverpayment): { title: string; text: 
 export function refundAccountWords(o: StudentOverpayment): string | null {
   if (o.decision !== "REFUND" || !o.account_last4) return null;
   const who = o.account_name ? `, ${o.account_name}` : "";
-  return `To be paid into ${o.bank_name ?? "your bank"}${who}, account ending ${o.account_last4}.`;
+  return `${o.refund_state === "PAID" ? "Paid" : "To be paid"} into ${o.bank_name ?? "your bank"}${who}, account ending ${o.account_last4}.`;
 }

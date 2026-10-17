@@ -27,7 +27,12 @@ export interface Refund {
   account_number?: string | null; account_given_at?: string | null; from_overpayment?: boolean;
   /** V533: where the account came from, and whether its name shares a word with the person's */
   bank_code?: string | null; account_source?: "STUDENT" | "DESK" | "JUPEB" | null; account_name_matches?: boolean | null;
+  /** V534: the evidence of the payment, and how many other refunds carry the same transfer reference */
+  paid_reference?: string | null; paid_on?: string | null; paid_reference_others?: number | null;
 }
+
+/** today in Lagos, as the date field holds it */
+const lagosToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
 
 const SOURCE_WORD: Record<string, string> = { STUDENT: "given by the student", DESK: "recorded at the desk", JUPEB: "from the JUPEB claim" };
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -62,6 +67,9 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
   const [acct, setAcct] = useState<BankAccountValue>(EMPTY_ACCOUNT);
   const [accountFor, setAccountFor] = useState<Refund | null>(null);
   const [acct2, setAcct2] = useState<BankAccountValue | null>(null);
+  // V534: a refund marked paid with the bank transfer reference and the date the money left
+  const [payFor, setPayFor] = useState<Refund | null>(null);
+  const [pay, setPay] = useState({ reference: "", paidOn: "" });
   const [source, setSource] = useState(initialRefund && may ? initialRefund.toUpperCase() : "");
   const [student, setStudent] = useState<string | null>(null);
   const [txn, setTxn] = useState<Txn | null>(null);
@@ -164,14 +172,16 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
             (() => { const p = payInto(r); return p ? <span key="pi"><Two a={<span className="tnum">{p.text}</span>} b={p.sub ?? ""} />{r.account_name_matches === false ? <div><Pil kind="warn" title="The name on the account shares no word with the person's">Name differs</Pil></div> : null}</span>
               : r.state !== "PAID" && r.state !== "REJECTED" ? <span key="pi" className="sub2">{r.from_overpayment ? "Waiting for the student\u2019s bank details" : "No account recorded"}</span>
               : <span key="pi" className="sub2">—</span>; })(),
-            <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.proposed_by_name ? <div className="sub2">Raised by {r.proposed_by_me ? "you" : r.proposed_by_name}</div> : null}{r.rejected_why ? <div className="sub2">{r.rejected_why}</div> : null}</span>,
+            <span key="s"><Pil kind={STATE[r.state]?.[0] ?? "grey"}>{STATE[r.state]?.[1] ?? r.state}</Pil>{r.proposed_by_name ? <div className="sub2">Raised by {r.proposed_by_me ? "you" : r.proposed_by_name}</div> : null}{r.rejected_why ? <div className="sub2">{r.rejected_why}</div> : null}
+              {r.state === "PAID" && r.paid_on ? <div className="sub2">{`On ${day(`${r.paid_on}T12:00:00`)}${r.paid_reference ? ` · ref ${r.paid_reference}` : ""}`}</div> : null}
+              {r.state === "PAID" && Number(r.paid_reference_others) > 0 ? <div><Pil kind="warn" title="Another refund was recorded paid with the same bank transfer reference">Same reference on {r.paid_reference_others} other refund{Number(r.paid_reference_others) === 1 ? "" : "s"}</Pil></div> : null}</span>,
             <span key="ac" className="row row--inline row--tight">
               {may && r.state === "PROPOSED" && !r.proposed_by_me ? <Btn kind="go" disabled={busy} onClick={() => void send(`/${r.id}/approve`, {}, `Approve refund ${r.reference}`).then((j) => { if (j) setSaid(`${r.reference} approved`); })}>Approve</Btn> : null}
               {may && r.state === "PROPOSED" && r.proposed_by_me ? <Btn kind="ghost" disabled>Awaiting another approver</Btn> : null}
               {may && r.state === "PROPOSED" ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Why is this refund rejected? The reason is recorded."); if (w) void send(`/${r.id}/reject`, { why: w }, `Reject refund ${r.reference}`); }}>Reject</Btn> : null}
               {may && (r.state === "PROPOSED" || r.state === "APPROVED") ? <Btn kind="ghost" disabled={busy} onClick={() => { setErr(null); setAcct2(null); setAccountFor(r); }}>{r.account_number ? "Change the account" : "Record the account"}</Btn> : null}
               {may && r.state === "APPROVED" && awaitsAccount(r) ? <Btn kind="ghost" disabled>Waiting for the account</Btn> : null}
-              {may && r.state === "APPROVED" && !awaitsAccount(r) ? <Btn kind="primary" disabled={busy} onClick={() => { if (window.confirm(`Mark ${r.reference} paid? Record this once the money has left, into ${r.account_name ?? "the account on file"}${r.account_number ? ` (${r.bank_name ?? ""} ${r.account_number})` : ""}.`)) void send(`/${r.id}/pay`, {}, `Refund ${r.reference} paid`).then((j) => { if (j) setSaid(`${r.reference} recorded paid`); }); }}>Mark paid</Btn> : null}
+              {may && r.state === "APPROVED" && !awaitsAccount(r) ? <Btn kind="primary" disabled={busy} onClick={() => { setErr(null); setPay({ reference: "", paidOn: lagosToday() }); setPayFor(r); }}>Mark paid</Btn> : null}
               {!may || (r.state !== "PROPOSED" && r.state !== "APPROVED") ? <span className="sub2">{r.paid_at ? "Disbursed" : r.approved_by_name ? `Approved by ${r.approved_by_name}` : ""}</span> : null}
             </span>,
           ])} texts={refunds.map((r) => `${r.reference} ${r.payer} ${r.reason} ${r.account_number ?? ""}`)} />
@@ -223,6 +233,35 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
             {backForApproval ? <Note kind="info" title="This refund is already approved">The account you record goes back for approval by another officer, unless it only completes the account that was approved (the same bank and last four digits{accountFor.account_last4 ? `, ending ${accountFor.account_last4}` : ""}).</Note> : null}
             {accountFor.account_source === "STUDENT" ? <Note kind="info" title="The student gave this account">Change it only on the student&rsquo;s word; the change is on the record with your name.</Note> : null}
             <BankAccountFields id="rf-acct2" value={v} onChange={setAcct2} banks={banks} holderName={accountFor.payer} />
+          </Modal>
+        );
+      })() : null}
+
+      {payFor ? (() => {
+        const today = lagosToday();
+        const approvedOn = payFor.approved_at ? new Date(payFor.approved_at).toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" }) : undefined;
+        const ref = pay.reference.trim();
+        const refOk = ref.length >= 4 && ref.length <= 60 && /^[A-Za-z0-9][A-Za-z0-9/._: -]*$/.test(ref);
+        const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(pay.paidOn) && pay.paidOn <= today && (!approvedOn || pay.paidOn >= approvedOn);
+        return (
+          <Modal title="Record the payment" sub={`${payFor.reference} · ${payFor.payer} · ${money(Number(payFor.amount))}`} onClose={() => setPayFor(null)}
+            foot={<><Btn kind="ghost" onClick={() => setPayFor(null)}>Cancel</Btn><span className="grow" />
+              <Btn kind="primary" disabled={busy || !refOk || !dateOk} onClick={async () => {
+                const j = await send(`/${payFor.id}/pay`, { reference: ref, paidOn: pay.paidOn }, `Refund ${payFor.reference} paid, transfer reference ${ref}`);
+                if (j) { setSaid(`${payFor.reference} recorded paid`); setPayFor(null); }
+              }}>Record it paid</Btn></>}>
+            {err ? <ProblemNotice problem={err} /> : null}
+            <Note kind="info" title="Record this once the money has left">
+              Paid into {payFor.bank_name ?? "the bank"} · {payFor.account_number ?? `ending ${payFor.account_last4 ?? ""}`} · {payFor.account_name ?? ""}. The transfer reference is on the bank&rsquo;s confirmation; Internal Audit matches it to the bank statement{payFor.from_overpayment ? ", and the student is told it" : ""}.
+            </Note>
+            <div className="grid grid--2">
+              <Field id="rf-paid-ref" label="Bank transfer reference" required error={ref && !refOk ? "4 to 60 letters and digits, as on the bank's confirmation" : undefined}>
+                <input id="rf-paid-ref" className="ctl tnum" maxLength={60} value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value })} autoComplete="off" />
+              </Field>
+              <Field id="rf-paid-on" label="Date the money left" required error={pay.paidOn && !dateOk ? `From the approval${approvedOn ? ` (${day(`${approvedOn}T12:00:00`)})` : ""} to today` : undefined}>
+                <input id="rf-paid-on" type="date" className="ctl" min={approvedOn} max={today} value={pay.paidOn} onChange={(e) => setPay({ ...pay, paidOn: e.target.value })} />
+              </Field>
+            </div>
           </Modal>
         );
       })() : null}

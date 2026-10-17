@@ -387,11 +387,12 @@ class StudentPortalRepository {
     }
 
     /** V519: the student's overpaid school fees and what the Bursary decided — carried into the next session, or a refund raised
-     *  and how far it has gone (V528: with the account given for it, and whether one may be given now) */
+     *  and how far it has gone (V528: with the account given for it, and whether one may be given now; V534: when and how it was paid) */
     List<Map<String, Object>> overpayments(UUID student) {
         return jdbc.sql("""
                 SELECT session, amount, decision, to_session, reference, refund_state, decided_at::text AS decided_at,
-                       bank_name, account_name, account_last4, account_given_at::text AS account_given_at, account_open
+                       bank_name, account_name, account_last4, account_given_at::text AS account_given_at, account_open,
+                       paid_on::text AS paid_on, paid_reference
                   FROM finance.student_overpayments(:s)
                 """).param("s", student).query().listOfRows();
     }

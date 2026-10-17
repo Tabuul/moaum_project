@@ -1,4 +1,4 @@
-# Refund accounts (V528, V533)
+# Refund accounts (V528, V533, V534)
 
 A refund is paid only into a full account on record — the bank, the name on the account and the ten-digit account number
 (NUBAN) — kept in `finance.refund_account`. The refund itself keeps a snapshot: the bank, the account name and the last four
@@ -33,6 +33,21 @@ by the database when it is sent.
 The Bursary keeps the list on Refunds & Credits → **Banks refunds are paid into**: switch the check on or off for a commercial,
 non-interest or merchant bank with a three-digit code (never a microfinance or payment service bank), set a bank aside, rename
 one, or add one with its other names.
+
+## Marking a refund paid (V534)
+
+**Mark paid** asks for the bank transfer reference (4 to 60 letters and digits, as on the bank's confirmation) and the date the
+money left — not after today, not before the refund was approved (`finance.pay_refund(id, reference, paid on)`). The database
+refuses PAID without them (`REFUND_PAID_EVIDENCE`). The student (a refund of overpaid fees) and the JUPEB candidate are told the
+reference and the date, and see them on the fees page or the JUPEB portal. The refunds desk shows them on each paid refund and
+says when the same reference was recorded on other refunds, so Internal Audit can match every refund to the bank statement.
+
+## Other accounts money is paid out to (V534)
+
+A withdrawn JUPEB candidate's refund claim and a student's NELFUND wallet withdrawal take the same bank list and the same check
+when the account is given (a trigger on `jupeb.refund_claim` and on `finance.wallet_withdrawal`, through
+`finance.checked_account`): ten digits, the check digit at a checked bank, the bank written as it is listed. Accounts given
+before V534 are left as they are.
 
 ## The name on the account
 

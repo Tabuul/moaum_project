@@ -141,7 +141,9 @@ class JupebView {
                        CASE WHEN c.account_number IS NULL THEN NULL ELSE '••••••' || right(c.account_number, 4) END AS account_number,
                        c.details_at, c.declined_at, c.declined_reason, jupeb.refund_claim_state(c.id)::text AS state,
                        (SELECT coalesce(jsonb_agg(jsonb_build_object('reference', f.reference, 'source', x.reference, 'amount', f.amount, 'state', f.state,
-                                                                     'proposedAt', f.proposed_at, 'paidAt', f.paid_at) ORDER BY f.proposed_at), '[]'::jsonb)::text
+                                                                     'proposedAt', f.proposed_at, 'paidAt', f.paid_at,
+                                                                     -- V534: when the money left and the bank transfer reference
+                                                                     'paidOn', f.paid_on, 'paidReference', f.paid_reference) ORDER BY f.proposed_at), '[]'::jsonb)::text
                           FROM jupeb.refund_claim_refund x JOIN finance.refund f ON f.id = x.refund_id WHERE x.claim_id = c.id) AS refunds
                   FROM jupeb.refund_claim c WHERE c.application_id = :id
                 """).param("id", app).query().listOfRows().stream().findFirst().map(r -> {

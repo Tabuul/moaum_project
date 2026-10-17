@@ -280,7 +280,8 @@ export interface RefundClaim {
   id: string; opened_at: string; payments: { reference: string; kind: string; amount: number; channel: string | null; paidOn: string }[]; paid_total: number;
   bank_name: string | null; account_name: string | null; account_number: string | null; details_at: string | null; declined_at: string | null; declined_reason: string | null;
   state: { status: string; raised: number; paid: number };
-  refunds: { reference: string; source: string; amount: number; state: string; proposedAt: string; paidAt: string | null }[];
+  /** V534: paidOn and paidReference — when the money left and the bank transfer reference */
+  refunds: { reference: string; source: string; amount: number; state: string; proposedAt: string; paidAt: string | null; paidOn?: string | null; paidReference?: string | null }[];
 }
 export interface PracticeTry { title: string; code: string; subject: string; number: number; submitted_at: string; score: number; total: number; percentage: number }
 export interface Announcement { id: string; title: string; body: string; pinned: boolean; published_at: string; expires_on: string | null; read: boolean }

@@ -1188,16 +1188,20 @@ class JupebIT {
         assertThat(code(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds",
                 Map.of("reference", paid, "amount", 50000, "reason", "Withdrawal before lectures")))).isEqualTo("JUPEB_REFUND_DETAILS");
         assertThat(status(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/refund-details", Map.of("bankName", "First Bank", "accountName", "Mnena Ityavyar", "accountNumber", "12345")))).isEqualTo(400);
+        // V534: the number is checked against the bank — one digit off is refused, the bank kept as it is listed
+        assertThat(code(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/refund-details", Map.of("bankName", "First Bank", "accountName", "Mnena Ityavyar", "accountNumber", "3012345678"))))
+                .isEqualTo("REFUND_ACCOUNT_CHECK_DIGIT");
         claim = (Map<String, Object>) ok(it.call(token, HttpMethod.PUT, "/api/v1/jupeb/me/refund-details",
-                Map.of("bankName", "First Bank", "accountName", "Mnena Ityavyar", "accountNumber", "3012345678"))).get("refundClaim");
-        assertThat(claim.get("account_number")).isEqualTo("••••••5678");
+                Map.of("bankName", "First Bank", "accountName", "Mnena Ityavyar", "accountNumber", "3012345671"))).get("refundClaim");
+        assertThat(claim.get("account_number")).isEqualTo("••••••5671");
+        assertThat(claim.get("bank_name")).isEqualTo("First Bank of Nigeria");
         assertThat(((Map<String, Object>) claim.get("state")).get("status")).isEqualTo("WITH_BURSARY");
         Map<String, Object> asBursary = ((List<Map<String, Object>>) it.callList(bursar, HttpMethod.GET, "/api/v1/jupeb/fees/refund-claims", null).getBody()).stream()
                 .filter(c -> claimId.equals(String.valueOf(c.get("id")))).findFirst().orElseThrow();
-        assertThat(asBursary.get("account_number")).isEqualTo("3012345678");
+        assertThat(asBursary.get("account_number")).isEqualTo("3012345671");
         Map<String, Object> asOffice = ((List<Map<String, Object>>) it.callList(office, HttpMethod.GET, "/api/v1/jupeb/fees/refund-claims", null).getBody()).stream()
                 .filter(c -> claimId.equals(String.valueOf(c.get("id")))).findFirst().orElseThrow();
-        assertThat(asOffice.get("account_number")).isEqualTo("••••••5678");
+        assertThat(asOffice.get("account_number")).isEqualTo("••••••5671");
         assertThat(status(it.call(office, HttpMethod.POST, "/api/v1/jupeb/fees/refund-claims/" + claimId + "/refunds", Map.of("reference", paid, "amount", 1000, "reason", "Not the office's")))).isEqualTo(403);
 
         // the Bursary raises a refund through its own workflow: never beyond what was paid on the payment; maker and checker differ
@@ -1214,9 +1218,13 @@ class JupebIT {
         assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/approve", Map.of()))).isEqualTo(422);
         String checker = TestTokens.token(it.person("ZZJUPEB-BURSAR2-" + tag, "ZZJUPEBBURSARTWO" + tag), List.of("bursar"));
         ok(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/approve", Map.of()));
-        ok(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/pay", Map.of()));
+        // V534: paid with the bank transfer reference and the date the money left, which the candidate is shown
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString();
+        assertThat(status(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/pay", Map.of()))).isEqualTo(400);
+        ok(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refundId + "/pay", Map.of("reference", "FT-JUPEB-" + tag, "paidOn", today)));
         claim = (Map<String, Object>) ok(it.get(token, "/api/v1/jupeb/me")).get("refundClaim");
         assertThat(((Map<String, Object>) claim.get("state")).get("status")).isEqualTo("REFUND_PAID");
+        assertThat((List<Map<String, Object>>) claim.get("refunds")).extracting(r -> r.get("paidReference") + ":" + r.get("paidOn")).containsExactly("FT-JUPEB-" + tag + ":" + today);
         assertThat(new BigDecimal(String.valueOf(((Map<String, Object>) claim.get("state")).get("paid")))).isEqualByComparingTo("50000");
         assertThat(jdbc.sql("SELECT count(*) FROM jupeb.application_event WHERE application_id = :a AND kind IN ('REFUND_CLAIM_OPENED', 'REFUND_PROPOSED', 'REFUND_PAID')")
                 .param("a", app).query(Integer.class).single()).isEqualTo(3);

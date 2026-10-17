@@ -780,7 +780,16 @@ class JupebPortalController {
                                   @NotBlank @Pattern(regexp = "^[0-9]{10}$", message = "the ten-digit account number (NUBAN)") String accountNumber) {
     }
 
-    /** given once the claim is open, and changed until the Bursary raises a refund to it (after a rejected one, again) */
+    /** V534: the banks a refund is paid into, and whether a number at each is checked against the bank */
+    @GetMapping("/banks")
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> banks() {
+        return jdbc.sql("SELECT code, name, nuban_check FROM finance.bank WHERE active ORDER BY (kind IN ('COMMERCIAL', 'NON_INTEREST')) DESC, name")
+                .query().listOfRows();
+    }
+
+    /** given once the claim is open, and changed until the Bursary raises a refund to it (after a rejected one, again); V534: the
+     *  number checked against the bank by the database, the bank kept as it is listed */
     @PutMapping("/refund-details")
     @Transactional
     Map<String, Object> refundDetails(Authentication auth, @Valid @RequestBody RefundDetailsIn b) {

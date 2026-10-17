@@ -16,7 +16,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const w = loaded.student ? await api<StudentWallet>(`/api/v1/me/wallet${session ? `?session=${encodeURIComponent(session)}` : ""}`) : null;
   return (
     <Shell route="s/wallet" me={loaded.me}>
-      {loaded.student && w && w.ok ? <Wallet w={w.data} /> : <ProblemNotice problem={w && !w.ok ? w.problem : loaded.student ? { status: 500, title: "Unreadable" } : loaded.problem} />}
+      {loaded.student && w && w.ok ? <Wallet w={w.data} holder={loaded.student.name} /> : <ProblemNotice problem={w && !w.ok ? w.problem : loaded.student ? { status: 500, title: "Unreadable" } : loaded.problem} />}
     </Shell>
   );
 }

@@ -149,9 +149,15 @@ class NelfundWalletIT {
                 Map.of("session", SESSION, "amount", 120000, "bank", "Check Bank", "accountNo", "0123456789", "accountName", "ZZNELFUND", "source", "NELFUND"));
         assertThat(over.getStatusCode().value()).as(String.valueOf(over.getBody())).isEqualTo(422);
         assertThat(over.getBody().get("code")).isEqualTo("WALLET_REFUND_ABOVE_REFUNDABLE");
+        // V534: the account is checked against its bank — one digit off is refused, the bank kept as it is listed
+        ResponseEntity<Map> slip = as(me, "student", HttpMethod.POST, "/api/v1/me/wallet/withdrawal",
+                Map.of("session", SESSION, "bank", "Zenith", "accountNo", "0123456789", "accountName", "ZZNELFUND"));
+        assertThat(slip.getStatusCode().value()).as(String.valueOf(slip.getBody())).isEqualTo(422);
+        assertThat(slip.getBody().get("code")).isEqualTo("REFUND_ACCOUNT_CHECK_DIGIT");
         ResponseEntity<Map> req = as(me, "student", HttpMethod.POST, "/api/v1/me/wallet/withdrawal",
-                Map.of("session", SESSION, "bank", "Check Bank", "accountNo", "0123456789", "accountName", "ZZNELFUND"));
+                Map.of("session", SESSION, "bank", "Zenith", "accountNo", "0123 456 788", "accountName", "ZZNELFUND"));
         assertThat(req.getStatusCode().value()).as(String.valueOf(req.getBody())).isEqualTo(200);
+        assertThat(req.getBody().get("bank_name") + ":" + req.getBody().get("account_no")).isEqualTo("Zenith Bank:0123456788");
         assertThat(req.getBody().get("source_code")).isEqualTo("NELFUND");
         assertThat(new BigDecimal(String.valueOf(req.getBody().get("amount")))).isEqualByComparingTo("100000");
         // a second request while one is pending is refused

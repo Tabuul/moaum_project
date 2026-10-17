@@ -23,6 +23,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Shell, type Me as ShellMe } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard } from "@/app/applicant/common";
+import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFields";
+import { type BankAccountValue, accountDigits, accountProblem, bankToSend, valueFromAccount } from "@/lib/banks";
 import { DocViewer, viewerClick, type ViewDoc } from "../DocViewer";
 import { JupebCbt } from "./JupebCbt";
 import QRCode from "qrcode";
@@ -977,17 +979,20 @@ const CLAIM_WORDS: Record<string, [string, "ok" | "info" | "bad" | "grey" | "war
 };
 const REFUND_STATE: Record<string, string> = { PROPOSED: "Awaiting approval", APPROVED: "Approved, to be paid", PAID: "Paid", REJECTED: "Not approved" };
 
-function RefundClaimPanel({ claim, act }: { claim: RefundClaim; act: Act }) {
+function RefundClaimPanel({ claim, act, holder }: { claim: RefundClaim; act: Act; holder: string }) {
   const locked = !!claim.declined_at || claim.refunds.some((r) => r.state !== "REJECTED");
-  const [f, setF] = useState({ bankName: claim.bank_name ?? "", accountName: claim.account_name ?? "", accountNumber: "" });
+  // V534: the bank from the list and the number checked against it as it is typed (the database checks it too)
+  const banks = useBanks("/jupeb/me/banks");
+  const [typed, setTyped] = useState<BankAccountValue | null>(null);
+  const f = typed ?? valueFromAccount(claim.bank_name, claim.account_name, banks);
   const [busy, setBusy] = useState(false);
   const w = CLAIM_WORDS[claim.state.status] ?? [claim.state.status, "grey", ""];
   async function save() {
     setBusy(true);
     try {
-      if (await act("/api/v1/jupeb/me/refund-details", "PUT", { bankName: f.bankName.trim(), accountName: f.accountName.trim(), accountNumber: f.accountNumber.trim() })) {
+      if (await act("/api/v1/jupeb/me/refund-details", "PUT", { bankName: bankToSend(f), accountName: f.accountName.trim(), accountNumber: accountDigits(f.accountNumber) })) {
         notify("Your account is with the Bursary for the refund decision.");
-        setF({ ...f, accountNumber: "" });
+        setTyped(null);
       }
     } finally { setBusy(false); }
   }
@@ -999,20 +1004,16 @@ function RefundClaimPanel({ claim, act }: { claim: RefundClaim; act: Act }) {
         <DTable noPrint pageSize={0} cols={["Fee paid", "Reference", "Amount|num", "Paid on"]} rows={claim.payments.map((p) => [FEE_KIND[p.kind] ?? p.kind, p.reference, naira(p.amount), day(p.paidOn)])} />
         {claim.refunds.length ? (
           <DTable noPrint pageSize={0} cols={["Refund", "Against", "Amount|num", "Status"]} rows={claim.refunds.map((r) => [r.reference, r.source, naira(r.amount),
-            <Pil key="s" kind={r.state === "PAID" ? "ok" : r.state === "REJECTED" ? "grey" : "info"}>{REFUND_STATE[r.state] ?? r.state}</Pil>])} />
+            <span key="s"><Pil kind={r.state === "PAID" ? "ok" : r.state === "REJECTED" ? "grey" : "info"}>{REFUND_STATE[r.state] ?? r.state}</Pil>
+              {r.state === "PAID" && r.paidOn ? <div className="sub2">{`On ${day(r.paidOn)}${r.paidReference ? ` · transfer reference ${r.paidReference}` : ""}`}</div> : null}</span>])} />
         ) : null}
         {locked ? (
           claim.account_number ? <p className="sub2 mt-1">{`Paid into: ${claim.bank_name} · ${claim.account_name} · ${claim.account_number}`}</p> : null
         ) : (
           <>
             <div className="eyebrow mt-2">The account a refund is paid into{claim.account_number ? ` (now ${claim.bank_name} · ${claim.account_number})` : ""}</div>
-            <div className="grid grid--3">
-              <Field id="rf-bank" label="Bank" required><input id="rf-bank" className="ctl" maxLength={120} value={f.bankName} onChange={(e) => setF({ ...f, bankName: e.target.value })} /></Field>
-              <Field id="rf-name" label="Account name" required hint="As the bank holds it"><input id="rf-name" className="ctl" maxLength={200} value={f.accountName} onChange={(e) => setF({ ...f, accountName: e.target.value })} /></Field>
-              <Field id="rf-num" label="Account number" required hint="Ten digits (NUBAN)" error={f.accountNumber && !/^\d{10}$/.test(f.accountNumber) ? "Ten digits" : undefined}>
-                <input id="rf-num" className="ctl" inputMode="numeric" maxLength={10} autoComplete="off" value={f.accountNumber} onChange={(e) => setF({ ...f, accountNumber: e.target.value.replace(/\D/g, "") })} /></Field>
-            </div>
-            <div className="row"><Btn kind="primary" disabled={busy || f.bankName.trim().length < 2 || f.accountName.trim().length < 2 || !/^\d{10}$/.test(f.accountNumber)} onClick={() => void save()}>
+            <div className="mt-1"><BankAccountFields id="rf-acct" value={f} onChange={setTyped} banks={banks} holderName={holder} /></div>
+            <div className="row mt-1"><Btn kind="primary" disabled={busy || accountProblem(f, banks) !== null || f.accountName.trim().length < 2} onClick={() => void save()}>
               {busy ? "Saving…" : claim.account_number ? "Change the account" : "Give the account"}</Btn></div>
           </>
         )}
@@ -1024,7 +1025,7 @@ function RefundClaimPanel({ claim, act }: { claim: RefundClaim; act: Act }) {
 function Payments({ me, reload, act }: { me: Candidate; reload: () => Promise<void>; act: Act }) {
   const f = me.fees;
   /* V350: a withdrawn candidate's refund claim comes first */
-  const claim = me.refundClaim ? <RefundClaimPanel claim={me.refundClaim} act={act} /> : null;
+  const claim = me.refundClaim ? <RefundClaimPanel claim={me.refundClaim} act={act} holder={`${me.surname} ${me.first_name}${me.middle_name ? ` ${me.middle_name}` : ""}`} /> : null;
   const admitted = !!f && ADMITTED.has(me.state);
   const screeningFirst = me.screeningSetting.screening_required && me.state === "ADMITTED" && me.screening_state !== "CLEARED";
   const rule = me.feeRule;

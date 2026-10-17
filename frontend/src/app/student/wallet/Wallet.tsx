@@ -12,16 +12,21 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint } from "@/lib/exportbrand";
 import { naira, onDay, PayByCard, useAct } from "../common";
+import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFields";
+import { type BankAccountValue, EMPTY_ACCOUNT, accountDigits, accountProblem, bankToSend } from "@/lib/banks";
 
 const KIND: Record<string, [string, "ok" | "info" | "bad" | "grey"]> = { CREDIT: ["Credit", "ok"], TOPUP: ["Top-up", "ok"], APPLIED: ["Applied to fees", "info"], REVERSED: ["Reversed to source", "bad"], REFUND: ["Refunded to you", "grey"] };
 const NATURE: Record<string, [string, "ok" | "info" | "grey"]> = { LOAN: ["Loan", "info"], GRANT: ["Grant", "ok"], SELF: ["Own money", "grey"], UNKNOWN: ["Unattributed", "grey"] };
 const ORIGIN: Record<string, string> = { OLD_PORTAL: "Old portal", REMITTANCE: "The Fund's remittance", GATEWAY: "Paid by you", BURSARY: "Credited by the Bursary", WALLET: "" };
 
-export function Wallet({ w }: { w: StudentWallet }) {
+export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null }) {
   const { act, busy, problem } = useAct();
   const [topupRef, setTopupRef] = useState<{ reference: string; amount: number } | null>(null);
   const [said, setSaid] = useState<string | null>(null);
-  const [wd, setWd] = useState({ amount: "", bank: "", accountNo: "", accountName: "", source: "" });
+  const [wd, setWd] = useState({ amount: "", source: "" });
+  // V534: the student's own account, the bank from the list and the number checked against it as it is typed
+  const banks = useBanks("/me/banks");
+  const [acct, setAcct] = useState<BankAccountValue>(EMPTY_ACCOUNT);
   const owed = Number(w.position.balance);
   const bal = Number(w.balance);
   const t = w.topup;
@@ -117,15 +122,13 @@ export function Wallet({ w }: { w: StudentWallet }) {
                 <div className="sub2 mb-2">Your {w.session} fees are cleared and {naira(refundCap)} of {refundSource === "NELFUND" ? "the Fund's money" : "your own money"} may be refunded. Enter <b>your own</b> bank account.</div>
                 {nelRefundable > 0 && selfRefundable > 0 ? <Field id="wd-src" label="Refund"><select id="wd-src" className="ctl" value={refundSource} onChange={(e) => setWd({ ...wd, source: e.target.value, amount: "" })}><option value="NELFUND">NELFUND · up to {naira(nelRefundable)}</option><option value="SELF">My own money · up to {naira(selfRefundable)}</option></select></Field> : null}
                 <Field id="wd-amt" label="Amount" hint={`Up to ${naira(refundCap)}`}><input id="wd-amt" className="ctl tnum" value={wd.amount} placeholder={String(refundCap)} onChange={(e) => setWd({ ...wd, amount: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
-                <Field id="wd-bank" label="Bank"><input id="wd-bank" className="ctl" value={wd.bank} onChange={(e) => setWd({ ...wd, bank: e.target.value })} autoComplete="off" /></Field>
-                <div className="grid grid--2">
-                  <Field id="wd-no" label="Account number"><input id="wd-no" className="ctl tnum" value={wd.accountNo} onChange={(e) => setWd({ ...wd, accountNo: e.target.value.replace(/[^0-9]/g, "") })} autoComplete="off" /></Field>
-                  <Field id="wd-name" label="Account name"><input id="wd-name" className="ctl" value={wd.accountName} onChange={(e) => setWd({ ...wd, accountName: e.target.value })} autoComplete="off" /></Field>
-                </div>
-                <Btn kind="primary" disabled={busy !== null || !wd.bank || !wd.accountNo || !wd.accountName} onClick={async () => {
+                <Field id="wd-acct-bank" label="Your bank account">
+                  <BankAccountFields id="wd-acct" value={acct} onChange={setAcct} banks={banks} holderName={holder} />
+                </Field>
+                <Btn kind="primary" disabled={busy !== null || accountProblem(acct, banks) !== null} onClick={async () => {
                   const amt = Number(wd.amount) || refundCap;
-                  const r = await act("withdraw", "POST", "/me/wallet/withdrawal", { session: w.session, amount: amt, bank: wd.bank, accountNo: wd.accountNo, accountName: wd.accountName, source: refundSource }, `Refund of ${amt} of ${refundSource} requested`, "");
-                  if (r) { setSaid(`Refund of ${naira(amt)} requested — the Bursary will review it.`); setWd({ amount: "", bank: "", accountNo: "", accountName: "", source: "" }); }
+                  const r = await act("withdraw", "POST", "/me/wallet/withdrawal", { session: w.session, amount: amt, bank: bankToSend(acct), accountNo: accountDigits(acct.accountNumber), accountName: acct.accountName.trim(), source: refundSource }, `Refund of ${amt} of ${refundSource} requested`, "");
+                  if (r) { setSaid(`Refund of ${naira(amt)} requested — the Bursary will review it.`); setWd({ amount: "", source: "" }); setAcct(EMPTY_ACCOUNT); }
                 }}>APPLY FOR REFUND</Btn>
               </>
             ) : (

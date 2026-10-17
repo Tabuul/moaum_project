@@ -22,8 +22,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * V533: a refund is paid only into a full account on record, its number checked against the bank. The desk raises a refund with
  * the full account (one digit off refused), or without one — then it is approved but not paid; the account the desk records on
  * the approved refund sends it back for approval, which the officer who recorded it may not give; another officer approves and it
- * is paid. A name on the account that shares no word with the payer's is flagged. The Bursary keeps the list of banks (Internal
- * Audit reads it). Needs DATABASE_URL.
+ * is paid — V534: with the bank transfer reference and the date the money left, never a date to come. A name on the account that
+ * shares no word with the payer's is flagged. The Bursary keeps the list of banks (Internal Audit reads it). Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -79,7 +79,9 @@ class RefundAccountsIT {
         UUID id = UUID.fromString(String.valueOf(row(audit, ref, "PROPOSED").get("id")));
         String base = "/api/v1/finance/refunds/" + id;
         assertThat(it.call(checker, HttpMethod.POST, base + "/approve", Map.of()).getStatusCode().value()).isEqualTo(200);
-        ResponseEntity<Map> unpaid = it.call(checker, HttpMethod.POST, base + "/pay", Map.of());
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString();
+        Map<String, Object> evidence = Map.of("reference", "FT-IT-" + tag, "paidOn", today);
+        ResponseEntity<Map> unpaid = it.call(checker, HttpMethod.POST, base + "/pay", evidence);
         assertThat(unpaid.getStatusCode().value()).isEqualTo(422);
         assertThat(unpaid.getBody()).containsEntry("code", "REFUND_NO_ACCOUNT");
 
@@ -94,11 +96,17 @@ class RefundAccountsIT {
         assertThat(same.getStatusCode().value()).isEqualTo(422);
         assertThat(same.getBody()).containsEntry("code", "REFUND_ACCOUNT_SAME_OFFICER");
         assertThat(it.call(third, HttpMethod.POST, base + "/approve", Map.of()).getStatusCode().value()).isEqualTo(200);
-        ResponseEntity<Map> paid = it.call(third, HttpMethod.POST, base + "/pay", Map.of());
+        // V534: paid only with the transfer reference and the date the money left, not a date to come
+        assertThat(it.call(third, HttpMethod.POST, base + "/pay", Map.of("paidOn", today)).getStatusCode().value()).isEqualTo(400);
+        ResponseEntity<Map> later = it.call(third, HttpMethod.POST, base + "/pay",
+                Map.of("reference", "FT-IT-" + tag, "paidOn", java.time.LocalDate.parse(today).plusDays(3).toString()));
+        assertThat(later.getBody()).containsEntry("code", "REFUND_PAID_DATE");
+        ResponseEntity<Map> paid = it.call(third, HttpMethod.POST, base + "/pay", evidence);
         assertThat(paid.getStatusCode().value()).as(String.valueOf(paid.getBody())).isEqualTo(200);
         Map<String, Object> done = row(audit, ref, "PAID");
         assertThat(done.get("state") + ":" + done.get("bank_name") + ":" + done.get("account_number") + ":" + done.get("account_name_matches"))
                 .isEqualTo("PAID:First Bank of Nigeria:0000014579:true");
+        assertThat(done.get("paid_reference") + ":" + done.get("paid_on") + ":" + done.get("paid_reference_others")).isEqualTo("FT-IT-" + tag + ":" + today + ":0");
 
         // the banks: read by Internal Audit, kept by the Bursary
         ResponseEntity<List> banks = it.getList(audit, "/api/v1/finance/refunds/banks");
