@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CourseSearch, FoundCourse } from "@/lib/student-portal";
 import { CATEGORIES, CATEGORY_LABEL, addedAsLabel, courseStatus, refusalText, searchQuery, unitsAfter } from "@/lib/course-order";
-import { Btn, Note, Pil } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Pil } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { useAct } from "./common";
@@ -142,7 +142,14 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
         </div>
       </form>
       {closed ? <div className="mt-2"><Note kind="info" title="Adding other courses is closed for now">The Academic Office has closed adding courses beside the recommended list. Your carry-overs and the courses listed for your level are registered as before; ask your department about any other course.</Note></div> : null}
-      {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
+      {problem && problem.code === "GST_PAYMENT_REQUIRED" ? (
+        <div className="mt-2"><Note kind="bad" title="GST/EPS PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(session)}`}>PAY GST/EPS FEE</LinkBtn>}>
+          {problem.detail} Once the payment is confirmed, come back here and register the course — no ICT Support needed.</Note></div>
+      ) : problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
+      {rows.some((c) => c.gstHeld && !c.refusal) && !(problem && problem.code === "GST_PAYMENT_REQUIRED") ? (
+        <div className="mt-2"><Note kind="bad" title="GST/EPS PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(session)}`}>PAY GST/EPS FEE</LinkBtn>}>
+          A GST or EPS course — a carry-over too — is registered only once your GST/EPS fee is paid and confirmed. One payment covers GST and EPS.</Note></div>
+      ) : null}
       {failed ? <div className="mt-2"><Note kind="bad" title={failed} /></div> : null}
       <div className="sub2 mt-2" aria-live="polite">
         {loading ? "Searching..." : found ? listWords(found, from, to, cat) : null}

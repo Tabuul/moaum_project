@@ -887,6 +887,21 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT required_for_gst_eps, required_for_all, covers_eps FROM finance.gst_setting WHERE id = 1").query().singleRow();
     }
 
+    /** V512: a course the student asks to add — its code, whether it is a GST/EPS course, and whether it is one of their carry-overs */
+    Map<String, Object> gstCourseOf(UUID student, UUID offering) {
+        return jdbc.sql("""
+                SELECT c.code, c.kind = 'GST' AS gst,
+                       CASE WHEN c.kind = 'GST' THEN EXISTS (SELECT 1 FROM registration.carryovers(:s) cv WHERE cv.course_code = c.code) ELSE false END AS carry
+                  FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code WHERE o.id = :o
+                """).param("s", student).param("o", offering).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    /** V512: one entry of the GST/EPS registration log (registration.gst_course_event) */
+    void gstCourseEvent(UUID student, String session, int semester, String course, boolean carry, String what) {
+        jdbc.sql("SELECT registration.gst_course_event(:s, :ses, :sem, :c, :carry, :w)").param("s", student).param("ses", session).param("sem", semester)
+                .param("c", course).param("carry", carry).param("w", what).query().listOfRows();
+    }
+
     String gstGate(UUID student, String session, String course) {
         return jdbc.sql("SELECT registration.gst_gate(:s, :ses, :c)").param("s", student).param("ses", session).param("c", course).query(String.class).optional().orElse(null);
     }

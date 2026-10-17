@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 353
+\set EXPECTED 354
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16504,6 +16504,84 @@ BEGIN
                  AND nf->>'outcome' = 'NOT_FOUND' AND over->>'outcome' = 'OVER_QUOTA' AND noscope->>'outcome' = 'NO_SCOPE' AND revoked->>'outcome' = 'BAD_KEY'
                  AND (SELECT count(*) FROM regexp_split_to_table(logged, ',')) = 6, false),
         format('unknown %s | bad %s | ok %s | nf %s | over %s | noscope %s | revoked %s | log %s', unknown, bad, ok, nf, over, noscope, revoked, logged));
+END $$;
+-- ── V512: a GST or EPS carry-over waits for the GST fee ──
+-- A 400-level student who failed GST 976 owes it as a carry-over and owes the GST fee: the draft is made without it, adding it is
+-- refused (GST_PAYMENT_REQUIRED, named a carry-over), one put on before comes off on saving while the student's core course goes on;
+-- once the GST payment is confirmed the carry-over goes on at the next save, under carry-over, with the GST/EPS registration log
+-- saying so (carry-over registered, payment verified). The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); S0 text := '2398/2399'; S text := '2399/2400'; st uuid := gen_random_uuid(); prog text := 'C00023'; dept text;
+        p0 uuid := gen_random_uuid(); ogst uuid := gen_random_uuid(); ocore uuid := gen_random_uuid(); sh uuid := gen_random_uuid();
+        r0 uuid := gen_random_uuid(); reg uuid; ref text; msg text;
+        carry boolean; hold_gst text; hold_core text; n_draft int; add_refused text; add_words text; after_cleanup text; hold_paid text;
+        after_paid text; cat text; events text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V512', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S0, DATE '2398-10-01', DATE '2399-08-31'),
+                                                                                 (gen_random_uuid(), S, DATE '2399-10-01', DATE '2400-08-31');
+        UPDATE finance.gst_setting SET required_for_gst_eps = true, required_for_all = false, covers_eps = true WHERE id = 1;
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = prog;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+            ('GST 976', 'Check Carry-over GST', 2, 1, 300, dept, 'GST', 'LIVE', 'GST'), ('ZQT 401', 'Check Final-year Core', 3, 1, 400, dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 976', prog, 300, 'GST'), ('ZQT 401', prog, 400, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (p0, 'GST 976', S0, 1), (ogst, 'GST 976', S, 1), (ocore, 'ZQT 401', S, 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/98/980121', 'MOAUM/CHK/98/9812', 'CHECKV512', 'CarryGst', prog, 'UTME', S0, 100, 400, 'ACTIVE', now());
+        UPDATE people.student SET curriculum_version = NULL WHERE id = st;
+        -- last session: GST 976 failed, published
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r0, st, S0, 1, 300, 'APPROVED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r0, p0, 2, 'APPROVED');
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (sh, p0, 'PUBLISHED', 'SEN/2399/01', now(), now());
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (sh, st, 10, 15, 'GRADED');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(S, 5000, NULL, NULL, NULL, NULL, current_date, 'V512 check', who, 'bursar');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+
+        carry := EXISTS (SELECT 1 FROM registration.carryovers(st) WHERE course_code = 'GST 976');
+        hold_gst := split_part(coalesce(registration.gst_course_hold(st, S, 'GST 976'), 'OPEN'), ':', 1);
+        hold_core := coalesce(registration.gst_course_hold(st, S, 'ZQT 401'), 'OPEN');
+        -- the draft is made without the unpaid GST carry-over
+        reg := registration.student_draft(st, S, 1);
+        n_draft := (SELECT count(*) FROM registration.entry WHERE registration_id = reg);
+        -- adding it is refused, named a carry-over
+        BEGIN
+            PERFORM registration.student_add_other(st, S, 1, ogst);
+            add_refused := 'ADDED';
+        EXCEPTION WHEN check_violation THEN add_refused := split_part(SQLERRM, ':', 1); add_words := SQLERRM;
+        END;
+        -- one put on before (an earlier draft) comes off on saving; the core course goes on
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (reg, ogst, 2, 'CARRYOVER');
+        PERFORM registration.student_choose(reg, ARRAY[ocore]);
+        after_cleanup := (SELECT string_agg(o.course_code || ':' || e.entry_type, ',' ORDER BY o.course_code) FROM registration.entry e
+                            JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = reg);
+        -- the GST fee paid and confirmed: the carry-over goes on at the next save, under carry-over
+        ref := finance.new_gst_reference(st, S);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.confirm_payment(ref, 'Bank transfer', 'V512 check');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        hold_paid := coalesce(registration.gst_course_hold(st, S, 'GST 976'), 'OPEN');
+        PERFORM registration.student_choose(reg, ARRAY[ocore]);
+        after_paid := (SELECT string_agg(o.course_code || ':' || e.entry_type, ',' ORDER BY o.course_code) FROM registration.entry e
+                         JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = reg);
+        cat := (SELECT registration.entry_category(e.entry_type, c.kind, NULL) FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id
+                  JOIN catalogue.course c ON c.code = o.course_code WHERE e.registration_id = reg AND c.code = 'GST 976');
+        events := (SELECT string_agg(e.event, ',' ORDER BY e.event) FROM registration.gst_course_event e WHERE e.student_id = st);
+        RAISE EXCEPTION 'the V512 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V512 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V512: a GST/EPS carry-over waits for the GST fee — never put on the draft or added unpaid (one put on before comes off), the other courses go on; once the payment is confirmed it goes on under carry-over, logged',
+        coalesce(carry AND hold_gst = 'GST_PAYMENT_REQUIRED' AND hold_core = 'OPEN' AND n_draft = 0
+                 AND add_refused = 'GST_PAYMENT_REQUIRED' AND add_words LIKE '%carry-over%' AND after_cleanup = 'ZQT 401:CURRENT'
+                 AND hold_paid = 'OPEN' AND after_paid = 'GST 976:CARRYOVER,ZQT 401:CURRENT' AND cat = 'CARRY_OVER'
+                 AND events = 'GST_CARRY_OVER_REGISTERED,GST_PAYMENT_VERIFIED', false),
+        format('carry %s | hold %s/%s | draft %s | add %s | after cleanup %s | paid %s → %s (%s) | events %s',
+               carry, hold_gst, hold_core, n_draft, add_refused, after_cleanup, hold_paid, after_paid, cat, events));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -75,7 +75,7 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {back && back.confirmed_at ? <Note kind="ok" title="GST fee payment confirmed">Reference {back.reference} confirmed. It covers GST and EPS; register your GST/EPS courses on Course registration.</Note> : null}
+      {back && back.confirmed_at ? <Note kind="ok" title="PAYMENT VERIFIED" action={<LinkBtn kind="primary" href="/student/register">RETURN TO COURSE REGISTRATION</LinkBtn>}>Reference {back.reference} confirmed. It covers GST and EPS: you can now register your GST/EPS courses, carry-overs included, on Course registration.</Note> : null}
       {back && !back.confirmed_at ? (
         <Note kind="info" title="Confirming your GST payment" action={<Btn kind="ghost" onClick={() => window.location.reload()}>Check again</Btn>}>
           Reference {back.reference}. If you were not debited, pay again below.

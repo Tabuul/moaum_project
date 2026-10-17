@@ -17,7 +17,7 @@ import { notify } from "@/components/proto/Toast";
 import { reasonWords } from "@/lib/registration-approval";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
-import { CATEGORY_LABEL, addedAsLabel, courseCategory, inUniversityOrder, type Categorised } from "@/lib/course-order";
+import { CATEGORY_LABEL, addedAsLabel, categoryWords, courseCategory, gstOffice, inUniversityOrder, type Categorised } from "@/lib/course-order";
 import { AddOtherCourse } from "./AddOtherCourse";
 import { OverloadRequest } from "./OverloadRequest";
 
@@ -76,12 +76,16 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   const away = (v.outstanding ?? []).filter((o) => !v.menu.some((m) => m.carryover && m.course_code === o.course_code));
   const chosenMenu = v.menu.filter((m) => !m.carryover && chosen.has(m.offering_id));
   const chosenExtras = extras.filter((e) => chosen.has(e.offeringId));
-  const chosenTotal = carry.reduce((n, m) => n + m.units, 0) + deferredCourses.reduce((n, m) => n + m.units, 0) + chosenMenu.reduce((n, m) => n + m.units, 0)
-    + chosenExtras.reduce((n, e) => n + e.units, 0);
+  // V512: a GST/EPS carry-over the GST fee holds is not on the registration until the fee is paid: listed, not counted
+  const onReg = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
+  const heldCarry = (m: RegistrationView["menu"][number]) => !!m.gstLocked && !onReg.has(m.offering_id);
+  const chosenTotal = carry.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0) + deferredCourses.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0)
+    + chosenMenu.reduce((n, m) => n + m.units, 0) + chosenExtras.reduce((n, e) => n + e.units, 0);
   // V504: the selection as it will be registered, in the University's order, numbered on
   const selected = byOrder<{ key: string; code: string; title: string; units: number; category: string; note: string | null }>([
-    ...v.menu.filter((m) => m.carryover || chosen.has(m.offering_id)).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: m.units,
-      category: courseCategory({ basis: m.carryover ? (m.deferred ? "Deferred" : "Carryover") : m.basis, kind: m.kind }), note: m.deferred ? "Deferred" : m.carryover ? "Carry-over" : null })),
+    ...v.menu.filter((m) => (m.carryover && !heldCarry(m)) || chosen.has(m.offering_id)).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: m.units,
+      category: courseCategory({ basis: m.carryover ? (m.deferred ? "Deferred" : "Carryover") : m.basis, kind: m.kind }),
+      note: m.deferred ? "Deferred" : m.carryover ? (m.kind === "GST" ? `Carry-over · ${gstOffice(m.course_code)}` : "Carry-over") : null })),
     ...chosenExtras.map((e) => ({ key: e.offeringId, code: e.courseCode, title: e.title, units: e.units, category: courseCategory(e), note: addedAsLabel(e.addedAs) ?? "Added by you" })),
   ]);
   // a registration submitted or approved is read from itself, not from today's menu: a course whose binding changed after
@@ -191,6 +195,30 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
   );
+
+  // V512: a carry-over or deferred course: held on the GST fee (a GST/EPS course), to register (not yet on the registration), or on it
+  const carryRow = (m: RegistrationView["menu"][number], red: boolean) => heldCarry(m) ? (
+    // V512: a GST/EPS carry-over waits for the GST fee — being a carry-over does not pass it
+    <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>
+      <div className="pick__box" />
+      <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
+        <div className="pick__s" style={{ color: "var(--red-deep)" }}>{m.deferred ? `Deferred from ${m.deferred_from ?? ""}` : `Failed ${m.failed_in}`} — a {gstOffice(m.course_code)} course: GST/EPS PAYMENT REQUIRED before it can be registered</div></div>
+      <Pil kind="info">{gstOffice(m.course_code)}</Pil>
+      <LinkBtn kind="urgent" size="sm" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST/EPS FEE</LinkBtn>
+      <div className="tnum b700" style={{ color: "var(--muted)" }}>{m.units}</div>
+    </div>
+  ) : reg && !onReg.has(m.offering_id) ? (
+    <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)" }}>
+      <div className="pick__box" />
+      <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
+        <div className="pick__s" style={{ color: "var(--red-deep)" }}>{m.deferred ? `Deferred from ${m.deferred_from ?? ""}` : `Failed ${m.failed_in}`} — not yet on this registration{m.kind === "GST" ? "; the GST/EPS fee no longer holds it" : ""}</div></div>
+      {m.kind === "GST" ? <Pil kind="info">{gstOffice(m.course_code)}</Pil> : null}
+      <Btn kind="primary" size="sm" disabled={busy !== null} busy={busy === `carry-${m.offering_id}`} busyLabel="Registering..."
+        onClick={() => void act(`carry-${m.offering_id}`, "POST", "/me/registration/courses", { session: v.session, semester: v.semester, offering: m.offering_id },
+          `Carry-over ${m.course_code} registered by the student`, `${m.course_code} registered`)}>REGISTER</Btn>
+      <div className="tnum b700" style={{ color: "var(--muted)" }}>{m.units}</div>
+    </div>
+  ) : pick(m, true, true, red);
 
   return (
     <>
@@ -323,7 +351,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
                 <span className="tnum sub2" style={{ minWidth: 24 }}>{i + 1}</span>
                 <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
                 <span className="grow">{e.title}{e.lecturer ? <span className="sub2"> · {e.lecturer}</span> : null}{e.studentAdded ? <span className="sub2"> · {addedAsLabel(e.addedAs) ?? "added by you"}</span> : null}</span>
-                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{e.entryType === "DEFERRED" ? "Deferred" : CATEGORY_LABEL[courseCategory(e)]}</Pil>
+                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{e.entryType === "DEFERRED" ? "Deferred" : categoryWords(e)}</Pil>
                 <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
               </div>
             )) : <div className="sub2">No course is on this registration.</div>}
@@ -333,9 +361,9 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
       {!locked && (carry.length || deferredCourses.length || away.length) ? (
         <Panel title={<span className="ink-red">CARRY-OVER / OUTSTANDING COURSES</span>} right={carry.length || deferredCourses.length ? "added automatically, cannot be removed" : "not offered this semester"}>
           <PBody>
-            {carry.map((m) => pick(m, true, true, true))}
+            {carry.map((m) => carryRow(m, true))}
             {deferredCourses.length ? <div className="sub2 mb-1 mt-1">Courses of your deferred period, now due. They count in your GPA only when taken.</div> : null}
-            {deferredCourses.map((m) => pick(m, true, true))}
+            {deferredCourses.map((m) => carryRow(m, false))}
             {away.map((o) => (
               <div key={o.course_code} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", opacity: 0.85 }}>
                 <div className="pick__box" />
@@ -417,7 +445,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
                     <td className="tnum b600">{x.code}</td>
                     <td>{x.title}{x.note && x.category !== "CARRY_OVER" ? <div className="sub2">{x.note}</div> : null}</td>
                     <td className="mid tnum">{x.units}</td>
-                    <td>{x.note === "Deferred" ? "Deferred" : CATEGORY_LABEL[courseCategory({ category: x.category })]}</td>
+                    <td>{x.note === "Deferred" ? "Deferred" : x.note?.startsWith("Carry-over") ? x.note : CATEGORY_LABEL[courseCategory({ category: x.category })]}</td>
                   </tr>
                 ))}
                 <tr style={{ background: "var(--bg)" }}><td colSpan={3} className="b700">TOTAL CREDIT UNITS</td><td className="mid tnum b700">{total}</td>
@@ -500,7 +528,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>
-                <td className="num t-xs b600 ink-muted">{e.basis === "Research" || e.basis === "Deficiency" ? courseType(e) : e.entryType === "DEFERRED" ? "Deferred" : CATEGORY_LABEL[courseCategory(e)]}</td>
+                <td className="num t-xs b600 ink-muted">{e.basis === "Research" || e.basis === "Deficiency" ? courseType(e) : e.entryType === "DEFERRED" ? "Deferred" : categoryWords(e)}</td>
               </tr>); })}
             <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={4}>TOTAL CREDIT UNITS</td><td className="mid tnum b700" style={{ fontSize: "var(--t-base)" }}>{reg.units}</td><td /></tr>
           </tbody>

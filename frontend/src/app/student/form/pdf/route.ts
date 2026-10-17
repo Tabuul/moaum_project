@@ -3,7 +3,7 @@ import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
-import { CATEGORY_LABEL, courseCategory, inUniversityOrder } from "@/lib/course-order";
+import { categoryWords, inUniversityOrder } from "@/lib/course-order";
 import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, regVerifyPath, studentCheckCode } from "@/lib/qr";
@@ -28,7 +28,7 @@ function originOf(req: Request): string {
 function courseType(e: Entry): string {
   if (e.basis === "Research" || e.basis === "Deficiency") return e.basis;
   if (e.entryType === "DEFERRED") return "Deferred";
-  return CATEGORY_LABEL[courseCategory(e)];
+  return categoryWords(e);   // V512: a GST/EPS carry-over "Carry-over · GST"
 }
 
 /** the course registration form as a PDF: what the Head of Department approved, with the student's passport */

@@ -12,9 +12,11 @@ course, programme, result or student table. A course the student adds is an ordi
 
 ## What a student may add
 
-The **Add Other Course** search on Course Registration finds courses by code or title, level, department or category.
-The server judges each course it finds, for that student and that semester (`registration.course_check`). It says the
-category the course would be registered in and why it is allowed, or why it is not.
+The **Add Other Course** search on Course Registration opens on the student's own courses: their programme's courses at
+every level that run in the session, the University GST/EPS courses and their carry-overs (V507). A level or a category
+narrows them. Typing a code or title, or choosing a department, searches every course. The server judges each course it
+finds, for that student and that semester (`registration.course_check`). It says the category the course would be
+registered in and why it is allowed, or why it is not.
 
 A course may be added when it is one of these:
 
@@ -58,6 +60,50 @@ since been passed is a carry-over. A course with no result, or with a result sti
 A carry-over that runs in the semester is put on the registration and cannot be removed, at whatever level it was failed,
 as before. A carry-over that does not run in the semester is now listed too, under **Carry-over / outstanding courses**,
 with the semester it runs in (`registration.outstanding_courses`).
+
+### A GST or EPS carry-over waits for the GST fee (V512)
+
+Being a carry-over does not pass the GST fee. While the student owes the GST fee and has not paid it, a carry-over that is
+a GST or EPS course (`catalogue.course` kind GST) is held like any GST or EPS course (`registration.gst_course_hold`, which
+reads `registration.gst_gate`):
+
+- it is not put on the draft (`registration.student_draft`, and every save, `registration.student_choose`); one put on
+  before comes off a draft while the fee is owed;
+- registering it is refused with `GST_PAYMENT_REQUIRED`, naming it a carry-over;
+- the screen lists it under **Carry-over / outstanding courses** with **GST/EPS PAYMENT REQUIRED** and **PAY GST/EPS FEE**,
+  which opens the existing GST & EPS payment page. It is not counted in the units.
+
+Only a confirmed payment counts (`finance.gst_entitlement`: a reference confirmed by the gateway or the Bursary, less
+refunds). A reference generated, a payment page opened or an unconfirmed gateway answer does not. One payment covers GST
+and EPS where the Bursary's setting says so. Once it is confirmed, the carry-over goes on at the next save, or the student
+presses **REGISTER** beside it. No ICT Support is needed.
+
+The student's other courses go on as the Bursary's setting allows (`finance.gst_setting`):
+
+| Setting | Effect while the GST fee is owed |
+|---|---|
+| `required_for_gst_eps` | GST and EPS courses, carry-overs included, are held |
+| `required_for_all` | the whole registration is held, and the submission refuses it |
+
+Whatever the screen does, the submission still refuses a registration carrying an unpaid GST/EPS course
+(`registration.submit_checks`).
+
+A registered GST/EPS carry-over is listed under carry-over, named **Carry-over · GST** (or EPS). It is never listed again
+under GST. Its classification stays on the course for the fee, the GST & EPS permit (which carries every GST/EPS course on
+the approved registration) and the reports.
+
+`registration.gst_course_event` logs, once each:
+
+| Event | Written when |
+|---|---|
+| `GST_` or `EPS_PAYMENT_REQUIRED_FOR_REGISTRATION` | a GST/EPS course the student asked for was held on the fee |
+| `GST_` or `EPS_PAYMENT_VERIFIED` | the registration first read the confirmed payment, per student and session |
+| `GST_` or `EPS_CARRY_OVER_REGISTRATION_ATTEMPTED` | the student asked to register a GST/EPS carry-over |
+| `GST_` or `EPS_CARRY_OVER_REGISTRATION_BLOCKED` | that request was held on the fee |
+| `GST_` or `EPS_CARRY_OVER_REGISTERED` | the carry-over went on the registration |
+
+The attempt and the hold are written in their own transaction, so they stay recorded when the request is refused. The entry
+itself and the payment's confirmation are on the audit spine as before.
 
 ## The order of courses
 

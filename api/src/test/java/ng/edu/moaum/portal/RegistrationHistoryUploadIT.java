@@ -30,7 +30,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 @SuppressWarnings({"rawtypes", "unchecked"})
 class RegistrationHistoryUploadIT {
 
-    static final String SESSION = "2097/2098";
+    /** the run's own session, never another test's fixed one: the upload enrols its student in the session it records, so a fixed
+     *  session (2097/2098, CalendarIT's own) carried a student into the next run, where CalendarIT expects its session empty */
+    final int year = 2300 + new java.util.Random().nextInt(600);
+    final String session = year + "/" + (year + 1);
 
     @Value("${local.server.port}")
     int port;
@@ -45,11 +48,11 @@ class RegistrationHistoryUploadIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
-        it.session(SESSION, 2097);
+        it.session(session, year);
     }
 
     private Map<String, Object> post(String path, List<Map<String, String>> rows) {
-        ResponseEntity<Map> r = it.call(records, HttpMethod.POST, path, Map.of("session", SESSION, "semester", 1, "rows", rows));
+        ResponseEntity<Map> r = it.call(records, HttpMethod.POST, path, Map.of("session", session, "semester", 1, "rows", rows));
         assertThat(r.getStatusCode().value()).as(path + " → " + r.getBody()).isEqualTo(200);
         return r.getBody();
     }
@@ -64,7 +67,7 @@ class RegistrationHistoryUploadIT {
                 SELECT o.course_code, e.units, e.status FROM registration.entry e
                   JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
                  WHERE r.student_id = :s AND r.session = :ses AND r.semester = 1 ORDER BY o.course_code
-                """).param("s", student).param("ses", SESSION).query().listOfRows();
+                """).param("s", student).param("ses", session).query().listOfRows();
     }
 
     @Test
@@ -90,7 +93,7 @@ class RegistrationHistoryUploadIT {
         assertThat(((Number) check.get("entries")).intValue()).isEqualTo(2);
         assertThat(entries(student)).isEmpty();
         assertThat(it.call(ItSupport.token("lecturer"), HttpMethod.POST, "/api/v1/results/legacy/registration/preview",
-                Map.of("session", SESSION, "semester", 1, "rows", rows)).getStatusCode().value()).isEqualTo(403);
+                Map.of("session", session, "semester", 1, "rows", rows)).getStatusCode().value()).isEqualTo(403);
 
         // the upload: what is missing is added, at the programme's units; the rows not loaded come back with their reason
         Map<String, Object> up = post("/api/v1/results/legacy/registration", rows);
@@ -105,7 +108,7 @@ class RegistrationHistoryUploadIT {
                        units = CASE o.course_code WHEN :c2 THEN e.units + 1 ELSE e.units END
                   FROM registration.course_registration r, catalogue.offering o
                  WHERE r.id = e.registration_id AND o.id = e.offering_id AND r.student_id = :s AND r.session = :ses
-                """).param("c1", c1).param("c2", c2).param("s", student).param("ses", SESSION).update());
+                """).param("c1", c1).param("c2", c2).param("s", student).param("ses", session).update());
         Map<String, Object> again = post("/api/v1/results/legacy/registration", rows);
         assertThat(statusByLine(again)).containsEntry("2", "DROPPED_ON_RECORD").containsEntry("4", "UNITS_DIFFER");
         assertThat(((Number) again.get("entries")).intValue()).isZero();

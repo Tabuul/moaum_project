@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { courseCategory, courseStatus, inUniversityOrder, refusalCode, refusalText, searchQuery, unitsAfter, addedAsLabel } from "./course-order.ts";
+import { categoryWords, courseCategory, courseStatus, inUniversityOrder, refusalCode, refusalText, searchQuery, unitsAfter, addedAsLabel } from "./course-order.ts";
 
 test("the server's category is read as sent", () => {
   assert.equal(courseCategory({ category: "ELECTIVE", entryType: "CARRYOVER" }), "ELECTIVE");
@@ -29,6 +29,14 @@ test("carry-over, GST, core, elective — the server's order kept within each", 
   assert.deepEqual(inUniversityOrder(rows).map((r) => r.code), ["ECO 101", "BIO 101", "GST 211", "ECO 201", "ECO 203", "ECO 211"]);
 });
 
+test("a GST/EPS carry-over is listed under carry-over, named with its office", () => {
+  assert.equal(categoryWords({ entryType: "CARRYOVER", kind: "GST", courseCode: "GST 301" }), "Carry-over · GST");
+  assert.equal(categoryWords({ entryType: "CARRYOVER", kind: "GST", courseCode: "EPS 302" }), "Carry-over · EPS");
+  assert.equal(categoryWords({ entryType: "CARRYOVER", kind: "Core", courseCode: "CSC 201" }), "Carry-over");
+  assert.equal(categoryWords({ entryType: "GST", kind: "GST", courseCode: "GST 401" }), "GST");
+  assert.equal(courseCategory({ entryType: "CARRYOVER", kind: "GST" }), "CARRY_OVER");
+});
+
 test("the engine's refusal is read without its code", () => {
   const r = "REG_HIGHER_LEVEL: ECO 301 is taken at 300 Level; you are at 200 Level";
   assert.equal(refusalCode(r), "REG_HIGHER_LEVEL");
@@ -44,6 +52,8 @@ test("a found course's status", () => {
   assert.equal(courseStatus({ refusal: "SOMETHING_NEW: words", on_registration: false }).label, "Not available");
   assert.deepEqual(courseStatus({ refusal: null, on_registration: false, recommended: true, category: "CARRY_OVER" }), { label: "Added automatically", ok: false });
   assert.deepEqual(courseStatus({ on_registration: false, recommended: true, category: "CORE" }), { label: "On your list", ok: true });
+  // V512: a GST/EPS course, a carry-over too, waits for the GST fee
+  assert.deepEqual(courseStatus({ on_registration: false, recommended: true, category: "CARRY_OVER", gstHeld: "GST_PAYMENT_REQUIRED: pay" }), { label: "GST/EPS payment required", ok: false });
 });
 
 test("the search asks with the term trimmed and capped", () => {

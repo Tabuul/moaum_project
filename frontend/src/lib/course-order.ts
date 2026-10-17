@@ -32,6 +32,19 @@ export function courseCategory(e: Categorised): CourseCategory {
   return "CORE";
 }
 
+/** V512: a GST or EPS course's office, as its code names it */
+export function gstOffice(code: string | null | undefined): "GST" | "EPS" {
+  return /^(MOAU-|BSU-)?EPS/.test(code ?? "") ? "EPS" : "GST";
+}
+
+/** V512: the category's word — a GST/EPS carry-over is listed under carry-over and named with its office ("Carry-over · GST"),
+ *  the classification kept for the fee, the permit and the reports */
+export function categoryWords(e: Categorised & { courseCode?: string | null; course_code?: string | null }): string {
+  const c = courseCategory(e);
+  const gst = (e.kind ?? "").toUpperCase() === "GST" || e.gst_eps === true;
+  return c === "CARRY_OVER" && gst ? `${CATEGORY_LABEL[c]} · ${gstOffice(e.courseCode ?? e.course_code)}` : CATEGORY_LABEL[c];
+}
+
 export function categoryRank(e: Categorised): number {
   return RANK[courseCategory(e)];
 }
@@ -74,9 +87,11 @@ const STATUS: Record<string, string> = {
 
 /** a short status for a course the search found: Available, on the list already, or why not. A carry-over that runs in the
  *  semester is put on the registration by the engine itself, so it is never added by hand */
-export function courseStatus(c: { refusal?: string | null; on_registration?: boolean; recommended?: boolean | null; category?: string | null }): { label: string; ok: boolean } {
+export function courseStatus(c: { refusal?: string | null; on_registration?: boolean; recommended?: boolean | null; category?: string | null; gstHeld?: string | null }): { label: string; ok: boolean } {
   if (c.on_registration) return { label: "Already added", ok: false };
-  if (!c.refusal && c.category === "CARRY_OVER") return { label: "Added automatically", ok: false };
+  // V512: a GST/EPS course — a carry-over too — waits for the GST fee
+  if (!c.refusal && c.gstHeld) return { label: "GST/EPS payment required", ok: false };
+  if (!c.refusal && c.category === "CARRY_OVER" && c.recommended) return { label: "Added automatically", ok: false };
   if (!c.refusal && c.recommended) return { label: "On your list", ok: true };
   if (!c.refusal) return { label: "Available", ok: true };
   const code = refusalCode(c.refusal);

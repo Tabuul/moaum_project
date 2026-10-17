@@ -12,7 +12,10 @@ import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import ng.edu.moaum.portal.shared.Sessions;
 
 /**
@@ -28,9 +31,14 @@ public class StudentPortalService {
 
     private final CheckCodes codes;
 
-    StudentPortalService(StudentPortalRepository repo, CheckCodes codes) {
+    /** V512: the GST/EPS registration log's own transaction — a refused add rolls back, its attempt and its hold stay recorded */
+    private final TransactionTemplate ownTransaction;
+
+    StudentPortalService(StudentPortalRepository repo, CheckCodes codes, PlatformTransactionManager transactions) {
         this.repo = repo;
         this.codes = codes;
+        this.ownTransaction = new TransactionTemplate(transactions);
+        this.ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** V360: the signed check code the student's own examination card, course form or results statement carries in its QR —
@@ -604,7 +612,16 @@ public class StudentPortalService {
         out.put("page", p);
         out.put("size", COURSE_PAGE);
         out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
-        out.put("results", rows.stream().map(r -> { Map<String, Object> m = new LinkedHashMap<>(r); m.remove("total"); return m; }).toList());
+        out.put("results", rows.stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>(r);
+            m.remove("total");
+            // V512: a GST/EPS course the student could add is held while the GST fee they owe is not paid — said before they click
+            if ("GST".equals(m.get("kind")) && m.get("refusal") == null && !Boolean.TRUE.equals(m.get("on_registration"))) {
+                String gate = repo.gstGate(id, session, String.valueOf(m.get("course_code")));
+                if (gate != null) m.put("gstHeld", gate);
+            }
+            return m;
+        }).toList());
         // V507: YOUR_COURSES — the programme's at every level, the University GST/EPS courses, the carry-overs; SEARCH — every course
         out.put("listed", term == null && d == null && f == null ? "YOUR_COURSES" : "SEARCH");
         out.put("flex", repo.flexRule());
@@ -629,16 +646,42 @@ public class StudentPortalService {
         }
         assertWindowOpen(id, session, semester);
         String status = repo.registration(id, session, semester).map(r -> String.valueOf(r.get("status"))).orElse("DRAFT");
+        // V512: a GST/EPS carry-over the student asks to register is logged as attempted, and as held where the GST fee stops it
+        Map<String, Object> g = repo.gstCourseOf(id, offering);
+        boolean gst = g != null && Boolean.TRUE.equals(g.get("gst"));
+        boolean carry = gst && Boolean.TRUE.equals(g.get("carry"));
+        String code = g == null ? null : String.valueOf(g.get("code"));
+        if (carry) logGstCourse(id, session, semester, code, true, "CARRY_OVER_REGISTRATION_ATTEMPTED");
         Object added;
-        if (List.of("SUBMITTED", "APPROVED", "LOCKED").contains(status)) {
-            repo.addCourse(id, session, semester, offering);   // add and drop: its own window, clearance and unit ceiling
-            added = Map.of("added", true, "addDrop", true);
-        } else {
-            added = RESET_JSON.readValue(repo.addOther(id, session, semester, offering), Map.class);
+        try {
+            if (List.of("SUBMITTED", "APPROVED", "LOCKED").contains(status)) {
+                repo.addCourse(id, session, semester, offering);   // add and drop: its own window, clearance and unit ceiling
+                added = Map.of("added", true, "addDrop", true);
+            } else {
+                added = RESET_JSON.readValue(repo.addOther(id, session, semester, offering), Map.class);
+            }
+        } catch (RuntimeException e) {
+            if (gst && heldOnTheGstFee(e)) {
+                logGstCourse(id, session, semester, code, carry, "PAYMENT_REQUIRED_FOR_REGISTRATION");
+                if (carry) logGstCourse(id, session, semester, code, true, "CARRY_OVER_REGISTRATION_BLOCKED");
+            }
+            throw e;
         }
         Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
         out.put("added", added);
         return out;
+    }
+
+    private void logGstCourse(UUID id, String session, int semester, String code, boolean carry, String what) {
+        ownTransaction.executeWithoutResult(t -> repo.gstCourseEvent(id, session, semester, code, carry, what));
+    }
+
+    /** the database's GST fee refusal (GST_PAYMENT_REQUIRED, registration.gst_gate), anywhere in the cause chain */
+    private static boolean heldOnTheGstFee(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t.getMessage() != null && t.getMessage().contains("GST_PAYMENT_REQUIRED")) return true;
+        }
+        return false;
     }
 
     @Transactional

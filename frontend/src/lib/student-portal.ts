@@ -138,6 +138,8 @@ export interface FoundCourse {
   dept_code: string | null; department: string | null; faculty_code: string | null;
   category: import("./course-order").CourseCategory | null; added_as: string | null; why: string | null; refusal: string | null;
   on_registration: boolean; recommended: boolean | null;
+  /** V512: a GST/EPS course the student could add, held while the GST fee they owe is not paid (the gate's words) */
+  gstHeld?: string | null;
 }
 export interface CourseSearch { session: string; semester: number; page: number; size: number; total: number; results: FoundCourse[];
   /** V507: YOUR_COURSES (no code, title, department or faculty: the student's own courses) or SEARCH (every course) */
