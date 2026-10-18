@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 386
+\set EXPECTED 387
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -10062,19 +10062,19 @@ BEGIN
         INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, study_mode, matriculated_at)
         VALUES (gen_random_uuid(), 'MOAUM/ADM/84/009984', 'MOAUM/CHK/84/410', 'CHECKV410', 'Ledger', 'M', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', 'FULL_TIME', now())
         RETURNING id INTO st;
-        SELECT payments + refunds + vouchers INTO u0 FROM finance.gl_unposted();
+        SELECT payments + refunds + vouchers + wallet INTO u0 FROM finance.gl_unposted();
         -- three confirmed school-fee payments, older than anything else on the register
         INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
         SELECT st, S, 'MOAUM-FEE-V410-000' || n, 'School fees ' || S, 1000 * n, now() + interval '1 day', timestamptz '1901-01-01' + n * interval '1 day', who, 'Card', 'RCPT-V410-000' || n
           FROM generate_series(1, 3) n;
-        SELECT payments + refunds + vouchers INTO u1 FROM finance.gl_unposted();
+        SELECT payments + refunds + vouchers + wallet INTO u1 FROM finance.gl_unposted();
         -- one at a time: the oldest first, the rest counted
         SELECT * INTO b1 FROM finance.gl_sync(1);
         SELECT source_ref INTO v_first FROM finance.gl_journal WHERE source_type = 'PAYMENT' AND source_ref LIKE 'MOAUM-FEE-V410-%';
         -- two more, then everything without a limit, as before
         SELECT * INTO b2 FROM finance.gl_sync(2);
         PERFORM finance.gl_sync();
-        SELECT payments + refunds + vouchers INTO v_after FROM finance.gl_unposted();
+        SELECT payments + refunds + vouchers + wallet INTO v_after FROM finance.gl_unposted();
         -- every one posted once, balanced, whatever the batches
         SELECT string_agg(j.source_ref || '=' || (SELECT count(*) FROM finance.gl_posting p WHERE p.journal_id = j.id)
                           || '/' || (SELECT sum(p.debit) - sum(p.credit) FROM finance.gl_posting p WHERE p.journal_id = j.id), ',' ORDER BY j.source_ref) INTO v_once
@@ -18220,6 +18220,125 @@ BEGIN
                  AND c.up_to_date = d.up_to_date AND c.incomplete = d.incomplete AND c.review_required = d.review_required
                  AND c.outdated = d.outdated AND c.migrated = d.migrated, false),
         format('counted %s / %s up to date / %s incomplete / %s to review / %s outdated / %s migrated; the statuses: %s', c.total, c.up_to_date, c.incomplete, c.review_required, c.outdated, c.migrated, d));
+END $$;
+-- ── V545. The money-out trail checked. Four refunds and a wallet withdrawal paid with transfer references; a statement uploaded:
+--          a debit with a payout's reference and amount MATCHED, one found in the description MATCHED, one for the sum of the two
+--          payouts sharing a reference MATCHED for both, one with nothing UNMATCHED, a reference with another amount AMOUNT_DIFFERS,
+--          a credit not a payout; what was paid and not on it listed missing. The wallet on the ledger: a payment applied from the
+--          wallet before it came onto the ledger stays Dr Bank, one after is Dr Student deposits & wallet, a top-up Cr it; a grant
+--          credit Dr Grants, a NELFUND credit Dr Bank, a withdrawal paid Cr Bank — Disbursements on the day paid; the balance held
+--          before is opened once against Opening balance / suspense. A refund approved ten days ago and unpaid is overdue at seven
+--          and told once a day. Jaiz is checked, TAJ and Titan Trust not; a bank's paid accounts counted. The block undoes its writes ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); payer uuid := gen_random_uuid(); bursar uuid := gen_random_uuid();
+        s uuid := gen_random_uuid(); a text := '9971/9972'; v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date; v_from timestamptz;
+        rf text; rid uuid; wd uuid; stmt uuid; lines text; missing text; pre text; app text; top text; grant_credit text; loan_credit text; wout text;
+        had_opening boolean; v_open numeric; opening_ok boolean; rfu text; unpaid text; told int; told_again int; told_me bigint;
+        banks text; evidence text; msg text; k text; amt numeric;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V545', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9971-10-01', date '9972-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (maker, 'ZZCHKV545', 'Maker', NULL), (checker, 'ZZCHKV545', 'Checker', NULL),
+               (payer, 'ZZCHKV545', 'Payer', NULL), (bursar, 'ZZCHKV545', 'Bursar', 'zzchkv545bursar@example.invalid');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), bursar, 'bursar', 'institution', 'check V545', maker, current_date - 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/71/971101', 'MOAUM/CHK/71/9711', 'ZZCHKV545', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+
+        -- refunds paid with transfer references: A 3,000; C 500 and 700 under one reference; D 900 (not on the statement)
+        FOREACH k IN ARRAY ARRAY['A:3000', 'C:500', 'C:700', 'D:900'] LOOP
+            amt := split_part(k, ':', 2)::numeric;
+            PERFORM set_config('moaum.actor_id', maker::text, true);
+            rf := finance.propose_refund(NULL, 'ZZCHKV545, ' || split_part(k, ':', 1), 'check V545 ' || k, amt, NULL, NULL, NULL, NULL);
+            rid := (SELECT id FROM finance.refund WHERE reference = rf);
+            PERFORM finance.desk_refund_account(rid, 'GTB', 'ZZCHKV545 Invented', '2222222223');
+            PERFORM set_config('moaum.actor_id', checker::text, true);
+            PERFORM finance.approve_refund(rid);
+            PERFORM set_config('moaum.actor_id', payer::text, true);
+            PERFORM finance.pay_refund(rid, 'FT-ZZ545-' || split_part(k, ':', 1), v_today);
+        END LOOP;
+        -- a wallet withdrawal paid, B 1,000, from a grant credited after the wallet came onto the ledger
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM finance.credit_wallet(s, a, 5000, 'check V545 scholarship', 'SCHOLARSHIP');
+        INSERT INTO finance.wallet_withdrawal (student_id, session, amount, bank_name, account_no, account_name, state, requested_by, decided_at, decided_by)
+        VALUES (s, a, 1000, 'Zenith', '0123456788', 'ZZCHKV545 Invented', 'APPROVED', s, now(), checker) RETURNING id INTO wd;
+        PERFORM set_config('moaum.actor_id', payer::text, true);
+        PERFORM finance.pay_withdrawal(wd, 'FT-ZZ545-B', v_today);
+
+        -- the statement
+        stmt := finance.load_bank_statement('CHECK V545 disbursements', 'check.csv', jsonb_build_array(
+            jsonb_build_object('date', v_today::text, 'reference', 'FT-ZZ545-A', 'description', 'Transfer', 'debit', '3,000.00'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'TRF/FT-ZZ545-B/ZZCHKV545', 'debit', '1000'),
+            jsonb_build_object('date', v_today::text, 'reference', 'FT-ZZ545-C', 'description', 'bulk', 'debit', '1200'),
+            jsonb_build_object('date', v_today::text, 'reference', 'ZZ545-NOTHING', 'description', 'charges', 'debit', '50'),
+            jsonb_build_object('date', v_today::text, 'reference', 'FT-ZZ545-A', 'description', 'again', 'debit', '2999'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'inflow', 'credit', '5000')));
+        lines := (SELECT string_agg(l.line_no || ':' || l.status || ':' || coalesce(l.matched_reference, '-') || ':' || coalesce(l.expected_amount::int::text, '-') || ':' || l.matched_payouts, ',' ORDER BY l.line_no)
+                    FROM finance.bank_statement_line l WHERE l.statement_id = stmt);
+        missing := (SELECT string_agg(m.transfer_reference, ',' ORDER BY m.transfer_reference) FROM finance.statement_missing(stmt) m WHERE m.transfer_reference LIKE 'FT-ZZ545-%');
+
+        -- the wallet on the ledger
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        SELECT ws.gl_from INTO v_from FROM finance.wallet_setting ws WHERE ws.one;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+            (s, a, 'MOAUM-ZZ545-PRE', 'School fees ' || a, 400, now(), v_from - interval '1 day', maker, 'NELFUND wallet', 'RCT-ZZ545-PRE', 'check V545'),
+            (s, a, 'MOAUM-ZZ545-APP', 'School fees ' || a, 600, now(), now(), maker, 'NELFUND wallet', 'RCT-ZZ545-APP', 'check V545'),
+            (s, a, 'MOAUM-ZZ545-TOP', 'Wallet top-up ' || a, 250, now(), now(), maker, 'INTERSWITCH', 'RCT-ZZ545-TOP', 'check V545');
+        PERFORM finance.credit_wallet(s, a, 2000, 'check V545 NELFUND', 'NELFUND');
+        -- a credit recorded before the wallet came onto the ledger
+        INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code, recorded_at)
+        VALUES (s, a, 'CREDIT', 777, 'ZZ545-OLD', 'check V545 before the ledger', 'NELFUND', NULL);
+        had_opening := EXISTS (SELECT 1 FROM finance.gl_journal j WHERE j.source_type = 'WALLET' AND j.source_ref = 'WALLET-OPENING');
+        v_open := finance.wallet_opening_balance();
+        PERFORM * FROM finance.gl_sync(NULL::int);
+        pre := (SELECT string_agg(p.account, '>' ORDER BY p.line) FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id WHERE j.source_type = 'PAYMENT' AND j.source_ref = 'MOAUM-ZZ545-PRE');
+        app := (SELECT string_agg(p.account, '>' ORDER BY p.line) FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id WHERE j.source_type = 'PAYMENT' AND j.source_ref = 'MOAUM-ZZ545-APP');
+        top := (SELECT string_agg(p.account, '>' ORDER BY p.line) FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id WHERE j.source_type = 'PAYMENT' AND j.source_ref = 'MOAUM-ZZ545-TOP');
+        grant_credit := (SELECT string_agg(p.account, '>' ORDER BY p.line) FROM finance.wallet_entry e JOIN finance.gl_journal j ON j.source_type = 'WALLET' AND j.source_ref = 'WALLET-' || e.id
+                           JOIN finance.gl_posting p ON p.journal_id = j.id WHERE e.student_id = s AND e.note = 'Bursary credit: check V545 scholarship');
+        loan_credit := (SELECT string_agg(p.account, '>' ORDER BY p.line) FROM finance.wallet_entry e JOIN finance.gl_journal j ON j.source_type = 'WALLET' AND j.source_ref = 'WALLET-' || e.id
+                          JOIN finance.gl_posting p ON p.journal_id = j.id WHERE e.student_id = s AND e.note = 'Bursary credit: check V545 NELFUND');
+        wout := (SELECT string_agg(p.account, '>' ORDER BY p.line) || ':' || (max(j.entry_date) = v_today) FROM finance.wallet_withdrawal w
+                   JOIN finance.gl_journal j ON j.source_type = 'WALLET' AND j.source_ref = 'WALLET-' || w.entry_id JOIN finance.gl_posting p ON p.journal_id = j.id WHERE w.id = wd);
+        opening_ok := CASE WHEN had_opening THEN (SELECT count(*) = 1 FROM finance.gl_journal j WHERE j.source_type = 'WALLET' AND j.source_ref = 'WALLET-OPENING')
+                           ELSE (SELECT string_agg(p.account || '=' || (p.debit + p.credit), '>' ORDER BY p.line) FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id
+                                  WHERE j.source_type = 'WALLET' AND j.source_ref = 'WALLET-OPENING') = '3900=' || abs(v_open) || '>2100=' || abs(v_open) END
+                      AND v_open >= 777;
+
+        -- approved, not paid: ten days waiting, the Bursary's figure seven
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        rfu := finance.propose_refund(NULL, 'ZZCHKV545, U', 'check V545 unpaid', 1500, NULL, NULL, NULL, NULL);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rfu));
+        UPDATE finance.refund SET approved_at = now() - interval '10 days' WHERE reference = rfu;
+        UPDATE finance.payout_watch SET unpaid_days = 7 WHERE row_no;
+        unpaid := (SELECT u.kind || ':' || u.days_waiting || ':' || u.overdue || ':' || u.account_ready FROM finance.unpaid_payouts() u WHERE u.reference = rfu);
+        told := finance.watch_unpaid_payouts();
+        told_again := finance.watch_unpaid_payouts();
+        told_me := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'UNPAID_PAYOUTS' AND n.about_id = bursar AND n.channel = 'EMAIL');
+
+        -- the banks
+        banks := (SELECT string_agg(b.code || '=' || b.nuban_check, ',' ORDER BY b.code) FROM finance.bank b WHERE b.code IN ('101', '102', '103', '105', '301', '302', '303'));
+        evidence := (SELECT (e.paid_accounts >= 1 AND e.passing = e.paid_accounts)::text FROM finance.bank_evidence() e WHERE e.code = '058');
+        RAISE EXCEPTION 'the V545 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V545 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V545: a bank statement''s debits are matched to what was paid out by reference and amount, the rest listed both ways; wallet money is held for students on the ledger from now on; approved but unpaid payouts are told once a day; the newer banks whose codes are confirmed are checked',
+        coalesce(lines = '1:MATCHED:FT-ZZ545-A:3000:1,2:MATCHED:FT-ZZ545-B:1000:1,3:MATCHED:FT-ZZ545-C:1200:2,4:UNMATCHED:-:-:0,5:AMOUNT_DIFFERS:FT-ZZ545-A:3000:0,6:CREDIT:-:-:0'
+                 AND missing = 'FT-ZZ545-D'
+                 AND pre = '1010>4010' AND app = '2100>4010' AND top = '1010>2100' AND grant_credit = '5240>2100' AND loan_credit = '1010>2100' AND wout = '2100>1020:true'
+                 AND opening_ok
+                 AND unpaid = 'REFUND:10:true:false' AND told >= 1 AND told_again = 0 AND told_me = 1
+                 AND banks = '101=true,102=false,103=true,105=true,301=true,302=false,303=true' AND evidence = 'true', false),
+        format('lines %s | missing %s | ledger pre %s app %s top %s grant %s loan %s out %s | opening %s (%s, had %s) | unpaid %s told %s/%s me %s | banks %s evidence %s',
+               lines, missing, pre, app, top, grant_credit, loan_credit, wout, opening_ok, v_open, had_opening, unpaid, told, told_again, told_me, banks, evidence));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -119,10 +119,42 @@ class RefundAccountsIT {
         assertThat(it.get(TestTokens.token(UUID.randomUUID(), List.of("student")), "/api/v1/finance/refunds/paid-out?from=" + today + "&to=" + today).getStatusCode().value())
                 .isEqualTo(403);
 
+        // V545: a bank statement uploaded by Internal Audit — the paid refund matched by its reference and amount, a debit with no
+        // payout unmatched, a credit not a payout
+        ResponseEntity<Map> st = it.call(audit, HttpMethod.POST, "/api/v1/finance/refunds/bank-statements", Map.of("label", "IT V545 " + tag, "fileName", "it.csv",
+                "rows", List.of(Map.of("date", today, "reference", "FT-IT-" + tag, "description", "transfer", "debit", "2,500.00"),
+                                Map.of("date", today, "reference", "ZZ-NO-PAYOUT-" + tag, "description", "charges", "debit", "75"),
+                                Map.of("date", today, "description", "inflow", "credit", "9000"))));
+        assertThat(st.getStatusCode().value()).as(String.valueOf(st.getBody())).isEqualTo(200);
+        assertThat((List<Map>) st.getBody().get("lines")).extracting(l -> l.get("line_no") + ":" + l.get("status") + ":" + l.get("matched_reference"))
+                .containsExactly("1:MATCHED:FT-IT-" + tag, "2:UNMATCHED:null", "3:CREDIT:null");
+        assertThat((List<Map>) st.getBody().get("missing")).noneMatch(m -> ("FT-IT-" + tag).equals(m.get("transfer_reference")));
+        assertThat(it.call(TestTokens.token(UUID.randomUUID(), List.of("student")), HttpMethod.POST, "/api/v1/finance/refunds/bank-statements",
+                Map.of("label", "x", "rows", List.of(Map.of("debit", "1")))).getStatusCode().value()).isEqualTo(403);
+        assertThat((List<Map>) it.getList(audit, "/api/v1/finance/refunds/bank-statements").getBody()).anyMatch(x -> ("IT V545 " + tag).equals(x.get("label")));
+
+        // V545: approved and not yet paid — the Bursary sets the days, Internal Audit reads the list
+        assertThat(it.call(audit, HttpMethod.PUT, "/api/v1/finance/refunds/unpaid/days", Map.of("days", 5)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> days = it.call(maker, HttpMethod.PUT, "/api/v1/finance/refunds/unpaid/days", Map.of("days", 5));
+        assertThat(days.getStatusCode().value()).as(String.valueOf(days.getBody())).isEqualTo(200);
+        assertThat(days.getBody()).containsEntry("days", 5);
+        assertThat(it.call(maker, HttpMethod.PUT, "/api/v1/finance/refunds/unpaid/days", Map.of("days", 0)).getStatusCode().value()).isEqualTo(400);
+        ResponseEntity<Map> waiting = it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds", Map.of("payer", payer, "reason", "V545 IT: approved, not yet paid", "amount", 600));
+        String waitingRef = String.valueOf(waiting.getBody().get("reference"));
+        assertThat(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + row(audit, waitingRef, "PROPOSED").get("id") + "/approve", Map.of()).getStatusCode().value()).isEqualTo(200);
+        assertThat((List<Map>) it.get(audit, "/api/v1/finance/refunds/unpaid").getBody().get("rows")).filteredOn(u -> waitingRef.equals(u.get("reference")))
+                .extracting(u -> u.get("kind") + ":" + u.get("days_waiting") + ":" + u.get("overdue") + ":" + u.get("account_ready")).containsExactly("REFUND:0:false:false");
+        it.call(maker, HttpMethod.PUT, "/api/v1/finance/refunds/unpaid/days", Map.of("days", 7));
+
         // the banks: read by Internal Audit, kept by the Bursary
         ResponseEntity<List> banks = it.getList(audit, "/api/v1/finance/refunds/banks");
         assertThat((List<Map>) banks.getBody()).filteredOn(b -> "999992".equals(b.get("code")))
                 .extracting(b -> b.get("name") + ":" + b.get("nuban_check") + ":" + b.get("kind")).containsExactly("OPay:false:PAYMENT_SERVICE");
+        // V545: the newer banks whose codes are confirmed are checked, with each bank's paid accounts counted
+        assertThat((List<Map>) banks.getBody()).filteredOn(b -> List.of("301", "302").contains(b.get("code")))
+                .extracting(b -> b.get("code") + ":" + b.get("nuban_check")).containsExactlyInAnyOrder("301:true", "302:false");
+        assertThat((List<Map>) banks.getBody()).filteredOn(b -> "011".equals(b.get("code")))
+                .allSatisfy(b -> assertThat(((Number) b.get("paid_accounts")).intValue()).isEqualTo(((Number) b.get("passing")).intValue()));
         assertThat(it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds/banks", Map.of("code", "565", "name", "Carbon", "nubanCheck", true)).getStatusCode().value())
                 .as("a microfinance bank's numbers are never checked by the banks' check digit").isEqualTo(422);
         String code = "ZZ" + tag;

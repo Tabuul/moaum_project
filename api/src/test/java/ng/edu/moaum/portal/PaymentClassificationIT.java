@@ -153,9 +153,10 @@ class PaymentClassificationIT {
         // the general ledger posts JUPEB's payment, to the income account of its purpose — in batches (V410): one at a
         // time says how many remain, and the screen's loop carries on until none do; a batch of nothing is refused
         assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=0", Map.of()).getStatusCode().is4xxClientError()).isTrue();
-        long before = jdbc.sql("SELECT payments + refunds + vouchers FROM finance.gl_unposted()").query(Long.class).single();
+        long before = jdbc.sql("SELECT payments + refunds + vouchers + wallet FROM finance.gl_unposted()").query(Long.class).single();   // V545: and the wallet
         Map<String, Object> one = it.call(bursar, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=1", Map.of()).getBody();
-        assertThat(((Number) one.get("payments")).intValue() + ((Number) one.get("refunds")).intValue() + ((Number) one.get("vouchers")).intValue())
+        assertThat(((Number) one.get("payments")).intValue() + ((Number) one.get("refunds")).intValue() + ((Number) one.get("vouchers")).intValue()
+                + ((Number) one.get("wallet")).intValue())
                 .isEqualTo(before > 0 ? 1 : 0);
         assertThat(((Number) one.get("remaining")).longValue()).isEqualTo(Math.max(before - 1, 0));
         long remaining = ((Number) one.get("remaining")).longValue();

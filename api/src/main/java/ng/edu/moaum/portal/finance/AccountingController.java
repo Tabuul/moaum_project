@@ -81,7 +81,7 @@ class AccountingController {
         out.put("ie", jdbc.sql("SELECT * FROM finance.income_expenditure(:f, :t) WHERE section IN ('INCOME_TOTAL','EXPENSE_TOTAL','SURPLUS')")
                 .param("f", yearStart).param("t", LocalDate.now()).query().listOfRows());
         // V410: every payment of the one ledger, not only a student's, on the terms the sync posts them
-        out.put("unposted", jdbc.sql("SELECT payments, refunds, vouchers FROM finance.gl_unposted()").query().singleRow());
+        out.put("unposted", jdbc.sql("SELECT payments, refunds, vouchers, wallet FROM finance.gl_unposted()").query().singleRow());   // V545: and the wallet
         out.put("journals", jdbc.sql("SELECT count(*) FROM finance.gl_journal").query(Long.class).single());
         out.put("yearStart", yearStart);
         return out;
@@ -93,7 +93,7 @@ class AccountingController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> unposted() {
-        return jdbc.sql("SELECT payments, refunds, vouchers FROM finance.gl_unposted()").query().singleRow();
+        return jdbc.sql("SELECT payments, refunds, vouchers, wallet FROM finance.gl_unposted()").query().singleRow();
     }
 
     @GetMapping("/trial-balance")
@@ -183,7 +183,7 @@ class AccountingController {
     Map<String, Object> sync(@RequestParam(defaultValue = "" + SYNC_BATCH) int limit) {
         if (limit < 1 || limit > SYNC_BATCH_MAX)
             throw new DomainRuleViolation("SYNC_LIMIT", "A ledger sync posts between 1 and " + SYNC_BATCH_MAX + " transactions at a time.");
-        return jdbc.sql("SELECT payments, refunds, vouchers, remaining FROM finance.gl_sync(:lim)").param("lim", limit).query().singleRow();
+        return jdbc.sql("SELECT payments, refunds, vouchers, wallet, remaining FROM finance.gl_sync(:lim)").param("lim", limit).query().singleRow();
     }
 
     /** the batch the screen posts at a time, and the most one call may post */

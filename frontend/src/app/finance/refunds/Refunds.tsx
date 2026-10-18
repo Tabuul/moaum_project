@@ -17,6 +17,8 @@ import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFie
 import { type BankAccountValue, EMPTY_ACCOUNT, accountDigits, accountProblem, bankToSend, valueFromAccount } from "@/lib/banks";
 import { BanksPanel } from "./BanksPanel";
 import { PaidOut } from "./PaidOut";
+import { StatementMatch } from "./StatementMatch";
+import { UnpaidPayouts } from "./UnpaidPayouts";
 
 export interface Refund {
   id: string; reference: string; student_id: string | null; payer: string; reason: string; amount: number;
@@ -267,8 +269,14 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
         );
       })() : null}
 
+      {/* V545: approved and not yet paid, with the days each has waited */}
+      <UnpaidPayouts may={may} />
+
       {/* V540: what was paid out in a period, by the day the money left — for the bank statement */}
       <PaidOut />
+
+      {/* V545: the disbursement account's statement matched to what was paid out */}
+      <StatementMatch />
 
       {/* V533: the banks refunds are paid into, and whether a number at each is checked */}
       <BanksPanel may={may} onChanged={() => router.refresh()} />

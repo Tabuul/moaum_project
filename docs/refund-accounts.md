@@ -1,4 +1,4 @@
-# Refund accounts (V528, V533, V534, V540)
+# Refund accounts (V528, V533, V534, V540, V545)
 
 A refund is paid only into a full account on record — the bank, the name on the account and the ten-digit account number
 (NUBAN) — kept in `finance.refund_account`. The refund itself keeps a snapshot: the bank, the account name and the last four
@@ -29,6 +29,10 @@ by the database when it is sent.
 - Listed, not checked: newer commercial and non-interest banks (their codes not yet confirmed), microfinance banks, and payment
   service banks such as OPay and PalmPay, whose account numbers are often the phone number. Ten digits is all that is asked.
 - A bank not on the list may be typed by name; its number is checked for ten digits only.
+- V545 switched the check on for Providus (101), Jaiz (301), PremiumTrust (105), Lotus (303) and Globus (103), whose codes two
+  independent published lists agree on. Titan Trust, SunTrust and Parallex (one list only), TAJ (the lists disagree: 302 or 321),
+  Optimus and Signature (not listed) stay unchecked. The bank list shows, for each bank, the accounts refunds and withdrawals were
+  paid into and how many pass its check digit (`finance.bank_evidence`) — the evidence before switching a bank on.
 
 The Bursary keeps the list on Refunds & Credits → **Banks refunds are paid into**: switch the check on or off for a commercial,
 non-interest or merchant bank with a three-digit code (never a microfinance or payment service bank), set a bank aside, rename
@@ -58,7 +62,7 @@ student is told both; the NELFUND desk's withdrawals and the student's wallet sh
 ## The ledger date (V540)
 
 The general ledger posts a paid refund on the day the money left (`paid_on`), the day it was recorded where that is not known.
-Journals posted before V540 are not moved. Wallet withdrawals are not on the general ledger.
+Journals posted before V540 are not moved. Wallet withdrawals reach the general ledger from V545 (see docs/nelfund-wallet.md).
 
 ## Paid out (V540)
 
@@ -66,6 +70,23 @@ Refunds & Credits → **Paid out**: every refund and wallet withdrawal paid in a
 (`finance.paid_out(from, to)`, `GET /api/v1/finance/refunds/paid-out`) — the payee, the account it went to, the amount, the bank
 transfer reference, who approved and who paid it — with **Also on N other** where the same reference was recorded on other
 payments. Excel and PDF go through the export engine, on the export log. The Bursary, Internal Audit and admin read it.
+
+## Approved, not yet paid (V545)
+
+Refunds & Credits → **Approved, not yet paid** lists every refund and wallet withdrawal approved and not yet paid, with the days
+each has waited (`finance.unpaid_payouts`). Past the days the Bursary sets (7 by default, 1 to 365), the Bursar and the Students
+Account Officer are told once a day by e-mail and on the portal (`UNPAID_PAYOUTS`, `finance.watch_unpaid_payouts`, run every
+morning at 08:10 Lagos time).
+
+## The bank statement matched (V545)
+
+Refunds & Credits → **Bank statement**: the Bursary or Internal Audit uploads the disbursement account's statement (the bank's CSV
+or Excel file; the header row, the date, narration, reference, debit and credit columns — or one signed amount — are found on the
+screen). Each debit is matched by the bank transfer reference found in its reference or narration and by the amount
+(`finance.load_bank_statement`): **Matched** (a payout, or every payout sharing that reference together), **Amount differs**,
+**No payout**; a credit is money in. What the portal paid out in the statement's period and no line matched is listed as **Not on
+the statement** (`finance.statement_missing`). Statements are kept, and open again with their result; the result downloads as
+Excel.
 
 ## The name on the account
 

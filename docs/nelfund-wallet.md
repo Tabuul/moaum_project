@@ -149,3 +149,21 @@ already confirmed is answered "already confirmed").
 - A payment with no session and no date that falls in a session is rejected until an officer resolves it.
 - Credits written before V327 without a source remain unattributed: applied last, never refunded, until the Bursary
   re-states them (reset the wallet and credit it again with its source).
+
+## The wallet on the general ledger (V545)
+
+From V545 (the Bursary's choice, 18 Oct 2026) money in the wallet is held for students in **2100 Student deposits & wallet**;
+journals posted before stay as they are. `finance.gl_sync` posts:
+
+| Event | Debit | Credit |
+|---|---|---|
+| A credit: a loan (NELFUND) or own money | 1010 Bank — Fees collection | 2100 |
+| A credit: a grant (a scholarship) | 5240 Grants, research & scholarships | 2100 |
+| A credit brought from the old portal | 3900 Opening balance / suspense | 2100 |
+| A top-up paid | 1010 Bank — Fees collection | 2100 (no longer Other income) |
+| The wallet applied to fees | 2100 (no longer the bank again) | the income account |
+| Reversed to the Fund; a withdrawal paid (on the day the money left) | 2100 | 1020 Bank — Disbursements |
+
+What students held when the wallet came onto the ledger is opened once against 3900 Opening balance / suspense (`WALLET-OPENING`),
+for the Bursary to settle. A wallet entry recorded after V545 carries `recorded_at`; one recorded before is in the opening balance.
+The accounting overview counts wallet entries waiting to be posted with the rest.

@@ -10,8 +10,8 @@ import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 
-interface Unposted { payments: number; refunds: number; vouchers: number }
-interface SyncBatch { payments: number; refunds: number; vouchers: number; remaining: number }
+interface Unposted { payments: number; refunds: number; vouchers: number; /** V545 */ wallet?: number }
+interface SyncBatch { payments: number; refunds: number; vouchers: number; /** V545 */ wallet?: number; remaining: number }
 
 /** the transactions one sync request posts (the Accounting desk's batch); the panel carries on until none remain */
 const BATCH = 2000;
@@ -56,7 +56,7 @@ export function OldFeesLedger({ may, tick = 0 }: { may: boolean; tick?: number }
           return;
         }
         const b = (await r.json()) as SyncBatch;
-        const n = Number(b.payments) + Number(b.refunds) + Number(b.vouchers);
+        const n = Number(b.payments) + Number(b.refunds) + Number(b.vouchers) + Number(b.wallet ?? 0);
         posted += n;
         setLeft(Number(b.remaining));
         // none left — or none of what is left could be posted, which the books then still show
@@ -72,7 +72,7 @@ export function OldFeesLedger({ may, tick = 0 }: { may: boolean; tick?: number }
     }
   }
 
-  const waiting = data ? Number(data.payments) + Number(data.refunds) + Number(data.vouchers) : 0;
+  const waiting = data ? Number(data.payments) + Number(data.refunds) + Number(data.vouchers) + Number(data.wallet ?? 0) : 0;
   return (
     <Panel title="The ledger" right="What waits to be posted: payments taken over, put right or carried here are posted again under their item">
       <PBody>

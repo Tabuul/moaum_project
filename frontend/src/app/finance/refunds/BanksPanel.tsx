@@ -10,7 +10,15 @@ import { Btn, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 
-interface BankRow { code: string; name: string; aliases: string; kind: string; nuban_check: boolean; active: boolean }
+interface BankRow { code: string; name: string; aliases: string; kind: string; nuban_check: boolean; active: boolean; /** V545: the accounts paid into, how many pass the check digit */ paid_accounts?: number | null; passing?: number | null }
+
+/** V545: the evidence for a bank's check — the accounts refunds and withdrawals were paid into, and how many pass its check digit */
+const evidence = (b: BankRow) => {
+  const n = Number(b.paid_accounts ?? 0);
+  if (!n) return "No account paid yet";
+  if (b.passing == null) return `${n} paid`;
+  return Number(b.passing) === n ? `${n} paid · all pass` : `${n} paid · ${n - Number(b.passing)} fail`;
+};
 
 const KIND: Record<string, string> = { COMMERCIAL: "Commercial", NON_INTEREST: "Non-interest", MERCHANT: "Merchant", MICROFINANCE: "Microfinance", PAYMENT_SERVICE: "Payment service" };
 
@@ -53,10 +61,11 @@ export function BanksPanel({ may, onChanged }: { may: boolean; onChanged: () => 
         <PBody><div className="sub2">An account number is checked against its bank as it is given (the Central Bank&rsquo;s check digit) wherever the bank is checked; a payment service bank, whose numbers are often phone numbers, is not.</div></PBody>
       ) : rows === null ? <PBody><div className="sub2">Looking…</div></PBody> : (
         <>
-          <DTable pageSize={0} cols={["Bank", "Code|mid", "Kind", "Number checked|mid", "Listed|mid"]} rows={rows.map((b) => [
+          <DTable pageSize={0} cols={["Bank", "Code|mid", "Kind", "Accounts paid into", "Number checked|mid", "Listed|mid"]} rows={rows.map((b) => [
             <span key="n"><b>{b.name}</b>{b.aliases ? <div className="sub2">also {b.aliases}</div> : null}</span>,
             <span key="c" className="tnum">{b.code}</span>,
             <span key="k" className="sub2">{KIND[b.kind] ?? b.kind}</span>,
+            <span key="ev" className={`sub2${b.passing != null && Number(b.passing) < Number(b.paid_accounts ?? 0) ? " ink-red" : ""}`}>{evidence(b)}</span>,
             may && checkable(b.code, b.kind)
               ? <input key="chk" type="checkbox" className="chk" aria-label={`Check account numbers at ${b.name}`} checked={b.nuban_check} disabled={busy}
                   onChange={(e) => void save({ code: b.code, name: b.name, nubanCheck: e.target.checked }, `${b.name}: account numbers ${e.target.checked ? "checked" : "not checked"}`)} />

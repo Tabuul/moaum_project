@@ -19,7 +19,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Account { code: string; name: string; type: string; normal_side: string; parent_code: string | null; postable: boolean; active: boolean }
 export interface IeRow { section: string; code: string | null; name: string; amount: number }
-export interface Overview { cash: number; ie: IeRow[]; unposted: { payments: number; refunds: number; vouchers: number }; journals: number; yearStart: string }
+export interface Overview { cash: number; ie: IeRow[]; unposted: { payments: number; refunds: number; vouchers: number; /** V545 */ wallet?: number }; journals: number; yearStart: string }
 export interface TbRow { code: string; name: string; type: string; debit: number; credit: number }
 export interface TrialBalance { asOf: string; rows: TbRow[]; debit: number; credit: number; balanced: boolean }
 export interface Statement { from?: string; to?: string; asOf?: string; rows: IeRow[] }
@@ -35,7 +35,7 @@ const TABS: [Tab, string][] = [["overview", "Overview"], ["trial", "Trial balanc
 
 interface DraftLine { account: string; debit: string; credit: string; narration: string }
 /** V410: one batch of the ledger sync — what it posted and how many remain */
-interface SyncBatch { payments: number; refunds: number; vouchers: number; remaining: number }
+interface SyncBatch { payments: number; refunds: number; vouchers: number; /** V545 */ wallet?: number; remaining: number }
 /** the transactions one sync request posts; the screen carries on until none remain */
 const SYNC_BATCH = 2000;
 const emptyLine = (): DraftLine => ({ account: "", debit: "", credit: "", narration: "" });
@@ -105,7 +105,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
           return;
         }
         const b = (await r.json()) as SyncBatch;
-        const n = b.payments + b.refunds + b.vouchers;
+        const n = b.payments + b.refunds + b.vouchers + Number(b.wallet ?? 0);
         posted += n;
         setLeft(b.remaining);
         // none left — or none of what is left could be posted by this sync, which the books then still show
@@ -136,7 +136,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
   const surplus = overview.ie.find((r) => r.section === "SURPLUS")?.amount ?? 0;
   const income = overview.ie.find((r) => r.section === "INCOME_TOTAL")?.amount ?? 0;
   const expense = overview.ie.find((r) => r.section === "EXPENSE_TOTAL")?.amount ?? 0;
-  const unposted = overview.unposted.payments + overview.unposted.refunds + overview.unposted.vouchers;
+  const unposted = overview.unposted.payments + overview.unposted.refunds + overview.unposted.vouchers + Number(overview.unposted.wallet ?? 0);
 
   return (
     <>
@@ -152,8 +152,8 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
 
       {unposted > 0 ? (
         <Note kind="info" title={`${unposted.toLocaleString()} transaction${unposted === 1 ? "" : "s"} not yet on the books`}
-          action={<Btn kind="primary" disabled={!may || busy !== null} onClick={() => void syncAll("Ledger sync: posted confirmed payments, paid refunds and paid vouchers")}>{syncWord("Post them now", "Posting…")}</Btn>}>
-          {overview.unposted.payments.toLocaleString()} payment{overview.unposted.payments === 1 ? "" : "s"}, {overview.unposted.refunds.toLocaleString()} refund{overview.unposted.refunds === 1 ? "" : "s"} and {overview.unposted.vouchers.toLocaleString()} voucher{overview.unposted.vouchers === 1 ? "" : "s"} not yet posted. Each transaction posts once, {SYNC_BATCH.toLocaleString()} at a time, oldest first, until none remain; if it stops, press again to carry on.
+          action={<Btn kind="primary" disabled={!may || busy !== null} onClick={() => void syncAll("Ledger sync: posted confirmed payments, paid refunds, paid vouchers and wallet entries")}>{syncWord("Post them now", "Posting…")}</Btn>}>
+          {overview.unposted.payments.toLocaleString()} payment{overview.unposted.payments === 1 ? "" : "s"}, {overview.unposted.refunds.toLocaleString()} refund{overview.unposted.refunds === 1 ? "" : "s"} and {overview.unposted.vouchers.toLocaleString()} voucher{overview.unposted.vouchers === 1 ? "" : "s"}{Number(overview.unposted.wallet ?? 0) ? `, and ${Number(overview.unposted.wallet).toLocaleString()} wallet entr${Number(overview.unposted.wallet) === 1 ? "y" : "ies"}` : ""} not yet posted. Each transaction posts once, {SYNC_BATCH.toLocaleString()} at a time, oldest first, until none remain; if it stops, press again to carry on.
         </Note>
       ) : (
         <Note kind="ok" title="The books are up to date" />
