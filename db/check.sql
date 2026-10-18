@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 393
+\set EXPECTED 394
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -18911,6 +18911,82 @@ BEGIN
         format('collections %s | after booking %s | refusals %s/%s/%s | disbursements %s | figures missing %s unposted %s ended %s difference %s (ledger %s, effect %s) | wide missing %s | sign %s/%s signed %s items %s kept %s line %s taken %s open %s | 1020 %s',
                coll, coll_after, bad_matched, bad_account, bad_note, disb, f->>'missing_days', f->>'unposted', f->>'period_ended', f->>'difference', f->>'ledger_balance', f->>'items_effect',
                wide->>'missing_days', same_officer, unexplained, signed->>'difference', items_kept, kept, signed_line, taken, open_period, disb_signed));
+END $$;
+
+-- ── V559. The bulk student password reset: an agent posted to a faculty with BULK_RESET_PASSWORD reaches that faculty's students
+-- only — one with a matriculation number may be reset, one without is MATRICULATION NUMBER NOT AVAILABLE, one in another faculty is
+-- ACCESS NOT AUTHORIZED with nothing of the record shown, an id that names no student is not found — while the Head reaches the
+-- University, and an agent without the capability nobody; an operation is opened once for one key (BPR/YYYY/NNNNNN, one item a
+-- student however often chosen), refused without a reason or a student, and counted as its students are reset: a student failed or
+-- never found counts against it, an item is FAILED only with its code; a cancelled one stays cancelled, its counts kept. The block
+-- undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid; plain uuid; q text; fac text; prog_in text; prog_out text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        codes text; head_codes text; plain_codes text; hidden boolean; op uuid; op2 uuid; ref text; items int; total int;
+        short text; empty text; tally text; counts text; bad_item text; msg text; known boolean; op3 uuid; cancelled text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        PERFORM set_config('moaum.reason', 'CHECK V559', true);
+        known := 'BULK_RESET_PASSWORD' = ANY (helpdesk.support_capabilities());
+        SELECT code, faculty_code INTO prog_in, fac FROM ref.programme WHERE code = 'C00023';
+        SELECT code INTO prog_out FROM ref.programme WHERE faculty_code <> fac AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKBULK', 'Agent') RETURNING id INTO agent;
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKBULK', 'Plain') RETURNING id INTO plain;
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES
+            (agent, q, 'FACULTY', fac, ARRAY['VIEW_STUDENT', 'RESET_PASSWORD', 'BULK_RESET_PASSWORD']),
+            (plain, q, 'FACULTY', fac, ARRAY['VIEW_STUDENT', 'RESET_PASSWORD']);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/59/055901', 'MOAUM/ADM/59/559001', 'CHECKBULKA', 'In', prog_in, 'UTME', '2059/2060', 100, 100, 'ACTIVE', now()),
+            (b, NULL, 'MOAUM/ADM/59/559002', 'CHECKBULKB', 'No Number', prog_in, 'UTME', '2059/2060', 100, 100, 'ADMITTED', NULL),
+            (c, 'MOAUM/CHK/59/055903', 'MOAUM/ADM/59/559003', 'CHECKBULKC', 'Outside', prog_out, 'UTME', '2059/2060', 100, 100, 'ACTIVE', now());
+        SELECT string_agg(x.code, ',' ORDER BY x.code), bool_and(x.full_name IS NULL AND x.matric_no IS NULL) FILTER (WHERE x.code IN ('OUT_OF_SCOPE', 'NOT_FOUND'))
+          INTO codes, hidden FROM helpdesk.bulk_reset_check(agent, false, ARRAY[a, b, c, d]) x;
+        SELECT string_agg(x.code, ',' ORDER BY x.code) INTO head_codes FROM helpdesk.bulk_reset_check(who, true, ARRAY[a, c]) x;
+        SELECT string_agg(x.code, ',' ORDER BY x.code) INTO plain_codes FROM helpdesk.bulk_reset_check(plain, false, ARRAY[a]) x;
+        BEGIN
+            PERFORM helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a], '{}'::jsonb, 'short', true, NULL);
+        EXCEPTION WHEN check_violation THEN short := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[]::uuid[], '{}'::jsonb, 'Students reported login issues', true, NULL);
+        EXCEPTION WHEN check_violation THEN empty := split_part(SQLERRM, ':', 1);
+        END;
+        op := helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a, b, c, a, d], '{}'::jsonb, 'Students reported login issues', true, 'check-v559');
+        op2 := helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a], '{}'::jsonb, 'Students reported login issues', true, 'check-v559');
+        SELECT r.reference, r.total INTO ref, total FROM helpdesk.bulk_reset r WHERE r.id = op;
+        items := (SELECT count(*) FROM helpdesk.bulk_reset_item WHERE bulk_id = op);
+        BEGIN
+            UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', processed_at = now() WHERE bulk_id = op AND student_id = b;
+        EXCEPTION WHEN check_violation THEN bad_item := 'REFUSED';
+        END;
+        UPDATE helpdesk.bulk_reset_item SET status = 'RESET', processed_at = now() WHERE bulk_id = op AND student_id = a;
+        UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', failure_code = 'RESET_NO_MATRIC', processed_at = now() WHERE bulk_id = op AND student_id = b;
+        tally := helpdesk.bulk_reset_tally(op);   -- c still waits
+        UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', failure_code = 'OUT_OF_SCOPE', processed_at = now() WHERE bulk_id = op AND student_id = c;
+        tally := tally || '>' || helpdesk.bulk_reset_tally(op);
+        SELECT r.succeeded || '/' || r.failed || '/' || r.total INTO counts FROM helpdesk.bulk_reset r WHERE r.id = op;
+        -- cancelled with one student reset as the cancel came
+        op3 := helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a, c], '{}'::jsonb, 'Students reported login issues', true, 'check-v559-cancel');
+        UPDATE helpdesk.bulk_reset SET status = 'CANCELLED' WHERE id = op3;
+        UPDATE helpdesk.bulk_reset_item SET status = 'RESET', processed_at = now() WHERE bulk_id = op3 AND student_id = a;
+        UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', failure_code = 'CANCELLED', processed_at = now() WHERE bulk_id = op3 AND status = 'PENDING';
+        cancelled := helpdesk.bulk_reset_tally(op3);
+        cancelled := cancelled || ':' || (SELECT r.succeeded || '/' || r.failed || '/' || r.total FROM helpdesk.bulk_reset r WHERE r.id = op3);
+        RAISE EXCEPTION 'the V559 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V559 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V559: a bulk password reset reaches only the students in the agent''s BULK_RESET_PASSWORD scope (the Head the University), names why a student may not be reset without showing one out of reach, is opened once for one key under BPR/YYYY/NNNNNN with one item a student, and counts a student failed or never found against it — a cancelled one too',
+        coalesce(known AND codes = 'ELIGIBLE,NOT_FOUND,OUT_OF_SCOPE,RESET_NO_MATRIC' AND hidden AND head_codes = 'ELIGIBLE,ELIGIBLE' AND plain_codes = 'OUT_OF_SCOPE'
+                 AND short = 'SUPPORT_REASON_SHORT' AND empty = 'BULK_RESET_EMPTY' AND op = op2 AND ref ~ '^BPR/\d{4}/\d{6}$' AND items = 3 AND total = 4
+                 AND bad_item = 'REFUSED' AND tally = 'PROCESSING>COMPLETED_WITH_EXCEPTIONS' AND counts = '1/3/4' AND cancelled = 'CANCELLED:1/1/2', false),
+        format('known %s | codes %s hidden %s | head %s | plain %s | refusals %s/%s | same %s ref %s items %s total %s | bad item %s | tally %s counts %s | cancelled %s',
+               known, codes, hidden, head_codes, plain_codes, short, empty, op = op2, ref, items, total, bad_item, tally, counts, cancelled));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

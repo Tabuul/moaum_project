@@ -78,6 +78,44 @@ The public sign-in page no longer says that the number is the first password (`A
   - can be changed: on or off, unlock by default, ticket optional or required, the hourly limit per agent (none by default, V526), the statuses reached, and (V528) the day's count of one agent's resets at which the Head is told — once an agent a day, by e-mail and on the portal (`SUPPORT_RESET_ALERT`; the Director of ICT where no Head is in office); empty tells no one, and nothing is refused;
   - fixed, not settings: the default password is the matriculation number, the change is always forced, and a reason is always required.
 
+## Bulk password reset (V559)
+
+Many students reset in one operation, by the same service as the single reset. There is no second reset system: each student is put on the first password by `StudentAuthService.resetToDefault`, the sign-in door accepts the matriculation number while `must_change` holds, and `PasswordChangeGate` forces the change.
+
+- **Who.**
+  - The capability is `BULK_RESET_PASSWORD`. A Head of the posting grants it like any other capability; it is not in the V500 baseline.
+  - An agent reaches only the students their postings with that capability cover (`helpdesk.agent_scope_for(agent, 'BULK_RESET_PASSWORD')`). A CPO posted to one faculty therefore resets only that faculty's students.
+  - The Head of the Support Desk, the Director of ICT, admin and super reach the University.
+  - Scope is enforced on the server, and again in the database for each student as they are reset.
+- **Screen.** ICT Support Desk → Bulk Password Reset (`/helpdesk/password-reset/bulk`, menu id `t/supportpwbulk`).
+  - Counters: open Login Issues tickets, resets today, bulk operations, students reset and failed today.
+  - Search by name, matriculation, JAMB or application number, phone, e-mail or ticket number. Filter by faculty, department, programme, level, student status and account state (no account, locked, must change, normal), or **Login issues only**: the students with an open Login Issues ticket, newest first, their ticket shown. Only a ticket the agent works (`helpdesk.can_view`: a queue they are posted to, within the posting's scope, or assigned to them) is offered, since the reset is filed on it; the counter counts the same students.
+  - Selection: tick boxes, **Select all on this page**, **Select all N matching** (at most 1,000) and **Clear selection**. The choice is kept across pages, filters and a reload. Only the ids and tickets are kept, in the tab's session storage.
+  - **Reset passwords (N)** opens the confirmation. The server lists who is eligible and who is not, with the reason. The reason is required (10 characters or more).
+  - The work then runs on the server and the dialog shows real progress (processed / total, reset, failed) with **Cancel the rest**: the students not yet reached are recorded as CANCELLED, a student being reset at that moment finishes, and the operation stays CANCELLED with its counts. The result lists every student reset and every one not reset, with Excel.
+  - The operation's record (`/bulk/{id}`) and **Bulk reset history** (`/bulk/history`, filterable by date, status, reference, officer or ticket number) are linked from the single reset and its history.
+- **Each student, failing alone** (`BulkPasswordResets`, its own transaction a student):
+  - the item is locked first, so a cancel that reached it leaves it alone;
+  - checked again by `helpdesk.bulk_reset_check`: NOT_FOUND, OUT_OF_SCOPE ("ACCESS NOT AUTHORIZED"), RESET_DISABLED, RESET_MERGED_RECORD, RESET_NO_MATRIC ("MATRICULATION NUMBER NOT AVAILABLE") or RESET_STATUS ("STUDENT NOT ELIGIBLE");
+  - the ticket rule of the policy applied;
+  - reset, with its sessions ended;
+  - recorded on the support ledger as a PASSWORD_RESET (method DEFAULT_CREDENTIAL) that names the BPR reference, plus the unlock where one was made;
+  - told by the same no-password e-mail as the single reset.
+  
+  A student reset moments before by another agent reads **Already reset** and is not reset twice. A failed student never undoes the others. The operation ends COMPLETED, COMPLETED_WITH_EXCEPTIONS, FAILED or CANCELLED.
+- **Never twice.**
+  - The confirmation sends a key. The same key from the same agent returns the same operation (`UNIQUE (initiated_by, idempotency_key)`).
+  - A student chosen twice is one item.
+  - The hourly limit of the policy, when the Director sets one, counts the operation's students.
+- **Work and records.**
+  - One bcrypt hash of a random secret is made for the whole operation (as V294 seals an upload), so a thousand students do not cost a thousand hashings.
+  - The request starts the worker once its transaction commits. A timer every 20 s takes up an operation an API restart left open. `JobLock` keeps it to one instance.
+  - `helpdesk.bulk_reset` (reference `BPR/YYYY/NNNNNN` by `platform.next_number`, initiator, office, reason, counts, status, times) and `helpdesk.bulk_reset_item` (each student's result, failure code and words, ticket, ledger act) are on the audit spine. Each student's writes carry the operation's id as the correlation.
+  - No password or hash is in any of them, in a log or on the screen.
+- **Tests.**
+  - `BulkPasswordResetIT`: scope, capability, preview, the run, the codes, the idempotent repeat, the forced change at sign-in, the ledger, the history.
+  - check.sql's V559 block: codes and scope, one item a student, key, reference, counts, a cancelled operation's state and counts.
+
 ## Other reset paths found in the codebase
 
 | Path | What it is | Kept because |

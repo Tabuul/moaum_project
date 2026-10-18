@@ -39,7 +39,9 @@ class SupportAccess {
             // V500: a student's academic level, and the histories of level changes and password resets
             "PROGRESS_LEVEL", "CORRECT_LEVEL", "VIEW_LEVEL_HISTORY", "VIEW_RESET_HISTORY",
             // V521: opening the student's portal as the student, read-only
-            "VIEW_STUDENT_PORTAL");
+            "VIEW_STUDENT_PORTAL",
+            // V559: many students reset to the default credential in one operation, within the posting's scope
+            "BULK_RESET_PASSWORD");
     static final Map<String, String> WORDS = Map.ofEntries(
             Map.entry("VIEW_STUDENT", "viewing student records"), Map.entry("EDIT_CONTACT", "editing contact details"),
             Map.entry("EDIT_PERSONAL", "editing personal details"), Map.entry("EDIT_FAMILY", "editing family and sponsor details"),
@@ -54,7 +56,8 @@ class SupportAccess {
             Map.entry("REMOVE_ALLOCATIONS", "removing a co-lecturer"), Map.entry("BULK_ALLOCATE", "bulk course allocation"),
             Map.entry("PROGRESS_LEVEL", "progressing a student to the next level"), Map.entry("CORRECT_LEVEL", "correcting a student's level"),
             Map.entry("VIEW_LEVEL_HISTORY", "reading the level change history"), Map.entry("VIEW_RESET_HISTORY", "reading the password reset history"),
-            Map.entry("VIEW_STUDENT_PORTAL", "opening the student's portal"));
+            Map.entry("VIEW_STUDENT_PORTAL", "opening the student's portal"),
+            Map.entry("BULK_RESET_PASSWORD", "resetting many students' passwords at once"));
 
     private final JdbcClient jdbc;
     private final NoticeRepository notices;

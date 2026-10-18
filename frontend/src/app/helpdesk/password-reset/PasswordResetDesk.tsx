@@ -18,7 +18,7 @@ export function PasswordResetDesk({ q, student: student0 }: { q: string; student
     <>
       <PageHead title="Student password reset" eyebrow="ICT Support Desk"
         description="Find the student, check who they are, and reset the password. The default student credential is the matriculation number, and the student must change it at the next sign-in. No email is needed, and the password is never shown or recorded."
-        actions={<><LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn><LinkBtn href="/helpdesk">Support Desk</LinkBtn></>} />
+        actions={<><LinkBtn href="/helpdesk/password-reset/bulk">Bulk password reset</LinkBtn><LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn><LinkBtn href="/helpdesk">Support Desk</LinkBtn></>} />
 
       <StudentFinder q={q} selected={student} onSelect={setStudent} />
 

@@ -24,6 +24,7 @@ export const CAPABILITIES: Record<string, [string, string]> = {
   ALLOCATE_COURSES: ["Allocate and reassign lecturers", "Allocate a class's lead lecturer, reassign it with a reason, add a co-lecturer, name the second examiner — through the allocation engine's checks"],
   REMOVE_ALLOCATIONS: ["Remove a co-lecturer", "Take a co-lecturer off a class, with a reason; the history keeps that they taught it"],
   BULK_ALLOCATE: ["Bulk course allocation", "Validate and import an allocation spreadsheet, each row held to the posting's scope"],
+  BULK_RESET_PASSWORD: ["Bulk password reset", "Reset many students at once to the matriculation number, changed at the next sign-in — only students within the posting's scope, each checked, with a reason"],
 };
 export const CAPABILITY_CODES = Object.keys(CAPABILITIES);
 

@@ -347,6 +347,22 @@ public class StudentAuthService {
      */
     @Transactional
     public DefaultReset resetToDefault(UUID student, boolean unlock) {
+        return resetToDefault(student, unlock, null);
+    }
+
+    /**
+     * V559: the hash of a secret nobody holds, made once for a bulk reset and given to each of its students' accounts — the costly
+     * part of a reset is this hash, and one unknown secret seals any number of accounts as well as one (V294 seals an upload so)
+     */
+    public String sealedHash() {
+        byte[] secret = new byte[32];
+        random.nextBytes(secret);
+        return encoder.encode(HexFormat.of().formatHex(secret));
+    }
+
+    /** V559: the one reset to the default credential, with the sealed hash of a bulk reset given (null: one made for this reset) */
+    @Transactional
+    public DefaultReset resetToDefault(UUID student, boolean unlock, String sealed) {
         repo.holdStudent(student);
         Map<String, Object> check = repo.resetCheck(student).orElseThrow(() -> new NotFound("student", student));
         if (!Boolean.TRUE.equals(check.get("eligible"))) {
@@ -358,9 +374,7 @@ public class StudentAuthService {
         if (a != null && onFirstPassword(a) && a.supportResetAt() != null && a.supportResetAt().isAfter(now.minus(SAME_RESET))) {
             return new DefaultReset(true, false, locked, false, 0, null);
         }
-        byte[] secret = new byte[32];
-        random.nextBytes(secret);
-        boolean opened = repo.resetToFirstPassword(student, encoder.encode(HexFormat.of().formatHex(secret)), unlock);
+        boolean opened = repo.resetToFirstPassword(student, sealed != null ? sealed : sealedHash(), unlock);
         int ended = repo.endSessions(student, "password reset by ICT Support");
         UUID event = repo.event("", student, "PASSWORD_RESET_BY_SUPPORT");
         if (locked && unlock) {

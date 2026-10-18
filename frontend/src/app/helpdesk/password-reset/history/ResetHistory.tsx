@@ -45,7 +45,7 @@ export function ResetHistory({ list, page, from, to, byAgent }: { list: AuditLis
     <>
       <PageHead title="Password reset history" eyebrow="ICT Support Desk"
         description="Every student password reset and account unlock made at the desk, newest first. Passwords are never recorded or shown."
-        actions={<><LinkBtn href="/helpdesk/password-reset">Student password reset</LinkBtn><LinkBtn href="/helpdesk/audit?module=AUTHENTICATION">Support action history</LinkBtn></>} />
+        actions={<><LinkBtn href="/helpdesk/password-reset">Student password reset</LinkBtn><LinkBtn href="/helpdesk/password-reset/bulk/history">Bulk reset history</LinkBtn><LinkBtn href="/helpdesk/audit?module=AUTHENTICATION">Support action history</LinkBtn></>} />
       {/* V528: the Head's view of each agent's resets (the Head, the Director of ICT, admin, super) */}
       {byAgent ? <ResetsByAgent counts={byAgent} /> : null}
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ from: String(f.get("from") ?? ""), to: String(f.get("to") ?? "") }); }}>
