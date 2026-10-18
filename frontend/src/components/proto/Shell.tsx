@@ -68,6 +68,7 @@ export const ROUTES: Record<string, string> = {
   "t/audit": "/audit",
   "t/exportlog": "/audit/exports",
   "t/recordviews": "/audit/record-views",
+  "t/recordcheck": "/records/check",
   "t/notify": "/notices",
   "t/channels": "/notices",
   "t/templates": "/notices/templates",

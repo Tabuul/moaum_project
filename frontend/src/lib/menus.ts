@@ -608,6 +608,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -1040,7 +1041,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
-          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" }
         ]
       },
       {
@@ -1108,6 +1110,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" },
@@ -1238,7 +1241,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
-          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" }
         ]
       },
       {
@@ -1343,6 +1347,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
@@ -1440,6 +1445,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
@@ -1622,6 +1628,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -2318,6 +2325,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
@@ -2548,6 +2556,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },

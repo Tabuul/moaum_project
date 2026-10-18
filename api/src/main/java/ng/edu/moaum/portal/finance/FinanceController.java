@@ -62,6 +62,11 @@ class FinanceController {
     public record FeeRows(@NotNull List<Map<String, Object>> rows) {
     }
 
+    /** V535: the structure upload says what it replaces — LISTED, only the faculties and programmes the file names; SESSION, the
+     *  whole session's structure, refused when the file leaves out a faculty with lines in force unless confirmWhole */
+    public record StructureRows(@NotNull List<Map<String, Object>> rows, @Pattern(regexp = "SESSION|LISTED") String scope, Boolean confirmWhole) {
+    }
+
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
 
@@ -84,18 +89,40 @@ class FinanceController {
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
-    /** upload the approved fees structure for a session — one row per faculty/level/semester/indigeneship cell;
-     *  it replaces the session's structure. */
+    /** upload the approved fees structure for a session — one row per faculty/level/semester/indigeneship cell; V535: it
+     *  replaces only the faculties and programmes the file names (scope LISTED) or, on purpose, the whole session (SESSION) */
     @PostMapping("/sessions/{session}/{year}/fee-structure")
     @PreAuthorize(FEE_SETTERS)
     @Transactional
-    Map<String, Object> importFeeStructure(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeeRows body) {
+    Map<String, Object> importFeeStructure(@PathVariable String session, @PathVariable String year, @Valid @RequestBody StructureRows body) {
         if (body.rows() == null || body.rows().isEmpty()) {
             throw new DomainRuleViolation("FEE_ROWS", "The structure has no rows to read.",
                     new DomainRuleViolation.Remedy("Upload the approved fees spreadsheet.", "Bursary"));
         }
-        return jdbc.sql("SELECT * FROM finance.import_fee_structure(:s, :j::jsonb)")
-                .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows())).query().singleRow();
+        return jdbc.sql("SELECT * FROM finance.import_fee_structure(:s, :j::jsonb, :scope, :whole)")
+                .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows()))
+                .param("scope", body.scope() == null ? "SESSION" : body.scope())
+                .param("whole", Boolean.TRUE.equals(body.confirmWhole())).query().singleRow();
+    }
+
+    /** V535: what the structure upload would do — the lines new, changed, the same and ended for each faculty or programme, the
+     *  faculties left with no line, the amounts that change and the students with no fee stated before and after; nothing kept */
+    @PostMapping("/sessions/{session}/{year}/fee-structure/preview")
+    @PreAuthorize(FEE_SETTERS)
+    @Transactional
+    Map<String, Object> previewFeeStructure(@PathVariable String session, @PathVariable String year, @Valid @RequestBody StructureRows body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("FEE_ROWS", "The structure has no rows to read.",
+                    new DomainRuleViolation.Remedy("Upload the approved fees spreadsheet.", "Bursary"));
+        }
+        return effect(jdbc.sql("SELECT finance.fee_upload_effect(:s, :j::jsonb, 'STRUCTURE', :scope)::text")
+                .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows()))
+                .param("scope", body.scope() == null ? "LISTED" : body.scope()).query(String.class).single());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> effect(String text) {
+        return json.readValue(text, Map.class);
     }
 
     @GetMapping("/sessions/{session}/{year}/fee-structure")
@@ -425,6 +452,19 @@ class FinanceController {
         }
         return jdbc.sql("SELECT * FROM finance.add_fee_lines(:s, :j::jsonb)")
                 .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows())).query().singleRow();
+    }
+
+    /** V535: what the "fees to state" sheet would add, and the students still with no fee stated afterwards; nothing kept */
+    @PostMapping("/sessions/{session}/{year}/fee-lines/preview")
+    @PreAuthorize(FEE_SETTERS)
+    @Transactional
+    Map<String, Object> previewFeeLines(@PathVariable String session, @PathVariable String year, @Valid @RequestBody FeeRows body) {
+        if (body.rows() == null || body.rows().isEmpty()) {
+            throw new DomainRuleViolation("FEE_LINES_ROWS", "The sheet has no rows to read.",
+                    new DomainRuleViolation.Remedy("Fill the amounts in the sheet downloaded from Students with no school fee stated.", "Bursary"));
+        }
+        return effect(jdbc.sql("SELECT finance.fee_upload_effect(:s, :j::jsonb, 'LINES', NULL)::text")
+                .param("s", session + "/" + year).param("j", json.writeValueAsString(body.rows())).query(String.class).single());
     }
 
     public record FeeSource(@NotBlank @Size(max = 12) String source, @Pattern(regexp = "\\d{4}/\\d{4}") String fromSession, @Size(max = 300) String note) {

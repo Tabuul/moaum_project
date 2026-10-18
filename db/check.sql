@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 375
+\set EXPECTED 378
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17695,6 +17695,143 @@ BEGIN
     END;
     PERFORM pg_temp.assert('V539: a postgraduate supervisor or panel change dated today in Lagos is taken whatever the database''s clock, for a role begun that day, and tomorrow in Lagos is refused',
         btrim(outcome) = 'Pacific/Kiritimati=TAKEN/PG_CHANGE_DATE Etc/GMT+12=TAKEN/PG_CHANGE_DATE UTC=TAKEN/PG_CHANGE_DATE', btrim(outcome));
+END $$;
+
+-- ── V535: the fees structure upload replaces only what it names, refuses a name it does not hold, and shows its effect first ──
+-- A structure naming one faculty is refused as the whole session while another faculty has lines in force (the two-argument form
+-- too, as every caller before V535 sent it); uploaded for what it names it replaces that faculty's lines alone; a faculty the
+-- portal does not hold refuses it; the preview of either upload says what it would change and keeps nothing; the whole session,
+-- meant, ends the other faculty's line. The block undoes its writes.
+DO $$
+DECLARE S text := '9935/9936'; msg text; other text; e_partial text; e_old text; e_unknown text; e jsonb; e_whole jsonb; e_lines jsonb;
+        before_preview int; after_preview int; listed text; whole text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT f.code INTO other FROM ref.faculty f WHERE f.code <> 'SC' AND EXISTS (SELECT 1 FROM ref.programme p WHERE p.faculty_code = f.code) ORDER BY f.code LIMIT 1;
+    BEGIN
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9935-09-01', date '9936-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM finance.import_fee_structure(S, jsonb_build_array(
+            jsonb_build_object('faculty', 'SC', 'level', '100', 'semester', '1', 'entryMode', 'UTME', 'amount', '50000'),
+            jsonb_build_object('faculty', other, 'level', '100', 'semester', '1', 'entryMode', 'UTME', 'amount', '60000')), 'SESSION', true);
+        BEGIN PERFORM finance.import_fee_structure(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"55000"}]', 'SESSION', false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_partial := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.import_fee_structure(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"55000"}]');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_old := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.import_fee_structure(S, '[{"faculty":"ZZ No Such Faculty","level":"100","amount":"1"}]', 'LISTED', false);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_unknown := split_part(msg, ':', 1); END;
+        before_preview := (SELECT count(*) FROM finance.fee_schedule WHERE session = S AND ended_at IS NULL);
+        e := finance.fee_upload_effect(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"55000"}]', 'STRUCTURE', 'LISTED');
+        e_whole := finance.fee_upload_effect(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"55000"}]', 'STRUCTURE', 'SESSION');
+        e_lines := finance.fee_upload_effect(S, '[{"programmeCode":"C00023","level":"300","entryMode":"UTME","semester":"1","amount":"81000"}]', 'LINES', NULL);
+        after_preview := (SELECT count(*) FROM finance.fee_schedule WHERE session = S AND ended_at IS NULL);
+        PERFORM finance.import_fee_structure(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"55000"}]', 'LISTED', false);
+        listed := (SELECT string_agg(faculty_code || '=' || amount::int, ',' ORDER BY faculty_code = 'SC' DESC) FROM finance.fee_schedule WHERE session = S AND ended_at IS NULL);
+        PERFORM finance.import_fee_structure(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"56000"}]', 'SESSION', true);
+        whole := (SELECT string_agg(faculty_code || '=' || amount::int, ',') FROM finance.fee_schedule WHERE session = S AND ended_at IS NULL);
+        RAISE EXCEPTION 'the V535 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V535 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V535: a fees structure replaces only the faculties it names unless the whole session is meant, refuses a faculty the portal does not hold, and its effect is shown first with nothing kept',
+        coalesce(e_partial = 'FEE_STRUCTURE_PARTIAL' AND e_old = 'FEE_STRUCTURE_PARTIAL' AND e_unknown = 'FEE_STRUCTURE_UNKNOWN'
+                 AND (e->'totals'->>'changed')::int = 1 AND (e->'totals'->>'ended')::int = 0
+                 AND (e->'changes'->0->>'old')::numeric = 50000 AND (e->'changes'->0->>'new')::numeric = 55000
+                 AND EXISTS (SELECT 1 FROM jsonb_array_elements(e_whole->'groups') g WHERE g->>'facultyCode' = other AND (g->>'losesAll')::boolean)
+                 AND (e_lines->'totals'->>'new')::int = 1 AND before_preview = 2 AND after_preview = 2
+                 AND listed = 'SC=55000,' || other || '=60000' AND whole = 'SC=56000', false),
+        format('partial %s / two-argument %s / unknown %s | listed preview %s %s | whole preview %s | lines preview %s | in force %s → %s | listed %s | whole %s',
+               e_partial, e_old, e_unknown, e->'totals', e->'changes', e_whole->'groups', e_lines->'totals', before_preview, after_preview, listed, whole));
+END $$;
+
+-- ── V536: the Registry's records check ──
+-- Each live student whose record is inconsistent is listed by what is wrong, and only for that: a level beyond the programme and
+-- its spillover years, the postgraduate entry mode on an undergraduate programme, an undergraduate level on a postgraduate one,
+-- Direct Entry at 100 Level, no state of origin, a state the register spells otherwise; a consistent record and a graduated one
+-- are not listed; every kind names the offices that correct it. The block undoes its writes.
+DO $$
+DECLARE msg text; pg text; fin int; got text; clean int; kinds int;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); ok uuid := gen_random_uuid(); gone uuid := gen_random_uuid();
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    SELECT code INTO pg FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    fin := finance.final_level('C00023');
+    BEGIN
+        INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/RCK/35/0001', 'ZZCHKV536', 'Beyond', 'Benue', 'C00023', 'UTME', '2015/2016', 100, fin + 300, 'ACTIVE', now()),
+            (b, 'MOAUM/RCK/35/0002', 'ZZCHKV536', 'PgEntry', 'Benue', 'C00023', 'POSTGRADUATE', '2023/2024', 100, 200, 'ACTIVE', now()),
+            (c, 'MOAUM/RCK/35/0003', 'ZZCHKV536', 'PgLow', 'Benue', pg, 'POSTGRADUATE', '2024/2025', 700, 100, 'ACTIVE', now()),
+            (d, 'MOAUM/RCK/35/0004', 'ZZCHKV536', 'DeHundred', 'Benue', 'C00023', 'DIRECT_ENTRY', '2025/2026', 200, 100, 'ACTIVE', now()),
+            (e, 'MOAUM/RCK/35/0005', 'ZZCHKV536', 'NoState', NULL, 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (f, 'MOAUM/RCK/35/0006', 'ZZCHKV536', 'Spelt', 'Cross-River', 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (ok, 'MOAUM/RCK/35/0007', 'ZZCHKV536', 'Consistent', 'Cross River', 'C00023', 'TRANSFER', '2025/2026', 200, 200, 'ACTIVE', now()),
+            (gone, 'MOAUM/RCK/35/0008', 'ZZCHKV536', 'Graduated', NULL, 'C00023', 'POSTGRADUATE', '2015/2016', 100, 900, 'GRADUATED', now());
+        got := (SELECT string_agg(split_part(x.matric_no, '/', 4) || ':' || x.issue, ',' ORDER BY x.matric_no, x.issue)
+                  FROM people.record_issues() x WHERE x.matric_no LIKE 'MOAUM/RCK/35/%');
+        clean := (SELECT count(*) FROM people.record_issues() x WHERE x.student_id IN (ok, gone));
+        RAISE EXCEPTION 'the V536 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V536 check undoes its writes' THEN RAISE; END IF;
+    END;
+    kinds := (SELECT count(*) FROM people.record_issue_kind WHERE cardinality(offices) > 0 AND corrects <> '' AND how <> '');
+    PERFORM pg_temp.assert('V536: the records check lists each live student whose record is inconsistent by what is wrong, and every kind names the offices that correct it',
+        coalesce(got = '0001:LEVEL_BEYOND_PROGRAMME,0002:UG_POSTGRADUATE_ENTRY,0003:PG_UNDERGRADUATE_LEVEL,0004:DIRECT_ENTRY_AT_100,0005:NO_STATE_OF_ORIGIN,0006:STATE_NOT_ON_REGISTER'
+                 AND clean = 0 AND kinds = (SELECT count(*) FROM people.record_issue_kind) AND kinds = 10, false),
+        format('found %s | consistent or graduated listed %s | kinds with offices %s', got, clean, kinds));
+END $$;
+
+-- ── V537: the slowest screens read their figures in one pass, with the same answers ──
+-- Every student's payment position at once is finance.payment_position for each (a balance under one naira is paid, a part
+-- payment is a part payment, the second semester is charged what the first leaves), the session's charges are finance.charges
+-- summed, and every application's Post-UTME standing read in one pass is admissions.putme_eligibility's. The block undoes its writes.
+DO $$
+DECLARE S text := '9933/9934'; msg text; full_ uuid := gen_random_uuid(); kobo uuid := gen_random_uuid(); part uuid := gen_random_uuid();
+        none_ uuid := gen_random_uuid(); bursar uuid := gen_random_uuid(); pos_differ int; charges_differ int; statuses text; putme_differ int; apps int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', bursar::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9933-09-01', date '9934-08-31') ON CONFLICT (name) DO NOTHING;
+        PERFORM finance.import_fee_structure(S, '[{"faculty":"SC","level":"100","semester":"1","entryMode":"UTME","amount":"60000.40"},
+                                                  {"faculty":"SC","level":"100","semester":"2","entryMode":"UTME","amount":"40000"}]', 'LISTED', false);
+        INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (full_, 'MOAUM/V537/33/0001', 'ZZCHKV537', 'Full', 'Kano', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now()),
+            (kobo, 'MOAUM/V537/33/0002', 'ZZCHKV537', 'Kobo', 'Kano', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now()),
+            (part, 'MOAUM/V537/33/0003', 'ZZCHKV537', 'Part', 'Kano', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now()),
+            (none_, 'MOAUM/V537/33/0004', 'ZZCHKV537', 'None', 'Kano', 'C00023', 'UTME', S, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (full_, S, 'MOAUM-FEE-V537-0001', 'School fees ' || S, 100000.40, now() + interval '1 day', now() - interval '1 hour', bursar, 'Card', 'RCPT-V537-0001'),
+            (kobo, S, 'MOAUM-FEE-V537-0002', 'School fees ' || S, 60000, now() + interval '1 day', now() - interval '1 hour', bursar, 'Card', 'RCPT-V537-0002'),
+            (kobo, S, 'MOAUM-FEE-V537-0003', 'School fees ' || S, 40000, now() + interval '1 day', now() - interval '1 hour', bursar, 'Card', 'RCPT-V537-0003'),
+            (part, S, 'MOAUM-FEE-V537-0004', 'School fees ' || S, 30000, now() + interval '1 day', now(), bursar, 'Card', 'RCPT-V537-0004');
+        pos_differ := (SELECT count(*) FROM (VALUES (NULL::int), (1), (2)) q(sem)
+                         CROSS JOIN LATERAL (SELECT sp.* FROM finance.session_positions(S, q.sem) sp WHERE sp.student_id IN (full_, kobo, part, none_)) a
+                         CROSS JOIN LATERAL finance.payment_position(a.student_id, S, q.sem) b
+                        WHERE (a.payable, a.paid, a.outstanding, a.status, a.payments, a.last_reference, a.last_channel, a.last_paid_at)
+                              IS DISTINCT FROM (b.payable, b.paid, b.outstanding, b.status, b.payments, b.last_reference, b.last_channel, b.last_paid_at));
+        statuses := (SELECT string_agg(split_part(st.matric_no, '/', 4) || ':' || sp.status || ':' || coalesce(sp.last_reference, '-'), ',' ORDER BY st.matric_no)
+                       FROM finance.session_positions(S, NULL) sp JOIN people.student st ON st.id = sp.student_id WHERE st.id IN (full_, kobo, part, none_));
+        charges_differ := (SELECT count(*) FROM finance.session_charges(S) c
+                            WHERE c.student_id IN (full_, kobo, part, none_)
+                              AND c.total IS DISTINCT FROM (SELECT coalesce(sum(x.amount), 0) FROM finance.charges(c.student_id, S) x));
+        RAISE EXCEPTION 'the V537 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V537 check undoes its writes' THEN RAISE; END IF;
+    END;
+    SELECT count(*) INTO apps FROM admissions.application;
+    putme_differ := (SELECT count(*) FROM (SELECT DISTINCT session FROM admissions.application) ss
+                       CROSS JOIN LATERAL admissions.putme_candidates(ss.session) c
+                       CROSS JOIN LATERAL admissions.putme_eligibility(c.application_id) e
+                      WHERE (c.status, c.why) IS DISTINCT FROM (e.status, e.why));
+    PERFORM pg_temp.assert('V537: every student''s payment position read at once is finance.payment_position for each, the session''s charges are finance.charges summed, and the Post-UTME standing read in one pass is admissions.putme_eligibility''s',
+        coalesce(pos_differ = 0 AND charges_differ = 0 AND putme_differ = 0
+                 AND statuses = '0001:FULLY_PAID:MOAUM-FEE-V537-0001,0002:FULLY_PAID:MOAUM-FEE-V537-0003,0003:PART_PAYMENT:MOAUM-FEE-V537-0004,0004:NOT_PAID:-', false),
+        format('positions differing %s | %s | charges differing %s | Post-UTME standings differing %s of %s applications', pos_differ, statuses, charges_differ, putme_differ, apps));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

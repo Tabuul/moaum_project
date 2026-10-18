@@ -1049,7 +1049,9 @@ class CollegeController {
                   JOIN ref.programme p ON p.code = st.programme_code
                   JOIN ref.faculty f ON f.code = p.faculty_code
                   JOIN ref.department d ON d.code = p.dept_code
-                  CROSS JOIN LATERAL finance.payment_position(st.id, :s, :sem) pos
+                  -- V537: every student's position read in one pass (finance.payment_position, for each of the College's 8,193
+                  -- students in turn, took about 30 s on the live-shaped copy)
+                  JOIN finance.session_positions(:s, :sem) pos ON pos.student_id = st.id
                  WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')
                    AND (:prog::text IS NULL OR p.code = :prog)
                    AND (:dept::text IS NULL OR d.code = :dept)

@@ -80,7 +80,21 @@ class PutmeController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
         out.put("exam", x);
-        out.put("statuses", jdbc.sql("SELECT status, count(*) AS n FROM admissions.putme_candidates(:s) GROUP BY status ORDER BY status").param("s", s).query().listOfRows());
+        // V537: the candidates read once for the three counts the desk opens on (each read the session's applicants again)
+        Map<String, Object> counts = CandidateDataController.Json.map(jdbc.sql("""
+                WITH c AS MATERIALIZED (SELECT status, faculty, programme_code, programme, batch_id FROM admissions.putme_candidates(:s))
+                SELECT jsonb_build_object(
+                    'statuses', (SELECT coalesce(jsonb_agg(jsonb_build_object('status', x.status, 'n', x.n) ORDER BY x.status), '[]'::jsonb)
+                                   FROM (SELECT status, count(*) AS n FROM c GROUP BY status) x),
+                    'byFaculty', (SELECT coalesce(jsonb_agg(jsonb_build_object('faculty', x.faculty, 'candidates', x.candidates, 'scheduled', x.scheduled) ORDER BY x.faculty), '[]'::jsonb)
+                                    FROM (SELECT faculty, count(*) AS candidates, count(*) FILTER (WHERE batch_id IS NOT NULL) AS scheduled
+                                            FROM c WHERE status NOT IN ('NOT_ELIGIBLE') GROUP BY faculty) x),
+                    'byProgramme', (SELECT coalesce(jsonb_agg(jsonb_build_object('programme_code', x.programme_code, 'programme', x.programme, 'faculty', x.faculty,
+                                                                                 'candidates', x.candidates, 'scheduled', x.scheduled) ORDER BY x.programme), '[]'::jsonb)
+                                      FROM (SELECT programme_code, programme, faculty, count(*) AS candidates, count(*) FILTER (WHERE batch_id IS NOT NULL) AS scheduled
+                                              FROM c WHERE status NOT IN ('NOT_ELIGIBLE') GROUP BY programme_code, programme, faculty) x))::text
+                """).param("s", s).query(String.class).single());
+        out.put("statuses", counts.get("statuses"));
         out.put("examProgrammes", jdbc.sql("""
                 SELECT e.programme_code, p.name FROM admissions.screening_exam_programme e JOIN ref.programme p ON p.code = e.programme_code WHERE e.session = :s ORDER BY p.name
                 """).param("s", s).query().listOfRows());
@@ -107,14 +121,8 @@ class PutmeController {
                       LEFT JOIN admissions.application a ON a.screening_batch_id = b.id
                      WHERE ec.exam_id = :e AND ec.active GROUP BY c.id, c.name ORDER BY c.name
                     """).param("e", id).query().listOfRows());
-            out.put("byFaculty", jdbc.sql("""
-                    SELECT faculty, count(*) AS candidates, count(*) FILTER (WHERE batch_id IS NOT NULL) AS scheduled FROM admissions.putme_candidates(:s)
-                     WHERE status NOT IN ('NOT_ELIGIBLE') GROUP BY faculty ORDER BY faculty
-                    """).param("s", s).query().listOfRows());
-            out.put("byProgramme", jdbc.sql("""
-                    SELECT programme_code, programme, faculty, count(*) AS candidates, count(*) FILTER (WHERE batch_id IS NOT NULL) AS scheduled FROM admissions.putme_candidates(:s)
-                     WHERE status NOT IN ('NOT_ELIGIBLE') GROUP BY programme_code, programme, faculty ORDER BY programme
-                    """).param("s", s).query().listOfRows());
+            out.put("byFaculty", counts.get("byFaculty"));
+            out.put("byProgramme", counts.get("byProgramme"));
         }
         return out;
     }

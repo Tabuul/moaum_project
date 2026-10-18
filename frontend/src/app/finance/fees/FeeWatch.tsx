@@ -14,6 +14,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { semesterName } from "@/lib/student-portal";
 import { buildXlsx, xlsxRowsAsync } from "@/lib/xlsx";
+import { FeeUploadPreview } from "./FeeUploadPreview";
 
 interface Gap {
   faculty_code: string; faculty: string | null; programme_code: string; programme: string; level: number | null; entry_mode: string | null;
@@ -42,7 +43,7 @@ const semesters = (list: string | null) => (list ?? "").split(",").filter(Boolea
 const SHEET = ["Faculty", "Faculty code", "Programme code", "Programme", "Level", "Entry mode", "Semester", "Indigene", "Spillover", "Students", "Amount"];
 type SheetResult = { rows: number; added: number; no_amount: number; already: number; no_programme: number; charged_as: number; skipped: number; first_error: string | null };
 
-export function FeeWatch({ session, faculties, sessions, may }: { session: string; faculties: { code: string; name: string }[]; sessions: string[]; may: boolean }) {
+export function FeeWatch({ session, faculties, programmes = [], sessions, may }: { session: string; faculties: { code: string; name: string }[]; programmes?: { code: string; name: string; category: string; faculty_code: string }[]; sessions: string[]; may: boolean }) {
   const [gaps, setGaps] = useState<Gaps | null>(null);
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -51,6 +52,8 @@ export function FeeWatch({ session, faculties, sessions, may }: { session: strin
   const [ending, setEnding] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [sheet, setSheet] = useState<SheetResult | null>(null);
+  /** V535: the filled sheet read, shown with its effect before the lines are added */
+  const [pending, setPending] = useState<{ fileName: string; rows: Record<string, string>[] } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -147,23 +150,18 @@ export function FeeWatch({ session, faculties, sessions, may }: { session: strin
         const p = { status: 400, title: "The sheet has no rows.", detail: "Download the sheet, fill the amounts and upload it." };
         setProblem(p); notifyProblem(p); return;
       }
-      const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-lines`, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Fee lines stated for ${session} from the sheet of students with no fee stated`) },
-        body: JSON.stringify({ rows }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) {
-        const p = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText };
-        setProblem(p); notifyProblem(p); return;
-      }
-      const res = j as SheetResult;
-      setSheet(res);
-      notify(`${res.added.toLocaleString()} fee line${res.added === 1 ? "" : "s"} added for ${session}`);
-      setTick((t) => t + 1);
-      router.refresh();
+      setPending({ fileName: file.name, rows });
     } finally {
       setBusy(null);
     }
+  }
+
+  function added(res: SheetResult) {
+    setSheet(res);
+    setPending(null);
+    notify(`${res.added.toLocaleString()} fee line${res.added === 1 ? "" : "s"} added for ${session}`);
+    setTick((t) => t + 1);
+    router.refresh();
   }
 
   const facultyName = (code: string) => named(faculties.find((f) => f.code === code)?.name ?? code);
@@ -209,8 +207,12 @@ export function FeeWatch({ session, faculties, sessions, may }: { session: strin
                     <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy === "sheet"}
                            onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadSheet(f); e.target.value = ""; }} />
                   </label>
-                  <span className="sub2">One row per group and semester not stated; fill the Amount, and the lines are added beside the structure (nothing in it is replaced). A row left blank is not added.</span>
+                  <span className="sub2">One row per group and semester not stated; fill the Amount, and the lines are added beside the structure (nothing in it is replaced). A row left blank is not added. You see what the sheet adds, and who is still left with no fee, before it is added.</span>
                 </div>
+              ) : null}
+              {pending ? (
+                <FeeUploadPreview session={session} action="LINES" fileName={pending.fileName} read={{ layout: "LINES", rows: pending.rows }}
+                  programmes={programmes} faculties={faculties} onClose={() => setPending(null)} onApplied={(j) => added(j as unknown as SheetResult)} />
               ) : null}
               {sheet ? (
                 <Note kind={sheet.added ? "ok" : "info"} title={`${sheet.added.toLocaleString()} fee line${sheet.added === 1 ? "" : "s"} added for ${session}`}>

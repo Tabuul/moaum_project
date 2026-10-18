@@ -12,7 +12,8 @@ import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { xlsxRows, csvRows, buildXlsx } from "@/lib/xlsx";
+import { xlsxWorkbook, csvRows } from "@/lib/xlsx";
+import { readFeeWorkbook } from "@/lib/fee-matrix";
 import { Btn, IcoBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { semesterText } from "@/lib/student-portal";
@@ -24,6 +25,7 @@ import { PgFees } from "./PgFees";
 import { FeeCopy } from "./FeeCopy";
 import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
+import { FeeUploadPreview, type UploadRead } from "./FeeUploadPreview";
 import type { GstFeePage } from "@/lib/gst";
 
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
@@ -50,124 +52,6 @@ export interface ApplicantFees {
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 
-/** Parse the approved-fees cross-tab (faculty blocks × 1st/2nd/Total rows × level bands × Indigene/Non-indigene)
- *  into one row per cell. A band like "100/200DE" is level 100 plus level 200 for Direct Entry. */
-interface FeeRow { faculty: string; level: number; entryMode: string | null; semester: number; indigene: string; amount: number; spillover?: boolean }
-function parseFeeMatrix(grid: (string | number | null)[][], cce = false): FeeRow[] {
-  const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
-  const hIdx = grid.findIndex((r) => r.some((c) => /faculty\s*\/\s*semester|^faculty$/i.test(norm(c))));
-  if (hIdx < 0) return [];
-  const header = grid[hIdx].map(norm);
-  const facCol = header.findIndex((c) => /faculty/i.test(c));
-  const bands: { col: number; level: number; de: number | null }[] = [];
-  const spillBands: { col: number }[] = [];
-  for (let c = facCol + 1; c < header.length; c++) {
-    const h = header[c];
-    if (!h) continue;
-    if (/spill/i.test(h)) { spillBands.push({ col: c }); continue; } // the spillover band, level-agnostic
-    const nums = h.match(/\d{3}/g);
-    if (!nums) continue;
-    bands.push({ col: c, level: Number(nums[0]), de: /de/i.test(h) && nums[1] ? Number(nums[1]) : null });
-  }
-  const semOf = (s: string) => (/1st|first/i.test(s) ? 1 : /2nd|second/i.test(s) ? 2 : /3rd|third/i.test(s) ? 3 : null);
-  const rows: FeeRow[] = [];
-  let fac = "";
-  for (let i = hIdx + 1; i < grid.length; i++) {
-    const r = grid[i].map(norm);
-    const c1 = r[facCol];
-    if (!c1) continue;
-    if (!/semester|total/i.test(c1)) { fac = c1; continue; } // a faculty name starts a block
-    const sem = semOf(c1);
-    if (!sem || !fac) continue; // skip the Total row
-    for (const b of bands) {
-      const cell = (v: string, indigene: string, level: number, mode: string | null) => {
-        const n = Number(v.replace(/[^0-9.]/g, ""));
-        if (level && n > 0) rows.push({ faculty: fac, level, entryMode: mode, semester: sem, indigene, amount: Math.round(n * 100) / 100 });
-      };
-      cell(r[b.col] ?? "", "INDIGENE", b.level, cce ? "CCE" : null);
-      cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.level, cce ? "CCE" : null);
-      if (b.de && !cce) { cell(r[b.col] ?? "", "INDIGENE", b.de, "DIRECT_ENTRY"); cell(r[b.col + 1] ?? "", "NON_INDIGENE", b.de, "DIRECT_ENTRY"); }
-    }
-    for (const b of spillBands) {
-      const spill = (v: string, indigene: string) => {
-        const n = Number(v.replace(/[^0-9.]/g, ""));
-        if (n > 0) rows.push({ faculty: fac, level: 0, entryMode: cce ? "CCE" : null, semester: sem, indigene, amount: Math.round(n * 100) / 100, spillover: true });
-      };
-      spill(r[b.col] ?? "", "INDIGENE");
-      spill(r[b.col + 1] ?? "", "NON_INDIGENE");
-    }
-  }
-  return rows;
-}
-
-/** True when the sheet is a plain one-row-per-fee table (a Faculty column and an
- *  Amount column), not the faculty×level cross-tab. */
-function looksFlat(grid: (string | number | null)[][]): boolean {
-  return grid.some((r) => {
-    const cs = r.map((c) => String(c ?? "").trim().toLowerCase());
-    return cs.some((c) => /facult/.test(c) && !c.includes("/")) && cs.some((c) => /amount|fee/.test(c));
-  });
-}
-
-/** Parse a one-row-per-fee sheet. Each row is a single fee line: Faculty, Level,
- *  Entry mode, Semester, Indigene, Amount (Item / Spillover / Programme / Kind / Fee group / Order optional).
- *  Raw values pass straight to the importer, which normalises them; only the entry
- *  mode is canonicalised here so "Direct Entry"/"DE" reach it as DIRECT_ENTRY. */
-function parseFeeFlat(grid: (string | number | null)[][], cce = false): Record<string, string>[] {
-  const norm = (v: string | number | null | undefined) => String(v ?? "").trim();
-  const hIdx = grid.findIndex((r) => {
-    const cs = r.map((c) => norm(c).toLowerCase());
-    return cs.some((c) => /facult/.test(c) && !c.includes("/semester")) && cs.some((c) => /amount|fee/.test(c));
-  });
-  if (hIdx < 0) return [];
-  const H = grid[hIdx].map((c) => norm(c).toLowerCase());
-  const find = (re: RegExp) => H.findIndex((c) => re.test(c));
-  const col = {
-    faculty: find(/facult/), level: find(/level/), mode: find(/entry|mode/),
-    semester: find(/semester|(^|\b)sem(\b|$)/), indigene: find(/indigen|origin|state/),
-    amount: find(/amount|fee/), item: find(/item|descrip|charge|purpose/),
-    spill: find(/spill/), programme: find(/programme|program|course/),
-    kind: find(/^kind|fee kind|^type/), group: find(/group/), ord: find(/^ord(er)?$|^order/),
-  };
-  const modeOf = (v: string): string | null => {
-    const s = v.toUpperCase().replace(/[^A-Z]/g, "");
-    if (!s) return null;
-    if (s === "DE" || s.includes("DIRECT")) return "DIRECT_ENTRY";
-    if (s.includes("TRANSFER")) return "TRANSFER";
-    if (s === "CCE" || s.includes("CONTINUING") || s.includes("PARTTIME")) return "CCE";
-    if (s.includes("UTME")) return "UTME";
-    if (s.includes("JUPEB")) return "JUPEB";
-    if (s.includes("SANDWICH")) return "SANDWICH";
-    if (s.includes("POST") || s === "PG") return "POSTGRADUATE";
-    return v.toUpperCase().trim();
-  };
-  const rows: Record<string, string>[] = [];
-  for (let i = hIdx + 1; i < grid.length; i++) {
-    const r = grid[i].map(norm);
-    const cell = (k: keyof typeof col) => (col[k] >= 0 ? (r[col[k]] ?? "") : "");
-    const amt = cell("amount").replace(/[^0-9.]/g, "");
-    if (!amt || Number(amt) <= 0) continue;
-    const fac = cell("faculty");
-    const prog = col.programme >= 0 ? cell("programme") : "";
-    if (!fac && !prog) continue;
-    const row: Record<string, string> = { amount: amt };
-    if (fac) row.faculty = fac;
-    if (prog) row.programmeCode = prog;
-    if (cell("level")) row.level = cell("level");
-    const m = cce ? "CCE" : col.mode >= 0 ? modeOf(cell("mode")) : null;
-    if (m) row.entryMode = m;
-    if (cell("semester")) row.semester = cell("semester");
-    if (cell("indigene")) row.indigene = cell("indigene");
-    if (col.item >= 0 && cell("item")) row.item = cell("item");
-    if (col.spill >= 0 && /^(y|t|1|true|yes|spill)/i.test(cell("spill"))) row.spillover = "true";
-    if (col.kind >= 0 && cell("kind")) row.kind = cell("kind");
-    if (col.group >= 0 && cell("group")) row.feeGroup = cell("group");
-    if (col.ord >= 0 && cell("ord")) row.ord = cell("ord");
-    rows.push(row);
-  }
-  return rows;
-}
-
 export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
@@ -190,6 +74,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   // V380: the full-time lines and the CCE lines (entry mode CCE) of a session are kept apart; an upload replaces only its own kind
   const [filterRoute, setFilterRoute] = useState("");
   const [cceUpload, setCceUpload] = useState(false);
+  /** V535: the workbook read, shown with its effect before it is uploaded */
+  const [pending, setPending] = useState<{ fileName: string; read: UploadRead; cce: boolean } | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
   const val = (k: string, d = "") => edits[k] ?? d;
@@ -375,31 +261,38 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     setFeeMsg(null);
     try {
       const isCsv = /\.csv$/i.test(file.name) || file.type === "text/csv";
-      let grid: (string | number | null)[][];
+      let sheets: (string | number | null)[][][];
       try {
-        grid = isCsv ? csvRows(await file.text()) : await xlsxRows(await file.arrayBuffer());
+        sheets = isCsv ? [csvRows(await file.text())] : (await xlsxWorkbook(await file.arrayBuffer())).map((x) => x.rows);
       } catch (err) {
-        setProblem({ status: 400, title: "That file could not be read.",
-          detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` }); notifyProblem({ status: 400, title: "That file could not be read.",
-          detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` });
+        const p = { status: 400, title: "That file could not be read.",
+          detail: `${err instanceof Error ? err.message : String(err)}. Save it from Excel as “Excel Workbook (.xlsx)” or as “CSV (Comma delimited) (.csv)” and upload that — an old .xls or a renamed file will not read.` };
+        setProblem(p); notifyProblem(p);
         return;
       }
-      const rows = looksFlat(grid) ? parseFeeFlat(grid, cceUpload) : parseFeeMatrix(grid, cceUpload);
-      if (!rows.length) {
-        setProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." }); notifyProblem({ status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty, Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows." });
+      // V535: every sheet of the workbook is read — one row per fee, the faculty cross-tab, or the College's blocks — and the
+      // upload is shown with its effect before anything changes
+      const read = readFeeWorkbook(sheets, cceUpload);
+      if (read.layout === "NONE") {
+        const p = { status: 400, title: "No fee rows could be read from that file.", detail: "One-row-per-fee: give it Faculty (or Programme code), Level, Entry mode, Semester, Indigene and Amount columns. Cross-tab: a FACULTY/SEMESTER header with level columns, then a block per faculty with 1st and 2nd Semester rows. Blocks: a row naming the programme beside its levels (100L/200DE, 200L … 600L/SP), the Indigenes / Non-Indigene row, then the 1ST, 2ND and TOTAL rows." };
+        setProblem(p); notifyProblem(p);
         return;
       }
-      const r = await fetch(`/api/bff/api/v1/finance/sessions/${session}/fee-structure`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Approved ${cceUpload ? "CCE " : ""}fees structure uploaded for ${session}`) }, body: JSON.stringify({ rows }) });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      const c = j as { rows: number; lines: number; faculties: number; no_faculty: number; no_programme?: number; no_group?: number; spillover?: number; programmes?: number };
-      setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} faculties${c.programmes ? `, ${c.programmes} programme${c.programmes === 1 ? "" : "s"} with their own lines` : ""}${c.spillover ? `, ${c.spillover} spillover line${c.spillover === 1 ? "" : "s"}` : ""}${c.no_faculty ? ` · ${c.no_faculty} rows had a faculty name that did not match one on the register` : ""}${c.no_programme ? ` · ${c.no_programme} rows named a programme not on the register and were loaded without it` : ""}${c.no_group ? ` · ${c.no_group} rows named a fee group not on the register` : ""}. It replaced the previous ${rows.some((x) => (x as { entryMode?: string | null }).entryMode === "CCE") ? "CCE " : ""}${rows.some((x) => (x as { entryMode?: string | null }).entryMode !== "CCE") ? "full-time " : ""}structure for ${session}.`);
-      router.refresh();
+      setPending({ fileName: file.name, read, cce: cceUpload });
     } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." });
+      const p = { status: 400, title: "That file could not be read as a spreadsheet.", detail: "Upload the approved-fees .xlsx." };
+      setProblem(p); notifyProblem(p);
     } finally {
       setBusy(null);
     }
+  }
+
+  function uploaded(j: Record<string, unknown>, scope: "LISTED" | "SESSION" | null, cce: boolean) {
+    const c = j as { rows: number; lines: number; faculties: number; no_faculty: number; no_programme?: number; no_group?: number; spillover?: number; programmes?: number };
+    setFeeMsg(`${c.lines} fee lines loaded across ${c.faculties} facult${c.faculties === 1 ? "y" : "ies"}${c.programmes ? `, ${c.programmes} programme${c.programmes === 1 ? "" : "s"} with their own lines` : ""}${c.spillover ? `, ${c.spillover} spillover line${c.spillover === 1 ? "" : "s"}` : ""}${c.no_group ? ` · ${c.no_group} rows named a fee group not on the register` : ""}. ${scope === "SESSION" ? `It replaced the whole ${cce ? "CCE" : "full-time"} structure for ${session}.` : `It replaced the lines of the faculties and programmes in the file; every other line for ${session} stands.`}`);
+    notify(`Approved fees uploaded for ${session}`);
+    setPending(null);
+    router.refresh();
   }
 
   const rules = schedule.scheme.rules ? (JSON.parse(schedule.scheme.rules) as Record<string, string>) : {};
@@ -486,14 +379,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </PBody>
         ) : null}
       </Panel>
-      <FeeWatch session={session} faculties={faculties} sessions={sessions} may={mayFees} />
+      <FeeWatch session={session} faculties={faculties} programmes={programmes} sessions={sessions} may={mayFees} />
       <FeeCopy session={session} sessions={sessions} may={mayFees} />
       {/* V520: every change to the session's fee lines, from the audit trail */}
       <FeeHistory session={session} />
       {mayFees ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
-            <div className="sub2 mb-2">Upload the approved fees spreadsheet (.xlsx or .csv): a block per faculty with 1st and 2nd Semester rows and a column per level, split Indigene / Non-indigene; or a <b>one-row-per-fee</b> table with <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i>. <b>Uploading replaces the {cceUpload ? "CCE" : "full-time"} structure for {session}</b>; the CCE and full-time structures never replace each other.</div>
+            <div className="sub2 mb-2">Upload the approved fees spreadsheet (.xlsx or .csv) as it was approved: a block per faculty with 1st and 2nd Semester rows and a column per level, split Indigene / Non-indigene; the College&rsquo;s sheet with a block per programme (MBBS, Nursing … with 100L/200DE, 200L … 600L/SP and a TOTAL row); or a <b>one-row-per-fee</b> table with <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i>. Before anything changes you see what it would change — the lines new, changed and ended for each faculty and programme, and the students still with no fee — and choose whether it replaces <b>only the faculties and programmes in the file</b> or the whole {cceUpload ? "CCE" : "full-time"} structure for {session}. The CCE and full-time structures never replace each other.</div>
             <div className="row">
               <label className={`btn btn--primary m-0${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer" }}>
                 {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
@@ -504,6 +397,10 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <label className="sub2 row row--tight mt-2" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={cceUpload} onChange={(e) => setCceUpload(e.target.checked)} /> This is the fee structure of the Centre for Continuing Education (CCE, part-time): every line is loaded for entry mode CCE</label>
             <div className="sub2 mt-2">Use <b>Clear</b> only to empty a session whose fees were stated by mistake.</div>
             {feeMsg ? <Note kind="ok" title="Approved fees loaded">{feeMsg}</Note> : null}
+            {pending ? (
+              <FeeUploadPreview session={session} action="STRUCTURE" fileName={pending.fileName} read={pending.read} cce={pending.cce}
+                programmes={programmes} faculties={faculties} onClose={() => setPending(null)} onApplied={(j, scope) => uploaded(j, scope, pending.cce)} />
+            ) : null}
           </PBody>
         </Panel>
       ) : null}

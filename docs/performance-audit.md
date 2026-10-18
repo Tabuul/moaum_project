@@ -377,3 +377,43 @@ so every Bursary analytics screen that reads `reporting.payments` whole
 classification computed once per payment (a table kept by trigger on
 confirmation, or a materialized view refreshed on confirmation), which this
 change does not attempt.
+
+## O. The slowest screens, crawled and fixed (18 October 2026, V537)
+
+**Method.** Every menu page (295 loads: each page as the widest office whose menu has it, and every office's dashboard) was
+opened through a production build of the frontend against the API on the live-shaped copy (54,573 students, 13,200
+applications), with `log_min_duration_statement = 1000`; the pages over 2 s were opened again, twice each, with nothing else
+running, and each page's slow statements were matched to it by time. Before/after below are the second load (the warm one).
+
+**Finding.** Each of the worst pages spent its time in a function called once for every row of a large set, or in a set
+planned into another so that it ran once per row. On PostgreSQL 18.6 such per-row calls cost several times as much on a
+connection that has served a few queries as on a fresh one — `finance.fee_sums` 0.6 s, then 4.5 s from its fifth run in one
+session; the Post-UTME counts 1.2 s, then 8–9 s from the third — and `DISCARD PLANS`/`DISCARD ALL`, `jit = off` and
+`plan_cache_mode` do not restore it. The API's pooled connections are always "warm", so a statement timed once in psql
+understates the live portal. **Time a statement three or more times in one session.** The cure that held was to remove the
+per-row calls: a per-programme CTE, joins, `MATERIALIZED` parts.
+
+| Page | Before | After | What it was |
+|---|---:|---:|---|
+| /admissions (Registrar) | 37.7 s | 4.2 s | `admissions.pipeline_stats`: `finance.position` for each admitted student; the programme counts as 456 correlated subqueries |
+| /admissions/putme | 37.1 s | 0.9 s | `admissions.putme_candidates`: a plpgsql eligibility for each of 12,649 applicants, read four times |
+| /college/payments | 29.0 s | 4.3 s | `finance.payment_position` for each of the College's 8,193 students |
+| /ict/admission-checking | 18.5 s | 2.2 s | `admissions.status_checking_rows`: a programme-name lookup for each applicant, read five times |
+| Bursar's dashboard, Registrar's overview, /audit/revenue | 16–18 s | 3.9–4.3 s | `finance.collection_by_faculty` → `session_charges`: the registration windows re-read for every student; `final_level` twice a student |
+| Registrar's dashboard | 7.0 s | 1.5 s | the programme counts |
+| /admissions/candidate-data | 11.9 s | 2.7 s | (reads the restated functions) |
+| /stats (first load) | 15.1 s | — | `reporting.student_positions` → `finance.session_positions` 10 s → 1.4–2.3 s |
+
+Every restated function was compared row by row with the one it replaces on the copy (`EXCEPT ALL` both ways): fee profiles
+54,573 rows, session charges 109,146 rows (two sessions), Post-UTME candidates 13,200 rows (three sessions), status checking
+12,649 rows, the pipeline figures and the collection by faculty — all the same. `finance.session_positions` was compared with
+`finance.payment_position` for 6,000 students × two sessions × three ways of asking: every amount, status and count the same; it
+lacked V454's under-one-naira rule, now added, and its "last reference" differed only where two payments were confirmed at the
+same moment, now broken the same way in both (the later reference).
+
+**Still over 5 s (not changed here).** /admissions/screening 13.8 s and /admissions/computed-screening 11.5 s
+(`admissions.olevel_score` for each candidate — a rewrite reading the grade points once was no faster and once took 536 s),
+/records 12.6 s (the student list with each CGPA), /finance/ledger 12.5 s, /admissions/eligibility 8.8 s, /finance/payments
+8.7 s, /catalogue/review 7–10 s (`catalogue.course_issues` for each course), /catalogue/all 7.5 s (`catalogue.code_owners`),
+/gst/students 7.3 s and /eps/students 6.9 s, /students 6.4 s (`registration.voluntary_withdrawals_due`: the semesters
+unregistered for each of 54,573 students), /finance/fees 6.2 s, /student-query/classification 5.1 s.

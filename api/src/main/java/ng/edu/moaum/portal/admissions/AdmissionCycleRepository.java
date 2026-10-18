@@ -40,18 +40,21 @@ class AdmissionCycleRepository {
     }
 
     List<AdmissionCycle.ProgrammeRow> programmes(String session, boolean inForce) {
+        // V537: the session's JAMB list and candidates counted once by programme, not once for each of the 456 programmes
+        // (about 14 s on the live-shaped copy, on the Admissions page and the Registrar's dashboard)
         return jdbc.sql("""
-                SELECT p.code, p.name, p.faculty_code, f.name AS faculty_name,
-                       (SELECT count(*) FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
-                         WHERE r.session = :s AND b.committed_at IS NOT NULL AND r.jamb_code = p.code) AS applied,
+                WITH applied AS (SELECT r.jamb_code AS code, count(*) AS n FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
+                                  WHERE r.session = :s AND b.committed_at IS NOT NULL GROUP BY r.jamb_code),
+                     cand AS (SELECT c.programme AS code, count(*) FILTER (WHERE c.offer_state IN ('ADMITTED','ACCEPTED')) AS offered,
+                                     count(*) FILTER (WHERE c.offer_state = 'ACCEPTED') AS accepted
+                                FROM admissions.candidate c WHERE c.session = :s GROUP BY c.programme)
+                SELECT p.code, p.name, p.faculty_code, f.name AS faculty_name, coalesce(ap.n, 0) AS applied,
                        (SELECT r.quota FROM admissions.programme_rule r JOIN admissions.session_policy sp ON sp.id = r.policy_id
                          WHERE sp.session = :s AND r.programme_code = p.code) AS quota,
-                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.programme = p.code
-                           AND c.offer_state IN ('ADMITTED','ACCEPTED')) AS offered,
-                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.programme = p.code
-                           AND c.offer_state = 'ACCEPTED') AS accepted,
+                       coalesce(cd.offered, 0) AS offered, coalesce(cd.accepted, 0) AS accepted,
                        CASE WHEN :force THEN admissions.cutoff_for(:s, p.code) END AS cutoff
                   FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+                  LEFT JOIN applied ap ON ap.code = p.code LEFT JOIN cand cd ON cd.code = p.code
                  WHERE NOT p.archived
                  ORDER BY f.name, p.name
                 """).param("s", session).param("force", inForce).query(AdmissionCycle.ProgrammeRow.class).list();

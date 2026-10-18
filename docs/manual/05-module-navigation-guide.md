@@ -2281,7 +2281,7 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Users / roles | `FinanceController.READERS` bursar, registrar, dregistrar, academic, audit, ict, admin, super, vc, dvc; `BURSARY` (write) bursar, super; applicant fees `FEESETTERS` academic, registrar, dregistrar, bursar, ict, admin, super; PG fees bursar, pgsecretary, pgschool, super. |
 | Navigation | Finance → Fee Setup and Schedule → `/finance/fees` (bursar; financecontroller and pgsecretary — refused); Fee Schedules → `/finance/fees` (admin). |
 | Dashboard | Tiles Items stated / Charge to everybody / Confirmed this session / References waiting. |
-| Main features | Add an item modal (Payment item, Amount, Session, Semester, Programme group, Level, Entry mode, Faculty, Programmes); End a line; "Upload approved fees (.xlsx / .csv)" (cross-tab or one-row-per-fee; replaces the session's structure); "Clear the {session} schedule"; "Confirm" a waiting reference against the bank's record; "Put the recommended scheme in force" (instrument, from); Applicant · Post-UTME fees; Postgraduate fees; Inter-departmental transfer fee. |
+| Main features | Add an item modal (Payment item, Amount, Session, Semester, Programme group, Level, Entry mode, Faculty, Programmes); End a line; "Upload approved fees (.xlsx / .csv)" (cross-tab, the College's programme blocks or one-row-per-fee; shown with its effect first; replaces only the faculties and programmes in the file, or the whole session on purpose); "Clear the {session} schedule"; "Confirm" a waiting reference against the bank's record; "Put the recommended scheme in force" (instrument, from); Applicant · Post-UTME fees; Postgraduate fees; Inter-departmental transfer fee. |
 | Create | `POST /finance/sessions/{s}/{y}/schedule`; `POST …/fee-structure`; `POST /finance/clearance-scheme`; `PUT /admissions/sessions/{s}/{y}/applicant-fees`; `PUT /pg/sessions/{s}/{y}/fees`; `PUT /finance/transfer-fee`. |
 | View | The charges table (Item, Applies to, Amount); references waiting. |
 | Edit | `PUT …/schedule/{id}` (keeps only the first ticked programme). |
@@ -4604,7 +4604,7 @@ Finance → Fee Setup and Schedule / Fee Schedules → /finance/fees
 |---|---|---|
 | State the item / Save changes | One POST per ticked programme; edit keeps the first | `POST/PUT /finance/sessions/{s}/{y}/schedule[/{id}]` |
 | End | No confirmation | `POST …/schedule/{id}/end` |
-| Upload approved fees (.xlsx / .csv) | Replaces the session's structure | `POST …/fee-structure` |
+| Upload approved fees (.xlsx / .csv) | Shows the effect (`POST …/fee-structure/preview`), then replaces only the faculties and programmes in the file, or the whole session on purpose | `POST …/fee-structure` |
 | Clear the schedule | Modal | `POST …/schedule/clear` |
 | Confirm the payment | Receipt issued; student told | `POST /finance/references/{ref}/confirm` |
 | Put in force | Recommended scheme | `POST /finance/clearance-scheme` |
