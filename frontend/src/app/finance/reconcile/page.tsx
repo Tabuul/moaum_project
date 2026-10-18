@@ -7,6 +7,7 @@ import { LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
 import { ReconcileLedger } from "./ReconcileLedger";
+import { CollectionsStatement } from "./CollectionsStatement";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function ReconcilePage() {
         ["Hanging", String(gw.data.hanging.length), gw.data.hanging.length ? "var(--red-ink)" : null, "Checkouts with nothing confirmed"],
       ]} />
       <ReconcileLedger canCheck={canCheck} />
+      <CollectionsStatement canCheck={canCheck} canPropose={["bursar", "super"].includes(office ?? "")} />
       <Panel title="Exceptions requiring action" right="Every exception is cleared before the period closes">
         {exceptions.length + open.length ? (
           <DTable cols={["Reference", "Amount|num", "Payer", "Exception", "Resolution|num"]} rows={[

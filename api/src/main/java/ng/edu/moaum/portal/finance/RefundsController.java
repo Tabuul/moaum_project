@@ -221,7 +221,8 @@ class RefundsController {
         return statement(id);
     }
 
-    /** the statements uploaded, newest first, with how their lines matched */
+    /** the disbursement statements uploaded, newest first, with how their lines matched (V552: the collections account's are on
+     *  CollectionsController) */
     @GetMapping("/bank-statements")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -234,6 +235,7 @@ class RefundsController {
                   FROM finance.bank_statement s
                   LEFT JOIN finance.bank_statement_line l ON l.statement_id = s.id
                   LEFT JOIN iam.person p ON p.id = s.uploaded_by
+                 WHERE s.account_kind = 'DISBURSEMENT'
                  GROUP BY s.id, p.id ORDER BY s.uploaded_at DESC LIMIT 50
                 """).query().listOfRows();
     }
@@ -245,7 +247,7 @@ class RefundsController {
     Map<String, Object> statement(@PathVariable UUID id) {
         Map<String, Object> head = jdbc.sql("""
                 SELECT s.id, s.label, s.file_name, s.period_from::text AS period_from, s.period_to::text AS period_to, s.lines, s.uploaded_at
-                  FROM finance.bank_statement s WHERE s.id = :id
+                  FROM finance.bank_statement s WHERE s.id = :id AND s.account_kind = 'DISBURSEMENT'
                 """).param("id", id).query().listOfRows().stream().findFirst()
                 .orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("bank statement", id));
         Map<String, Object> out = new java.util.LinkedHashMap<>(head);

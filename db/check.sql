@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 387
+\set EXPECTED 388
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -18339,6 +18339,158 @@ BEGIN
                  AND banks = '101=true,102=false,103=true,105=true,301=true,302=false,303=true' AND evidence = 'true', false),
         format('lines %s | missing %s | ledger pre %s app %s top %s grant %s loan %s out %s | opening %s (%s, had %s) | unpaid %s told %s/%s me %s | banks %s evidence %s',
                lines, missing, pre, app, top, grant_credit, loan_credit, wout, opening_ok, v_open, had_opening, unpaid, told, told_again, told_me, banks, evidence));
+END $$;
+-- ── V552. The collections statement matched and the wallet's opening balance settled. Payments issued to an invented student:
+--          a credit with a confirmed reference and its amount MATCHED and reconciled, one with the reference written without its
+--          hyphens and another amount AMOUNT_DIFFERS (a discrepancy recorded), one for a reference never confirmed
+--          RECEIVED_NOT_CONFIRMED, the first reference again DUPLICATE, a NELFUND remittance by its reference MATCHED, a gateway's
+--          one sum UNMATCHED until marked the settlement of the gateway's day (two payments reconciled, NGN 50 of charges), a debit
+--          DEBIT; confirmed but not in the bank: only the payment no line found (not one from the old portal, not one reconciled
+--          before); the unconfirmed credit goes to the bank credits once, proposed against its reference, and the second officer's
+--          approval confirms it. The wallet's opening balance by source with the account each part belongs in; reclassified out of
+--          suspense once posted, never to the wallet or suspense itself, never more than remains. The block undoes its writes ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); s uuid := gen_random_uuid(); a text := '9967/9968';
+        v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date; stmt uuid; lines text; recon text; before_settle text; groups text;
+        settled jsonb; after_settle text; bad_settle text; bad_debit text; bc uuid; bc_state text; sent_twice text; not_unconfirmed text;
+        confirmed_after boolean; listed_after boolean; had_opening boolean; breakdown text; not_posted text; st_posted numeric; st_recl numeric; st_rem numeric;
+        after_recl numeric; after_rem numeric;
+        reclass text; too_much text; wrong_account text; empty_lines text; second_ref text; msg text; v_line uuid; jid uuid;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V552', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9967-10-01', date '9968-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (maker, 'ZZCHKV552', 'Maker', NULL), (checker, 'ZZCHKV552', 'Checker', NULL);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/67/996701', 'MOAUM/CHK/67/9967', 'ZZCHKV552', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+            (s, a, 'MOAUM-FEE-996701-0001', 'School fees ' || a, 5000, now() + interval '7 days', now(), maker, 'Bank transfer', 'RCT-ZZ552-0001', 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0002', 'School fees ' || a, 3000, now() + interval '7 days', now(), maker, 'Card · Paystack', 'RCT-ZZ552-0002', 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0003', 'School fees ' || a, 2500, now() + interval '7 days', NULL, NULL, NULL, NULL, 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0004', 'School fees ' || a, 1000, now() + interval '7 days', now(), maker, 'ZZ552 Gateway', 'RCT-ZZ552-0004', 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0005', 'School fees ' || a, 1000, now() + interval '7 days', now(), maker, 'ZZ552 Gateway', 'RCT-ZZ552-0005', 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0006', 'School fees ' || a, 700, now() + interval '7 days', now(), maker, 'Bank transfer', 'RCT-ZZ552-0006', 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0007', 'School fees ' || a, 900, now() + interval '7 days', now(), maker, 'Legacy', 'RCT-ZZ552-0007', 'check V552'),
+            (s, a, 'MOAUM-FEE-996701-0008', 'School fees ' || a, 400, now() + interval '7 days', now(), maker, 'Bank transfer', 'RCT-ZZ552-0008', 'check V552');
+        PERFORM finance.reconcile_payment('MOAUM-FEE-996701-0008', 'MATCHED', 'ZZ552-BANK', 'check V552: reconciled before');
+        INSERT INTO finance.nelfund_batch (ref, session, received_on, amount, rows_read, note) VALUES ('ZZ552-NELF', a, v_today - 2, 40000, 1, 'check V552');
+
+        stmt := finance.load_collections_statement('CHECK V552 collections', 'collections.csv', jsonb_build_array(
+            jsonb_build_object('date', v_today::text, 'reference', 'MOAUM-FEE-996701-0001', 'description', 'Transfer', 'credit', '5,000.00'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'NIP TRF/MOAUMFEE9967010002/ZZCHKV552', 'credit', '3100'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'Transfer MOAUM-FEE-996701-0003 ZZCHKV552', 'credit', '2500'),
+            jsonb_build_object('date', v_today::text, 'reference', 'MOAUM-FEE-996701-0001', 'description', 'Transfer again', 'credit', '5000'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'NELFUND REMITTANCE ZZ552-NELF', 'credit', '40000'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'ZZ552 GATEWAY SETTLEMENT', 'credit', '1950'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'charges', 'debit', '100')));
+        lines := (SELECT string_agg(l.line_no || ':' || l.status || ':' || coalesce(l.matched_kind, '-') || ':' || coalesce(l.matched_reference, '-') || ':' || coalesce(l.expected_amount::int::text, '-'), ',' ORDER BY l.line_no)
+                    FROM finance.bank_statement_line l WHERE l.statement_id = stmt);
+        recon := (SELECT string_agg(right(pr.reference, 4) || '=' || pr.result, ',' ORDER BY pr.reference, pr.result)
+                    FROM finance.payment_reconciliation pr WHERE pr.reference LIKE 'MOAUM-FEE-996701-%' AND pr.note LIKE 'Collections statement CHECK V552%');
+        before_settle := (SELECT string_agg(right(n.reference, 4), ',' ORDER BY n.reference) FROM finance.collections_not_received(stmt) n WHERE n.reference LIKE 'MOAUM-FEE-996701-%');
+        groups := (SELECT string_agg(u.channel || ':' || (u.day = v_today) || ':' || u.payments || ':' || u.total::int, ',') FROM finance.collections_unmatched(stmt) u WHERE u.channel = 'ZZ552 Gateway');
+
+        -- the gateway's sum marked its day's settlement
+        v_line := (SELECT l.id FROM finance.bank_statement_line l WHERE l.statement_id = stmt AND l.line_no = 6);
+        settled := finance.settle_collections_line(v_line, 'ZZ552 Gateway', v_today);
+        after_settle := (SELECT string_agg(right(n.reference, 4), ',' ORDER BY n.reference) FROM finance.collections_not_received(stmt) n WHERE n.reference LIKE 'MOAUM-FEE-996701-%');
+        BEGIN
+            PERFORM finance.settle_collections_line(v_line, 'ZZ552 Gateway', v_today);
+        EXCEPTION WHEN check_violation THEN bad_settle := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.settle_collections_line((SELECT l.id FROM finance.bank_statement_line l WHERE l.statement_id = stmt AND l.line_no = 7), 'Bank transfer', v_today);
+        EXCEPTION WHEN check_violation THEN bad_debit := split_part(SQLERRM, ':', 1);
+        END;
+
+        -- the credit never confirmed sent to the bank credits, once; the second officer's approval confirms it
+        bc := finance.collections_line_to_bank_credit((SELECT l.id FROM finance.bank_statement_line l WHERE l.statement_id = stmt AND l.line_no = 3));
+        bc_state := (SELECT c.state || ':' || c.proposed_reference || ':' || c.amount::int FROM finance.bank_credit c WHERE c.id = bc);
+        BEGIN
+            PERFORM finance.collections_line_to_bank_credit((SELECT l.id FROM finance.bank_statement_line l WHERE l.statement_id = stmt AND l.line_no = 3));
+        EXCEPTION WHEN check_violation THEN sent_twice := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.collections_line_to_bank_credit((SELECT l.id FROM finance.bank_statement_line l WHERE l.statement_id = stmt AND l.line_no = 1));
+        EXCEPTION WHEN check_violation THEN not_unconfirmed := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.approve_bank_credit(bc);
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        confirmed_after := (SELECT r.confirmed_at IS NOT NULL FROM finance.payment_reference r WHERE r.reference = 'MOAUM-FEE-996701-0003');
+        listed_after := EXISTS (SELECT 1 FROM finance.collections_not_received(stmt) n WHERE n.reference = 'MOAUM-FEE-996701-0003');
+
+        -- the wallet's opening balance: entries recorded before the wallet came onto the ledger
+        had_opening := EXISTS (SELECT 1 FROM finance.gl_journal j WHERE j.source_type = 'WALLET' AND j.source_ref = 'WALLET-OPENING');
+        INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code, recorded_at) VALUES
+            (s, a, 'CREDIT', 3000, 'ZZ552-W1', 'check V552 loan', 'NELFUND', NULL),
+            (s, a, 'APPLIED', 800, 'ZZ552-W2', 'check V552 applied', 'NELFUND', NULL),
+            (s, a, 'CREDIT', 1000, 'ZZ552-W3', 'check V552 grant', 'SCHOLARSHIP', NULL),
+            (s, a, 'TOPUP', 500, 'ZZ552-W4', 'check V552 own money', NULL, NULL),
+            (s, a, 'CREDIT', 200, 'ZZ552-W5', 'check V552 no source', NULL, NULL);
+        breakdown := (SELECT string_agg(b.source_code || ':' || b.nature || ':' || b.amount::int || ':' || coalesce(b.suggested_account, '-'), ',')
+                        FROM finance.wallet_opening_breakdown() b WHERE b.session = a);
+        IF NOT had_opening THEN
+            BEGIN
+                PERFORM finance.reclassify_wallet_opening(jsonb_build_array(jsonb_build_object('account', '1010', 'amount', 100)));
+            EXCEPTION WHEN check_violation THEN not_posted := split_part(SQLERRM, ':', 1);
+            END;
+            PERFORM * FROM finance.gl_sync(NULL::int);
+        END IF;
+        SELECT o.posted, o.reclassified, o.remaining INTO st_posted, st_recl, st_rem FROM finance.wallet_opening_state() o;
+        IF had_opening THEN
+            -- an opening posted before this block holds the entries recorded then; reclassify within what remains of it
+            not_posted := 'WALLET_OPENING_NOT_POSTED';
+        END IF;
+        BEGIN
+            PERFORM finance.reclassify_wallet_opening(jsonb_build_array(jsonb_build_object('account', '1010', 'amount', st_rem + 1)));
+        EXCEPTION WHEN check_violation THEN too_much := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.reclassify_wallet_opening(jsonb_build_array(jsonb_build_object('account', '2100', 'amount', 1)));
+        EXCEPTION WHEN check_violation THEN wrong_account := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.reclassify_wallet_opening(jsonb_build_array(jsonb_build_object('account', '1010', 'amount', 0)));
+        EXCEPTION WHEN check_violation THEN empty_lines := split_part(SQLERRM, ':', 1);
+        END;
+        IF st_rem >= 3900 THEN
+            jid := finance.reclassify_wallet_opening(jsonb_build_array(
+                       jsonb_build_object('account', '1010', 'amount', 2200), jsonb_build_object('account', '5240', 'amount', 1000),
+                       jsonb_build_object('account', '4090', 'amount', 500)));
+            reclass := (SELECT string_agg(p.account || (CASE WHEN p.debit > 0 THEN '+' ELSE '-' END) || (p.debit + p.credit)::int, ',' ORDER BY p.line)
+                          FROM finance.gl_posting p WHERE p.journal_id = jid);
+            jid := finance.reclassify_wallet_opening(jsonb_build_array(jsonb_build_object('account', '4090', 'amount', 200)));
+            second_ref := (SELECT j.source_ref FROM finance.gl_journal j WHERE j.id = jid);
+            SELECT o.reclassified, o.remaining INTO after_recl, after_rem FROM finance.wallet_opening_state() o;
+        END IF;
+        RAISE EXCEPTION 'the V552 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V552 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V552: a collections statement''s credits are matched to the payments the portal issued and confirmed and to NELFUND remittances, what the bank received and the portal never confirmed goes to the bank credits, a gateway''s sum settles its day, and what was confirmed and not seen in the bank is listed; the wallet''s opening balance is shown by source and reclassified out of suspense, never more than remains',
+        coalesce(lines = '1:MATCHED:PAYMENT:MOAUM-FEE-996701-0001:5000,2:AMOUNT_DIFFERS:PAYMENT:MOAUM-FEE-996701-0002:3000,3:RECEIVED_NOT_CONFIRMED:PAYMENT:MOAUM-FEE-996701-0003:2500,'
+                       || '4:DUPLICATE:PAYMENT:MOAUM-FEE-996701-0001:5000,5:MATCHED:NELFUND:ZZ552-NELF:40000,6:UNMATCHED:-:-:-,7:DEBIT:-:-:-'
+                 AND recon = '0001=MATCHED,0002=DISCREPANCY'
+                 AND before_settle = '0004,0005,0006' AND groups = 'ZZ552 Gateway:true:2:2000'
+                 AND settled = '{"payments": 2, "total": 2000, "credited": 1950, "difference": 50}'::jsonb AND after_settle = '0006'
+                 AND bad_settle = 'SETTLEMENT_LINE' AND bad_debit = 'SETTLEMENT_LINE'
+                 AND bc_state = 'PROPOSED:MOAUM-FEE-996701-0003:2500' AND sent_twice = 'STATEMENT_LINE_SENT' AND not_unconfirmed = 'STATEMENT_LINE_NOT_UNCONFIRMED'
+                 AND confirmed_after AND NOT listed_after
+                 AND breakdown = 'NELFUND:LOAN:2200:1010,SCHOLARSHIP:GRANT:1000:5240,SELF:SELF:500:4090,UNATTRIBUTED:UNKNOWN:200:-'
+                 AND not_posted = 'WALLET_OPENING_NOT_POSTED' AND st_posted > 0 AND (had_opening OR st_recl = 0 AND st_rem = st_posted)
+                 AND too_much = 'WALLET_RECLASS_TOO_MUCH' AND wrong_account = 'WALLET_RECLASS_ACCOUNT' AND empty_lines = 'WALLET_RECLASS_EMPTY'
+                 AND (had_opening AND st_rem < 3900
+                      OR reclass = '1010+2200,5240+1000,4090+500,3900-3700' AND second_ref = 'WALLET-OPENING-RECLASS-2'
+                         AND after_recl = st_recl + 3900 AND after_rem = st_rem - 3900), false),
+        format('lines %s | recon %s | not received %s groups %s | settled %s after %s bad %s/%s | bank credit %s twice %s other %s confirmed %s listed %s | breakdown %s | not posted %s state %s/%s/%s (had %s) | too much %s account %s empty %s | reclass %s second %s after %s/%s',
+               lines, recon, before_settle, groups, settled, after_settle, bad_settle, bad_debit, bc_state, sent_twice, not_unconfirmed, confirmed_after, listed_after,
+               breakdown, not_posted, st_posted, st_recl, st_rem, had_opening, too_much, wrong_account, empty_lines, reclass, second_ref, after_recl, after_rem));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

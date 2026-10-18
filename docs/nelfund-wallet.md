@@ -167,3 +167,23 @@ journals posted before stay as they are. `finance.gl_sync` posts:
 What students held when the wallet came onto the ledger is opened once against 3900 Opening balance / suspense (`WALLET-OPENING`),
 for the Bursary to settle. A wallet entry recorded after V545 carries `recorded_at`; one recorded before is in the opening balance.
 The accounting overview counts wallet entries waiting to be posted with the rest.
+
+## The opening balance settled (V552)
+
+Accounting → Overview → **Wallet opening balance** shows what was opened against 3900 Opening balance / suspense. It shows how
+much has been reclassified since and what remains (`finance.wallet_opening_state`). The opening is broken down by source and
+session (`finance.wallet_opening_breakdown`, the entries recorded before the wallet came onto the ledger), each part with the
+account it belongs in:
+
+| Source | Account suggested | Why |
+|---|---|---|
+| A loan (NELFUND) | 1010 Bank — Fees collection | The Fund's money reached the bank and was never booked |
+| A grant (a scholarship) | 5240 Grants, research & scholarships | A cost of the grant, as a grant credit is posted from V545 |
+| Own money (a top-up) | 4090 Other income | Before V545 a top-up was booked as other income; the wallet now holds it |
+| A credit with no source | none | The Bursary names the account |
+
+The Bursary (the Bursar, or the administrator acting as super) ticks the parts and the accounts, and posts one journal
+(`finance.reclassify_wallet_opening`, `WALLET-OPENING-RECLASS-n`). Each account is debited and 3900 credited, never more than
+remains. The opening must be on the ledger first (Sync posts it once), and neither 2100 nor 3900 is an account it may go to. A
+reclassification is reversed like any journal; a reversed one no longer counts. A part held negative is put right with a manual
+journal.

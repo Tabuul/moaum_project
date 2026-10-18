@@ -1,4 +1,4 @@
-# Refund accounts (V528, V533, V534, V540, V545)
+# Refund accounts (V528, V533, V534, V540, V545, V552)
 
 A refund is paid only into a full account on record — the bank, the name on the account and the ten-digit account number
 (NUBAN) — kept in `finance.refund_account`. The refund itself keeps a snapshot: the bank, the account name and the last four
@@ -86,7 +86,7 @@ screen). Each debit is matched by the bank transfer reference found in its refer
 (`finance.load_bank_statement`): **Matched** (a payout, or every payout sharing that reference together), **Amount differs**,
 **No payout**; a credit is money in. What the portal paid out in the statement's period and no line matched is listed as **Not on
 the statement** (`finance.statement_missing`). Statements are kept, and open again with their result; the result downloads as
-Excel.
+Excel. The collections account's statement is matched to what was received on Reconcile (V552, `docs/collections-statement.md`).
 
 ## The name on the account
 

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -46,6 +47,13 @@ class AccountingController {
     }
 
     public record Reason(@NotBlank @Size(max = 300) String reason) {
+    }
+
+    /** V552: a part of the wallet's opening balance moved out of suspense to the account it belongs in */
+    public record ReclassLine(@NotBlank @Size(max = 20) String account, @NotNull @DecimalMin("0.01") BigDecimal amount, @Size(max = 300) String narration) {
+    }
+
+    public record Reclass(@NotNull @Size(min = 1, max = 50) List<@Valid ReclassLine> lines) {
     }
 
     private final JdbcClient jdbc;
@@ -189,6 +197,57 @@ class AccountingController {
     /** the batch the screen posts at a time, and the most one call may post */
     static final int SYNC_BATCH = 2000;
     static final int SYNC_BATCH_MAX = 10000;
+
+    /* ── V552: the wallet's opening balance settled ── */
+
+    /** what students held when the wallet came onto the ledger, by source and session with the account each part belongs in;
+     *  where it stands (posted, reclassified, remaining in suspense); the reclassifications posted; the accounts it may go to */
+    @GetMapping("/wallet-opening")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> walletOpening() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("state", jdbc.sql("SELECT posted, reclassified, remaining, opening_date::text AS opening_date FROM finance.wallet_opening_state()").query().singleRow());
+        out.put("breakdown", jdbc.sql("SELECT source_code, source_name, nature, session, amount, suggested_account FROM finance.wallet_opening_breakdown()")
+                .query().listOfRows());
+        out.put("journals", jdbc.sql("""
+                SELECT j.id, j.journal_no, j.entry_date::text AS entry_date, j.memo, j.status, j.posted_at,
+                       CASE WHEN pp.id IS NULL THEN NULL ELSE pp.surname || ', ' || pp.given_names END AS posted_by_name,
+                       (SELECT json_agg(json_build_object('account', p.account, 'name', a.name, 'debit', p.debit, 'credit', p.credit, 'narration', p.narration) ORDER BY p.line)::text
+                          FROM finance.gl_posting p JOIN finance.gl_account a ON a.code = p.account WHERE p.journal_id = j.id) AS lines
+                  FROM finance.gl_journal j LEFT JOIN iam.person pp ON pp.id = j.posted_by
+                 WHERE j.source_type = 'WALLET' AND j.source_ref LIKE 'WALLET-OPENING-RECLASS-%'
+                 ORDER BY j.posted_at DESC
+                """).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+                    m.put("lines", r.get("lines") == null ? List.of() : json.readValue((String) r.get("lines"), List.class));
+                    return m;
+                }).toList());
+        out.put("accounts", jdbc.sql("""
+                SELECT code, name, type FROM finance.gl_account WHERE postable AND active AND code NOT IN ('2100', '3900') ORDER BY ord, code
+                """).query().listOfRows());
+        return out;
+    }
+
+    /** the Bursary's reclassification of the opening balance out of suspense: one journal, Dr each account, Cr 3900 — never more
+     *  than remains */
+    @PostMapping("/wallet-opening/reclassify")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> reclassifyWalletOpening(@Valid @RequestBody Reclass body) {
+        List<Map<String, Object>> lines = body.lines().stream().map(l -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("account", l.account().trim());
+            m.put("amount", l.amount());
+            if (l.narration() != null && !l.narration().isBlank()) m.put("narration", l.narration().trim());
+            return m;
+        }).toList();
+        UUID id = jdbc.sql("SELECT finance.reclassify_wallet_opening(cast(:lines as jsonb))")
+                .param("lines", json.writeValueAsString(lines), Types.VARCHAR).query(UUID.class).single();
+        Map<String, Object> out = walletOpening();
+        out.put("journal", id);
+        return out;
+    }
 
     /** a hand-entered balanced journal — opening balances, adjustments, corrections */
     @PostMapping("/journals")
