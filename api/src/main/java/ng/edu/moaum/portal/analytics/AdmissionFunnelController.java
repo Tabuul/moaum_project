@@ -73,7 +73,7 @@ class AdmissionFunnelController {
               JOIN admissions.candidate c ON c.id = ap.candidate_id
               LEFT JOIN admissions.caps_row cr ON cr.id = c.admitted_from
               LEFT JOIN people.student s ON s.candidate_id = c.id
-              LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme)
+              LEFT JOIN admissions.programme_by_name p_n ON p_n.name = c.programme LEFT JOIN ref.programme p ON p.code = p_n.code
               LEFT JOIN ref.faculty f ON f.code = p.faculty_code
               LEFT JOIN ref.department d ON d.code = p.dept_code
              WHERE ap.session = :s

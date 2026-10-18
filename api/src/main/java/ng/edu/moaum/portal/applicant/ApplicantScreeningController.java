@@ -84,7 +84,7 @@ class ApplicantScreeningController {
                        (SELECT q.to_programme FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'APPROVED' ORDER BY q.decided_at DESC LIMIT 1) AS changed_to,
                        (SELECT q.from_programme FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'APPROVED' ORDER BY q.decided_at DESC LIMIT 1) AS changed_from
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
-                  LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
+                  LEFT JOIN admissions.programme_by_name p_n ON p_n.name = c.programme LEFT JOIN ref.programme p ON p.code = p_n.code LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
                   LEFT JOIN people.student s ON s.candidate_id = c.id
                  WHERE a.id = :a
                 """).param("a", app).query().singleRow();
@@ -201,7 +201,7 @@ class ApplicantScreeningController {
                        (SELECT x.object_id FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND x.object_id IS NOT NULL ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport_object
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.applicant_account acc ON acc.id = a.account_id
                   LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from
-                  LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
+                  LEFT JOIN admissions.programme_by_name p_n ON p_n.name = c.programme LEFT JOIN ref.programme p ON p.code = p_n.code LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
                  WHERE a.id = :a
                 """).param("a", app).query().singleRow();
         prefill.put("jamb_passport", files.dataUrl((String) prefill.get("jamb_passport"), (UUID) prefill.remove("jamb_passport_object")));

@@ -386,12 +386,31 @@ applications), with `log_min_duration_statement = 1000`; the pages over 2 s were
 running, and each page's slow statements were matched to it by time. Before/after below are the second load (the warm one).
 
 **Finding.** Each of the worst pages spent its time in a function called once for every row of a large set, or in a set
-planned into another so that it ran once per row. On PostgreSQL 18.6 such per-row calls cost several times as much on a
-connection that has served a few queries as on a fresh one — `finance.fee_sums` 0.6 s, then 4.5 s from its fifth run in one
-session; the Post-UTME counts 1.2 s, then 8–9 s from the third — and `DISCARD PLANS`/`DISCARD ALL`, `jit = off` and
-`plan_cache_mode` do not restore it. The API's pooled connections are always "warm", so a statement timed once in psql
-understates the live portal. **Time a statement three or more times in one session.** The cure that held was to remove the
-per-row calls: a per-programme CTE, joins, `MATERIALIZED` parts.
+planned into another so that it ran once per row. The cure was to remove the per-row calls: a per-programme CTE, joins,
+`MATERIALIZED` parts.
+
+**Correction (V541).** The page times below were taken through the API, whose pooled connections had each run many statements,
+on PostgreSQL 18 on the Windows development machine. There a server process that has run two or three heavy statements runs
+*everything* about four times slower (every node of an unchanged plan; a new connection is fast again), so these "before"
+figures are overstated for the live portal, which runs PostgreSQL 17 on Linux. The same readers timed on fresh connections
+(three each, median) — the fair comparison:
+
+| Reader | Before | After |
+|---|---:|---:|
+| College payment report (each student's position) | 14.5 s | 0.75 s |
+| `admissions.pipeline_stats` | 8.7 s | 0.49 s |
+| Post-UTME desk's three counts | 7.9 s | 0.11 s |
+| `finance.collection_by_faculty` | 2.7 s | 0.72 s |
+| `finance.session_positions` | 1.7 s | 0.80 s |
+| `admissions.status_checking_rows` | 1.1 s | 0.21 s |
+| the programmes' JAMB and candidate counts | 1.7 s | 0.03 s |
+
+The second effect is real on PostgreSQL 18 on any system but not on 17: 18 caches the plans of a SQL function that is not
+inlined into its caller and may use a generic plan from its sixth call (`admissions.olevel_scores` given an array built by a
+subquery: 0.45 s five times, then 19 s). The functions of V537 and V541 take only constants or parameters, so they are inlined.
+The tools and the method are in `api/scripts/perf`.
+
+The page timings as first measured (pooled connections on the development machine):
 
 | Page | Before | After | What it was |
 |---|---:|---:|---|
@@ -417,3 +436,30 @@ same moment, now broken the same way in both (the later reference).
 8.7 s, /catalogue/review 7–10 s (`catalogue.course_issues` for each course), /catalogue/all 7.5 s (`catalogue.code_owners`),
 /gst/students 7.3 s and /eps/students 6.9 s, /students 6.4 s (`registration.voluntary_withdrawals_due`: the semesters
 unregistered for each of 54,573 students), /finance/fees 6.2 s, /student-query/classification 5.1 s.
+
+## P. The remaining slow screens (18 October 2026, V541)
+
+Fresh connections, three each, median; every reader compared row by row with the one it replaces on the live-shaped copy:
+
+| Reader | Before | After | What it was |
+|---|---:|---:|---|
+| `admissions.screening_register` (Admissions screening) | 2.91 s | 0.77 s | `admissions.olevel_score` for each applicant → `admissions.olevel_scores(session)`, all at once (38,847 pairs the same) |
+| `admissions.non_sitter_post_utme` (computed Post-UTME) | 2.07 s | 0.76 s | the same |
+| `registration.voluntary_withdrawals_due` (Students) | 1.35 s | 0.46 s | `registration.semesters_unregistered` for each of 54,573 students |
+| `catalogue.review_summary` (Course review) | 1.67 s | 0.19 s | every course compared with every other for a duplicate → `catalogue.course_issues_all()` by counts |
+| `catalogue.code_owners` (All courses) | 1.00 s | 0.07 s | the owner a code names read for each course → once a prefix |
+| `finance.fee_gaps` (Students with no fee stated) | 0.50 s | 0.13 s | `finance.final_level` for each student → once a programme |
+| `people.record_issues` (Records check) | — | — | the same, found by the new property |
+
+In the API: the eligibility list, the screening review, the applicant screening lists and the admissions funnel join
+`admissions.programme_by_name` instead of calling `admissions.programme_code_of` for each applicant; the course list's issue filter
+reads `catalogue.course_issues_all()` once; the Records & Queries student list hands `assessment.scope_cgpa` its students as one
+parameter (an `ARRAY(SELECT …)` kept it from being inlined); and the day book (/finance/ledger) sends its totals and the newest
+500 of its confirmations — thirty days of the copy are 18,037 rows (4 MB), which the screen took 12 s to draw — the journal's
+export fetching every one.
+
+The property `V541` in `db/check.sql` runs the main readers over 1,000 invented students and fails if any calls a function as
+often as once a student; it found `people.record_issues` and `finance.fee_gaps` doing so with `finance.final_level`.
+
+Still a few seconds on the copy: the Records & Queries CGPA for the whole University (about 5 s of work over 538,000 registration
+entries), the payments query and its breakdown, the GST and EPS student lists (`finance.gst_eps_rows_all`).

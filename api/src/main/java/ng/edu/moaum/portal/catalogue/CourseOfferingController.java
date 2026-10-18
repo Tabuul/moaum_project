@@ -193,7 +193,9 @@ class CourseOfferingController {
                                     LEFT JOIN ref.department pd ON pd.code = p.dept_code
                                    WHERE co.course_code = c.code AND (p.name ILIKE :q OR p.code ILIKE :q OR pd.name ILIKE :q)))
                    AND (:review::text IS NULL OR c.review_status = :review)
-                   AND (:issue::text IS NULL OR (:issue = 'ANY' AND cardinality(catalogue.course_issues(c.code)) > 0) OR :issue = ANY (catalogue.course_issues(c.code)))
+                   -- V541: every course's issues read once (catalogue.course_issues_all), not catalogue.course_issues for each course
+                   AND (:issue::text IS NULL OR c.code IN (SELECT ci.code FROM catalogue.course_issues_all() ci
+                                                            WHERE (:issue = 'ANY' AND cardinality(ci.issues) > 0) OR :issue = ANY (ci.issues)))
                    AND (:ptype::text IS NULL
                         OR (:ptype = 'PG' AND (c.level >= 700 OR EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
                                                                           WHERE co.course_code = c.code AND p.category = 'POST GRADUATE')))

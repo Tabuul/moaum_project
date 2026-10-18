@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 379
+\set EXPECTED 381
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17766,7 +17766,7 @@ BEGIN
             (c, 'MOAUM/RCK/35/0003', 'ZZCHKV536', 'PgLow', 'Benue', pg, 'POSTGRADUATE', '2024/2025', 700, 100, 'ACTIVE', now()),
             (d, 'MOAUM/RCK/35/0004', 'ZZCHKV536', 'DeHundred', 'Benue', 'C00023', 'DIRECT_ENTRY', '2025/2026', 200, 100, 'ACTIVE', now()),
             (e, 'MOAUM/RCK/35/0005', 'ZZCHKV536', 'NoState', NULL, 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
-            (f, 'MOAUM/RCK/35/0006', 'ZZCHKV536', 'Spelt', 'Cross-River', 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (f, 'MOAUM/RCK/35/0006', 'ZZCHKV536', 'Spelt', 'Benuw', 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
             (ok, 'MOAUM/RCK/35/0007', 'ZZCHKV536', 'Consistent', 'Cross River', 'C00023', 'TRANSFER', '2025/2026', 200, 200, 'ACTIVE', now()),
             (gone, 'MOAUM/RCK/35/0008', 'ZZCHKV536', 'Graduated', NULL, 'C00023', 'POSTGRADUATE', '2015/2016', 100, 900, 'GRADUATED', now());
         got := (SELECT string_agg(split_part(x.matric_no, '/', 4) || ':' || x.issue, ',' ORDER BY x.matric_no, x.issue)
@@ -17901,6 +17901,101 @@ BEGIN
                            || 'WALLET:' || v_today::text || ':FT-CHK-540:1:0123456788:ZZCHKV540, Approver/ZZCHKV540, Payer', false),
         format('same officer %s, reference %s, future %s, before %s, by hand %s | paid %s | told %s | queue %s | posted on the day paid %s | report %s',
                e_same, e_ref, e_future, e_before, e_hand, paid, left(told, 140), queue, posted, report));
+END $$;
+
+-- ── V541: the readers the screens open read in one pass, with the same answers ──
+-- Over 1,000 invented students, none of the readers the slowest screens open (the fee profiles, the session's charges and
+-- positions, the collection by faculty, the students with no fee stated, the voluntary withdrawals due, the records check, the course issues, the catalogue
+-- review and the code owners) calls any function as often as once a student; every course's issues read at once are
+-- catalogue.course_issues' for each course, and every applicant's O'Level score read at once is admissions.olevel_score's.
+-- The block undoes its writes.
+DO $$
+DECLARE msg text; n int := 1000; heavy text; reader text; before jsonb; issues_differ int; scores_differ int; checked int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN
+        INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT gen_random_uuid(), 'MOAUM/V541/31/' || lpad(i::text, 4, '0'), 'ZZCHKV541', 'Student ' || i, CASE WHEN i % 3 = 0 THEN 'Benue' ELSE 'Kano' END,
+               'C00023', CASE WHEN i % 5 = 0 THEN 'DIRECT_ENTRY' ELSE 'UTME' END, '2019/2020', 100, 100 * (1 + i % 6), 'ACTIVE', now()
+          FROM generate_series(1, n) i;
+        -- from here every function called outside a plan is counted (an inlined one costs nothing as a call), each reader apart
+        PERFORM set_config('track_functions', 'all', true);
+        FOREACH reader IN ARRAY ARRAY[
+            'SELECT count(*) FROM finance.fee_profiles()',
+            'SELECT sum(c.total) FROM finance.session_charges(''9931/9932'') c',
+            'SELECT sum(length(p::text)) FROM finance.session_positions(''9931/9932'', NULL) p',
+            'SELECT sum(c.due) FROM finance.collection_by_faculty(''9931/9932'') c',
+            'SELECT count(*) FROM registration.voluntary_withdrawals_due()',
+            'SELECT count(*) FROM people.record_issues()',
+            'SELECT count(*) FROM finance.fee_gaps(''9931/9932'')',
+            'SELECT count(*) FROM catalogue.course_issues_all()',
+            'SELECT count(*) FROM catalogue.review_summary()',
+            'SELECT count(*) FROM catalogue.code_owners()'] LOOP
+            before := (SELECT coalesce(jsonb_object_agg(f.funcid::text, f.calls), '{}'::jsonb) FROM pg_stat_xact_user_functions f);
+            EXECUTE reader;
+            heavy := nullif(concat_ws('; ', heavy,
+                (SELECT string_agg(f.schemaname || '.' || f.funcname || ' ' || (f.calls - coalesce((before ->> f.funcid::text)::bigint, 0)) || ' in ' || reader, ', ')
+                   FROM pg_stat_xact_user_functions f WHERE f.calls - coalesce((before ->> f.funcid::text)::bigint, 0) >= n)), '');
+        END LOOP;
+        RAISE EXCEPTION 'the V541 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V541 check undoes its writes' THEN RAISE; END IF;
+    END;
+    issues_differ := (SELECT count(*) FROM (SELECT c.code, catalogue.course_issues(c.code) FROM catalogue.course c
+                                            EXCEPT ALL SELECT * FROM catalogue.course_issues_all()) x)
+                   + (SELECT count(*) FROM (SELECT * FROM catalogue.course_issues_all()
+                                            EXCEPT ALL SELECT c.code, catalogue.course_issues(c.code) FROM catalogue.course c) x);
+    SELECT count(*), count(*) FILTER (WHERE (o.sittings, o.relevant_known, o.points, o.bonus, o.total) IS DISTINCT FROM (s.sittings, s.relevant_known, s.points, s.bonus, s.total))
+      INTO checked, scores_differ
+      FROM (SELECT DISTINCT a.session FROM admissions.application a) ss
+     CROSS JOIN LATERAL admissions.olevel_scores(ss.session) s
+     CROSS JOIN LATERAL admissions.olevel_score(ss.session, s.jamb_key, s.programme_code) o;
+    PERFORM pg_temp.assert('V541: the readers the slowest screens open call no function once a student, and the course issues and O''Level scores read at once are the per-course and per-candidate answers',
+        coalesce(heavy IS NULL AND issues_differ = 0 AND scores_differ = 0, false),
+        format('called once a student or more: %s | course issues differing %s | O''Level scores differing %s of %s', coalesce(heavy, 'none'), issues_differ, scores_differ, checked));
+END $$;
+
+-- ── V542: a state of origin is kept to the register's spelling ──
+-- A spelling of a state is given the register's name (Cross-River, NASSARAWA, Fct-Abuja, Benue State); a country is a country
+-- (Cameroun, Benin Republic); a student's state written in another spelling is stored as the register names it, by insert and by
+-- update, and a country is kept as written; the records check no longer lists a country as a state spelt another way, and names
+-- the department's postgraduate programmes for a postgraduate record on an undergraduate programme. The block undoes its writes.
+DO $$
+DECLARE msg text; named text; got text; listed int; sugg text; ug text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    named := concat_ws(',', ref.state_named('Cross-River'), ref.state_named('NASSARAWA'), ref.state_named('Fct-Abuja'), ref.state_named('Benue State'),
+                       coalesce(ref.state_named('Cameroun'), '-'), ref.country_named('Cameroun'), ref.country_named('BENIN REPUBLIC'));
+    SELECT u.code INTO ug FROM ref.programme u
+     WHERE u.category = 'UNDER GRADUATE' AND NOT u.archived
+       AND EXISTS (SELECT 1 FROM ref.programme g WHERE g.dept_code = u.dept_code AND g.category = 'POST GRADUATE' AND NOT g.archived)
+     ORDER BY u.code LIMIT 1;
+    BEGIN
+        INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/V542/31/0001', 'ZZCHKV542', 'Spelt', 'Cross-River', 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/V542/31/0002', 'ZZCHKV542', 'Abroad', 'Cameroun', 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/V542/31/0003', 'ZZCHKV542', 'Postgraduate', 'Benue', ug, 'POSTGRADUATE', '2025/2026', 100, 700, 'ACTIVE', now());
+        got := (SELECT string_agg(state_of_origin, ',' ORDER BY matric_no) FROM people.student WHERE id IN (a, b));
+        UPDATE people.student SET state_of_origin = 'akwa-ibom' WHERE id = a;
+        got := got || '|' || (SELECT state_of_origin FROM people.student WHERE id = a);
+        UPDATE people.student SET state_of_origin = '  ' WHERE id = a;
+        got := got || '|' || coalesce((SELECT state_of_origin FROM people.student WHERE id = a), 'none');
+        listed := (SELECT count(*) FROM people.record_issues() x WHERE x.student_id IN (a, b) AND x.issue = 'STATE_NOT_ON_REGISTER');
+        sugg := (SELECT x.suggestion FROM people.record_issues() x WHERE x.student_id = c AND x.issue = 'UG_POSTGRADUATE_ENTRY');
+        RAISE EXCEPTION 'the V542 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V542 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V542: a state of origin is kept to the register''s spelling, a country stays a country, and the records check suggests what a record should say',
+        coalesce(named = 'Cross River,Nasarawa,Federal Capital Territory,Benue,-,Cameroon,Benin'
+                 AND got = 'Cross River,Cameroun|Akwa Ibom|none' AND listed = 0
+                 AND (ug IS NULL OR sugg LIKE 'Postgraduate programmes of the department: %'), false),
+        format('named %s | stored %s | listed as spelt otherwise %s | suggestion %s (programme %s)', named, got, listed, sugg, ug));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

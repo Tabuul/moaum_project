@@ -74,7 +74,7 @@ class ScreeningReviewController {
                    CASE WHEN (sf.state IS NULL OR sf.state IN ('PENDING', 'IN_REVIEW')) AND a.accepted_at < now() - interval '7 days' THEN true ELSE false END AS overdue
               FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
               LEFT JOIN admissions.screening_form sf ON sf.application_id = a.id
-              LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme) LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
+              LEFT JOIN admissions.programme_by_name p_n ON p_n.name = c.programme LEFT JOIN ref.programme p ON p.code = p_n.code LEFT JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
               LEFT JOIN people.student s ON s.candidate_id = c.id
             """;
 
@@ -124,13 +124,13 @@ class ScreeningReviewController {
                        count(*) FILTER (WHERE sf.state = 'SUCCESSFUL' OR EXISTS (SELECT 1 FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'APPROVED')) AS completed,
                        count(*) FILTER (WHERE (sf.state IS NULL OR sf.state IN ('PENDING', 'IN_REVIEW')) AND a.accepted_at < now() - interval '7 days') AS overdue
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id LEFT JOIN admissions.screening_form sf ON sf.application_id = a.id
-                  LEFT JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme)
+                  LEFT JOIN admissions.programme_by_name p_n ON p_n.name = c.programme LEFT JOIN ref.programme p ON p.code = p_n.code
                  WHERE a.session = :s AND a.decision = 'OFFERED' AND a.decision_released_at IS NOT NULL AND a.accepted_at IS NOT NULL AND (:fac::text IS NULL OR p.faculty_code = :fac)
                 """).param("s", s).param("fac", b.fac(), Types.VARCHAR).query().singleRow());
         out.put("policy", jdbc.sql("SELECT * FROM admissions.screening_policy WHERE session = :s").param("s", s).query().listOfRows().stream().findFirst().orElse(null));
         out.put("options", jdbc.sql("""
                 SELECT DISTINCT f.code AS faculty_code, f.name AS faculty, d.code AS dept_code, d.name AS department, p.code AS programme_code, p.name AS programme
-                  FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN ref.programme p ON p.code = admissions.programme_code_of(c.programme)
+                  FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.programme_by_name p_n ON p_n.name = c.programme JOIN ref.programme p ON p.code = p_n.code
                   JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN ref.department d ON d.code = p.dept_code
                  WHERE a.session = :s AND a.accepted_at IS NOT NULL ORDER BY f.name, d.name, p.name
                 """).param("s", s).query().listOfRows());

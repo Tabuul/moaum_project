@@ -814,12 +814,32 @@ class FinanceController {
     @GetMapping("/ledger")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
-    Map<String, Object> ledger(@RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {
+    Map<String, Object> ledger(@RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to,
+                               @RequestParam(defaultValue = "false") boolean all) {
         LocalDate f = from == null ? LocalDate.now().minusDays(30) : from;
         LocalDate t = to == null ? LocalDate.now() : to;
         List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM finance.day_book(:f, :t)").param("f", f).param("t", t).query().listOfRows();
-        return Map.of("from", f, "to", t, "rows", rows);
+        // V541: the totals of every confirmation, and the newest DAY_BOOK_SHOWN of them for the screen — thirty days of the
+        // live-shaped copy are 18,037 rows (4 MB), which the screen took 12 s to draw; the journal's export asks for all
+        Map<String, BigDecimal> byChannel = new java.util.LinkedHashMap<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map<String, Object> r : rows) {
+            BigDecimal amount = r.get("amount") instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(r.get("amount")));
+            total = total.add(amount);
+            byChannel.merge(String.valueOf(r.get("channel")), amount, BigDecimal::add);
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("from", f);
+        out.put("to", t);
+        out.put("count", rows.size());
+        out.put("total", total);
+        out.put("byChannel", byChannel.entrySet().stream().map(e -> Map.of("channel", e.getKey(), "amount", e.getValue())).toList());
+        out.put("rows", all || rows.size() <= DAY_BOOK_SHOWN ? rows : rows.subList(0, DAY_BOOK_SHOWN));
+        return out;
     }
+
+    /** the confirmations the day book screen draws; the totals and the export cover every one */
+    static final int DAY_BOOK_SHOWN = 500;
 
     /** A well-defined payments query for the Bursary: confirmed student payments, newest first, sliced by
      *  session, faculty, department, programme, level, payment category and channel. Returns the page, the

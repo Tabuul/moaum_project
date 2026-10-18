@@ -14,10 +14,10 @@ export default async function LedgerPage({ searchParams }: { searchParams: Promi
   const q = new URLSearchParams();
   if (from) q.set("from", from);
   if (to) q.set("to", to);
-  const [me, l] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ from: string; to: string; rows: DayBookRow[] }>(`/api/v1/finance/ledger${q.toString() ? `?${q}` : ""}`)]);
+  const [me, l] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ from: string; to: string; count: number; total: number; byChannel: { channel: string; amount: number }[]; rows: DayBookRow[] }>(`/api/v1/finance/ledger${q.toString() ? `?${q}` : ""}`)]);
   return (
     <Shell route="t/ledger" me={me.ok ? me.data : null}>
-      {l.ok ? <Ledger from={l.data.from} to={l.data.to} rows={l.data.rows} actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={l.problem} />}
+      {l.ok ? <Ledger from={l.data.from} to={l.data.to} rows={l.data.rows} count={l.data.count ?? l.data.rows.length} byChannel={l.data.byChannel ?? []} actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={l.problem} />}
     </Shell>
   );
 }

@@ -68,7 +68,7 @@ class AdmissionEligibilityController {
                    q.id AS change_id, q.to_programme AS change_to, q.to_programme_code AS change_to_code, q.state AS change_state, q.requested_at AS change_requested_at
               FROM admissions.application a
               JOIN admissions.candidate c ON c.id = a.candidate_id
-              LEFT JOIN ref.programme pc ON pc.code = admissions.programme_code_of(c.programme)
+              LEFT JOIN admissions.programme_by_name pc_n ON pc_n.name = c.programme LEFT JOIN ref.programme pc ON pc.code = pc_n.code
               LEFT JOIN ref.faculty f ON f.code = pc.faculty_code
               LEFT JOIN ref.department d ON d.code = pc.dept_code
               LEFT JOIN admissions.eligibility_run r ON r.application_id = a.id AND r.superseded_at IS NULL
@@ -118,7 +118,7 @@ class AdmissionEligibilityController {
         out.put("options", jdbc.sql("""
                 SELECT DISTINCT pc.faculty_code, f.name AS faculty, pc.dept_code, d.name AS department, pc.code AS programme_code, pc.name AS programme
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
-                  JOIN ref.programme pc ON pc.code = admissions.programme_code_of(c.programme) JOIN ref.faculty f ON f.code = pc.faculty_code LEFT JOIN ref.department d ON d.code = pc.dept_code
+                  JOIN admissions.programme_by_name pc_n ON pc_n.name = c.programme JOIN ref.programme pc ON pc.code = pc_n.code JOIN ref.faculty f ON f.code = pc.faculty_code LEFT JOIN ref.department d ON d.code = pc.dept_code
                  WHERE a.session = :s AND a.submitted_at IS NOT NULL ORDER BY f.name, d.name, pc.name
                 """).param("s", s).query().listOfRows());
         out.put("recommendable", jdbc.sql("""

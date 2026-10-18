@@ -64,3 +64,11 @@ is all three; **/SP** also gives the spillover line (no level, no entry mode). A
 Where a TOTAL row is given the two semesters are made to add up to it to the kobo — the first semester to the kobo, the second the
 TOTAL less the first. Where the sheet's 1ST and 2ND do not make its TOTAL (by more than ₦1) the TOTAL stands, shared between the
 semesters as the sheet shares them, and the window names each such cell.
+
+## The College of Health Sciences' 2025/2026 fees (V543)
+
+The College's approved workbook ("FEES STRUCTURE FOR 2025/2026", Office of the Finance Controller) was loaded by migration as the
+upload reads it — 364 lines for MBBS, Nursing, Human Anatomy, Human Physiology, Radiography, Biochemistry and Medical Laboratory
+Science — only on a database with live students of the College and only where nothing of the College's was stated for 2025/2026;
+otherwise the migration wrote nothing and said why. Radiography 500 Level has no amount on the workbook and has no line until the
+Bursary states it (81 students on the live-shaped copy).

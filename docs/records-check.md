@@ -25,3 +25,21 @@ faculty)` reads the register once — about 0.6 s for the 54,571 live students o
 3 levels beyond the programme (the same 3 students as the 3 undergraduate records with the postgraduate entry mode: one at 700 Level
 on B.Sc. Accounting, two at 900 Level on MBBS), 423 undergraduates with no state of origin and 394 states spelt another way
 (Cross-River, Nassarawa, FCT, or a country) — none of them a spelling of Benue. API: `GET /api/v1/records/issues?issue=&faculty=`.
+
+## States of origin put right (V542)
+
+The spellings the check found were put right by migration, each on the audit spine: a state of origin the register spells
+otherwise is given the register's name (Cross-River → Cross River, Nassarawa → Nasarawa, Akwa-Ibom and Akwa Ibon → Akwa Ibom,
+FCT, Fct, FCT-Abuja and Abuja → Federal Capital Territory, River → Rivers, C/River → Cross River), and a student with no state
+of their own whose admission row spells it otherwise is given the register's name for it. Countries (a student from abroad) are
+left as written and are no longer listed.
+
+It stays so: `people.student` puts a known spelling right as it is written, by every path — the record form and the biodata
+form already offer only the register's list; the register and biodata uploads and the old portal's carry what was typed — and a
+blank state is no state. `ref.state_named(text)` and `ref.country_named(text)` give the register's name for a spelling.
+
+Each issue now carries a **suggestion** (on the screen under the programme, and in the Excel and PDF): for a postgraduate record on
+an undergraduate programme, the department's postgraduate programmes (on the copy, the B.Sc. Accounting record's department has
+M.Sc. Accounting and Finance and M.Sc./Ph.D. Accounting and Finance; MBBS's department has none on the register); for a state
+spelt another way, the register's name. The postgraduate records themselves are for the Registry and the School of Postgraduate
+Studies to move: the check lists them with the suggestion.

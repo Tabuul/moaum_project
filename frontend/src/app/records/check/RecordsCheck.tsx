@@ -17,6 +17,8 @@ export interface IssueRow {
   student_id: string; matric_no: string | null; admission_no: string | null; name: string; faculty_code: string | null; faculty: string | null;
   programme_code: string | null; programme: string | null; current_level: number | null; entry_mode: string | null; status: string; state: string | null;
   final_level: number | null; issue: string;
+  /** V542: what the record most likely should say */
+  suggestion?: string | null;
 }
 export interface RecordsCheckData {
   issue: string | null; faculty: string | null; students: number; total: number; kinds: IssueKind[]; rows: IssueRow[];
@@ -27,7 +29,7 @@ const count = (n: number) => Number(n).toLocaleString("en-NG");
 const named = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()).replace(/ (And|Of|For|In|The) /g, (m) => m.toLowerCase());
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich", CCE: "CCE", POSTGRADUATE: "Postgraduate" };
-const HEAD = ["Issue", "Matric / admission no.", "Name", "Faculty", "Programme", "Level", "Entry mode", "State of origin", "Status", "Corrected by"];
+const HEAD = ["Issue", "Matric / admission no.", "Name", "Faculty", "Programme", "Level", "Entry mode", "State of origin", "Status", "Corrected by", "Suggestion"];
 
 export function RecordsCheck({ d }: { d: RecordsCheckData }) {
   const nav = useQueryNav();
@@ -44,7 +46,7 @@ export function RecordsCheck({ d }: { d: RecordsCheckData }) {
   const sub = `${chosen ? chosen.title : "Every issue"} · ${facultyName}`;
   const sheet = () => d.rows.map((r) => [kindOf.get(r.issue)?.title ?? r.issue, r.matric_no ?? r.admission_no ?? "", r.name, named(r.faculty ?? r.faculty_code),
     r.programme ? `${r.programme} (${r.programme_code})` : r.programme_code ?? "", r.current_level ?? "", MODE[r.entry_mode ?? ""] ?? r.entry_mode ?? "",
-    r.state ?? "", r.status, kindOf.get(r.issue)?.corrects ?? ""]);
+    r.state ?? "", r.status, kindOf.get(r.issue)?.corrects ?? "", r.suggestion ?? ""]);
   const meta: [string, string][] = [["Issue", chosen ? chosen.title : "Every issue"], ["Faculty", facultyName], ["Records", count(d.total)]];
 
   return (
@@ -87,7 +89,7 @@ export function RecordsCheck({ d }: { d: RecordsCheckData }) {
             rows={d.rows.map((r) => [
               ...(chosen ? [] : [<span key="i">{kindOf.get(r.issue)?.title ?? r.issue}</span>]),
               <span key="s"><Link href={`/students/${r.student_id}`}><b>{r.name}</b></Link><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? "No number yet"}</div></span>,
-              <span key="p">{r.programme ?? <span className="sub2">{r.programme_code ?? "None"}</span>}<div className="sub2">{named(r.faculty ?? r.faculty_code)}{r.final_level ? ` · final level ${r.final_level}` : ""}</div></span>,
+              <span key="p">{r.programme ?? <span className="sub2">{r.programme_code ?? "None"}</span>}<div className="sub2">{named(r.faculty ?? r.faculty_code)}{r.final_level ? ` · final level ${r.final_level}` : ""}</div>{r.suggestion ? <div className="sub2"><b>Suggested:</b> {r.suggestion}</div> : null}</span>,
               <span key="l" className="tnum">{r.current_level ?? "—"}</span>,
               <span key="m">{MODE[r.entry_mode ?? ""] ?? r.entry_mode ?? "—"}</span>,
               <span key="o">{r.state ?? <span className="sub2">None</span>}</span>,
