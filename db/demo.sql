@@ -803,7 +803,7 @@ BEGIN
             PERFORM set_config('moaum.actor_id', v_appr::text, true);
             PERFORM finance.approve_withdrawal(w.id);
             PERFORM set_config('moaum.actor_id', v_payer::text, true);
-            PERFORM finance.pay_withdrawal(w.id, 'TRX/DEMO/0001');
+            PERFORM finance.pay_withdrawal(w.id, 'TRX/DEMO/0001', (now() AT TIME ZONE 'Africa/Lagos')::date);
         END IF;
     EXCEPTION WHEN OTHERS THEN NULL;   -- best effort: needs the fees cleared
     END;

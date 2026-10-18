@@ -1,4 +1,4 @@
-# Refund accounts (V528, V533, V534)
+# Refund accounts (V528, V533, V534, V540)
 
 A refund is paid only into a full account on record — the bank, the name on the account and the ten-digit account number
 (NUBAN) — kept in `finance.refund_account`. The refund itself keeps a snapshot: the bank, the account name and the last four
@@ -48,6 +48,24 @@ A withdrawn JUPEB candidate's refund claim and a student's NELFUND wallet withdr
 when the account is given (a trigger on `jupeb.refund_claim` and on `finance.wallet_withdrawal`, through
 `finance.checked_account`): ten digits, the check digit at a checked bank, the bank written as it is listed. Accounts given
 before V534 are left as they are.
+
+## Wallet withdrawals paid with evidence (V540)
+
+A NELFUND wallet withdrawal is paid, like a refund, with the bank transfer reference and the date the money left — not after
+today, not before it was approved (`finance.pay_withdrawal(id, reference, paid on)`; `WALLET_PAID_EVIDENCE` without them). The
+student is told both; the NELFUND desk's withdrawals and the student's wallet show them.
+
+## The ledger date (V540)
+
+The general ledger posts a paid refund on the day the money left (`paid_on`), the day it was recorded where that is not known.
+Journals posted before V540 are not moved. Wallet withdrawals are not on the general ledger.
+
+## Paid out (V540)
+
+Refunds & Credits → **Paid out**: every refund and wallet withdrawal paid in a period of up to a year, by the day the money left
+(`finance.paid_out(from, to)`, `GET /api/v1/finance/refunds/paid-out`) — the payee, the account it went to, the amount, the bank
+transfer reference, who approved and who paid it — with **Also on N other** where the same reference was recorded on other
+payments. Excel and PDF go through the export engine, on the export log. The Bursary, Internal Audit and admin read it.
 
 ## The name on the account
 

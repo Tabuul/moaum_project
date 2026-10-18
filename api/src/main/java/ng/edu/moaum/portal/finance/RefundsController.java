@@ -158,6 +158,24 @@ class RefundsController {
         return Map.of("id", id, "state", state);
     }
 
+    /** V540: the Paid-out report — every refund and wallet withdrawal paid between two dates (by the day the money left), with the
+     *  account it went to, the bank transfer reference, who approved and who paid it, and how many other payments carry the same
+     *  reference; for Internal Audit to tick against the bank statement. A year at most at a time. */
+    @GetMapping("/paid-out")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> paidOut(@RequestParam LocalDate from, @RequestParam LocalDate to) {
+        if (to.isBefore(from) || from.plusDays(366).isBefore(to)) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("PAID_OUT_RANGE", "Give a period of a year or less, from a date to a later one.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Narrow the dates.", "Bursary"));
+        }
+        return jdbc.sql("""
+                SELECT kind, reference, payee, number, bank_name, account_number, account_name, amount, paid_on::text AS paid_on,
+                       transfer_reference, approved_by_name, paid_by_name, recorded_at, same_reference
+                  FROM finance.paid_out(:f, :t)
+                """).param("f", from).param("t", to).query().listOfRows();
+    }
+
     /** V533: the banks a refund is paid into, with whether a number at each is checked (the Bursary keeps the list) */
     @GetMapping("/banks")
     @PreAuthorize(READERS)

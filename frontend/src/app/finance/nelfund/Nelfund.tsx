@@ -44,6 +44,9 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
   const [fix, setFix] = useState<Record<string, { number: string; note: string }>>({});
   const [src, setSrc] = useState({ code: "", name: "", nature: "GRANT", sponsor: "", account: "", note: "", sort: "50" });
   const [payRef, setPayRef] = useState<Record<string, string>>({});
+  // V540: a payout is recorded with the date the money left (today in Lagos unless changed)
+  const lagosToday = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
+  const [payOn, setPayOn] = useState<Record<string, string>>({});
   const t = d.tiles;
   const s = d.status;
   const waiting = d.withdrawals.filter((x) => x.state === "REQUESTED").length;
@@ -302,10 +305,11 @@ export function Nelfund({ d, report, tab, sessions, actingOffice, figures = null
                     <Btn kind="ghost" disabled={busy} onClick={async () => { const why = window.prompt("Why is it declined? The student sees it."); if (why && await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/reject`, { why }, `Withdrawal for ${x.student_name} declined`)) setSaid("Declined"); }}>Decline</Btn>
                   </> : null}
                   {bursary && x.state === "APPROVED" ? <>
-                    <input className="ctl tnum" style={{ width: 150 }} placeholder="Bank transfer ref" value={payRef[x.id] ?? ""} onChange={(e) => setPayRef({ ...payRef, [x.id]: e.target.value })} />
-                    <Btn kind="primary" disabled={busy} onClick={async () => { if (await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/pay`, { ref: payRef[x.id] || null }, `Withdrawal for ${x.student_name} paid`)) setSaid("Paid — the wallet is debited"); }}>Mark paid</Btn>
+                    <input className="ctl tnum" style={{ width: 150 }} aria-label={`Bank transfer reference for ${x.student_name}`} placeholder="Bank transfer ref" maxLength={60} value={payRef[x.id] ?? ""} onChange={(e) => setPayRef({ ...payRef, [x.id]: e.target.value })} />
+                    <input type="date" className="ctl" style={{ width: 150 }} aria-label={`Date the money left for ${x.student_name}`} max={lagosToday} value={payOn[x.id] ?? lagosToday} onChange={(e) => setPayOn({ ...payOn, [x.id]: e.target.value })} />
+                    <Btn kind="primary" disabled={busy || (payRef[x.id] ?? "").trim().length < 4 || !(payOn[x.id] ?? lagosToday)} onClick={async () => { if (await send(`/api/bff/api/v1/funding/withdrawals/${x.id}/pay`, { ref: (payRef[x.id] ?? "").trim(), paidOn: payOn[x.id] ?? lagosToday }, `Withdrawal for ${x.student_name} paid, transfer reference ${(payRef[x.id] ?? "").trim()}`)) setSaid("Paid — the wallet is debited"); }}>Mark paid</Btn>
                   </> : null}
-                  {x.state === "PAID" ? <span className="sub2 tnum">{x.paid_ref ?? "paid"}</span> : x.state === "REJECTED" ? <span className="sub2">{x.reason ?? ""}</span> : null}
+                  {x.state === "PAID" ? <span className="sub2 tnum">{x.paid_on ? `${day(`${x.paid_on}T12:00:00`)} · ` : ""}{x.paid_ref ?? "paid"}</span> : x.state === "REJECTED" ? <span className="sub2">{x.reason ?? ""}</span> : null}
                 </span>,
               ])} texts={d.withdrawals.map((x) => `${x.student_name} ${x.matric_no ?? ""} ${x.state}`)} />
             ) : <PBody><div className="sub2">No withdrawal request for {d.session}.</div></PBody>}

@@ -14,7 +14,7 @@ it reuses; nothing here is a second wallet, a second ledger, a second school-fee
 | School-fee obligation | `finance.charges(student, session)` from the fee schedule; `finance.position(student, session)` = due, paid, balance, paid in full, arrears | V026/V027 |
 | Applying the wallet | `finance.apply_wallet` → one school-fees reference, confirmed through `finance.confirm_payment` (channel "NELFUND wallet") | V033 |
 | Top-up | `finance.wallet_topup_reference` → a purpose reference; the gateway's confirmation credits TOPUP (SELF) | V033 |
-| Refund to the student | `finance.wallet_withdrawal`: requested by the student, approved by the Bursary, paid by a second officer; a REFUND entry | V079 |
+| Refund to the student | `finance.wallet_withdrawal`: requested by the student (the account checked against its bank, V534), approved by the Bursary, paid by a second officer with the bank transfer reference and the date the money left (V540); a REFUND entry | V079, V534, V540 |
 | Bursary refunds against a transaction | `finance.refund` (maker–checker), `/finance/refunds` | V043/V067 |
 | Gateways and webhooks | `finance.payment_reference`, `finance.gateway_event`, `PaymentsService` (an expired or already-confirmed reference is refused) | V026/V037 |
 | Notifications, audit, numbers | `platform.queue_notice`, the audit spine (`audit.attach`), `platform.next_number` | — |

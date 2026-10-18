@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -62,7 +63,8 @@ class WalletController {
     public record PolicyIn(List<String> applyOrder, Boolean topupOverShortfall, List<String> refundNatures) {
     }
 
-    public record PayIn(@Size(max = 60) String ref) {
+    /** V540: a payout recorded with the bank transfer reference and the date the money left */
+    public record PayIn(@NotBlank @Size(max = 60) String ref, @NotNull LocalDate paidOn) {
     }
 
     private final WalletService service;
@@ -218,7 +220,7 @@ class WalletController {
 
     @PostMapping("/api/v1/funding/withdrawals/{id}/pay")
     @PreAuthorize(BURSARY)
-    Map<String, Object> payWithdrawal(@PathVariable UUID id, @Valid @RequestBody(required = false) PayIn body) {
-        return service.payWithdrawal(id, body == null ? null : body.ref());
+    Map<String, Object> payWithdrawal(@PathVariable UUID id, @Valid @RequestBody PayIn body) {
+        return service.payWithdrawal(id, body.ref(), body.paidOn());
     }
 }

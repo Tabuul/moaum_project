@@ -113,7 +113,7 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
           <PBody>
             {wdl ? (
               <Note kind={wdl.state === "PAID" ? "ok" : wdl.state === "REJECTED" ? "bad" : "info"} title={wdl.state === "REQUESTED" ? "Your refund request is with the Bursary" : wdl.state === "APPROVED" ? "Approved — awaiting payment" : wdl.state === "PAID" ? "Refund paid" : "Refund request not approved"}>
-                {naira(wdl.amount)} of {wdl.source_code ?? "funding"} for {wdl.session} to {wdl.bank_name} {wdl.account_no}. {wdl.state === "PAID" ? `Paid ${wdl.paid_at ? onDay(wdl.paid_at) : ""}${wdl.paid_ref ? ` · ${wdl.paid_ref}` : ""}.` : wdl.state === "REJECTED" ? (wdl.reason ?? "") : "You will be told the decision."}
+                {naira(wdl.amount)} of {wdl.source_code ?? "funding"} for {wdl.session} to {wdl.bank_name} {wdl.account_no}. {wdl.state === "PAID" ? `Paid ${wdl.paid_on ? onDay(`${wdl.paid_on}T12:00:00`) : wdl.paid_at ? onDay(wdl.paid_at) : ""}${wdl.paid_ref ? ` · bank transfer reference ${wdl.paid_ref}` : ""}.` : wdl.state === "REJECTED" ? (wdl.reason ?? "") : "You will be told the decision."}
               </Note>
             ) : null}
             {elig.nelfund_after_settlement ? <Note kind="info" title="NELFUND funds received after your school fees were already paid">The Fund&rsquo;s {naira(nelRefundable)} for {w.session} arrived after your fees were settled, so it may be refunded to you, subject to the University&rsquo;s approval.</Note> : null}

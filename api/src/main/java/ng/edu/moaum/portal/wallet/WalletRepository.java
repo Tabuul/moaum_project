@@ -134,7 +134,7 @@ class WalletRepository {
     Optional<Map<String, Object>> myWithdrawal(UUID student) {
         return jdbc.sql("""
                 SELECT id, session, amount, coalesce(source_code, 'NELFUND') AS source_code, bank_name, account_no, account_name, state, reason,
-                       requested_at, decided_at, paid_at, paid_ref
+                       requested_at, decided_at, paid_at, paid_ref, paid_on::text AS paid_on
                   FROM finance.wallet_withdrawal WHERE student_id = :s ORDER BY requested_at DESC LIMIT 1
                 """).param("s", student).query().listOfRows().stream().findFirst();
     }
@@ -151,8 +151,9 @@ class WalletRepository {
         jdbc.sql("SELECT finance.reject_withdrawal(:i, :w)").param("i", id).param("w", why).query().singleRow();
     }
 
-    void payWithdrawal(UUID id, String ref) {
-        jdbc.sql("SELECT finance.pay_withdrawal(:i, :r)").param("i", id).param("r", ref, Types.VARCHAR).query().singleRow();
+    /** V540: with the bank transfer reference and the date the money left */
+    void payWithdrawal(UUID id, String ref, LocalDate paidOn) {
+        jdbc.sql("SELECT finance.pay_withdrawal(:i, :r, :d)").param("i", id).param("r", ref, Types.VARCHAR).param("d", paidOn).query().singleRow();
     }
 
     /* ── the reports ── */

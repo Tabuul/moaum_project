@@ -23,7 +23,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * the full account (one digit off refused), or without one — then it is approved but not paid; the account the desk records on
  * the approved refund sends it back for approval, which the officer who recorded it may not give; another officer approves and it
  * is paid — V534: with the bank transfer reference and the date the money left, never a date to come. A name on the account that
- * shares no word with the payer's is flagged. The Bursary keeps the list of banks (Internal Audit reads it). Needs DATABASE_URL.
+ * shares no word with the payer's is flagged. V540: the Paid-out report holds it by the day the money left. The Bursary keeps the
+ * list of banks (Internal Audit reads it). Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -107,6 +108,16 @@ class RefundAccountsIT {
         assertThat(done.get("state") + ":" + done.get("bank_name") + ":" + done.get("account_number") + ":" + done.get("account_name_matches"))
                 .isEqualTo("PAID:First Bank of Nigeria:0000014579:true");
         assertThat(done.get("paid_reference") + ":" + done.get("paid_on") + ":" + done.get("paid_reference_others")).isEqualTo("FT-IT-" + tag + ":" + today + ":0");
+
+        // V540: the Paid-out report, read by Internal Audit by the day the money left; a year at most at a time
+        ResponseEntity<List> out = it.getList(audit, "/api/v1/finance/refunds/paid-out?from=" + today + "&to=" + today);
+        assertThat(out.getStatusCode().value()).isEqualTo(200);
+        assertThat((List<Map>) out.getBody()).filteredOn(r -> ref.equals(r.get("reference")))
+                .extracting(r -> r.get("kind") + ":" + r.get("paid_on") + ":" + r.get("transfer_reference") + ":" + r.get("account_number") + ":" + r.get("same_reference"))
+                .containsExactly("REFUND:" + today + ":FT-IT-" + tag + ":0000014579:0");
+        assertThat(it.get(audit, "/api/v1/finance/refunds/paid-out?from=2020-01-01&to=" + today).getStatusCode().value()).as("more than a year").isEqualTo(422);
+        assertThat(it.get(TestTokens.token(UUID.randomUUID(), List.of("student")), "/api/v1/finance/refunds/paid-out?from=" + today + "&to=" + today).getStatusCode().value())
+                .isEqualTo(403);
 
         // the banks: read by Internal Audit, kept by the Bursary
         ResponseEntity<List> banks = it.getList(audit, "/api/v1/finance/refunds/banks");

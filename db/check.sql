@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 378
+\set EXPECTED 379
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2727,9 +2727,9 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     PERFORM finance.approve_withdrawal(w.id);
     -- the officer who approved cannot also pay
-    BEGIN PERFORM finance.pay_withdrawal(w.id, 'TRX-CHK'); EXCEPTION WHEN OTHERS THEN ok_samepay := true; END;
+    BEGIN PERFORM finance.pay_withdrawal(w.id, 'TRX-CHK', (now() AT TIME ZONE 'Africa/Lagos')::date); EXCEPTION WHEN OTHERS THEN ok_samepay := true; END;
     PERFORM set_config('moaum.actor_id', a_pay::text, true);
-    PERFORM finance.pay_withdrawal(w.id, 'TRX-CHK');
+    PERFORM finance.pay_withdrawal(w.id, 'TRX-CHK', (now() AT TIME ZONE 'Africa/Lagos')::date);
     SELECT * INTO w FROM finance.wallet_withdrawal WHERE id = w.id;
     PERFORM pg_temp.assert('Funding carries its source (NELFUND is a loan), a credit is tagged, and a wallet balance withdraws to a bank only after fees clear, capped, and under two people',
         (SELECT nature FROM finance.funding_source WHERE code = 'NELFUND') = 'LOAN'
@@ -4582,7 +4582,7 @@ BEGIN
         PERFORM set_config('moaum.actor_office', 'bursar', true);
         wd := finance.approve_withdrawal(wd.id);
         PERFORM set_config('moaum.actor_id', three::text, true);
-        wd := finance.pay_withdrawal(wd.id, 'TRF-CHECK-174');
+        wd := finance.pay_withdrawal(wd.id, 'TRF-CHECK-174', (now() AT TIME ZONE 'Africa/Lagos')::date);
         SELECT coalesce(sum(available) FILTER (WHERE source_code = 'NELFUND'), 0), coalesce(sum(refunded) FILTER (WHERE source_code = 'NELFUND'), 0), coalesce(sum(available) FILTER (WHERE source_code = 'SCHOLARSHIP'), 0)
           INTO v_nel_after, v_refunded, v_grant FROM finance.wallet_balances(s2);
         v_bal := finance.wallet_balance(s2);
@@ -17832,6 +17832,75 @@ BEGIN
         coalesce(pos_differ = 0 AND charges_differ = 0 AND putme_differ = 0
                  AND statuses = '0001:FULLY_PAID:MOAUM-FEE-V537-0001,0002:FULLY_PAID:MOAUM-FEE-V537-0003,0003:PART_PAYMENT:MOAUM-FEE-V537-0004,0004:NOT_PAID:-', false),
         format('positions differing %s | %s | charges differing %s | Post-UTME standings differing %s of %s applications', pos_differ, statuses, charges_differ, putme_differ, apps));
+END $$;
+-- ── V540. The money-out trail. A wallet withdrawal approved by one officer is refused to that officer, refused without a transfer
+--          reference, for a date to come or one before its approval, and refused PAID by hand without them; paid by another with
+--          them, the student is told the reference and the date and the queue shows the date. A refund approved five days ago and
+--          paid three days ago is posted on the ledger on the day it was paid, not today. The Paid-out report holds both, the
+--          shared transfer reference counted on each. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); approver uuid := gen_random_uuid(); payer uuid := gen_random_uuid(); s uuid := gen_random_uuid(); a text := '9973/9974';
+        wd uuid; rf text; rid uuid; e_same text; e_ref text; e_future text; e_before text; e_hand text; paid text; told text; queue text;
+        posted text; report text; v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V540', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9973-10-01', date '9974-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'ZZCHKV540', 'Maker'), (approver, 'ZZCHKV540', 'Approver'), (payer, 'ZZCHKV540', 'Payer');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/73/973101', 'MOAUM/CHK/73/9731', 'ZZCHKV540', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO people.student_contact (student_id, email, updated_at) VALUES (s, 'zzchkv540@example.invalid', now());
+        -- a wallet withdrawal, approved by one officer
+        PERFORM finance.credit_wallet(s, a, 5000, 'check V540 credit', 'SCHOLARSHIP');
+        INSERT INTO finance.wallet_withdrawal (student_id, session, amount, bank_name, account_no, account_name, state, requested_by, decided_at, decided_by)
+        VALUES (s, a, 1000, 'Zenith', '0123456788', 'ZZCHKV540 Invented', 'APPROVED', s, now(), approver) RETURNING id INTO wd;
+        PERFORM set_config('moaum.actor_id', approver::text, true);
+        BEGIN PERFORM finance.pay_withdrawal(wd, 'FT-CHK-540', v_today);
+        EXCEPTION WHEN check_violation THEN e_same := 'REFUSED'; END;
+        PERFORM set_config('moaum.actor_id', payer::text, true);
+        BEGIN PERFORM finance.pay_withdrawal(wd, ' ', v_today);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_ref := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.pay_withdrawal(wd, 'FT-CHK-540', v_today + 2);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_future := split_part(msg, ':', 1); END;
+        BEGIN PERFORM finance.pay_withdrawal(wd, 'FT-CHK-540', v_today - 30);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_before := split_part(msg, ':', 1); END;
+        BEGIN UPDATE finance.wallet_withdrawal SET state = 'PAID', paid_at = now(), paid_by = payer WHERE id = wd;
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; e_hand := split_part(msg, ':', 1); END;
+        PERFORM finance.pay_withdrawal(wd, ' FT-CHK-540 ', v_today);
+        paid := (SELECT w.state || ':' || w.paid_ref || ':' || (w.paid_on = v_today) FROM finance.wallet_withdrawal w WHERE w.id = wd);
+        told := (SELECT n.body FROM platform.notice n WHERE n.about_id = s AND n.channel = 'EMAIL' AND n.subject = 'Your refund is paid');
+        queue := (SELECT q.state || ':' || (q.paid_on = v_today) FROM finance.withdrawal_queue(a) q WHERE q.id = wd);
+        -- a refund approved five days ago and paid three days ago: on the ledger on the day it was paid
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        rf := finance.propose_refund(s, 'ZZCHKV540, Invented', 'check V540: paid three days ago', 2000, NULL, NULL, NULL, NULL);
+        rid := (SELECT id FROM finance.refund WHERE reference = rf);
+        PERFORM finance.desk_refund_account(rid, 'GTB', 'ZZCHKV540 Invented', '2222222223');
+        PERFORM set_config('moaum.actor_id', approver::text, true);
+        PERFORM finance.approve_refund(rid);
+        UPDATE finance.refund SET approved_at = now() - interval '5 days' WHERE id = rid;
+        PERFORM set_config('moaum.actor_id', payer::text, true);
+        PERFORM finance.pay_refund(rid, 'ft-chk-540', v_today - 3);
+        PERFORM * FROM finance.gl_sync(NULL::int);
+        posted := (SELECT (j.entry_date = v_today - 3)::text FROM finance.gl_journal j WHERE j.source_type = 'REFUND' AND j.source_ref = rf);
+        report := (SELECT string_agg(p.kind || ':' || p.paid_on::text || ':' || p.transfer_reference || ':' || p.same_reference || ':' || p.account_number
+                                     || ':' || coalesce(p.approved_by_name, '-') || '/' || coalesce(p.paid_by_name, '-'), ',' ORDER BY p.kind)
+                     FROM finance.paid_out(v_today - 10, v_today) p WHERE p.number = 'MOAUM/CHK/73/9731');
+        RAISE EXCEPTION 'the V540 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V540 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V540: a wallet withdrawal is paid only by another officer with the transfer reference and the date the money left (the student told both); a paid refund is posted on the day the money left; the Paid-out report holds both with the shared reference counted',
+        coalesce(e_same = 'REFUSED' AND e_ref = 'WALLET_PAID_REFERENCE' AND e_future = 'WALLET_PAID_DATE' AND e_before = 'WALLET_PAID_DATE' AND e_hand = 'WALLET_PAID_EVIDENCE'
+                 AND paid = 'PAID:FT-CHK-540:true' AND told LIKE '%bank transfer reference FT-CHK-540%' AND queue = 'PAID:true' AND posted = 'true'
+                 AND report = 'REFUND:' || (v_today - 3)::text || ':ft-chk-540:1:2222222223:ZZCHKV540, Approver/ZZCHKV540, Payer,'
+                           || 'WALLET:' || v_today::text || ':FT-CHK-540:1:0123456788:ZZCHKV540, Approver/ZZCHKV540, Payer', false),
+        format('same officer %s, reference %s, future %s, before %s, by hand %s | paid %s | told %s | queue %s | posted on the day paid %s | report %s',
+               e_same, e_ref, e_future, e_before, e_hand, paid, left(told, 140), queue, posted, report));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

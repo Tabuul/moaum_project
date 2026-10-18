@@ -165,7 +165,12 @@ class NelfundWalletIT {
         // the Bursary approves (another person) and a third pays: the Fund's money leaves, the scholarship stays
         String id = String.valueOf(req.getBody().get("id"));
         assertThat(as(ItSupport.token("bursar"), "bursar", HttpMethod.POST, "/api/v1/funding/withdrawals/" + id + "/approve", Map.of()).getStatusCode().value()).isEqualTo(200);
-        assertThat(as(ItSupport.token("bursar"), "bursar", HttpMethod.POST, "/api/v1/funding/withdrawals/" + id + "/pay", Map.of("ref", "TRF-IT-327")).getStatusCode().value()).isEqualTo(200);
+        // V540: paid only with the bank transfer reference and the date the money left
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString();
+        assertThat(as(ItSupport.token("bursar"), "bursar", HttpMethod.POST, "/api/v1/funding/withdrawals/" + id + "/pay", Map.of("ref", "TRF-IT-327")).getStatusCode().value()).isEqualTo(400);
+        assertThat(as(ItSupport.token("bursar"), "bursar", HttpMethod.POST, "/api/v1/funding/withdrawals/" + id + "/pay", Map.of("ref", "TRF-IT-327", "paidOn", today)).getStatusCode().value()).isEqualTo(200);
+        assertThat(as(me, "student", HttpMethod.GET, "/api/v1/me/wallet?session=" + SESSION, null).getBody().get("withdrawal"))
+                .extracting(x -> ((Map<String, Object>) x).get("paid_ref") + ":" + ((Map<String, Object>) x).get("paid_on")).isEqualTo("TRF-IT-327:" + today);
         ResponseEntity<Map> after = as(me, "student", HttpMethod.GET, "/api/v1/me/wallet?session=" + SESSION, null);
         List<Map<String, Object>> balances = (List<Map<String, Object>>) after.getBody().get("balances");
         assertThat(balances).anySatisfy(b -> { assertThat(b.get("source_code")).isEqualTo("NELFUND"); assertThat(new BigDecimal(String.valueOf(b.get("available")))).isEqualByComparingTo("0"); assertThat(new BigDecimal(String.valueOf(b.get("refunded")))).isEqualByComparingTo("100000"); });

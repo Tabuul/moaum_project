@@ -179,8 +179,8 @@ public class WalletService {
     }
 
     @Transactional
-    public Map<String, Object> payWithdrawal(UUID id, String ref) {
-        repo.payWithdrawal(id, ref);
+    public Map<String, Object> payWithdrawal(UUID id, String ref, LocalDate paidOn) {
+        repo.payWithdrawal(id, ref, paidOn);
         return Map.of("id", id, "state", "PAID");
     }
 

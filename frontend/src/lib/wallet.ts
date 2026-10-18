@@ -2,7 +2,7 @@
 export interface WalletEntry { origin?: string | null; legacy_reference?: string | null; legacy_paid_at?: string | null; id: string; at: string; session: string; kind: string; amount: number; reference: string | null; note: string | null; source_code: string | null; source_name: string | null; nature: string | null; balance: number }
 export interface FundStatus { session: string; number: string; state: string; reason: string | null; correctable: boolean; loaded_at: string }
 export interface Eligibility { eligible: boolean; balance: number; cleared: boolean; arrears: boolean; pending: boolean; reason: string; nelfund_refundable?: number; self_refundable?: number; grant_held?: number; nelfund_after_settlement?: boolean; refund_natures?: string }
-export interface Withdrawal { id: string; session: string; amount: number; source_code?: string | null; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null }
+export interface Withdrawal { id: string; session: string; amount: number; source_code?: string | null; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null; /** V540: the day the money left */ paid_on?: string | null }
 /** V327: the wallet by source — what was credited, applied, reversed, refunded, held for a pending refund, and what is available */
 export interface SourceBalance { source_code: string; source_name: string; nature: string; credited: number; applied: number; reversed: number; refunded: number; held: number; available: number }
 /** V327: whether a top-up is allowed and the whole calculation behind the answer */
@@ -53,7 +53,7 @@ export function topupWord(t: TopupEligibility, session: string): string {
   }
 }
 export interface FundingSource { code: string; name: string; nature: string; sponsor: string | null; account: string | null; active: boolean; note: string | null; sort: number }
-export interface QueueWithdrawal { id: string; student_id: string; matric_no: string | null; student_name: string; session: string; amount: number; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null }
+export interface QueueWithdrawal { id: string; student_id: string; matric_no: string | null; student_name: string; session: string; amount: number; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null; /** V540: the day the money left */ paid_on?: string | null }
 export interface Batch { id: string; ref: string; received_on: string; amount: number; rows_read: number; note: string | null; loaded_at: string; matched: number; unmatched: number; reversed: number }
 export interface UnmatchedRow { id: string; matric_no: string; name_on_remit: string | null; amount: number; why: string | null; owner: string | null; batch_ref: string; received_on: string; student_name: string | null; student_status: string | null }
 export interface NelfundDesk {
