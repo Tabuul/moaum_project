@@ -297,7 +297,8 @@ class FinanceController {
     }
 
     /** V506, V519: every student overpaid in a session (old-portal or portal payments) — due, paid, the excess — with the decision that stands
-     *  (carried into the next session, or a refund raised), the counts, and the first rows (up to 100,000 for the Excel list) */
+     *  (carried into the next session, or a refund raised), the counts, and the first rows (up to 100,000 for the Excel list). V561: and
+     *  whether a possible bank double charge of the student's school fees waits for the Bursary's check (they are held from deciding) */
     @GetMapping("/legacy-fees/overpaid")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -306,7 +307,10 @@ class FinanceController {
                 : jdbc.sql("SELECT policy.university_current_session()").query(String.class).single();
         int n = Math.max(1, Math.min(limit, 100_000));
         String text = jdbc.sql("""
-                WITH o AS MATERIALIZED (SELECT * FROM finance.overpaid(:s))
+                WITH o AS MATERIALIZED (SELECT * FROM finance.overpaid(:s)),
+                -- V561: a student whose school fees the bank may have charged twice waits for the Bursary's check with the bank
+                dc AS MATERIALIZED (SELECT d.student_id, bool_or(d.verdict IS NULL OR d.open_requests > 0) AS waiting
+                                      FROM finance.possible_double_charges(:s) d WHERE d.purpose LIKE 'School fees%' GROUP BY d.student_id)
                 SELECT json_build_object(
                     'session', :s::text,
                     'sessions', (SELECT coalesce(json_agg(t.session ORDER BY t.session DESC), '[]'::json)
@@ -319,11 +323,14 @@ class FinanceController {
                     'undecided', (SELECT count(*) FROM o WHERE decision IS NULL),
                     'undecidedExcess', (SELECT coalesce(sum(excess), 0) FROM o WHERE decision IS NULL),
                     'oldPortal', (SELECT count(*) FROM o WHERE old_portal),
+                    'heldForBank', (SELECT count(*) FROM o JOIN dc ON dc.student_id = o.student_id WHERE o.decision IS NULL AND dc.waiting),
                     'decided', (SELECT coalesce(json_object_agg(t.decision, t.n), '{}'::json) FROM (SELECT decision, count(*) AS n FROM o WHERE decision IS NOT NULL GROUP BY decision) t),
                     'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
-                        SELECT student_id, number, name, programme_code, faculty_code, level, due, paid, excess, decision, decided, reference, to_session,
-                               decided_at::text AS decided_at, refund_state, old_portal
-                          FROM o ORDER BY (decision IS NULL) DESC, excess DESC, number LIMIT :n) r))::text
+                        SELECT o.student_id, number, name, programme_code, faculty_code, level, due, paid, excess, decision, decided, reference, to_session,
+                               decided_at::text AS decided_at, refund_state, old_portal,
+                               CASE WHEN dc.student_id IS NULL THEN NULL WHEN dc.waiting THEN 'CHECK_WITH_BANK' ELSE 'BANK_CHECKED' END AS double_charge
+                          FROM o LEFT JOIN dc ON dc.student_id = o.student_id
+                         ORDER BY (decision IS NULL) DESC, excess DESC, number LIMIT :n) r))::text
                 """).param("s", ses).param("n", n).query(String.class).single();
         return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }

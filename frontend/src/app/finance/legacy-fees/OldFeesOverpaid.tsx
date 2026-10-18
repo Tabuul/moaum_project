@@ -19,6 +19,8 @@ import { DECISION, OVERPAID_HEADERS, decideDone, overpaidRow, type Decision, typ
 interface Overpaid {
   session: string; sessions: string[]; nextSession: string | null; count: number; excess: number | string; undecided: number;
   undecidedExcess: number | string; decided: Partial<Record<Decision, number>>; oldPortal?: number; rows: OverpaidRow[];
+  /** V561: undecided students held until a possible bank double charge of their school fees is checked */
+  heldForBank?: number;
 }
 
 /** what is being decided: every undecided student of the session, or one */
@@ -76,7 +78,7 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
     const { decision, who } = asking;
     setBusy("decide");
     setSaid(null);
-    const t = { carried: 0, refunds: 0 };
+    const t = { carried: 0, refunds: 0, held: 0 };
     try {
       for (;;) {
         const r = await fetch("/api/bff/api/v1/finance/legacy-fees/overpaid/decide", {
@@ -86,8 +88,8 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
         });
         const j = await r.json().catch(() => null);
         if (!r.ok) { notifyProblem((j ?? { status: r.status, title: r.statusText }) as Problem); break; }
-        const w = j as { carried: number; refunds: number; remaining: number };
-        t.carried += Number(w.carried); t.refunds += Number(w.refunds);
+        const w = j as { carried: number; refunds: number; held?: number; remaining: number };
+        t.carried += Number(w.carried); t.refunds += Number(w.refunds); t.held = Number(w.held ?? 0);
         setProgress(`${(t.carried + t.refunds).toLocaleString()} decided${Number(w.remaining) ? `, ${Number(w.remaining).toLocaleString()} to go` : ""}…`);
         if (decideDone(w)) break;
       }
@@ -96,6 +98,10 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
           ? `${t.carried.toLocaleString()} excess${t.carried === 1 ? "" : "es"} carried into ${data.nextSession ?? "the next session"}: each counts there as school fees paid.`
           : `${t.refunds.toLocaleString()} refund${t.refunds === 1 ? "" : "s"} raised on the Refunds & Credits desk, to be approved and paid there.`);
         notify(t.carried ? "Carried into the next session" : "Refunds raised");
+      }
+      // V561: those whose school fees the bank may have charged twice wait for the Bursary's check with the bank
+      if (t.held > 0) {
+        notify(`${t.held.toLocaleString()} held until their possible double charge is checked with the bank (Possible bank double charges, below)`, "warn");
       }
       setAsking(null);
       setReason("");
@@ -144,11 +150,18 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
                   <Btn kind="ghost" disabled={!!busy || loading} onClick={() => setAsking({ decision: "REFUND", who: null })}>{`Raise ${data.undecided.toLocaleString()} refunds`}</Btn>
                 </div>
               ) : null}
+              {data.heldForBank ? (
+                <Note kind="info" title={`${data.heldForBank.toLocaleString()} wait for a check with the bank`}>
+                  Their school fees were recorded twice on one day under two payment numbers. Check each with the bank under Possible bank double charges, below, before
+                  the excess is carried or refunded; until then they are left out of every decision.
+                </Note>
+              ) : null}
               {!next ? <Note kind="info" title="No next session">No session follows {data.session} on the academic calendar, so an excess cannot be carried yet; refunds can be raised.</Note> : null}
             </PBody>
             <DTable pageSize={0} cols={["Student", "Due|num", "Paid|num", "Excess|num", "Decided", ""]}
               rows={data.rows.map((o) => [
-                <span key="s"><Two a={o.name} b={o.number} />{o.old_portal ? <span className="sub2">Old-portal payment among them</span> : null}</span>,
+                <span key="s"><Two a={o.name} b={o.number} />{o.old_portal ? <span className="sub2">Old-portal payment among them</span> : null}
+                  {o.double_charge === "CHECK_WITH_BANK" ? <div><Pil kind="warn">Check with the bank</Pil></div> : null}</span>,
                 <span key="d" className="tnum">{money(Number(o.due))}</span>,
                 <span key="p" className="tnum">{money(Number(o.paid))}</span>,
                 <b key="x" className="tnum">{money(Number(o.excess))}</b>,

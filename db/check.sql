@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 394
+\set EXPECTED 395
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -18987,6 +18987,84 @@ BEGIN
                  AND bad_item = 'REFUSED' AND tally = 'PROCESSING>COMPLETED_WITH_EXCEPTIONS' AND counts = '1/3/4' AND cancelled = 'CANCELLED:1/1/2', false),
         format('known %s | codes %s hidden %s | head %s | plain %s | refusals %s/%s | same %s ref %s items %s total %s | bad item %s | tally %s counts %s | cancelled %s',
                known, codes, hidden, head_codes, plain_codes, short, empty, op = op2, ref, items, total, bad_item, tally, counts, cancelled));
+END $$;
+-- ── V561. Possible bank double charges: old-portal records of one student, session, item, day and amount under two payment
+--    numbers are listed; only the Bursary checks them with the bank, naming at least one and never all as not received; the
+--    student's excess is held from carrying or refunding until checked; a payment the bank never received is withdrawn only when
+--    another Bursary officer approves — kept on the withdrawn list, its payment number remembered so the export loaded again
+--    never brings it back; a portal payment is never withdrawn here ──
+DO $$
+DECLARE
+    y int := 2188; v_prog text; v_dept text; v_fac text; ses text; st uuid := gen_random_uuid();
+    r1 text; r2 text; b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid();
+    listed int; v_ict text; v_all text; held record; v_ref text; v_same text; v_state text; waiting int;
+    left_n int; kind text; remembered int; imp record; v_portal text; listed_after int; told int;
+BEGIN
+  BEGIN   -- the check's own sessions, programme, student and payments, undone at the end
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V561', true);
+    ses := format('%s/%s', y, y + 1);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), ses, make_date(y, 10, 1), make_date(y + 1, 9, 30), 'PLANNED'),
+        (gen_random_uuid(), format('%s/%s', y + 1, y + 2), make_date(y + 1, 10, 1), make_date(y + 2, 9, 30), 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V561', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees', 121849.80, NULL, v_prog);
+    INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ZZL/DBL/56101', 'CHECKV561', 'Double Charge', v_prog, 'UTME', ses, 100, 200, 'ACTIVE', now());
+    r1 := 'MOAUM-LEG-MOAUMZZLDBL56101-' || replace(ses, '/', '-') || '-S1';
+    r2 := r1 || '-PR21881123062528751';
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no) VALUES
+        (st, ses, r1, 'School fees (legacy) · semester 1', 85294, make_date(y, 11, 23), make_timestamptz(y, 11, 23, 9, 0, 0, 'Africa/Lagos'), b1, 'Legacy', 'Imported from the old portal', 'LEG-' || r1),
+        (st, ses, r2, 'School fees (legacy) · semester 1', 85294, make_date(y, 11, 23), make_timestamptz(y, 11, 23, 10, 0, 0, 'Africa/Lagos'), b1, 'Legacy', 'Imported from the old portal', 'LEG-' || r2);
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PR21881123061111111', r1, 85294), ('PR21881123062528751', r2, 85294);
+
+    SELECT count(*) INTO listed FROM finance.possible_double_charges(ses) d WHERE d.student_id = st AND d.payments = 2 AND d.verdict IS NULL;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM finance.check_double_charge(st, ses, 'School fees (legacy) · semester 1', make_date(y, 11, 23), 85294, 'RECEIVED', 'Zenith statement', NULL, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN v_ict := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.check_double_charge(st, ses, 'School fees (legacy) · semester 1', make_date(y, 11, 23), 85294, 'NOT_RECEIVED', 'Zenith statement', NULL, ARRAY[r1, r2]);
+    EXCEPTION WHEN check_violation THEN v_all := split_part(SQLERRM, ':', 1); END;
+    SELECT * INTO held FROM finance.decide_overpayments(ses, 'CARRY', ARRAY[st], 'CHECK V561: carried after the bank answers', 100);
+
+    PERFORM finance.check_double_charge(st, ses, 'School fees (legacy) · semester 1', make_date(y, 11, 23), 85294, 'NOT_RECEIVED',
+                                        'Zenith statement: one credit of 85,294', 'CHECK V561', ARRAY[r2]);
+    SELECT request_ref INTO v_ref FROM finance.payment_not_received WHERE reference = r2 AND state = 'PROPOSED';
+    SELECT open_requests INTO waiting FROM finance.possible_double_charges(ses) d WHERE d.student_id = st;
+    BEGIN PERFORM finance.decide_not_received(v_ref, true, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN v_same := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', b2::text, true);
+    v_state := finance.decide_not_received(v_ref, true, 'CHECK V561 statement seen');
+    SELECT count(*) INTO left_n FROM finance.payment_reference WHERE student_id = st;
+    SELECT double_kind INTO kind FROM finance.old_payment_withdrawn WHERE reference = r2;
+    SELECT count(*) INTO remembered FROM finance.legacy_payref_withdrawn WHERE payref = 'PR21881123062528751';
+    SELECT count(*) INTO told FROM platform.notice WHERE template_key = 'PAYMENT_NOT_RECEIVED_REMOVED' AND about_id = st;
+    SELECT count(*) INTO listed_after FROM finance.possible_double_charges(ses) d WHERE d.student_id = st;
+    SELECT * INTO imp FROM finance.import_legacy_payments(jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZZL/DBL/56101', 'session', ses, 'semester', 'First',
+        'amount', '85294', 'purpose', 'SCHOOL FEES', 'paidOn', format('%s-11-23', y), 'receiptNo', 'PR21881123062528751')));
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (st, ses, 'MOAUM-CHK561-PORTAL', 'School fees ' || ses, 1000, now(), now(), b1, 'INTERSWITCH', 'portal', 'RCT-MOAUM-CHK561-PORTAL');
+    BEGIN PERFORM finance.propose_not_received('MOAUM-CHK561-PORTAL', 'Zenith statement', 'CHECK V561 a portal payment', NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_portal := split_part(SQLERRM, ':', 1); END;
+    RAISE EXCEPTION 'CHECK_V561_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V561_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V561: old-portal payments of one day and amount under two payment numbers are listed, checked with the bank by the Bursary only (at least one received), the excess held until then, and one the bank never received withdrawn only on another officer''s approval — kept, its number remembered, the student told; a portal payment is never withdrawn here',
+        coalesce(listed = 1 AND v_ict = 'PAY_CHECK_OFFICE' AND v_all = 'PAY_CHECK_NOT_RECEIVED_LIST'
+            AND held.carried = 0 AND held.held = 1 AND held.remaining = 0
+            AND v_ref ~ '^PNR/[0-9]{4}/[0-9]{6}$' AND waiting = 1 AND v_same = 'PAY_NOT_RECEIVED_SAME_OFFICER' AND v_state = 'APPROVED'
+            AND left_n = 1 AND kind = 'NOT_RECEIVED' AND remembered = 1 AND told >= 1 AND listed_after = 0
+            AND imp.duplicates = 1 AND imp.cleared = 0 AND v_portal = 'PAY_NOT_RECEIVED_NOT_OLD_PORTAL', false),
+        format('listed %s | ict %s all %s | decide carried %s held %s left %s | request %s waiting %s same %s state %s | records left %s kind %s remembered %s told %s listed after %s | import dup %s cleared %s | portal %s',
+               listed, v_ict, v_all, held.carried, held.held, held.remaining, v_ref, waiting, v_same, v_state, left_n, kind, remembered, told, listed_after,
+               imp.duplicates, imp.cleared, v_portal));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -8,7 +8,8 @@ import { notifyProblem } from "@/components/proto/Toast";
  *  payment from another, the payments the retired screen recorded twice are listed and withdrawn, and the old payments are
  *  reconciled against the fee setup. V502: a payment the retired screen recorded under its number is taken over when the
  *  export names it (its item, semester and day), and what it recorded that nothing matches is listed. V506: the overpaid,
- *  carried into the next session or refunded, and the ledger posted from here. */
+ *  carried into the next session or refunded, and the ledger posted from here. V561: possible bank double charges checked with the
+ *  bank before an excess is decided, and a payment the bank never received withdrawn by two Bursary officers. */
 import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
@@ -17,9 +18,11 @@ import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
+import { OldFeesDoubleCharges } from "./OldFeesDoubleCharges";
 import { OldFeesDoubles } from "./OldFeesDoubles";
 import { OldFeesLedger } from "./OldFeesLedger";
 import { OldFeesMislabelled } from "./OldFeesMislabelled";
+import { OldFeesNotReceived } from "./OldFeesNotReceived";
 import { OldFeesOverpaid } from "./OldFeesOverpaid";
 import { OldFeesPaymentHistoryLeft } from "./OldFeesPaymentHistoryLeft";
 import { OldFeesReconciliation } from "./OldFeesReconciliation";
@@ -312,6 +315,10 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       <OldFeesReconciliation tick={changed} />
 
       <OldFeesOverpaid may={may} tick={changed} onChanged={bump} />
+
+      <OldFeesDoubleCharges may={may} tick={changed} onChanged={bump} />
+
+      <OldFeesNotReceived may={may} tick={changed} onChanged={bump} />
 
       <OldFeesMislabelled key={`codes-${codesTick}`} may={may} tick={changed} onChanged={bump} />
 

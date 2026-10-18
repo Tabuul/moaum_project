@@ -135,16 +135,20 @@ export interface OverpaidRow {
   reference: string | null; to_session: string | null; decided_at: string | null; refund_state: string | null;
   /** V519: whether an old-portal payment is among the session's payments (the list holds every overpaid student) */
   old_portal?: boolean;
+  /** V561: a possible bank double charge of the student's school fees — waiting for the Bursary's check with the bank (the student
+   *  is held from deciding), or checked */
+  double_charge?: "CHECK_WITH_BANK" | "BANK_CHECKED" | null;
 }
 
 export const OVERPAID_HEADERS = ["Matric/admission no.", "Name", "Programme", "Faculty", "Level", "Due by the fee setup (₦)", "Paid (₦)",
-  "Excess (₦)", "Decision", "Into session", "Reference", "Refund state", "Decided on", "Old-portal payment among them"];
+  "Excess (₦)", "Decision", "Into session", "Reference", "Refund state", "Decided on", "Old-portal payment among them", "Possible bank double charge"];
 
 /** an overpaid student as an Excel row, in the order of OVERPAID_HEADERS */
 export function overpaidRow(o: OverpaidRow): (string | number)[] {
   return [o.number, o.name, o.programme_code, o.faculty_code ?? "", o.level ?? "", n(o.due), n(o.paid), n(o.excess),
     o.decision ? DECISION[o.decision] ?? o.decision : "Not decided", o.to_session ?? "", o.reference ?? "", o.refund_state ?? "",
-    o.decided_at ? o.decided_at.slice(0, 10) : "", o.old_portal ? "Yes" : "No"];
+    o.decided_at ? o.decided_at.slice(0, 10) : "", o.old_portal ? "Yes" : "No",
+    o.double_charge === "CHECK_WITH_BANK" ? "Check with the bank" : o.double_charge === "BANK_CHECKED" ? "Checked with the bank" : ""];
 }
 
 /** the decisions run in batches until nothing is decided or nothing is left (what the screen loops on) */
