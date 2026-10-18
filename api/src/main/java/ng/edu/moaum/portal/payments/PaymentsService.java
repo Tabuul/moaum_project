@@ -794,22 +794,23 @@ public class PaymentsService {
         }
         laneLog("paydirect", "VALIDATE", "validate", reference.isEmpty() ? null : reference, m.field("MerchantReference").isEmpty() ? null : m.field("MerchantReference"),
                 c.valid() ? c.amount() : null, c.valid() ? "0" : "1", true, c.valid() ? "VALID" : "INVALID", json(said));
-        // the payer confirms the name on Quickteller's page: the surname and the first of the other names; Oct 2026: the surname carries
-        // the payer's number (a student's matriculation number, or admission number before one; an applicant's application number), so
-        // Interswitch's collections report names the student in its Customer Name column, where the alternate reference is not shown
+        // the payer confirms the name on Quickteller's page: the surname and the first of the other names; Oct 2026: the first name
+        // carries the payer's number at its end (a student's matriculation number, or admission number before one; an applicant's
+        // application number) — Interswitch's collections report writes the surname, then the first name, in its Customer Name column
+        // ("DAVID Terfa (MOAU/CS/BRO/24/72981)"), where the alternate reference is not shown
         String first = c.otherNames() == null ? "" : c.otherNames().trim().split("\\s+")[0];
         return new PayDirectMessages.Answer(m.json(), PayDirectMessages.wrap(m, PayDirectMessages.customerAnswer(m.json(), m.field("MerchantReference"), m.field("ThirdPartyCode"),
-                reference, c.valid(), first, surnameWithNumber(c.surname(), c.number()), c.number(), c.amount())));
+                reference, c.valid(), withNumber(first, c.number()), c.surname(), c.number(), c.amount())));
     }
 
-    /** "MNGOHOL (MOAU/SC/MCB/24/75807)" — the surname with the payer's number, plain ASCII for Interswitch's systems; the surname alone without one */
-    static String surnameWithNumber(String surname, String number) {
-        String s = surname == null ? "" : surname.trim();
+    /** "Terfa (MOAU/CS/BRO/24/72981)" — a name with the payer's number after it, plain ASCII for Interswitch's systems; the name alone without one */
+    static String withNumber(String name, String number) {
+        String s = name == null ? "" : name.trim();
         String n = number == null ? "" : number.trim();
         if (n.isEmpty() || s.toUpperCase(java.util.Locale.ROOT).contains(n.toUpperCase(java.util.Locale.ROOT))) {
             return s;
         }
-        return s.isEmpty() ? n : s + " (" + n + ")";
+        return s.isEmpty() ? "(" + n + ")" : s + " (" + n + ")";
     }
 
     /**

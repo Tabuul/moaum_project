@@ -335,11 +335,11 @@ class PaymentsIT {
             String asked = postXml("/api/v1/payments/paydirect/interswitch", "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword>"
                     + "<MerchantReference>6405</MerchantReference><CustReference>" + reference.toLowerCase() + "</CustReference><PaymentItemCode>01</PaymentItemCode>"
                     + "<ThirdPartyCode></ThirdPartyCode></CustomerInformationRequest>");
-            // Oct 2026: the surname carries the payer's number, so Interswitch's collections report names the payer
+            // Oct 2026: the first name carries the payer's number at its end, so Interswitch's collections report names the payer
             String applicationNo = jdbc.sql("SELECT a.application_no FROM admissions.fee_reference f JOIN admissions.application a ON a.id = f.application_id WHERE f.reference = :r")
                     .param("r", reference).query(String.class).single();
             assertThat(asked).contains("<Status>0</Status>").contains("<CustReference>" + reference + "</CustReference>")
-                    .containsIgnoringCase("<LastName>ITQUICKTELLER (" + applicationNo + ")</LastName>").containsIgnoringCase("<FirstName>Invented</FirstName>")
+                    .containsIgnoringCase("<LastName>ITQUICKTELLER</LastName>").containsIgnoringCase("<FirstName>Invented (" + applicationNo + ")</FirstName>")
                     .contains("<Amount>" + amount.setScale(2).toPlainString() + "</Amount>");
             assertThat(postXml("/api/v1/payments/paydirect/validate", "<CustomerInformationRequest><CustReference>MOAUM-APP-000000-0000</CustReference></CustomerInformationRequest>"))
                     .contains("<Status>1</Status>").contains("<FirstName></FirstName>");
@@ -536,7 +536,7 @@ class PaymentsIT {
         // open: Status 0 with the student's name and the amount
         assertThat(postXml("/api/v1/payments/paydirect/interswitch", validate.formatted(reference.toLowerCase())))
                 .contains("<Status>0</Status>").contains("<CustReference>" + reference + "</CustReference>")
-                .containsIgnoringCase("<LastName>ZZINTERSWITCH (MOAUM/ITR/99/0383)</LastName>").containsIgnoringCase("<FirstName>Invented</FirstName>").contains("<Amount>150.00</Amount>");
+                .containsIgnoringCase("<LastName>ZZINTERSWITCH</LastName>").containsIgnoringCase("<FirstName>Invented (MOAUM/ITR/99/0383)</FirstName>").contains("<Amount>150.00</Amount>");
         Map<String, Object> listed = ((List<Map<String, Object>>) it.get(bursar, "/api/v1/payments/paydirect").getBody().get("testReferences")).stream()
                 .filter(r -> reference.equals(r.get("reference"))).findFirst().orElseThrow();
         assertThat(listed.get("state")).isEqualTo("OPEN");

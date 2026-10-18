@@ -75,13 +75,14 @@ class PayDirectMessagesTest {
         assertThat(PayDirectMessages.wrap(bare, "<x/>")).isEqualTo("<x/>");
     }
 
-    /** Oct 2026: the surname Quickteller is told carries the payer's number, so Interswitch's collections report names the student */
+    /** Oct 2026: the first name Quickteller is told carries the payer's number at its end, so Interswitch's collections report (surname,
+     *  then first name) reads "DAVID Terfa (MOAU/CS/BRO/24/72981)" */
     @Test
-    void theSurnameCarriesThePayersNumber() {
-        assertThat(PaymentsService.surnameWithNumber("MNGOHOL", "MOAU/SC/MCB/24/75807")).isEqualTo("MNGOHOL (MOAU/SC/MCB/24/75807)");
-        assertThat(PaymentsService.surnameWithNumber(" Mngohol ", null)).isEqualTo("Mngohol");
-        assertThat(PaymentsService.surnameWithNumber("Mngohol", "  ")).isEqualTo("Mngohol");
-        assertThat(PaymentsService.surnameWithNumber(null, "MOAUM/ADM/25/1234")).isEqualTo("MOAUM/ADM/25/1234");
-        assertThat(PaymentsService.surnameWithNumber("MNGOHOL (MOAU/SC/MCB/24/75807)", "moau/sc/mcb/24/75807")).isEqualTo("MNGOHOL (MOAU/SC/MCB/24/75807)");
+    void theFirstNameCarriesThePayersNumber() {
+        assertThat(PaymentsService.withNumber("Terfa", "MOAU/CS/BRO/24/72981")).isEqualTo("Terfa (MOAU/CS/BRO/24/72981)");
+        assertThat(PaymentsService.withNumber(" Terfa ", null)).isEqualTo("Terfa");
+        assertThat(PaymentsService.withNumber("Terfa", "  ")).isEqualTo("Terfa");
+        assertThat(PaymentsService.withNumber("", "MOAUM/ADM/25/1234")).isEqualTo("(MOAUM/ADM/25/1234)");
+        assertThat(PaymentsService.withNumber("Terfa (MOAU/CS/BRO/24/72981)", "moau/cs/bro/24/72981")).isEqualTo("Terfa (MOAU/CS/BRO/24/72981)");
     }
 }
