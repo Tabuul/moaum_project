@@ -64,6 +64,24 @@ class SlowStatementsIT {
             }
             assertThat((List<Map<String, Object>>) body.get("screens"))
                     .anySatisfy(s -> assertThat(s.get("function_name")).isEqualTo("finance.session_positions"));
+            assertThat(body).containsKeys("resets", "alerts");
+
+            // V555: over the last week by the snapshots (or since the reset while none is kept); the reset is ICT's, with a reason
+            ResponseEntity<Map> week = it.get(admin, "/api/v1/platform/slow-statements?order=MEAN&minCalls=1&limit=5&days=7");
+            assertThat(week.getStatusCode().value()).isEqualTo(200);
+            if ((Boolean) week.getBody().get("available")) {
+                assertThat(week.getBody().get("period")).isIn("DAYS", "RESET");
+            }
+            assertThat(it.call(admin, HttpMethod.POST, "/api/v1/platform/slow-statements/reset", Map.of("reason", "after the release")).getStatusCode().value())
+                    .isEqualTo(403);
+            assertThat(it.call(ict, HttpMethod.POST, "/api/v1/platform/slow-statements/reset", Map.of("reason", "x")).getStatusCode().is4xxClientError()).isTrue();
+            ResponseEntity<Map> reset = it.call(ict, HttpMethod.POST, "/api/v1/platform/slow-statements/reset", Map.of("reason", "the integration test of V555"));
+            if ((Boolean) body.get("available")) {
+                assertThat(reset.getStatusCode().value()).as(String.valueOf(reset.getBody())).isIn(200, 403);
+            } else {
+                assertThat(reset.getStatusCode().value()).isEqualTo(422);
+                assertThat(reset.getBody().get("code")).isEqualTo("STATEMENTS_NOT_KEPT");
+            }
 
             // ICT names a function's screens; the administrator reads but does not name; a name not written as schema.name is refused
             assertThat(it.call(admin, HttpMethod.PUT, "/api/v1/platform/slow-statements/screens/" + fn, Map.of("screens", "Somewhere")).getStatusCode().value())

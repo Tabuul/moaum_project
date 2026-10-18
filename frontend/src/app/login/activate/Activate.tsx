@@ -7,6 +7,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/PasswordInput";
 
 interface Invitation { name: string; institution: string; email: string; status: string; expires_at: string; appointment: string | null; university: string }
 
@@ -73,10 +74,10 @@ export function Activate({ token }: { token: string }) {
               <p className="m-0 sub2">This link works once and expires on {new Date(inv.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.</p>
               {problem ? <Note kind="bad" title={problem.title ?? "Not activated"}>{problem.detail}</Note> : null}
               <Field id="ac-pw" label="Password" required hint="At least ten characters, not containing your email address">
-                <input id="ac-pw" className="ctl" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+                <PasswordInput id="ac-pw" className="ctl" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
               </Field>
               <Field id="ac-pw2" label="Password again" required error={again && again !== password ? "The two do not match." : undefined}>
-                <input id="ac-pw2" className="ctl" type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" />
+                <PasswordInput id="ac-pw2" className="ctl" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" />
               </Field>
               <div className="row row--base">
                 <Btn kind="primary" size="md" type="submit" disabled={busy || !ready}>{busy ? "Activating…" : "Activate my account"}</Btn>

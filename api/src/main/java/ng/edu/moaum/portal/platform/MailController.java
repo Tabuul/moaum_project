@@ -42,23 +42,39 @@ class MailController {
     private final NoticeRepository notices;
     private final TransactionTemplate tx;
 
-    MailController(MailService mail, SmtpMailer smtp, NoticeRepository notices, PlatformTransactionManager transactions) {
+    MailController(MailService mail, SmtpMailer smtp, NoticeRepository notices, PlatformTransactionManager transactions,
+                   tools.jackson.databind.ObjectMapper json) {
         this.mail = mail;
         this.smtp = smtp;
         this.notices = notices;
         this.tx = new TransactionTemplate(transactions);
+        this.json = json;
     }
 
+    private final tools.jackson.databind.ObjectMapper json;
+
+    @SuppressWarnings("unchecked")
     @GetMapping("/mail")
     @PreAuthorize(KEEPERS)
     Map<String, Object> config() {
-        return mail.config();
+        Map<String, Object> out = new LinkedHashMap<>(mail.config());
+        // V556: whether e-mail is held after the server refused the portal, until when and why
+        out.put("hold", tx.execute(st -> json.readValue(notices.smtpPauseState(), Map.class)));
+        return out;
     }
 
     @PutMapping("/mail")
     @PreAuthorize(KEEPERS)
     Map<String, Object> save(@Valid @RequestBody MailService.Settings body) {
-        return mail.save(body);
+        Map<String, Object> out = mail.save(body);
+        resume();   // V556: the settings changed: e-mail is tried again at once
+        return out;
+    }
+
+    /** V556: a hold on e-mail ended, in its own transaction */
+    private void resume() {
+        AuditContext ctx = AuditContextHolder.required();
+        AuditContextHolder.with(ctx, () -> tx.execute(st -> notices.smtpResume()));
     }
 
     @PostMapping("/mail/clear-password")
@@ -116,6 +132,9 @@ class MailController {
             out.put("detail", SmtpFailure.detail(e));
         }
         out.put("ms", (System.nanoTime() - started) / 1_000_000);
+        if (Boolean.TRUE.equals(out.get("ok"))) {
+            resume();   // V556: the settings work: e-mail goes again at once
+        }
         if (to != null) {
             // a test e-mail counts against the pace like any other
             boolean ok = Boolean.TRUE.equals(out.get("ok"));

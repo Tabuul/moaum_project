@@ -61,7 +61,7 @@ class RecordIssuesIT {
         assertThat(rows).anySatisfy(r -> { assertThat(r.get("student_id")).isEqualTo(noState.toString()); assertThat(r.get("issue")).isEqualTo("NO_STATE_OF_ORIGIN"); });
         // every kind says who corrects it, with its count
         List<Map<String, Object>> kinds = (List<Map<String, Object>>) all.getBody().get("kinds");
-        assertThat(kinds).hasSize(10).allSatisfy(k -> { assertThat((String) k.get("corrects")).isNotBlank(); assertThat((List<String>) k.get("offices")).isNotEmpty(); });
+        assertThat(kinds).hasSize(12).allSatisfy(k -> { assertThat((String) k.get("corrects")).isNotBlank(); assertThat((List<String>) k.get("offices")).isNotEmpty(); });
         assertThat(kinds).anySatisfy(k -> { assertThat(k.get("code")).isEqualTo("UG_POSTGRADUATE_ENTRY"); assertThat(((Number) k.get("students")).intValue()).isPositive(); });
 
         // one issue: only its rows

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 388
+\set EXPECTED 391
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17780,7 +17780,7 @@ BEGIN
     kinds := (SELECT count(*) FROM people.record_issue_kind WHERE cardinality(offices) > 0 AND corrects <> '' AND how <> '');
     PERFORM pg_temp.assert('V536: the records check lists each live student whose record is inconsistent by what is wrong, and every kind names the offices that correct it',
         coalesce(got = '0001:LEVEL_BEYOND_PROGRAMME,0002:UG_POSTGRADUATE_ENTRY,0003:PG_UNDERGRADUATE_LEVEL,0004:DIRECT_ENTRY_AT_100,0005:NO_STATE_OF_ORIGIN,0006:STATE_NOT_ON_REGISTER'
-                 AND clean = 0 AND kinds = (SELECT count(*) FROM people.record_issue_kind) AND kinds = 10, false),
+                 AND clean = 0 AND kinds = (SELECT count(*) FROM people.record_issue_kind) AND kinds = 12, false),
         format('found %s | consistent or graduated listed %s | kinds with offices %s', got, clean, kinds));
 END $$;
 
@@ -18491,6 +18491,135 @@ BEGIN
         format('lines %s | recon %s | not received %s groups %s | settled %s after %s bad %s/%s | bank credit %s twice %s other %s confirmed %s listed %s | breakdown %s | not posted %s state %s/%s/%s (had %s) | too much %s account %s empty %s | reclass %s second %s after %s/%s',
                lines, recon, before_settle, groups, settled, after_settle, bad_settle, bad_debit, bc_state, sent_twice, not_unconfirmed, confirmed_after, listed_after,
                breakdown, not_posted, st_posted, st_recl, st_rem, had_opening, too_much, wrong_account, empty_lines, reclass, second_ref, after_recl, after_rem));
+END $$;
+
+-- ── V553: the Biodata form and the record kept in agreement ──
+-- A student's own date of birth fills an empty record and leaves a stated one (which the records check then lists with both
+-- dates), an office's corrects it, a date that is none changes nothing; the form's state is kept to the register's spelling and,
+-- named otherwise than the record, is listed with both; a phone (+234…) and an e-mail given on the form fill an empty contact,
+-- an unusable phone does not. The block undoes its writes.
+DO $$
+DECLARE msg text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        dob_a date; dob_b1 date; dob_b2 date; dob_b3 date; form_state text; rec_state text; phone_a text; email_a text; phone_b text;
+        listed text; sugg_state text; sugg_dob text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    BEGIN
+        INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, date_of_birth, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/V553/31/0001', 'ZZCHKV553', 'Empty', 'Benue', NULL, 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/V553/31/0002', 'ZZCHKV553', 'Stated', 'Benue', date '2003-08-20', 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now());
+        -- the students' own answers
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.actor_id', a::text, true);
+        INSERT INTO people.biodata (student_id, field, value) VALUES (a, 'date_of_birth', '2004-05-06'), (a, 'mobile', '+234 803 123 4567'), (a, 'personal_email', ' Ada.V553@Example.com');
+        PERFORM set_config('moaum.actor_id', b::text, true);
+        INSERT INTO people.biodata (student_id, field, value) VALUES (b, 'date_of_birth', '2001-01-02'), (b, 'state_of_origin', 'kogi state'), (b, 'mobile', '12345');
+        dob_a := (SELECT date_of_birth FROM people.student WHERE id = a);
+        dob_b1 := (SELECT date_of_birth FROM people.student WHERE id = b);
+        form_state := (SELECT value FROM people.biodata WHERE student_id = b AND field = 'state_of_origin');
+        rec_state := (SELECT state_of_origin FROM people.student WHERE id = b);
+        SELECT c.phone, c.email INTO phone_a, email_a FROM people.student_contact c WHERE c.student_id = a;
+        phone_b := coalesce((SELECT c.phone FROM people.student_contact c WHERE c.student_id = b), 'none');
+        listed := (SELECT string_agg(x.issue, ',' ORDER BY x.issue) FROM people.record_issues() x WHERE x.student_id = b);
+        sugg_state := (SELECT x.suggestion FROM people.record_issues('FORM_STATE_DIFFERS') x WHERE x.student_id = b);
+        sugg_dob := (SELECT x.suggestion FROM people.record_issues('FORM_BIRTH_DATE_DIFFERS') x WHERE x.student_id = b);
+        -- an office corrects; a date that is none changes nothing
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        UPDATE people.biodata SET value = '1999-12-31' WHERE student_id = b AND field = 'date_of_birth';
+        dob_b2 := (SELECT date_of_birth FROM people.student WHERE id = b);
+        UPDATE people.biodata SET value = 'last year' WHERE student_id = b AND field = 'date_of_birth';
+        dob_b3 := (SELECT date_of_birth FROM people.student WHERE id = b);
+        RAISE EXCEPTION 'the V553 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V553 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V553: the Biodata form reaches the record by its rules, keeps the register''s spelling, fills an empty contact, and the records check lists a form at odds with the record',
+        coalesce(dob_a = date '2004-05-06' AND dob_b1 = date '2003-08-20' AND dob_b2 = date '1999-12-31' AND dob_b3 = date '1999-12-31'
+                 AND form_state = 'Kogi' AND rec_state = 'Benue' AND phone_a = '08031234567' AND email_a = 'ada.v553@example.com' AND phone_b = 'none'
+                 AND listed = 'FORM_BIRTH_DATE_DIFFERS,FORM_STATE_DIFFERS'
+                 AND sugg_state = 'The Biodata form says Kogi; the record says Benue'
+                 AND sugg_dob = 'The Biodata form says 2 Jan 2001; the record says 20 Aug 2003', false),
+        format('dob: filled %s, kept %s, office %s, not a date %s | form state %s, record %s | contact %s %s, unusable phone %s | listed %s | %s | %s',
+               dob_a, dob_b1, dob_b2, dob_b3, form_state, rec_state, phone_a, email_a, phone_b, listed, sugg_state, sugg_dob));
+END $$;
+
+-- ── V555: Slow Statements over a period, a reset for ICT, ICT told of a statement turned slow ──
+-- Over the last week the statements are read by the snapshots (or since the reset while none is kept), or said to be unavailable
+-- where they are not kept — never an error; a snapshot is taken or said to be impossible; a statement whose average over the last
+-- day (1,000 ms) is at least twice the week before's (300 ms) is kept as an alert once a day, a steady one is not; a reset needs a
+-- reason and is refused, with its reason, where the statistics are not kept. The block undoes its writes.
+DO $$
+DECLARE msg text; w jsonb; snap jsonb; first int; again int; alerted text; refused_reason boolean := false; reset_answer text;
+        t0 timestamptz := timestamptz '2947-03-17 00:05+01';
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    w := platform.slow_statements('MEAN', 1, 5, 7);
+    BEGIN
+        snap := platform.take_statement_snapshot();
+        INSERT INTO platform.statement_snapshot (taken_at, queryid, query, calls, total_ms, rows) VALUES
+          (t0 - interval '8 days', 9547001, 'SELECT * FROM finance.fee_gaps($1)', 0, 0, 0),
+          (t0 - interval '1 day', 9547001, 'SELECT * FROM finance.fee_gaps($1)', 100, 30000, 100),
+          (t0, 9547001, 'SELECT * FROM finance.fee_gaps($1)', 150, 80000, 150),
+          (t0 - interval '8 days', 9547002, 'SELECT * FROM finance.steady($1)', 0, 0, 0),
+          (t0 - interval '1 day', 9547002, 'SELECT * FROM finance.steady($1)', 100, 1000, 100),
+          (t0, 9547002, 'SELECT * FROM finance.steady($1)', 150, 1500, 150);
+        first := platform.tell_slower_statements(t0);
+        again := platform.tell_slower_statements(t0);
+        alerted := (SELECT string_agg(queryid || ':' || mean_ms || '/' || before_ms, ',') FROM platform.statement_alert WHERE queryid IN (9547001, 9547002));
+        BEGIN
+            PERFORM platform.reset_statement_stats('x');
+        EXCEPTION WHEN check_violation THEN refused_reason := SQLERRM LIKE 'STATEMENTS_RESET_REASON%';
+        END;
+        BEGIN
+            reset_answer := CASE WHEN platform.reset_statement_stats('the check of V555') ? 'reset_at' THEN 'reset' END;
+        EXCEPTION WHEN check_violation OR insufficient_privilege THEN reset_answer := split_part(SQLERRM, ':', 1);
+        END;
+        RAISE EXCEPTION 'the V555 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V555 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V555: the statements over a period, the nightly snapshot, a statement turned slow told once a day, and a reset with its reason',
+        coalesce(CASE WHEN (w->>'available')::boolean THEN w->>'period' IN ('DAYS', 'RESET') ELSE w->>'reason' IS NOT NULL END
+                 AND (snap->>'available') IS NOT NULL
+                 AND first = 1 AND again = 0 AND alerted = '9547001:1000.0/300.0' AND refused_reason
+                 AND reset_answer IN ('reset', 'STATEMENTS_NOT_KEPT', 'STATEMENTS_RESET_REFUSED'), false),
+        format('week %s | snapshot %s | slower %s then %s, kept %s | short reason refused %s | reset %s', w - 'rows', snap, first, again, alerted, refused_reason, reset_answer));
+END $$;
+
+-- ── V556: e-mail held while the mail server refuses the portal ──
+-- A failure of the account or the server holds e-mail 5 minutes, the next 10; the e-mail provider then reads FAILING with the
+-- failure in words before the server's error (never STUCK); the hold is ended by an e-mail that goes, or ICT's settings. The block
+-- undoes its writes.
+DO $$
+DECLARE msg text; u1 timestamptz; u2 timestamptz; st jsonb; email record; resumed boolean; after jsonb;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN
+        PERFORM platform.smtp_resume();
+        u1 := platform.smtp_hold('SIGN_IN', 'The server refused the sign-in.', 'MailAuthenticationException: 535 5.7.139 Authentication unsuccessful');
+        u2 := platform.smtp_hold('SIGN_IN', 'The server refused the sign-in.', 'MailAuthenticationException: 535 5.7.139 Authentication unsuccessful');
+        st := platform.smtp_pause_state();
+        SELECT p.state, p.last_error INTO email FROM platform.provider_status() p WHERE p.channel = 'EMAIL';
+        resumed := platform.smtp_resume();
+        after := platform.smtp_pause_state();
+        RAISE EXCEPTION 'the V556 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V556 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V556: e-mail is held 5 then 10 minutes after the server refuses the portal, read as FAILING in words, and resumed',
+        coalesce(u1 BETWEEN now() + interval '299 seconds' AND now() + interval '301 seconds'
+                 AND u2 BETWEEN now() + interval '599 seconds' AND now() + interval '601 seconds'
+                 AND (st->>'held')::boolean AND (st->>'paused')::boolean AND (st->>'failures')::int = 2
+                 AND (email.state = 'OFF' OR (email.state = 'FAILING' AND email.last_error LIKE 'The server refused the sign-in. — e-mail waits until % — MailAuthenticationException%'))
+                 AND resumed AND NOT (after->>'held')::boolean, false),
+        format('held until %s then %s | state %s | provider %s: %s | resumed %s, after %s', u1, u2, st, email.state, email.last_error, resumed, after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

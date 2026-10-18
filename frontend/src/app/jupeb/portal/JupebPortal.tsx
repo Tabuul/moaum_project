@@ -34,6 +34,7 @@ import { TimetableGrid, printGrid, type Frame } from "../TimetableGrid";
 import { SyllabusModal, UnitsBySemester, unitId, type UnitRow } from "../Syllabus";
 import { EXAM_KIND, eventDates, type CalendarEvent, type ClearanceCheck, type MyExams } from "@/lib/jupeb";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
+import { PasswordInput } from "@/components/PasswordInput";
 import {
   ADMISSION_STATUS, CHANGE_KIND, CORRECTION_FIELDS, DOC_STATUS, EVENT_LABEL, FEE_KIND, REQUEST_STATE, laterSessions, OLEVEL_EXAMS, OLEVEL_GRADES, OLEVEL_SUBJECTS,
   SCREENING_LABEL, STATE_SHORT, day, feeCategoryLabel, fileBase64, fullName, jcall, naira, stateKind, streamLabel, when, type Announcement, type Candidate, type Combination,
@@ -957,9 +958,9 @@ function ChangePassword({ forced, onDone }: { forced?: boolean; onDone: (c: Cand
       <PBody>
         {forced ? <Note kind="info" title="You signed in with a temporary password">Choose your own password to continue.</Note> : null}
         <div className="grid grid--3">
-          <Field id="pw-cur" label={forced ? "Temporary password" : "Current password"} required><input id="pw-cur" className="ctl" type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
-          <Field id="pw-new" label="New password" required hint="At least eight characters" error={short ? "At least eight characters" : undefined}><input id="pw-new" className="ctl" type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></Field>
-          <Field id="pw-again" label="New password again" required error={differs ? "The two do not match" : undefined}><input id="pw-again" className="ctl" type="password" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} /></Field>
+          <Field id="pw-cur" label={forced ? "Temporary password" : "Current password"} required><PasswordInput id="pw-cur" className="ctl" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
+          <Field id="pw-new" label="New password" required hint="At least eight characters" error={short ? "At least eight characters" : undefined}><PasswordInput id="pw-new" className="ctl" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></Field>
+          <Field id="pw-again" label="New password again" required error={differs ? "The two do not match" : undefined}><PasswordInput id="pw-again" className="ctl" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} /></Field>
         </div>
         <div className="row"><Btn kind="primary" disabled={busy || !f.current || f.next.length < 8 || f.next !== f.again} onClick={() => void save()}>{busy ? "Saving…" : "Save my password"}</Btn></div>
       </PBody>

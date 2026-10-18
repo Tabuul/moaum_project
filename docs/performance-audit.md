@@ -520,3 +520,19 @@ never inlined, whatever its arguments, so the subquery arguments of the scalar c
 Still a few seconds on the copy: the Records & Queries clearance for the whole University (`clearance.unit_states`, about 8 s for
 54,573 students) and the payments breakdown with no filter (about 1 s). Slow Statements will say whether the live portal finds
 them slow.
+
+## R. Over a period, and one read left as it is (18 October 2026, V554 released, V555)
+
+**Slow Statements over a period (V555).** Each night (00:05 Lagos) every statement's calls, time and rows are kept
+(`platform.statement_snapshot`, 35 days), and Slow Statements reads the last day, 7 or 30 days as what ran since that snapshot — a
+statement that has just turned slow no longer hides behind months of totals. ICT may reset this database's statistics with a
+reason (`platform.reset_statement_stats`, kept in `platform.statement_reset`). After each snapshot, a statement whose average over
+the last day is at least twice the week before's (20 runs each, at least half a second) is told to ICT (STATEMENT_SLOWER) and listed
+on the screen.
+
+**The Records & Queries clearance for the whole University (`clearance.unit_states`).** About 3 s for 54,573 students on fresh
+connections: each student's latest decision of each of the 8 convocation units is looked up through the index — 436,568 lookups of
+some 0.004 ms. Two restatements in one pass gave the same 436,568 rows (and the same 327,426 of the fresh clearance) but were slower:
+the latest decision of every unit sorted once, 3.95 s against 2.84 s; read in the index's order, 5.1 s against 4.4 s. It is left as
+it is; it runs only when the clearance view of the register is opened. Reading fewer students (those convocation concerns) would be
+the saving, and is the Registry's call.

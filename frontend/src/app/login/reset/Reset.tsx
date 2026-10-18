@@ -8,11 +8,11 @@ import type { Problem } from "@/lib/api";
 import { Btn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export function Reset({ token }: { token: string }) {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
-  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -46,14 +46,11 @@ export function Reset({ token }: { token: string }) {
             <>
               <div className="field">
                 <label htmlFor="npw">New password</label>
-                <div className="pwrow">
-                  <input id="npw" type={show ? "text" : "password"} value={pw} autoComplete="new-password" onChange={(e) => setPw(e.target.value)} />
-                  <button type="button" className="pweye" aria-pressed={show ? "true" : "false"} onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button>
-                </div>
+                <PasswordInput id="npw" className="" value={pw} autoComplete="new-password" onChange={(e) => setPw(e.target.value)} />
               </div>
               <div className="field">
                 <label htmlFor="npw2">Type it again</label>
-                <input id="npw2" type={show ? "text" : "password"} value={pw2} autoComplete="new-password" onChange={(e) => setPw2(e.target.value)} />
+                <PasswordInput id="npw2" className="" value={pw2} autoComplete="new-password" onChange={(e) => setPw2(e.target.value)} />
                 {mismatch ? <div className="ferr">The two do not match.</div> : null}
               </div>
               {problem ? <ProblemNotice problem={problem} /> : null}

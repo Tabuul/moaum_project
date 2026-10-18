@@ -47,6 +47,7 @@ public class NoticeDispatcher {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private boolean saidNoProvider;
     private boolean saidPaused;
+    private boolean saidHeld;   // V556: e-mail held after the account or the server failed — said once a hold
 
     private final String smsFormat;
     private final String smsFrom;
@@ -164,6 +165,20 @@ public class NoticeDispatcher {
         }
         List<NoticeRepository.Queued> batch = notices.sendable(this.batch, delivery, emailCap);
         boolean emailStopped = false;
+        // V556: after a failure of the account or the server, e-mail waits 5 minutes doubling to an hour between tries, so the
+        // mailbox is not signed into 120 times an hour and locked; SMS and portal notices go on
+        if (smtp.isPresent()) {
+            java.time.OffsetDateTime until = notices.smtpHeldUntil();
+            if (until != null && until.isAfter(java.time.OffsetDateTime.now())) {
+                emailStopped = true;
+                if (!saidHeld) {
+                    LOG.info("notices: e-mail held until {} after the mail server failed; the e-mails wait", until);
+                    saidHeld = true;
+                }
+            } else {
+                saidHeld = false;
+            }
+        }
         for (NoticeRepository.Queued n : batch) {
             boolean email = "EMAIL".equals(n.channel());
             if (email && emailStopped) {
@@ -174,6 +189,8 @@ public class NoticeDispatcher {
             String providerId = null;   // V438: what the provider's delivery report will name
             String via;                  // V442: the provider the attempt went to, counted with its outcome
             boolean systemic = false;    // V532: a failure of the account or the server, not of this message
+            String failedKind = null;    // V556: its kind and what it means in words, for the hold
+            String failedWords = null;
             List<NoticeRepository.Attachment> files = email ? notices.attachments(n.id()) : List.of();
             if (email && smtp.isPresent()) {
                 via = "smtp";
@@ -186,6 +203,8 @@ public class NoticeDispatcher {
                     error = SmtpFailure.detail(e);
                     if (systemic) {
                         emailStopped = true;
+                        failedKind = kind.name();
+                        failedWords = SmtpFailure.words(kind, smtp.get().host(), smtp.get().port(), smtp.get().from());
                         LOG.warn("notices: e-mail stopped for this batch — {} ({}): {}", kind, smtp.get().host(), error);
                     }
                 }
@@ -227,15 +246,23 @@ public class NoticeDispatcher {
             final String pid = providerId;
             final String provider = via;
             final boolean held = systemic;
+            final String heldKind = failedKind;
+            final String heldWords = failedWords;
             AuditContextHolder.with(new AuditContext(NOBODY, "ict", "notice dispatch", null, null), () -> tx.execute(status -> {
                 if (ref != null) {
                     notices.sent(n.id(), ref, pid);
+                    if ("smtp".equals(provider)) {
+                        notices.smtpResume();   // V556: an e-mail went: any hold ends
+                    }
                 } else if (held) {
                     notices.held(n.id(), err);   // V532: the account's failure is not counted against the message
+                    java.time.OffsetDateTime until = notices.smtpHold(heldKind, heldWords, err);   // V556: and e-mail waits before the next try
+                    LOG.warn("notices: e-mail held until {}: {}", until, heldWords);
                 } else {
                     notices.failed(n.id(), err, n.attempts() + 1 >= 5);
                 }
-                notices.recordAttempt(n.channel(), provider, ref != null, err);
+                // V556: what a failure of the account or the server means, in words, before the server's error
+                notices.recordAttempt(n.channel(), provider, ref != null, held && heldWords != null ? heldWords + " — " + err : err);
                 if ("smtp".equals(provider)) {
                     notices.smtpAttempted(ref != null);
                 }

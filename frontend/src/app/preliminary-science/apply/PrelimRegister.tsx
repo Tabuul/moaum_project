@@ -14,13 +14,13 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { phoneRead } from "@/app/apply/Register";
 import { naira, type PrelimPublic } from "@/lib/preliminary";
+import { PasswordInput } from "@/components/PasswordInput";
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 
 export function PrelimRegister({ p }: { p: PrelimPublic }) {
   const router = useRouter();
   const [f, setF] = useState({ surname: "", firstName: "", middleName: "", sex: "", dateOfBirth: "", email: "", phone: "", pw: "", pw2: "" });
-  const [show, setShow] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -88,9 +88,8 @@ export function PrelimRegister({ p }: { p: PrelimPublic }) {
         {field("ps-e", "Email address", "email", <input id="ps-e" type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="you@example.com" autoComplete="email" spellCheck={false} required />,
           "Every notice about your application goes here, including the outcome. You sign in with it or with your application number.")}
         {field("ps-p", "Phone number", "phone", <input id="ps-p" className="tnum" type="tel" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0803 411 7725" inputMode="numeric" autoComplete="tel" required />)}
-        {field("ps-w", "Choose a password", "pw", <input id="ps-w" type={show ? "text" : "password"} value={f.pw} onChange={(e) => set("pw", e.target.value)} autoComplete="new-password" required />)}
-        {field("ps-w2", "Confirm password", "pw2", <input id="ps-w2" type={show ? "text" : "password"} value={f.pw2} onChange={(e) => set("pw2", e.target.value)} autoComplete="new-password" required />)}
-        <label className="row row--inline row--tight mb-2"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show the passwords</label>
+        {field("ps-w", "Choose a password", "pw", <PasswordInput id="ps-w" className="" value={f.pw} onChange={(e) => set("pw", e.target.value)} autoComplete="new-password" required />)}
+        {field("ps-w2", "Confirm password", "pw2", <PasswordInput id="ps-w2" className="" value={f.pw2} onChange={(e) => set("pw2", e.target.value)} autoComplete="new-password" required />)}
         <label className="row row--inline row--tight mb-1" htmlFor="ps-agree"><input id="ps-agree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label>
         {err.agree ? <div className="ferr mb-2">{err.agree}</div> : null}
         {problem ? <ProblemNotice problem={problem} /> : null}

@@ -256,6 +256,19 @@ each through `WINDOW_CLOSING`'s variant for the route, on the address the route'
 (`platform.tell_route_applicant`: `jupeb.application`, `admissions.pg_applicant`, the CCE candidate's applicant account), once
 per deadline and day. The Post-UTME windows no longer reach a CCE candidate.
 
+## E-mail held while the mail server refuses the portal (V556)
+
+When the mail account or the server fails — the sign-in refused (Railway on 18 Oct 2026: Microsoft 365's 535 5.7.139), the server
+not reached, TLS, the mailbox blocked, the sending limit — every e-mail is held, never counted against the message (V532). Since
+V556 e-mail also waits between tries: 5 minutes, then 10, 20, 40 and an hour at most (`platform.smtp_pause`, `platform.smtp_hold`),
+where it was tried every 30 seconds — some 120 refused sign-ins an hour, enough for Microsoft to lock the mailbox. SMS and portal
+notices go on. The first e-mail that goes ends the hold, and so do saving the Mail server settings and a test that passes
+(`platform.smtp_resume`).
+
+ICT sees it on the Mail server screen (held until when, what the failure means in words, how many e-mails wait) and as the e-mail
+provider's FAILING state on the Notifications screen, with the same words before the server's own error — so the watch's message
+to ICT (PROVIDER_PROBLEM:FAILING) says what to do, and never reads "stuck" because the tries are fewer.
+
 ## Not yet
 
 Bounces of mail sent over SMTP (they come back as mail; reading the mailbox is not built); eBulkSMS's delivery reports are

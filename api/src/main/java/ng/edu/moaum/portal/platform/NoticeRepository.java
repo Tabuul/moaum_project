@@ -123,6 +123,27 @@ public class NoticeRepository {
     }
 
     /** V532: a message the account's or server's failure kept from going — the error noted, the attempt not counted against it */
+    /** V556: until when e-mail is held after a failure of the account or the mail server, or null */
+    public java.time.OffsetDateTime smtpHeldUntil() {
+        return jdbc.sql("SELECT paused_until FROM platform.smtp_pause WHERE id").query(java.time.OffsetDateTime.class).optional().orElse(null);
+    }
+
+    /** V556: a failure of the account or the server: e-mail waits 5 minutes doubling to an hour; until when */
+    public java.time.OffsetDateTime smtpHold(String kind, String words, String detail) {
+        return jdbc.sql("SELECT platform.smtp_hold(:k, :w, :d)").param("k", kind, java.sql.Types.VARCHAR).param("w", words, java.sql.Types.VARCHAR)
+                .param("d", detail, java.sql.Types.VARCHAR).query(java.time.OffsetDateTime.class).single();
+    }
+
+    /** V556: e-mail no longer held */
+    public boolean smtpResume() {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT platform.smtp_resume()").query(Boolean.class).single());
+    }
+
+    /** V556: whether e-mail is held, until when, why in words, how many wait — for the Mail server screen */
+    public String smtpPauseState() {
+        return jdbc.sql("SELECT platform.smtp_pause_state()::text").query(String.class).single();
+    }
+
     public void held(UUID id, String error) {
         jdbc.sql("UPDATE platform.notice SET last_error = :e WHERE id = :id")
                 .param("e", error == null ? "" : error.substring(0, Math.min(error.length(), 400))).param("id", id).update();

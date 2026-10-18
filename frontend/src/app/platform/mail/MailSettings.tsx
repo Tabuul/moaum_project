@@ -20,6 +20,8 @@ export interface MailConfig {
   pop_host: string | null; pop_port: number | null; pop_encryption: string | null;
   username: string | null; from_address: string | null;
   password_set: boolean; set_at: string | null; set_by_name: string | null; configKeyPresent: boolean;
+  /** V556: e-mail held after the mail server refused the portal */
+  hold?: { held: boolean; paused: boolean; until: string | null; failures: number; since: string | null; kind: string | null; words: string | null; detail: string | null; waiting: number };
 }
 
 const ENC = ["STARTTLS", "SSL", "NONE"];
@@ -71,6 +73,13 @@ export function MailSettings({ config, actingOffice }: { config: MailConfig; act
       <Note kind="info" title="Manual mail server settings for Microsoft 365">
         The mail account the portal sends from. The password is encrypted and never shown again. Defaults are the standard Microsoft 365 servers.
       </Note>
+      {config.hold?.held ? (
+        <Note kind="bad" title={config.hold.paused && config.hold.until ? `E-mail is held until ${when(config.hold.until)}` : "E-mail is failing"}>
+          {config.hold.words ?? "The mail server refused the portal."} Since {when(config.hold.since)}, {config.hold.failures} tr{config.hold.failures === 1 ? "y" : "ies"} in a row failed, so the portal waits longer between tries (5 minutes, doubling to an hour) and the mailbox is not locked by them.
+          {" "}{Number(config.hold.waiting).toLocaleString("en-NG")} e-mail{config.hold.waiting === 1 ? " waits" : "s wait"}; none is lost, and each goes once the server takes it. Saving these settings, or a test that passes, tries again at once.
+          {config.hold.detail ? <div className="sub2 mt-1 tnum" style={{ wordBreak: "break-word" }}>{config.hold.detail}</div> : null}
+        </Note>
+      ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record.</Note> : null}
       {!config.configKeyPresent ? (

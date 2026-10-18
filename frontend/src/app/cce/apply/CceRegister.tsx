@@ -14,6 +14,7 @@ import { Btn, LinkBtn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { phoneRead } from "@/app/apply/Register";
+import { PasswordInput } from "@/components/PasswordInput";
 
 const NUMBER_SHAPE = /^[A-Z0-9/-]{6,24}$/;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
@@ -29,7 +30,6 @@ export function CceRegister({ session }: { session: string }) {
   const [phone, setPhone] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
-  const [show, setShow] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -125,9 +125,8 @@ export function CceRegister({ session }: { session: string }) {
             {input("ce", "Email address", "email", <input id="ce" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="off" spellCheck={false} required />,
               "Every notice about your application goes here, including the outcome.")}
             {input("cp", "Phone number", "phone", <input id="cp" className="tnum" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803 411 7725" inputMode="numeric" autoComplete="off" required />)}
-            {input("cw", "Choose a password", "pw", <input id="cw" type={show ? "text" : "password"} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" required />)}
-            {input("cw2", "Confirm password", "pw2", <input id="cw2" type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required />)}
-            <label className="row row--inline row--tight mb-2"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show the passwords</label>
+            {input("cw", "Choose a password", "pw", <PasswordInput id="cw" className="" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" required />)}
+            {input("cw2", "Confirm password", "pw2", <PasswordInput id="cw2" className="" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" required />)}
             <label className="row row--inline row--tight mb-1" htmlFor="cagree"><input id="cagree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label>
             {err.agree ? <div className="ferr mb-2">{err.agree}</div> : null}
             {problem ? <ProblemNotice problem={problem} /> : null}

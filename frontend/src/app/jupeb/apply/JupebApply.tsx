@@ -16,6 +16,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { jcall, naira } from "@/lib/jupeb";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/PasswordInput";
 
 interface Options { session: string; applicationFee: number; streams: { code: string; label: string }[]; documents: { code: string; label: string; required: boolean }[] }
 interface Applied { application_no: string; reference: string; amount: number }
@@ -110,8 +111,8 @@ export function JupebApply() {
 
         <Section title="Your password" />
         <div className="grid grid--2">
-          <Field id="password" label="Password" required hint="At least eight characters"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
-          <Field id="password2" label="Confirm password" required><input id="password2" type="password" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
+          <Field id="password" label="Password" required hint="At least eight characters"><PasswordInput id="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
+          <Field id="password2" label="Confirm password" required><PasswordInput id="password2" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
         </div>
 
         <label className="row row--inline row--tight mt-2" htmlFor="jagree"><input id="jagree" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} /> I have read the <a className="lnk" href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and accept how the University handles my information.</label>

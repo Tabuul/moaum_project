@@ -16,6 +16,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Modal, Field, day } from "@/components/proto/blocks";
 import { SearchSelect, type Opt } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export interface PersonRow {
   id: string;
@@ -297,9 +298,8 @@ export function People({ q, persons, grants, offices, actingOffice, open, struct
             <Field id="cr-u" label="Username" hint="The staff number or an email address"><input id="cr-u" className="ctl" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} autoComplete="off" /></Field>
             <Field id="cr-p" label="First password" hint="At least ten characters, not containing the username; told to the person, who changes it at first sign-in">
               <span className="row row--inline row--tight">
-                <input id="cr-p" className="ctl" type={shown ? "text" : "password"} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
+                <PasswordInput id="cr-p" shown={shown} onShownChange={setShown} wrapStyle={{ flex: 1, minWidth: 0 }} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
                 <Btn kind="ghost" size="sm" onClick={() => { setF({ ...f, password: firstPassword() }); setShown(true); }}>Generate</Btn>
-                <Btn kind="ghost" size="sm" onClick={() => setShown(!shown)}>{shown ? "Hide" : "Show"}</Btn>
               </span>
             </Field>
           </div>

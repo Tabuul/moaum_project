@@ -12,6 +12,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { jcall } from "@/lib/jupeb";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export function JupebReset({ token }: { token: string }) {
   const router = useRouter();
@@ -48,8 +49,8 @@ export function JupebReset({ token }: { token: string }) {
           {problem ? <ProblemNotice problem={problem} /> : null}
           {token ? (
             <>
-              <Field id="pw" label="New password" hint="At least eight characters"><input id="pw" type="password" className="ctl" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></Field>
-              <Field id="pw2" label="Confirm new password"><input id="pw2" type="password" className="ctl" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" /></Field>
+              <Field id="pw" label="New password" hint="At least eight characters"><PasswordInput id="pw" className="ctl" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" /></Field>
+              <Field id="pw2" label="Confirm new password"><PasswordInput id="pw2" className="ctl" value={pw2} onChange={(e) => setPw2(e.target.value)} autoComplete="new-password" /></Field>
               <Btn kind="primary" size="md" disabled={busy || !pw} onClick={() => void choose()}>{busy ? "Saving…" : "Save and sign in"}</Btn>
             </>
           ) : sent ? (

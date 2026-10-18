@@ -79,3 +79,25 @@ and is kept in `people.record_move` with the reason, the officer and the office,
 record on an undergraduate programme is moved here (`RECORD_MOVE_NOT_POSTGRADUATE`); any other change of programme is a transfer.
 `people.record_move_options(student)`, `people.move_record_to_programme(student, programme, level, reason)`;
 `GET`/`POST /api/v1/records/issues/move/{student}`.
+
+## The form and the record kept in agreement (V553)
+
+V548's note that "307 students' forms on the copy name a state the record does not hold" was wrong: read the way the register reads
+a state, the form and the record agree for every live student; the 307 were other spellings of the same state (Cross-River on the
+form, Cross River on the record since V542) and the 3 records with none.
+
+- The form's state of origin and state of residence are kept to the register's spelling as they are written, as the record's are
+  since V542; the spellings already on the forms were put right (620 on the copy).
+- The date of birth given on the form reaches the record as the state does: an office's always, the student's only where the record
+  has none; a value that is no date, in the future or before 1900 changes nothing.
+- The phone and the e-mail given on the form fill the student's contact where it has none — the notices read the contact (then the
+  application's account), never the form; a phone is read as 0 and ten digits (+234… too), anything else changes nothing.
+- Two more lines on the check, for the Registry to confirm from the documents, each with both values as the suggestion:
+
+| Issue | Why it matters | Corrected by |
+|---|---|---|
+| Biodata form names another state | the fee reads the record's state; a home-state indigene read otherwise pays the wrong fee | Registry (Records) |
+| Biodata form names another date of birth | the identity card, transcript and certificate read the record's date | Registry (Records) |
+
+None is listed on the copy today: since V548 a student's own answer no longer overwrites a stated record, and these lines show
+where the two have come apart. The check reads in about 0.64 s on the copy (0.50 s before the two form lookups).

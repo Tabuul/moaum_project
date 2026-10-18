@@ -15,6 +15,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { STATES, lgasOf, NATIONALITIES } from "@/lib/nigeria";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/PasswordInput";
 
 interface Prog { code: string; name: string; faculty_name: string; department_name: string; pg_award: string | null; pg_research: boolean; entry_level: number;
   /** V488: the programme's running specialisations, one chosen on the form where it has any */
@@ -224,8 +225,8 @@ export function PgApply() {
           <>
             <Section title="Choose a password" />
             <div className="grid grid--2">
-              <Field id="password" label="Password" hint="At least six characters — to sign in and pay later"><input id="password" type="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
-              <Field id="password2" label="Confirm password"><input id="password2" type="password" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
+              <Field id="password" label="Password" hint="At least six characters — to sign in and pay later"><PasswordInput id="password" className="ctl" value={f.password ?? ""} onChange={set("password")} autoComplete="new-password" /></Field>
+              <Field id="password2" label="Confirm password"><PasswordInput id="password2" className="ctl" value={f.password2 ?? ""} onChange={set("password2")} autoComplete="new-password" /></Field>
             </div>
             {chosen?.pg_research ? (
               <>

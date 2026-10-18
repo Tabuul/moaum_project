@@ -6,7 +6,7 @@
  * position under the scheme in force, the registration's stage, the
  * results published, and the contact details the student may change.
  */
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { GstView, Me } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
@@ -16,6 +16,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Passport, Step } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct, when } from "./common";
+import { PasswordInput } from "@/components/PasswordInput";
 
 /** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
  *  (personal, origin, contact, family, next-of-kin) is read from /me/biodata; the JAMB registration
@@ -318,7 +319,6 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
   );
 }
 
-const pwToggle: CSSProperties = { position: "absolute", right: "var(--s-2)", top: "50%", transform: "translateY(-50%)", background: "none", border: 0, color: "var(--chrome)", fontSize: "var(--t-sm)", fontWeight: 700, cursor: "pointer", padding: "var(--s-1)" };
 
 export function Profile({ s, change }: { s: Me; change: boolean }) {
   const { act, busy, problem } = useAct();
@@ -328,8 +328,6 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [saidPw, setSaidPw] = useState(false);
-  const [showCur, setShowCur] = useState(false);
-  const [showNext, setShowNext] = useState(false);
   const [errFor, setErrFor] = useState<string | null>(null);
   return (
     <>
@@ -357,16 +355,10 @@ export function Profile({ s, change }: { s: Me; change: boolean }) {
           <div className="hr" />
           <div className="b600">Password</div>
           <Field id="pw0" label="Current password" hint={change ? "Type the password you signed in with — your own number at the first sign-in, or the temporary password ICT Support gave you; leave it blank if you came in through a link." : undefined}>
-            <div style={{ position: "relative" }}>
-              <input id="pw0" type={showCur ? "text" : "password"} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ paddingRight: 62 }} />
-              <button type="button" aria-label={showCur ? "Hide password" : "Show password"} onClick={() => setShowCur((v) => !v)} style={pwToggle}>{showCur ? "Hide" : "Show"}</button>
-            </div>
+            <PasswordInput id="pw0" className="" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" />
           </Field>
           <Field id="pw1" label="New password" hint="Eight characters at the very least.">
-            <div style={{ position: "relative" }}>
-              <input id="pw1" type={showNext ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" style={{ paddingRight: 62 }} />
-              <button type="button" aria-label={showNext ? "Hide password" : "Show password"} onClick={() => setShowNext((v) => !v)} style={pwToggle}>{showNext ? "Hide" : "Show"}</button>
-            </div>
+            <PasswordInput id="pw1" className="" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
           </Field>
           <Btn kind="ghost" disabled={busy !== null || (!cur && !change) || next.length < 8} onClick={async () => { const ok = await act("pw", "POST", "/student-auth/change-password", { current: cur, next }, "Password changed by the student", "Password changed"); if (ok) { setSaidPw(true); setCur(""); setNext(""); setErrFor(null); } else { setErrFor("pw"); } }}>{busy === "pw" ? "Changing…" : "Change the password"}</Btn>
           {saidPw ? <Note kind="ok" title="Password changed">Sign in with the new one from now on.</Note> : null}
