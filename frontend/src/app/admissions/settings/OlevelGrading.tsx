@@ -50,7 +50,7 @@ export function OlevelGrading({ session, may }: { session: string; may: boolean 
       const list = await p.json().catch(() => null);
       if (!live) return;
       if (r.ok) setGrading(body as Grading);
-      else setProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText }); notifyProblem(body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText });
+      else { const refusal = body && typeof body === "object" && "status" in body ? (body as Problem) : { status: r.status, title: r.statusText }; setProblem(refusal); notifyProblem(refusal); }
       if (p.ok && Array.isArray(list)) setProgrammes((list as ProgrammeLine[]).filter((x) => !x.archived));
     })();
     return () => { live = false; };

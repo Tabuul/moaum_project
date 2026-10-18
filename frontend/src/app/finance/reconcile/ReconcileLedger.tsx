@@ -42,7 +42,7 @@ export function ReconcileLedger({ canCheck }: { canCheck: boolean }) {
       const j = await r.json().catch(() => null);
       if (!live) return;
       if (r.ok && j) { setRows((j.rows ?? []) as Row[]); setProblem(null); }
-      else setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
+      else { const refusal = j ?? { status: r.status, title: r.statusText }; setProblem(refusal); notifyProblem(refusal); }
       setLoading(false);
     })();
     return () => { live = false; };

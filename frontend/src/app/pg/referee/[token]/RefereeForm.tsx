@@ -40,7 +40,7 @@ export function RefereeForm({ token }: { token: string }) {
       }
       const j = await r.json().catch(() => null);
       if (r.ok && j && j.found) setCtx(j as Ctx);
-      else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." });
+      else { const refusal = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: "This reference link is not valid." }; setProblem(refusal); notifyProblem(refusal); }
     } finally { setLoading(false); }
   }, [token]);
 

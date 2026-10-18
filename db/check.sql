@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 392
+\set EXPECTED 393
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -18742,6 +18742,175 @@ BEGIN
                r1.recommendation, r1.spillover_years, r1.confidence, r2.recommendation, r2.confidence, r3.recommendation, r3.confidence, r4.recommendation, r4.candidate_basis, in5,
                v_ict, v_note, m.marked, m.low, m2.marked, v_ref, v_changed, v_twice, v_nolimit, v_grad, v_never, l1, st1, st3, sc3, st4, out4, dec1, review1,
                c3, l1b, restored, g4_gone, v_again, matrics_kept));
+END $$;
+-- ── V557. The bank reconciliation statement. Last month, for an invented student: payments confirmed — one on the collections
+--          statement, one at another amount, two settled in a gateway's day with NGN 50 kept as charges, one not yet in the bank,
+--          one through a migration that never passes the bank — a credit for a reference never confirmed, an inflow no one found,
+--          the bank's charges accounted for with a journal, and a NELFUND remittance of 2,000 of which 1,500 is credited to the
+--          student; refunds paid, one on the disbursement statement and one not, a debit no one found and a transfer in. Each is the
+--          item it should be with its effect; the difference is the ledger's balance less the statement's adjusted by the items.
+--          A reconciliation is prepared and signed by another officer, only once explained; a signed one is kept, and its lines
+--          and period are no longer changed. The block undoes its writes ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); s uuid := gen_random_uuid(); a text := '9963/9964';
+        v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date; m_from date; m_to date; d1 date; d2 date; t1 timestamptz; t2 timestamptz;
+        cs uuid; ds uuid; k text; rf text; rid uuid; v_expense text; v_charges uuid; v_charges_no bigint;
+        coll text; coll_after text; disb text; f jsonb; fd jsonb; wide jsonb; booked_ok boolean;
+        bad_matched text; bad_account text; bad_note text; rec uuid; same_officer text; unexplained text; signed jsonb; kept text; signed_line text;
+        taken text; open_period text; rec2 uuid; disb_signed text; items_kept int; msg text;
+BEGIN
+    BEGIN
+        m_from := (date_trunc('month', v_today) - interval '1 month')::date;
+        m_to := (date_trunc('month', v_today) - interval '1 day')::date;
+        d1 := m_from + 9; d2 := m_from + 11;
+        t1 := (d1::timestamp + interval '10 hours') AT TIME ZONE 'Africa/Lagos';
+        t2 := (d2::timestamp + interval '10 hours') AT TIME ZONE 'Africa/Lagos';
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V557', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9963-10-01', date '9964-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (maker, 'ZZCHKV557', 'Maker', NULL), (checker, 'ZZCHKV557', 'Checker', NULL);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/63/996301', 'MOAUM/CHK/63/9963', 'ZZCHKV557', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+            (s, a, 'MOAUM-FEE-996301-0001', 'School fees ' || a, 5000, t1 - interval '1 day', t1 + interval '7 days', t1, maker, 'Bank transfer', 'RCT-ZZ557-0001', 'check V557'),
+            (s, a, 'MOAUM-FEE-996301-0002', 'School fees ' || a, 3000, t1 - interval '1 day', t1 + interval '7 days', t1, maker, 'Card · Paystack', 'RCT-ZZ557-0002', 'check V557'),
+            (s, a, 'MOAUM-FEE-996301-0003', 'School fees ' || a, 1000, t2 - interval '1 day', t2 + interval '7 days', t2, maker, 'ZZ557 Gateway', 'RCT-ZZ557-0003', 'check V557'),
+            (s, a, 'MOAUM-FEE-996301-0004', 'School fees ' || a, 1000, t2 - interval '1 day', t2 + interval '7 days', t2, maker, 'ZZ557 Gateway', 'RCT-ZZ557-0004', 'check V557'),
+            (s, a, 'MOAUM-FEE-996301-0005', 'School fees ' || a, 700, t2 - interval '1 day', t2 + interval '7 days', t2, maker, 'Bank transfer', 'RCT-ZZ557-0005', 'check V557'),
+            (s, a, 'MOAUM-FEE-996301-0006', 'School fees ' || a, 900, t2 - interval '1 day', t2 + interval '7 days', t2, maker, 'MIGRATION', 'RCT-ZZ557-0006', 'check V557'),
+            (s, a, 'MOAUM-FEE-996301-0007', 'School fees ' || a, 2500, t2 - interval '1 day', now() + interval '7 days', NULL, NULL, NULL, NULL, 'check V557');
+        INSERT INTO finance.nelfund_batch (ref, session, received_on, amount, rows_read, note) VALUES ('ZZ557-NELF', a, d1, 2000, 2, 'check V557');
+        INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code, at)
+        VALUES (s, a, 'CREDIT', 1500, 'ZZ557-NELF', 'NELFUND institutional charges, check V557', 'NELFUND', t1);
+        -- refunds paid: A on the disbursement statement, B not yet
+        FOREACH k IN ARRAY ARRAY['A:3000', 'B:900'] LOOP
+            PERFORM set_config('moaum.actor_id', maker::text, true);
+            rf := finance.propose_refund(NULL, 'ZZCHKV557, ' || split_part(k, ':', 1), 'check V557 ' || k, split_part(k, ':', 2)::numeric, NULL, NULL, NULL, NULL);
+            rid := (SELECT id FROM finance.refund WHERE reference = rf);
+            PERFORM finance.desk_refund_account(rid, 'GTB', 'ZZCHKV557 Invented', '2222222223');
+            PERFORM set_config('moaum.actor_id', checker::text, true);
+            PERFORM finance.approve_refund(rid);
+            UPDATE finance.refund SET approved_at = m_from - 5 WHERE id = rid;
+            PERFORM finance.pay_refund(rid, 'FT-ZZ557-' || split_part(k, ':', 1), CASE split_part(k, ':', 1) WHEN 'A' THEN d1 ELSE d2 END);
+        END LOOP;
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM * FROM finance.gl_sync(NULL::int);
+        -- the bank's charges accounted for with a journal
+        v_expense := (SELECT code FROM finance.gl_account WHERE type = 'EXPENSE' AND postable AND active ORDER BY code LIMIT 1);
+        v_charges := finance.gl_post(d2, 'CHECK V557 bank charges', 'MANUAL', 'ADJUSTMENT', NULL, jsonb_build_array(
+                         jsonb_build_object('account', v_expense, 'debit', 25, 'narration', 'check V557'), jsonb_build_object('account', '1010', 'credit', 25, 'narration', 'check V557')));
+        v_charges_no := (SELECT journal_no FROM finance.gl_journal WHERE id = v_charges);
+
+        -- the statements, each covering the whole month
+        cs := finance.load_collections_statement('CHECK V557 collections', 'c.csv', jsonb_build_array(
+            jsonb_build_object('date', m_from::text, 'reference', '', 'description', 'CHECK V557 CHARGES', 'debit', '25'),
+            jsonb_build_object('date', d1::text, 'reference', 'MOAUM-FEE-996301-0001', 'description', 'Transfer', 'credit', '5000'),
+            jsonb_build_object('date', d1::text, 'reference', '', 'description', 'NIP/MOAUMFEE9963010002', 'credit', '3100'),
+            jsonb_build_object('date', d1::text, 'reference', '', 'description', 'NELFUND REMITTANCE ZZ557-NELF', 'credit', '2000'),
+            jsonb_build_object('date', d2::text, 'reference', '', 'description', 'ZZ557 GATEWAY SETTLEMENT', 'credit', '1950'),
+            jsonb_build_object('date', d2::text, 'reference', '', 'description', 'TRF MOAUM-FEE-996301-0007', 'credit', '2500'),
+            jsonb_build_object('date', m_to::text, 'reference', '', 'description', 'CHECK V557 UNKNOWN INFLOW', 'credit', '400')));
+        PERFORM finance.settle_collections_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 5), 'ZZ557 Gateway', d2);
+        ds := finance.load_bank_statement('CHECK V557 disbursements', 'd.csv', jsonb_build_array(
+            jsonb_build_object('date', m_from::text, 'reference', '', 'description', 'CHECK V557 UNKNOWN DEBIT', 'debit', '60'),
+            jsonb_build_object('date', d1::text, 'reference', 'FT-ZZ557-A', 'description', 'Transfer', 'debit', '3000'),
+            jsonb_build_object('date', m_to::text, 'reference', '', 'description', 'CHECK V557 FUNDING IN', 'credit', '10000')));
+
+        -- the items, before and after the charges line is accounted for
+        coll := (SELECT string_agg(i.kind || ':' || CASE WHEN i.reference LIKE 'MOAUM-FEE-996301-%' THEN right(i.reference, 4) WHEN i.line_id IS NOT NULL THEN i.reference ELSE coalesce(left(i.description, 30), '-') END || ':' || i.effect::int, ',' ORDER BY i.kind, i.reference, i.effect)
+                   FROM finance.bank_reconciliation_items('1010', m_from, m_to) i
+                  WHERE i.reference LIKE 'MOAUM-FEE-996301-%' OR i.reference = 'ZZ557-NELF' OR i.description LIKE '%CHECK V557%' OR i.journal_no = v_charges_no);
+        BEGIN
+            PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 2), v_charges_no, 'x');
+        EXCEPTION WHEN check_violation THEN bad_matched := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1),
+                                                (SELECT j.journal_no FROM finance.gl_journal j WHERE j.source_type = 'REFUND' AND j.source_ref = rf), 'x');
+        EXCEPTION WHEN check_violation THEN bad_account := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1), v_charges_no, ' ');
+        EXCEPTION WHEN check_violation THEN bad_note := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1), v_charges_no, 'The bank''s charges for the month');
+        coll_after := (SELECT string_agg(i.kind || ':' || CASE WHEN i.reference LIKE 'MOAUM-FEE-996301-%' THEN right(i.reference, 4) WHEN i.line_id IS NOT NULL THEN i.reference ELSE coalesce(left(i.description, 30), '-') END || ':' || i.effect::int, ',' ORDER BY i.kind, i.reference, i.effect)
+                         FROM finance.bank_reconciliation_items('1010', m_from, m_to) i
+                        WHERE i.reference LIKE 'MOAUM-FEE-996301-%' OR i.reference = 'ZZ557-NELF' OR i.description LIKE '%CHECK V557%' OR i.journal_no = v_charges_no);
+        booked_ok := coll_after = 'AMOUNT_DIFFERENCE:0002:-100,BANK_CREDIT_NOT_IN_LEDGER:CHECK V557 UNKNOWN INFLOW:-400,BANK_CREDIT_NOT_IN_LEDGER:0007:-2500,'
+                                 || 'GATEWAY_CHARGES:ZZ557 GATEWAY SETTLEMENT:50,NELFUND_NOT_CREDITED:ZZ557-NELF:-500,RECEIPT_NOT_IN_BANK:0005:700,RECEIPT_OUTSIDE_BANK:0006:900';
+        disb := (SELECT string_agg(i.kind || ':' || CASE WHEN i.description LIKE '%FT-ZZ557-%' THEN substring(i.description from 'FT-ZZ557-.') WHEN i.line_id IS NOT NULL THEN i.reference ELSE coalesce(left(i.description, 30), '-') END || ':' || i.effect::int, ',' ORDER BY i.kind, i.effect)
+                   FROM finance.bank_reconciliation_items('1020', m_from, m_to) i
+                  WHERE i.description LIKE '%FT-ZZ557-%' OR i.description LIKE '%CHECK V557%');
+        f := finance.bank_reconciliation_figures('1010', m_from, m_to, 1000);
+        wide := finance.bank_reconciliation_figures('1020', m_from, m_to + 3, 1000);
+
+        -- prepared with a difference of 7: not signed by its preparer, nor unexplained; prepared again with a note, signed by another
+        rec := finance.prepare_bank_reconciliation('1010', m_from, m_to, (f->>'ledger_balance')::numeric - (f->>'items_effect')::numeric + 7, NULL);
+        BEGIN
+            PERFORM finance.sign_bank_reconciliation(rec);
+        EXCEPTION WHEN check_violation THEN same_officer := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        BEGIN
+            PERFORM finance.sign_bank_reconciliation(rec);
+        EXCEPTION WHEN check_violation THEN unexplained := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM finance.prepare_bank_reconciliation('1010', m_from, m_to, (f->>'ledger_balance')::numeric - (f->>'items_effect')::numeric + 7, 'NGN 7 of cash deposited at the branch is being traced');
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        signed := finance.sign_bank_reconciliation(rec);
+        items_kept := (SELECT jsonb_array_length(r.items) FROM finance.bank_reconciliation r WHERE r.id = rec);
+        BEGIN
+            UPDATE finance.bank_reconciliation SET note = 'changed' WHERE id = rec;
+        EXCEPTION WHEN check_violation THEN kept := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        BEGIN
+            PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1), NULL, NULL);
+        EXCEPTION WHEN check_violation THEN signed_line := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.prepare_bank_reconciliation('1010', m_from + 3, m_to + 3, 1, NULL);
+        EXCEPTION WHEN check_violation THEN taken := split_part(SQLERRM, ':', 1);
+        END;
+        -- the month that runs is not signed
+        rec2 := finance.prepare_bank_reconciliation('1010', m_to + 1, (date_trunc('month', v_today) + interval '1 month - 1 day')::date, 1, 'x');
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        BEGIN
+            PERFORM finance.sign_bank_reconciliation(rec2);
+        EXCEPTION WHEN check_violation THEN open_period := split_part(SQLERRM, ':', 1);
+        END;
+        -- the disbursement account, closing so that nothing is left: signed with no note
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        fd := finance.bank_reconciliation_figures('1020', m_from, m_to, 0);
+        rec2 := finance.prepare_bank_reconciliation('1020', m_from, m_to, (fd->>'ledger_balance')::numeric - (fd->>'items_effect')::numeric, NULL);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.sign_bank_reconciliation(rec2);
+        disb_signed := (SELECT r.state || ':' || r.difference::int FROM finance.bank_reconciliation r WHERE r.id = rec2);
+        RAISE EXCEPTION 'the V557 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V557 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V557: the bank reconciliation sets the ledger''s balance beside the statement''s with every item between them — on the ledger and not in the bank, in the bank and not on the ledger, a difference, a gateway''s charges — a line accounted for with a journal is no item, and a reconciliation is signed by another officer once explained and is then kept',
+        coalesce(coll = 'AMOUNT_DIFFERENCE:0002:-100,BANK_CREDIT_NOT_IN_LEDGER:CHECK V557 UNKNOWN INFLOW:-400,BANK_CREDIT_NOT_IN_LEDGER:0007:-2500,'
+                     || 'BANK_DEBIT_NOT_IN_LEDGER:CHECK V557 CHARGES:25,GATEWAY_CHARGES:ZZ557 GATEWAY SETTLEMENT:50,LEDGER_CREDIT_NOT_IN_BANK:CHECK V557 bank charges:-25,'
+                     || 'NELFUND_NOT_CREDITED:ZZ557-NELF:-500,RECEIPT_NOT_IN_BANK:0005:700,RECEIPT_OUTSIDE_BANK:0006:900'
+                 AND bad_matched = 'LINE_NOT_FOR_JOURNAL' AND bad_account = 'LINE_JOURNAL_ACCOUNT' AND bad_note = 'LINE_JOURNAL_NOTE' AND booked_ok
+                 AND disb = 'BANK_CREDIT_NOT_IN_LEDGER:CHECK V557 FUNDING IN:-10000,BANK_DEBIT_NOT_IN_LEDGER:CHECK V557 UNKNOWN DEBIT:60,PAYOUT_NOT_IN_BANK:FT-ZZ557-B:-900'
+                 AND (f->>'missing_days')::int = 0 AND (f->>'unposted')::int = 0 AND (f->>'period_ended')::boolean
+                 AND (f->>'difference')::numeric = (f->>'ledger_balance')::numeric - (1000 + (f->>'items_effect')::numeric)
+                 AND (wide->>'missing_days')::int = 3
+                 AND same_officer = 'RECON_SAME_OFFICER' AND unexplained = 'RECON_DIFFERENCE_UNEXPLAINED' AND (signed->>'difference')::numeric = -7 AND items_kept > 0
+                 AND kept = 'RECON_SIGNED' AND signed_line = 'RECON_SIGNED_PERIOD' AND taken = 'RECON_PERIOD_TAKEN' AND open_period = 'RECON_PERIOD_OPEN'
+                 AND disb_signed = 'SIGNED:0', false),
+        format('collections %s | after booking %s | refusals %s/%s/%s | disbursements %s | figures missing %s unposted %s ended %s difference %s (ledger %s, effect %s) | wide missing %s | sign %s/%s signed %s items %s kept %s line %s taken %s open %s | 1020 %s',
+               coll, coll_after, bad_matched, bad_account, bad_note, disb, f->>'missing_days', f->>'unposted', f->>'period_ended', f->>'difference', f->>'ledger_balance', f->>'items_effect',
+               wide->>'missing_days', same_officer, unexplained, signed->>'difference', items_kept, kept, signed_line, taken, open_period, disb_signed));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -44,7 +44,7 @@ export function PgCalendar({ initial }: { initial: CalData }) {
     const r = await fetch(`/api/bff/api/v1/pg/calendar?session=${encodeURIComponent(session)}`, { cache: "no-store" });
     const j = await r.json().catch(() => null);
     if (r.ok && j) setData(j as CalData);
-    else setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText });
+    else { const refusal = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }; setProblem(refusal); notifyProblem(refusal); }
   }
 
   async function send(url: string, method: string, body?: unknown): Promise<boolean> {

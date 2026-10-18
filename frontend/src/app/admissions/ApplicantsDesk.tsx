@@ -98,7 +98,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     const r = await fetch(`${base}/applications/${id}`, { cache: "no-store" });
     const j = await r.json().catch(() => null);
     if (r.ok) setOpen(j as Application);
-    else setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
+    else { const refusal = j ?? { status: r.status, title: r.statusText }; setProblem(refusal); notifyProblem(refusal); }
   }
 
   async function refreshOpen(id: string) {
