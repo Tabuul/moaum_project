@@ -289,6 +289,8 @@ class AccountingController {
                     .param("lines", json.writeValueAsString(lines), Types.VARCHAR)
                     .query(UUID.class).single();
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // V562: a month closed on the ledger by a signed bank reconciliation is told in its own words
+            if (String.valueOf(e.getMessage()).contains("LEDGER_MONTH_CLOSED")) throw e;
             throw new DomainRuleViolation("GL_ACCOUNT", "A line names an account that is not on the chart.",
                     new DomainRuleViolation.Remedy("Pick accounts from the chart.", "Bursary"));
         }

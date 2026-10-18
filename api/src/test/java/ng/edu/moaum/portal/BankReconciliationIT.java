@@ -146,4 +146,93 @@ class BankReconciliationIT {
         assertThat(again.getStatusCode().value()).isEqualTo(422);
         assertThat(again.getBody()).containsEntry("code", "RECON_PERIOD_TAKEN");
     }
+
+    /** V562: a March after every reconciliation an earlier run left (only the latest signed month of an account is reopened) */
+    private int laterYear() {
+        int y = jdbc.sql("""
+                SELECT coalesce(max(extract(year FROM period_to))::int, 1900) + 1 FROM finance.bank_reconciliation WHERE period_to < date '2000-01-01'
+                """).query(Integer.class).single();
+        while (jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.gl_journal WHERE entry_date BETWEEN make_date(:y, 3, 1) AND make_date(:y, 3, 31))")
+                .param("y", y).query(Boolean.class).single()) {
+            y++;
+        }
+        assertThat(y).as("a March of the last century left for the test").isLessThan(2000);
+        return y;
+    }
+
+    /**
+     * V562: the transfer between the bank accounts, the charges and the interest booked in one press each; the disbursement
+     * account's month signed is closed on the ledger (a journal by hand dated in it refused); reopened only on a reason asked by one
+     * officer and approved by another, after which the journal is taken.
+     */
+    @Test
+    void aSignedMonthIsClosedOnTheLedgerUntilAnotherOfficerApprovesReopeningItAndLinesAreBookedInOnePress() {
+        int y = laterYear();
+        String tag = "IT562" + y;
+        String from = y + "-03-01", to = y + "-03-31";
+        String audit = ItSupport.token("audit");
+        String maker = TestTokens.token(UUID.randomUUID(), List.of("bursar"));
+        String checker = TestTokens.token(UUID.randomUUID(), List.of("bursar"));
+        ResponseEntity<Map> cs = it.call(audit, HttpMethod.POST, "/api/v1/finance/collections/statements", Map.of("label", "IT V562 collections " + tag, "fileName", "c.csv", "rows", List.of(
+                Map.of("date", from, "description", tag + " CHARGES", "debit", "40"),
+                Map.of("date", y + "-03-05", "description", tag + " TRANSFER OUT", "debit", "10000"),
+                Map.of("date", to, "description", tag + " INTEREST", "credit", "15"))));
+        assertThat(cs.getStatusCode().value()).as(String.valueOf(cs.getBody())).isEqualTo(200);
+        ResponseEntity<Map> ds = it.call(audit, HttpMethod.POST, "/api/v1/finance/refunds/bank-statements", Map.of("label", "IT V562 disbursements " + tag, "fileName", "d.csv", "rows", List.of(
+                Map.of("date", from, "description", tag + " COT", "debit", "5"),
+                Map.of("date", y + "-03-06", "description", tag + " TRANSFER IN", "credit", "10000"),
+                Map.of("date", to, "description", tag + " SMS", "debit", "2"))));
+        assertThat(ds.getStatusCode().value()).as(String.valueOf(ds.getBody())).isEqualTo(200);
+        List<Map> cl = (List<Map>) cs.getBody().get("lines");
+        String charges = String.valueOf(cl.get(0).get("id")), out = String.valueOf(cl.get(1).get("id")), interest = String.valueOf(cl.get(2).get("id"));
+        UUID disbursements = UUID.fromString(String.valueOf(ds.getBody().get("id")));
+        List<String> dl = jdbc.sql("SELECT l.id::text FROM finance.bank_statement_line l WHERE l.statement_id = :s ORDER BY l.line_no")
+                .param("s", disbursements).query(String.class).list();
+        String cot = dl.get(0), in = dl.get(1), sms = dl.get(2);
+
+        // the transfer offered and booked from its two lines; the charges, the interest and the disbursement account's charges in one press
+        assertThat((List<Map>) it.getList(audit, "/api/v1/finance/bank-reconciliation/transfers?from=" + from + "&to=" + to).getBody())
+                .anyMatch(t -> out.equals(String.valueOf(t.get("out_line"))) && in.equals(String.valueOf(t.get("in_line"))));
+        Map<String, Object> transfer = Map.of("outLine", out, "inLine", in, "note", "Funding the disbursement account");
+        assertThat(it.call(audit, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/transfers", transfer).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> booked = it.call(maker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/transfers", transfer);
+        assertThat(booked.getStatusCode().value()).as(String.valueOf(booked.getBody())).isEqualTo(200);
+        for (String[] b : List.of(new String[] {charges, "5250"}, new String[] {interest, "4090"}, new String[] {cot, "5250"}, new String[] {sms, "5250"})) {
+            ResponseEntity<Map> r = it.call(maker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/lines/" + b[0] + "/book", Map.of("account", b[1], "note", tag + " booked"));
+            assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+        }
+        ResponseEntity<Map> bank = it.call(maker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/lines/" + charges + "/book", Map.of("account", "1010", "note", "x"));
+        assertThat(bank.getStatusCode().value()).isEqualTo(422);
+
+        // the disbursement account's March signed: closed on the ledger
+        String path = "/api/v1/finance/bank-reconciliation?account=1020&from=" + from + "&to=" + to;
+        Map f = (Map) it.get(audit, path).getBody().get("figures");
+        BigDecimal closing = new BigDecimal(String.valueOf(f.get("ledger_balance"))).subtract(new BigDecimal(String.valueOf(f.get("items_effect"))));
+        ResponseEntity<Map> prepared = it.call(maker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation", Map.of("account", "1020", "from", from, "to", to, "closing", closing));
+        assertThat(prepared.getStatusCode().value()).as(String.valueOf(prepared.getBody())).isEqualTo(200);
+        String id = String.valueOf(((Map) prepared.getBody().get("saved")).get("id"));
+        ResponseEntity<Map> signed = it.call(checker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/" + id + "/sign", Map.of());
+        assertThat(signed.getStatusCode().value()).as(String.valueOf(signed.getBody())).isEqualTo(200);
+        Map<String, Object> journal = Map.of("date", y + "-03-15", "memo", tag + " a charge found later",
+                "lines", List.of(Map.of("account", "5250", "debit", 3, "narration", tag), Map.of("account", "1020", "credit", 3, "narration", tag)));
+        ResponseEntity<Map> refused = it.call(maker, HttpMethod.POST, "/api/v1/finance/accounting/journals", journal);
+        assertThat(refused.getStatusCode().value()).isEqualTo(422);
+        assertThat(refused.getBody()).containsEntry("code", "LEDGER_MONTH_CLOSED");
+        assertThat((List<Map>) it.get(audit, "/api/v1/finance/bank-reconciliation/closed").getBody().get("months"))
+                .anyMatch(m -> id.equals(String.valueOf(m.get("id"))) && Boolean.TRUE.equals(m.get("latest")));
+
+        // reopened: asked by one officer on a reason, not decided by them, approved by another
+        assertThat(it.call(audit, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/" + id + "/reopen", Map.of("reason", "x")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> asked = it.call(maker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/" + id + "/reopen", Map.of("reason", "A charge of March was found later"));
+        assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
+        String request = ((List<Map>) asked.getBody().get("requests")).stream().filter(q -> "REQUESTED".equals(q.get("state")) && from.equals(q.get("period_from")))
+                .map(q -> String.valueOf(q.get("id"))).findFirst().orElseThrow();
+        ResponseEntity<Map> own = it.call(maker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/reopen/" + request + "/decide", Map.of("approve", true));
+        assertThat(own.getStatusCode().value()).isEqualTo(422);
+        assertThat(own.getBody()).containsEntry("code", "RECON_REOPEN_SAME_OFFICER");
+        ResponseEntity<Map> approved = it.call(checker, HttpMethod.POST, "/api/v1/finance/bank-reconciliation/reopen/" + request + "/decide", Map.of("approve", true, "note", "Agreed"));
+        assertThat(approved.getStatusCode().value()).as(String.valueOf(approved.getBody())).isEqualTo(200);
+        assertThat(((Map) it.get(audit, path).getBody().get("saved")).get("state")).isEqualTo("DRAFT");
+        assertThat(it.call(maker, HttpMethod.POST, "/api/v1/finance/accounting/journals", journal).getStatusCode().value()).as("open again").isEqualTo(200);
+    }
 }

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 395
+\set EXPECTED 396
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19065,6 +19065,173 @@ BEGIN
         format('listed %s | ict %s all %s | decide carried %s held %s left %s | request %s waiting %s same %s state %s | records left %s kind %s remembered %s told %s listed after %s | import dup %s cleared %s | portal %s',
                listed, v_ict, v_all, held.carried, held.held, held.remaining, v_ref, waiting, v_same, v_state, left_n, kind, remembered, told, listed_after,
                imp.duplicates, imp.cleared, v_portal));
+END $$;
+-- ── V562. A signed month closed on the ledger, a line booked in one press. Last month, for an invented student: a payment on the
+--          collections statement, the bank's charges, interest, and a transfer to the disbursement account that shows there two
+--          days later with its charges. The transfer is offered and booked from its two lines (Dr 1020, Cr 1010), the charges and
+--          the interest booked in one press each, a booking taken back reversing its journal and booked again; a line matched to
+--          the portal, an account that is a bank, a line booked twice and a transfer of two amounts are refused. Signed, the month
+--          is closed for 1010: a journal by hand dated in it is refused, one moving neither bank account or moving only 1020 is
+--          not, a payment recorded late for it is posted on the first open day, a posting or a deletion in it refused whatever
+--          does it. Reopened only on a reason, not by its asker, the latest first; reopened, it is prepared and open again, the
+--          signed copy kept. The block undoes its writes ──
+DO $$
+DECLARE maker uuid := gen_random_uuid(); checker uuid := gen_random_uuid(); s uuid := gen_random_uuid(); a text := '9957/9958';
+        v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date; m_from date; m_to date; d1 date; d2 date; t1 timestamptz;
+        cs uuid; ds uuid; cands text; bad_amounts text; tr bigint; tr_post text; tr_tied int; chg bigint; chg_post text; inte bigint; int_post text;
+        bad_account text; twice text; matched text; sms bigint; taken text; rebooked text; items_left int; f jsonb; rec uuid;
+        manual_closed text; other_ok boolean; disb_ok boolean; late text; posting_refused text; delete_refused text; takeback_closed text;
+        later text; req uuid; pending text; same text; no_note text; reopened text; copy_ok boolean; open_again boolean; msg text; j uuid;
+BEGIN
+    BEGIN
+        m_from := (date_trunc('month', v_today) - interval '1 month')::date;
+        m_to := (date_trunc('month', v_today) - interval '1 day')::date;
+        d1 := m_from + 9; d2 := m_from + 11;
+        t1 := (d1::timestamp + interval '10 hours') AT TIME ZONE 'Africa/Lagos';
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V562', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9957-10-01', date '9958-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (maker, 'ZZCHKV562', 'Maker', NULL), (checker, 'ZZCHKV562', 'Checker', NULL);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/57/995701', 'MOAUM/CHK/57/9957', 'ZZCHKV562', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (s, a, 'MOAUM-FEE-995701-0001', 'School fees ' || a, 5000, t1 - interval '1 day', t1 + interval '7 days', t1, maker, 'Bank transfer', 'RCT-ZZ562-0001', 'check V562');
+        PERFORM * FROM finance.gl_sync(NULL::int);
+        cs := finance.load_collections_statement('CHECK V562 collections', 'c.csv', jsonb_build_array(
+            jsonb_build_object('date', m_from::text, 'reference', '', 'description', 'CHECK V562 CHARGES', 'debit', '40'),
+            jsonb_build_object('date', d1::text, 'reference', 'MOAUM-FEE-995701-0001', 'description', 'Transfer', 'credit', '5000'),
+            jsonb_build_object('date', d2::text, 'reference', '', 'description', 'CHECK V562 TRANSFER TO DISBURSEMENTS', 'debit', '10000'),
+            jsonb_build_object('date', m_to::text, 'reference', '', 'description', 'CHECK V562 INTEREST', 'credit', '15')));
+        ds := finance.load_bank_statement('CHECK V562 disbursements', 'd.csv', jsonb_build_array(
+            jsonb_build_object('date', m_from::text, 'reference', '', 'description', 'CHECK V562 COT', 'debit', '5'),
+            jsonb_build_object('date', (d2 + 2)::text, 'reference', '', 'description', 'CHECK V562 TRANSFER FROM COLLECTIONS', 'credit', '10000'),
+            jsonb_build_object('date', m_to::text, 'reference', '', 'description', 'CHECK V562 SMS', 'debit', '2')));
+
+        -- the transfer offered and booked from its two lines
+        cands := (SELECT string_agg(c.out_account || '>' || c.in_account || ':' || c.amount::int, ',') FROM finance.transfer_candidates(m_from, m_to) c
+                   WHERE c.out_text LIKE '%CHECK V562%');
+        BEGIN
+            PERFORM finance.book_transfer((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1),
+                                          (SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 2), 'x');
+        EXCEPTION WHEN check_violation THEN bad_amounts := split_part(SQLERRM, ':', 1);
+        END;
+        tr := finance.book_transfer((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 3),
+                                    (SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 2), 'Funding the disbursement account');
+        j := (SELECT id FROM finance.gl_journal WHERE journal_no = tr);
+        tr_post := (SELECT string_agg(p.account || CASE WHEN p.debit > 0 THEN '+' ELSE '-' END || (p.debit + p.credit)::int, ',' ORDER BY p.line) FROM finance.gl_posting p WHERE p.journal_id = j)
+                   || ':' || (SELECT entry_date = d2 FROM finance.gl_journal WHERE id = j);
+        tr_tied := (SELECT count(*) FROM finance.bank_statement_line WHERE ledger_journal = j);
+        -- the charges and the interest in one press each
+        chg := finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1), '5250', 'The bank''s charges');
+        chg_post := (SELECT string_agg(p.account || CASE WHEN p.debit > 0 THEN '+' ELSE '-' END || (p.debit + p.credit)::int, ',' ORDER BY p.line)
+                       FROM finance.gl_posting p JOIN finance.gl_journal jj ON jj.id = p.journal_id WHERE jj.journal_no = chg);
+        inte := finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 4), '4090', 'Interest on the account');
+        int_post := (SELECT string_agg(p.account || CASE WHEN p.debit > 0 THEN '+' ELSE '-' END || (p.debit + p.credit)::int, ',' ORDER BY p.line)
+                       FROM finance.gl_posting p JOIN finance.gl_journal jj ON jj.id = p.journal_id WHERE jj.journal_no = inte);
+        BEGIN
+            PERFORM finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 1), '1010', 'x');
+        EXCEPTION WHEN check_violation THEN bad_account := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1), '5250', 'x');
+        EXCEPTION WHEN check_violation THEN twice := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 2), '5250', 'x');
+        EXCEPTION WHEN check_violation THEN matched := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 1), '5250', 'COT');
+        -- taken back: the journal reversed, the line free; booked again under a numbered reference
+        sms := finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 3), '5250', 'SMS alerts');
+        PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 3), NULL, NULL);
+        taken := (SELECT jj.status FROM finance.gl_journal jj WHERE jj.journal_no = sms) || ':' || (SELECT ledger_journal IS NULL FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 3);
+        PERFORM finance.book_statement_line_to((SELECT id FROM finance.bank_statement_line WHERE statement_id = ds AND line_no = 3), '5250', 'SMS alerts');
+        rebooked := (SELECT jj.source_ref LIKE 'LINE-%#2' FROM finance.bank_statement_line l JOIN finance.gl_journal jj ON jj.id = l.ledger_journal
+                      WHERE l.statement_id = ds AND l.line_no = 3)::text;
+        items_left := (SELECT count(*) FROM finance.bank_reconciliation_items('1010', m_from, m_to) i WHERE i.description LIKE '%CHECK V562%' OR i.reference LIKE 'CHECK V562%')
+                    + (SELECT count(*) FROM finance.bank_reconciliation_items('1020', m_from, m_to) i WHERE i.description LIKE '%CHECK V562%' OR i.reference LIKE 'CHECK V562%');
+
+        -- signed: the month closed for 1010
+        f := finance.bank_reconciliation_figures('1010', m_from, m_to, 0);
+        rec := finance.prepare_bank_reconciliation('1010', m_from, m_to, (f->>'ledger_balance')::numeric - (f->>'items_effect')::numeric, NULL);
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        PERFORM finance.sign_bank_reconciliation(rec);
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        BEGIN
+            PERFORM finance.gl_post(d1, 'CHECK V562 late', 'MANUAL', 'ADJUSTMENT', NULL, jsonb_build_array(
+                jsonb_build_object('account', '5250', 'debit', 1), jsonb_build_object('account', '1010', 'credit', 1)));
+        EXCEPTION WHEN check_violation THEN manual_closed := split_part(SQLERRM, ':', 1);
+        END;
+        other_ok := finance.gl_post(d1, 'CHECK V562 no bank', 'MANUAL', 'ADJUSTMENT', NULL, jsonb_build_array(
+                        jsonb_build_object('account', '5250', 'debit', 1), jsonb_build_object('account', '4090', 'credit', 1))) IS NOT NULL;
+        disb_ok := finance.gl_post(d1, 'CHECK V562 disbursements open', 'MANUAL', 'ADJUSTMENT', NULL, jsonb_build_array(
+                        jsonb_build_object('account', '5250', 'debit', 1), jsonb_build_object('account', '1020', 'credit', 1))) IS NOT NULL;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (s, a, 'MOAUM-FEE-995701-0002', 'School fees ' || a, 700, t1 - interval '1 day', t1 + interval '7 days', t1, maker, 'Bank transfer', 'RCT-ZZ562-0002', 'check V562 recorded late');
+        PERFORM * FROM finance.gl_sync(NULL::int);
+        late := (SELECT (jj.entry_date = m_to + 1) || ':' || (jj.memo LIKE '%a month closed on the ledger%') FROM finance.gl_journal jj
+                  WHERE jj.source_type = 'PAYMENT' AND jj.source_ref = 'MOAUM-FEE-995701-0002');
+        BEGIN
+            INSERT INTO finance.gl_journal (entry_date, memo, source) VALUES (d1, 'CHECK V562 direct', 'MANUAL') RETURNING id INTO j;
+            INSERT INTO finance.gl_posting (journal_id, line, account, debit, credit) VALUES (j, 1, '1010', 3, 0);
+        EXCEPTION WHEN check_violation THEN posting_refused := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            DELETE FROM finance.gl_journal WHERE source_type = 'PAYMENT' AND source_ref = 'MOAUM-FEE-995701-0001';
+        EXCEPTION WHEN check_violation THEN delete_refused := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.book_statement_line((SELECT id FROM finance.bank_statement_line WHERE statement_id = cs AND line_no = 1), NULL, NULL);
+        EXCEPTION WHEN check_violation THEN takeback_closed := split_part(SQLERRM, ':', 1);
+        END;
+
+        -- reopened: the latest first, on a reason, by another officer
+        INSERT INTO finance.bank_reconciliation (account, period_from, period_to, statement_closing, ledger_balance, items_effect, difference, summary, items, state, prepared_by, signed_by, signed_at)
+        VALUES ('1010', (m_from - interval '1 month')::date, m_from - 1, 0, 0, 0, 0, '{}', '[]', 'SIGNED', maker, checker, now());
+        BEGIN
+            PERFORM finance.request_reconciliation_reopen((SELECT id FROM finance.bank_reconciliation WHERE account = '1010' AND period_to = m_from - 1), 'x');
+        EXCEPTION WHEN check_violation THEN later := split_part(SQLERRM, ':', 1);
+        END;
+        req := finance.request_reconciliation_reopen(rec, 'A bank charge of the month was missed');
+        BEGIN
+            PERFORM finance.request_reconciliation_reopen(rec, 'again');
+        EXCEPTION WHEN check_violation THEN pending := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM finance.decide_reconciliation_reopen(req, true, NULL);
+        EXCEPTION WHEN check_violation THEN same := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', checker::text, true);
+        BEGIN
+            PERFORM finance.decide_reconciliation_reopen(req, false, ' ');
+        EXCEPTION WHEN check_violation THEN no_note := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM finance.decide_reconciliation_reopen(req, true, 'Agreed: book the missed charge');
+        reopened := (SELECT r.state || ':' || (r.signed_by IS NULL) || ':' || (r.items IS NULL) FROM finance.bank_reconciliation r WHERE r.id = rec);
+        copy_ok := (SELECT q.state = 'APPROVED' AND q.signed_copy->>'state' = 'SIGNED' AND (q.signed_copy->>'signed_by')::uuid = checker FROM finance.bank_reconciliation_reopen q WHERE q.id = req);
+        PERFORM set_config('moaum.actor_id', maker::text, true);
+        open_again := finance.gl_post(d1, 'CHECK V562 the missed charge', 'MANUAL', 'ADJUSTMENT', NULL, jsonb_build_array(
+                          jsonb_build_object('account', '5250', 'debit', 1), jsonb_build_object('account', '1010', 'credit', 1))) IS NOT NULL;
+        RAISE EXCEPTION 'the V562 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V562 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V562: a signed bank reconciliation closes its month on the ledger for its account — nothing posted in it by hand, what the ledger posts itself moved to the first open day — until another officer approves reopening it on a reason; a statement line is booked in one press and a transfer from its two lines',
+        coalesce(cands = '1010>1020:10000' AND bad_amounts = 'TRANSFER_AMOUNTS' AND tr_post = '1020+10000,1010-10000:true' AND tr_tied = 2
+                 AND chg_post = '5250+40,1010-40' AND int_post = '1010+15,4090-15'
+                 AND bad_account = 'LINE_BOOK_ACCOUNT' AND twice = 'LINE_ALREADY_BOOKED' AND matched = 'LINE_NOT_FOR_JOURNAL'
+                 AND taken = 'REVERSED:true' AND rebooked = 'true' AND items_left = 0
+                 AND manual_closed = 'LEDGER_MONTH_CLOSED' AND other_ok AND disb_ok AND late = 'true:true'
+                 AND posting_refused = 'LEDGER_MONTH_CLOSED' AND delete_refused = 'LEDGER_MONTH_CLOSED' AND takeback_closed = 'RECON_SIGNED_PERIOD'
+                 AND later = 'RECON_REOPEN_LATER' AND pending = 'RECON_REOPEN_PENDING' AND same = 'RECON_REOPEN_SAME_OFFICER' AND no_note = 'RECON_REOPEN_NOTE'
+                 AND reopened = 'DRAFT:true:true' AND copy_ok AND open_again, false),
+        format('candidates %s amounts %s | transfer %s tied %s | charges %s interest %s | refusals %s/%s/%s | taken back %s again %s | items left %s | closed %s other %s 1020 %s late %s posting %s delete %s take back %s | reopen later %s pending %s same %s note %s reopened %s copy %s open %s',
+               cands, bad_amounts, tr_post, tr_tied, chg_post, int_post, bad_account, twice, matched, taken, rebooked, items_left,
+               manual_closed, other_ok, disb_ok, late, posting_refused, delete_refused, takeback_closed, later, pending, same, no_note, reopened, copy_ok, open_again));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

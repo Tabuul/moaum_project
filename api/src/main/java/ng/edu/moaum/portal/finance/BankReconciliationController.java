@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
@@ -45,6 +46,22 @@ class BankReconciliationController {
 
     /** a statement line accounted for with a journal; no journal number takes it back */
     public record Journal(@Positive Long journalNo, @Size(max = 500) String note) {
+    }
+
+    /** V562: a statement line booked in one press against an account */
+    public record Book(@NotBlank @Size(max = 20) String account, @NotBlank @Size(max = 500) String note) {
+    }
+
+    /** V562: a transfer between the bank accounts booked from its two lines */
+    public record Transfer(@NotNull UUID outLine, @NotNull UUID inLine, @NotBlank @Size(max = 500) String note) {
+    }
+
+    /** V562: a signed month asked to be reopened */
+    public record Reopen(@NotBlank @Size(max = 2000) String reason) {
+    }
+
+    /** V562: a request to reopen decided */
+    public record Decide(@NotNull Boolean approve, @Size(max = 2000) String note) {
     }
 
     private final JdbcClient jdbc;
@@ -164,5 +181,85 @@ class BankReconciliationController {
         jdbc.sql("SELECT finance.book_statement_line(:id, :j, :n)").param("id", id).param("j", body.journalNo(), Types.BIGINT)
                 .param("n", body.note(), Types.VARCHAR).query().singleRow();
         return Map.of("id", id, "journalNo", body.journalNo() == null ? "" : body.journalNo());
+    }
+
+    /* ── V562: a line booked in one press, transfers, the months closed on the ledger ── */
+
+    /** a statement line booked against the account named and tied to the journal at once */
+    @PostMapping("/lines/{id}/book")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> book(@PathVariable UUID id, @Valid @RequestBody Book body) {
+        Long no = jdbc.sql("SELECT finance.book_statement_line_to(:id, :a, :n)").param("id", id).param("a", body.account().trim())
+                .param("n", body.note()).query(Long.class).single();
+        return Map.of("id", id, "journalNo", no);
+    }
+
+    /** the transfers between the bank accounts the statements show and no one has booked */
+    @GetMapping("/transfers")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> transfers(@RequestParam LocalDate from, @RequestParam LocalDate to) {
+        period("1010", from, to);
+        return jdbc.sql("""
+                SELECT out_line, out_account, out_day::text AS out_day, out_text, in_line, in_account, in_day::text AS in_day, in_text, amount
+                  FROM finance.transfer_candidates(:f, :t)
+                """).param("f", from).param("t", to).query().listOfRows();
+    }
+
+    /** a transfer booked from its debit on one statement and its credit on the other */
+    @PostMapping("/transfers")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> transfer(@Valid @RequestBody Transfer body) {
+        Long no = jdbc.sql("SELECT finance.book_transfer(:o, :i, :n)").param("o", body.outLine()).param("i", body.inLine())
+                .param("n", body.note()).query(Long.class).single();
+        return Map.of("journalNo", no);
+    }
+
+    /** the months closed on the ledger (the signed reconciliations), the latest of each account marked, and the requests to reopen */
+    @GetMapping("/closed")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> closed() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("months", jdbc.sql("""
+                SELECT r.id, r.account, r.period_from::text AS period_from, r.period_to::text AS period_to, r.difference, r.signed_at,
+                       CASE WHEN sp.id IS NULL THEN NULL ELSE sp.surname || ', ' || sp.given_names END AS signed_by_name,
+                       NOT EXISTS (SELECT 1 FROM finance.bank_reconciliation l WHERE l.account = r.account AND l.state = 'SIGNED' AND l.period_from > r.period_to) AS latest,
+                       EXISTS (SELECT 1 FROM finance.bank_reconciliation_reopen q WHERE q.reconciliation_id = r.id AND q.state = 'REQUESTED') AS reopen_asked
+                  FROM finance.bank_reconciliation r LEFT JOIN iam.person sp ON sp.id = r.signed_by
+                 WHERE r.state = 'SIGNED'
+                 ORDER BY r.period_to DESC, r.account LIMIT 60
+                """).query().listOfRows());
+        out.put("requests", jdbc.sql("""
+                SELECT q.id, q.account, q.period_from::text AS period_from, q.period_to::text AS period_to, q.reason, q.state, q.requested_at, q.decided_at, q.decision_note,
+                       CASE WHEN rp.id IS NULL THEN NULL ELSE rp.surname || ', ' || rp.given_names END AS requested_by_name,
+                       CASE WHEN dp.id IS NULL THEN NULL ELSE dp.surname || ', ' || dp.given_names END AS decided_by_name,
+                       q.requested_by = nullif(current_setting('moaum.actor_id', true), '')::uuid AS asked_by_me
+                  FROM finance.bank_reconciliation_reopen q
+                  LEFT JOIN iam.person rp ON rp.id = q.requested_by LEFT JOIN iam.person dp ON dp.id = q.decided_by
+                 ORDER BY (q.state = 'REQUESTED') DESC, q.requested_at DESC LIMIT 30
+                """).query().listOfRows());
+        return out;
+    }
+
+    /** one officer asks for the latest signed month of an account to be reopened */
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> reopen(@PathVariable UUID id, @Valid @RequestBody Reopen body) {
+        jdbc.sql("SELECT finance.request_reconciliation_reopen(:id, :r)").param("id", id).param("r", body.reason()).query(UUID.class).single();
+        return closed();
+    }
+
+    /** another officer approves (the month open again, the reconciliation prepared, not signed) or rejects on a note */
+    @PostMapping("/reopen/{id}/decide")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> decide(@PathVariable UUID id, @Valid @RequestBody Decide body) {
+        jdbc.sql("SELECT finance.decide_reconciliation_reopen(:id, :a, :n)").param("id", id).param("a", body.approve())
+                .param("n", body.note(), Types.VARCHAR).query().singleRow();
+        return closed();
     }
 }

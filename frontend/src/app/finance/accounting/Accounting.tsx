@@ -17,6 +17,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { WalletOpening } from "./WalletOpening";
+import { ClosedMonths } from "./ClosedMonths";
 
 export interface Account { code: string; name: string; type: string; normal_side: string; parent_code: string | null; postable: boolean; active: boolean }
 export interface IeRow { section: string; code: string | null; name: string; amount: number }
@@ -170,6 +171,7 @@ export function Accounting({ overview, chart, trial, ie, bs, journals, actingOff
       {tab === "overview" ? (
         <>
         <WalletOpening may={may} />
+        <ClosedMonths may={may} />
         <Panel title="The books at a glance">
           <PBody>
             <div className="sub2">Double-entry, cash-basis. Confirmed payments, paid refunds and paid vouchers post automatically; the Bursar posts opening balances and adjustments.</div>

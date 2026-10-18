@@ -22,6 +22,11 @@ interface Saved { id: string; state: "DRAFT" | "SIGNED"; statement_closing: numb
 interface Booked { id: string; line_no: number; label: string; day: string; reference: string | null; description: string | null; debit: number; credit: number; journal_no: number; journal_memo: string; booked_note: string | null }
 interface Result { figures: Figures; items: Item[]; itemsMore: boolean; saved: Saved | null; booked: Booked[] }
 interface Listed { id: string; account: string; period_from: string; period_to: string; difference: number; state: string; signed_by_name: string | null }
+/** V562: a transfer between the bank accounts the statements show and no one has booked */
+interface Transfer { out_line: string; out_account: string; out_day: string; out_text: string; in_line: string; in_account: string; in_day: string; in_text: string; amount: number }
+interface ChartAccount { code: string; name: string; type: string; postable: boolean; active: boolean }
+/** how a line is to be booked: against an account in one press, or tied to a journal already posted ("#") */
+interface Booking { account: string; journal: string; note: string }
 
 const ACCOUNTS: [string, string][] = [["1010", "1010 Bank — Fees collection"], ["1020", "1020 Bank — Disbursements"]];
 const KIND: Record<string, string> = {
@@ -36,8 +41,11 @@ const KIND: Record<string, string> = {
   NELFUND_NOT_CREDITED: "NELFUND remittances not yet credited to students",
   GATEWAY_CHARGES: "Gateway charges not yet on the ledger",
 };
-/** the line items the Bursary may account for with a journal it booked */
+/** the line items the Bursary may book in one press, or account for with a journal it booked */
 const BOOKABLE = ["BANK_CREDIT_NOT_IN_LEDGER", "BANK_DEBIT_NOT_IN_LEDGER", "AMOUNT_DIFFERENCE", "GATEWAY_CHARGES", "NELFUND_NOT_CREDITED"];
+/** V562: the account a line is booked against unless the Bursary names another — the bank's or a gateway's charges to 5250 Bank
+ *  charges; a remittance not yet credited is tied to a journal already posted */
+const defaultBooking = (kind: string): Booking => ({ account: ["BANK_DEBIT_NOT_IN_LEDGER", "GATEWAY_CHARGES"].includes(kind) ? "5250" : kind === "NELFUND_NOT_CREDITED" ? "#" : "", journal: "", note: "" });
 const day = (iso: string | null | undefined) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${money(Math.abs(n))}`;
 const lastMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
@@ -55,7 +63,10 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
   const [kind, setKind] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [list, setList] = useState<Listed[] | null>(null);
-  const [booking, setBooking] = useState<Record<string, { journal: string; note: string }>>({});
+  const [booking, setBooking] = useState<Record<string, Booking>>({});
+  const [transfers, setTransfers] = useState<Transfer[] | null>(null);
+  const [transferNote, setTransferNote] = useState<Record<string, string>>({});
+  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
 
   async function loadList() {
     const r = await fetch(`${BASE}/saved`, { cache: "no-store" }).catch(() => null);
@@ -67,8 +78,14 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
       .then((r) => (r.ok ? r.json() : []))
       .catch(() => [])
       .then((j: Listed[]) => { if (live) setList(j); });
+    if (canPrepare) {
+      fetch("/api/bff/api/v1/finance/accounting/chart", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => [])
+        .then((j: ChartAccount[]) => { if (live) setAccounts(j.filter((a) => a.postable && a.active && a.code !== "1010" && a.code !== "1020")); });
+    }
     return () => { live = false; };
-  }, []);
+  }, [canPrepare]);
 
   async function load(acc = account, mon = month, close = closing) {
     const { from, to } = bounds(mon);
@@ -79,6 +96,8 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
     const res = j as Result;
     setResult(res);
+    const t = await fetch(`${BASE}/transfers?${new URLSearchParams({ from, to })}`, { cache: "no-store" }).catch(() => null);
+    setTransfers(t && t.ok ? ((await t.json()) as Transfer[]) : []);
     if (res.saved) {
       if (!close.trim()) setClosing(String(Number(res.saved.statement_closing)));
       setNote(res.saved.note ?? "");
@@ -104,17 +123,40 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
     if (j) { setResult(j); notify(`The reconciliation of ${account} for ${month} is signed`); void loadList(); }
   }
 
-  async function journal(lineId: string, journalNo: number | null, why: string) {
-    const b = booking[lineId];
+  async function journal(lineId: string, journalNo: number | null, why: string, lineNote: string | null = null) {
     const r = await fetch(`${BASE}/lines/${lineId}/journal`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(why) },
-      body: JSON.stringify({ journalNo, note: journalNo == null ? null : b?.note?.trim() || null }),
+      body: JSON.stringify({ journalNo, note: journalNo == null ? null : lineNote?.trim() || null }),
     });
     const j = await r.json().catch(() => null);
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-    notify(journalNo == null ? "The line is taken back from its journal" : `The line is accounted for with journal #${journalNo}`);
-    setBooking({ ...booking, [lineId]: { journal: "", note: "" } });
+    notify(journalNo == null ? "The line is taken back; a journal booked for it in one press is reversed" : `The line is accounted for with journal #${journalNo}`);
+    const rest = { ...booking };
+    delete rest[lineId];
+    setBooking(rest);
     await load();
+  }
+
+  /** V562: a line booked against the account named, in one press — or tied to a journal already posted */
+  async function bookLine(i: Item, b: Booking) {
+    const id = i.line_id as string;
+    if (b.account === "#") { await journal(id, Number(b.journal), `Statement line ${i.reference} accounted for with journal #${b.journal}`, b.note); return; }
+    const j = await post(`/lines/${id}/book`, { account: b.account, note: b.note.trim() }, `Statement line ${i.reference} booked against ${b.account}`) as unknown as { journalNo?: number } | null;
+    if (j) {
+      notify(`Booked against ${b.account} as journal #${j.journalNo}`);
+      const rest = { ...booking };
+      delete rest[id];
+      setBooking(rest);
+      await load();
+    }
+  }
+
+  /** V562: a transfer between the bank accounts booked from its two lines */
+  async function bookTransfer(t: Transfer) {
+    const key = `${t.out_line}|${t.in_line}`;
+    const j = await post("/transfers", { outLine: t.out_line, inLine: t.in_line, note: (transferNote[key] ?? "").trim() || `Transfer from ${t.out_account} to ${t.in_account}` },
+      `Transfer of ${money(Number(t.amount))} from ${t.out_account} to ${t.in_account} booked`) as unknown as { journalNo?: number } | null;
+    if (j) { notify(`The transfer is booked as journal #${j.journalNo}; both lines are tied to it`); await load(); }
   }
 
   const f = result?.figures;
@@ -178,6 +220,7 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
           {!signedOff && f.missing_days > 0 ? <Note kind="bad" title="The bank's statements do not cover the whole month">{`No statement of this account covers ${f.missing}. Upload it before the reconciliation is signed.`}</Note> : null}
           {!signedOff && Number(f.unposted) > 0 ? <Note kind="bad" title="Some of the month waits to be posted on the ledger">{`${f.unposted} transaction${Number(f.unposted) === 1 ? "" : "s"} of the month ${Number(f.unposted) === 1 ? "is" : "are"} not on the ledger yet. Post them on Accounting before it is signed.`}</Note> : null}
           {!signedOff && !f.period_ended ? <Note kind="info" title="The month has not ended">It is signed once the month has ended.</Note> : null}
+          {signedOff ? <Note kind="info" title={`The month is closed on the ledger for ${f.account}`}>No journal moving the account is posted with a date in it; what the ledger posts by itself for it goes on the first open day. It is reopened on Accounting, under Closed months, on a reason a second officer approves.</Note> : null}
           {f.items_from < f.period_from ? <PBody><div className="sub2">{`The items run from ${day(f.items_from)}, the start of this account's first reconciliation: what is still outstanding from earlier months is carried here.`}</div></PBody> : null}
           <Tiles items={[
             ["On the statement", f.statement_closing == null ? "—" : money(Number(f.statement_closing)), null, `At ${day(f.period_to)}`],
@@ -209,15 +252,28 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
                   <span key="a" className="tnum">{money(Number(i.amount))}</span>,
                   <b key="e" className="tnum">{signed(Number(i.effect))}</b>,
                   <span key="x" className="row row--tight row--right" style={{ flexWrap: "wrap" }}>
-                    {canPrepare && !signedOff && i.line_id && BOOKABLE.includes(i.kind) ? (
-                      <>
-                        <input className="ctl tnum" inputMode="numeric" aria-label={`Journal number for ${i.reference}`} placeholder="Journal no." value={b?.journal ?? ""}
-                          onChange={(e) => setBooking({ ...booking, [i.line_id as string]: { journal: e.target.value.replace(/\D/g, ""), note: b?.note ?? "" } })} style={{ width: 110 }} />
-                        <input className="ctl" aria-label={`What the journal records for ${i.reference}`} placeholder="What it records" value={b?.note ?? ""} maxLength={500}
-                          onChange={(e) => setBooking({ ...booking, [i.line_id as string]: { journal: b?.journal ?? "", note: e.target.value } })} style={{ width: 180 }} />
-                        <Btn kind="ghost" size="sm" disabled={!b?.journal || !b?.note?.trim()} busyLabel="Saving…" onClick={() => journal(i.line_id as string, Number(b?.journal), `Statement line ${i.reference} accounted for with journal #${b?.journal}`)}>On the ledger</Btn>
-                      </>
-                    ) : null}
+                    {canPrepare && !signedOff && i.line_id && BOOKABLE.includes(i.kind) ? (() => {
+                      const id = i.line_id as string;
+                      const cur = b ?? defaultBooking(i.kind);
+                      const set = (patch: Partial<Booking>) => setBooking({ ...booking, [id]: { ...cur, ...patch } });
+                      return (
+                        <>
+                          <select className="ctl" aria-label={`Book ${i.reference} against`} value={cur.account} onChange={(e) => set({ account: e.target.value })} style={{ maxWidth: 210 }}>
+                            <option value="">Book against…</option>
+                            {i.kind !== "NELFUND_NOT_CREDITED" ? accounts.map((a) => <option key={a.code} value={a.code}>{`${a.code} ${a.name}`}</option>) : null}
+                            <option value="#">A journal already posted…</option>
+                          </select>
+                          {cur.account === "#" ? (
+                            <input className="ctl tnum" inputMode="numeric" aria-label={`Journal number for ${i.reference}`} placeholder="Journal no." value={cur.journal}
+                              onChange={(e) => set({ journal: e.target.value.replace(/\D/g, "") })} style={{ width: 100 }} />
+                          ) : null}
+                          <input className="ctl" aria-label={`What the booking records for ${i.reference}`} placeholder="What it records" value={cur.note} maxLength={500}
+                            onChange={(e) => set({ note: e.target.value })} style={{ width: 170 }} />
+                          <Btn kind="ghost" size="sm" disabled={!cur.note.trim() || (cur.account === "#" ? !cur.journal : !cur.account)} busyLabel="Booking…"
+                            onClick={() => bookLine(i, cur)}>{cur.account === "#" ? "Tie" : "Book"}</Btn>
+                        </>
+                      );
+                    })() : null}
                   </span>,
                 ];
               })} texts={shown.map((i) => `${i.reference} ${i.description ?? ""} ${KIND[i.kind] ?? ""}`)} />
@@ -234,6 +290,28 @@ export function BankReconciliation({ canPrepare }: { canPrepare: boolean }) {
                 <Two key="j" a={`#${l.journal_no} ${l.journal_memo}`} b={l.booked_note ?? ""} />,
                 canPrepare && !signedOff ? <Btn key="x" kind="ghost" size="sm" busyLabel="Taking back…" onClick={() => journal(l.id, null, `Statement line ${l.line_no} of ${l.label} taken back from journal #${l.journal_no}`)}>Take back</Btn> : <span key="x" />,
               ])} />
+            </>
+          ) : null}
+          {transfers?.length ? (
+            <>
+              <PBody><b>Transfers between the accounts</b> <span className="sub2">A debit on one account&rsquo;s statement and a credit of the same amount on the other&rsquo;s within three days, not yet booked</span></PBody>
+              <DTable pageSize={0} cols={["Left|mid", "From", "Reached|mid", "To", "Amount|num", "|num"]} rows={transfers.map((t) => {
+                const key = `${t.out_line}|${t.in_line}`;
+                return [
+                  <span key="od" className="tnum">{day(t.out_day)}</span>,
+                  <Two key="o" a={t.out_account} b={t.out_text} />,
+                  <span key="id" className="tnum">{day(t.in_day)}</span>,
+                  <Two key="i" a={t.in_account} b={t.in_text} />,
+                  <b key="a" className="tnum">{money(Number(t.amount))}</b>,
+                  canPrepare ? (
+                    <span key="x" className="row row--tight row--right" style={{ flexWrap: "wrap" }}>
+                      <input className="ctl" aria-label={`What the transfer of ${money(Number(t.amount))} was for`} placeholder="What it was for" maxLength={500} value={transferNote[key] ?? ""}
+                        onChange={(e) => setTransferNote({ ...transferNote, [key]: e.target.value })} style={{ width: 170 }} />
+                      <Btn kind="ghost" size="sm" busyLabel="Booking…" onClick={() => bookTransfer(t)}>Book the transfer</Btn>
+                    </span>
+                  ) : <span key="x" />,
+                ];
+              })} />
             </>
           ) : null}
           {canPrepare && !signedOff ? (

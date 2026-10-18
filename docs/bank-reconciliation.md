@@ -1,4 +1,4 @@
-# The bank reconciliation statement (V557)
+# The bank reconciliation statement (V557, V562)
 
 Reconcile (`/finance/reconcile`) → **Bank reconciliation**. For 1010 Bank — Fees collection or 1020 Bank — Disbursements, a
 month's reconciliation sets the ledger's balance at the month's last day beside the balance on the bank's statement. It lists the
@@ -36,17 +36,35 @@ same span is no item either.
 The items run from the start of the account's first reconciliation to the month's end. What came before is the opening position.
 What is still outstanding from an earlier month is carried into the next.
 
-## Accounted for with a journal
+## Booked in one press, or tied to a journal
 
-When the Bursary has booked a journal for a line, the line is tied to it on the item (journal number and what it records;
-`finance.book_statement_line`), and neither is an item any more. Examples: the bank's charges, a transfer between the two
-accounts, a difference put right.
+A line the ledger does not hold is booked on its item (V562, `finance.book_statement_line_to`). The Bursary names the account
+and says what the booking records, and **Book** posts the journal, dated the line's day, and ties the line to it.
 
-- The journal must be posted and must move the statement's account.
-- A line matched to the portal, or one the portal is still to confirm, is not tied to a journal: it is confirmed through the bank
-  credits.
-- **Take back** undoes the tie.
-- Nothing in a signed month changes.
+| The line | Journal |
+|---|---|
+| Money out of the bank (the bank's charges, a debit no one found) | Dr the account named, Cr the bank account |
+| Money into the bank (interest, a credit no one found, a payment received twice) | Dr the bank account, Cr the account named |
+| A gateway's day settled short, or a payment at another amount | the difference, either way |
+
+**5250 Bank charges**, added by V562, is offered first for the bank's and a gateway's charges. A bank account itself is refused:
+a transfer between them is booked as a transfer.
+
+A journal already posted (for example, a month's charges in one journal) can still be tied instead: **A journal already
+posted…**, its number and what it records (`finance.book_statement_line`). The journal must be posted and must move the
+statement's account.
+
+**Transfers between the accounts.** A debit on one account's statement and a credit of the same amount on the other's within
+three days, neither booked, are offered as a transfer (`finance.transfer_candidates`). **Book the transfer** posts Dr the account
+it reached, Cr the one it left, and ties both lines to that one journal (`finance.book_transfer`).
+
+Refused:
+- a line matched to the portal or to a NELFUND remittance, or one the portal is still to confirm (it is confirmed through the bank
+  credits);
+- a line booked already.
+
+**Take back** undoes the tie. A journal booked in one press is reversed on its own day, so the two cancel within the month, and a
+transfer's other line is taken back with it. Nothing in a signed month changes.
 
 ## Prepared and signed
 
@@ -61,10 +79,34 @@ accounts, a difference put right.
 3. A signed reconciliation is kept as signed, with its figures and its items. It downloads as Excel, and prints as a PDF with who
    prepared and signed it.
 
+## The month closed on the ledger (V562)
+
+A signed reconciliation closes its month on the ledger for its account:
+
+- A journal posted by hand that moves the account with a date in the month is refused (`LEDGER_MONTH_CLOSED`, saying the first
+  open day).
+- What the ledger posts by itself for that month (a payment, a refund or a withdrawal recorded late with an earlier date) is
+  posted on the first open day after it, its memo saying which day it belongs to (`finance.gl_open_date`).
+- A posting to the account dated in the month, or the deletion of one, is refused whatever does it (triggers on
+  `finance.gl_posting` and `finance.gl_journal`).
+- Journals that move neither bank account are not affected, nor is the other bank account while its own month is open.
+
+The check runs on every posting the ledger makes. It costs about 12 microseconds a posting to a bank account and 5 a journal,
+measured.
+
+Accounting → Overview → **Closed months** lists the signed months, the latest of each account marked.
+
+1. One officer of the Bursary asks for the **latest** signed month of an account to be reopened, on a reason
+   (`finance.request_reconciliation_reopen`; a later signed month must be reopened first).
+2. Another officer reopens it, or keeps it closed on a note (`finance.decide_reconciliation_reopen`).
+3. Reopened, the month is open on the ledger again, and its reconciliation goes back to prepared. The reason is added to its note,
+   and the signed copy is kept with the request (`finance.bank_reconciliation_reopen`).
+
 | | Bursary | Internal Audit, Deputy | Administrator |
 |---|---|---|---|
-| Read | yes | yes | yes |
-| Prepare, sign (not one's own), tie a line to a journal | yes | — | — |
+| Read, closed months | yes | yes | yes |
+| Prepare, sign (not one's own), book or tie a line, book a transfer | yes | — | — |
+| Ask to reopen a month, decide (not one's own request) | yes | — | — |
 
 ## Tests
 
@@ -75,3 +117,15 @@ accounts, a difference put right.
   - a line in a signed month, an overlapping month and the running month refused;
   - the disbursement account signed with nothing left.
 - `BankReconciliationIT` checks the same through the API, on a March of the last century of its own, with each office's rights.
+- `db/check.sql` (V562) runs on last month too. It covers:
+  - the transfer offered and booked from its two lines (Dr 1020, Cr 1010), its two amounts refused when they differ;
+  - the charges and the interest booked in one press, and the refusals (an account that is a bank, a line booked twice, a
+    line matched to the portal);
+  - a booking taken back, its journal reversed, booked again;
+  - the month closed once signed:
+    - a journal by hand refused, one moving no bank account or only the other taken;
+    - a payment recorded late posted on the first open day;
+    - a posting and a deletion in the month refused, and a line in it not taken back;
+  - reopening refused for an earlier month, twice, to the asker and without a note, then approved, the month open again and the
+    signed copy kept.
+- `BankReconciliationIT` (V562) does the same through the API on a March after every earlier run's, with each office's rights.
