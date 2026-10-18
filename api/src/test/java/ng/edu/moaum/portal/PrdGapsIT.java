@@ -33,6 +33,9 @@ import org.springframework.web.client.RestClient;
 @SuppressWarnings({"rawtypes", "unchecked"})
 class PrdGapsIT {
 
+    /** V539: the School's change dates are Lagos dates, as the screen sends them — the JVM's own (UTC in CI) is a day behind from midnight to one in Lagos */
+    static final java.time.ZoneId LAGOS = java.time.ZoneId.of("Africa/Lagos");
+
     @Value("${local.server.port}")
     int port;
     @Autowired
@@ -102,17 +105,17 @@ class PrdGapsIT {
         });
         String school = ItSupport.token("pgschool");
         String base = "/api/v1/pg/research/" + research;
-        assertThat(it.call(ItSupport.token("hod"), HttpMethod.POST, base + "/supervisors/" + rows[0] + "/end", Map.of("on", LocalDate.now().toString(), "reason", "Integration test: a Head tries"))
+        assertThat(it.call(ItSupport.token("hod"), HttpMethod.POST, base + "/supervisors/" + rows[0] + "/end", Map.of("on", LocalDate.now(LAGOS).toString(), "reason", "Integration test: a Head tries"))
                 .getStatusCode().value()).isEqualTo(403);
-        assertThat(it.call(school, HttpMethod.POST, base + "/supervisors/" + rows[0] + "/end", Map.of("on", LocalDate.now().toString(), "reason", "Integration test: ending the only first"))
+        assertThat(it.call(school, HttpMethod.POST, base + "/supervisors/" + rows[0] + "/end", Map.of("on", LocalDate.now(LAGOS).toString(), "reason", "Integration test: ending the only first"))
                 .getStatusCode().value()).isEqualTo(422);
         ResponseEntity<Map> replaced = it.call(school, HttpMethod.POST, base + "/supervisors/" + rows[0] + "/replace",
-                Map.of("name", "Prof New First", "on", LocalDate.now().minusDays(2).toString(), "reason", "Integration test: the supervisor retired"));
+                Map.of("name", "Prof New First", "on", LocalDate.now(LAGOS).minusDays(2).toString(), "reason", "Integration test: the supervisor retired"));
         assertThat(replaced.getStatusCode().value()).as(String.valueOf(replaced.getBody())).isEqualTo(200);
         assertThat((List<Map<String, Object>>) replaced.getBody().get("supervisors")).extracting(s -> s.get("name")).containsExactly("Prof New First");
         assertThat((List<Map<String, Object>>) replaced.getBody().get("supervisorHistory")).singleElement()
                 .satisfies(h -> { assertThat(h.get("name")).isEqualTo("Dr Old First"); assertThat(h.get("replaced_by")).isEqualTo("Prof New First"); });
-        Map<String, Object> removed = new HashMap<>(Map.of("on", LocalDate.now().toString(), "reason", "Integration test: the examiner declined", "replacement", "Prof Accepted External", "external", true));
+        Map<String, Object> removed = new HashMap<>(Map.of("on", LocalDate.now(LAGOS).toString(), "reason", "Integration test: the examiner declined", "replacement", "Prof Accepted External", "external", true));
         ResponseEntity<Map> panel = it.call(school, HttpMethod.POST, base + "/panel/" + rows[1] + "/remove", removed);
         assertThat(panel.getStatusCode().value()).as(String.valueOf(panel.getBody())).isEqualTo(200);
         assertThat((List<Map<String, Object>>) panel.getBody().get("panel")).extracting(m -> m.get("name")).containsExactly("Prof Accepted External");

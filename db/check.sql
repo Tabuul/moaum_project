@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 374
+\set EXPECTED 375
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16335,9 +16335,10 @@ END $$;
 -- The last first supervisor is never ended alone (replaced instead); a change never takes effect in the future; a second
 -- supervisor ends with the date and reason kept; a replacement ends the first supervisor and names the successor in the same role;
 -- a panel member is removed (with or without another in the role) until the viva, never after it; only the School changes them;
--- every change is on the research log and the candidate is told of a supervisor change. The block undoes its writes.
+-- every change is on the research log and the candidate is told of a supervisor change. The dates are Lagos dates, as the screen
+-- sends them (V539: the database's own date is a day behind from midnight to one o'clock in Lagos). The block undoes its writes.
 DO $$
-DECLARE st uuid := gen_random_uuid(); r uuid := gen_random_uuid(); prog text; a uuid; b uuid; x uuid; y uuid; c uuid; z uuid;
+DECLARE td date := (now() AT TIME ZONE 'Africa/Lagos')::date; st uuid := gen_random_uuid(); r uuid := gen_random_uuid(); prog text; a uuid; b uuid; x uuid; y uuid; c uuid; z uuid;
         last_first text; future text; ended_b text; replaced uuid; live_first text; a_succ boolean; z2 uuid; y_off boolean; examined text;
         wrong text; logged int; told int; msg text;
 BEGIN
@@ -16354,24 +16355,24 @@ BEGIN
         INSERT INTO admissions.pg_research_panel (research_id, name, role, is_external) VALUES (r, 'Prof Check External', 'EXTERNAL', true) RETURNING id INTO x;
         INSERT INTO admissions.pg_research_panel (research_id, name, role) VALUES (r, 'Dr Check Internal', 'INTERNAL') RETURNING id INTO y;
         -- 1 · supervisors
-        BEGIN PERFORM admissions.pg_end_supervisor(a, current_date, 'Check: the first supervisor retires'); last_first := 'ENDED';
+        BEGIN PERFORM admissions.pg_end_supervisor(a, td, 'Check: the first supervisor retires'); last_first := 'ENDED';
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; last_first := split_part(msg, ':', 1); END;
-        BEGIN PERFORM admissions.pg_end_supervisor(b, current_date + 1, 'Check: ending tomorrow'); future := 'ENDED';
+        BEGIN PERFORM admissions.pg_end_supervisor(b, td + 1, 'Check: ending tomorrow'); future := 'ENDED';
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; future := split_part(msg, ':', 1); END;
-        PERFORM admissions.pg_end_supervisor(b, current_date - 3, 'Check: the second supervisor left the University');
+        PERFORM admissions.pg_end_supervisor(b, td - 3, 'Check: the second supervisor left the University');
         ended_b := (SELECT ended_on::text || '/' || end_reason FROM admissions.pg_research_supervisor WHERE id = b);
-        replaced := admissions.pg_replace_supervisor(a, 'Dr Check Successor', NULL, false, current_date, 'Check: the first supervisor retires');
+        replaced := admissions.pg_replace_supervisor(a, 'Dr Check Successor', NULL, false, td, 'Check: the first supervisor retires');
         live_first := (SELECT string_agg(name, ',') FROM admissions.pg_research_supervisor WHERE research_id = r AND ended_at IS NULL);
-        a_succ := (SELECT replaced_by = replaced AND ended_on = current_date FROM admissions.pg_research_supervisor WHERE id = a);
+        a_succ := (SELECT replaced_by = replaced AND ended_on = td FROM admissions.pg_research_supervisor WHERE id = a);
         -- 2 · the panel
-        z2 := admissions.pg_remove_panel_member(x, current_date, 'Check: the external examiner declined', 'Prof Check Replacement', true);
-        PERFORM admissions.pg_remove_panel_member(y, current_date, 'Check: the internal examiner is on leave', NULL, NULL);
+        z2 := admissions.pg_remove_panel_member(x, td, 'Check: the external examiner declined', 'Prof Check Replacement', true);
+        PERFORM admissions.pg_remove_panel_member(y, td, 'Check: the internal examiner is on leave', NULL, NULL);
         y_off := (SELECT removed_at IS NOT NULL AND replaced_by IS NULL FROM admissions.pg_research_panel WHERE id = y);
         UPDATE admissions.pg_research SET stage = 'VIVA_HELD' WHERE id = r;
-        BEGIN PERFORM admissions.pg_remove_panel_member(z2, current_date, 'Check: after the viva', NULL, NULL); examined := 'REMOVED';
+        BEGIN PERFORM admissions.pg_remove_panel_member(z2, td, 'Check: after the viva', NULL, NULL); examined := 'REMOVED';
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; examined := split_part(msg, ':', 1); END;
         PERFORM set_config('moaum.actor_office', 'hod', true);
-        BEGIN PERFORM admissions.pg_end_supervisor(replaced, current_date, 'Check: a Head of Department tries'); wrong := 'ENDED';
+        BEGIN PERFORM admissions.pg_end_supervisor(replaced, td, 'Check: a Head of Department tries'); wrong := 'ENDED';
         EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; wrong := split_part(msg, ':', 1); END;
         logged := (SELECT count(*) FROM admissions.pg_research_event WHERE research_id = r AND stage IN ('SUPERVISOR_ENDED', 'SUPERVISOR_REPLACED', 'PANEL_CHANGED'));
         told := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'PG_SUPERVISOR_CHANGED');
@@ -16381,7 +16382,7 @@ BEGIN
         IF msg <> 'the V509 check undoes its writes' THEN RAISE; END IF;
     END;
     PERFORM pg_temp.assert('V509: the School ends or replaces a supervisor and removes a panel member with the date and reason kept; never the last first supervisor alone, a future date or a panel that examined',
-        coalesce(last_first = 'PG_SUP_LAST_FIRST' AND future = 'PG_CHANGE_DATE' AND ended_b = (current_date - 3)::text || '/Check: the second supervisor left the University'
+        coalesce(last_first = 'PG_SUP_LAST_FIRST' AND future = 'PG_CHANGE_DATE' AND ended_b = (td - 3)::text || '/Check: the second supervisor left the University'
                  AND replaced IS NOT NULL AND live_first = 'Dr Check Successor' AND a_succ AND z2 IS NOT NULL AND y_off AND examined = 'PG_PANEL_EXAMINED'
                  AND wrong = 'PG_RESEARCH_SCHOOL' AND logged = 4 AND told >= 2, false),
         format('last first %s, future %s, ended b %s, live %s succ %s | panel z2 %s y off %s, examined %s | hod %s | logged %s told %s',
@@ -17668,6 +17669,32 @@ BEGIN
                  AND e_wd = 'REFUND_ACCOUNT_CHECK_DIGIT' AND wd = 'Zenith Bank:0123456788' AND claim_checked, false),
         format('reference %s future %s before %s by hand %s | paid %s | told %s | page %s | wallet %s, %s | claim trigger %s',
                e_ref, e_future, e_before, e_hand, paid, left(told, 160), page, e_wd, wd, claim_checked));
+END $$;
+-- ── V539: a PG change dated today is today in Lagos, whatever the database's clock ──
+-- V509's rule took today from the database's clock and the start of a role in Lagos time, a day apart from midnight to one
+-- o'clock in Lagos. With the session's clock far east of Lagos (UTC+14) and far west of it (UTC−12) — between them one is on
+-- another date than Lagos at every hour — and in UTC, a change dated today in Lagos is taken for a role that began just now,
+-- and tomorrow in Lagos is the future. The block undoes its settings.
+DO $$
+DECLARE td date := (now() AT TIME ZONE 'Africa/Lagos')::date; zone text; took text; ahead text; outcome text := ''; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        FOREACH zone IN ARRAY ARRAY['Pacific/Kiritimati', 'Etc/GMT+12', 'UTC'] LOOP
+            PERFORM set_config('TimeZone', zone, true);
+            BEGIN PERFORM admissions.pg_school_check(td, now(), 'Check V539: a change dated today'); took := 'TAKEN';
+            EXCEPTION WHEN check_violation THEN took := split_part(SQLERRM, ':', 1); END;
+            BEGIN PERFORM admissions.pg_school_check(td + 1, now() - interval '30 days', 'Check V539: a change dated tomorrow'); ahead := 'TAKEN';
+            EXCEPTION WHEN check_violation THEN ahead := split_part(SQLERRM, ':', 1); END;
+            outcome := outcome || zone || '=' || took || '/' || ahead || ' ';
+        END LOOP;
+        RAISE EXCEPTION 'the V539 check undoes its settings';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V539 check undoes its settings' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V539: a postgraduate supervisor or panel change dated today in Lagos is taken whatever the database''s clock, for a role begun that day, and tomorrow in Lagos is refused',
+        btrim(outcome) = 'Pacific/Kiritimati=TAKEN/PG_CHANGE_DATE Etc/GMT+12=TAKEN/PG_CHANGE_DATE UTC=TAKEN/PG_CHANGE_DATE', btrim(outcome));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
