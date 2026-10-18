@@ -209,3 +209,11 @@ Spillover is named where a level is read: the student record's header ("400 Leve
 mark), the student register and the Student Query list. SP1 and SP2 are each a session of both semesters; the limit is
 the policy's (two sessions by default), and an approved deferment pushes the expected completion on by the sessions
 deferred.
+
+## 11. Lifecycle reconciliation (V558)
+
+The positions above are now acted on in a controlled way: graduation candidates (final year, or beyond the length with
+everything completed), spillover year 1 and 2 and the maximum spillover are reviewed, verified and reconciled in batches
+(`RECON/YYYY/NNNNNN`) — a spillover stays ACTIVE with the level raised, the maximum only on the officer's choice, a
+candidate goes on the graduation list for the Senate — with a deterministic explanation, a confidence, a preview, a
+history and corrections. See [student-lifecycle-reconciliation.md](student-lifecycle-reconciliation.md).

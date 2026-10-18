@@ -6,12 +6,13 @@ import { Cohorts, type Filters } from "./Cohorts";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["overview", "current", "graduated", "spillover", "review", "all", "levels", "quality", "settings"];
+const TABS = ["overview", "current", "graduated", "spillover", "review", "lifecycle", "all", "levels", "quality", "settings"];
 /** what each list tab asks the server for */
 const CLASS_OF: Record<string, string> = { current: "ACTIVE", graduated: "GRADUATED", spillover: "SPILLOVER,SPILLOVER_LIMIT_REACHED", review: "REVIEW", all: "" };
 
 /** t/cohorts — where every student stands (V331): the figures, the current, graduated and spillover lists, the reconciliation review, the data
- *  quality report and the policy; every list filtered, paged and sorted on the server within the office's scope */
+ *  quality report and the policy; every list filtered, paged and sorted on the server within the office's scope. V558: the lifecycle
+ *  reconciliation tab reads its own figures in the browser; its filters travel in the address so every figure is a link */
 export default async function CohortsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const p = await searchParams;
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
@@ -38,7 +39,8 @@ export default async function CohortsPage({ searchParams }: { searchParams: Prom
           settings={settings && settings.ok ? settings.data : null}
           structure={structure.ok ? structure.data.faculties : []} filters={filters} page={Number(s("page") || 1)}
           canDecide={["academic", "registrar", "dregistrar", "records"].includes(office ?? "")} canSet={["registrar", "dregistrar", "academic", "super"].includes(office ?? "")}
-          generatedBy={me.ok ? me.data.name ?? null : null} />
+          generatedBy={me.ok ? me.data.name ?? null : null}
+          life={{ view: s("view"), rec: s("rec"), state: s("lstate"), conf: s("lconf"), basis: s("basis"), completion: s("completion"), batch: s("batch"), outcome: s("outcome"), corrected: s("corrected"), page: s("page") }} />
       )}
     </Shell>
   );

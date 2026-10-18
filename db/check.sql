@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 391
+\set EXPECTED 392
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -18620,6 +18620,128 @@ BEGIN
                  AND (email.state = 'OFF' OR (email.state = 'FAILING' AND email.last_error LIKE 'The server refused the sign-in. — e-mail waits until % — MailAuthenticationException%'))
                  AND resumed AND NOT (after->>'held')::boolean, false),
         format('held until %s then %s | state %s | provider %s: %s | resumed %s, after %s', u1, u2, st, email.state, email.last_error, resumed, after));
+END $$;
+-- ── V558. The student lifecycle reconciliation: the cohort engine's position read as a recommendation — spillover year 1 and 2
+--    (a planned next session moves nobody), the maximum spillover, the final year as a graduation candidate, a graduated student
+--    never — with a confidence; reviewed and verified by the Registry only (a low-confidence record never in bulk); reconciled once
+--    a session, revalidated at that moment — a spillover confirmed ACTIVE with the level raised, the maximum only on the officer's
+--    choice of DORMANT or WITHDRAWN (never GRADUATED), a graduation candidate listed for the Senate with the status kept — and
+--    corrected on a reason, the status, the level and a graduation-list entry put back, once; no matriculation number moves ──
+DO $$
+DECLARE
+    y int := 2187; v_prog text; v_dept text; v_fac text; cur text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
+    s5 uuid := gen_random_uuid(); s6 uuid := gen_random_uuid();
+    r1 record; r2 record; r3 record; r4 record; in5 boolean; m record; m2 record; v_ict text; v_note text;
+    v_ref text; rc1 uuid; rc3 uuid; rc4 uuid; v_changed text; v_twice text; v_nolimit text; v_grad text; v_never text;
+    l1 int; st1 text; st3 text; st4 text; sc3 text; dec1 text; g4 uuid; out4 text;
+    c3 text; l1b int; restored boolean; g4_gone boolean; v_again text; matrics_kept boolean; review1 text;
+BEGIN
+  BEGIN   -- the check's own sessions, programme and students, undone at the end so no later check sees them
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V558', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 6, y) x
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), format('%s/%s', y + 1, y + 2), make_date(y + 1, 10, 1), make_date(y + 2, 9, 30), 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2187/01' WHERE name = cur;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V558', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    -- no two-digit year in the numbers: the entry session is the only evidence of the cohort
+    INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ZZL/LCK/55801', 'CHECKV558', 'Spillover One', v_prog, 'UTME', format('%s/%s', y - 4, y - 3), 100, 300, 'ACTIVE', now()),
+        (s2, 'MOAUM/ZZL/LCK/55802', 'CHECKV558', 'Spillover Two', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 400, 'ACTIVE', now()),
+        (s3, 'MOAUM/ZZL/LCK/55803', 'CHECKV558', 'Maximum', v_prog, 'UTME', format('%s/%s', y - 6, y - 5), 100, 400, 'ACTIVE', now()),
+        (s4, 'MOAUM/ZZL/LCK/55804', 'CHECKV558', 'Final Year', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now()),
+        (s5, 'MOAUM/ZZL/LCK/55805', 'CHECKV558', 'Graduated', v_prog, 'UTME', format('%s/%s', y - 6, y - 5), 100, 400, 'GRADUATED', now()),
+        (s6, 'MOAUM/ZZL/LCK/55806', 'CHECKV558', 'Moved', v_prog, 'UTME', format('%s/%s', y - 4, y - 3), 100, 400, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at)
+    SELECT gen_random_uuid(), x, cur, 1, 400, 'SUBMITTED', now() FROM unnest(ARRAY[s1, s3, s4, s6]) x;
+    PERFORM people.refresh_academic_positions(ARRAY[s1, s2, s3, s4, s5, s6]);
+
+    SELECT * INTO r1 FROM people.lifecycle_recommendation WHERE student_id = s1;
+    SELECT * INTO r2 FROM people.lifecycle_recommendation WHERE student_id = s2;
+    SELECT * INTO r3 FROM people.lifecycle_recommendation WHERE student_id = s3;
+    SELECT * INTO r4 FROM people.lifecycle_recommendation WHERE student_id = s4;
+    in5 := EXISTS (SELECT 1 FROM people.lifecycle_recommendation WHERE student_id = s5);
+
+    -- ICT reads; it does not review
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM people.lifecycle_mark(ARRAY[s1], 'VERIFIED', NULL, false, NULL, NULL, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN v_ict := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM people.lifecycle_mark(ARRAY[s1], 'REJECTED', ' ', false, NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_note := split_part(SQLERRM, ':', 1); END;
+    SELECT * INTO m FROM people.lifecycle_mark(ARRAY[s1, s2, s3, s4, s6], 'VERIFIED', NULL, false, NULL, NULL, NULL);
+    SELECT * INTO m2 FROM people.lifecycle_mark(ARRAY[s2], 'VERIFIED', NULL, true, NULL, NULL, NULL);
+
+    v_ref := people.lifecycle_open_batch('CHECK V558', 'The University');
+    PERFORM people.lifecycle_prepare(ARRAY[s1, s3, s4, s6]);
+    -- one record moves after it was verified: three sessions beyond now, not one
+    UPDATE people.student SET entry_session = format('%s/%s', y - 6, y - 5) WHERE id = s6;
+    BEGIN PERFORM people.lifecycle_reconcile(v_ref, s6, 'SPILLOVER_YEAR_1', NULL, NULL, 'CHECK V558 reason', NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_changed := split_part(SQLERRM, ':', 1); END;
+    rc1 := people.lifecycle_reconcile(v_ref, s1, 'SPILLOVER_YEAR_1', NULL, NULL, 'CHECK V558 reason', NULL, NULL, NULL);
+    BEGIN PERFORM people.lifecycle_reconcile(v_ref, s1, 'SPILLOVER_YEAR_1', NULL, NULL, 'CHECK V558 again', NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_twice := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.lifecycle_reconcile(v_ref, s3, 'MAXIMUM_SPILLOVER_REACHED', NULL, NULL, 'CHECK V558 reason', NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_nolimit := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.lifecycle_reconcile(v_ref, s3, 'MAXIMUM_SPILLOVER_REACHED', 'STATUS_CHANGED', 'GRADUATED', 'CHECK V558 reason', NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_grad := split_part(SQLERRM, ':', 1); END;
+    rc3 := people.lifecycle_reconcile(v_ref, s3, 'MAXIMUM_SPILLOVER_REACHED', 'STATUS_CHANGED', 'DORMANT', 'CHECK V558 no registration since', NULL, NULL, NULL);
+    rc4 := people.lifecycle_reconcile(v_ref, s4, 'GRADUATION_CANDIDATE', NULL, NULL, 'CHECK V558 final year', NULL, NULL, NULL);
+    -- the graduation audit's entry (GraduationService places it in the API), recorded on the reconciliation
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet) VALUES (gen_random_uuid(), s4, cur, NULL, 'B.Sc. CHECK V558', 'No published result on the record')
+    RETURNING id INTO g4;
+    PERFORM people.lifecycle_graduand_placed(rc4, g4, true, 'No published result on the record');
+    BEGIN
+        INSERT INTO people.lifecycle_reconciliation (batch_ref, student_id, effective_session, recommendation, confidence, outcome, previous_status, new_status, explanation, reason, reconciled_by)
+        VALUES (v_ref, s5, cur, 'GRADUATION_CANDIDATE', 'HIGH', 'STATUS_CHANGED', 'ACTIVE', 'GRADUATED', 'x', 'x', gen_random_uuid());
+    EXCEPTION WHEN check_violation THEN v_never := 'REFUSED'; END;
+    SELECT current_level, status INTO l1, st1 FROM people.student WHERE id = s1;
+    SELECT status INTO st3 FROM people.student WHERE id = s3;
+    SELECT status INTO st4 FROM people.student WHERE id = s4;
+    SELECT from_status || '>' || to_status INTO sc3 FROM people.status_change WHERE student_id = s3 ORDER BY effective_on DESC, id DESC LIMIT 1;
+    SELECT rule || ':' || previous_level || '>' || new_level INTO dec1 FROM people.cohort_decision WHERE student_id = s1 ORDER BY decided_at DESC LIMIT 1;
+    SELECT outcome INTO out4 FROM people.lifecycle_reconciliation WHERE id = rc4;
+    SELECT review_state INTO review1 FROM people.lifecycle_recommendation WHERE student_id = s1;
+
+    -- corrected: the status, the level and the graduation-list entry put back, once
+    PERFORM people.lifecycle_correct(rc3, 'CHECK V558 reconciled in error', NULL, NULL, NULL);
+    PERFORM people.lifecycle_correct(rc1, 'CHECK V558 reconciled in error', NULL, NULL, NULL);
+    PERFORM people.lifecycle_correct(rc4, 'CHECK V558 reconciled in error', NULL, NULL, NULL);
+    SELECT status INTO c3 FROM people.student WHERE id = s3;
+    SELECT current_level INTO l1b FROM people.student WHERE id = s1;
+    SELECT level_restored INTO restored FROM people.lifecycle_reconciliation WHERE id = rc1;
+    g4_gone := NOT EXISTS (SELECT 1 FROM records.graduand WHERE id = g4);
+    BEGIN PERFORM people.lifecycle_correct(rc1, 'CHECK V558 again', NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN v_again := split_part(SQLERRM, ':', 1); END;
+    matrics_kept := (SELECT count(*) FROM people.student WHERE id IN (s1, s2, s3, s4, s5, s6) AND matric_no LIKE 'MOAUM/ZZL/LCK/5580_') = 6;
+    RAISE EXCEPTION 'CHECK_V558_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V558_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V558: the cohort engine''s position read as a recommendation with a confidence, reviewed by the Registry only (a low-confidence record never verified in bulk), reconciled once a session after revalidation — spillover confirmed ACTIVE with the level raised, the maximum only on the officer''s choice and never GRADUATED, a graduation candidate listed with the status kept — and corrected once, the status, level and list entry put back; no matriculation number moves',
+        coalesce(r1.recommendation = 'SPILLOVER_YEAR_1' AND r1.spillover_years = 1 AND r1.confidence = 'HIGH'
+            AND r2.recommendation = 'SPILLOVER_YEAR_2' AND r2.confidence = 'LOW'
+            AND r3.recommendation = 'MAXIMUM_SPILLOVER_REACHED' AND r4.recommendation = 'GRADUATION_CANDIDATE' AND r4.candidate_basis = 'FINAL_YEAR' AND NOT in5
+            AND v_ict = 'LIFECYCLE_OFFICE' AND v_note = 'LIFECYCLE_REVIEW_NOTE' AND m.marked = 4 AND m.low = 1 AND m2.marked = 1
+            AND v_ref ~ '^RECON/[0-9]{4}/[0-9]{6}$' AND v_changed = 'LIFECYCLE_CHANGED' AND v_twice = 'LIFECYCLE_ALREADY'
+            AND v_nolimit = 'LIFECYCLE_LIMIT_OUTCOME' AND v_grad = 'LIFECYCLE_LIMIT_OUTCOME' AND v_never = 'REFUSED'
+            AND l1 = 400 AND st1 = 'ACTIVE' AND st3 = 'DORMANT' AND sc3 = 'ACTIVE>DORMANT' AND st4 = 'ACTIVE' AND out4 = 'GRADUATION_LIST'
+            AND dec1 = 'LIFECYCLE_SPILLOVER_YEAR_1:300>400' AND review1 = 'RECONCILED'
+            AND c3 = 'ACTIVE' AND l1b = 300 AND restored AND g4_gone AND v_again = 'LIFECYCLE_CORRECTED' AND matrics_kept, false),
+        format('recs %s/%s(%s) %s %s %s/%s %s/%s graduated listed %s | ict %s note %s | marked %s low %s single %s | batch %s | changed %s twice %s no limit %s graduated %s never %s | s1 %s %s s3 %s %s s4 %s %s | decision %s review %s | corrected %s %s restored %s list gone %s again %s | matrics %s',
+               r1.recommendation, r1.spillover_years, r1.confidence, r2.recommendation, r2.confidence, r3.recommendation, r3.confidence, r4.recommendation, r4.candidate_basis, in5,
+               v_ict, v_note, m.marked, m.low, m2.marked, v_ref, v_changed, v_twice, v_nolimit, v_grad, v_never, l1, st1, st3, sc3, st4, out4, dec1, review1,
+               c3, l1b, restored, g4_gone, v_again, matrics_kept));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

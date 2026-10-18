@@ -16,16 +16,18 @@ import { StudentOpen } from "@/components/StudentModal";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { STUDENT_LEVELS } from "@/lib/levels";
 import { LevelCorrections } from "./LevelCorrections";
+import { Lifecycle, type LifeParams } from "./Lifecycle";
 import { CLASS, CONF, ISSUE, RULE, SPILL, STATUSES, classWord, fullName, issuesOf, statusWord, type CohortList, type CohortRow, type CohortSettings, type CohortStudent, type CohortSummary } from "@/lib/cohorts";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; cohort: string; entry: string; jamb: string; level: string; duration: string; status: string; grad: string; spill: string; conf: string; issue: string; sex: string; entryMode: string; sort: string; dir: string; size: string }
-type Tab = "overview" | "current" | "graduated" | "spillover" | "review" | "all" | "levels" | "quality" | "settings";
-const TAB_TITLE: Record<Tab, string> = { overview: "Overview", current: "Current students", graduated: "Graduated students", spillover: "Spillover students", review: "Reconciliation review", all: "Every student", levels: "Level corrections", quality: "Data quality", settings: "Policy and sessions" };
+type Tab = "overview" | "current" | "graduated" | "spillover" | "review" | "lifecycle" | "all" | "levels" | "quality" | "settings";
+const TAB_TITLE: Record<Tab, string> = { overview: "Overview", current: "Current students", graduated: "Graduated students", spillover: "Spillover students", review: "Reconciliation review", lifecycle: "Lifecycle reconciliation", all: "Every student", levels: "Level corrections", quality: "Data quality", settings: "Policy and sessions" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
-export function Cohorts({ tab, summary, list, listProblem, settings, structure, filters, page, canDecide, canSet, generatedBy }: {
+export function Cohorts({ tab, summary, list, listProblem, settings, structure, filters, page, canDecide, canSet, generatedBy, life }: {
   tab: string; summary: CohortSummary; list: CohortList | null; listProblem: { title?: string; detail?: string } | null; settings: CohortSettings | null;
   structure: { code: string; name: string; departments: { code: string; name: string }[] }[]; filters: Filters; page: number; canDecide: boolean; canSet: boolean; generatedBy: string | null;
+  life: LifeParams;
 }) {
   const go = useQueryNav();
   const router = useRouter();
@@ -80,7 +82,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
         </>} />
       <Tabs label="View" items={[
         { id: "overview", label: "Overview" }, { id: "current", label: "Current", count: n(t.current) }, { id: "graduated", label: "Graduated", count: n(t.graduated) },
-        { id: "spillover", label: "Spillover", count: n(t.spillover) + n(t.spillover_limit) }, { id: "review", label: "Review", count: n(t.review) }, { id: "all", label: "All" },
+        { id: "spillover", label: "Spillover", count: n(t.spillover) + n(t.spillover_limit) }, { id: "review", label: "Review", count: n(t.review) }, { id: "lifecycle", label: "Reconciliation" }, { id: "all", label: "All" },
         { id: "levels", label: "Level corrections" },
         { id: "quality", label: "Data quality", count: summary.byIssue.reduce((a, b) => a + n(b.n), 0) }, { id: "settings", label: "Policy & sessions" },
       ]} value={tab as Tab} onChange={(v) => nav({ tab: v })} />
@@ -128,7 +130,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
             ["Spillover limit reached", String(n(t.spillover_limit)), n(t.spillover_limit) ? "var(--red-ink)" : null, "For the Registry's review", "/cohorts?tab=spillover&spill=SPILLOVER_LIMIT_REACHED"],
           ]} />
           <Tiles items={[
-            ["Expected to complete", String(n(t.expected_to_complete)), null, "Current students in their final session"],
+            ["Expected to complete", String(n(t.expected_to_complete)), null, "Current students in their final session", "/cohorts?tab=lifecycle&view=students&rec=GRADUATION_CANDIDATE&basis=FINAL_YEAR"],
             ["Graduation eligible", String(n(t.eligible)), null, "Audited with nothing unmet, awaiting Senate", "/cohorts?tab=all&conf=&status=&spill=&jamb=&q=&issue=&classification=GRADUATION_ELIGIBLE"],
             ["Requires review", String(n(t.review)), n(t.review) ? "var(--red-ink)" : null, `${n(t.requires_review)} too thin to judge · ${n(t.proposals_validated)} validated proposals`, "/cohorts?tab=review"],
             ["Historical", String(n(t.historical)), null, `${n(t.deferred)} deferred · ${n(t.withdrawn)} withdrawn · ${n(t.discontinued)} discontinued · graduated`],
@@ -215,6 +217,9 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
       ) : null}
 
       {tab === "levels" ? <LevelCorrections fac={filters.fac} dept={filters.dept} canApply={canSet} /> : null}
+
+      {tab === "lifecycle" ? <Lifecycle params={life} scope={{ fac: filters.fac, dept: filters.dept, prog: filters.prog, cohort: filters.cohort, q: filters.q }}
+        structure={structure} canAct={canDecide} generatedBy={generatedBy} /> : null}
 
       {tab === "quality" ? (
         <Panel title="Data quality" right="What the reconciliation found on the migrated register">

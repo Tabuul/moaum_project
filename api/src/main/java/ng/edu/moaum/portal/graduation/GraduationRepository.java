@@ -63,6 +63,23 @@ class GraduationRepository {
                 """).param("s", student).query(Standing.class).single();
     }
 
+    /** V558: a student's programme by name (the award a graduand is listed for) and whether it is postgraduate */
+    record Programme(String name, boolean postgraduate) {
+    }
+
+    Programme programmeOf(UUID student) {
+        return jdbc.sql("""
+                SELECT p.name, coalesce(p.category = 'POST GRADUATE', false) AS postgraduate
+                  FROM people.student s JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :s
+                """).param("s", student).query(Programme.class).single();
+    }
+
+    /** V558: the student's entry on a session's graduation list, if any */
+    UUID graduandId(UUID student, String session) {
+        return jdbc.sql("SELECT id FROM records.graduand WHERE student_id = :s AND session = :sess").param("s", student).param("sess", session)
+                .query(UUID.class).optional().orElse(null);
+    }
+
     void upsert(UUID student, String session, BigDecimal cgpa, String award, String unmet) {
         jdbc.sql("""
                 INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet)

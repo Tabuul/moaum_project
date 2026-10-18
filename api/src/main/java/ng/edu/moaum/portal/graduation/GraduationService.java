@@ -45,21 +45,7 @@ public class GraduationService {
         int passed = 0;
         for (GraduationRepository.Finalist f : repo.finalists(session)) {
             GraduationRepository.Standing st = repo.standing(f.studentId());
-            String unmet = null;
-            if (st.ungraded() != null) {
-                unmet = st.ungraded() + " not graded";
-            } else if (f.postgraduate()) {
-                // V493: a postgraduate graduand is judged by the courses the programme requires of them (theirs and their
-                // specialisation's), not by the undergraduate CGPA threshold
-                List<String> outstanding = repo.pgOutstanding(f.studentId());
-                if (!outstanding.isEmpty()) {
-                    unmet = "Required coursework not passed: " + String.join(", ", outstanding);
-                }
-            } else if (st.cgpa() == null) {
-                unmet = "No published result on the record";
-            } else if (st.cgpa().compareTo(new BigDecimal("1.00")) < 0) {
-                unmet = "CGPA " + st.cgpa() + " — below pass threshold";
-            }
+            String unmet = unmet(f.studentId(), f.postgraduate(), st);
             repo.upsert(f.studentId(), session, st.cgpa(), f.programmeName(), unmet);
             audited++;
             if (unmet == null) {
@@ -67,6 +53,44 @@ public class GraduationService {
             }
         }
         return Map.of("session", session, "audited", audited, "passed", passed, "outstanding", audited - passed);
+    }
+
+    /** the requirement a graduand has not met, or null: every course graded, then the postgraduate coursework or the CGPA threshold */
+    private String unmet(UUID student, boolean postgraduate, GraduationRepository.Standing st) {
+        if (st.ungraded() != null) {
+            return st.ungraded() + " not graded";
+        }
+        if (postgraduate) {
+            // V493: a postgraduate graduand is judged by the courses the programme requires of them (theirs and their
+            // specialisation's), not by the undergraduate CGPA threshold
+            List<String> outstanding = repo.pgOutstanding(student);
+            return outstanding.isEmpty() ? null : "Required coursework not passed: " + String.join(", ", outstanding);
+        }
+        if (st.cgpa() == null) {
+            return "No published result on the record";
+        }
+        if (st.cgpa().compareTo(new BigDecimal("1.00")) < 0) {
+            return "CGPA " + st.cgpa() + " — below pass threshold";
+        }
+        return null;
+    }
+
+    /** V558: a graduand put on a session's list — the entry and whether it is new, with what the audit found unmet */
+    public record Placed(UUID graduandId, boolean added, String unmet) {
+    }
+
+    /**
+     * V558: one student put on a session's graduation list by the lifecycle reconciliation, audited exactly as {@link #audit} audits a
+     * finalist (the same standing, the same unmet requirement); an entry already on the list is audited again, never duplicated. The
+     * Senate still approves the award. Runs in the caller's transaction, so a refusal there undoes the student's reconciliation whole.
+     */
+    public Placed placeOnList(UUID student, String session) {
+        GraduationRepository.Programme p = repo.programmeOf(student);
+        boolean existed = repo.graduandId(student, session) != null;
+        GraduationRepository.Standing st = repo.standing(student);
+        String unmet = unmet(student, p.postgraduate(), st);
+        repo.upsert(student, session, st.cgpa(), p.name(), unmet);
+        return new Placed(repo.graduandId(student, session), !existed, unmet);
     }
 
     @Transactional(readOnly = true)
