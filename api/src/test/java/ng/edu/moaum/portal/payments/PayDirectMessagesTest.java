@@ -74,4 +74,14 @@ class PayDirectMessagesTest {
         assertThat(bare.enveloped()).isFalse();
         assertThat(PayDirectMessages.wrap(bare, "<x/>")).isEqualTo("<x/>");
     }
+
+    /** Oct 2026: the surname Quickteller is told carries the payer's number, so Interswitch's collections report names the student */
+    @Test
+    void theSurnameCarriesThePayersNumber() {
+        assertThat(PaymentsService.surnameWithNumber("MNGOHOL", "MOAU/SC/MCB/24/75807")).isEqualTo("MNGOHOL (MOAU/SC/MCB/24/75807)");
+        assertThat(PaymentsService.surnameWithNumber(" Mngohol ", null)).isEqualTo("Mngohol");
+        assertThat(PaymentsService.surnameWithNumber("Mngohol", "  ")).isEqualTo("Mngohol");
+        assertThat(PaymentsService.surnameWithNumber(null, "MOAUM/ADM/25/1234")).isEqualTo("MOAUM/ADM/25/1234");
+        assertThat(PaymentsService.surnameWithNumber("MNGOHOL (MOAU/SC/MCB/24/75807)", "moau/sc/mcb/24/75807")).isEqualTo("MNGOHOL (MOAU/SC/MCB/24/75807)");
+    }
 }
