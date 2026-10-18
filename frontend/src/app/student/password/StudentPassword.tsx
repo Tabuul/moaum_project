@@ -1,12 +1,14 @@
 "use client";
 
 /** The forced password change (V485): the reason the change is required, then the current password, the new one and the new one
- *  again. The portal opens normally once it is changed; nothing here names the password the student signed in with. */
+ *  again — each with an eye to show what is typed. The portal opens normally once it is changed; nothing here names the password
+ *  the student signed in with. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { PasswordInput } from "@/components/PasswordInput";
 import { signOut } from "@/lib/sign-out";
 import type { Problem } from "@/lib/api";
 
@@ -52,13 +54,13 @@ export function StudentPassword({ status }: { status: PasswordStatus }) {
           <form className="stack" onSubmit={(e) => { e.preventDefault(); }}>
             <div className="grid grid--3">
               <Field id="sp-cur" label="Current password" hint="The password you signed in with">
-                <input id="sp-cur" className="ctl" type="password" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} />
+                <PasswordInput id="sp-cur" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} />
               </Field>
               <Field id="sp-new" label="New password" hint={`At least ${MIN} characters, and not containing your matriculation, admission or JAMB number`}>
-                <input id="sp-new" className="ctl" type="password" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} />
+                <PasswordInput id="sp-new" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} />
               </Field>
               <Field id="sp-again" label="Confirm new password" error={mismatch ? "The two do not match." : undefined}>
-                <input id="sp-again" className="ctl" type="password" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} />
+                <PasswordInput id="sp-again" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} />
               </Field>
             </div>
             <div className="row row--inline" style={{ gap: 8 }}>
