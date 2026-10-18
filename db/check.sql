@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 381
+\set EXPECTED 386
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -17996,6 +17996,230 @@ BEGIN
                  AND got = 'Cross River,Cameroun|Akwa Ibom|none' AND listed = 0
                  AND (ug IS NULL OR sugg LIKE 'Postgraduate programmes of the department: %'), false),
         format('named %s | stored %s | listed as spelt otherwise %s | suggestion %s (programme %s)', named, got, listed, sugg, ug));
+END $$;
+
+-- ── V546: the live database's slowest statements, answered whether or not they are kept ──
+-- platform.slow_statements answers on any database: where pg_stat_statements is loaded, the statements of this database ordered as
+-- asked (each with calls, mean, worst and total time, at least the calls asked for); where it is not installed or not loaded (CI's
+-- PostgreSQL), available false with the reason — never an error; the screens of the heavier functions are named; a function name not
+-- written as schema.name is refused.
+DO $$
+DECLARE r jsonb; t jsonb; ok_rows boolean := true; refused boolean := false; named int;
+BEGIN
+    r := platform.slow_statements('MEAN', 1, 20);
+    t := platform.slow_statements('nonsense', 0, 0);
+    IF (r->>'available')::boolean THEN
+        ok_rows := r->>'order' = 'MEAN' AND t->>'order' = 'MEAN' AND jsonb_array_length(t->'rows') <= 1
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'rows') x WHERE (x->>'calls')::bigint < 1 OR x->>'query' IS NULL)
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'rows') WITH ORDINALITY x(v, i)
+                                 JOIN jsonb_array_elements(r->'rows') WITH ORDINALITY y(v, i) ON y.i = x.i + 1
+                                WHERE (y.v->>'mean_ms')::numeric > (x.v->>'mean_ms')::numeric);
+    ELSE
+        ok_rows := r->>'reason' IS NOT NULL AND r->'rows' = '[]'::jsonb AND NOT (t->>'available')::boolean;
+    END IF;
+    named := (SELECT count(*) FROM platform.statement_screen WHERE function_name IN ('finance.session_positions', 'admissions.pipeline_stats', 'people.record_issues'));
+    BEGIN
+        INSERT INTO platform.statement_screen (function_name, screens) VALUES ('Not A Function; drop', 'nowhere');
+    EXCEPTION WHEN check_violation THEN refused := true;
+    END;
+    PERFORM pg_temp.assert('V546: the slowest statements are read where they are kept and said to be unavailable where they are not, the heavier functions name their screens, and a bad name is refused',
+        coalesce(ok_rows AND named = 3 AND refused, false),
+        format('available %s (%s) | rows in order %s | screens named %s | bad name refused %s', r->>'available', coalesce(r->>'reason', r->>'order'), ok_rows, named, refused));
+END $$;
+
+-- ── V547: clearing the schedule shows what it would end and keeps nothing ──
+-- For an invented session with a faculty-wide line, a programme line and a CCE line, finance.fee_upload_effect(…, 'CLEAR', scope)
+-- ends every line (ALL), the full-time ones alone (FULL_TIME) or the CCE one alone (CCE), names the faculty and the programme left
+-- with no fee, and leaves every line in force afterwards; an action it does not know is refused. The block undoes its writes.
+DO $$
+DECLARE msg text; fac text; prog text; e_all jsonb; e_ft jsonb; e_cce jsonb; still int; refused boolean := false;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT pr.code, pr.faculty_code INTO prog, fac FROM ref.programme pr WHERE NOT pr.archived AND pr.faculty_code IS NOT NULL ORDER BY pr.code LIMIT 1;
+    BEGIN
+        INSERT INTO finance.fee_schedule (session, item, amount, faculty_code, entry_mode) VALUES ('2947/2948', 'Tuition (V547 check)', 50000, fac, 'UTME');
+        INSERT INTO finance.fee_schedule (session, item, amount, programme_code) VALUES ('2947/2948', 'Laboratory (V547 check)', 7000, prog);
+        INSERT INTO finance.fee_schedule (session, item, amount, faculty_code, entry_mode) VALUES ('2947/2948', 'Tuition (V547 check, CCE)', 90000, fac, 'CCE');
+        e_all := finance.fee_upload_effect('2947/2948', '[]'::jsonb, 'CLEAR', 'ALL');
+        e_ft := finance.fee_upload_effect('2947/2948', '[]'::jsonb, 'CLEAR', 'FULL_TIME');
+        e_cce := finance.fee_upload_effect('2947/2948', '[]'::jsonb, 'clear', 'CCE');
+        still := (SELECT count(*) FROM finance.fee_schedule WHERE session = '2947/2948' AND ended_at IS NULL);
+        BEGIN
+            PERFORM finance.fee_upload_effect('2947/2948', '[]'::jsonb, 'EMPTY', NULL);
+        EXCEPTION WHEN check_violation THEN refused := true;
+        END;
+        RAISE EXCEPTION 'the V547 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V547 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V547: clearing the schedule is shown first — the lines of each kind it would end and what is left with no fee — and nothing is kept',
+        coalesce((e_all->'result'->>'ended')::int = 3 AND (e_all->>'linesAfter')::int = 0 AND e_all->>'scope' = 'ALL'
+                 AND (e_ft->'result'->>'ended')::int = 2 AND (e_ft->>'linesAfter')::int = 1
+                 AND (e_cce->'result'->>'ended')::int = 1 AND (e_cce->>'linesAfter')::int = 2 AND e_cce->>'scope' = 'CCE'
+                 AND (SELECT count(*) FROM jsonb_array_elements(e_all->'groups') g WHERE (g->>'losesAll')::boolean) = 2
+                 AND (SELECT count(*) FROM jsonb_array_elements(e_cce->'groups') g WHERE (g->>'losesAll')::boolean) = 0
+                 AND still = 3 AND refused
+                 AND NOT EXISTS (SELECT 1 FROM finance.fee_schedule WHERE session = '2947/2948'), false),
+        format('ended all %s / full-time %s / CCE %s | left with no fee (all) %s | in force after the previews %s | unknown action refused %s',
+               e_all->'result'->>'ended', e_ft->'result'->>'ended', e_cce->'result'->>'ended',
+               (SELECT string_agg(coalesce(g->>'programme', g->>'faculty'), ', ') FROM jsonb_array_elements(e_all->'groups') g WHERE (g->>'losesAll')::boolean), still, refused));
+END $$;
+
+-- ── V548: the records check acted on ──
+-- A state of origin a student gives on the Biodata form reaches an empty record (Kogi), the home state waits for the Registry
+-- (and the records check says so) until the Registry gives it; the students with no state are told at most once a week each, and
+-- only that issue is told; a postgraduate record on an undergraduate programme is moved with a reason to a postgraduate
+-- programme at 800 Level, and an undergraduate record is not moved here. The block undoes its writes.
+DO $$
+DECLARE msg text; fac text; pgp text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        st_a text; st_b text; st_b2 text; sugg text; t1 jsonb; t2 jsonb; told_c int; refused_issue boolean := false;
+        moved jsonb; after_move text; refused_reason boolean := false; refused_ug boolean := false; listed_d int;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    SELECT faculty_code INTO fac FROM ref.programme WHERE code = 'C00023';
+    SELECT code INTO pgp FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    BEGIN
+        INSERT INTO people.student (id, matric_no, surname, other_names, state_of_origin, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/V548/31/0001', 'ZZCHKV548', 'Kogi', NULL, 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/V548/31/0002', 'ZZCHKV548', 'Home', NULL, 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/V548/31/0003', 'ZZCHKV548', 'Silent', NULL, 'C00023', 'UTME', '2025/2026', 100, 100, 'ACTIVE', now()),
+            (d, 'MOAUM/V548/31/0004', 'ZZCHKV548', 'Postgraduate', 'Benue', 'C00023', 'POSTGRADUATE', '2025/2026', 700, 700, 'ACTIVE', now());
+        -- the students' own answers
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM set_config('moaum.actor_id', a::text, true);
+        INSERT INTO people.biodata (student_id, field, value) VALUES (a, 'state_of_origin', 'kogi');
+        PERFORM set_config('moaum.actor_id', b::text, true);
+        INSERT INTO people.biodata (student_id, field, value) VALUES (b, 'state_of_origin', 'Benue');
+        st_a := (SELECT state_of_origin FROM people.student WHERE id = a);
+        st_b := coalesce((SELECT state_of_origin FROM people.student WHERE id = b), 'none');
+        sugg := (SELECT x.suggestion FROM people.record_issues('NO_STATE_OF_ORIGIN', fac) x WHERE x.student_id = b);
+        -- the students told, once a week
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        t1 := people.tell_record_issue('NO_STATE_OF_ORIGIN', fac);
+        t2 := people.tell_record_issue('no_state_of_origin', fac);
+        told_c := (SELECT count(*) FROM people.record_issue_notice WHERE student_id = c);
+        BEGIN
+            PERFORM people.tell_record_issue('UG_POSTGRADUATE_ENTRY', fac);
+        EXCEPTION WHEN check_violation THEN refused_issue := true;
+        END;
+        -- the Registry confirms the home state
+        UPDATE people.biodata SET value = 'Benue' WHERE student_id = b AND field = 'state_of_origin';
+        st_b2 := (SELECT state_of_origin FROM people.student WHERE id = b);
+        -- a postgraduate record moved
+        BEGIN
+            PERFORM people.move_record_to_programme(d, coalesce(pgp, 'NONE'), 800, 'short');
+        EXCEPTION WHEN check_violation THEN refused_reason := true;
+        END;
+        BEGIN
+            PERFORM people.move_record_to_programme(c, coalesce(pgp, 'NONE'), 800, 'not a postgraduate record at all');
+        EXCEPTION WHEN check_violation THEN refused_ug := true;
+        END;
+        IF pgp IS NOT NULL THEN
+            moved := people.move_record_to_programme(d, pgp, 800, 'The School of Postgraduate Studies'' admission list');
+            after_move := (SELECT programme_code || '/' || current_level || '/' || entry_mode FROM people.student WHERE id = d);
+            listed_d := (SELECT count(*) FROM people.record_issues() x WHERE x.student_id = d);
+        END IF;
+        RAISE EXCEPTION 'the V548 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V548 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V548: a state given on the Biodata form reaches the record (the home state by the Registry), the students with none are told once a week, and a postgraduate record is moved to its programme with a reason',
+        coalesce(st_a = 'Kogi' AND st_b = 'none' AND sugg LIKE 'The student gave Benue on the Biodata form%' AND st_b2 = 'Benue'
+                 AND (t1->>'told')::int + (t1->>'unreached')::int >= 1 AND (t1->>'waitingForRegistry')::int >= 1
+                 AND (t2->>'told')::int = 0 AND (t2->>'toldThisWeekAlready')::int = (t1->>'told')::int + (t1->>'unreached')::int
+                 AND told_c = 1 AND refused_issue AND refused_reason AND refused_ug
+                 AND (pgp IS NULL OR (after_move = pgp || '/800/POSTGRADUATE' AND listed_d = 0 AND moved->>'from' = 'C00023')), false),
+        format('Kogi → %s | Benue by the student → %s (%s), by the Registry → %s | told %s then %s, the silent one %s time(s) | other issue refused %s | move: short reason refused %s, undergraduate refused %s, moved %s (%s, listed after %s)',
+               st_a, st_b, sugg, st_b2, t1, t2, told_c, refused_issue, refused_reason, refused_ug, moved, after_move, listed_d));
+END $$;
+
+-- ── V549: each student's CGPA kept, made stale by what changes it ──
+-- Worked out for every student, the kept CGPA is assessment.scope_cgpa's for each; an amended score makes its student's kept CGPA
+-- stale while the reader already gives the new figure; a statement on the grading makes every kept CGPA stale; a student
+-- removed with a registration takes the kept row along. The block undoes its writes.
+DO $$
+DECLARE msg text; r jsonb; loops int := 0; left_after int; differ int; p record; was numeric; fresh_after boolean; read_now numeric;
+        computed numeric; held int; stale_all int; gone boolean := false; x uuid := gen_random_uuid(); xr uuid := gen_random_uuid(); xo uuid; xs text;
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'exams', true);
+    BEGIN
+        LOOP
+            r := assessment.refresh_kept_cgpa(2000);
+            loops := loops + 1;
+            EXIT WHEN (r->>'left')::int = 0 OR loops > 200;
+        END LOOP;
+        left_after := (r->>'left')::int;
+        SELECT count(*) INTO differ
+          FROM people.student s
+          LEFT JOIN assessment.cgpa_kept k ON k.student_id = s.id
+          LEFT JOIN assessment.scope_cgpa(ARRAY(SELECT id FROM people.student)) g ON g.student_id = s.id
+         WHERE k.student_id IS NULL OR k.kept_gen IS DISTINCT FROM k.stale_gen OR k.cgpa IS DISTINCT FROM g.cgpa;
+        -- an amended score
+        SELECT s.sheet_id, s.student_id INTO p FROM assessment.score s
+          JOIN assessment.score_sheet sh ON sh.id = s.sheet_id AND sh.stage = 'PUBLISHED'
+          JOIN registration.course_registration cr ON cr.student_id = s.student_id AND cr.status IN ('APPROVED', 'LOCKED')
+          JOIN registration.entry e ON e.registration_id = cr.id AND e.offering_id = sh.offering_id AND e.status IN ('REGISTERED', 'APPROVED')
+         WHERE s.outcome = 'GRADED' ORDER BY s.student_id LIMIT 1;
+        IF p.student_id IS NOT NULL THEN
+            was := (SELECT k.cgpa FROM assessment.cgpa_kept k WHERE k.student_id = p.student_id);
+            INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, reason)
+            SELECT p.sheet_id, p.student_id, max(v.version) + 1, 5, 5, 'GRADED', 'the V549 check'
+              FROM assessment.score v WHERE v.sheet_id = p.sheet_id AND v.student_id = p.student_id;
+            fresh_after := (SELECT k.kept_gen = k.stale_gen FROM assessment.cgpa_kept k WHERE k.student_id = p.student_id);
+            read_now := (SELECT g.cgpa FROM assessment.kept_cgpa(ARRAY[p.student_id]) g);
+            computed := (SELECT g.cgpa FROM assessment.scope_cgpa(ARRAY[p.student_id]) g);
+        END IF;
+        -- the grading
+        UPDATE policy.grade_band SET points = points WHERE false;
+        held := (SELECT count(*) FROM assessment.cgpa_kept);
+        stale_all := (SELECT count(*) FROM assessment.cgpa_kept WHERE kept_gen IS DISTINCT FROM stale_gen);
+        -- a student removed with a registration
+        SELECT o.id, o.session INTO xo, xs FROM catalogue.offering o JOIN policy.academic_session a ON a.name = o.session ORDER BY o.id LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level)
+        VALUES (x, 'MOAUM/ADM/49/549001', 'ZZCHKV549', 'Removed', 'C00023', 'UTME', coalesce(xs, '2025/2026'), 100, 100);
+        IF xo IS NOT NULL THEN
+            INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (xr, x, xs, 1, 100, 'DRAFT');
+            INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (xr, xo, 3, 'REGISTERED');
+        END IF;
+        DELETE FROM registration.entry WHERE registration_id = xr;
+        DELETE FROM registration.course_registration WHERE id = xr;
+        DELETE FROM people.student WHERE id = x;
+        gone := NOT EXISTS (SELECT 1 FROM assessment.cgpa_kept WHERE student_id = x);
+        RAISE EXCEPTION 'the V549 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V549 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V549: the kept CGPA is scope_cgpa''s for every student, an amended score makes it stale while the reader gives the new figure, and the grading makes every one stale',
+        coalesce(left_after = 0 AND differ = 0
+                 AND (p.student_id IS NULL OR (NOT fresh_after AND read_now IS NOT DISTINCT FROM computed))
+                 AND held > 0 AND stale_all = held AND gone, false),
+        format('batches %s, left %s | differing from scope_cgpa %s | amended: %s → kept %s (current %s), read now %s, worked out %s | stale after the grading %s of %s | removed student''s row gone %s',
+               loops, left_after, differ, p.student_id, was, fresh_after, read_now, computed, stale_all, held, gone));
+END $$;
+
+-- ── V550: the biodata counts are the statuses' own ──
+-- people.biodata_status_counts, restated to hand people.biodata_statuses the students as one value, counts what the statuses of
+-- the same students say: every student the biodata applies to, by status, and the migrated ones.
+DO $$
+DECLARE c record; d record;
+BEGIN
+    SELECT * INTO c FROM people.biodata_status_counts();
+    SELECT count(*)::int AS total, count(*) FILTER (WHERE x.status = 'UP_TO_DATE')::int AS up_to_date, count(*) FILTER (WHERE x.status = 'INCOMPLETE')::int AS incomplete,
+           count(*) FILTER (WHERE x.status = 'REVIEW_REQUIRED')::int AS review_required, count(*) FILTER (WHERE x.status = 'OUTDATED')::int AS outdated,
+           count(*) FILTER (WHERE x.migrated)::int AS migrated
+      INTO d FROM people.biodata_statuses(ARRAY(SELECT s.id FROM people.student s WHERE people.biodata_applicable(s.status))) x;
+    PERFORM pg_temp.assert('V550: the biodata counts are what the statuses of the same students say',
+        coalesce(c.total = (SELECT count(*) FROM people.student s WHERE people.biodata_applicable(s.status)) AND c.total = d.total
+                 AND c.up_to_date = d.up_to_date AND c.incomplete = d.incomplete AND c.review_required = d.review_required
+                 AND c.outdated = d.outdated AND c.migrated = d.migrated, false),
+        format('counted %s / %s up to date / %s incomplete / %s to review / %s outdated / %s migrated; the statuses: %s', c.total, c.up_to_date, c.incomplete, c.review_required, c.outdated, c.migrated, d));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

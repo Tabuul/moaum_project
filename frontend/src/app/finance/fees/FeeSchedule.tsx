@@ -26,6 +26,7 @@ import { FeeCopy } from "./FeeCopy";
 import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
 import { FeeUploadPreview, type UploadRead } from "./FeeUploadPreview";
+import { FeeClearPreview } from "./FeeClearPreview";
 import type { GstFeePage } from "@/lib/gst";
 
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
@@ -512,10 +513,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         </Modal>
       ) : null}
       {clearing ? (
-        <Modal title={`Clear the ${session} ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}schedule`} sub={`${(filterRoute ? schedule.items.filter((i) => (filterRoute === "CCE") === (i.entry_mode === "CCE")) : schedule.items).length} line(s) will be removed`} onClose={() => setClearing(false)}
-          foot={<><Btn kind="ghost" onClick={() => setClearing(false)}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={busy !== null} onClick={async () => { const ok = await send("clear", "POST", `/sessions/${session}/schedule/clear${filterRoute ? `?kind=${filterRoute}` : ""}`, {}, `Fee schedule cleared for ${session}${filterRoute === "CCE" ? " (CCE lines)" : filterRoute === "FULL_TIME" ? " (full-time lines)" : ""}`); if (ok) setClearing(false); }}>{busy === "clear" ? "Clearing…" : "Clear the schedule"}</Btn></>}>
-          <Note kind="bad" title={`Every ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}fee line for ${session} will be ended`}>No student on {session} will owe anything until a new structure is stated. Payments already made are untouched.</Note>
-        </Modal>
+        <FeeClearPreview session={session} kind={filterRoute} busy={busy === "clear"} onClose={() => setClearing(false)}
+          onClear={async () => { const ok = await send("clear", "POST", `/sessions/${session}/schedule/clear${filterRoute ? `?kind=${filterRoute}` : ""}`, {}, `Fee schedule cleared for ${session}${filterRoute === "CCE" ? " (CCE lines)" : filterRoute === "FULL_TIME" ? " (full-time lines)" : ""}`); if (ok) setClearing(false); }} />
       ) : null}
       <GstFeePanel session={session} data={gstFee} faculties={faculties} programmes={programmes} may={actingOffice === "bursar" || actingOffice === "super"} />
       <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : applicantFees?.carriedFrom ? `Carried forward from ${applicantFees.carriedFrom} — not yet stated for ${session}` : `Built-in figures (nothing stated yet)`}>

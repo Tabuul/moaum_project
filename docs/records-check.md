@@ -43,3 +43,39 @@ an undergraduate programme, the department's postgraduate programmes (on the cop
 M.Sc. Accounting and Finance and M.Sc./Ph.D. Accounting and Finance; MBBS's department has none on the register); for a state
 spelt another way, the register's name. The postgraduate records themselves are for the Registry and the School of Postgraduate
 Studies to move: the check lists them with the suggestion.
+
+## Acted on from the check (V548)
+
+**The state of origin given on the Biodata form reaches the record.** The check said a student gives the state "on the biodata
+form", but the form wrote only the biodata answer (`people.biodata`), while the fees and the check read the record
+(`people.student.state_of_origin`, with the admission's state behind it): nothing a student or the Registry chose on the form
+reached it (307 students' forms on the copy name a state the record does not hold). Now a state chosen on the form reaches the
+record:
+
+- chosen by an office (the Registry on the student's page, Biodata): always;
+- chosen by the student: only where neither the record nor the admission holds a state, and never the home state (Benue) — an
+  indigene pays less, which the Registry grants from the certificate of indigeneship by choosing the state on the student's
+  Biodata. Until then the check shows, as the suggestion, "The student gave Benue on the Biodata form on …: confirm it from the
+  certificate of indigeneship";
+- a value that is not a state of the register changes nothing (the suggestion names it).
+
+The students whose form already named a state other than the home state, while the record and the admission held none, were given
+it by the migration.
+
+**The students with no state of origin are told.** With "No state of origin" shown, the Registry (Records, the Registrar and Deputy,
+ICT) presses **Tell the students**: each student listed (of the faculty chosen, or all) is sent the notice *Give your state of
+origin* (template `RECORD_STATE_OF_ORIGIN`, by e-mail, SMS and the portal) — at most once a week each, and not a student who has
+given the home state and waits for the Registry. The panel shows how many were told (and when last), have given it since, still
+have not, were never told, wait for the Registry, and the notices by channel and state. Each telling is kept in
+`people.record_issue_notice`; `people.tell_record_issue(issue, faculty)`, `people.record_issue_progress(issue, faculty)`;
+`POST`/`GET /api/v1/records/issues/notices`. On the copy the 423 students were told in one press (408 e-mails, 408 SMS and 423 portal
+notices); a second press the same week told nobody.
+
+**A postgraduate record is moved to its programme.** With "Postgraduate entry on an undergraduate programme" (or a level of 700 and
+above beyond an undergraduate programme) shown, Records, the Registrar and Deputy, the School of Postgraduate Studies and its
+secretary see **Move** on each record: the window lists the postgraduate programmes, the student's department's first, the level
+(700, 800 or 900) and asks why (at least ten characters). The move sets the programme, the level and the entry mode POSTGRADUATE,
+and is kept in `people.record_move` with the reason, the officer and the office, and on the audit spine. Only a live postgraduate
+record on an undergraduate programme is moved here (`RECORD_MOVE_NOT_POSTGRADUATE`); any other change of programme is a transfer.
+`people.record_move_options(student)`, `people.move_record_to_programme(student, programme, level, reason)`;
+`GET`/`POST /api/v1/records/issues/move/{student}`.

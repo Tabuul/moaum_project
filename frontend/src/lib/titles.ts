@@ -259,6 +259,7 @@ export const TITLES: Record<string, string> = {
   "t/governance": "Data governance",
   "t/platform": "Platform & integrations",
   "t/security": "Security posture",
+  "t/slowstatements": "Slow statements",
   "t/notify": "Notifications",
   "t/api": "API management",
   "t/release": "Release pipeline",

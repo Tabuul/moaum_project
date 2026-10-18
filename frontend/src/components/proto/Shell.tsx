@@ -285,6 +285,7 @@ export const ROUTES: Record<string, string> = {
   "t/governance": "/governance",
   "t/privacy": "/platform/privacy",
   "t/security": "/security",
+  "t/slowstatements": "/platform/slow-statements",
   "t/dr": "/disaster-recovery",
   "t/cloud": "/cloud",
   "t/release": "/release",

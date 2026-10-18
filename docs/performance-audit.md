@@ -463,3 +463,60 @@ often as once a student; it found `people.record_issues` and `finance.fee_gaps` 
 
 Still a few seconds on the copy: the Records & Queries CGPA for the whole University (about 5 s of work over 538,000 registration
 entries), the payments query and its breakdown, the GST and EPS student lists (`finance.gst_eps_rows_all`).
+
+## Q. The live database's own figures, the CGPA kept, and the calls that keep a function from being inlined (18 October 2026, V546–V550)
+
+**The live database's slowest statements (V546).** The screens of §O and §P were found on a copy on the development machine.
+The live portal's own database keeps, in `pg_stat_statements`, how often each statement ran and how long it took; ICT (and the
+administrator, read-only) now see them on **Slow Statements** (`/platform/slow-statements`): by mean, worst, total time or calls,
+each with the portal functions it calls and the screens known to call them (`platform.statement_screen`, which ICT may add to).
+Where the extension is not loaded (a database without `shared_preload_libraries = pg_stat_statements`), the screen says so; where
+the portal's role may not read other roles' statement text, it says that the statements are hidden and how to grant
+`pg_read_all_stats`. This is the measure to act on before restating anything else.
+
+Fresh connections, three each, median, on the live-shaped copy:
+
+| Reader | Before | After | What was done |
+|---|---:|---:|---|
+| Records & Queries CGPA, every live student | 5.8 s | 0.30 s | `assessment.cgpa_kept`, made stale by what changes a CGPA (V549) |
+| Payments query (`finance.payments_query`) | 0.1–0.2 s | — | already fast on a fresh connection; the "3 s" was the development machine's slowdown |
+| Payments breakdown (`finance.payments_breakdown`) | 0.55–1.0 s | — | restated to name each purpose once: the same rows, no faster (the cost is reading 284,181 payments) — left as it is |
+| The payments screen's filter options | 0.76 s | 0.29 s | three passes over the confirmed payments and a category for each → one pass, a category for each of 80 purposes |
+| GST/EPS rows (`finance.gst_eps_rows_all`) | 0.99 s | 0.97 s | its entries and sheets read through the class index: the same 103,436 rows, no faster — left as it is |
+| GST/EPS population (`finance.gst_population`, what the screens read) | 0.35–0.42 s | — | already fast on a fresh connection |
+| Biodata counts (`people.biodata_status_counts`) | 2.1 s | 1.5 s | the students handed to `people.biodata_statuses` as one value (V550) |
+
+**The kept CGPA (V549).** `assessment.cgpa_kept` holds each student's CGPA as `assessment.scope_cgpa` works it out, with two
+counters: `stale_gen`, raised by a statement trigger on every table a CGPA is read from (`assessment.score`,
+`assessment.score_sheet`, `assessment.exam_session`, `registration.entry`, `registration.course_registration`, a grading
+`policy.version`, `policy.grade_band`), and `kept_gen`, the generation the kept figure was worked out at. A kept CGPA is used only
+while the two agree; `assessment.kept_cgpa(students)` works out the rest at once, so the register is never behind the results.
+The API's `CgpaKeeper` works out the stale ones every minute (batches of 2,000, each its own transaction, at most 20 s a tick)
+and makes every one stale at 01:30 each night, for a grading version that comes into force on a date with no write. On the copy
+the whole register is worked out in about 60 s the first time; the kept CGPA equals `scope_cgpa` for all 10,290 students who have
+one. A statement trigger adds no measurable time to a row written one at a time (2,000 entry updates: the same time with or
+without it).
+
+**The calls that keep a function from being inlined (V550).** `api/scripts/perf/scan-calls.py` lists every call of a SQL function
+whose arguments hold a subquery: 47 calls of 22 functions in the API and the database's functions, 17 of them calls of 7
+functions returning rows. Handing the list
+over as a value instead was measured for each that a screen or a job reads:
+
+| Call | Subquery | Value | Kept |
+|---|---:|---:|---|
+| `people.biodata_status_counts` → `biodata_statuses` | 2.1 s | 1.5 s | restated (V550) |
+| `people.biodata_requirement_impact` → `biodata_completion` | 1.3 s | 2.3 s | left as it is |
+| `people.refresh_biodata_snapshot` → `biodata_statuses` | 4.0 s | 4.8 s | left as it is |
+| Records & Queries clearance → `clearance.unit_states` | 8.9 s | 8.2 s | left: the function's own reading is the cost |
+| Graduation → `clearance.cleared_many` | 0.85 s | 0.80 s | left |
+| Clearance desk → `clearance.stage_rows` | 0.14 s | 0.06 s | left: a second round trip to read the students first costs as much |
+| CCE classes → `finance.fee_positions_of` | 0.29 s | 0.19 s | left (no CCE student on the copy) |
+
+Only five SQL functions returning rows cannot be inlined however they are called: four volatile ones that write
+(`audit.unattached`, `finance.gl_sync`, `finance.import_fee_structure`, `people.repair_postgraduate_levels`) and
+`finance.gst_eps_rows_all`, which turns nested loops off on purpose (V468). A scalar SQL function whose body reads a table is
+never inlined, whatever its arguments, so the subquery arguments of the scalar calls change nothing.
+
+Still a few seconds on the copy: the Records & Queries clearance for the whole University (`clearance.unit_states`, about 8 s for
+54,573 students) and the payments breakdown with no filter (about 1 s). Slow Statements will say whether the live portal finds
+them slow.

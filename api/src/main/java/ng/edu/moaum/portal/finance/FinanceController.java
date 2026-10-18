@@ -629,6 +629,17 @@ class FinanceController {
         return schedule(session, year);
     }
 
+    /** V547: what clearing the schedule would end — the lines of each faculty and programme, the faculties left with no fee, the
+     *  live students who would owe nothing — applied and undone, nothing kept */
+    @PostMapping("/sessions/{session}/{year}/schedule/clear/preview")
+    @PreAuthorize(FEE_SETTERS)
+    @Transactional
+    Map<String, Object> clearPreview(@PathVariable String session, @PathVariable String year,
+                                     @RequestParam(required = false) @Pattern(regexp = "ALL|FULL_TIME|CCE") String kind) {
+        return effect(jdbc.sql("SELECT finance.fee_upload_effect(:s, '[]'::jsonb, 'CLEAR', :k)::text")
+                .param("s", session + "/" + year).param("k", kind == null ? "ALL" : kind).query(String.class).single());
+    }
+
     /** V506: what copying another session's live fee lines into this one would do — each line COPY (this session states none
      *  of the same scope) or KEPT (it does, never overwritten; its amount shown) — the preview the Bursary reads first */
     @GetMapping("/sessions/{session}/{year}/schedule/copy")
@@ -880,12 +891,23 @@ class FinanceController {
         List<Map<String, Object>> byFaculty = breakdown.stream().filter(b -> "faculty".equals(b.get("dim"))).toList();
 
         Map<String, Object> options = new java.util.LinkedHashMap<>();
-        options.put("sessions", jdbc.sql("SELECT DISTINCT session FROM finance.payment_reference WHERE confirmed_at IS NOT NULL ORDER BY session DESC").query(String.class).list());
+        // V549: the sessions, channels and categories paid in, from one pass over the confirmed payments — each purpose's category
+        // worked out once (some eighty), not once a payment; three passes took about 0.8 s on the live-shaped copy, one about 0.3 s
+        List<Map<String, Object>> paidIn = jdbc.sql("""
+                WITH c AS MATERIALIZED (SELECT session, channel, coalesce(purpose, '') AS purpose FROM finance.payment_reference
+                                         WHERE confirmed_at IS NOT NULL GROUP BY 1, 2, 3)
+                SELECT 'session' AS k, session AS v FROM c GROUP BY session
+                UNION ALL SELECT 'channel', channel FROM c WHERE channel IS NOT NULL GROUP BY channel
+                UNION ALL SELECT 'category', finance.payment_category(purpose) FROM c GROUP BY 2
+                """).query().listOfRows();
+        java.util.function.Function<String, List<String>> of = k -> paidIn.stream().filter(r -> k.equals(r.get("k"))).map(r -> (String) r.get("v"))
+                .filter(java.util.Objects::nonNull).sorted().toList();
+        options.put("sessions", of.apply("session").reversed());
         options.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty ORDER BY name").query().listOfRows());
         options.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department ORDER BY name").query().listOfRows());
         options.put("programmes", jdbc.sql("SELECT code, name, faculty_code, dept_code FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows());
-        options.put("categories", jdbc.sql("SELECT DISTINCT finance.payment_category(purpose) AS c FROM finance.payment_reference WHERE confirmed_at IS NOT NULL ORDER BY c").query(String.class).list());
-        options.put("channels", jdbc.sql("SELECT DISTINCT channel FROM finance.payment_reference WHERE confirmed_at IS NOT NULL AND channel IS NOT NULL ORDER BY channel").query(String.class).list());
+        options.put("categories", of.apply("category"));
+        options.put("channels", of.apply("channel"));
 
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("rows", rows);

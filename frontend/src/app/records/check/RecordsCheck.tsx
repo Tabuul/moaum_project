@@ -2,15 +2,18 @@
 
 /**
  * V536: the Registry's records check — the live students whose record is at odds with itself or the register, by what is wrong,
- * each naming why it matters, the office that corrects it and how. Nothing is changed here: each record is opened and corrected
- * where its office corrects records.
+ * each naming why it matters, the office that corrects it and how. Each record is opened and corrected where its office corrects
+ * records; since V548 the students with no state of origin are told from here, and a postgraduate record on an undergraduate
+ * programme is moved to its programme here.
  */
+import { useState } from "react";
 import Link from "next/link";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { useQueryNav } from "@/lib/query-nav";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { MOVERS, MoveRecord, TELLERS, TellStudents, type TellProgress } from "./RecordsActions";
 
 export interface IssueKind { code: string; title: string; why: string; corrects: string; offices: string[]; how: string; students: number }
 export interface IssueRow {
@@ -31,8 +34,13 @@ const named = (s: string | null | undefined) =>
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich", CCE: "CCE", POSTGRADUATE: "Postgraduate" };
 const HEAD = ["Issue", "Matric / admission no.", "Name", "Faculty", "Programme", "Level", "Entry mode", "State of origin", "Status", "Corrected by", "Suggestion"];
 
-export function RecordsCheck({ d }: { d: RecordsCheckData }) {
+/** V548: a postgraduate record on an undergraduate programme, which the Registry or the School moves here */
+const movable = (r: IssueRow) => r.issue === "UG_POSTGRADUATE_ENTRY" || (r.issue === "LEVEL_BEYOND_PROGRAMME" && (r.current_level ?? 0) >= 700);
+
+export function RecordsCheck({ d, office, progress }: { d: RecordsCheckData; office: string | null; progress: TellProgress | null }) {
   const nav = useQueryNav();
+  const [moving, setMoving] = useState<string | null>(null);
+  const mayMove = office !== null && MOVERS.includes(office);
   const kindOf = new Map(d.kinds.map((k) => [k.code, k]));
   const chosen = d.issue ? kindOf.get(d.issue) ?? null : null;
   const facultyName = d.faculty ? named(d.faculties.find((f) => f.code === d.faculty)?.name ?? d.faculty) : "Every faculty";
@@ -77,6 +85,7 @@ export function RecordsCheck({ d }: { d: RecordsCheckData }) {
         <Panel title={chosen ? chosen.title : "Every record to correct"} right={`${count(d.total)} record${d.total === 1 ? "" : "s"}`}>
           <PBody>
             {chosen ? <Note kind="info" title={`Corrected by ${chosen.corrects}`}>{chosen.how}</Note> : null}
+            {chosen?.code === "NO_STATE_OF_ORIGIN" && progress ? <TellStudents p={progress} faculty={d.faculty} facultyName={facultyName} may={office !== null && TELLERS.includes(office)} /> : null}
             {d.rows.length < d.total ? <div className="sub2">The first {count(d.rows.length)} are listed; choose an issue or a faculty to see the rest.</div> : null}
             <div className="row row--right">
               <Btn kind="ghost" onClick={async () => downloadBlob(await brandedXlsx("Records Check", HEAD, sheet(), { sheetName: "Records check", serial: docSerial("RCK"), sub, meta }), `records-check${d.issue ? `-${d.issue.toLowerCase()}` : ""}.xlsx`)}>Download Excel</Btn>
@@ -84,7 +93,7 @@ export function RecordsCheck({ d }: { d: RecordsCheckData }) {
             </div>
           </PBody>
           <DTable pageSize={25}
-            cols={[...(chosen ? [] : ["What is wrong"]), "Student", "Programme", "Level", "Entry mode", "State of origin", "Status"]}
+            cols={[...(chosen ? [] : ["What is wrong"]), "Student", "Programme", "Level", "Entry mode", "State of origin", "Status", ...(mayMove && d.rows.some(movable) ? [""] : [])]}
             texts={d.rows.map((r) => `${r.matric_no ?? ""} ${r.admission_no ?? ""} ${r.name} ${r.programme ?? ""} ${r.programme_code ?? ""} ${r.faculty ?? ""} ${r.state ?? ""}`)}
             rows={d.rows.map((r) => [
               ...(chosen ? [] : [<span key="i">{kindOf.get(r.issue)?.title ?? r.issue}</span>]),
@@ -94,11 +103,13 @@ export function RecordsCheck({ d }: { d: RecordsCheckData }) {
               <span key="m">{MODE[r.entry_mode ?? ""] ?? r.entry_mode ?? "—"}</span>,
               <span key="o">{r.state ?? <span className="sub2">None</span>}</span>,
               <span key="st">{named(r.status)}</span>,
+              ...(mayMove && d.rows.some(movable) ? [movable(r) ? <Btn key="mv" kind="ghost" onClick={() => setMoving(r.student_id)}>Move</Btn> : <span key="mv" />] : []),
             ])} />
         </Panel>
       ) : (
         <Note kind="ok" title="Every live student's record is consistent">No level beyond a programme, no undergraduate with the postgraduate entry mode, every state of origin given and spelt as the register spells it.</Note>
       )}
+      {moving ? <MoveRecord studentId={moving} onClose={() => setMoving(null)} /> : null}
     </>
   );
 }

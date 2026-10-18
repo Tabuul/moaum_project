@@ -48,3 +48,21 @@ Inlined functions are not listed — they cost nothing as calls.
 
 The property `V541: the readers that screens open read in one pass` in `db/check.sql` holds the main readers to this: each is run
 over 1,000 invented students and must call no function as often as once a student.
+
+## 4. Find the calls that keep a function from being inlined
+
+A SQL function that returns rows is inlined into the query that calls it only when its arguments hold no subquery; otherwise its
+own statement is planned apart, without the arguments' values (PostgreSQL 17 every time; 18 from the sixth call on a connection,
+by a cached generic plan). To list every such call in the API's statements and the database's own functions:
+
+```bash
+psql "$COPY" -Atc "SELECT n.nspname || '.' || p.proname || '|' || p.proretset::text || '|' || p.provolatile::text FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'sql') AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'public')" > sql-functions.txt
+psql "$COPY" -Atc "SELECT n.nspname || '.' || p.proname || '@@' || replace(p.prosrc, chr(10), ' ') FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'public') AND p.prolang IN (SELECT oid FROM pg_language WHERE lanname IN ('sql', 'plpgsql'))" > bodies.txt
+python -I -X utf8 scan-calls.py sql-functions.txt bodies.txt ../../src/main/java
+```
+
+Measure before changing one: handing the list over as a value (`CAST(:ids AS uuid[])` from the API, a variable through
+`EXECUTE … USING` in plpgsql) let the planner see the students, which was faster for `people.biodata_status_counts` (V550,
+2.1 → 1.5 s) but slower for `people.biodata_requirement_impact` and `people.refresh_biodata_snapshot`, and made no difference
+where the function's own reading is the cost (docs/performance-audit.md §Q). A scalar SQL function whose body reads a table is
+never inlined, whatever its arguments.

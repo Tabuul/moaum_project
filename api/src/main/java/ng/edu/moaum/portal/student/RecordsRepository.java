@@ -58,6 +58,8 @@ class RecordsRepository {
      *  registered students) — the University in about 2 s, where each student in turn took 1 h 42 min and the column was left
      *  empty above 1,500 students */
     List<Map<String, Object>> students(Scope scope) {
+        // V549: the CGPA kept for each student (assessment.kept_cgpa), worked out again only for those made stale since — the
+        // same figures as assessment.scope_cgpa
         // V541: the students in scope read first and handed to assessment.scope_cgpa as one value, so it is planned with the
         // query: given as ARRAY(SELECT …) it was not, and from its sixth call on a connection PostgreSQL 18 read it by a generic
         // plan (8–20 s for the University, not a steady 8 s)
@@ -69,7 +71,7 @@ class RecordsRepository {
                 SELECT s.id::text AS "id", s.matric_no AS "matricNo", s.admission_no AS "admissionNo",
                        s.surname || ', ' || s.other_names AS "name",
                        s.current_level AS "level", s.status AS "status", g.cgpa AS "cgpa"
-                """ + STUDENT_FROM + "  LEFT JOIN assessment.scope_cgpa(CAST(:ids AS uuid[])) g ON g.student_id = s.id\n"
+                """ + STUDENT_FROM + "  LEFT JOIN assessment.kept_cgpa(CAST(:ids AS uuid[])) g ON g.student_id = s.id\n"
                 + STUDENT_WHERE + " ORDER BY s.surname, s.other_names")
                 .param("fac", scope.fac(), Types.VARCHAR).param("dept", scope.dept(), Types.VARCHAR).param("prog", scope.prog(), Types.VARCHAR)
                 .param("level", scope.level(), Types.INTEGER).param("ids", ids)

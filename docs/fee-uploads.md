@@ -72,3 +72,12 @@ upload reads it — 364 lines for MBBS, Nursing, Human Anatomy, Human Physiology
 Science — only on a database with live students of the College and only where nothing of the College's was stated for 2025/2026;
 otherwise the migration wrote nothing and said why. Radiography 500 Level has no amount on the workbook and has no line until the
 Bursary states it (81 students on the live-shaped copy).
+
+## Clearing the schedule, seen first (V547)
+
+**Clear the schedule** on Fee Setup ends every fee line of the session — or its full-time or its CCE lines alone, as the route
+filter says. Its window now shows what it would end before anything is: the lines in force before and after, the lines ended for
+each faculty and programme, those left with no fee, and how many live students of that kind would owe nothing until a new
+structure is stated (`finance.fee_upload_effect(session, '[]', 'CLEAR', 'ALL' | 'FULL_TIME' | 'CCE')`, applied and undone;
+`POST …/sessions/{session}/schedule/clear/preview?kind=`). **Clear the schedule** stays off until the Bursary ticks that it means
+to end those lines. On the copy, clearing 2025/2026 would end 580 lines and leave 54,571 students owing nothing.
