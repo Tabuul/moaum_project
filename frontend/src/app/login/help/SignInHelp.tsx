@@ -3,9 +3,12 @@
 /**
  * V363: help asked of the ICT Support Desk by a person who cannot sign in. The request becomes a Login Issues ticket that
  * names no account; the desk confirms who the person is before it acts, and the person follows it on /track with the
- * ticket's number and their email. The answer is the number and nothing else — whether an account exists is never said.
+ * ticket's number and their email. The answer is the number and nothing else.
+ * Oct 2026: for the student portal the number is checked against the register by itself as it is typed (a moment after the
+ * last key) — whether a student holds it, never whose — and a number no student holds keeps the request from being sent; the
+ * API refuses it too.
  */
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { Problem } from "@/lib/api";
 import { Btn, LinkBtn, Note, PageHead } from "@/components/proto/ui";
@@ -17,14 +20,52 @@ export interface HelpField { key: string; type?: string; label: string; options?
 
 const LEAD = <>Cannot sign in? Tell the Directorate of ICT. The desk never asks for your password.</>;
 
+/** the account type names the student portal ("Student portal", as the desk words it) — the API's own test */
+const studentPortal = (accountType: string | undefined) => (accountType ?? "").toLowerCase().includes("student");
+
+type NumberCheck = { state: "checking" | "found" | "missing" | "slow"; words?: string };
+
 export function SignInHelp({ reachable, open, fields }: { reachable: boolean; open: boolean; fields: HelpField[] }) {
   const [f, setF] = useState<Record<string, string>>({});
   const [details, setDetails] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [number, setNumber] = useState<string | null>(null);
+  const [numberCheck, setNumberCheck] = useState<NumberCheck | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seq = useRef(0);
   const set = (k: string) => (e: { target: { value: string } }) => setF((p) => ({ ...p, [k]: e.target.value }));
-  const setDetail = (k: string) => (e: { target: { value: string } }) => setDetails((p) => ({ ...p, [k]: e.target.value }));
+
+  /** a student's number checked against the register a moment after the last key; the latest answer only */
+  function scheduleCheck(accountType: string | undefined, number: string | undefined) {
+    if (timer.current) clearTimeout(timer.current);
+    const n = (number ?? "").trim();
+    const mine = ++seq.current;
+    if (!studentPortal(accountType) || n.length < 6) { setNumberCheck(null); return; }
+    setNumberCheck({ state: "checking" });
+    timer.current = setTimeout(async () => {
+      try {
+        const r = await fetch("/api/bff/api/v1/helpdesk/sign-in-help/check", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accountType, number: n }),
+        });
+        const j = await r.json().catch(() => null);
+        if (mine !== seq.current) return;
+        if (r.status === 429) { setNumberCheck({ state: "slow", words: j?.detail ?? "Too many checks from this connection; wait a few minutes." }); return; }
+        if (!r.ok || !j?.applies) { setNumberCheck(null); return; }
+        setNumberCheck({ state: j.found ? "found" : "missing" });
+      } catch {
+        if (mine === seq.current) setNumberCheck(null);
+      }
+    }, 600);
+  }
+
+  const setDetail = (k: string) => (e: { target: { value: string } }) => {
+    const v = e.target.value;
+    setDetails((p) => ({ ...p, [k]: v }));
+    if (k === "username") scheduleCheck(details.account_type, v);
+    if (k === "account_type") scheduleCheck(v, details.username);
+  };
+  const numberUnknown = studentPortal(details.account_type) && numberCheck?.state === "missing";
 
   const missing = [
     !(f.name ?? "").trim() ? "your name" : null,
@@ -37,6 +78,7 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
     e.preventDefault();
     setProblem(null);
     if (missing.length) { setProblem({ status: 400, title: `Fill in ${missing.join(", ")}.` }); return; }
+    if (numberUnknown) { setProblem({ status: 422, title: "No student record holds that number", detail: "Type your matriculation number as it is on your identity card, or your admission number if you have no matriculation number yet." }); return; }
     setBusy(true);
     try {
       const r = await fetch("/api/bff/api/v1/helpdesk/sign-in-help", {
@@ -74,7 +116,13 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
               <input id="sh-name" className="ctl" value={f.name ?? ""} onChange={set("name")} autoComplete="name" maxLength={120} />
             </Field>
             {fields.filter((x) => x.type !== "file").map((x) => (
-              <Field key={x.key} id={`sh-${x.key}`} label={x.label} required={x.required} hint={x.hint}>
+              <Field key={x.key} id={`sh-${x.key}`} label={x.label} required={x.required}
+                hint={x.key === "username" && studentPortal(details.account_type) && numberCheck
+                  ? numberCheck.state === "checking" ? "Checking the register…" : numberCheck.state === "found" ? "✓ A student record holds this number." : numberCheck.state === "slow" ? numberCheck.words : x.hint
+                  : x.hint}
+                error={x.key === "username" && numberUnknown
+                  ? "No student record holds this number. Type it as it is on your identity card, or your admission number if you have no matriculation number yet; if it is right, visit the Registry with your admission letter."
+                  : undefined}>
                 {x.type === "select" ? (
                   <select id={`sh-${x.key}`} className="ctl" value={details[x.key] ?? ""} onChange={setDetail(x.key)}>
                     <option value="">— Choose —</option>
@@ -95,7 +143,7 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
               <input id="sh-phone" className="ctl tnum" type="tel" value={f.phone ?? ""} onChange={set("phone")} placeholder="08030000000" autoComplete="tel" maxLength={20} />
             </Field>
             {problem ? <ProblemNotice problem={problem} /> : null}
-            <Btn kind="primary" size="md" type="submit" disabled={busy}>{busy ? "Sending…" : "Send to ICT Support"}</Btn>
+            <Btn kind="primary" size="md" type="submit" disabled={busy || numberUnknown}>{busy ? "Sending…" : "Send to ICT Support"}</Btn>
           </form>
         )}
         <div className="login-help">

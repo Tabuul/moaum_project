@@ -46,7 +46,9 @@ public class Throttle {
         /* V363: the public ticket tracking, counted every look-up — by the connection and by the email asked about — so the number space cannot be walked */
         TRACK(12, "HELPDESK_TRACK_SLOW_DOWN", "Too many ticket look-ups in a short time", "Sign in to the portal to see your tickets, or wait and look again."),
         /* V363: help asked from the sign-in page by a person not signed in, counted every request */
-        SIGN_IN_HELP(5, "HELPDESK_HELP_SLOW_DOWN", "Too many requests for sign-in help from this connection", "One request is enough: track it with its number and your email, or visit the Directorate of ICT.");
+        SIGN_IN_HELP(5, "HELPDESK_HELP_SLOW_DOWN", "Too many requests for sign-in help from this connection", "One request is enough: track it with its number and your email, or visit the Directorate of ICT."),
+        /* Oct 2026: the sign-in help form checking a student's number as it is typed, counted every check, so the register cannot be walked */
+        SIGN_IN_HELP_CHECK(30, "HELPDESK_CHECK_SLOW_DOWN", "Too many number checks from this connection", "Check your own number; if the portal does not recognise it, visit the Registry with your admission letter.");
 
         final int limit;
         final String code;

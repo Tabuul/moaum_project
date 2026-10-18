@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Size;
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.ClientAddress;
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.Throttle;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -31,8 +32,13 @@ import org.springframework.web.bind.annotation.RestController;
  * the person follows it on the public tracking page with its number and their email.
  *
  * <p>Open to anyone, so each connection is limited (Throttle, SIGN_IN_HELP) and an email address keeps at most three such
- * requests open. The answer is the ticket's number and nothing else: whether a number or an email names an account is
- * never said here.
+ * requests open. The answer is the ticket's number and nothing else.
+ *
+ * <p>Oct 2026: for the student portal, the number is checked against the register as it is typed (/check) and again when
+ * the request is sent: a matriculation number — or the admission number a student signs in with before one is issued — that
+ * no student holds is refused, so the desk is not sent numbers it cannot find. The check says only whether a student holds
+ * the number, never whose it is, and each connection may check a limited number of times (Throttle, SIGN_IN_HELP_CHECK). An
+ * email, or a staff or applicant name, is still never said to name an account.
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk/sign-in-help")
@@ -68,6 +74,42 @@ class SignInHelpController {
                       @NotBlank @Size(max = 4000) String description, Map<String, String> details) {
     }
 
+    /** the account type names the student portal ("Student portal", as the desk words it) */
+    static boolean studentPortal(String accountType) {
+        return accountType != null && accountType.toLowerCase(java.util.Locale.ROOT).contains("student");
+    }
+
+    /** a number as a student would type it, as the register keeps it: upper case, no spaces */
+    static String normal(String number) {
+        return number == null ? "" : number.replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /** whether a student holds the number — the matriculation number, or the admission number before one is issued */
+    private boolean studentHolds(String number) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student WHERE upper(matric_no) = :n OR upper(admission_no) = :n)")
+                .param("n", number).query(Boolean.class).single());
+    }
+
+    public record Check(@Size(max = 60) String accountType, @Size(max = 60) String number) {
+    }
+
+    /**
+     * Oct 2026: the number checked as it is typed, for the student portal only — whether a student holds it, never whose; every
+     * check counted against the connection (SIGN_IN_HELP_CHECK). A number in the body, not the address, so it is not logged.
+     */
+    @PostMapping("/check")
+    Map<String, Object> check(@Valid @RequestBody Check body, HttpServletRequest request) {
+        if (!studentPortal(body.accountType())) {
+            return Map.of("applies", false);
+        }
+        String n = normal(body.number());
+        if (n.length() < 4) {
+            return Map.of("applies", true, "found", false);
+        }
+        throttle.take(Throttle.Door.SIGN_IN_HELP_CHECK, ClientAddress.of(request));
+        return Map.of("applies", true, "found", studentHolds(n));
+    }
+
     @PostMapping
     Map<String, Object> ask(@Valid @RequestBody Ask body, HttpServletRequest request) {
         String from = ClientAddress.of(request);
@@ -77,6 +119,13 @@ class SignInHelpController {
         if (body.details() != null) body.details().forEach((k, v) -> {
             if (k != null && declared.contains(k) && v != null && !v.isBlank() && details.size() < 30) details.put(k, v.trim().substring(0, Math.min(v.trim().length(), 500)));
         });
+        // Oct 2026: a student's number is one the register holds
+        if (studentPortal(details.get("account_type")) && !studentHolds(normal(details.get("username")))) {
+            throw new DomainRuleViolation("HELPDESK_HELP_NUMBER_UNKNOWN",
+                    "No student record holds the number " + (details.get("username") == null ? "given" : details.get("username")) + ".",
+                    new DomainRuleViolation.Remedy("Type your matriculation number as it is on your identity card (or your admission number if you have no matriculation number yet). "
+                            + "If it is right and still not found, visit the Registry with your admission letter.", "Registry"));
+        }
         String number = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "sign-in help asked from the sign-in page", null, from), () -> tx.execute(st -> {
             UUID id = jdbc.sql("SELECT helpdesk.submit_public(:n, :e, :p, :d::jsonb, :desc)")
                     .param("n", body.name()).param("e", body.email()).param("p", body.phone(), java.sql.Types.VARCHAR)

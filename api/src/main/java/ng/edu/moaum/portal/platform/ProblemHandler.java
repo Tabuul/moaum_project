@@ -222,7 +222,9 @@ class ProblemHandler {
             Map.entry("SWAP_OPEN", "A swap of this payment is waiting"), Map.entry("SWAP_ALREADY_SWAPPED", "Already reallocated"),
             Map.entry("SWAP_SAME_STUDENT", "The same student"), Map.entry("SWAP_NOT_SCHOOL_FEES", "Not a school fees payment"),
             Map.entry("SWAP_NOT_VERIFIED", "Payment not verified"), Map.entry("SWAP_DECIDED", "Already decided"),
-            Map.entry("SWAP_RECONCILIATION", "The accounts did not reconcile"), Map.entry("SWAP_SEARCH", "Type a little more"));
+            Map.entry("SWAP_RECONCILIATION", "The accounts did not reconcile"), Map.entry("SWAP_SEARCH", "Type a little more"),
+            // Oct 2026: the sign-in help form checks a student's number
+            Map.entry("HELPDESK_HELP_NUMBER_UNKNOWN", "Number not on the register"), Map.entry("HELPDESK_CHECK_SLOW_DOWN", "Too many checks"));
 
     static String titleOf(String code) {
         if (code == null || code.isBlank()) return "The request was refused";
