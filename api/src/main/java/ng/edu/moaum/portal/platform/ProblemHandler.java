@@ -224,7 +224,9 @@ class ProblemHandler {
             Map.entry("SWAP_NOT_VERIFIED", "Payment not verified"), Map.entry("SWAP_DECIDED", "Already decided"),
             Map.entry("SWAP_RECONCILIATION", "The accounts did not reconcile"), Map.entry("SWAP_SEARCH", "Type a little more"),
             // Oct 2026: the sign-in help form checks a student's number
-            Map.entry("HELPDESK_HELP_NUMBER_UNKNOWN", "Number not on the register"), Map.entry("HELPDESK_CHECK_SLOW_DOWN", "Too many checks"));
+            Map.entry("HELPDESK_HELP_NUMBER_UNKNOWN", "Number not on the register"), Map.entry("HELPDESK_CHECK_SLOW_DOWN", "Too many checks"),
+            // V564: the postgraduate application door
+            Map.entry("PG_APP_EXISTS", "Already applied with this email"), Map.entry("PG_APPLY_RETRY", "Not saved: please try again"));
 
     static String titleOf(String code) {
         if (code == null || code.isBlank()) return "The request was refused";

@@ -39,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 class PgApplyController {
 
     private static final UUID NOBODY = new UUID(0, 0);
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(PgApplyController.class);
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
     private final tools.jackson.databind.ObjectMapper json;
@@ -143,9 +144,26 @@ class PgApplyController {
                         return made;
                     }));
         } catch (org.springframework.dao.DuplicateKeyException e) {
-            // two submissions of the same email raced past the check above; the unique index decided
-            throw alreadyApplied();
+            // two submissions of the same email raced past the check above; the unique index decided. V564: only the applicant's own
+            // email or application is "already applied" — any other duplicate (a fee reference once was) is not the applicant's doing
+            String constraint = constraintOf(e);
+            if ("uq_pg_applicant_email".equals(constraint) || "uq_pg_application_per_applicant".equals(constraint)) {
+                throw alreadyApplied();
+            }
+            LOG.warn("postgraduate application refused by a duplicate on {}: {}", constraint, e.getMostSpecificCause().getMessage());
+            throw new DomainRuleViolation("PG_APPLY_RETRY", "The application could not be saved just now; nothing was recorded.",
+                    new DomainRuleViolation.Remedy("Press the button again. If it happens again, tell the School of Postgraduate Studies.", "You"));
         }
+    }
+
+    /** the unique index a duplicate broke, as PostgreSQL names it */
+    private static String constraintOf(org.springframework.dao.DuplicateKeyException e) {
+        Throwable t = e;
+        while (t != null && !(t instanceof org.postgresql.util.PSQLException)) t = t.getCause();
+        if (t instanceof org.postgresql.util.PSQLException pg && pg.getServerErrorMessage() != null) {
+            return pg.getServerErrorMessage().getConstraint();
+        }
+        return null;
     }
 
     /** the answer to a second application on an email — without the application number, which is the

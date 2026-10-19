@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 397
+\set EXPECTED 398
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19331,6 +19331,37 @@ BEGIN
         format('waits %s told %s | own %s agent %s short %s | approved %s again %s told %s | declined %s items %s tally %s | resolved %s/%s %s steps %s | tagged %s alert %s/%s counts %s | retry %s head %s words %s',
                waits, told, e_own, e_agent, e_short, approved, e_again, decided_told, declined, items_declined, tally_kept, resolved, resolved_again, ticket_state, steps,
                tagged, alert_bulk, alert_single, counts, e_retry, head_retry, e_words));
+END $$;
+-- ── V564. A postgraduate fee reference is drawn until free: the session's series put back to a number already issued (as a new
+--    intake session's series begins at 1, while the reference names no session) still gives the next applicant a reference, past
+--    every number used, and the series moves past it ──
+DO $$
+DECLARE v_prog text; a1 record; a2 record; v_ses text; n1 bigint; n2 bigint; v_top bigint; v_next bigint; v_hash text := '$2a$12$abcdefghijklmnopqrstuuJ8d4r0yA2XQfJ7m1yH6a0zPq9oJ0kW2';
+BEGIN
+  BEGIN   -- the check's own applicants, undone at the end
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    PERFORM set_config('moaum.reason', 'CHECK V564', true);
+    SELECT code INTO v_prog FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT * INTO a1 FROM admissions.pg_apply(jsonb_build_object('surname', 'CHECKV564', 'otherNames', 'First', 'email', 'check.v564.first@example.test',
+                                                                 'passwordHash', v_hash, 'programme', v_prog));
+    SELECT session INTO v_ses FROM admissions.pg_application WHERE id = a1.application_id;
+    n1 := substring(a1.reference FROM '-([0-9]+)$')::bigint;
+    UPDATE platform.number_series SET next_value = n1 WHERE kind = 'PG_FEEREF' AND scope = 'UNIVERSITY' AND session = v_ses;
+    SELECT * INTO a2 FROM admissions.pg_apply(jsonb_build_object('surname', 'CHECKV564', 'otherNames', 'Second', 'email', 'check.v564.second@example.test',
+                                                                 'passwordHash', v_hash, 'programme', v_prog));
+    n2 := substring(a2.reference FROM '-([0-9]+)$')::bigint;
+    SELECT max(substring(reference FROM '-([0-9]+)$')::bigint) INTO v_top FROM admissions.pg_fee_reference WHERE reference <> a2.reference;
+    SELECT next_value INTO v_next FROM platform.number_series WHERE kind = 'PG_FEEREF' AND scope = 'UNIVERSITY' AND session = v_ses;
+    RAISE EXCEPTION 'CHECK_V564_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V564_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V564: a postgraduate fee reference whose session''s series re-draws a number already issued is drawn again, past every number used, and the series moves past it',
+        coalesce(a1.reference ~ '^MOAUM-PGAPP-[0-9]{6}$' AND a2.reference ~ '^MOAUM-PGAPP-[0-9]{6}$' AND a2.reference <> a1.reference
+            AND n2 > v_top AND v_next = n2 + 1, false),
+        format('first %s second %s (number %s, top before %s, series next %s)', a1.reference, a2.reference, n2, v_top, v_next));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
