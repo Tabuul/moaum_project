@@ -64,7 +64,7 @@ export function ExamCardsWithheld({ w, code, faculty, q, mayRemind }: { w: Withh
   return (
     <>
       <PageHead title="Examination cards withheld" eyebrow="Examinations"
-        description="Every student whose course registration is approved but whose examination card cannot be issued yet, and why. Clear what can be cleared before the examination week, not at the hall door." />
+        description="Every student who registered courses but whose examination card cannot be issued yet, and why: the card asks only for the courses registered and the school fees for the session paid. Clear what can be cleared before the examination week, not at the hall door." />
 
       <div className="row" style={{ flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
         <Field id="ew-session" label="Academic session"><select id="ew-session" className="ctl" value={w.session} onChange={(e) => nav({ session: e.target.value })}>
@@ -116,7 +116,7 @@ export function ExamCardsWithheld({ w, code, faculty, q, mayRemind }: { w: Withh
               <span key="p" className="sub2">{r.programme ?? "—"}</span>,
               <span key="l" className="tnum">{r.level ?? "—"}</span>,
               <span key="m" className="tnum">{r.semester}</span>,
-              <Pil key="c" kind={r.code === "EXAM_CARD_NOT_CLEARED" ? "bad" : r.code === "EXAM_CARD_NOT_RELEASED" ? "info" : "warn"}>{reasonLabel(r.code)}</Pil>,
+              <Pil key="c" kind={r.code === "EXAM_CARD_NOT_PAID" ? "bad" : "warn"}>{reasonLabel(r.code)}</Pil>,
             ])} />
         ) : <PBody><div className="sub2">None.</div></PBody>}
         {pages > 1 ? (

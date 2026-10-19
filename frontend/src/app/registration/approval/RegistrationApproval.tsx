@@ -152,7 +152,7 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
       {rule ? (
         <Note kind={auto ? "ok" : "info"} title={`COURSE REGISTRATION APPROVAL · ${session}${semester ? ` · ${semesterWord(semester)}` : ""}: ${MODE_WORD[rule.mode].toUpperCase()}`}>
           {auto ? "HOD approval is not required. " : "Each registration waits on the Head of Department's approval. "}
-          Student reset: <b>{rule.allow_student_reset ? "ON" : "OFF"}</b> · Examination card on approval: <b>{rule.card_on_approval ? "ON" : "OFF"}</b>.
+          Student reset: <b>{rule.allow_student_reset ? "ON" : "OFF"}</b>. The examination card does not wait on approval: it is the student&rsquo;s once the courses are registered and the school fees for the session paid.
           {rule.applies_as === "STANDING" || rule.applies_as === "DEFAULT" ? " The standing rule applies; no rule is set for this session." : ""}
           {rule.reason ? <div className="sub2 mt-1">{rule.reason}{rule.set_by ? ` — ${rule.set_by}` : ""}{rule.set_at ? `, ${when(rule.set_at)}` : ""}</div> : null}
         </Note>
@@ -203,7 +203,6 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
                   </div>
                 </Field>
                 <label className="row row--inline row--tight"><input type="checkbox" className="chk" checked={form.reset} onChange={(e) => setForm({ ...form, reset: e.target.checked })} /> ALLOW STUDENT REGISTRATION RESET</label>
-                <label className="row row--inline row--tight"><input type="checkbox" className="chk" checked={form.card} onChange={(e) => setForm({ ...form, card: e.target.checked })} /> ALLOW EXAM CARD IMMEDIATELY AFTER APPROVAL</label>
                 <Field id="rf-reason" label="Reason" required hint="Ten characters or more; kept on the audit trail">
                   <input id="rf-reason" className="ctl" value={form.reason} maxLength={2000} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="e.g. Senate suspended HOD approval for the semester" />
                 </Field>
@@ -213,11 +212,10 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
             </PBody>
           </Panel>
           <Panel title="The rules set" right={`${rules.rules.length}`}>
-            <DTable pageSize={0} cols={["Applies to", "Approval", "Reset|mid", "Card|mid", "Set"]} rows={rules.rules.map((x) => [
+            <DTable pageSize={0} cols={["Applies to", "Approval", "Reset|mid", "Set"]} rows={rules.rules.map((x) => [
               <span key="a">{x.session ? `${x.session}${x.semester ? ` · ${semesterWord(x.semester)}` : ""}` : <b>The standing rule</b>}</span>,
               <Pil key="m" kind={x.mode === "AUTO_APPROVAL" ? "ok" : "info"}>{MODE_WORD[x.mode]}</Pil>,
               <span key="r">{x.allow_student_reset ? "On" : "Off"}</span>,
-              <span key="c">{x.card_on_approval ? "On" : "Off"}</span>,
               <span key="s" className="sub2">{x.set_by ?? "—"}{x.set_office ? ` (${x.set_office})` : ""}<div>{when(x.set_at)}</div><div>{x.reason}</div></span>,
             ])} />
             {auto ? <PBody><Btn kind="secondary" busyLabel="Processing…" onClick={() => processNow()}>Judge the waiting registrations now</Btn></PBody> : null}

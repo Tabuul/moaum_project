@@ -65,10 +65,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
               </div>
               {/* short facts as compact cells — two or three to a row, never a stretched full-width line */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "var(--s-2)" }}>
-                {([["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"], ["Cleared", v.cleared ? "Yes" : "No"]] as [string, string][]).map(([k, val], i) => (
+                {([["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"], ["School fees", v.cleared ? "Paid" : "Not paid"]] as [string, string][]).map(([k, val], i) => (
                   <div key={i} className="kv" style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", padding: "var(--s-2) var(--s-3)", background: "var(--bg)" }}>
                     <span className="k">{k}</span>
-                    <span className="v" style={{ color: k === "Cleared" ? (v.cleared ? "var(--green-ink)" : "var(--red-deep)") : undefined }}>{val}</span>
+                    <span className="v" style={{ color: k === "School fees" ? (v.cleared ? "var(--green-ink)" : "var(--red-deep)") : undefined }}>{val}</span>
                   </div>
                 ))}
               </div>

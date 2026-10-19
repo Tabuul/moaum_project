@@ -14,6 +14,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -117,12 +118,12 @@ class ExamCardIT {
         String tb = TestTokens.token(b, List.of("student"));
         String q = "?session=" + session + "&semester=1";
 
-        // registered and approved but not paid: the card is withheld, and its code is not signed
+        // registered and approved but not paid: the card is withheld (V567: not paid), and its code is not signed
         Map<String, Object> unpaid = it.get(ta, "/api/v1/me/exam-card" + q).getBody();
-        assertThat(unpaid).as(String.valueOf(unpaid)).containsEntry("available", false).containsEntry("code", "EXAM_CARD_NOT_CLEARED");
+        assertThat(unpaid).as(String.valueOf(unpaid)).containsEntry("available", false).containsEntry("code", "EXAM_CARD_NOT_PAID");
         ResponseEntity<Map> noCode = it.get(ta, "/api/v1/me/check-code?kind=EXAM&session=" + session + "&semester=1");
         assertThat(noCode.getStatusCode().value()).isEqualTo(422);
-        assertThat(noCode.getBody().get("code")).isEqualTo("EXAM_CARD_NOT_CLEARED");
+        assertThat(noCode.getBody().get("code")).isEqualTo("EXAM_CARD_NOT_PAID");
 
         // paid in full: the card is available, with every registered course — the departmental course, GST and EPS alike
         it.db(() -> {
@@ -140,9 +141,20 @@ class ExamCardIT {
         assertThat(code.getStatusCode().value()).as(String.valueOf(code.getBody())).isEqualTo(200);
         assertThat(((Map<String, Object>) it.get(ta, "/api/v1/me/exam-card" + q).getBody().get("issued")).get("times")).isEqualTo(1);
 
-        // a registration not yet approved has no card
+        // V567: a registration submitted and not yet approved waits only for the payment — paid, the card is the student's at once
         Map<String, Object> waiting = it.get(tb, "/api/v1/me/exam-card" + q).getBody();
-        assertThat(waiting).containsEntry("available", false).containsEntry("code", "EXAM_CARD_NOT_APPROVED");
-        assertThat(it.get(tb, "/api/v1/me/check-code?kind=EXAM&session=" + session + "&semester=1").getBody().get("code")).isEqualTo("EXAM_CARD_NOT_APPROVED");
+        assertThat(waiting).containsEntry("available", false).containsEntry("code", "EXAM_CARD_NOT_PAID");
+        it.db(() -> {
+            String ref = jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 50000, 'School fees ' || :ses)").param("s", b).param("ses", session).query(String.class).single();
+            return jdbc.sql("SELECT finance.confirm_payment(:r, 'BANK_BRANCH', 'teller for the exam card test')").param("r", ref).query(String.class).single();
+        });
+        assertThat(it.get(tb, "/api/v1/me/exam-card" + q).getBody()).containsEntry("available", true).containsEntry("count", 1);
+        ResponseEntity<Map> bCode = it.get(tb, "/api/v1/me/check-code?kind=EXAM&session=" + session + "&semester=1");
+        assertThat(bCode.getStatusCode().value()).isEqualTo(200);
+        // V567 at the examination hall: that card verifies as valid, with its course and the school fees paid
+        Map<String, Object> hall = it.anon(HttpMethod.GET, "/api/v1/verify/exam?matric=" + bCode.getBody().get("number") + "&session=" + session
+                + "&semester=1&c=" + bCode.getBody().get("code"), null).getBody();
+        assertThat(hall).as(String.valueOf(hall)).containsEntry("genuine", true).containsEntry("status", "VALID").containsEntry("cleared", true);
+        assertThat((List<?>) hall.get("courses")).hasSize(1);
     }
 }

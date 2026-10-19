@@ -239,12 +239,14 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
         <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"}
           title={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? (reg!.approval_mode === "AUTO" ? `REGISTRATION SUCCESSFUL — STATUS: APPROVED (${onDay(reg!.approved_at)})` : `Approved on ${onDay(reg!.approved_at)}`)
             : auto ? `Submitted on ${onDay(reg!.submitted_at)}` : `Submitted on ${onDay(reg!.submitted_at)} — with your Head of Department`}
-          action={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <span className="row row--inline row--tight">
-            <LinkBtn kind="primary" href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`}>Course form</LinkBtn>
-            {v.approval?.card_on_approval !== false ? <LinkBtn kind="secondary" href="/student/exams">Examination card</LinkBtn> : null}
-          </span> : null}>
+          action={<span className="row row--inline row--tight">
+            {reg!.status === "APPROVED" || reg!.status === "LOCKED" ? <LinkBtn kind="primary" href={`/student/form?session=${encodeURIComponent(v.session)}&semester=${v.semester}`}>Course form</LinkBtn> : null}
+            {/* V567: the card asks only for the courses registered and school fees paid — no approval */}
+            <LinkBtn kind="secondary" href="/student/exams">Examination card</LinkBtn>
+          </span>}>
           {reg!.units} units. {reg!.status === "SUBMITTED" ? (auto ? "It is being checked against the registration rules." : "It goes to your Head of Department for approval; a return comes back here with the reason.")
-            : reg!.approval_mode === "AUTO" ? "Your registration passed every registration rule and was approved automatically; your examination card is on Examinations once the Bursary clears you for the examination."
+            + " Your examination card is on Examinations once your school fees for the session are paid."
+            : reg!.approval_mode === "AUTO" ? "Your registration passed every registration rule and was approved automatically; your examination card is on Examinations once your school fees for the session are paid."
             : "The register carries these courses; the class lists and the score sheets are drawn from them."}
         </Note>
         )

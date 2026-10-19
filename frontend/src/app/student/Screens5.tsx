@@ -111,24 +111,23 @@ export function Carryover({ r }: { r: Results }) {
 /* ── examinations (the examination card) ── */
 
 export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; current?: RegistrationView | null; permits?: PermitState[]; cards?: ExamCardState[] }) {
-  const cleared = d.clearsExamination === true;
-  const withheld = d.clearsExamination === false;
   const withPapers = d.examSessions.filter((x) => x.papers.length);
-  // V501: the examination card — the University's full examination permit — is the server's answer for each semester shown, the
-  // same rule as the GST & EPS permit's without the GST's own: every student whose registration is approved and who is not refused
-  // by the Bursary has it, with every registered course; dates and venues come with the timetable, never invented
+  // V501, V567: the examination card — the University's full examination permit — is the server's answer for each semester shown:
+  // every student who has registered courses and paid school fees for the session has it, with every registered course; nothing
+  // else is asked (no approval, release or clearance scheme). Dates and venues come with the timetable, never invented
   const shownCards = cards.filter((c) => c.registration || c.available);
+  const cardOf = (session: string, semester: number) => cards.find((c) => c.session === session && c.semester === semester);
+  const unpaid = shownCards.find((c) => c.code === "EXAM_CARD_NOT_PAID");
   return (
     <>
-      {/* V503: the same answer the card and the permit read — withheld only when the Bursary refuses */}
-      {withheld ? <Note kind="bad" title="Your examination card is withheld until your fees are settled" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Examination cards are released on payment in full. The card prints once the Bursary releases it.</Note>
-        : d.schemeProblem ? <Note kind="info" title="What a payment releases is not yet stated">{d.schemeProblem}</Note>
-          : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
+      {/* V567: withheld only while no school-fees payment for the session is on record */}
+      {unpaid ? <Note kind="bad" title="Your examination card is issued once your school fees are paid" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Your courses are registered. Once a school-fees payment for {unpaid.session} is on record the card is yours to print. A payment made at a bank or on Quickteller shows here once Interswitch reports it.</Note>
+        : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
       {shownCards.map((card) => (
         <Panel key={`card-${card.session}-${card.semester}`} title={`EXAMINATION CARD · ${card.session} · ${semesterName(card.semester)} semester`} right={examCardStatusLabel(card)}>
           <PBody>
             <div className={`sub2${card.available ? "" : " ink-red"}`}>{card.available
-              ? `Course registration approved${card.registration?.approvedAt ? ` on ${onDay(card.registration.approvedAt)}` : ""} · ${examCardSummary(card)}. The card carries every course you registered. Dates and venues appear when the examination timetable is released.`
+              ? `Courses registered and school fees paid · ${examCardSummary(card)}. The card carries every course you registered. Dates and venues appear when the examination timetable is released.`
               : card.reason}</div>
             {card.available ? <div className="mt-2"><CardActions session={card.session} semester={card.semester} /></div> : null}
           </PBody>
@@ -149,18 +148,19 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
       {!withPapers.length ? (
         shownCards.length ? null : <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
       ) : withPapers.map((x) => (
-        <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cleared ? " · examination card" : ""}`}>
+        <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cardOf(x.session, x.semester)?.available ? " · examination card" : ""}`}>
           <DTable cols={["Course", "Date & time", "Venue|mid", "Status|num"]} rows={x.papers.map((p) => [
             <Two key="c" a={p.course_code} b={p.title} />,
             <span className="tnum" key="w">{p.held_on ? `${onDay(p.held_on)} · ${String(p.starts_at).slice(0, 5)}` : "Not yet timetabled"}</span>,
             <span key="v">{p.venue ?? "—"}</span>,
-            p.bar ? <Pil kind="bad" key="s" title={p.bar.replace(/^[A-Z_]+: /, "")}>Barred: attendance</Pil> : withheld ? <Pil kind="bad" key="s">Withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
+            p.bar ? <Pil kind="bad" key="s" title={p.bar.replace(/^[A-Z_]+: /, "")}>Barred: attendance</Pil> : cardOf(x.session, x.semester)?.available === false ? <Pil kind="bad" key="s">Card withheld</Pil> : p.held_on ? <Pil kind="info" key="s">Card ready</Pil> : <Pil kind="grey" key="s">Awaiting slot</Pil>,
           ])} />
           {x.papers.some((p) => p.bar) ? <div className="card__body"><Note kind="bad" title="Attendance below the minimum">
             {x.papers.filter((p) => p.bar).map((p) => p.bar!.replace(/^[A-Z_]+: /, "").replace(/^your/, "Your")).join(". ")}. The Centre for Continuing Education&rsquo;s policy bars the examination of a class below its minimum attendance; see the Centre if a lecture you missed was excused.
           </Note></div> : null}
-          {/* V501: the card's buttons are on its own panel above, by the card's rule; a sitting of another semester shown here has its own */}
-          {!shownCards.some((c) => c.session === x.session && c.semester === x.semester) && (cleared || d.clearsExamination === null)
+          {/* V501, V567: the card's buttons are on its own panel above, by the card's rule; a sitting of a semester whose card was not
+              read here has its own, and the server answers when it is pressed */}
+          {!cardOf(x.session, x.semester)
             ? <div className="card__body"><CardActions session={x.session} semester={x.semester} /></div> : null}
         </Panel>
       ))}

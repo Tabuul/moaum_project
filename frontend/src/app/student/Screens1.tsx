@@ -263,12 +263,13 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
             <Step state="done" title="On the register" sub={`${s.matricNo ? "Matriculated" : feesPaidStage ? "Matriculation pending" : "Admitted"} · entered ${s.entrySession}`} />
             <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : cleared ? "now" : "todo"} title="Course registration"
               sub={reg ? `${reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "SUBMITTED" ? "Submitted" : reg.status === "RETURNED" ? "Returned to you" : "Draft"} · ${reg.units} units` : cleared ? "Ready to register" : f.stated === false ? (s.entryMode === "CCE" ? "Waits on the Bursary's CCE school fees" : "Waits on the Bursary's fees for the session") : noScheme ? "Waits on the scheme" : "Blocked — fees outstanding"} />
-            <Step state={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "done" : "todo"} title="Examination card"
-              sub={reg?.status === "APPROVED" || reg?.status === "LOCKED" ? "Available on Examinations once the Bursary clears you" : "Available after approval"} />
+            {/* V567: the card asks only for the courses registered (submitted) and school fees paid; Examinations shows the server's answer */}
+            <Step state={reg && reg.status !== "DRAFT" ? (f.paid > 0 ? "done" : "now") : "todo"} title="Examination card"
+              sub={reg && reg.status !== "DRAFT" ? (f.paid > 0 ? "On Examinations, to print" : "Issued once your school fees are paid") : "Issued once your courses are registered and school fees paid"} />
           </div>
-          {reg?.status === "APPROVED" || reg?.status === "LOCKED" ? (
+          {reg && reg.status !== "DRAFT" ? (
             <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
-              <span className="sub2">Course registration: <b>Approved</b></span>
+              <span className="sub2">Course registration: <b>{reg.status === "APPROVED" || reg.status === "LOCKED" ? "Approved" : reg.status === "RETURNED" ? "Returned to you" : "Submitted"}</b></span>
               <LinkBtn kind="primary" size="sm" href="/student/exams">VIEW EXAM CARD</LinkBtn>
               {(reg.entries ?? []).some((e) => e.kind === "GST" && e.status !== "DROPPED") ? <LinkBtn kind="secondary" size="sm" href="/student/exams/gst-eps-permit">VIEW GST & EPS PERMIT</LinkBtn> : null}
               <LinkBtn kind="ghost" size="sm" href="/student/register">VIEW REGISTRATION</LinkBtn>

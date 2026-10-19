@@ -1,9 +1,10 @@
 /**
- * V505: the examination cards withheld — every approved registration whose card the card's own rule refuses, and why — for
- * Exams & Records, the Bursary and the Registry. The server decides; this only says it.
+ * V505, V567: the examination cards withheld — every course registration whose card the card's own rule refuses, and why — for
+ * Exams & Records, the Bursary and the Registry. The server decides; this only says it. Since V567 the card asks only for the
+ * session's school fees paid and the courses registered.
  */
 
-export type WithheldCode = "EXAM_CARD_NOT_CLEARED" | "EXAM_CARD_NOT_RELEASED" | "EXAM_CARD_NO_COURSES" | "EXAM_CARD_NOT_IN_STUDY";
+export type WithheldCode = "EXAM_CARD_NOT_PAID" | "EXAM_CARD_NOT_SUBMITTED" | "EXAM_CARD_NO_COURSES";
 
 export interface WithheldRow {
   registration_id: string; student_id: string; full_name: string; matric_no: string | null; programme: string | null; dept_code: string | null;
@@ -18,10 +19,9 @@ export interface Withheld {
 
 /** the reasons in the order the screen shows them, with the word each tile carries and who acts on it */
 export const WITHHELD_REASONS: { code: WithheldCode; label: string; who: string }[] = [
-  { code: "EXAM_CARD_NOT_CLEARED", label: "Not cleared by the Bursary", who: "The student settles the fees the scheme requires" },
-  { code: "EXAM_CARD_NOT_RELEASED", label: "Cards not yet released", who: "Exams & Records releases the cards" },
+  { code: "EXAM_CARD_NOT_PAID", label: "School fees not paid", who: "The student pays; a bank or Quickteller payment counts once Interswitch reports it" },
+  { code: "EXAM_CARD_NOT_SUBMITTED", label: "Registration not submitted", who: "The student submits the course registration" },
   { code: "EXAM_CARD_NO_COURSES", label: "No course on the registration", who: "The student or the department adds the courses" },
-  { code: "EXAM_CARD_NOT_IN_STUDY", label: "Not in study", who: "The Registry" },
 ];
 
 export function reasonLabel(code: string): string {

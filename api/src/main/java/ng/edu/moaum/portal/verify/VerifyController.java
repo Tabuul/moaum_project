@@ -237,7 +237,7 @@ class VerifyController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT s.id, trim(s.other_names || ' ' || s.surname) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
                        s.current_level, pg.name AS programme,
-                       finance.clears_or_null(s.id, :session, 'EXAMINATION') AS cleared,
+                       registration.exam_card_paid(s.id, :session) AS cleared,
                        (SELECT d.id FROM admissions.application_document d JOIN admissions.application a ON a.id = d.application_id
                          WHERE a.candidate_id = s.candidate_id AND d.kind = 'PASSPORT' AND d.superseded_at IS NULL
                          ORDER BY d.id LIMIT 1) AS passport_id
@@ -263,15 +263,16 @@ class VerifyController {
         List<Map<String, Object>> courses = jdbc.sql("""
                 SELECT c.code AS course_code, c.title, e.units, e.entry_type
                   FROM registration.course_registration r
-                  JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')
+                  JOIN registration.entry e ON e.registration_id = r.id AND e.status NOT IN ('DROPPED','WITHDRAWN')
                   JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
-                 WHERE r.student_id = :s AND r.session = :session AND r.semester = :sem AND r.status IN ('APPROVED','LOCKED')
+                 WHERE r.student_id = :s AND r.session = :session AND r.semester = :sem AND r.status <> 'DRAFT'
                  ORDER BY c.code
                 """).param("s", sid).param("session", session).param("sem", semester).query().listOfRows();
 
         String photo = photo(sid, row.get("passport_id"));
-        // V503: a genuine card is valid only while the card's own rule holds (registration.exam_card_state: an approved
-        // registration carrying a course, the Bursary's clearance not refused, the card released) — as the GST & EPS permit's QR
+        // V503, V567: a genuine card is valid only while the card's own rule holds (registration.exam_card_state: a submitted
+        // registration carrying a course, a school-fees payment for the session) — as the GST & EPS permit's QR. The courses are the
+        // card's (any registration submitted, never a dropped course) and "cleared" is the card's paid test (V567), not the scheme
         Map<String, Object> state = jdbc.sql("SELECT (st->>'available')::boolean AS available, st->>'code' AS code, st->>'reason' AS reason"
                 + " FROM (SELECT registration.exam_card_state(:s, :session, :sem) AS st) x")
                 .param("s", sid).param("session", session).param("sem", semester).query().singleRow();

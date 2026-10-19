@@ -41,7 +41,8 @@ class ExamCardsWithheldController {
 
     static final String READERS = "hasAnyAuthority('OFFICE_records','OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     static final String REMINDERS = "hasAnyAuthority('OFFICE_records','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
-    static final Set<String> CODES = Set.of("EXAM_CARD_NOT_CLEARED", "EXAM_CARD_NOT_RELEASED", "EXAM_CARD_NO_COURSES", "EXAM_CARD_NOT_IN_STUDY");
+    /** V567: the card asks only for the school fees paid and the courses registered (submitted, with a course) */
+    static final Set<String> CODES = Set.of("EXAM_CARD_NOT_PAID", "EXAM_CARD_NOT_SUBMITTED", "EXAM_CARD_NO_COURSES");
 
     private final JdbcClient jdbc;
     private final FigureCache figures;
@@ -88,7 +89,7 @@ class ExamCardsWithheldController {
         String d = dept == null || dept.isBlank() ? null : dept.trim().toUpperCase(Locale.ROOT);
         String t = q == null || q.isBlank() ? null : q.trim().toUpperCase(Locale.ROOT);
         Map<String, Long> counts = new LinkedHashMap<>();
-        for (String k : List.of("EXAM_CARD_NOT_CLEARED", "EXAM_CARD_NOT_RELEASED", "EXAM_CARD_NO_COURSES", "EXAM_CARD_NOT_IN_STUDY")) counts.put(k, 0L);
+        for (String k : List.of("EXAM_CARD_NOT_PAID", "EXAM_CARD_NOT_SUBMITTED", "EXAM_CARD_NO_COURSES")) counts.put(k, 0L);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> r : a.value()) {
             if (f != null && !f.equals(String.valueOf(r.get("faculty_code")).toUpperCase(Locale.ROOT))) continue;

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 398
+\set EXPECTED 399
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15693,8 +15693,8 @@ END $$;
 
 -- ── V501: the examination card's own rule ──
 -- A student whose registration is approved and whose fees are paid has the examination card, with every course registered —
--- departmental, GST and EPS — while the GST & EPS permit beside it carries only the GST and EPS ones; a registration not approved,
--- one with no course, or fees unpaid has no card, each with its reason. The block undoes its writes.
+-- departmental, GST and EPS — while the GST & EPS permit beside it carries only the GST and EPS ones; fees unpaid (the registration
+-- approved or only submitted: V567 asks no approval) or no course has no card, each with its reason. The block undoes its writes.
 DO $$
 DECLARE ses text := '2394/2395'; sch uuid := gen_random_uuid(); st uuid := gen_random_uuid(); dr uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); dreg uuid := gen_random_uuid();
         prog text; dept text; unpaid jsonb; paid jsonb; draft jsonb; empty jsonb; permit_n int; codes text; ref text; msg text;
@@ -15741,10 +15741,10 @@ BEGIN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
         IF msg <> 'the V501 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V501: the examination card carries every registered course for an approved, paid registration (the GST & EPS permit only its GST and EPS ones); unpaid, not approved or empty has no card, with the reason',
-        coalesce(unpaid->>'code' = 'EXAM_CARD_NOT_CLEARED' AND (paid->>'available')::boolean AND (paid->>'count')::int = 3 AND (paid->>'units')::int = 7
+    PERFORM pg_temp.assert('V501: the examination card carries every registered course for a paid registration (the GST & EPS permit only its GST and EPS ones); unpaid (approved or submitted, V567) or empty has no card, with the reason',
+        coalesce(unpaid->>'code' = 'EXAM_CARD_NOT_PAID' AND (paid->>'available')::boolean AND (paid->>'count')::int = 3 AND (paid->>'units')::int = 7
                  AND (paid->>'gstEpsCount')::int = 2 AND codes = 'EPS 391,GST 391,ZQC 101' AND permit_n = 2
-                 AND draft->>'code' = 'EXAM_CARD_NOT_APPROVED' AND empty->>'code' = 'EXAM_CARD_NO_COURSES', false),
+                 AND draft->>'code' = 'EXAM_CARD_NOT_PAID' AND empty->>'code' = 'EXAM_CARD_NO_COURSES', false),
         format('unpaid %s | paid %s %s/%s gst %s [%s] permit %s | draft %s | empty %s', unpaid->>'code', paid->>'available', paid->>'count', paid->>'units',
                paid->>'gstEpsCount', codes, permit_n, draft->>'code', empty->>'code'));
 END $$;
@@ -16003,7 +16003,7 @@ BEGIN
 END $$;
 
 -- ── V505: examination cards withheld, registrations below the minimum decided, students told of a new minimum ──
--- The withheld list gives exactly the card's own code for each approved registration it lists (unpaid: not cleared; no course);
+-- The withheld list gives exactly the card's own code for each registration it lists (unpaid: not paid, V567; no course);
 -- a paid one is not listed. An approved registration below the minimum is accepted (it leaves the below-minimum list) or
 -- returned (RETURNED, the student told); a locked one is refused. A raised minimum is counted before and told after to the
 -- students whose drafts it leaves short. The block undoes its writes.
@@ -16077,7 +16077,7 @@ BEGIN
         IF msg <> 'the V505 check undoes its writes' THEN RAISE; END IF;
     END;
     PERFORM pg_temp.assert('V505: the withheld list gives the card''s own code (unpaid, no course; a paid one not listed); a registration below the minimum is accepted or returned, a locked one refused; a raised minimum counted, then told once',
-        coalesce(w_a = 'EXAM_CARD_NOT_CLEARED' AND w_b = 'EXAM_CARD_NO_COURSES' AND w_c IS NULL AND st_a = w_a AND st_c IS NULL AND agree
+        coalesce(w_a = 'EXAM_CARD_NOT_PAID' AND w_b = 'EXAM_CARD_NO_COURSES' AND w_c IS NULL AND st_a = w_a AND st_c IS NULL AND agree
                  AND below_before = 2 AND ret = 'RETURNED' AND ret_status = 'RETURNED' AND below_after = 1 AND locked = 'REG_LOAD_LOCKED'
                  AND impact_draft = 1 AND told = 2 AND notices >= 2 AND notices_again = notices, false),
         format('withheld a %s b %s c %s (card a %s c %s, agree %s) | below %s -> %s, returned %s/%s, locked %s | impact draft %s, told %s then %s, notices %s then %s',
@@ -19362,6 +19362,71 @@ BEGIN
         coalesce(a1.reference ~ '^MOAUM-PGAPP-[0-9]{6}$' AND a2.reference ~ '^MOAUM-PGAPP-[0-9]{6}$' AND a2.reference <> a1.reference
             AND n2 > v_top AND v_next = n2 + 1, false),
         format('first %s second %s (number %s, top before %s, series next %s)', a1.reference, a2.reference, n2, v_top, v_next));
+END $$;
+-- ── V567. The examination card for every student who has paid and registered. With no clearance scheme and no fee line stated for
+--          the session, cards issued on release only (not on approval) and none released, an earlier session's fees unpaid: a student
+--          suspended, registration submitted and not approved, school fees paid has the card; so has one whose only payment is the
+--          old portal's; an approved registration unpaid, or paid only the GST fee, has none (not paid); a draft has none (not
+--          submitted). The withheld list gives each card's own code and lists none of those with a card. The block undoes its writes ──
+DO $$
+DECLARE ses text := '2398/2399'; prev text := '2397/2398'; prog text; dept text; o uuid := gen_random_uuid();
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid();
+        ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid(); rd uuid := gen_random_uuid(); re uuid := gen_random_uuid();
+        ref text; st_a jsonb; st_b jsonb; st_c jsonb; st_d jsonb; st_e jsonb; withheld text; agree boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V567', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), prev, DATE '2397-10-01', DATE '2398-08-31'), (gen_random_uuid(), ses, DATE '2398-10-01', DATE '2399-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/98/956701', 'MOAUM/CHK/98/9671', 'CHECKV567', 'Submitted paid', prog, 'UTME', prev, 100, 200, 'SUSPENDED', now()),
+            (b, 'MOAUM/ADM/98/956702', 'MOAUM/CHK/98/9672', 'CHECKV567', 'Old portal', prog, 'UTME', prev, 100, 200, 'ACTIVE', now()),
+            (c, 'MOAUM/ADM/98/956703', 'MOAUM/CHK/98/9673', 'CHECKV567', 'Unpaid', prog, 'UTME', prev, 100, 200, 'ACTIVE', now()),
+            (d, 'MOAUM/ADM/98/956704', 'MOAUM/CHK/98/9674', 'CHECKV567', 'GST only', prog, 'UTME', prev, 100, 200, 'ACTIVE', now()),
+            (e, 'MOAUM/ADM/98/956705', 'MOAUM/CHK/98/9675', 'CHECKV567', 'Draft', prog, 'UTME', prev, 100, 200, 'ACTIVE', now());
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZQV 201', 'Check V567 Course', 3, 1, 200, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'ZQV 201', ses, 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+            (ra, a, ses, 1, 200, 'SUBMITTED', now(), NULL), (rb, b, ses, 1, 200, 'APPROVED', now(), now()), (rc, c, ses, 1, 200, 'APPROVED', now(), now()),
+            (rd, d, ses, 1, 200, 'APPROVED', now(), now()), (re, e, ses, 1, 200, 'DRAFT', NULL, NULL);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT x, o, 3, 'CURRENT', 'REGISTERED' FROM unnest(ARRAY[ra, rb, rc, rd, re]) x;
+        -- an earlier session's fees stated and unpaid by all; this session's none stated; cards on release only, none released
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (prev, 'School fees (check V567)', 90000, 100, prog);
+        INSERT INTO registration.approval_policy (session, semester, mode, card_on_approval, reason)
+        VALUES (ses, 1, 'HOD_APPROVAL_REQUIRED', false, 'Check V567: cards with the timetable only');
+        -- paid: a school-fees payment (a), the old portal's (b), a GST fee only (d)
+        ref := finance.new_purpose_reference(a, ses, 40000, 'School fees ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V567');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+        VALUES (b, ses, 'MOAUM-LEG-ZQV567-' || ses || '-S1', 'School fees (legacy)', 60000, now(), now(), '00000000-0000-0000-0000-000000000000', 'Legacy', 'LEG-ZQV567', 'Imported from the old portal');
+        ref := finance.new_purpose_reference(d, ses, 5000, 'GST fee ' || ses);
+        PERFORM finance.confirm_payment(ref, 'BANK_BRANCH', 'teller for check V567');
+        st_a := registration.exam_card_state(a, ses, 1);
+        st_b := registration.exam_card_state(b, ses, 1);
+        st_c := registration.exam_card_state(c, ses, 1);
+        st_d := registration.exam_card_state(d, ses, 1);
+        st_e := registration.exam_card_state(e, ses, 1);
+        withheld := (SELECT string_agg(w.other || ':' || w.code, ',' ORDER BY w.other)
+                       FROM (SELECT s.other_names AS other, x.code FROM registration.exam_cards_withheld(ses, 1) x JOIN people.student s ON s.id = x.student_id
+                              WHERE s.surname = 'CHECKV567') w);
+        agree := NOT EXISTS (SELECT 1 FROM registration.exam_cards_withheld(ses, 1) w
+                              WHERE w.code IS DISTINCT FROM registration.exam_card_state(w.student_id, ses, 1)->>'code');
+        RAISE EXCEPTION 'the V567 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V567 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V567: the examination card is every student''s who has paid school fees for the session and registered courses — no approval, release, instalment, arrears, fee-stated or status test; the withheld list agrees',
+        coalesce((st_a->>'available')::boolean AND (st_a->>'cleared')::boolean AND (st_b->>'available')::boolean
+                 AND st_c->>'code' = 'EXAM_CARD_NOT_PAID' AND st_d->>'code' = 'EXAM_CARD_NOT_PAID' AND st_e->>'code' = 'EXAM_CARD_NOT_SUBMITTED'
+                 AND withheld = 'Draft:EXAM_CARD_NOT_SUBMITTED,GST only:EXAM_CARD_NOT_PAID,Unpaid:EXAM_CARD_NOT_PAID' AND agree, false),
+        format('submitted and paid %s/%s | old portal %s | unpaid %s | GST only %s | draft %s | withheld %s agree %s',
+               st_a->>'available', st_a->>'code', st_b->>'available', st_c->>'code', st_d->>'code', st_e->>'code', withheld, agree));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

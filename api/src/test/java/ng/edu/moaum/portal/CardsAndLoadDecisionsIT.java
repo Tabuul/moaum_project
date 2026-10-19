@@ -122,10 +122,10 @@ class CardsAndLoadDecisionsIT {
         assertThat(it.get(ItSupport.token("lecturer"), q).getStatusCode().value()).isEqualTo(403);
         Map<String, Object> withheld = it.get(records, q).getBody();
         List<Map<String, Object>> rows = (List<Map<String, Object>>) withheld.get("rows");
-        assertThat(rows).anySatisfy(r -> { assertThat(r.get("student_id")).isEqualTo(unpaid.toString()); assertThat(r.get("code")).isEqualTo("EXAM_CARD_NOT_CLEARED"); });
+        assertThat(rows).anySatisfy(r -> { assertThat(r.get("student_id")).isEqualTo(unpaid.toString()); assertThat(r.get("code")).isEqualTo("EXAM_CARD_NOT_PAID"); });
         assertThat(rows).noneSatisfy(r -> assertThat(r.get("student_id")).isEqualTo(paid.toString()));
-        assertThat(((Number) ((Map<String, Object>) withheld.get("counts")).get("EXAM_CARD_NOT_CLEARED")).intValue()).isGreaterThanOrEqualTo(1);
-        ResponseEntity<Map> reminded = it.call(records, HttpMethod.POST, "/api/v1/registration/exam-cards/withheld/remind", Map.of("session", session, "semester", 1, "code", "EXAM_CARD_NOT_CLEARED"));
+        assertThat(((Number) ((Map<String, Object>) withheld.get("counts")).get("EXAM_CARD_NOT_PAID")).intValue()).isGreaterThanOrEqualTo(1);
+        ResponseEntity<Map> reminded = it.call(records, HttpMethod.POST, "/api/v1/registration/exam-cards/withheld/remind", Map.of("session", session, "semester", 1, "code", "EXAM_CARD_NOT_PAID"));
         assertThat(reminded.getStatusCode().value()).as(String.valueOf(reminded.getBody())).isEqualTo(200);
         assertThat(((Number) reminded.getBody().get("told")).intValue()).isGreaterThanOrEqualTo(1);
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND template_key = 'EXAM_CARD_WITHHELD'").param("s", unpaid).query(Long.class).single()).isPositive();

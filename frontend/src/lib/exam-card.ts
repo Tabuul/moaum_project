@@ -40,7 +40,8 @@ export function examCardSummary(s: Pick<ExamCardState, "count" | "units" | "gstE
 /** the card's state in a word, for the panel's corner */
 export function examCardStatusLabel(s: Pick<ExamCardState, "available" | "code">): string {
   if (s.available) return "Available";
-  if (s.code === "EXAM_CARD_NOT_CLEARED") return "Withheld";
-  if (s.code === "EXAM_CARD_NOT_RELEASED") return "Not yet released";
+  // V567: the card asks only for the school fees paid and the courses registered
+  if (s.code === "EXAM_CARD_NOT_PAID") return "Fees not paid";
+  if (s.code === "EXAM_CARD_NOT_SUBMITTED" || s.code === "EXAM_CARD_NO_REGISTRATION") return "Register your courses";
   return "Not available";
 }
