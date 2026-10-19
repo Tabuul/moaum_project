@@ -536,3 +536,29 @@ some 0.004 ms. Two restatements in one pass gave the same 436,568 rows (and the 
 the latest decision of every unit sorted once, 3.95 s against 2.84 s; read in the index's order, 5.1 s against 4.4 s. It is left as
 it is; it runs only when the clearance view of the register is opened. Reading fewer students (those convocation concerns) would be
 the saving, and is the Registry's call.
+
+## S. Every menu page crawled again on a fresh live-shaped copy (19 October 2026, V565)
+
+- **The copy.** The older copies (`lvcrawl`, `lv515`) had drifted from the migrations: lv515 lacked V506's table yet held later objects. So a fresh dump was taken inside the API container and restored as `live565`: 54,573 students, production at V564, with V565 applied by migrate.sh against main's files. The API and the production build were made from the commit's own tree.
+- **The crawl.** 299 menu pages were opened, each as the widest office whose menu has it, with every office's home page. There were no errors; the 9 redirects were home pages that send on. Pages were then re-timed one at a time, twice each, on an idle machine:
+
+| Page | Office | Seconds (first, second) |
+|---|---|---|
+| Home (Head of Department) | hod | 9.7, 9.5 → **3.3, 3.6 after the fix below** |
+| /finance/payments | bursar | 4.9, 4.8 |
+| /gst/students, /eps/students | gst, eps | 4.7, 4.1 · 4.6, 4.2 |
+| /stats | registrar | 4.6, 0.13 (cached) |
+| /admissions/candidate-data | academic | 4.4, 4.3 |
+| /finance/fees | bursar | 4.1, 4.2 |
+| /admissions/computed-screening | academic | 3.9, 3.9 |
+| /admissions | registrar | 3.4, 3.0 |
+| /catalogue/all | registrar | 3.0, 1.9 |
+| /college/payments | bursar | 2.6, 2.7 |
+| /helpdesk/reach (new, V565) | super, ictagent | 1.5, 1.5 |
+| /helpdesk/password-reset/bulk (new) | super | 0.4 |
+
+- **The Head of Department's home was the outlier.**
+  - Its fees figure and its owing list joined `finance.session_clears`, which works out clearance for every student in the University, and then kept one department.
+  - They now ask `finance.session_clears_for` for that department's students only. The rows are the same (the list's checksum is unchanged): the count went from 2.0 s to 0.6 s and the list from 4.1 s to 1.1 s on a fresh connection. Through the API's pooled connections the count had taken 9 s.
+  - Its carry-over count (1.8 s, kept a few minutes by FigureCache) is left as it is.
+- **The local caveat, seen again.** The same prepared count, run repeatedly in one PG18 connection on Windows, took 2.1, 6.2, 8.7, 8.7 … s, and 29.9 s with custom plans forced. Compare fresh connections, as recorded before. Production is PG17 on Linux.

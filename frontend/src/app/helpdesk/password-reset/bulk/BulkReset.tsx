@@ -17,7 +17,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { MAX, STATUS, type BulkHistory, type DeskSummary, type Preview } from "@/lib/bulk-reset";
+import { MAX, PART, STATUS, partsOf, type BulkHistory, type DeskSummary, type Preview } from "@/lib/bulk-reset";
 import { BulkConfirm, call, previewFor } from "./BulkConfirm";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; status: string; account: string; login: boolean; page: number }
@@ -119,7 +119,7 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
       for (const id of r.data.ids) if (!n.has(id)) n.set(id, { ticket: r.data.tickets[id] ?? null });
       return n;
     });
-    setNote(r.data.over ? `The first ${count(r.data.ids.length)} matching students are chosen: one operation resets 1,000 at most.` : `${count(r.data.ids.length)} matching students chosen.`);
+    setNote(r.data.over ? `The first ${count(r.data.ids.length)} matching students are chosen: one request resets ${count(MAX)} at most.` : `${count(r.data.ids.length)} matching students chosen.`);
   }
 
   async function openPreview() {
@@ -205,7 +205,8 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
             </div>
             <Btn kind="urgent" busy={busy === "preview"} disabled={!chosen.size || chosen.size > MAX || busy !== null} onClick={() => void openPreview()}>Reset passwords ({count(chosen.size)})</Btn>
           </div>
-          {chosen.size > MAX ? <div className="sub2 mt-1">One operation resets {count(MAX)} students at most: clear some of the {count(chosen.size)} chosen, and reset the rest in a second operation.</div> : null}
+          {chosen.size > MAX ? <div className="sub2 mt-1">One request resets {count(MAX)} students at most: clear some of the {count(chosen.size)} chosen, and reset the rest in a second request.</div> : null}
+          {chosen.size > PART && chosen.size <= MAX ? <div className="sub2 mt-1">{count(chosen.size)} students are reset in {partsOf(chosen.size)} parts of at most {count(PART)}, one after another.</div> : null}
           {note ? <div className="sub2 mt-1">{note}</div> : null}
           {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
         </PBody>

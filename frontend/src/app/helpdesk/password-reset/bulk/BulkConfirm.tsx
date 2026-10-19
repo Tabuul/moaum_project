@@ -5,8 +5,9 @@
  * a retry of the students it did not reset). The server has said who may be reset and why not the others (the preview); the agent
  * gives the reason, may have each student's login ticket resolved with the reset (in words the students read), and is told when
  * the operation will wait for a Head's approval. The work runs on the server: its real progress is read until it ends, then every
- * student reset and every one not, with the reset link for those refused for want of a matriculation number. No password is ever
- * sent or shown.
+ * student reset and every one not, with the reset link for those refused for want of a matriculation number. V565: more than 1,000
+ * students are opened as parts of 1,000 run one after another, each with its own reference, and read here as a whole. No password
+ * is ever sent or shown.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Problem } from "@/lib/api";
@@ -16,7 +17,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { DEFAULT_RESOLUTION, DONE, STATUS, linkable, needsApproval, resultNote, resultWord, running, type Operation, type Preview } from "@/lib/bulk-reset";
+import Link from "next/link";
+import { DEFAULT_RESOLUTION, DONE, PART, STATUS, linkable, needsApproval, partsOf, resultNote, resultWord, whole, type Operation, type Preview } from "@/lib/bulk-reset";
 
 export const API = "/api/bff/api/v1/helpdesk/support/password-reset/bulk";
 const count = (n: number) => Number(n).toLocaleString("en-NG");
@@ -81,7 +83,8 @@ export function BulkConfirm({ preview, ids, tickets, retryOf, onClose, onEnded }
         const r = await call<Operation>(`/${op.id}`);
         if (!alive || !r.ok) return;
         setOp(r.data);
-        if (!running(r.data.status)) { setStep("done"); onEnded?.(r.data); }
+        // V565: a request in parts ends when its last part does
+        if (!whole(r.data).running) { setStep("done"); onEnded?.(r.data); }
       })();
     }, 1000);
     return () => { alive = false; clearInterval(t); };
@@ -113,6 +116,11 @@ export function BulkConfirm({ preview, ids, tickets, retryOf, onClose, onEnded }
   }
 
   const items = useMemo(() => op?.items ?? [], [op]);
+  const all = op ? whole(op) : null;
+  const inParts = !!op?.series?.length;
+  // the whole request's ending, read from its parts
+  const ending = !op ? "" : !inParts ? op.status : op.series!.some((p) => p.status === "CANCELLED") ? "CANCELLED"
+    : all!.failed === 0 ? "COMPLETED" : all!.succeeded === 0 ? "FAILED" : "COMPLETED_WITH_EXCEPTIONS";
   const ok = items.filter((i) => i.status === "RESET" || i.status === "ALREADY_RESET");
   const bad = items.filter((i) => i.status === "FAILED");
   const toLink = linkable(items);
@@ -135,6 +143,11 @@ export function BulkConfirm({ preview, ids, tickets, retryOf, onClose, onEnded }
           ["Eligible", count(preview.eligible), preview.eligible ? "var(--green-ink)" : null, "will be reset"],
           ["Not eligible", count(preview.notEligible), preview.notEligible ? "var(--red-ink)" : null, "recorded as failed, with the reason"],
         ]} />
+        {preview.selected > PART ? (
+          <Note kind="info" title={`${count(preview.selected)} students: reset in ${partsOf(preview.selected)} parts`}>
+            Each part of at most {count(PART)} students has its own reference and runs after the one before; they are decided, cancelled and read together.
+          </Note>
+        ) : null}
         {waits ? (
           <Note kind="info" title={`More than ${count(preview.policy.approval_over ?? 0)} students: this reset waits for approval`}>
             No student is reset until the Head of the ICT Support Desk or the Director of ICT approves it; they are told now, and you are told of
@@ -181,7 +194,7 @@ export function BulkConfirm({ preview, ids, tickets, retryOf, onClose, onEnded }
 
   if (step === "waiting") {
     return (
-      <Modal wide title="Waiting for approval" sub={`${op.reference} · ${count(op.total)} students`} onClose={onClose}
+      <Modal wide title="Waiting for approval" sub={`${op.reference}${inParts ? ` in ${all!.parts} parts` : ""} · ${count(all!.total)} students`} onClose={onClose}
         foot={<><span className="grow" /><LinkBtn href={`/helpdesk/password-reset/bulk/${op.id}`}>Open the record</LinkBtn><Btn kind="primary" onClick={onClose}>Done</Btn></>}>
         <Note kind="info" title="No student has been reset yet">
           {op.reference} waits for the Head of the ICT Support Desk or the Director of ICT, who have been told. Once it is approved the students
@@ -192,23 +205,37 @@ export function BulkConfirm({ preview, ids, tickets, retryOf, onClose, onEnded }
   }
 
   return (
-    <Modal wide title={step === "running" ? "Resetting passwords…" : DONE[op.status] ?? "Password reset finished"}
-      sub={`${op.reference} · ${STATUS[op.status]?.[0] ?? op.status}`} onClose={() => { if (step === "done") onClose(); }}
+    <Modal wide title={step === "running" ? "Resetting passwords…" : DONE[ending] ?? "Password reset finished"}
+      sub={`${op.reference}${inParts ? ` and ${all!.parts - 1} more part${all!.parts === 2 ? "" : "s"}` : ""} · ${STATUS[ending]?.[0] ?? ending}`} onClose={() => { if (step === "done") onClose(); }}
       foot={step === "running"
         ? <><span className="sub2 grow">The reset runs on the server; this window can be closed and the result read from the history.</span><Btn kind="ghost" busy={busy === "cancel"} onClick={() => void cancel()}>Cancel the rest</Btn></>
-        : <><Btn kind="ghost" disabled={!items.length} onClick={async () => downloadBlob(await brandedXlsx("Bulk Password Reset", head, sheet(), { sheetName: "Bulk reset", serial: docSerial("BPR"), sub: op.reference, meta: [["Reference", op.reference], ["Reason", op.reason], ["Selected", String(op.total)], ["Reset", String(op.succeeded)], ["Failed", String(op.failed)]] }), `${op.reference.replace(/\//g, "-")}.xlsx`)}>Download Excel</Btn>
+        : <><Btn kind="ghost" disabled={!items.length || inParts} onClick={async () => downloadBlob(await brandedXlsx("Bulk Password Reset", head, sheet(), { sheetName: "Bulk reset", serial: docSerial("BPR"), sub: op.reference, meta: [["Reference", op.reference], ["Reason", op.reason], ["Selected", String(op.total)], ["Reset", String(op.succeeded)], ["Failed", String(op.failed)]] }), `${op.reference.replace(/\//g, "-")}.xlsx`)}>Download Excel</Btn>
             <span className="grow" /><LinkBtn href={`/helpdesk/password-reset/bulk/${op.id}`}>Open the record</LinkBtn><Btn kind="primary" onClick={onClose}>Done</Btn></>}>
       <Tiles cls="grid--4" items={[
-        ["Processed", `${count(op.processed)} / ${count(op.total)}`, null, step === "running" ? "so far" : "in all"],
-        ["Successfully reset", count(op.succeeded), op.succeeded ? "var(--green-ink)" : null, "must change at the next sign-in"],
-        ["Failed", count(op.failed), op.failed ? "var(--red-ink)" : null, "not reset, with the reason"],
-        ["Status", STATUS[op.status]?.[0] ?? op.status, null, op.performed_by],
+        ["Processed", `${count(all!.processed)} / ${count(all!.total)}`, null, step === "running" ? "so far" : "in all"],
+        ["Successfully reset", count(all!.succeeded), all!.succeeded ? "var(--green-ink)" : null, "must change at the next sign-in"],
+        ["Failed", count(all!.failed), all!.failed ? "var(--red-ink)" : null, "not reset, with the reason"],
+        ["Status", STATUS[ending]?.[0] ?? ending, null, inParts ? `${all!.parts} parts · ${op.performed_by}` : op.performed_by],
       ]} />
+      {inParts ? (
+        <DTable noPrint title="The parts" pageSize={0} cols={["Part|num", "Reference", "Status|mid", "Processed|num", "Reset|num", "Failed|num"]} rows={op.series!.map((p) => [
+          <span key="n" className="tnum">{p.part}</span>,
+          <Link key="r" className="lnk tnum" href={`/helpdesk/password-reset/bulk/${p.id}`}>{p.reference}</Link>,
+          <span key="s" className="sub2">{STATUS[p.status]?.[0] ?? p.status}</span>,
+          <span key="p" className="tnum">{count(p.processed)} / {count(p.total)}</span>,
+          <span key="ok" className="tnum">{count(p.succeeded)}</span>,
+          <span key="f" className="tnum">{count(p.failed)}</span>,
+        ])} />
+      ) : null}
       {step === "running" ? (
-        <div className="mt-2" role="progressbar" aria-valuemin={0} aria-valuemax={op.total} aria-valuenow={op.processed}
+        <div className="mt-2" role="progressbar" aria-valuemin={0} aria-valuemax={all!.total} aria-valuenow={all!.processed}
           style={{ height: 8, borderRadius: 4, background: "var(--sunk, #eef1f4)", overflow: "hidden" }}>
-          <div style={{ width: `${op.total ? Math.round((100 * op.processed) / op.total) : 0}%`, height: "100%", background: "var(--sky, #2f7fbf)" }} />
+          <div style={{ width: `${all!.total ? Math.round((100 * all!.processed) / all!.total) : 0}%`, height: "100%", background: "var(--sky, #2f7fbf)" }} />
         </div>
+      ) : inParts ? (
+        <Note kind="info" title="Each part's record names its students">
+          Open a part to see every student reset and every one not, with the reason, to send the reset links and to try the others again.
+        </Note>
       ) : (
         <>
           {toLink.length ? (

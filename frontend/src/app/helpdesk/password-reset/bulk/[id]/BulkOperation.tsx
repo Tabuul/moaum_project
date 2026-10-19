@@ -71,18 +71,27 @@ export function BulkOperation({ op }: { op: Operation }) {
       <PageHead title={op.reference} eyebrow="Bulk password reset"
         description={<>By {op.performed_by}{op.office ? ` (${op.office})` : ""} on {when(op.created_at)}{op.completed_at ? `, finished ${when(op.completed_at)}` : ""}. Reason: {op.reason}</>}
         actions={<>
-          {(isRunning || waiting) && op.mayAct ? <Btn kind="ghost" onClick={() => void post("/cancel", {}, `Bulk password reset ${op.reference} cancelled`, waiting ? "Withdrawn" : "Cancelled")}>{waiting ? "Withdraw it" : "Cancel the rest"}</Btn> : null}
+          {(isRunning || waiting) && op.mayAct ? <Btn kind="ghost" onClick={() => void post("/cancel", {}, `Bulk password reset ${op.reference} cancelled`, waiting ? "Withdrawn" : "Cancelled")}>{waiting ? (op.series?.length ? "Withdraw the request" : "Withdraw it") : "Cancel the rest"}</Btn> : null}
           <LinkBtn href="/helpdesk/password-reset/bulk/history">Bulk reset history</LinkBtn>
           <LinkBtn href="/helpdesk/password-reset/bulk">Bulk password reset</LinkBtn>
         </>} />
 
+      {op.series?.length ? (
+        <div className="sub2" style={{ marginBottom: 8 }}>
+          Part {op.part} of {op.parts} of one request of {count(op.series.reduce((n, p) => n + p.total, 0))} students, run one after another:{" "}
+          {op.series.map((p, n) => (
+            <span key={p.id}>{n ? " · " : ""}{p.id === op.id ? <b className="tnum">{p.reference}</b> : <Link className="lnk tnum" href={`/helpdesk/password-reset/bulk/${p.id}`}>{p.reference}</Link>}
+              {" "}({STATUS[p.status]?.[0] ?? p.status})</span>
+          ))}.
+        </div>
+      ) : null}
       {op.retry_of ? <div className="sub2" style={{ marginBottom: 8 }}>Tries again the students <Link className="lnk tnum" href={`/helpdesk/password-reset/bulk/${op.retry_of}`}>{op.retry_of_reference}</Link> did not reset.</div> : null}
 
       {waiting ? (
         <Panel title="Waiting for approval">
           <PBody>
             <div className="stack">
-              <Note kind="info" title={`${count(op.total)} students — more than the ${count(op.approval_over ?? 0)} a bulk reset may reset without approval`}>
+              <Note kind="info" title={`${count(op.series?.length ? op.series.reduce((n, p) => n + p.total, 0) : op.total)} students${op.series?.length ? ` in ${op.series.length} parts` : ""} — more than the ${count(op.approval_over ?? 0)} a bulk reset may reset without approval`}>
                 No student is reset until the Head of the ICT Support Desk or the Director of ICT approves it. Each student is checked again when it runs.
                 {op.resolve_tickets ? " Their login tickets will be resolved with the reset." : ""}
               </Note>

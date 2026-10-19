@@ -1,7 +1,8 @@
 /**
  * Bulk password reset (V559, V563): the operation as the API gives it, its states in words, and the few rules the screens apply —
  * which students may be sent the reset link (refused for want of a matriculation number, no link yet), which are tried again (those
- * not reset), whether the operation will wait for a Head's approval. No password is ever in any of it.
+ * not reset), whether the operation will wait for a Head's approval, and (V565) a request of more than 1,000 students opened as parts
+ * run one after another, read as a whole. No password is ever in any of it.
  */
 
 export type Tone = "grey" | "info" | "ok" | "bad" | "warn";
@@ -18,6 +19,8 @@ export interface DeskSummary {
 export interface BulkRow {
   id: string; reference: string; created_at: string; performed_by: string; office: string; reason: string; total: number; succeeded: number; failed: number;
   status: string; completed_at: string | null; tickets: string | null;
+  /** V565: the part of a request of more than 1,000 students */
+  part?: number | null; parts?: number | null;
 }
 export interface BulkHistory { total: number; page: number; size: number; rows: BulkRow[]; everyone: boolean }
 
@@ -40,7 +43,10 @@ export interface Operation {
   resolve_tickets?: boolean; resolution?: string | null; retry_of?: string | null; retry_of_reference?: string | null; approval_over?: number | null;
   decided_by?: string | null; decided_at?: string | null; decision_note?: string | null;
   retries?: { id: string; reference: string; status: string; created_at: string }[]; mayDecide?: boolean; mayAct?: boolean;
+  /** V565: a request of more than 1,000 students — this part, and every part with its counts */
+  series_id?: string | null; part?: number | null; parts?: number | null; series?: SeriesPart[];
 }
+export interface SeriesPart { id: string; reference: string; part: number; status: string; total: number; succeeded: number; failed: number; processed: number; completed_at: string | null }
 
 export const STATUS: Record<string, [string, Tone]> = {
   AWAITING_APPROVAL: ["Waiting for approval", "warn"], PENDING: ["Pending", "grey"], PROCESSING: ["Processing", "info"], COMPLETED: ["Completed", "ok"],
@@ -53,8 +59,24 @@ export const DONE: Record<string, string> = {
   CANCELLED: "Password reset cancelled", REJECTED: "Password reset declined",
 };
 
-/** students one operation resets at most (the server's limit) */
-export const MAX = 1000;
+/** V565: students one request resets at most (the server's limit), and in one operation — a larger request is opened as parts */
+export const MAX = 10000;
+export const PART = 1000;
+
+/** the parts a request of n students is opened as */
+export function partsOf(n: number): number {
+  return Math.max(1, Math.ceil(n / PART));
+}
+
+/** a request read as a whole: one operation's counts, or the sum of its parts', and whether any part still runs or waits */
+export function whole(op: Pick<Operation, "status" | "total" | "succeeded" | "failed" | "processed" | "series">) {
+  const parts = op.series?.length ? op.series : [op];
+  const sum = (k: "total" | "succeeded" | "failed" | "processed") => parts.reduce((n, p) => n + Number(p[k] ?? 0), 0);
+  return {
+    total: sum("total"), succeeded: sum("succeeded"), failed: sum("failed"), processed: sum("processed"), parts: parts.length,
+    running: parts.some((p) => running(p.status)), waiting: parts.some((p) => p.status === "AWAITING_APPROVAL"),
+  };
+}
 
 /** what the students read on their resolved login ticket, unless the agent words it otherwise */
 export const DEFAULT_RESOLUTION = "Your portal password has been reset by ICT Support. Sign in with your matriculation number as your username and as your password; "

@@ -143,6 +143,25 @@ Many students reset in one operation, by the same service as the single reset. T
   - check.sql's V563 block covers the approval rules and notices, the ticket's steps, the bulk tag with the alert and counts, retries and the resolution words.
   - `lib/bulk-reset.test.ts` covers which students get a link, which are retried, and the result words.
 
+## Requests in parts, the policy kept, the history by kind (V565)
+
+- **More than 1,000 students in one request.**
+  - One request now takes up to 10,000 students: **Select all N matching** goes to 10,000, and so do the preview and the start.
+  - `helpdesk.start_bulk_reset` opens consecutive parts of 1,000 in the order chosen (`bulk_reset.series_id`, `part`, `parts`), each with its own BPR reference. They run one after another, since the worker takes the oldest first.
+  - The same key returns the first part.
+  - The approval figure (now up to 10,000) is read against the whole request. Every part waits, is counted once at the desk and is told to the Head once. A decision on any part decides them all, and cancelling or withdrawing stops every part not yet ended.
+  - The dialog reads progress and the result across the parts and lists them with their records. Each record names its part ("Part 2 of 3"), with links to the others. Bulk reset history shows the part.
+- **The policy keeps what a save does not name.**
+  - `PUT /admin/settings/password-reset` now changes only the settings the request names. A form opened before a setting existed, or a script that knows only some settings, no longer clears the others.
+  - A figure sent as empty (null) is cleared, which means "none" for the hourly limit, the alert and the approval figure.
+  - Out-of-range figures are refused by name: `HELPDESK_RESET_HOURLY`, `HELPDESK_RESET_ALERT`, `HELPDESK_BULK_APPROVAL`.
+- **Password Reset History by kind.**
+  - Filter: every reset, single resets, resets in bulk resets, or reset links. API: `GET /support/actions?module=AUTHENTICATION&kind=SINGLE|BULK|LINK`.
+  - New column: the bulk reset each act was made in, linked to its record. It is also in the Excel and the PDF.
+- **Tests.**
+  - `SupportReachIT` covers the policy kept and cleared, single and bulk resets read apart, and a request of 1,500 in two parts.
+  - check.sql's V565 block covers parts, waiting, approval and decline as a whole, the 10,000 limit and the figure.
+
 ## Other reset paths found in the codebase
 
 | Path | What it is | Kept because |

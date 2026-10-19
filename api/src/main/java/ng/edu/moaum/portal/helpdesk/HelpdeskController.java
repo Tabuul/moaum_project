@@ -1232,35 +1232,59 @@ class HelpdeskController {
      *  student, or one not yet matriculated, never */
     static final List<String> RESET_STATUSES = List.of("ACTIVE", "PROBATION", "DEFERRED", "DORMANT", "GRADUATED", "SUSPENDED");
 
-    public record PasswordResetPolicyIn(@NotNull Boolean enabled, @NotNull Boolean unlockByDefault, @NotBlank String ticket,
-                                        @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses,
-                                        @Min(1) @Max(10000) Integer alertDaily, @Min(1) @Max(1000) Integer bulkApprovalOver) {
+    /** V565: a whole number from min to max, or none (null) — DomainRuleViolation with the words otherwise */
+    private static Integer bounded(tools.jackson.databind.JsonNode v, int min, int max, String code, String words) {
+        if (v == null || v.isNull()) return null;
+        if (!v.isIntegralNumber() || v.asLong() < min || v.asLong() > max) {
+            throw new DomainRuleViolation(code, words + " is a whole number from " + min + " to " + String.format("%,d", max) + ", or empty.",
+                    new DomainRuleViolation.Remedy("Correct the figure, or leave it empty.", "Directorate of ICT"));
+        }
+        return v.asInt();
     }
 
     /** V485: the desk's policy for resets to the default student credential — on or off, the lockout cleared unless the agent says
      *  otherwise, a ticket optional or required, each agent's hourly limit (V526: none when left empty), the statuses it may reach,
      *  and (V528) the day's count of one agent's resets at which the Head is told (none when left empty). The default credential is
      *  the matriculation number and the change is always forced: neither is a setting. V563: the number of students above which a
-     *  bulk reset waits for a Head's approval (never when left empty). */
+     *  bulk reset waits for a Head's approval (never when left empty). V565: a setting the request does not name is kept as it is —
+     *  a form opened before a setting existed, or a script that knows only some, never clears the others; a figure named empty
+     *  (null) is cleared, which for the hourly limit, the alert and the approval figure means none. */
     @PutMapping("/admin/settings/password-reset")
     @PreAuthorize(DIRECTOR)
     @Transactional
-    Map<String, Object> savePasswordResetPolicy(@Valid @RequestBody PasswordResetPolicyIn body) {
-        String ticket = body.ticket().trim().toUpperCase();
+    Map<String, Object> savePasswordResetPolicy(@RequestBody tools.jackson.databind.JsonNode body) {
+        Map<String, Object> now = jdbc.sql("""
+                SELECT student_reset_enabled AS enabled, student_reset_unlock AS unlock, student_reset_ticket AS ticket, student_reset_hourly AS hourly,
+                       array_to_string(student_reset_statuses, ',') AS statuses, student_reset_alert_daily AS alert, bulk_reset_approval_over AS bulk
+                  FROM helpdesk.setting WHERE row_no
+                """).query().singleRow();
+        boolean enabled = body.hasNonNull("enabled") ? body.get("enabled").asBoolean() : Boolean.TRUE.equals(now.get("enabled"));
+        boolean unlock = body.hasNonNull("unlockByDefault") ? body.get("unlockByDefault").asBoolean() : Boolean.TRUE.equals(now.get("unlock"));
+        String ticket = body.hasNonNull("ticket") ? body.get("ticket").asString().trim().toUpperCase() : String.valueOf(now.get("ticket"));
         if (!Set.of("OPTIONAL", "REQUIRED").contains(ticket)) {
             throw new DomainRuleViolation("HELPDESK_RESET_TICKET", "A ticket is optional or required.", new DomainRuleViolation.Remedy("Choose one.", "Directorate of ICT"));
         }
-        List<String> statuses = body.statuses().stream().map(x -> x == null ? "" : x.trim().toUpperCase()).distinct().toList();
-        if (statuses.isEmpty() || !RESET_STATUSES.containsAll(statuses)) {
+        List<String> statuses = new java.util.ArrayList<>();
+        if (body.has("statuses")) {
+            if (body.get("statuses").isArray()) body.get("statuses").forEach(x -> statuses.add(x.isNull() ? "" : x.asString().trim().toUpperCase()));
+        } else {
+            statuses.addAll(List.of(String.valueOf(now.get("statuses")).split(",")));
+        }
+        List<String> kept = statuses.stream().distinct().toList();
+        if (kept.isEmpty() || !RESET_STATUSES.containsAll(kept)) {
             throw new DomainRuleViolation("HELPDESK_RESET_STATUSES", "Choose at least one of the statuses a desk reset may reach: " + String.join(", ", RESET_STATUSES) + ".",
                     new DomainRuleViolation.Remedy("A withdrawn, expelled, transferred-out, deceased or rusticated student is never reset at the desk.", "Directorate of ICT"));
         }
+        Integer hourly = body.has("hourly") ? bounded(body.get("hourly"), 1, 500, "HELPDESK_RESET_HOURLY", "The hourly limit") : (Integer) now.get("hourly");
+        Integer alert = body.has("alertDaily") ? bounded(body.get("alertDaily"), 1, 10000, "HELPDESK_RESET_ALERT", "The day's figure for the Head") : (Integer) now.get("alert");
+        Integer bulk = body.has("bulkApprovalOver") ? bounded(body.get("bulkApprovalOver"), 1, 10000, "HELPDESK_BULK_APPROVAL", "The bulk reset approval figure")
+                : (Integer) now.get("bulk");
         jdbc.sql("""
                 UPDATE helpdesk.setting SET student_reset_enabled = :e, student_reset_unlock = :u, student_reset_ticket = :t, student_reset_hourly = :h,
                        student_reset_statuses = string_to_array(:s, ','), student_reset_alert_daily = :al, bulk_reset_approval_over = :bo
                  WHERE row_no
-                """).param("e", body.enabled()).param("u", body.unlockByDefault()).param("t", ticket).param("h", body.hourly(), Types.INTEGER)
-                .param("s", String.join(",", statuses)).param("al", body.alertDaily(), Types.INTEGER).param("bo", body.bulkApprovalOver(), Types.INTEGER).update();
+                """).param("e", enabled).param("u", unlock).param("t", ticket).param("h", hourly, Types.INTEGER)
+                .param("s", String.join(",", kept)).param("al", alert, Types.INTEGER).param("bo", bulk, Types.INTEGER).update();
         return settings();
     }
 

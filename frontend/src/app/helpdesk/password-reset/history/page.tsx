@@ -14,15 +14,18 @@ export default async function ResetHistoryPage({ searchParams }: { searchParams:
   const str = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
   const date = (k: string) => (/^\d{4}-\d{2}-\d{2}$/.test(str(k)) ? str(k) : "");
   const page = /^\d{1,4}$/.test(str("page")) ? Math.max(1, Number(str("page"))) : 1;
+  // V565: a reset made alone, in a bulk reset, or a reset link
+  const kind = ["SINGLE", "BULK", "LINK"].includes(str("kind")) ? str("kind") : "";
   const qs = new URLSearchParams({ module: "AUTHENTICATION", page: String(page), size: "50" });
   if (date("from")) qs.set("from", date("from"));
   if (date("to")) qs.set("to", date("to"));
+  if (kind) qs.set("kind", kind);
   // V528: each agent's resets, for the Head and the Director of ICT (refused, and not shown, for an agent)
   const [me, list, byAgent] = await Promise.all([api<Me>("/api/v1/iam/me"), api<AuditList>(`/api/v1/helpdesk/support/actions?${qs.toString()}`),
     api<ResetsByAgent>("/api/v1/helpdesk/admin/password-resets/by-agent")]);
   return (
     <Shell route="t/supportpwhistory" me={me.ok ? me.data : null}>
-      {list.ok ? <ResetHistory list={list.data} page={page} from={date("from")} to={date("to")} byAgent={byAgent.ok ? byAgent.data : null} /> : <ProblemNotice problem={list.problem} />}
+      {list.ok ? <ResetHistory list={list.data} page={page} from={date("from")} to={date("to")} kind={kind} byAgent={byAgent.ok ? byAgent.data : null} /> : <ProblemNotice problem={list.problem} />}
     </Shell>
   );
 }

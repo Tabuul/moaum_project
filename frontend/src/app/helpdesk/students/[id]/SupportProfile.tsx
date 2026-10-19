@@ -77,7 +77,8 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   const [reset, setReset] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);   // V521: the student's portal, as the student, read-only
   const [levelOpen, setLevelOpen] = useState(false);
-  const [raise, setRaise] = useState<{ category: string; subject: string; description: string; details: Record<string, string> } | null>(null);
+  // V565: where the record holds no e-mail, the e-mail or phone the student gives reaches the ticket's updates (and may be saved)
+  const [raise, setRaise] = useState<{ category: string; subject: string; description: string; details: Record<string, string>; email: string; phone: string; save: boolean } | null>(null);
   const [escalate, setEscalate] = useState<{ office: string; reason: string } | null>(null);
   const [resolve, setResolve] = useState<{ summary: string; details: string } | null>(null);
   const tabNow: Tab = (TABS as string[]).includes(tab) ? (tab as Tab) : "profile";
@@ -162,10 +163,17 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
 
   /* ── password, tickets ── */
   const category = raise ? data.categories.find((c) => c.code === raise.category) : undefined;
+  // V565: the ticket reaches the student by the record's e-mail or phone, else by what the student gives at the desk
+  const hasEmail = !!(data.contact.email ?? data.contact.reach_email);
+  const hasPhone = !!(data.contact.phone ?? data.contact.reach_phone);
+  const givenEmail = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(raise?.email.trim() ?? "");
+  const givenPhone = /^(\+?234|0)\d{10}$/.test((raise?.phone ?? "").replace(/[\s()-]/g, ""));
+  const reachable = hasEmail || hasPhone || givenEmail || givenPhone;
   const categoryFields: TicketField[] = (() => { try { return category ? (JSON.parse(category.fields) as TicketField[]) : []; } catch { return []; } })();
   async function confirmRaise() {
     if (!raise) return;
-    const j = await call("POST", "/tickets", { category: raise.category, subject: raise.subject.trim(), description: raise.description.trim(), details: raise.details }, "Ticket raised for the student");
+    const j = await call("POST", "/tickets", { category: raise.category, subject: raise.subject.trim(), description: raise.description.trim(), details: raise.details,
+      email: raise.email.trim() || null, phone: raise.phone.trim() || null, saveContact: raise.save }, "Ticket raised for the student");
     if (j) { setRaise(null); go(`/helpdesk/students/${id}?tab=tickets&ticket=${encodeURIComponent(String(j.id))}`); router.refresh(); }
   }
   async function confirmEscalate() {
@@ -205,7 +213,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
       case "RESET_PASSWORD": setReset(true); break;
       case "MANAGE_LEVEL": setLevelOpen(true); break;
       case "OPEN_PORTAL": setPortalOpen(true); break;
-      case "CREATE_TICKET": setRaise({ category: data.categories[0]?.code ?? "", subject: "", description: "", details: {} }); break;
+      case "CREATE_TICKET": setRaise({ category: data.categories[0]?.code ?? "", subject: "", description: "", details: {}, email: "", phone: "", save: caps.has("EDIT_CONTACT") }); break;
       case "ESCALATE": if (ticket) setEscalate({ office: data.escalateTo[0] ?? "bursar", reason: "" }); else notifyProblem({ status: 422, title: "Escalation is made on a ticket", detail: "Open the student from their ticket, or raise one for them first." } as Problem); break;
       case "VIEW_REGISTRATION": case "ADD_COURSE": case "DROP_COURSE": case "OVERRIDE_REGISTRATION": openTab("registration"); break;
       case "INVESTIGATE_PAYMENT": case "VERIFY_PAYMENT": case "REFRESH_ENTITLEMENT": case "REGENERATE_RECEIPT": openTab("payments"); break;
@@ -559,9 +567,30 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
       ) : null}
 
       {raise ? (
-        <Modal title="Create support ticket" sub={`For ${fullName}, raised at the desk; routed to its queue and answered on the student's email`} onClose={() => setRaise(null)}
-          foot={<><Btn kind="ghost" onClick={() => setRaise(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !raise.category || raise.subject.trim().length < 3 || raise.description.trim().length < 5 || categoryFields.some((f) => f.required && f.type !== "file" && !(raise.details[f.key] ?? "").trim())} onClick={() => void confirmRaise()}>Create ticket</Btn></>}>
+        <Modal title="Create support ticket" sub={`For ${fullName}, raised at the desk; routed to its queue and answered on the student's ${hasEmail ? "email" : "email or, without one, by SMS"}`} onClose={() => setRaise(null)}
+          foot={<><Btn kind="ghost" onClick={() => setRaise(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || !raise.category || raise.subject.trim().length < 3 || raise.description.trim().length < 5 || categoryFields.some((f) => f.required && f.type !== "file" && !(raise.details[f.key] ?? "").trim()) || !reachable} onClick={() => void confirmRaise()}>Create ticket</Btn></>}>
           <div className="stack">
+            {!hasEmail ? (
+              <Note kind="info" title={hasPhone ? "The record holds no e-mail: the ticket's updates go by SMS to the phone on record" : "The record holds no e-mail and no phone"}>
+                Ask the student for an e-mail address{hasPhone ? " to add" : " or a phone number"}; the ticket&rsquo;s updates go there.
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  <Field id="rt-email" label="Student's e-mail" style={{ flex: "1 1 220px" }}>
+                    <input id="rt-email" className="ctl" type="email" value={raise.email} onChange={(e) => setRaise({ ...raise, email: e.target.value })} placeholder="name@example.com" maxLength={200} />
+                  </Field>
+                  {!hasPhone ? (
+                    <Field id="rt-phone" label="Student's phone" style={{ flex: "1 1 160px" }}>
+                      <input id="rt-phone" className="ctl tnum" inputMode="tel" value={raise.phone} onChange={(e) => setRaise({ ...raise, phone: e.target.value })} placeholder="08012345678" maxLength={20} />
+                    </Field>
+                  ) : null}
+                </div>
+                {caps.has("EDIT_CONTACT") ? (
+                  <label className="row row--inline row--tight" style={{ gap: 6, marginTop: 6 }}>
+                    <input type="checkbox" className="chk" checked={raise.save} onChange={(e) => setRaise({ ...raise, save: e.target.checked })} /> Save it to the student&rsquo;s record (the student is told)
+                  </label>
+                ) : <div className="sub2" style={{ marginTop: 6 }}>Used for this ticket only: correcting the record needs contact editing on your posting.</div>}
+                {!reachable ? <div className="ferr" role="alert">Give an e-mail address or an eleven-digit phone number beginning with 0.</div> : null}
+              </Note>
+            ) : null}
             <Field id="rt-cat" label="Category" required><select id="rt-cat" className="ctl" value={raise.category} onChange={(e) => setRaise({ ...raise, category: e.target.value, details: {} })}>{data.categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}</select></Field>
             <Field id="rt-subj" label="Subject" required><input id="rt-subj" className="ctl" value={raise.subject} onChange={(e) => setRaise({ ...raise, subject: e.target.value })} maxLength={200} /></Field>
             <Field id="rt-desc" label="Description" required><textarea id="rt-desc" className="ctl" rows={3} value={raise.description} onChange={(e) => setRaise({ ...raise, description: e.target.value })} maxLength={8000} /></Field>

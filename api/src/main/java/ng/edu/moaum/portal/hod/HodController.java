@@ -192,7 +192,9 @@ class HodController {
                 SELECT count(*) FILTER (WHERE cl.clears) AS cleared,
                        count(*) FILTER (WHERE NOT cl.clears) AS owing
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
-                  JOIN finance.session_clears(:s, 'REGISTRATION') cl ON cl.student_id = st.id
+                  -- V565: clearance worked out for the department's students only (finance.session_clears_for), not the University's
+                  JOIN finance.session_clears_for(:s, 'REGISTRATION', ARRAY(SELECT x.id FROM people.student x JOIN ref.programme xp ON xp.code = x.programme_code
+                                                                           WHERE xp.dept_code = :d AND x.status IN ('ACTIVE','PROBATION'))) cl ON cl.student_id = st.id
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
                 """).param("s", s).param("d", dept).query().singleRow());
         out.remove("fees");
@@ -223,7 +225,9 @@ class HodController {
                        coalesce(ch.total, 0) AS charged,
                        coalesce((SELECT sum(r.amount) FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL), 0) AS paid
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
-                  JOIN finance.session_clears(:s, 'REGISTRATION') cl ON cl.student_id = st.id
+                  -- V565: clearance worked out for the department's students only (finance.session_clears_for), not the University's
+                  JOIN finance.session_clears_for(:s, 'REGISTRATION', ARRAY(SELECT x.id FROM people.student x JOIN ref.programme xp ON xp.code = x.programme_code
+                                                                           WHERE xp.dept_code = :d AND x.status IN ('ACTIVE','PROBATION'))) cl ON cl.student_id = st.id
                   LEFT JOIN finance.session_charges(:s) ch ON ch.student_id = st.id
                  WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
                    AND cl.clears = :cleared

@@ -32,18 +32,19 @@ class TicketNotifier {
 
     /** the ticket as the notices need it */
     record T(UUID id, String number, String subject, String category, String status, String requesterKind, UUID requesterId, String requesterName,
-             String requesterEmail, UUID assignedTo, String resolutionSummary, String closureReason, String queueCode, String queue) {
+             String requesterEmail, UUID assignedTo, String resolutionSummary, String closureReason, String queueCode, String queue, String requesterPhone) {
     }
 
     T load(UUID id) {
         Map<String, Object> r = jdbc.sql("""
                 SELECT t.id, t.number, t.subject, c.name AS category, t.status, t.requester_kind, t.requester_id, t.requester_name, t.requester_email,
-                       t.assigned_to, t.resolution_summary, t.closure_reason, t.queue_code, q.name AS queue
+                       t.assigned_to, t.resolution_summary, t.closure_reason, t.queue_code, q.name AS queue, t.requester_phone
                   FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id LEFT JOIN helpdesk.queue q ON q.code = t.queue_code WHERE t.id = :id
                 """).param("id", id).query().singleRow();
         return new T((UUID) r.get("id"), (String) r.get("number"), (String) r.get("subject"), (String) r.get("category"), (String) r.get("status"),
                 (String) r.get("requester_kind"), (UUID) r.get("requester_id"), (String) r.get("requester_name"), (String) r.get("requester_email"),
-                (UUID) r.get("assigned_to"), (String) r.get("resolution_summary"), (String) r.get("closure_reason"), (String) r.get("queue_code"), (String) r.get("queue"));
+                (UUID) r.get("assigned_to"), (String) r.get("resolution_summary"), (String) r.get("closure_reason"), (String) r.get("queue_code"), (String) r.get("queue"),
+                (String) r.get("requester_phone"));
     }
 
     private String trackingLines(T t) {
@@ -51,7 +52,15 @@ class TicketNotifier {
     }
 
     private void toRequester(T t, String subject, String body) {
-        if (t.requesterEmail() == null || t.requesterEmail().isBlank()) return;
+        if (t.requesterEmail() == null || t.requesterEmail().isBlank()) {
+            // V565: a student's ticket raised with a phone alone is told by SMS, in a line; the student reads the rest signed in
+            if ("STUDENT".equals(t.requesterKind()) && t.requesterPhone() != null && !t.requesterPhone().isBlank()) {
+                jdbc.sql("SELECT platform.queue_notice('SMS', :r, :sub, :b, 'student', :ai)").param("r", t.requesterPhone().trim()).param("sub", subject)
+                        .param("b", "MOAUM ICT Support: " + subject + ". Sign in to the portal to read it: Support, My Tickets.").param("ai", t.requesterId())
+                        .query().listOfRows();
+            }
+            return;
+        }
         // V363: a request from the sign-in page names no one; its notices are about the ticket itself
         String kind = "STUDENT".equals(t.requesterKind()) ? "student" : "PUBLIC".equals(t.requesterKind()) ? "ticket" : "person";
         notices.queueEmail(t.requesterEmail(), subject, body, kind, t.requesterId(), List.of());

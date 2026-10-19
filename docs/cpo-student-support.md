@@ -269,3 +269,26 @@ the JUPEB package (`JupebSupportController`, `/api/v1/helpdesk/support/jupeb`) a
   temporary password once) and `check.sql` property 192.
 - **After deployment.** The Head of the Support Desk posts the agents who serve JUPEB candidates on the JUPEB Support queue
   with the capabilities they need. Until then only the Head, the Director of ICT, admin and super reach JUPEB records.
+
+## 16. Students the desk cannot reach (V565)
+
+On the live-shaped copy (19 Oct 2026), 13,866 of 48,320 active students (29%) had no e-mail on record, and about 13,560 of them had no phone either. The desk could not raise a ticket for any of them ("The record holds no email address for the ticket's updates"). A reset link or a ticket update could not reach them.
+
+- **A ticket raised at the desk with the contact the student gives.**
+  - When the record holds no e-mail, **Create support ticket** asks for the student's e-mail, and their phone where there is none either.
+  - With contact editing (EDIT_CONTACT), the agent may **Save it to the student's record**. This is the same edit as Edit student record: written to the record, kept in step with `people.student_contact`, on the ledger, and the student is told.
+  - Without contact editing, the contact serves this ticket only, and asking to save it is refused (`SUPPORT_CAPABILITY`).
+  - With neither on record nor given, the ticket is refused (`SUPPORT_TICKET_CONTACT`).
+  - Phones are kept as 0 and ten digits; +234 is read as 0.
+- **A student's ticket by phone alone.**
+  - `helpdesk.submit` (restated) takes a STUDENT ticket with a phone and no e-mail. Its updates go by SMS in a line: "MOAUM ICT Support: <the update>. Sign in to the portal to read it: Support, My Tickets." (`TicketNotifier.toRequester`).
+  - A ticket raised from the sign-in page or by staff still needs the e-mail its tracking page reads.
+- **Students We Cannot Reach** (`/helpdesk/reach`, menu id `t/supportreach`, every agent with VIEW_STUDENT, within their reach):
+  - covers the current students (active, on probation, admitted, deferred) with no e-mail and no phone, no e-mail, or no phone on record. These are read as `people.student_reach` reads them: the contact the student gave, otherwise the applicant account's;
+  - counts are shown by faculty (`helpdesk.reach_gaps`), with a page of students to open and put right;
+  - the list can be filtered by faculty, level, name or number;
+  - Excel export needs EXPORT_STUDENTS;
+  - API: `GET /api/v1/helpdesk/support/reach?kind=NEITHER|NO_EMAIL|NO_PHONE`.
+- **Tests.**
+  - `SupportReachIT`: refused, saved, the SMS, off the list.
+  - check.sql's V565 block: the phone-only ticket, the counts.

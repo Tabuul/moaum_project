@@ -25,11 +25,11 @@ export function ResetPolicyPanel({ policy }: { policy: ResetPolicy }) {
   const [statuses, setStatuses] = useState<string[]>(policy.statuses);
   // V528: empty tells no one (the default); a number from 1 to 10,000 tells the Head once an agent a day when it is reached
   const [alertDaily, setAlertDaily] = useState(policy.alert_daily == null ? "" : String(policy.alert_daily));
-  // V563: empty never waits; a number from 1 to 1,000 — a bulk reset of more students waits for a Head's approval
+  // V563: empty never waits; a number from 1 to 10,000 (V565) — a bulk reset of more students waits for a Head's approval
   const [bulkOver, setBulkOver] = useState(policy.bulk_approval_over == null ? "" : String(policy.bulk_approval_over));
   const bad = !statuses.length || (hourly !== "" && (!/^\d+$/.test(hourly) || Number(hourly) < 1 || Number(hourly) > 500))
     || (alertDaily !== "" && (!/^\d+$/.test(alertDaily) || Number(alertDaily) < 1 || Number(alertDaily) > 10000))
-    || (bulkOver !== "" && (!/^\d+$/.test(bulkOver) || Number(bulkOver) < 1 || Number(bulkOver) > 1000));
+    || (bulkOver !== "" && (!/^\d+$/.test(bulkOver) || Number(bulkOver) < 1 || Number(bulkOver) > 10000));
 
   async function save() {
     const r = await fetch("/api/bff/api/v1/helpdesk/admin/settings/password-reset", {
@@ -67,7 +67,7 @@ export function ResetPolicyPanel({ policy }: { policy: ResetPolicy }) {
             <Field id="rp-alert" label="Tell the Head when one agent's resets in a day reach" hint="Leave empty to tell no one. Nothing is refused." style={{ width: 340 }}>
               <input id="rp-alert" className="ctl tnum" inputMode="numeric" placeholder="Never" value={alertDaily} onChange={(e) => setAlertDaily(e.target.value.replace(/[^0-9]/g, ""))} />
             </Field>
-            <Field id="rp-bulk" label="A bulk reset of more students than this waits for approval" hint="By the Head of the Support Desk or the Director of ICT, never the one who asked. Empty: never waits; 1 to 1,000." style={{ width: 380 }}>
+            <Field id="rp-bulk" label="A bulk reset of more students than this waits for approval" hint="By the Head of the Support Desk or the Director of ICT, never the one who asked. Empty: never waits; 1 to 10,000." style={{ width: 380 }}>
               <input id="rp-bulk" className="ctl tnum" inputMode="numeric" placeholder="Never" value={bulkOver} onChange={(e) => setBulkOver(e.target.value.replace(/[^0-9]/g, ""))} />
             </Field>
           </div>

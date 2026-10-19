@@ -17,6 +17,8 @@ export interface AuditRow {
   id: string; at: string; action: string; module: string; summary: string | null; reason: string; outcome: string; override: boolean; normal_rule: string | null; method: string | null;
   payment_reference: string | null; session: string | null; semester: number | null; agent: string; agent_office: string; student_id: string; student: string; number: string | null;
   ticket_id: string | null; ticket_number: string | null; result: string;
+  /** V565: the bulk password reset the act was made in */
+  bulk_id?: string | null; bulk_reference?: string | null;
 }
 export interface AuditList { total: number; page: number; size: number; rows: AuditRow[]; summary?: { module: string; acts: number; overrides: number; week: number }[] }
 

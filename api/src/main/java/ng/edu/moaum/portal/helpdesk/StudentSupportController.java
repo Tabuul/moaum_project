@@ -733,8 +733,19 @@ class StudentSupportController {
 
     /* ── tickets: raised for the student at the desk, escalated to the office that decides ── */
 
+    /** V565: where the record holds no e-mail, the e-mail or phone the student gives at the desk reaches the ticket's updates (by SMS
+     *  where it is a phone), and is saved to the record when the agent may edit contacts and says so */
     public record TicketIn(@NotBlank @Size(max = 40) String category, @NotBlank @Size(max = 200) String subject, @NotBlank @Size(max = 8000) String description,
-                           Map<String, String> details) {
+                           Map<String, String> details, @Size(max = 200) String email, @Size(max = 20) String phone, Boolean saveContact) {
+    }
+
+    /** a phone as the record keeps it: 0 and ten digits (+234 and 234 read as 0) */
+    static String phone(String raw) {
+        if (raw == null) return null;
+        String d = raw.replaceAll("[\\s()-]", "");
+        if (d.startsWith("+234")) d = "0" + d.substring(4);
+        else if (d.startsWith("234") && d.length() == 13) d = "0" + d.substring(3);
+        return d.isEmpty() ? null : d;
     }
 
     @PostMapping("/students/{id}/tickets")
@@ -747,9 +758,28 @@ class StudentSupportController {
                 SELECT s.surname || ', ' || s.other_names AS name, coalesce(s.matric_no, s.admission_no) AS number, r.email, r.phone, p.dept_code, p.faculty_code
                   FROM people.student s JOIN ref.programme p ON p.code = s.programme_code LEFT JOIN LATERAL people.student_reach(s.id) r ON true WHERE s.id = :s
                 """).param("s", id).query().singleRow();
-        if (s.get("email") == null || String.valueOf(s.get("email")).isBlank()) {
-            throw new DomainRuleViolation("SUPPORT_TICKET_EMAIL", "The record holds no email address for the ticket's updates.",
-                    new DomainRuleViolation.Remedy("Correct the student's contact email first.", "You"));
+        // V565: the record's e-mail and phone, else what the student gives at the desk — at least one, or the ticket reaches no one
+        String email = blank((String) s.get("email")) != null ? ((String) s.get("email")).trim() : null;
+        String phone = blank((String) s.get("phone")) != null ? ((String) s.get("phone")).trim() : null;
+        String givenEmail = blank(body.email()) == null ? null : body.email().trim().toLowerCase();
+        String givenPhone = phone(blank(body.phone()));
+        if (givenEmail != null && !givenEmail.matches("^[^\\s@]+@[^\\s@]+\\.[A-Za-z]{2,}$")) {
+            throw new DomainRuleViolation("STU_EMAIL", "That is not an email address.", new DomainRuleViolation.Remedy("Enter it as name@example.com.", "You"));
+        }
+        if (givenPhone != null && !givenPhone.matches("^0[0-9]{10}$")) {
+            throw new DomainRuleViolation("STU_PHONE", "A Nigerian number is eleven digits beginning with 0.", new DomainRuleViolation.Remedy("Enter it as 08012345678.", "You"));
+        }
+        if (email == null) email = givenEmail;
+        if (phone == null) phone = givenPhone;
+        if (email == null && phone == null) {
+            throw new DomainRuleViolation("SUPPORT_TICKET_CONTACT", "The record holds no email address or phone for the ticket's updates.",
+                    new DomainRuleViolation.Remedy("Ask the student for an email address or a phone number and give it with the ticket.", "You"));
+        }
+        // given at the desk and saved to the record, as a contact edit is (EDIT_CONTACT; the student is told, the act is on the ledger)
+        if (Boolean.TRUE.equals(body.saveContact()) && (givenEmail != null || givenPhone != null)) {
+            String why = "Given at the support desk while raising a ticket: " + body.subject().trim();
+            if (givenEmail != null && blank((String) s.get("email")) == null) writeField(auth, id, "personal_email", new FieldIn(givenEmail, why, null));
+            if (givenPhone != null && blank((String) s.get("phone")) == null) writeField(auth, id, "mobile", new FieldIn(givenPhone, why, null));
         }
         String fields = jdbc.sql("SELECT fields::text FROM helpdesk.category WHERE code = upper(btrim(:c))").param("c", body.category()).query(String.class).optional().orElse("[]");
         Set<String> declared = new java.util.HashSet<>();
@@ -759,7 +789,7 @@ class StudentSupportController {
             if (k != null && declared.contains(k) && v != null && !v.isBlank() && details.size() < 30) details.put(k, v.trim().substring(0, Math.min(v.trim().length(), 500)));
         });
         UUID t = jdbc.sql("SELECT helpdesk.submit('STUDENT', :id, :n, :num, :e, :ph, :d, :f, :c, :s, :desc, :j::jsonb)")
-                .param("id", id).param("n", s.get("name")).param("num", s.get("number"), Types.VARCHAR).param("e", s.get("email"), Types.VARCHAR).param("ph", s.get("phone"), Types.VARCHAR)
+                .param("id", id).param("n", s.get("name")).param("num", s.get("number"), Types.VARCHAR).param("e", email, Types.VARCHAR).param("ph", phone, Types.VARCHAR)
                 .param("d", s.get("dept_code"), Types.VARCHAR).param("f", s.get("faculty_code"), Types.VARCHAR).param("c", body.category()).param("s", body.subject().trim())
                 .param("desc", body.description().trim()).param("j", support.json().writeValueAsString(details)).query(UUID.class).single();
         jdbc.sql("SELECT helpdesk.route(:t)").param("t", t).query(String.class).single();
@@ -771,6 +801,74 @@ class StudentSupportController {
         support.act(id, t, "TICKET_CREATED", null, null, number, "Raised at the desk: " + body.subject().trim(), null, null,
                 Map.of("summary", "Ticket " + number + " raised for the student: " + body.subject().trim()));
         return Map.of("id", t, "number", number);
+    }
+
+    /**
+     * V565: the current students within the reader's reach the University cannot reach — no e-mail and no phone (NEITHER), no e-mail
+     * (NO_EMAIL) or no phone (NO_PHONE) on record — by faculty, and a page of them to put right at the desk or send to the
+     * departments; the Excel needs EXPORT_STUDENTS
+     */
+    @GetMapping("/reach")
+    @PreAuthorize(AGENTS)
+    @Transactional(readOnly = true)
+    Map<String, Object> reach(Authentication auth, @RequestParam(defaultValue = "NEITHER") String kind, @RequestParam(required = false) String fac,
+                              @RequestParam(required = false) String dept, @RequestParam(required = false) String prog, @RequestParam(required = false) Integer level,
+                              @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size,
+                              @RequestParam(defaultValue = "false") boolean export) {
+        SupportAccess.Access a = support.access(auth);
+        can(a, "VIEW_STUDENT");
+        if (export) can(a, "EXPORT_STUDENTS");
+        String k = kind.trim().toUpperCase();
+        if (!Set.of("NEITHER", "NO_EMAIL", "NO_PHONE").contains(k)) {
+            throw new DomainRuleViolation("SUPPORT_REACH_KIND", "Choose students with neither an e-mail nor a phone, with no e-mail, or with no phone.",
+                    new DomainRuleViolation.Remedy("Use NEITHER, NO_EMAIL or NO_PHONE.", "You"));
+        }
+        int sz = Math.max(1, Math.min(size, export ? 20000 : 200));
+        int pg = Math.max(1, page);
+        String term = blank(q);
+        String sql = """
+                WITH sc AS MATERIALIZED (SELECT * FROM helpdesk.agent_scope_for(:me, 'VIEW_STUDENT')),
+                r AS (
+                    SELECT s.id, upper(btrim(s.surname)) || coalesce(', ' || nullif(btrim(s.other_names), ''), '') AS name, coalesce(s.matric_no, s.admission_no) AS number,
+                           s.jamb_reg_no, f.name AS faculty, d.name AS department, p.name AS programme, s.current_level AS level, s.status,
+                           nullif(btrim(coalesce(c.email, aa.email, '')), '') IS NOT NULL AS has_email, nullif(btrim(coalesce(c.phone, aa.phone, '')), '') IS NOT NULL AS has_phone,
+                           (SELECT t.number FROM helpdesk.ticket t WHERE t.requester_kind = 'STUDENT' AND t.requester_id = s.id AND t.status NOT IN ('RESOLVED', 'CLOSED')
+                             ORDER BY t.created_at DESC LIMIT 1) AS open_ticket
+                      FROM people.student s
+                      JOIN ref.programme p ON p.code = s.programme_code
+                      LEFT JOIN ref.department d ON d.code = p.dept_code
+                      LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                      LEFT JOIN people.student_contact c ON c.student_id = s.id
+                      LEFT JOIN admissions.applicant_account aa ON aa.candidate_id = s.candidate_id
+                     WHERE s.duplicate_of IS NULL AND s.status IN ('ACTIVE', 'PROBATION', 'ADMITTED', 'DEFERRED')
+                       AND (:head OR EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY (sc.faculties) OR p.dept_code = ANY (sc.departments)))
+                       AND (:fac::text IS NULL OR p.faculty_code = :fac) AND (:dept::text IS NULL OR p.dept_code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+                       AND (:level::int IS NULL OR s.current_level = :level)
+                       AND (:q::text IS NULL OR upper(s.surname) LIKE :qp OR upper(s.other_names) LIKE :qp OR upper(s.matric_no) LIKE :qp OR upper(s.admission_no) LIKE :qp
+                            OR upper(s.jamb_reg_no) = :qu))
+                """;
+        String which = switch (k) {
+            case "NO_EMAIL" -> " WHERE NOT r.has_email";
+            case "NO_PHONE" -> " WHERE NOT r.has_phone";
+            default -> " WHERE NOT r.has_email AND NOT r.has_phone";
+        };
+        java.util.function.Function<String, JdbcClient.StatementSpec> with = x -> jdbc.sql(x).param("me", a.agent()).param("head", a.head())
+                .param("fac", blank(fac) == null ? null : fac.trim().toUpperCase(), Types.VARCHAR).param("dept", blank(dept) == null ? null : dept.trim().toUpperCase(), Types.VARCHAR)
+                .param("prog", blank(prog) == null ? null : prog.trim().toUpperCase(), Types.VARCHAR).param("level", level, Types.INTEGER)
+                .param("q", term, Types.VARCHAR).param("qp", term == null ? null : term.toUpperCase() + "%", Types.VARCHAR).param("qu", term == null ? null : term.toUpperCase(), Types.VARCHAR);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("kind", k);
+        out.put("total", with.apply(sql + "SELECT count(*) FROM r" + which).query(Long.class).single());
+        out.put("rows", with.apply(sql + "SELECT r.* FROM r" + which + " ORDER BY r.faculty, r.department, r.programme, r.level, r.name LIMIT :n OFFSET :o")
+                .param("n", sz).param("o", (long) (pg - 1) * sz).query().listOfRows());
+        out.put("page", pg);
+        out.put("size", sz);
+        if (!export) {
+            out.put("byFaculty", jdbc.sql("SELECT * FROM helpdesk.reach_gaps(:me, :head)").param("me", a.agent()).param("head", a.head()).query().listOfRows());
+            out.put("mayEditContact", a.has("EDIT_CONTACT"));
+            out.put("mayExport", a.has("EXPORT_STUDENTS"));
+        }
+        return out;
     }
 
     public record EscalateIn(@NotNull UUID ticket, @NotBlank @Size(max = 40) String office, @NotBlank @Size(max = 2000) String reason, @Size(max = 60) String paymentReference) {
@@ -809,7 +907,8 @@ class StudentSupportController {
     Map<String, Object> audit(Authentication auth, @RequestParam(required = false) String module, @RequestParam(required = false) String action,
                               @RequestParam(required = false) UUID agent, @RequestParam(required = false) java.time.LocalDate from,
                               @RequestParam(required = false) java.time.LocalDate to, @RequestParam(defaultValue = "false") boolean overrides,
-                              @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size, @RequestParam(defaultValue = "false") boolean export) {
+                              @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size, @RequestParam(defaultValue = "false") boolean export,
+                              @RequestParam(required = false) String kind) {
         SupportAccess.Access a = support.access(auth);
         // V500: the password-reset history is read with its own capability (every agent in service holds it); the rest of the
         // ledger with the support audit, as before. The history's export is the same rows the reader already reads.
@@ -827,6 +926,7 @@ class StudentSupportController {
                   LEFT JOIN ref.programme p ON p.code = s.programme_code
                   LEFT JOIN jupeb.application ja ON ja.id = a.jupeb_application_id
                   LEFT JOIN helpdesk.ticket t ON t.id = a.ticket_id
+                  LEFT JOIN helpdesk.bulk_reset b ON b.id = a.bulk_id
                  WHERE (:head
                         OR (a.student_id IS NOT NULL AND EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY(sc.faculties) OR p.dept_code = ANY(sc.departments)))
                         OR (a.jupeb_application_id IS NOT NULL AND :cap = ANY (helpdesk.agent_jupeb_capabilities(:me))))
@@ -836,13 +936,18 @@ class StudentSupportController {
                    AND (:from::date IS NULL OR a.at >= :from)
                    AND (:to::date IS NULL OR a.at < :to + 1)
                    AND (NOT :overrides OR a.override)
+                   AND (:kind::text IS NULL OR (:kind = 'LINK' AND a.method = 'RESET_LINK')
+                        OR (:kind = 'BULK' AND a.bulk_id IS NOT NULL AND a.method IS DISTINCT FROM 'RESET_LINK')
+                        OR (:kind = 'SINGLE' AND a.bulk_id IS NULL AND a.method IS DISTINCT FROM 'RESET_LINK'))
                 """;
         String cte = "WITH sc AS MATERIALIZED (SELECT * FROM helpdesk.agent_scope_for(:me, :cap)) ";
         java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
                 .param("head", a.head()).param("me", a.agent()).param("cap", cap)
                 .param("module", blank(module) == null ? null : module.trim().toUpperCase(), Types.VARCHAR)
                 .param("action", blank(action) == null ? null : action.trim().toUpperCase(), Types.VARCHAR)
-                .param("agent", agent, Types.OTHER).param("from", from, Types.DATE).param("to", to, Types.DATE).param("overrides", overrides);
+                .param("agent", agent, Types.OTHER).param("from", from, Types.DATE).param("to", to, Types.DATE).param("overrides", overrides)
+                // V565: a password reset made alone, in a bulk reset, or a reset link
+                .param("kind", blank(kind) == null || !Set.of("SINGLE", "BULK", "LINK").contains(kind.trim().toUpperCase()) ? null : kind.trim().toUpperCase(), Types.VARCHAR);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", with.apply(cte + "SELECT count(*) " + where).query(Long.class).single());
         out.put("rows", with.apply(cte + """
@@ -850,7 +955,8 @@ class StudentSupportController {
                        a.payment_reference, a.session, a.semester, helpdesk.person_name(a.agent_id) AS agent, a.agent_office,
                        s.id AS student_id, a.jupeb_application_id, coalesce(s.surname || ', ' || s.other_names, ja.surname || ', ' || ja.first_name) AS student,
                        coalesce(s.matric_no, s.admission_no, ja.application_no) AS number,
-                       t.id AS ticket_id, t.number AS ticket_number, CASE WHEN t.status IN ('RESOLVED', 'CLOSED') THEN 'RESOLVED' ELSE a.outcome END AS result
+                       t.id AS ticket_id, t.number AS ticket_number, CASE WHEN t.status IN ('RESOLVED', 'CLOSED') THEN 'RESOLVED' ELSE a.outcome END AS result,
+                       a.bulk_id, b.reference AS bulk_reference
                 """ + where + " ORDER BY a.at DESC LIMIT :n OFFSET :o").param("n", sz).param("o", (long) (pg - 1) * sz).query().listOfRows());
         out.put("page", pg);
         out.put("size", sz);

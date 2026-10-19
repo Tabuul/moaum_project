@@ -42,7 +42,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/helpdesk/support/password-reset/bulk")
 class BulkPasswordResetController {
 
-    private static final int MAX = 1000;
+    /** V565: students one request takes (opened as parts of 1,000 run one after another, helpdesk.start_bulk_reset) */
+    private static final int MAX = 10000;
 
     private final JdbcClient jdbc;
     private final SupportAccess support;
@@ -153,7 +154,7 @@ class BulkPasswordResetController {
 
     /**
      * the students the agent may bulk-reset, searched and filtered — a page of them; with all=true, the ids of every student that
-     * matches (at most 1,000), and their login tickets, for "Select all"
+     * matches (at most 10,000), and their login tickets, for "Select all"
      */
     @GetMapping("/candidates")
     @PreAuthorize(AGENTS)
@@ -288,6 +289,7 @@ class BulkPasswordResetController {
             }
         });
         Map<String, Object> out = new LinkedHashMap<>(operation(id));
+        out.put("series", series(out));
         out.put("repeat", repeat);
         return out;
     }
@@ -298,9 +300,19 @@ class BulkPasswordResetController {
                        helpdesk.person_name(b.initiated_by) AS performed_by, b.initiated_by,
                        (SELECT count(*) FROM helpdesk.bulk_reset_item i WHERE i.bulk_id = b.id AND i.status <> 'PENDING') AS processed,
                        b.resolve_tickets, b.resolution, b.retry_of, (SELECT o.reference FROM helpdesk.bulk_reset o WHERE o.id = b.retry_of) AS retry_of_reference,
-                       b.approval_over, helpdesk.person_name(b.decided_by) AS decided_by, b.decided_at, b.decision_note
+                       b.approval_over, helpdesk.person_name(b.decided_by) AS decided_by, b.decided_at, b.decision_note, b.series_id, b.part, b.parts
                   FROM helpdesk.bulk_reset b WHERE b.id = :b
                 """).param("b", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("bulk password reset", id));
+    }
+
+    /** V565: the parts of a request of more than 1,000 students, in order, with their counts (none for one of 1,000 or fewer) */
+    private List<Map<String, Object>> series(Map<String, Object> op) {
+        if (op.get("series_id") == null) return List.of();
+        return jdbc.sql("""
+                SELECT b.id, b.reference, b.part, b.status, b.total, b.succeeded, b.failed, b.completed_at,
+                       (SELECT count(*) FROM helpdesk.bulk_reset_item i WHERE i.bulk_id = b.id AND i.status <> 'PENDING') AS processed
+                  FROM helpdesk.bulk_reset b WHERE b.series_id = :s ORDER BY b.part
+                """).param("s", op.get("series_id")).query().listOfRows();
     }
 
     /** the one who made it, or a Head */
@@ -337,6 +349,7 @@ class BulkPasswordResetController {
         // V563: the operations that tried its students again, and what the reader may do with it
         op.put("retries", jdbc.sql("SELECT id, reference, status, created_at FROM helpdesk.bulk_reset WHERE retry_of = :b ORDER BY created_at")
                 .param("b", id).query().listOfRows());
+        op.put("series", series(op));
         boolean own = a.agent().equals(op.get("initiated_by"));
         op.put("mayDecide", a.head() && !own && "AWAITING_APPROVAL".equals(op.get("status")));
         op.put("mayAct", a.head() || own);
@@ -352,14 +365,18 @@ class BulkPasswordResetController {
         Map<String, Object> op = operation(id);
         mine(a, op, id);
         // the operation is marked first, so the tally keeps it CANCELLED; one that has ended is left as it is (V563: one waiting for
-        // approval is withdrawn so)
-        if (jdbc.sql("UPDATE helpdesk.bulk_reset SET status = 'CANCELLED', completed_at = now() WHERE id = :b AND status IN ('AWAITING_APPROVAL', 'PENDING', 'PROCESSING')")
-                .param("b", id).update() > 0) {
+        // approval is withdrawn so; V565: every part of a request not yet ended with it)
+        List<UUID> stopped = jdbc.sql("""
+                UPDATE helpdesk.bulk_reset SET status = 'CANCELLED', completed_at = now()
+                 WHERE (id = :b OR (CAST(:s AS uuid) IS NOT NULL AND series_id = CAST(:s AS uuid))) AND status IN ('AWAITING_APPROVAL', 'PENDING', 'PROCESSING')
+                RETURNING id
+                """).param("b", id).param("s", op.get("series_id"), Types.OTHER).query(UUID.class).list();
+        for (UUID b : stopped) {
             jdbc.sql("""
                     UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', failure_code = 'CANCELLED', failure_words = :w, processed_at = now()
                      WHERE bulk_id = :b AND status = 'PENDING'
-                    """).param("w", words("CANCELLED", null)).param("b", id).update();
-            jdbc.sql("SELECT helpdesk.bulk_reset_tally(:b)").param("b", id).query(String.class).single();
+                    """).param("w", words("CANCELLED", null)).param("b", b).update();
+            jdbc.sql("SELECT helpdesk.bulk_reset_tally(:b)").param("b", b).query(String.class).single();
         }
         return operation(id);
     }
@@ -454,7 +471,7 @@ class BulkPasswordResetController {
         long total = b.apply(jdbc.sql("SELECT count(*) FROM helpdesk.bulk_reset b " + where)).query(Long.class).single();
         List<Map<String, Object>> rows = b.apply(jdbc.sql("""
                 SELECT b.id, b.reference, b.created_at, helpdesk.person_name(b.initiated_by) AS performed_by, b.office, b.reason, b.total, b.succeeded,
-                       b.failed, b.status, b.completed_at,
+                       b.failed, b.status, b.completed_at, b.part, b.parts,
                        (SELECT string_agg(DISTINCT t.number, ', ') FROM helpdesk.bulk_reset_item i JOIN helpdesk.ticket t ON t.id = i.ticket_id WHERE i.bulk_id = b.id) AS tickets
                   FROM helpdesk.bulk_reset b
                 """ + where + " ORDER BY b.created_at DESC LIMIT :n OFFSET :o")).param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();

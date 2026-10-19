@@ -54,7 +54,7 @@ export function BulkHistoryList({ f, list }: { f: HistoryFilters; list: BulkHist
         {list.rows.length ? (
           <DTable pageSize={0} cols={["S/N|num", "Reference", "Date", "Performed by", "Reason", "Selected|num", "Reset|num", "Failed|num", "Status|mid", "Tickets"]} rows={list.rows.map((h, i) => [
             <span key="n" className="tnum sub2">{(list.page - 1) * list.size + i + 1}</span>,
-            <Link key="r" href={`/helpdesk/password-reset/bulk/${h.id}`} className="lnk tnum">{h.reference}</Link>,
+            <span key="r"><Link href={`/helpdesk/password-reset/bulk/${h.id}`} className="lnk tnum">{h.reference}</Link>{h.parts ? <div className="sub2">part {h.part} of {h.parts}</div> : null}</span>,
             <span key="d" className="tnum sub2">{when(h.created_at)}</span>,
             <span key="p">{h.performed_by}<div className="sub2">{h.office}</div></span>,
             <span key="w" className="sub2">{h.reason}</span>,

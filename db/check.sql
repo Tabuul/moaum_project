@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 399
+\set EXPECTED 400
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19427,6 +19427,78 @@ BEGIN
                  AND withheld = 'Draft:EXAM_CARD_NOT_SUBMITTED,GST only:EXAM_CARD_NOT_PAID,Unpaid:EXAM_CARD_NOT_PAID' AND agree, false),
         format('submitted and paid %s/%s | old portal %s | unpaid %s | GST only %s | draft %s | withheld %s agree %s',
                st_a->>'available', st_a->>'code', st_b->>'available', st_c->>'code', st_d->>'code', st_e->>'code', withheld, agree));
+END $$;
+
+-- ── V565. The students the desk cannot reach, and bulk resets in parts. A student's ticket is raised with a phone alone (no e-mail
+-- kept), never with neither, and any other ticket still needs its e-mail. Three invented students — no contact, a phone only, an
+-- e-mail only — are counted where the University cannot reach them. A request of 2,500 (one invented student and 2,499 ids that
+-- name no one) is opened as three parts of 1,000, 1,000 and 500 under one series, the same key giving its first part; above the
+-- figure every part waits, is counted once, and is approved as a whole; another is declined as a whole; 10,001 are refused, and the
+-- figure may now be 10,000. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); hd uuid := gen_random_uuid();
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); fac text;
+        t_phone uuid; phone_kept text; e_neither text; e_staff text; before record; after record; ids uuid[];
+        first uuid; first_again uuid; parts text; waiting int; approved text; second uuid; declined text; e_many text; e_figure text; figure_ok boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'CHECK V565', true);
+        SELECT faculty_code INTO fac FROM ref.programme WHERE code = 'C00023';
+        INSERT INTO iam.person (id, surname, given_names) VALUES (agent, 'ZZCHKV565AGENT', 'Invented'), (hd, 'ZZCHKV565HEAD', 'Invented');
+        SELECT * INTO before FROM helpdesk.reach_gaps(who, true) g WHERE g.faculty_code = fac;
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/65/056501', 'MOAUM/ADM/65/565001', 'CHECKV565A', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/65/056502', 'MOAUM/ADM/65/565002', 'CHECKV565B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/CHK/65/056503', 'MOAUM/ADM/65/565003', 'CHECKV565C', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (b, '08065650002', NULL, now()), (c, NULL, 'checkv565c@example.com', now());
+        SELECT * INTO after FROM helpdesk.reach_gaps(who, true) g WHERE g.faculty_code = fac;
+
+        -- a student's ticket by phone alone; never with neither; another's still with its e-mail
+        t_phone := helpdesk.submit('STUDENT', b, 'CHECKV565B, Invented', 'MOAUM/CHK/65/056502', NULL, '08065650002', NULL, fac, 'GENERAL', 'Cannot sign in', 'The password is not accepted', '{}'::jsonb);
+        phone_kept := (SELECT coalesce(t.requester_email, '-') || ':' || t.requester_phone FROM helpdesk.ticket t WHERE t.id = t_phone);
+        BEGIN PERFORM helpdesk.submit('STUDENT', a, 'CHECKV565A, Invented', NULL, ' ', NULL, NULL, fac, 'GENERAL', 'Cannot sign in', 'The password is not accepted', '{}'::jsonb);
+        EXCEPTION WHEN check_violation THEN e_neither := 'REFUSED'; END;
+        BEGIN PERFORM helpdesk.submit('STAFF', agent, 'ZZCHKV565AGENT, Invented', NULL, NULL, '08065650009', NULL, NULL, 'GENERAL', 'Cannot sign in', 'The password is not accepted', '{}'::jsonb);
+        EXCEPTION WHEN check_violation THEN e_staff := 'REFUSED'; END;
+
+        -- 2,500 chosen: three parts under one series, above the figure all waiting, counted once, approved as a whole
+        UPDATE helpdesk.setting SET bulk_reset_approval_over = 2000 WHERE row_no;
+        ids := ARRAY[a] || ARRAY(SELECT gen_random_uuid() FROM generate_series(1, 2499));
+        first := helpdesk.start_bulk_reset(agent, 'ictagent', false, ids, '{}'::jsonb, 'Students reported login issues', true, 'check-v565');
+        first_again := helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a], '{}'::jsonb, 'Students reported login issues', true, 'check-v565');
+        parts := (SELECT string_agg(r.part || '/' || r.parts || ':' || r.total || ':' || r.status || ':' || (SELECT count(*) FROM helpdesk.bulk_reset_item i WHERE i.bulk_id = r.id), ',' ORDER BY r.part)
+                    FROM helpdesk.bulk_reset r WHERE r.series_id = first);
+        waiting := (helpdesk.reset_desk_summary(agent, false)->>'awaitingApproval')::int;
+        approved := helpdesk.decide_bulk_reset(first, hd, true, true, NULL);
+        approved := approved || ':' || (SELECT string_agg(DISTINCT r.status, ',') FROM helpdesk.bulk_reset r WHERE r.series_id = first);
+        -- declined as a whole: nobody reset
+        second := helpdesk.start_bulk_reset(agent, 'ictagent', false, ids, '{}'::jsonb, 'Students reported login issues', true, 'check-v565-b');
+        PERFORM helpdesk.decide_bulk_reset((SELECT r.id FROM helpdesk.bulk_reset r WHERE r.series_id = second AND r.part = 2), hd, true, false, 'not every identity was checked');
+        declined := (SELECT string_agg(DISTINCT r.status || ':' || r.succeeded || '/' || r.failed, ',') FROM helpdesk.bulk_reset r WHERE r.series_id = second);
+        -- 10,001 refused; the figure may be 10,000, not more
+        BEGIN PERFORM helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY(SELECT gen_random_uuid() FROM generate_series(1, 10001)), '{}'::jsonb, 'Students reported login issues', true, NULL);
+        EXCEPTION WHEN check_violation THEN e_many := split_part(SQLERRM, ':', 1); END;
+        UPDATE helpdesk.setting SET bulk_reset_approval_over = 10000 WHERE row_no;
+        figure_ok := (SELECT g.bulk_reset_approval_over = 10000 FROM helpdesk.setting g WHERE g.row_no);
+        BEGIN UPDATE helpdesk.setting SET bulk_reset_approval_over = 10001 WHERE row_no;
+        EXCEPTION WHEN check_violation THEN e_figure := 'REFUSED'; END;
+        RAISE EXCEPTION 'the V565 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V565 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V565: a student''s ticket is reached by phone alone (never with neither, another''s still by e-mail); the students the University cannot reach are counted; a bulk reset of more than 1,000 is opened in parts of 1,000 under one series, waits, is counted and is decided as a whole; 10,000 at most',
+        coalesce(after.students - coalesce(before.students, 0) = 3 AND after.no_email - coalesce(before.no_email, 0) = 2 AND after.no_phone - coalesce(before.no_phone, 0) = 2
+                 AND after.neither - coalesce(before.neither, 0) = 1
+                 AND phone_kept = '-:08065650002' AND e_neither = 'REFUSED' AND e_staff = 'REFUSED'
+                 AND first = first_again AND parts = '1/3:1000:AWAITING_APPROVAL:1,2/3:1000:AWAITING_APPROVAL:0,3/3:500:AWAITING_APPROVAL:0' AND waiting = 1
+                 AND approved = 'PENDING:PENDING' AND declined = 'REJECTED:0/1000,REJECTED:0/500'
+                 AND e_many = 'BULK_RESET_TOO_MANY' AND figure_ok AND e_figure = 'REFUSED', false),
+        format('reach +%s/+%s/+%s/+%s | ticket %s, neither %s, staff %s | same %s parts %s waiting %s approved %s declined %s | many %s figure %s/%s',
+               after.students - coalesce(before.students, 0), after.no_email - coalesce(before.no_email, 0), after.no_phone - coalesce(before.no_phone, 0),
+               after.neither - coalesce(before.neither, 0), phone_kept, e_neither, e_staff, first = first_again, parts, waiting, approved, declined, e_many, figure_ok, e_figure));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
