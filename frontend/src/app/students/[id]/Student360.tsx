@@ -31,6 +31,8 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { OpenStudentPortal } from "@/components/support/OpenStudentPortal";
 import { Biodata } from "./Biodata";
 import { MatriculationPanel } from "./MatriculationPanel";
+import { FullRecord, type Overview } from "./FullRecord";
+import type { PaymentCorrection } from "@/components/finance/PaymentCorrections";
 
 const WRITERS = ["academic", "registrar", "dregistrar"];
 
@@ -77,6 +79,7 @@ export function Student360({
   session,
   actingOffice,
   classification,
+  full,
 }: {
   record: StudentRecord;
   /** V360: the student's own figures (fees for the offices that read them, CGPA, standing); null when not read */
@@ -85,6 +88,9 @@ export function Student360({
   actingOffice: string | null;
   /** V469: the record's classification — programme type, admission route, study mode, centre and history — when read */
   classification?: Classification | null;
+  /** the full record (Student 360°): the overview the server read, the payment reallocations, whether the notifications are offered,
+   *  the tab the address names; null when the overview could not be read (the record's panels are shown as before) */
+  full?: { overview: Overview; swaps: PaymentCorrection[] | null; messages: boolean; initialTab?: string | null } | null;
 }) {
   const fees = portal?.fees ?? null;
   const cgpa = portal?.cgpa ?? null;
@@ -165,6 +171,135 @@ export function Student360({
     }
   }
 
+  // the record's own panels: first on the Overview tab of the full record
+  const overviewBody = (
+    <>
+        {classification ? <ClassificationPanel data={classification} decides={actingOffice !== null && CLASSIFIERS.includes(actingOffice)} /> : null}
+
+        <MatriculationPanel studentId={s.id} />
+
+        <div className="grid grid--3">
+          <Panel title="Finance" right={fees ? <Pil kind={fees.balance > 0 ? "bad" : fees.due > 0 ? "ok" : "grey"}>{fees.balance > 0 ? "OUTSTANDING" : fees.due > 0 ? "SETTLED" : "NO CHARGE"}</Pil> : <Pil kind="grey">NOT SHOWN</Pil>}>
+            <PBody>
+              {fees ? (
+                <>
+                  <Row k={`Session charge · ${fees.session}`} v={money(fees.due)} />
+                  <Row k="Paid" v={money(fees.paid)} />
+                  <div className="hr" />
+                  <div className="row row--between">
+                    <strong>Outstanding</strong>
+                    <strong className={`tnum ${fees.balance > 0 ? "ink-red" : "ink-green"}`}>{money(fees.balance)}</strong>
+                  </div>
+                  <div className="sub2">
+                    {fees.hasArrears ? "Arrears are carried from an earlier session. " : ""}The Bursary&rsquo;s charge and confirmed payments for the session.
+                  </div>
+                </>
+              ) : (
+                <div className="sub2">
+                  {portal ? "School fees are read by the Bursary, the Registry and the academic heads; this office does not see them." : "The student's figures could not be read just now."}
+                </div>
+              )}
+            </PBody>
+          </Panel>
+
+          <Panel title="Academic standing" right={cgpa != null ? <Pil kind={portal?.standing === "PROBATION" ? "bad" : "ok"}>{words(portal?.standing).toUpperCase() || "PUBLISHED"}</Pil> : <Pil kind="grey">NO RESULT PUBLISHED</Pil>}>
+            <PBody>
+              <div className="row row--top" style={{ gap: "var(--s-6)" }}>
+                <div className="kv">
+                  <span className="k">CGPA</span>
+                  <span className={`tnum b700${cgpa != null ? "" : " ink-faint"}`} style={{ fontSize: "var(--t-xl)" }}>
+                    {cgpa != null ? Number(cgpa).toFixed(2) : <>&mdash;</>}
+                  </span>
+                </div>
+                <div className="kv">
+                  <span className="k">Units registered</span>
+                  <span className="tnum b700" style={{ fontSize: "var(--t-xl)" }}>
+                    {record.approvedUnits}
+                  </span>
+                </div>
+              </div>
+              <div className="sub2">
+                A CGPA follows Senate&rsquo;s approval of a result. Units are those on approved registrations.
+              </div>
+            </PBody>
+          </Panel>
+
+          <Panel title="Clearances" right={<>{cleared} of {record.convocationClearance.length} · convocation</>}>
+            <PBody>
+              {record.convocationClearance.map((c) => (
+                <Clr key={c.unit} ok={c.state === "CLEARED"} label={clearanceLine(c)} />
+              ))}
+            </PBody>
+          </Panel>
+        </div>
+
+        <Panel title="Registration" right={session}>
+          <PBody>
+            {thisSession.length === 0 ? (
+              <span className="sub2">
+                No registration in {session}. A registration is a record of what was submitted, and none has been.
+              </span>
+            ) : (
+              thisSession.map((r) => (
+                <Row
+                  key={r.id}
+                  k={`${semesterText(r.semester)} · ${statusLabel(r.status)}`}
+                  v={`${r.units} units${r.submittedAt ? ` · submitted ${day(r.submittedAt)}` : ""}`}
+                />
+              ))
+            )}
+          </PBody>
+        </Panel>
+
+        <Panel title="Record history" right="Append-only · every entry attributable">
+          <div className="tablewrap" tabIndex={0}>
+            <table className="tbl--data">
+              <tbody>
+                {record.statusHistory.length === 0 && record.decidedChanges.length === 0 ? (
+                  <tr>
+                    <td className="sub2">
+                      No change since it was created.
+                    </td>
+                  </tr>
+                ) : null}
+                {record.statusHistory.map((h) => (
+                  <tr key={h.id}>
+                    <td className="sub2 tnum" style={{ width: 120 }}>
+                      {day(h.effectiveOn)}
+                    </td>
+                    <td>
+                      {statusLabel(h.fromStatus)} &rarr; {statusLabel(h.toStatus)}
+                      {h.reason ? <div className="sub2">{h.reason}</div> : null}
+                    </td>
+                    <td className="sub2" style={{ width: 210 }}>
+                      {h.instrument}
+                    </td>
+                  </tr>
+                ))}
+                {record.decidedChanges.map((c) => (
+                  <tr key={c.id}>
+                    <td className="sub2 tnum" style={{ width: 120 }}>
+                      {day(c.decidedAt)}
+                    </td>
+                    <td>
+                      {c.label}: {c.fromValue ?? "—"} &rarr; {c.toValue}
+                      <div className={`sub2${c.state === "REFUSED" ? " ink-red" : ""}`}>
+                        {c.state === "APPROVED" ? "Approved" : "Refused"} &middot; {c.decision}
+                      </div>
+                    </td>
+                    <td className="sub2" style={{ width: 210 }}>
+                      {c.evidence ?? "No evidence attached"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+    </>
+  );
+
   return (
     <>
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -210,130 +345,15 @@ export function Student360({
         </div>
       </div>
 
-      {classification ? <ClassificationPanel data={classification} decides={actingOffice !== null && CLASSIFIERS.includes(actingOffice)} /> : null}
-
-      <MatriculationPanel studentId={s.id} />
-
-      <div className="grid grid--3">
-        <Panel title="Finance" right={fees ? <Pil kind={fees.balance > 0 ? "bad" : fees.due > 0 ? "ok" : "grey"}>{fees.balance > 0 ? "OUTSTANDING" : fees.due > 0 ? "SETTLED" : "NO CHARGE"}</Pil> : <Pil kind="grey">NOT SHOWN</Pil>}>
-          <PBody>
-            {fees ? (
-              <>
-                <Row k={`Session charge · ${fees.session}`} v={money(fees.due)} />
-                <Row k="Paid" v={money(fees.paid)} />
-                <div className="hr" />
-                <div className="row row--between">
-                  <strong>Outstanding</strong>
-                  <strong className={`tnum ${fees.balance > 0 ? "ink-red" : "ink-green"}`}>{money(fees.balance)}</strong>
-                </div>
-                <div className="sub2">
-                  {fees.hasArrears ? "Arrears are carried from an earlier session. " : ""}The Bursary&rsquo;s charge and confirmed payments for the session.
-                </div>
-              </>
-            ) : (
-              <div className="sub2">
-                {portal ? "School fees are read by the Bursary, the Registry and the academic heads; this office does not see them." : "The student's figures could not be read just now."}
-              </div>
-            )}
-          </PBody>
-        </Panel>
-
-        <Panel title="Academic standing" right={cgpa != null ? <Pil kind={portal?.standing === "PROBATION" ? "bad" : "ok"}>{words(portal?.standing).toUpperCase() || "PUBLISHED"}</Pil> : <Pil kind="grey">NO RESULT PUBLISHED</Pil>}>
-          <PBody>
-            <div className="row row--top" style={{ gap: "var(--s-6)" }}>
-              <div className="kv">
-                <span className="k">CGPA</span>
-                <span className={`tnum b700${cgpa != null ? "" : " ink-faint"}`} style={{ fontSize: "var(--t-xl)" }}>
-                  {cgpa != null ? Number(cgpa).toFixed(2) : <>&mdash;</>}
-                </span>
-              </div>
-              <div className="kv">
-                <span className="k">Units registered</span>
-                <span className="tnum b700" style={{ fontSize: "var(--t-xl)" }}>
-                  {record.approvedUnits}
-                </span>
-              </div>
-            </div>
-            <div className="sub2">
-              A CGPA follows Senate&rsquo;s approval of a result. Units are those on approved registrations.
-            </div>
-          </PBody>
-        </Panel>
-
-        <Panel title="Clearances" right={<>{cleared} of {record.convocationClearance.length} · convocation</>}>
-          <PBody>
-            {record.convocationClearance.map((c) => (
-              <Clr key={c.unit} ok={c.state === "CLEARED"} label={clearanceLine(c)} />
-            ))}
-          </PBody>
-        </Panel>
-      </div>
-
-      <Panel title="Registration" right={session}>
-        <PBody>
-          {thisSession.length === 0 ? (
-            <span className="sub2">
-              No registration in {session}. A registration is a record of what was submitted, and none has been.
-            </span>
-          ) : (
-            thisSession.map((r) => (
-              <Row
-                key={r.id}
-                k={`${semesterText(r.semester)} · ${statusLabel(r.status)}`}
-                v={`${r.units} units${r.submittedAt ? ` · submitted ${day(r.submittedAt)}` : ""}`}
-              />
-            ))
-          )}
-        </PBody>
-      </Panel>
-
-      <Panel title="Record history" right="Append-only · every entry attributable">
-        <div className="tablewrap" tabIndex={0}>
-          <table className="tbl--data">
-            <tbody>
-              {record.statusHistory.length === 0 && record.decidedChanges.length === 0 ? (
-                <tr>
-                  <td className="sub2">
-                    No change since it was created.
-                  </td>
-                </tr>
-              ) : null}
-              {record.statusHistory.map((h) => (
-                <tr key={h.id}>
-                  <td className="sub2 tnum" style={{ width: 120 }}>
-                    {day(h.effectiveOn)}
-                  </td>
-                  <td>
-                    {statusLabel(h.fromStatus)} &rarr; {statusLabel(h.toStatus)}
-                    {h.reason ? <div className="sub2">{h.reason}</div> : null}
-                  </td>
-                  <td className="sub2" style={{ width: 210 }}>
-                    {h.instrument}
-                  </td>
-                </tr>
-              ))}
-              {record.decidedChanges.map((c) => (
-                <tr key={c.id}>
-                  <td className="sub2 tnum" style={{ width: 120 }}>
-                    {day(c.decidedAt)}
-                  </td>
-                  <td>
-                    {c.label}: {c.fromValue ?? "—"} &rarr; {c.toValue}
-                    <div className={`sub2${c.state === "REFUSED" ? " ink-red" : ""}`}>
-                      {c.state === "APPROVED" ? "Approved" : "Refused"} &middot; {c.decision}
-                    </div>
-                  </td>
-                  <td className="sub2" style={{ width: 210 }}>
-                    {c.evidence ?? "No evidence attached"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      <Biodata record={record} may={may} />
+      {full ? (
+        <FullRecord studentId={s.id} name={fullName(s)} number={s.matricNo ?? s.admissionNo ?? ""} overview={full.overview} overviewBody={overviewBody}
+          biodata={<Biodata record={record} may={may} />} swaps={full.swaps} messages={full.messages} initialTab={full.initialTab} />
+      ) : (
+        <>
+          {overviewBody}
+          <Biodata record={record} may={may} />
+        </>
+      )}
 
       {levelling ? (
         <Modal

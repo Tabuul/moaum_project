@@ -217,7 +217,7 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
   return (
     <Modal wide title={s ? fullName(s) : "Student"} sub={s ? `${s.matricNo ?? s.admissionNo ?? ""} · ${s.programmeName}` : "Reading the record"} onClose={onClose}
-      foot={<><span className="sub2">Read from the register as it stands now.</span><span className="grow" />{s ? <LinkBtn href={`/students/${s.id}`} kind="ghost">Open full record</LinkBtn> : null}<Btn kind="primary" onClick={onClose}>Close</Btn></>}>
+      foot={<><span className="sub2">Read from the register as it stands now.</span><span className="grow" />{s ? <><LinkBtn href={`/students/${s.id}?tab=results`} kind="ghost">Results</LinkBtn><LinkBtn href={`/students/${s.id}?tab=finance`} kind="ghost">Payments</LinkBtn><LinkBtn href={`/students/${s.id}`} kind="ghost">Open full record</LinkBtn></> : null}<Btn kind="primary" onClick={onClose}>Close</Btn></>}>
       {body}
     </Modal>
   );

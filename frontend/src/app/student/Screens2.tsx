@@ -213,7 +213,9 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   );
 }
 
-export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receipt; qr?: string | null; verifyUrl?: string | null; token?: string | null; photoSrc?: string | null }) {
+export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc, staff }: { r: Receipt; qr?: string | null; verifyUrl?: string | null; token?: string | null; photoSrc?: string | null;
+  /** the full record's receipt window (Student 360°): the same receipt, its own Print, PDF and Close beneath it */
+  staff?: boolean }) {
   if (!r.confirmed_at) {
     return <Note kind="info" title="This payment is not confirmed yet">A receipt is issued the moment the Bursary or the gateway confirms it. Reference {r.reference}.</Note>;
   }
@@ -265,10 +267,12 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc }: { r: Receip
           ) : null}
         </div>
       </div>
-      <div className="row">
-        <a href={`/student/receipt/${encodeURIComponent(r.reference)}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download PDF</a>
-        <LinkBtn kind="ghost" size="md" href="/student/fees">Back to payments</LinkBtn>
-      </div>
+      {staff ? null : (
+        <div className="row">
+          <a href={`/student/receipt/${encodeURIComponent(r.reference)}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download PDF</a>
+          <LinkBtn kind="ghost" size="md" href="/student/fees">Back to payments</LinkBtn>
+        </div>
+      )}
     </>
   );
 }
