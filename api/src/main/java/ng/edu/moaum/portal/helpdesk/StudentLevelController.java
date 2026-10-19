@@ -84,11 +84,19 @@ class StudentLevelController {
         out.put("session", session);
         out.put("semester", semester);
         out.put("options", JSON.readValue(jdbc.sql("SELECT people.level_options(:s)::text").param("s", id).query(String.class).single(), Map.class));
-        // the cohort engine's reading of where the student should stand (V331, V475): evidence for the agent, not a rule here
-        out.put("position", jdbc.sql("""
-                SELECT computed_level, spillover_state, classification, effective_cohort, expected_completion, graduation_state
-                  FROM people.academic_position WHERE student_id = :s
-                """).param("s", id).query().listOfRows().stream().findFirst().orElse(null));
+        // the cohort engine's reading of where the student should stand (V331, V475): evidence for the agent, not a rule here — with
+        // the spillover the agent must see (the year past the programme's length, against the limit the policy allows)
+        Map<String, Object> position = jdbc.sql("""
+                SELECT ap.computed_level, ap.spillover_state, ap.classification, ap.effective_cohort, ap.expected_completion, ap.graduation_state,
+                       ap.final_level, ap.duration_years, ap.spillover_years, ap.elapsed_sessions, ap.last_session,
+                       (SELECT g.max_spillover_years FROM policy.progression_setting g LIMIT 1) AS max_spillover
+                  FROM people.academic_position ap WHERE ap.student_id = :s
+                """).param("s", id).query().listOfRows().stream().findFirst().orElse(null);
+        out.put("position", position);
+        // the courses still owed — what a spillover student must pass to finish (a published failure not passed since)
+        out.put("carryovers", position != null && String.valueOf(position.get("spillover_state")).startsWith("SPILLOVER")
+                ? jdbc.sql("SELECT course_code, title, units, failed_in FROM registration.carryovers(:s) ORDER BY course_code").param("s", id).query().listOfRows()
+                : java.util.List.of());
         out.put("registrations", jdbc.sql("""
                 SELECT r.session, r.semester, r.level, r.status,
                        (SELECT count(*) FROM registration.entry e WHERE e.registration_id = r.id AND e.status NOT IN ('DROPPED', 'WITHDRAWN')) AS courses

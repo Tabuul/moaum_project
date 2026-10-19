@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { levelBody, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, type LevelState } from "./level-management.ts";
+import { levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverOf, type LevelState } from "./level-management.ts";
 
 const state = (over: Partial<LevelState> = {}): LevelState => ({
   student: { id: "s", full_name: "DOE, John", matric_no: "MOAU/SC/CSC/24/12345", jamb_reg_no: null, application_no: null, faculty: null, department: null, programme: null,
@@ -42,4 +42,18 @@ test("the levels on the record run one per session, and each change is named by 
   assert.equal(ruleWord("LEVEL_PROGRESS"), "Progressed (ICT Support)");
   assert.equal(ruleWord("LEVEL_SPILLOVER"), "Spillover correction");
   assert.equal(ruleWord("PROMOTE"), "Registry decision");
+});
+
+test("a spillover student is read as SP1, SP2 or the limit, at the final level, and a record left below it is flagged", () => {
+  const options = { currentLevel: 100, finalLevel: 400, postgraduate: false } as LevelState["options"];
+  const position = { computed_level: 400, spillover_state: "SPILLOVER_YEAR_2", classification: null, effective_cohort: "2020/2021", expected_completion: "2023/2024",
+    graduation_state: null, final_level: 400, spillover_years: 2, max_spillover: 2 };
+  assert.deepEqual(spilloverOf({ options, position }), { short: "SP2", long: "Spillover year 2 (SP2)", final: 400, behind: true, years: 2, limit: 2, atLimit: false });
+  assert.equal(spilloverOf({ options: { ...options, currentLevel: 400 }, position })?.behind, false);
+  assert.equal(spilloverOf({ options, position: { ...position, spillover_state: "SPILLOVER_LIMIT_REACHED" } })?.atLimit, true);
+  assert.equal(spilloverOf({ options, position: { ...position, spillover_state: "NORMAL" } }), null);
+  assert.equal(spilloverOf({ options: { ...options, postgraduate: true }, position }), null);
+  assert.equal(levelLabel(400, "SPILLOVER_YEAR_1", 400), "400 Level (SP1)");
+  assert.equal(levelLabel(100, "SPILLOVER_YEAR_1", 400), "100 Level");
+  assert.equal(levelLabel(300, "NORMAL", 400), "300 Level");
 });

@@ -147,6 +147,25 @@ V500 restates `ck_hd_sa_action` and `helpdesk.support_module` from V490's lists,
 V500 does not depend on V490 being applied first. V490 must carry the two level acts as well before it is committed. A
 database applies a file it has never seen whatever its number, so a later V490 would otherwise drop them.
 
+## Spillover on Level Management (19 Oct 2026)
+
+A spillover student is not a level: the cohort engine (V331, V475) counts the sessions past the programme's length (SP1, SP2 …, then
+the limit the policy allows, two by default) and puts the record at the programme's final level. Level Management now shows it:
+
+- the student search: the level with an **SP1 / SP2 / SP limit** mark, and "should read 400" where the record is still lower;
+- the level panel: **Spillover** (e.g. "Spillover year 2 (SP2)"), the expected completion and the graduation state; a note giving
+  the sessions past the programme's length against the limit, what to do next, and the last session on record; the **courses
+  still owed** (published failures not passed since, `registration.carryovers`);
+- where the record reads a lower level (most old-portal spillover records read 100), **CORRECT TO 400 LEVEL (SP2)** opens the
+  correction with the final level chosen (the same correction, reason and history as any other; many at once stay on Student
+  Cohorts → Level corrections); in the correction the final level reads "400 Level (SP2)";
+- **Progress to next level** is not offered to a spillover student: they are not moved one level at a time;
+- at the limit, the note says the Registry decides on Student Cohorts → Reconciliation (kept active and flagged, dormant or
+  withdrawn); otherwise that passing the courses owed makes the student a graduation candidate there.
+
+The API: `GET /support/students/{id}/level` adds the position's final level, length, spillover years, elapsed sessions, last session,
+the policy's limit, and `carryovers` for a spillover student; the support search adds `spillover_state` and `final_level`.
+
 ## Tests
 
 | Test | What it covers |

@@ -11,10 +11,13 @@ import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { failureWords } from "@/lib/password-reset";
+import { spilloverWord } from "@/lib/student-query";
 
 interface Row {
   id: string; surname: string; other_names: string; matric_no: string | null; jamb_reg_no: string | null; application_no: string | null;
   programme: string | null; department: string | null; current_level: number | null; status: string;
+  /** the cohort engine's reading: SPILLOVER_YEAR_1, SPILLOVER_YEAR_2 … or the limit reached; the programme's final level */
+  spillover_state?: string | null; final_level?: number | null;
 }
 
 export function StudentFinder({ q: q0, selected, onSelect }: { q: string; selected: string; onSelect: (id: string) => void }) {
@@ -71,7 +74,10 @@ export function StudentFinder({ q: q0, selected, onSelect }: { q: string; select
           <span key="m" className="tnum">{r.matric_no ?? <Pil kind="warn">No matriculation number</Pil>}</span>,
           <span key="j" className="tnum">{r.jamb_reg_no ?? "—"}</span>,
           <span key="p">{r.programme ?? "—"}<div className="sub2">{r.department ?? ""}</div></span>,
-          <span key="l" className="tnum">{r.current_level ?? "—"}</span>,
+          <span key="l" className="tnum">{r.current_level ?? "—"}{spilloverWord(r.spillover_state) ? (
+            <div><Pil kind={r.spillover_state === "SPILLOVER_LIMIT_REACHED" ? "bad" : "warn"}>{spilloverWord(r.spillover_state)!.short}</Pil>
+              {r.final_level != null && r.current_level != null && r.current_level < r.final_level ? <div className="sub2">should read {r.final_level}</div> : null}</div>
+          ) : null}</span>,
           <Pil key="s" kind={r.status === "ACTIVE" ? "ok" : "grey"}>{r.status}</Pil>,
           <Btn key="o" kind={selected === r.id ? "primary" : "ghost"} size="sm" onClick={() => choose(r.id)}>{selected === r.id ? "Selected" : "Select"}</Btn>,
         ])} />

@@ -147,7 +147,7 @@ class StudentSupportController {
         var rows = jdbc.sql(SCOPE + """
                 SELECT s.id, s.surname, s.other_names, s.matric_no, s.jamb_reg_no, s.admission_no, app.application_no, s.sex, s.entry_session, s.current_level, s.status,
                        p.code AS programme_code, p.name AS programme, d.code AS dept_code, d.name AS department, f.code AS faculty_code, f.name AS faculty,
-                       ap.current_session, ap.classification,
+                       ap.current_session, ap.classification, ap.spillover_state, ap.final_level,
                        CASE WHEN ap.registered_current THEN 'REGISTERED' WHEN ap.enrolled_current THEN 'ENROLLED' ELSE 'NOT_REGISTERED' END AS registration
                 """ + FROM + " ORDER BY s.surname, s.other_names, s.matric_no LIMIT :lim OFFSET :off");
         for (var e : params.entrySet()) {

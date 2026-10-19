@@ -3,6 +3,7 @@
  * the history, and the words the desk shows. The levels a student may be moved to, and every refusal, are the server's — the
  * screen only offers what the server listed and says what the server answered.
  */
+import { spilloverWord } from "./student-query.ts";
 
 export interface LevelOptions {
   currentLevel: number;
@@ -43,7 +44,12 @@ export interface LevelState {
   semester: number;
   options: LevelOptions;
   position: { computed_level: number | null; spillover_state: string | null; classification: string | null; effective_cohort: string | null;
-    expected_completion: string | null; graduation_state: string | null } | null;
+    expected_completion: string | null; graduation_state: string | null;
+    /** the programme's final level and length, the sessions past it, and the limit the policy allows */
+    final_level?: number | null; duration_years?: number | null; spillover_years?: number | null; elapsed_sessions?: number | null;
+    last_session?: string | null; max_spillover?: number | null } | null;
+  /** the courses a spillover student still owes (published failures not passed since) */
+  carryovers?: { course_code: string; title: string | null; units: number | null; failed_in: string | null }[];
   registrations: { session: string; semester: number; level: number; status: string; courses: number }[];
   history: LevelChange[];
   mayProgress: boolean;
@@ -52,6 +58,31 @@ export interface LevelState {
 }
 
 export type LevelAction = "PROGRESS" | "CORRECTION";
+
+/**
+ * A student past the programme's length, as the cohort engine reads it: the spillover year (SP1, SP2 …) or the limit reached; the
+ * final level the record should read; whether the record still reads a lower level (a correction to make); the years used of
+ * those the policy allows. Nothing for a student within the length, or a postgraduate one.
+ */
+export function spilloverOf(state: Pick<LevelState, "position" | "options">) {
+  const p = state.position;
+  const word = spilloverWord(p?.spillover_state);
+  if (!p || !word || state.options.postgraduate) return null;
+  const final = p.final_level ?? state.options.finalLevel;
+  return {
+    short: word.short, long: word.long, final,
+    behind: state.options.currentLevel < final,
+    years: p.spillover_years ?? null, limit: p.max_spillover ?? null,
+    atLimit: p.spillover_state === "SPILLOVER_LIMIT_REACHED",
+  };
+}
+
+/** the level as the desk reads it: "400 Level" or, past the programme's length, "400 Level (SP2)" */
+export function levelLabel(level: number | null | undefined, state: string | null | undefined, final?: number | null): string {
+  if (level == null) return "—";
+  const word = spilloverWord(state);
+  return word && (final == null || level >= final) ? `${level} Level (${word.short})` : `${level} Level`;
+}
 
 /** a level change needs a reason in words, as a password reset does */
 export const LEVEL_REASON_MIN = 10;
