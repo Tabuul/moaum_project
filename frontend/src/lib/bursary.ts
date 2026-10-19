@@ -58,7 +58,25 @@ export interface Hanging {
 export type PaydirectClaimRow = ReportedReceipt;
 export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; claims?: PaydirectClaimRow[]; portalUrl: string;
   /** the payments settled with no one's hand in the last three days, each reference once */
-  resolved?: { by_notification: number; by_sweep: number; on_request: number; total: number } }
+  resolved?: { by_notification: number; by_sweep: number; on_request: number; total: number };
+  /** what needs a person, counted by what it is (UNKNOWN_REFERENCE, SHORT_PAID, REVERSED, GATEWAY_ERROR, NOT_SETTLED, RECEIPT_SEEN,
+   *  RECEIPT_ELSEWHERE) with the total, and the rows themselves with who paid */
+  needs?: Record<string, number> & { total: number };
+  needsRows?: DeskRow[] }
+
+/** a transaction behind a figure of the hanging desk, with who paid */
+export interface DeskRow {
+  reference: string | null; at: string; gateway: string; how: string; why: string | null; amount: number | null; due: number | null; event_id: string | null;
+  payer: string | null; number: string | null; faculty: string | null; department: string | null; programme: string | null; level: number | null;
+  session: string | null; purpose: string | null; confirmed_at: string | null; channel: string | null; payer_kind: string | null; phone: string | null; email: string | null;
+}
+export type DeskFigure = "hanging" | "resolved" | "needs";
+/** what each row of a figure is, in words */
+export const DESK_HOW: Record<string, [string, "ok" | "warn" | "bad" | "grey" | "info"]> = {
+  HANGING: ["Hanging", "warn"], NOTIFICATION: ["Interswitch's notification", "ok"], SWEEP: ["The sweep", "ok"], REQUEST: ["On request", "ok"],
+  UNKNOWN_REFERENCE: ["Unknown reference", "bad"], SHORT_PAID: ["Short paid", "bad"], REVERSED: ["Reversed", "bad"], GATEWAY_ERROR: ["Gateway silent", "bad"],
+  NOT_SETTLED: ["Not settled", "bad"], RECEIPT_SEEN: ["Receipt: reported here", "warn"], RECEIPT_ELSEWHERE: ["Receipt: reported elsewhere", "warn"],
+};
 
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }
 export interface BursaryView {

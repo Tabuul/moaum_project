@@ -1636,8 +1636,30 @@ public class PaymentsService {
         out.put("events", repo.events(200));
         out.put("hanging", repo.hanging());
         out.put("resolved", repo.resolvedWithoutPerson());
+        // what needs a person, with who paid: the panel lists these rows and the tile counts them, so the two never differ
+        java.util.List<Map<String, Object>> needs = repo.tileRows("needs");
+        Map<String, Object> needsCount = new LinkedHashMap<>();
+        for (Map<String, Object> r : needs) {
+            needsCount.merge(String.valueOf(r.get("how")), 1, (a, b) -> (Integer) a + (Integer) b);
+        }
+        needsCount.put("total", needs.size());
+        out.put("needs", needsCount);
+        out.put("needsRows", needs);
         out.put("claims", repo.paydirectClaims(30));
         out.put("portalUrl", portalUrl);
+        return out;
+    }
+
+    /** the transactions behind one figure of the hanging desk — what hangs now, what settled with no one's hand, what needs a
+     *  person — each with who paid: name, number, faculty, department, programme, level, session and the contact on record */
+    public Map<String, Object> deskTransactions(String kind) {
+        if (!java.util.List.of("hanging", "resolved", "needs").contains(kind)) {
+            throw new DomainRuleViolation("DESK_FIGURE", "The desk's figures are hanging, resolved and needs.",
+                    new DomainRuleViolation.Remedy("Open a figure from the Hanging payments screen.", "Bursary"));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("kind", kind);
+        out.put("rows", repo.tileRows(kind));
         return out;
     }
 

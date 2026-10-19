@@ -268,6 +268,13 @@ class PaymentsController {
         return payments.bursary();
     }
 
+    /** the transactions behind a figure of the hanging desk (hanging, resolved, needs), each with who paid */
+    @GetMapping("/bursary/transactions")
+    @PreAuthorize(READERS)
+    Map<String, Object> deskTransactions(@RequestParam String kind) {
+        return payments.deskTransactions(kind);
+    }
+
     @PostMapping("/test-checkout")
     @PreAuthorize(BURSARY)
     Map<String, Object> testCheckout(@Valid @RequestBody TestCheckout body) {

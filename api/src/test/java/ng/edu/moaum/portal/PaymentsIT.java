@@ -628,6 +628,23 @@ class PaymentsIT {
                     SELECT count(*) FROM finance.gateway_event WHERE gateway = 'paydirect' AND source = 'WEBHOOK' AND outcome = 'SETTLED' AND reference = :r
                        AND received_at > now() - interval '3 days'
                     """).param("r", quick).query(Long.class).single()).as("the notification that settled it is what is counted").isEqualTo(1L);
+            // pressed, the figure lists the transaction with who paid
+            List<Map> resolvedRows = (List<Map>) it.get(bursar, "/api/v1/payments/bursary/transactions?kind=resolved").getBody().get("rows");
+            assertThat(resolvedRows).filteredOn(r -> quick.equals(r.get("reference")))
+                    .extracting(r -> r.get("how") + ":" + r.get("number") + ":" + (r.get("payer") != null) + ":" + (r.get("programme") != null)).containsExactly("NOTIFICATION:" + number + ":true:true");
+            assertThat(it.get(bursar, "/api/v1/payments/bursary/transactions?kind=everything").getStatusCode().value()).isEqualTo(422);
+            // money against a reference the portal did not issue waits on a person, counted and listed until it is resolved
+            java.util.UUID unknown = it.db(() -> jdbc.sql("""
+                    INSERT INTO finance.gateway_event (gateway, source, event, reference, gateway_ref, amount, status, signature_ok, outcome)
+                    VALUES ('paydirect', 'WEBHOOK', 'notification', 'MOAUM-ZZ-NOT-ISSUED-' || :l, :l, 100.00, '0', true, 'UNKNOWN_REFERENCE') RETURNING id
+                    """).param("l", logId).query(java.util.UUID.class).single());
+            Map<String, Object> desk = it.get(bursar, "/api/v1/payments/bursary").getBody();
+            assertThat(((Number) ((Map) desk.get("needs")).get("UNKNOWN_REFERENCE")).intValue()).isGreaterThanOrEqualTo(1);
+            assertThat(((Number) ((Map) desk.get("needs")).get("total")).intValue()).isEqualTo(((List) desk.get("needsRows")).size());
+            assertThat((List<Map>) desk.get("needsRows")).anyMatch(r -> unknown.toString().equals(String.valueOf(r.get("event_id"))));
+            assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/payments/events/" + unknown + "/resolve", Map.of("resolution", "IT: paid to another institution")).getStatusCode().value()).isEqualTo(200);
+            assertThat((List<Map>) it.get(bursar, "/api/v1/payments/bursary/transactions?kind=needs").getBody().get("rows"))
+                    .noneMatch(r -> unknown.toString().equals(String.valueOf(r.get("event_id"))));
 
             // the portal held up: the reference's row held by another transaction, so its settling cannot finish
             String slowId = String.valueOf(Long.parseLong(logId) + 1);

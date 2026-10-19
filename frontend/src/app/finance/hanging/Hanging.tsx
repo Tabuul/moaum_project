@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { OUTCOME, when, type PaymentsDesk } from "@/lib/bursary";
+import { DESK_HOW, OUTCOME, when, type DeskFigure, type DeskRow, type PaymentsDesk } from "@/lib/bursary";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { ASK_HEADERS, CHANNEL_LABEL, CLAIM_STATE, askRows, paidDay, type AskRow, type ClaimChannel } from "@/lib/paydirect-claim";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -19,12 +19,19 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { COLLECTIONS_REPORT_ANCHOR } from "../gateways/PayOnQuickteller";
+import { DeskTransactions } from "./DeskTransactions";
 
 /** a checkout on Pay on Quickteller: Interswitch reports it (PayDirect); nothing asks Interswitch about it */
 const reportedOnly = (gateway: string | null | undefined) => gateway === "paydirect";
 const IMPORT_HREF = `/finance/gateways#${COLLECTIONS_REPORT_ANCHOR}`;
 
-export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: string | null }) {
+/** what needs a person, by kind, in words for the tile */
+const NEEDS_PARTS: [string, string][] = [["UNKNOWN_REFERENCE", "unknown reference"], ["SHORT_PAID", "short paid"], ["REVERSED", "reversed"],
+  ["GATEWAY_ERROR", "gateway silent"], ["NOT_SETTLED", "not settled"], ["RECEIPT_SEEN", "receipt reported here"], ["RECEIPT_ELSEWHERE", "receipt reported elsewhere"]];
+/** a figure pressed opens the transactions behind it, with who paid */
+const figure = (f: DeskFigure) => `/finance/hanging?show=${f}#transactions`;
+
+export function Hanging({ d, actingOffice, shown = null }: { d: PaymentsDesk; actingOffice: string | null; shown?: { kind: DeskFigure; rows: DeskRow[] } | null }) {
   const router = useRouter();
   // V520: the Students Account Officer works the desk (asks the gateway, resolves an event, marks a receipt not found or reopens it);
   // the collections report is imported on the gateways screen, which stays the Bursary's and ICT's
@@ -36,6 +43,12 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
   const settledBySweep = d.events.filter((e) => e.source === "SWEEP" && e.outcome === "SETTLED").length;
   const settledByVerify = d.events.filter((e) => e.source === "VERIFY" && e.outcome === "SETTLED").length;
   const needsPerson = d.events.filter((e) => ["UNKNOWN_REFERENCE", "SHORT_PAID", "GATEWAY_ERROR"].includes(e.outcome) && !e.resolved_at);
+  // what needs a person, as the API counts it (every kind, whatever its age until resolved), with who paid; the events alone before it did
+  const needsRows: DeskRow[] | null = d.needsRows ?? null;
+  const needsTotal = d.needs ? Number(d.needs.total) : needsPerson.length;
+  const needsSub = d.needs && needsTotal
+    ? NEEDS_PARTS.filter(([k]) => Number(d.needs?.[k] ?? 0) > 0).map(([k, w]) => `${Number(d.needs?.[k])} ${w}`).join(", ")
+    : "Unknown reference, short paid, reversed, the gateway silent, or a notification not settled";
   const onQuickteller = d.hanging.filter((h) => reportedOnly(h.gateway)).length;
   const claims = d.claims ?? [];
   // V490: the receipts that wait on the Bursary — not confirmed, not marked not found
@@ -107,14 +120,15 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>On the record; the student is told when a settlement posts.</Note> : null}
       <Tiles items={[
-        ["Hanging now", String(d.hanging.length), d.hanging.length ? "var(--red-ink)" : null, "Checkout opened, nothing confirmed, last three days"],
+        ["Hanging now", String(d.hanging.length), d.hanging.length ? "var(--red-ink)" : null, "Checkout opened, nothing confirmed, last three days", figure("hanging")],
         d.resolved
           ? ["Resolved without a person", String(Number(d.resolved.total)), "var(--green-ink)",
-             `Last three days: ${Number(d.resolved.by_notification)} by Interswitch's notification, ${Number(d.resolved.by_sweep)} by the sweep, ${Number(d.resolved.on_request)} on request`]
+             `Last three days: ${Number(d.resolved.by_notification)} by Interswitch's notification, ${Number(d.resolved.by_sweep)} by the sweep, ${Number(d.resolved.on_request)} on request`, figure("resolved")]
           : ["Resolved without a person", String(settledBySweep + settledByVerify), "var(--green-ink)", `${settledBySweep} by the sweep, ${settledByVerify} on request`],
-        ["Needs a person", String(needsPerson.length), needsPerson.length ? "var(--red-ink)" : null, "Unknown reference, short paid, or the gateway silent"],
+        ["Needs a person", String(needsTotal), needsTotal ? "var(--red-ink)" : null, needsSub, figure("needs")],
         ["The sweep", "Every 10 min", null, "Card checkouts; Pay on Quickteller waits for Interswitch's report"],
       ]} />
+      {shown ? <DeskTransactions kind={shown.kind} rows={shown.rows} /> : null}
       {onQuickteller || claimsOpen ? (
         <Note kind="info" title={onQuickteller ? `${onQuickteller} opened on Pay on Quickteller — Interswitch reports these; the portal cannot ask` : `${claimsOpen} receipt${claimsOpen === 1 ? "" : "s"} reported by payers, not yet reported by Interswitch`}
           action={<div className="row row--tight">
@@ -168,15 +182,27 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
           ])} texts={claims.map((c) => `${c.reference} ${c.payer ?? ""} ${c.number ?? ""} ${c.payment_log_id} ${c.seen_reference ?? ""}`)} />
         ) : <PBody><div className="sub2">No payer has reported a receipt in the last 30 days.</div></PBody>}
       </Panel>
-      <Panel title="Needs a person" right="What the sweep could not resolve on its own">
-        {needsPerson.length ? (
+      <Panel title="Needs a person" right="What the sweep could not resolve on its own · every kind, until a person resolves it">
+        {needsRows ? (needsRows.length ? (
+          <DTable cols={["When|mid", "Payer", "Reference", "Amount|num", "Why it needs a person", "|num"]} rows={needsRows.map((r, i) => [
+            <span className="sub2 tnum" key="w">{when(r.at)}</span>,
+            <Two key="p" a={r.payer ?? <span className="sub2">Not on the portal</span>} b={[r.number, r.programme, r.phone].filter(Boolean).join(" · ")} />,
+            <Two key={`r${i}`} a={<span className="tnum">{r.reference ?? "—"}</span>} b={r.gateway === "paydirect" ? "Pay on Quickteller" : r.gateway} />,
+            <span className="tnum" key="a">{r.amount == null ? "—" : money(Number(r.amount))}{r.due != null && r.amount != null && Number(r.due) !== Number(r.amount) ? <div className="sub2">asks {money(Number(r.due))}</div> : null}</span>,
+            <span key="o"><Pil kind={DESK_HOW[r.how]?.[1] ?? "grey"}>{DESK_HOW[r.how]?.[0] ?? r.how}</Pil>{r.why ? <div className="sub2">{r.why}</div> : null}</span>,
+            may && r.event_id ? <Btn key="x" kind="ghost" disabled={busy !== null} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (!why) return; const res = await fetch(`/api/bff/api/v1/payments/events/${r.event_id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Gateway event resolved: ${why}`) }, body: JSON.stringify({ resolution: why }) }); if (res.ok) { setSaid("Resolved"); notify("Gateway event resolved"); router.refresh(); } }}>Resolve</Btn>
+              : r.how.startsWith("RECEIPT_") ? <span key="x" className="sub2">See the receipts above</span>
+              : r.how === "NOT_SETTLED" ? <span key="x" className="sub2">The sweep retries it; import the collections report to settle it</span>
+              : <span className="sub2" key="x">—</span>,
+          ])} texts={needsRows.map((r) => `${r.reference ?? ""} ${r.payer ?? ""} ${r.number ?? ""} ${r.why ?? ""}`)} />
+        ) : <PBody><div className="sub2">Nothing waits on a person.</div></PBody>) : needsPerson.length ? (
           <DTable cols={["When|mid", "Gateway", "Reference", "Amount|num", "Why it hung", "|num"]} rows={needsPerson.map((e) => [
             <span className="sub2 tnum" key="w">{when(e.received_at)}</span>,
             <span key="g" style={{ textTransform: "capitalize" }}>{e.gateway}</span>,
             <span className="tnum sub2" key="r">{e.reference ?? "—"}</span>,
             <span className="tnum" key="a">{e.amount == null ? "—" : money(Number(e.amount))}</span>,
-            <span key="o"><Pil kind={OUTCOME[e.outcome]?.[1] ?? "grey"}>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</Pil><div className="sub2">{e.outcome === "UNKNOWN_REFERENCE" ? "Generated and abandoned, paid against another institution's code, or forged — the desk officer chooses; the portal does not guess." : e.outcome === "SHORT_PAID" ? "Less than the reference asks; applied as nothing, left open. A part payment needs a reference for the part." : "The gateway did not answer for this reference."}</div></span>,
-            may ? <Btn key="x" kind="ghost" disabled={busy !== null} onClick={async () => { const why = window.prompt("How was it resolved? It goes on the record."); if (!why) return; const r = await fetch(`/api/bff/api/v1/payments/events/${e.id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Gateway event resolved: ${why}`) }, body: JSON.stringify({ resolution: why }) }); if (r.ok) { setSaid("Resolved"); notify("Gateway event resolved"); router.refresh(); } }}>Resolve</Btn> : <span className="sub2" key="x">—</span>,
+            <span key="o"><Pil kind={OUTCOME[e.outcome]?.[1] ?? "grey"}>{OUTCOME[e.outcome]?.[0] ?? e.outcome}</Pil></span>,
+            <span className="sub2" key="x">—</span>,
           ])} />
         ) : <PBody><div className="sub2">Nothing waits on a person.</div></PBody>}
       </Panel>

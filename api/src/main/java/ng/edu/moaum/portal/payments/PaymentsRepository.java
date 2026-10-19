@@ -253,6 +253,94 @@ class PaymentsRepository {
                 """).query().singleRow();
     }
 
+    /* ── the hanging desk's figures, each with the transactions behind it and who paid ── */
+
+    /** the transactions behind the figure of one tile: what hangs now, what settled with no one's hand, what needs a person */
+    private static final Map<String, String> TILE_ROWS = Map.of(
+            // a checkout opened in the last three days and nothing confirmed (the latest checkout of a reference)
+            "hanging", """
+                SELECT a.reference, a.opened_at AS at, a.gateway, 'HANGING'::text AS how,
+                       CASE WHEN a.gateway = 'paydirect' THEN 'Opened on Pay on Quickteller; Interswitch reports it, the portal cannot ask'
+                            WHEN a.checks > 0 THEN 'Asked ' || a.checks || ' times, last ' || to_char(a.checked_at AT TIME ZONE 'Africa/Lagos', 'DD Mon HH24:MI')
+                            ELSE 'Not asked yet' END AS why,
+                       st.amount, NULL::uuid AS event_id
+                  FROM finance.gateway_attempt a
+                  LEFT JOIN LATERAL finance.reference_state(a.reference) st ON true
+                 WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL
+                   AND a.id = (SELECT x.id FROM finance.gateway_attempt x WHERE x.reference = a.reference ORDER BY x.opened_at DESC LIMIT 1)
+                """,
+            // settled with no one's hand in the last three days, each reference once: by Interswitch's notification, the sweep, a request
+            "resolved", """
+                SELECT DISTINCT ON (e.reference) e.reference, e.received_at AS at, e.gateway,
+                       CASE WHEN e.gateway = 'paydirect' AND e.source = 'WEBHOOK' THEN 'NOTIFICATION' WHEN e.source = 'SWEEP' THEN 'SWEEP' ELSE 'REQUEST' END AS how,
+                       NULL::text AS why, e.amount, e.id AS event_id
+                  FROM finance.gateway_event e
+                 WHERE e.outcome = 'SETTLED' AND e.reference IS NOT NULL AND e.received_at > now() - interval '3 days'
+                   AND ((e.gateway = 'paydirect' AND e.source = 'WEBHOOK') OR e.source IN ('SWEEP', 'VERIFY'))
+                 ORDER BY e.reference, e.received_at DESC
+                """,
+            // what waits on a person, whatever its age until it is resolved: money against no reference or short, a reversal, a gateway
+            // silent about a checkout of the last three days, a notification the portal could not settle, a payer's receipt to settle
+            "needs", """
+                SELECT * FROM (
+                    SELECT DISTINCT ON (coalesce(e.reference, e.id::text), e.outcome) e.reference, e.received_at AS at, e.gateway, e.outcome AS how,
+                           CASE e.outcome WHEN 'UNKNOWN_REFERENCE' THEN 'Paid against a reference the portal did not issue'
+                                          WHEN 'SHORT_PAID' THEN 'Less than the reference asks; left open'
+                                          WHEN 'REVERSED' THEN 'Interswitch reversed the payment; kept for the Bursary'
+                                          ELSE 'The gateway did not answer for this checkout' END AS why,
+                           e.amount, e.id AS event_id
+                      FROM finance.gateway_event e
+                      LEFT JOIN LATERAL finance.reference_state(e.reference) st ON e.reference IS NOT NULL
+                     WHERE e.resolved_at IS NULL
+                       AND (e.outcome IN ('UNKNOWN_REFERENCE', 'REVERSED')
+                            OR e.outcome = 'SHORT_PAID' AND st.confirmed_at IS NULL
+                            OR e.outcome = 'GATEWAY_ERROR' AND st.confirmed_at IS NULL AND e.received_at > now() - interval '3 days')
+                     ORDER BY coalesce(e.reference, e.id::text), e.outcome, e.received_at DESC) ev
+                UNION ALL
+                SELECT i.reference, i.last_received_at, 'paydirect', 'NOT_SETTLED',
+                       'Interswitch reported it; the portal could not settle it' || coalesce(': ' || left(i.last_error, 160), ''), i.amount, NULL::uuid
+                  FROM finance.paydirect_inbox i
+                 WHERE NOT i.is_reversal AND (i.state = 'FAILED' OR i.state = 'RECEIVED' AND i.last_received_at < now() - interval '1 hour')
+                UNION ALL
+                SELECT c.reference, c.claimed_at, 'paydirect', 'RECEIPT_' || c.state,
+                       CASE c.state WHEN 'SEEN' THEN 'The payer''s receipt: Interswitch reported it here, ' || lower(replace(coalesce(c.seen_outcome, ''), '_', ' '))
+                                    ELSE 'The payer''s receipt: Interswitch reported it against ' || coalesce(c.seen_reference, 'another reference') || '; settle it to this payer' END,
+                       c.amount, NULL::uuid
+                  FROM finance.paydirect_claims(30) c WHERE c.state IN ('SEEN', 'ELSEWHERE')
+                """);
+
+    /** the transactions behind a tile with who paid: name, number, faculty, department, programme, level, session, purpose and the
+     *  phone and e-mail on record (a student's contact, or an applicant's account) — the payer read once for all the references */
+    List<Map<String, Object>> tileRows(String kind) {
+        String rows = TILE_ROWS.get(kind);
+        if (rows == null) {
+            throw new IllegalArgumentException(kind);
+        }
+        return jdbc.sql("WITH t AS MATERIALIZED (" + rows + """
+                ),
+                p AS (SELECT DISTINCT ON (upper(p.reference)) upper(p.reference) AS ref, p.surname, p.other_names, p.number, p.faculty, p.department, p.programme,
+                             p.level, p.session, p.purpose, p.amount AS due, p.confirmed_at, p.channel, p.student_id, p.application_id, p.pg_application_id,
+                             p.jupeb_application_id, p.source AS payer_kind
+                        FROM reporting.payments p
+                       WHERE p.reference = ANY ((SELECT array_agg(DISTINCT t.reference) FROM t WHERE t.reference IS NOT NULL)::text[])
+                       ORDER BY upper(p.reference), p.confirmed_at DESC NULLS LAST)
+                SELECT t.reference, t.at, t.gateway, t.how, t.why, coalesce(t.amount, p.due) AS amount, p.due, t.event_id,
+                       nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.other_names, ''), ', '), '') AS payer, p.number, p.faculty, p.department,
+                       p.programme, p.level, p.session, p.purpose, p.confirmed_at, p.channel, p.payer_kind,
+                       coalesce(sc.phone, aa.phone, pa.phone, ja.phone) AS phone, coalesce(sc.email, aa.email, pa.email, ja.email) AS email
+                  FROM t
+                  LEFT JOIN p ON p.ref = upper(t.reference)
+                  LEFT JOIN people.student_contact sc ON sc.student_id = p.student_id
+                  LEFT JOIN admissions.application ap ON ap.id = p.application_id
+                  LEFT JOIN LATERAL (SELECT a.phone, a.email FROM admissions.applicant_account a WHERE a.candidate_id = ap.candidate_id
+                                      ORDER BY a.created_at DESC LIMIT 1) aa ON p.application_id IS NOT NULL
+                  LEFT JOIN admissions.pg_application pga ON pga.id = p.pg_application_id
+                  LEFT JOIN admissions.pg_applicant pa ON pa.id = pga.applicant_id
+                  LEFT JOIN jupeb.application ja ON ja.id = p.jupeb_application_id
+                 ORDER BY t.at DESC
+                """).query().listOfRows();
+    }
+
     /** the events that concern money — Quickteller's reference checks (V299) are listed on their own */
     List<Map<String, Object>> events(int limit) {
         return jdbc.sql("""
