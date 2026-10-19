@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import type { BulkHistory } from "../BulkReset";
+import type { BulkHistory } from "@/lib/bulk-reset";
 import { BulkHistoryList, type HistoryFilters } from "./BulkHistoryList";
 
 export const dynamic = "force-dynamic";

@@ -34,7 +34,9 @@ import org.springframework.web.bind.annotation.RestController;
  * reset to the default student credential — the matriculation number, changed at the next sign-in — by the one reset service of
  * the single reset (BulkPasswordResets). Everything is decided on the server from the students' ids: the agent's
  * BULK_RESET_PASSWORD and its scope (the Head of the Support Desk, the Director of ICT and the administrators over the
- * University), the policy, each student's record. No password is ever sent, shown or recorded.
+ * University), the policy, each student's record. No password is ever sent, shown or recorded. V563: the login tickets resolved
+ * with the reset when asked, the reset link for the students refused for want of a matriculation number, the students not reset
+ * tried again, and an operation of more students than ICT Support Settings allow waiting for a Head's approval.
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk/support/password-reset/bulk")
@@ -65,6 +67,7 @@ class BulkPasswordResetController {
             case "RESET_MERGED_RECORD" -> "STUDENT NOT ELIGIBLE — the record was merged into another; reset the live record";
             case "RESET_DISABLED" -> "RESET TO THE DEFAULT CREDENTIAL IS SWITCHED OFF in ICT Support Settings";
             case "CANCELLED" -> "CANCELLED before this student was reached";
+            case "REJECTED" -> "NOT APPROVED — the bulk reset was declined";
             default -> "PASSWORD RESET COULD NOT BE COMPLETED";
         };
     }
@@ -218,7 +221,8 @@ class BulkPasswordResetController {
         out.put("notEligible", rows.size() - eligible);
         out.put("rows", rows);
         Map<String, Object> policy = jdbc.sql("""
-                SELECT coalesce(g.student_reset_ticket, 'OPTIONAL') AS ticket, coalesce(g.student_reset_unlock, true) AS unlock_by_default
+                SELECT coalesce(g.student_reset_ticket, 'OPTIONAL') AS ticket, coalesce(g.student_reset_unlock, true) AS unlock_by_default,
+                       g.bulk_reset_approval_over AS approval_over
                   FROM (SELECT 1) one LEFT JOIN helpdesk.setting g ON g.row_no
                 """).query().singleRow();
         out.put("policy", policy);
@@ -226,7 +230,8 @@ class BulkPasswordResetController {
     }
 
     public record StartIn(@NotNull @Size(min = 1, max = MAX) List<UUID> studentIds, @NotNull @Size(max = 2000) String reason,
-                          Map<UUID, UUID> tickets, Boolean unlock, @Size(max = 80) String key) {
+                          Map<UUID, UUID> tickets, Boolean unlock, @Size(max = 80) String key,
+                          Boolean resolveTickets, @Size(max = 4000) String resolution, UUID retryOf) {
     }
 
     /** the operation opened and started; the same key again is the same operation, never a second reset */
@@ -267,10 +272,13 @@ class BulkPasswordResetController {
         Map<String, String> tickets = new LinkedHashMap<>();
         if (body.tickets() != null) body.tickets().forEach((s, t) -> { if (s != null && t != null) tickets.put(s.toString(), t.toString()); });
         String office = AuditContextHolder.required().actorOffice();
-        UUID id = jdbc.sql("SELECT helpdesk.start_bulk_reset(:me, :o, :h, CAST(:ids AS uuid[]), CAST(:t AS jsonb), :r, :u, :k)")
+        // V563: the tickets resolved with the reset (with the words the students read), a retry of another operation's students; an
+        // operation above the figure in ICT Support Settings waits for a Head's approval (decided in the database)
+        UUID id = jdbc.sql("SELECT helpdesk.start_bulk_reset(:me, :o, :h, CAST(:ids AS uuid[]), CAST(:t AS jsonb), :r, :u, :k, :rv, :rt, :ro)")
                 .param("me", a.agent()).param("o", office).param("h", a.head()).param("ids", idList(body.studentIds()))
                 .param("t", json.writeValueAsString(tickets)).param("r", reason)
                 .param("u", body.unlock() == null ? Boolean.TRUE.equals(policy.get("unlock_by_default")) : body.unlock()).param("k", key, Types.VARCHAR)
+                .param("rv", Boolean.TRUE.equals(body.resolveTickets())).param("rt", blank(body.resolution()), Types.VARCHAR).param("ro", body.retryOf(), Types.OTHER)
                 .query(UUID.class).single();
         // started once this transaction is committed, so the worker reads the operation
         org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
@@ -288,9 +296,18 @@ class BulkPasswordResetController {
         return jdbc.sql("""
                 SELECT b.id, b.reference, b.status, b.total, b.succeeded, b.failed, b.reason, b.office, b.created_at, b.started_at, b.completed_at,
                        helpdesk.person_name(b.initiated_by) AS performed_by, b.initiated_by,
-                       (SELECT count(*) FROM helpdesk.bulk_reset_item i WHERE i.bulk_id = b.id AND i.status <> 'PENDING') AS processed
+                       (SELECT count(*) FROM helpdesk.bulk_reset_item i WHERE i.bulk_id = b.id AND i.status <> 'PENDING') AS processed,
+                       b.resolve_tickets, b.resolution, b.retry_of, (SELECT o.reference FROM helpdesk.bulk_reset o WHERE o.id = b.retry_of) AS retry_of_reference,
+                       b.approval_over, helpdesk.person_name(b.decided_by) AS decided_by, b.decided_at, b.decision_note
                   FROM helpdesk.bulk_reset b WHERE b.id = :b
                 """).param("b", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("bulk password reset", id));
+    }
+
+    /** the one who made it, or a Head */
+    private void mine(SupportAccess.Access a, Map<String, Object> op, UUID id) {
+        if (!a.head() && !a.agent().equals(op.get("initiated_by"))) {
+            throw new NotFound("bulk password reset", id);
+        }
     }
 
     /** an operation and each student's result — for the one who made it, the Head and the Director, or a reader of the reset history */
@@ -306,7 +323,8 @@ class BulkPasswordResetController {
         List<Map<String, Object>> items = new ArrayList<>(jdbc.sql("""
                 SELECT i.student_id, upper(btrim(s.surname)) || coalesce(', ' || nullif(btrim(s.other_names), ''), '') AS name,
                        coalesce(s.matric_no, s.admission_no) AS number, p.name AS programme, f.name AS faculty, s.current_level AS level,
-                       i.status, i.failure_code, i.failure_words, i.processed_at, t.number AS ticket_number
+                       i.status, i.failure_code, i.failure_words, i.processed_at, t.number AS ticket_number, i.ticket_id,
+                       i.ticket_resolved_at, i.link_sent_at, i.link_to, i.link_failure
                   FROM helpdesk.bulk_reset_item i
                   JOIN people.student s ON s.id = i.student_id
                   LEFT JOIN ref.programme p ON p.code = s.programme_code
@@ -316,6 +334,12 @@ class BulkPasswordResetController {
                 """).param("b", id).query().listOfRows());
         op.put("items", items);
         op.put("missing", Math.max(0, ((Number) op.get("total")).intValue() - items.size()));   // chosen ids that named no student
+        // V563: the operations that tried its students again, and what the reader may do with it
+        op.put("retries", jdbc.sql("SELECT id, reference, status, created_at FROM helpdesk.bulk_reset WHERE retry_of = :b ORDER BY created_at")
+                .param("b", id).query().listOfRows());
+        boolean own = a.agent().equals(op.get("initiated_by"));
+        op.put("mayDecide", a.head() && !own && "AWAITING_APPROVAL".equals(op.get("status")));
+        op.put("mayAct", a.head() || own);
         return op;
     }
 
@@ -326,11 +350,10 @@ class BulkPasswordResetController {
     Map<String, Object> cancel(Authentication auth, @PathVariable UUID id) {
         SupportAccess.Access a = support.access(auth);
         Map<String, Object> op = operation(id);
-        if (!a.head() && !a.agent().equals(op.get("initiated_by"))) {
-            throw new NotFound("bulk password reset", id);
-        }
-        // the operation is marked first, so the tally keeps it CANCELLED; one that has ended is left as it is
-        if (jdbc.sql("UPDATE helpdesk.bulk_reset SET status = 'CANCELLED', completed_at = now() WHERE id = :b AND status IN ('PENDING', 'PROCESSING')")
+        mine(a, op, id);
+        // the operation is marked first, so the tally keeps it CANCELLED; one that has ended is left as it is (V563: one waiting for
+        // approval is withdrawn so)
+        if (jdbc.sql("UPDATE helpdesk.bulk_reset SET status = 'CANCELLED', completed_at = now() WHERE id = :b AND status IN ('AWAITING_APPROVAL', 'PENDING', 'PROCESSING')")
                 .param("b", id).update() > 0) {
             jdbc.sql("""
                     UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', failure_code = 'CANCELLED', failure_words = :w, processed_at = now()
@@ -339,6 +362,68 @@ class BulkPasswordResetController {
             jdbc.sql("SELECT helpdesk.bulk_reset_tally(:b)").param("b", id).query(String.class).single();
         }
         return operation(id);
+    }
+
+    public record Decision(@Size(max = 2000) String note) {
+    }
+
+    /** V563: an operation waiting for approval approved by a Head other than the one who asked — it runs at once */
+    @PostMapping("/{id}/approve")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> approve(Authentication auth, @PathVariable UUID id, @Valid @RequestBody(required = false) Decision body) {
+        return decide(auth, id, true, body == null ? null : body.note());
+    }
+
+    /** V563: an operation waiting for approval declined on a reason — no student is reset */
+    @PostMapping("/{id}/reject")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> reject(Authentication auth, @PathVariable UUID id, @Valid @RequestBody(required = false) Decision body) {
+        return decide(auth, id, false, body == null ? null : body.note());
+    }
+
+    private Map<String, Object> decide(Authentication auth, UUID id, boolean approve, String note) {
+        SupportAccess.Access a = support.access(auth);
+        operation(id);
+        jdbc.sql("SELECT helpdesk.decide_bulk_reset(:b, :me, :h, :ok, :n)").param("b", id).param("me", a.agent()).param("h", a.head())
+                .param("ok", approve).param("n", blank(note), Types.VARCHAR).query(String.class).single();
+        if (approve) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    work.start();
+                }
+            });
+        }
+        return operation(id);
+    }
+
+    public record LinksIn(@Size(max = 2000) String reason) {
+    }
+
+    /**
+     * V563: the single reset's one-hour link sent to the operation's students refused for want of a matriculation number — each
+     * checked again, to the e-mail and phone on the record; where each went (masked) or why not
+     */
+    @PostMapping("/{id}/links")
+    @PreAuthorize(AGENTS)
+    Map<String, Object> links(Authentication auth, @PathVariable UUID id, @Valid @RequestBody(required = false) LinksIn body) {
+        SupportAccess.Access a = bulkAccess(auth);
+        Map<String, Object> op = operation(id);
+        mine(a, op, id);
+        String reason = blank(body == null ? null : body.reason()) != null ? body.reason().trim()
+                : "Reset link after bulk reset " + op.get("reference") + " for a student without a matriculation number";
+        if (reason.length() < StudentSupportController.RESET_REASON_MIN) {
+            throw new DomainRuleViolation("SUPPORT_REASON_SHORT", "Say why the links are sent, in " + StudentSupportController.RESET_REASON_MIN + " characters or more.",
+                    new DomainRuleViolation.Remedy("Or leave the reason empty: the operation's reference is given.", "You"));
+        }
+        List<Map<String, Object>> rows = work.sendLinks(id, a.agent(), a.head(), AuditContextHolder.required().actorOffice(), reason);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sent", rows.stream().filter(r -> Boolean.TRUE.equals(r.get("sent"))).count());
+        out.put("notSent", rows.stream().filter(r -> !Boolean.TRUE.equals(r.get("sent"))).count());
+        out.put("rows", rows);
+        return out;
     }
 
     /** the bulk resets, newest first — the agent's own, or every one for the Head, the Director and readers of the reset history */

@@ -913,7 +913,7 @@ class HelpdeskController {
         Map<String, Object> reset = new LinkedHashMap<>(jdbc.sql("""
                 SELECT student_reset_enabled AS enabled, student_reset_unlock AS unlock_by_default, student_reset_ticket AS ticket,
                        student_reset_hourly AS hourly, array_to_string(student_reset_statuses, ',') AS statuses,
-                       student_reset_alert_daily AS alert_daily
+                       student_reset_alert_daily AS alert_daily, bulk_reset_approval_over AS bulk_approval_over
                   FROM helpdesk.setting WHERE row_no
                 """).query().singleRow());
         reset.put("statuses", List.of(String.valueOf(reset.get("statuses")).split(",")));
@@ -929,7 +929,8 @@ class HelpdeskController {
     Map<String, Object> resetsByAgent() {
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT student_reset_alert_daily AS alert_daily FROM helpdesk.setting WHERE row_no")
                 .query().singleRow());
-        out.put("agents", jdbc.sql("SELECT agent_id, name, today, week, last_at FROM helpdesk.reset_counts()").query().listOfRows());
+        // V563: the students reset in bulk resets apart — the alert counts single resets only
+        out.put("agents", jdbc.sql("SELECT agent_id, name, today, week, last_at, bulk_today, bulk_week, bulk_ops_today FROM helpdesk.reset_counts()").query().listOfRows());
         return out;
     }
 
@@ -1233,13 +1234,14 @@ class HelpdeskController {
 
     public record PasswordResetPolicyIn(@NotNull Boolean enabled, @NotNull Boolean unlockByDefault, @NotBlank String ticket,
                                         @Min(1) @Max(500) Integer hourly, @NotNull List<String> statuses,
-                                        @Min(1) @Max(10000) Integer alertDaily) {
+                                        @Min(1) @Max(10000) Integer alertDaily, @Min(1) @Max(1000) Integer bulkApprovalOver) {
     }
 
     /** V485: the desk's policy for resets to the default student credential — on or off, the lockout cleared unless the agent says
      *  otherwise, a ticket optional or required, each agent's hourly limit (V526: none when left empty), the statuses it may reach,
      *  and (V528) the day's count of one agent's resets at which the Head is told (none when left empty). The default credential is
-     *  the matriculation number and the change is always forced: neither is a setting. */
+     *  the matriculation number and the change is always forced: neither is a setting. V563: the number of students above which a
+     *  bulk reset waits for a Head's approval (never when left empty). */
     @PutMapping("/admin/settings/password-reset")
     @PreAuthorize(DIRECTOR)
     @Transactional
@@ -1255,10 +1257,10 @@ class HelpdeskController {
         }
         jdbc.sql("""
                 UPDATE helpdesk.setting SET student_reset_enabled = :e, student_reset_unlock = :u, student_reset_ticket = :t, student_reset_hourly = :h,
-                       student_reset_statuses = string_to_array(:s, ','), student_reset_alert_daily = :al
+                       student_reset_statuses = string_to_array(:s, ','), student_reset_alert_daily = :al, bulk_reset_approval_over = :bo
                  WHERE row_no
                 """).param("e", body.enabled()).param("u", body.unlockByDefault()).param("t", ticket).param("h", body.hourly(), Types.INTEGER)
-                .param("s", String.join(",", statuses)).param("al", body.alertDaily(), Types.INTEGER).update();
+                .param("s", String.join(",", statuses)).param("al", body.alertDaily(), Types.INTEGER).param("bo", body.bulkApprovalOver(), Types.INTEGER).update();
         return settings();
     }
 

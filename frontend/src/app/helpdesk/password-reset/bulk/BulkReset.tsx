@@ -7,18 +7,18 @@
  * reset and why not the others; the reason is required; the work runs on the server and its real progress is shown; the result
  * names every student reset and every one not, with why. No password is ever sent or shown.
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
-import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field, Modal } from "@/components/proto/blocks";
+import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { MAX, STATUS, type BulkHistory, type DeskSummary, type Preview } from "@/lib/bulk-reset";
+import { BulkConfirm, call, previewFor } from "./BulkConfirm";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; status: string; account: string; login: boolean; page: number }
 export interface Candidate {
@@ -30,38 +30,14 @@ export interface Candidates {
   total: number; page: number; size: number; rows: Candidate[]; scope: string;
   options?: { faculties: { code: string; name: string }[]; departments: { code: string; name: string; faculty_code: string }[]; programmes: { code: string; name: string; dept_code: string }[] };
 }
-export interface DeskSummary { loginIssues: number; resetsToday: number; bulkToday: number; studentsResetToday: number; failedToday: number; mayBulk: boolean; scope: string | null }
-export interface BulkRow {
-  id: string; reference: string; created_at: string; performed_by: string; office: string; reason: string; total: number; succeeded: number; failed: number;
-  status: string; completed_at: string | null; tickets: string | null;
-}
-export interface BulkHistory { total: number; page: number; size: number; rows: BulkRow[]; everyone: boolean }
-interface PreviewRow { student_id: string; full_name: string | null; matric_no: string | null; programme: string | null; current_level: number | null; status: string | null; eligible: boolean; code: string; words: string }
-interface Preview { selected: number; eligible: number; notEligible: number; rows: PreviewRow[]; policy: { ticket: string; unlock_by_default: boolean } }
-export interface OpItem { student_id: string; name: string; number: string | null; programme: string | null; faculty: string | null; level: number | null; status: string; failure_code: string | null; failure_words: string | null; ticket_number: string | null; processed_at?: string | null }
-export interface Operation {
-  id: string; reference: string; status: string; total: number; succeeded: number; failed: number; processed: number; reason: string; performed_by: string; office?: string | null;
-  created_at: string; completed_at: string | null; items?: OpItem[]; missing?: number; repeat?: boolean;
-}
 /** a student chosen: by id, with the open Login Issues ticket the reset is recorded on (no name or number is kept) */
 interface Chosen { ticket: string | null }
 
-const API = "/api/bff/api/v1/helpdesk/support/password-reset/bulk";
 const KEY = "moaum.bulkReset.selection";
-/** students one operation resets at most (the server's limit) */
-const MAX = 1000;
 const count = (n: number) => Number(n).toLocaleString("en-NG");
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" }) : "—");
 const ACCOUNT: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
   NO_ACCOUNT: ["No account yet", "grey"], LOCKED: ["Locked", "bad"], CHANGE_REQUIRED: ["Must change", "warn"], NORMAL: ["Normal", "ok"],
-};
-export const STATUS: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
-  PENDING: ["Pending", "grey"], PROCESSING: ["Processing", "info"], COMPLETED: ["Completed", "ok"],
-  COMPLETED_WITH_EXCEPTIONS: ["Completed with exceptions", "warn"], FAILED: ["Failed", "bad"], CANCELLED: ["Cancelled", "grey"],
-};
-const DONE: Record<string, string> = {
-  COMPLETED: "Password reset completed", COMPLETED_WITH_EXCEPTIONS: "Password reset completed with exceptions", FAILED: "Password reset failed — no student was reset",
-  CANCELLED: "Password reset cancelled",
 };
 const STUDENT_STATUSES = ["ACTIVE", "PROBATION", "ADMITTED", "DEFERRED", "DORMANT", "GRADUATED"];
 
@@ -86,26 +62,15 @@ const setChosen = (change: (m: Map<string, Chosen>) => Map<string, Chosen>) => {
   listeners.forEach((l) => l());
 };
 
-async function call<T>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; problem: Problem }> {
-  const r = await fetch(`${API}${path}`, { cache: "no-store", ...init });
-  const j = await r.json().catch(() => null);
-  if (!r.ok) return { ok: false, problem: j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText } };
-  return { ok: true, data: j as T };
-}
-
 export function BulkReset({ f, list, summary, history }: { f: Filters; list: Candidates; summary: DeskSummary | null; history: BulkHistory | null }) {
   const nav = useQueryNav();
   const router = useRouter();
   const chosen = useSyncExternalStore(subscribe, readChosen, () => NONE);
   const [q, setQ] = useState(f.q);
-  const [busy, setBusy] = useState<"all" | "preview" | "start" | "cancel" | null>(null);
+  const [busy, setBusy] = useState<"all" | "preview" | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [step, setStep] = useState<"none" | "preview" | "running" | "done">("none");
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [reason, setReason] = useState("");
-  const [op, setOp] = useState<Operation | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const keyRef = useRef<string>("");
 
   const opts = list.options;
   const depts = (opts?.departments ?? []).filter((d) => !f.fac || d.faculty_code === f.fac);
@@ -161,64 +126,16 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
     if (!chosen.size) return;
     setBusy("preview");
     setProblem(null);
-    const r = await call<Preview>("/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ studentIds: [...chosen.keys()] }) });
+    const r = await previewFor([...chosen.keys()]);
     setBusy(null);
     if (!r.ok) { setProblem(r.problem); return; }
-    keyRef.current = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
     setPreview(r.data);
-    setStep("preview");
   }
-
-  async function start() {
-    if (!preview) return;
-    setBusy("start");
-    setProblem(null);
-    const tickets: Record<string, string> = {};
-    chosen.forEach((c, id) => { if (c.ticket) tickets[id] = c.ticket; });
-    const r = await call<Operation>("", {
-      method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Bulk password reset: ${reason.trim()}`) },
-      body: JSON.stringify({ studentIds: [...chosen.keys()], reason: reason.trim(), tickets, key: keyRef.current }),
-    });
-    setBusy(null);
-    if (!r.ok) { setProblem(r.problem); return; }
-    setOp(r.data);
-    setStep("running");
-  }
-
-  // the operation's real progress, read from the server until it ends
-  useEffect(() => {
-    if (step !== "running" || !op) return;
-    let alive = true;
-    const t = setInterval(() => {
-      void (async () => {
-        const r = await call<Operation>(`/${op.id}`);
-        if (!alive || !r.ok) return;
-        setOp(r.data);
-        if (!["PENDING", "PROCESSING"].includes(r.data.status)) {
-          setStep("done");
-          setChosen(() => new Map());
-          router.refresh();
-        }
-      })();
-    }, 1000);
-    return () => { alive = false; clearInterval(t); };
-    // the operation's id is what is polled
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, op?.id]);
-
-  async function cancel() {
-    if (!op) return;
-    setBusy("cancel");
-    const r = await call<Operation>(`/${op.id}/cancel`, { method: "POST", headers: { "X-Reason": reasonHeader(`Bulk password reset ${op.reference} cancelled`) } });
-    setBusy(null);
-    if (!r.ok) setProblem(r.problem);
-  }
-
-  const items = useMemo(() => op?.items ?? [], [op]);
-  const ok = items.filter((i) => i.status === "RESET" || i.status === "ALREADY_RESET");
-  const bad = items.filter((i) => i.status === "FAILED");
-  const head = ["S/N", "Student", "Matriculation number", "Programme", "Level", "Result", "Reason"];
-  const sheet = () => items.map((i, n) => [n + 1, i.name, i.number ?? "", i.programme ?? "", i.level ?? "", i.status === "FAILED" ? "Failed" : i.status === "ALREADY_RESET" ? "Already reset" : "Reset", i.failure_words ?? ""]);
+  const tickets = () => {
+    const out: Record<string, string> = {};
+    chosen.forEach((c, id) => { if (c.ticket) out[id] = c.ticket; });
+    return out;
+  };
 
   return (
     <>
@@ -227,8 +144,10 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
         actions={<><LinkBtn href="/helpdesk/password-reset">One student</LinkBtn><LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn></>} />
 
       {summary ? (
-        <Tiles cls="grid--5" items={[
+        <Tiles cls="grid--3" items={[
           ["Login issues", count(summary.loginIssues), summary.loginIssues ? "var(--amber-ink)" : null, "students with an open ticket", "/helpdesk/password-reset/bulk?login=1"],
+          ["Awaiting approval", count(summary.awaitingApproval ?? 0), summary.awaitingApproval ? "var(--amber-ink)" : null,
+            summary.scope === "The University" ? "bulk resets for you to decide" : "your bulk resets", "/helpdesk/password-reset/bulk/history?status=AWAITING_APPROVAL"],
           ["Resets today", count(summary.resetsToday), null, summary.scope === "The University" ? "at the desk" : "yours", "/helpdesk/password-reset/history"],
           ["Bulk resets today", count(summary.bulkToday), null, "operations", "/helpdesk/password-reset/bulk/history"],
           ["Students reset", count(summary.studentsResetToday), summary.studentsResetToday ? "var(--green-ink)" : null, "in bulk today", "#bulk-history"],
@@ -288,7 +207,7 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
           </div>
           {chosen.size > MAX ? <div className="sub2 mt-1">One operation resets {count(MAX)} students at most: clear some of the {count(chosen.size)} chosen, and reset the rest in a second operation.</div> : null}
           {note ? <div className="sub2 mt-1">{note}</div> : null}
-          {problem && step === "none" ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
+          {problem ? <div className="mt-2"><ProblemNotice problem={problem} /></div> : null}
         </PBody>
 
         <div className="tablewrap" tabIndex={0}>
@@ -351,72 +270,9 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
         </div>
       ) : null}
 
-      {step === "preview" && preview ? (
-        <Modal wide title="Bulk password reset" sub={`${count(preview.selected)} student${preview.selected === 1 ? "" : "s"} selected`} onClose={() => setStep("none")}
-          foot={<>
-            <Btn kind="ghost" onClick={() => setStep("none")}>Cancel</Btn>
-            <span className="grow" />
-            <Btn kind="urgent" busy={busy === "start"} disabled={!preview.eligible || reason.trim().length < 10 || busy !== null} onClick={() => void start()}>
-              {busy === "start" ? "Resetting passwords…" : `Reset ${count(preview.eligible)} eligible student${preview.eligible === 1 ? "" : "s"}`}
-            </Btn>
-          </>}>
-          <Tiles cls="grid--3" items={[
-            ["Selected", count(preview.selected), null, "students"],
-            ["Eligible", count(preview.eligible), preview.eligible ? "var(--green-ink)" : null, "will be reset"],
-            ["Not eligible", count(preview.notEligible), preview.notEligible ? "var(--red-ink)" : null, "recorded as failed, with the reason"],
-          ]} />
-          <Note kind="info" title="Each student's temporary password will be their matriculation number">
-            Every student reset must change the password at the next sign-in before anything else opens, and any open session is ended. The student is told by e-mail that ICT Support reset the password — never what it is.
-            {preview.policy.ticket === "REQUIRED" ? " The desk's policy needs each student's own ticket: a student chosen without a login ticket will fail." : ""}
-          </Note>
-          {preview.notEligible ? (
-            <DTable noPrint title="Not eligible" pageSize={10} cols={["Student", "Matriculation number", "Why"]} rows={preview.rows.filter((r) => !r.eligible).map((r) => [
-              <span key="n">{r.full_name ?? <span className="sub2">Not shown</span>}</span>,
-              <span key="m" className="tnum">{r.matric_no ?? "—"}</span>,
-              <span key="w" className="sub2">{r.words}</span>,
-            ])} />
-          ) : null}
-          <Field id="br-why" label="Reason (required)">
-            <textarea id="br-why" className="ctl" rows={2} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Students reported login issues at the desk; identities checked" />
-          </Field>
-          {problem ? <ProblemNotice problem={problem} /> : null}
-        </Modal>
-      ) : null}
-
-      {(step === "running" || step === "done") && op ? (
-        <Modal wide title={step === "running" ? "Resetting passwords…" : DONE[op.status] ?? "Password reset finished"}
-          sub={`${op.reference} · ${STATUS[op.status]?.[0] ?? op.status}`} onClose={() => { if (step === "done") setStep("none"); }}
-          foot={step === "running"
-            ? <><span className="sub2 grow">The reset runs on the server; this window can be closed and the result read from the history.</span><Btn kind="ghost" busy={busy === "cancel"} onClick={() => void cancel()}>Cancel the rest</Btn></>
-            : <><Btn kind="ghost" disabled={!items.length} onClick={async () => downloadBlob(await brandedXlsx("Bulk Password Reset", head, sheet(), { sheetName: "Bulk reset", serial: docSerial("BPR"), sub: op.reference, meta: [["Reference", op.reference], ["Reason", op.reason], ["Selected", String(op.total)], ["Reset", String(op.succeeded)], ["Failed", String(op.failed)]] }), `${op.reference.replace(/\//g, "-")}.xlsx`)}>Download Excel</Btn>
-                <span className="grow" /><LinkBtn href={`/helpdesk/password-reset/bulk/${op.id}`}>Open the record</LinkBtn><Btn kind="primary" onClick={() => setStep("none")}>Done</Btn></>}>
-          <Tiles cls="grid--4" items={[
-            ["Processed", `${count(op.processed)} / ${count(op.total)}`, null, step === "running" ? "so far" : "in all"],
-            ["Successfully reset", count(op.succeeded), op.succeeded ? "var(--green-ink)" : null, "must change at the next sign-in"],
-            ["Failed", count(op.failed), op.failed ? "var(--red-ink)" : null, "not reset, with the reason"],
-            ["Status", STATUS[op.status]?.[0] ?? op.status, null, op.performed_by],
-          ]} />
-          {step === "running" ? (
-            <div className="mt-2" role="progressbar" aria-valuemin={0} aria-valuemax={op.total} aria-valuenow={op.processed}
-              style={{ height: 8, borderRadius: 4, background: "var(--sunk, #eef1f4)", overflow: "hidden" }}>
-              <div style={{ width: `${op.total ? Math.round((100 * op.processed) / op.total) : 0}%`, height: "100%", background: "var(--sky, #2f7fbf)" }} />
-            </div>
-          ) : (
-            <>
-              {bad.length ? (
-                <DTable noPrint title={`Failed (${count(bad.length)})`} pageSize={10} cols={["Student", "Matriculation number", "Reason"]} rows={bad.map((i) => [
-                  <span key="n">{i.name}</span>, <span key="m" className="tnum">{i.number ?? "—"}</span>, <span key="w" className="sub2">{i.failure_words ?? i.failure_code}</span>,
-                ])} />
-              ) : null}
-              <DTable noPrint title={`Successfully reset (${count(ok.length)})`} pageSize={10} cols={["Student", "Matriculation number", "Programme", "Ticket"]} rows={ok.map((i) => [
-                <span key="n">{i.name}{i.status === "ALREADY_RESET" ? <span className="sub2"> (reset moments before)</span> : null}</span>,
-                <span key="m" className="tnum">{i.number ?? "—"}</span>, <span key="p" className="sub2">{i.programme ?? "—"}</span>, <span key="t" className="sub2 tnum">{i.ticket_number ?? "—"}</span>,
-              ])} />
-              {op.missing ? <Note kind="info" title={`${op.missing} chosen record${op.missing === 1 ? " was" : "s were"} not found`}>Counted as failed: the record no longer exists.</Note> : null}
-            </>
-          )}
-          {problem ? <ProblemNotice problem={problem} /> : null}
-        </Modal>
+      {preview ? (
+        <BulkConfirm preview={preview} ids={[...chosen.keys()]} tickets={tickets()} onClose={() => setPreview(null)}
+          onEnded={() => { setChosen(() => new Map()); router.refresh(); }} />
       ) : null}
     </>
   );

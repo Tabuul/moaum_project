@@ -17,6 +17,8 @@ export interface ResetPolicy {
   statuses: string[];
   /** V528: the day's count of one agent's resets at which the Head is told; absent is never (the default) */
   alert_daily?: number | null;
+  /** V563: the number of students above which a bulk reset waits for a Head's approval; absent is never */
+  bulk_approval_over?: number | null;
 }
 
 /** V528: one agent's student password resets, for the Head's oversight (helpdesk.reset_counts) */
@@ -27,6 +29,11 @@ export interface AgentResets {
   today: number;
   week: number;
   last_at: string | null;
+  /** V563: the students reset in bulk resets today and in the last seven days, and those operations today — apart from the single
+   *  resets the alert counts */
+  bulk_today?: number;
+  bulk_week?: number;
+  bulk_ops_today?: number;
 }
 
 export interface ResetsByAgent {

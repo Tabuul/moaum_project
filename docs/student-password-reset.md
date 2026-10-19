@@ -116,6 +116,33 @@ Many students reset in one operation, by the same service as the single reset. T
   - `BulkPasswordResetIT`: scope, capability, preview, the run, the codes, the idempotent repeat, the forced change at sign-in, the ledger, the history.
   - check.sql's V559 block: codes and scope, one item a student, key, reference, counts, a cancelled operation's state and counts.
 
+## Bulk password reset, finished at the desk (V563)
+
+- **Login tickets resolved with the reset.**
+  - When any chosen student has an open Login Issues ticket, the confirmation offers **Resolve each student's login ticket once the student is reset**. It shows the words the students will read (20 characters or more), which the agent can edit.
+  - For each student who is reset (or was reset moments before), `helpdesk.resolve_for_reset` takes the ticket through the desk's own steps: submitted → opened → in progress → resolved. Each step goes on the timeline in the agent's name. The requester receives the usual resolution e-mail, so the separate "password was reset" e-mail is not sent to that student.
+  - A ticket already resolved or closed is left alone. A student who is not reset keeps the ticket open.
+- **Reset links for students without a matriculation number.**
+  - These students sign in with their admission or JAMB number. On the result and on the operation's record, **Send reset links (N)** sends each of them the single reset's one-hour link (V485's LINK method) to the e-mail and phone on their record, or to the login ticket's e-mail where the record has none.
+  - Each student is checked again first: still within scope and still without a number. One who has since been given a number is told to retry instead.
+  - The result is kept on the item: where the link went (masked), or why it was not sent, for example "NO E-MAIL OR PHONE ON RECORD". Each link goes on the support ledger and the ticket, and is never sent twice.
+- **Bulk resets apart in the Head's oversight.**
+  - Every support act made inside a bulk reset names it (`helpdesk.support_action.bulk_id`). The API sets this from the transaction's `moaum.bulk_reset` for each student, and the `trg_support_action_bulk` trigger records it.
+  - The V528 daily alert to the Head counts single resets only: a bulk reset is one reasoned operation under its reference, not an agent resetting student after student.
+  - `helpdesk.reset_counts()` and the Resets by agent panel show each agent's students reset in bulk today and over 7 days, and the number of bulk operations today, separately.
+- **Retry.**
+  - **Retry the students not reset (N)** on the record opens the same confirmation for the students who failed, excluding those who have been sent a link.
+  - It creates a new operation (`retry_of`), which only the person who made the original or a Head may start. The original lists its retries.
+- **Approval of a large bulk reset.**
+  - In ICT Support Settings, the Director of ICT sets the number of students above which a bulk reset waits (`helpdesk.setting.bulk_reset_approval_over`). The default is 200; leaving it empty means never.
+  - Above that number, the confirmation says the reset will wait, and the operation opens as AWAITING_APPROVAL. The Head of the Support Desk is told (BULK_RESET_APPROVAL), or the Director of ICT where no Head is in office.
+  - A Head other than the person who asked approves it, after which it runs at once with every student checked again, or declines it with a reason (REJECTED: no student is reset, and every item is FAILED with the reason). The person who asked is told (BULK_RESET_DECIDED) and can withdraw the operation until it is decided.
+  - The rules are enforced in `helpdesk.decide_bulk_reset`: BULK_APPROVAL_HEAD, BULK_APPROVAL_OWN, BULK_APPROVAL_DECIDED, and SUPPORT_REASON_SHORT for a decline. The desk's counters show the operations awaiting approval.
+- **Tests.**
+  - `BulkPasswordResetIT.ticketsResolvedLinksSentRetriedAndALargeOneApproved` covers this end to end.
+  - check.sql's V563 block covers the approval rules and notices, the ticket's steps, the bulk tag with the alert and counts, retries and the resolution words.
+  - `lib/bulk-reset.test.ts` covers which students get a link, which are retried, and the result words.
+
 ## Other reset paths found in the codebase
 
 | Path | What it is | Kept because |

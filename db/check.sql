@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 396
+\set EXPECTED 397
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19232,6 +19232,105 @@ BEGIN
         format('candidates %s amounts %s | transfer %s tied %s | charges %s interest %s | refusals %s/%s/%s | taken back %s again %s | items left %s | closed %s other %s 1020 %s late %s posting %s delete %s take back %s | reopen later %s pending %s same %s note %s reopened %s copy %s open %s',
                cands, bad_amounts, tr_post, tr_tied, chg_post, int_post, bad_account, twice, matched, taken, rebooked, items_left,
                manual_closed, other_ok, disb_ok, late, posting_refused, delete_refused, takeback_closed, later, pending, same, no_note, reopened, copy_ok, open_again));
+END $$;
+
+-- ── V563. The bulk password reset finished at the desk. With the figure at 2, three invented students wait for approval: the Head
+-- of the Support Desk is told; the agent who asked cannot approve it, nor can an agent; a decline needs its reason; another Head
+-- approves it (it runs) and it is decided once, the agent told. A second is declined: no student reset, every one failed with the
+-- reason, and it stays declined. A login ticket is taken from submitted through opened and in progress to resolved, once. An act made
+-- inside a bulk reset names it and the Head's alert counts single resets only; the counts show the bulk ones apart. A retry is of
+-- one's own operation (or a Head's), and resolving tickets needs the words the students read. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); hd uuid := gen_random_uuid(); other_head uuid := gen_random_uuid();
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); q text; tkt uuid; op uuid; op2 uuid; op3 uuid;
+        waits text; told int; e_own text; e_agent text; e_short text; approved text; e_again text; decided_told int; declined text; items_declined text;
+        tally_kept text; resolved boolean; resolved_again boolean; ticket_state text; steps int; tagged text; alert_bulk int; alert_single int; counts text;
+        e_retry text; head_retry boolean; e_words text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'CHECK V563', true);
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES
+            (agent, 'ZZCHKV563AGENT', 'Invented', 'zzchkv563agent@example.com'), (hd, 'ZZCHKV563HEAD', 'Invented', 'zzchkv563head@example.com'),
+            (other_head, 'ZZCHKV563DIRECTOR', 'Invented', NULL);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), hd, 'helpdeskhead', 'institution', 'check V563', who, current_date - 1);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/63/056301', 'MOAUM/ADM/63/563001', 'CHECKV563A', 'Invented', 'C00023', 'UTME', '2063/2064', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/63/056302', 'MOAUM/ADM/63/563002', 'CHECKV563B', 'Invented', 'C00023', 'UTME', '2063/2064', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/CHK/63/056303', 'MOAUM/ADM/63/563003', 'CHECKV563C', 'Invented', 'C00023', 'UTME', '2063/2064', 100, 100, 'ACTIVE', now());
+
+        -- above the figure an operation waits, and the Head is told
+        UPDATE helpdesk.setting SET bulk_reset_approval_over = 2 WHERE row_no;
+        op := helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a, b, c], '{}'::jsonb, 'Students reported login issues', true, 'check-v563-a');
+        waits := (SELECT r.status || ':' || r.approval_over FROM helpdesk.bulk_reset r WHERE r.id = op);
+        told := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'BULK_RESET_APPROVAL' AND n.about_id = hd AND n.channel = 'EMAIL');
+        BEGIN PERFORM helpdesk.decide_bulk_reset(op, agent, true, true, NULL);
+        EXCEPTION WHEN check_violation THEN e_own := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM helpdesk.decide_bulk_reset(op, gen_random_uuid(), false, true, NULL);
+        EXCEPTION WHEN check_violation THEN e_agent := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM helpdesk.decide_bulk_reset(op, hd, true, false, 'no');
+        EXCEPTION WHEN check_violation THEN e_short := split_part(SQLERRM, ':', 1); END;
+        approved := helpdesk.decide_bulk_reset(op, hd, true, true, 'identities checked');
+        BEGIN PERFORM helpdesk.decide_bulk_reset(op, other_head, true, true, NULL);
+        EXCEPTION WHEN check_violation THEN e_again := split_part(SQLERRM, ':', 1); END;
+        decided_told := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'BULK_RESET_DECIDED' AND n.about_id = agent AND n.channel = 'EMAIL'
+                          AND n.subject LIKE 'Bulk password reset BPR/% approved');
+        -- declined on a reason: no student reset, and it stays declined
+        op2 := helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a, b, c, gen_random_uuid()], '{}'::jsonb, 'Students reported login issues', true, 'check-v563-b');
+        declined := helpdesk.decide_bulk_reset(op2, other_head, true, false, 'not every identity was checked');
+        items_declined := (SELECT string_agg(DISTINCT i.status || ':' || i.failure_code, ',') FROM helpdesk.bulk_reset_item i WHERE i.bulk_id = op2);
+        tally_kept := helpdesk.bulk_reset_tally(op2);
+        tally_kept := tally_kept || ':' || (SELECT r.succeeded || '/' || r.failed || '/' || r.total FROM helpdesk.bulk_reset r WHERE r.id = op2);
+
+        -- a login ticket resolved with the reset, through the desk's own steps, once
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0563-00001', c2.id, 'Cannot sign in', 'My password is not accepted', 'STUDENT', a, 'CHECKV563A, Invented', q, 'SC'
+          FROM helpdesk.category c2 WHERE c2.code = 'LOGIN'
+        RETURNING id INTO tkt;
+        resolved := helpdesk.resolve_for_reset(tkt, agent, 'Password reset by ICT Support (check)', 'Sign in with your matriculation number as your password, then choose your own.');
+        resolved_again := helpdesk.resolve_for_reset(tkt, agent, 'Password reset by ICT Support (check)', 'Sign in with your matriculation number as your password, then choose your own.');
+        ticket_state := (SELECT t.status || ':' || t.resolution_summary FROM helpdesk.ticket t WHERE t.id = tkt);
+        steps := (SELECT count(*) FROM helpdesk.ticket_event e WHERE e.ticket_id = tkt AND e.to_value IN ('OPENED', 'IN_PROGRESS', 'RESOLVED'));
+
+        -- an act inside a bulk reset names it; the Head's alert counts single resets only
+        UPDATE helpdesk.setting SET student_reset_alert_daily = 1 WHERE row_no;
+        PERFORM set_config('moaum.bulk_reset', op::text, true);
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        VALUES (a, agent, 'ictagent', 'PASSWORD_RESET', 'check V563: in bulk', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED');
+        tagged := (SELECT (x.bulk_id = op)::text FROM helpdesk.support_action x WHERE x.student_id = a AND x.reason = 'check V563: in bulk');
+        alert_bulk := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'SUPPORT_RESET_ALERT' AND n.event_key LIKE 'reset-alert:' || agent || ':%');
+        PERFORM set_config('moaum.bulk_reset', '', true);
+        INSERT INTO helpdesk.support_action (student_id, agent_id, agent_office, action, reason, method, at, outcome)
+        VALUES (b, agent, 'ictagent', 'PASSWORD_RESET', 'check V563: single', 'DEFAULT_CREDENTIAL', now(), 'COMPLETED');
+        alert_single := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'SUPPORT_RESET_ALERT' AND n.event_key LIKE 'reset-alert:' || agent || ':%'
+                          AND n.channel = 'EMAIL' AND n.subject = 'ZZCHKV563AGENT, Invented has reset 1 student passwords today');
+        counts := (SELECT x.today || '/' || x.week || '|' || x.bulk_today || '/' || x.bulk_week || '/' || x.bulk_ops_today FROM helpdesk.reset_counts() x WHERE x.agent_id = agent);
+
+        -- a retry is of one's own operation, or a Head's; resolving tickets needs the words the students read
+        BEGIN PERFORM helpdesk.start_bulk_reset(gen_random_uuid(), 'ictagent', false, ARRAY[a], '{}'::jsonb, 'Students reported login issues', true, NULL, false, NULL, op2);
+        EXCEPTION WHEN check_violation THEN e_retry := split_part(SQLERRM, ':', 1); END;
+        op3 := helpdesk.start_bulk_reset(hd, 'helpdeskhead', true, ARRAY[a], '{}'::jsonb, 'Students reported login issues', true, NULL, false, NULL, op2);
+        head_retry := (SELECT r.retry_of = op2 FROM helpdesk.bulk_reset r WHERE r.id = op3);
+        BEGIN PERFORM helpdesk.start_bulk_reset(agent, 'ictagent', false, ARRAY[a], '{}'::jsonb, 'Students reported login issues', true, NULL, true, 'Sign in', NULL);
+        EXCEPTION WHEN check_violation THEN e_words := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V563 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V563 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V563: a large bulk reset waits for a Head other than the one who asked (told, decided once, declined only on a reason, no student reset when declined); a login ticket is resolved with the reset through the desk''s steps; a bulk reset''s acts name it and the Head''s alert counts single resets only; a retry is of one''s own operation',
+        coalesce(waits = 'AWAITING_APPROVAL:2' AND told = 1 AND e_own = 'BULK_APPROVAL_OWN' AND e_agent = 'BULK_APPROVAL_HEAD' AND e_short = 'SUPPORT_REASON_SHORT'
+                 AND approved = 'PENDING' AND e_again = 'BULK_APPROVAL_DECIDED' AND decided_told = 1
+                 AND declined = 'REJECTED' AND items_declined = 'FAILED:REJECTED' AND tally_kept = 'REJECTED:0/4/4'
+                 AND resolved AND NOT resolved_again AND ticket_state = 'RESOLVED:Password reset by ICT Support (check)' AND steps = 3
+                 AND tagged = 'true' AND alert_bulk = 0 AND alert_single = 1 AND counts = '1/1|1/1/1'
+                 AND e_retry = 'BULK_RETRY_NOT_YOURS' AND head_retry AND e_words = 'BULK_RESOLUTION_SHORT', false),
+        format('waits %s told %s | own %s agent %s short %s | approved %s again %s told %s | declined %s items %s tally %s | resolved %s/%s %s steps %s | tagged %s alert %s/%s counts %s | retry %s head %s words %s',
+               waits, told, e_own, e_agent, e_short, approved, e_again, decided_told, declined, items_declined, tally_kept, resolved, resolved_again, ticket_state, steps,
+               tagged, alert_bulk, alert_single, counts, e_retry, head_retry, e_words));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

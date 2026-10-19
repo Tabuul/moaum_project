@@ -1,5 +1,7 @@
 /** V528: the Head's oversight of student password resets now the hourly limit is gone (V526) — each agent's resets today and in
- *  the last seven days (Lagos days), the daily average, the last one, and the figure at which the Head is told. Nothing is refused. */
+ *  the last seven days (Lagos days), the daily average, the last one, and the figure at which the Head is told. Nothing is refused.
+ *  V563: the students an agent reset in bulk resets are shown apart — a bulk reset is one reasoned operation under its reference,
+ *  and the alert counts single resets only. */
 import Link from "next/link";
 import { Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -15,16 +17,18 @@ export function ResetsByAgent({ counts }: { counts: Counts }) {
       ? <span className="sub2">The Head is told when one agent&rsquo;s resets in a day reach {alert.toLocaleString("en-GB")} · <Link className="lnk" href="/helpdesk/settings">change</Link></span>
       : <span className="sub2">No one is told of many resets · <Link className="lnk" href="/helpdesk/settings">set a figure</Link></span>}>
       {counts.agents.length ? (
-        <DTable pageSize={0} cols={["Agent", "Today|num", "Last 7 days|num", "Daily average|num", "Last reset"]}
+        <DTable pageSize={0} cols={["Agent", "Today|num", "Last 7 days|num", "Daily average|num", "Last reset", "In bulk today|num", "In bulk, 7 days|num"]}
           rows={counts.agents.map((a) => [
             <span key="n">{a.name}{pastAlert(a, alert) ? <> <Pil kind="warn">Reached {alert}</Pil></> : null}</span>,
             <b key="t" className="tnum">{a.today.toLocaleString("en-GB")}</b>,
             <span key="w" className="tnum">{a.week.toLocaleString("en-GB")}</span>,
             <span key="avg" className="tnum sub2">{weekAverage(a)}</span>,
             <span key="l" className="sub2 tnum">{a.last_at ? when(a.last_at) : "—"}</span>,
+            <span key="bt" className="tnum">{a.bulk_today ? <>{a.bulk_today.toLocaleString("en-GB")}<div className="sub2">{a.bulk_ops_today} operation{a.bulk_ops_today === 1 ? "" : "s"}</div></> : "—"}</span>,
+            <span key="bw" className="tnum sub2">{a.bulk_week ? a.bulk_week.toLocaleString("en-GB") : "—"}</span>,
           ])} texts={counts.agents.map((a) => a.name)} />
       ) : <PBody><div className="sub2">No student password reset in the last seven days.</div></PBody>}
-      {counts.agents.length ? <PBody><div className="sub2">{today.toLocaleString("en-GB")} reset{today === 1 ? "" : "s"} today across the desk. Each one, with its reason and the student, is listed below.</div></PBody> : null}
+      {counts.agents.length ? <PBody><div className="sub2">{today.toLocaleString("en-GB")} single reset{today === 1 ? "" : "s"} today across the desk. Each one, with its reason and the student, is listed below; the students reset in bulk are under <Link className="lnk" href="/helpdesk/password-reset/bulk/history">Bulk reset history</Link>.</div></PBody> : null}
     </Panel>
   );
 }

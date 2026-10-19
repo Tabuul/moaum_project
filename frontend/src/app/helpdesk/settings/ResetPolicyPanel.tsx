@@ -2,7 +2,8 @@
 
 /** The desk's policy for a student's password reset to the default credential (V485): on or off, the lockout cleared unless the
  *  agent unticks it, a ticket optional or required, each agent's hourly limit (V526: none when left empty, the default), the
- *  statuses it may reach, and (V528) the day's count of one agent's resets at which the Head is told. The default credential
+ *  statuses it may reach, (V528) the day's count of one agent's resets at which the Head is told, and (V563) the number of
+ *  students above which a bulk reset waits for a Head's approval. The default credential
  *  is the matriculation number and the change at the next sign-in is always forced — neither is a setting. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -24,14 +25,18 @@ export function ResetPolicyPanel({ policy }: { policy: ResetPolicy }) {
   const [statuses, setStatuses] = useState<string[]>(policy.statuses);
   // V528: empty tells no one (the default); a number from 1 to 10,000 tells the Head once an agent a day when it is reached
   const [alertDaily, setAlertDaily] = useState(policy.alert_daily == null ? "" : String(policy.alert_daily));
+  // V563: empty never waits; a number from 1 to 1,000 — a bulk reset of more students waits for a Head's approval
+  const [bulkOver, setBulkOver] = useState(policy.bulk_approval_over == null ? "" : String(policy.bulk_approval_over));
   const bad = !statuses.length || (hourly !== "" && (!/^\d+$/.test(hourly) || Number(hourly) < 1 || Number(hourly) > 500))
-    || (alertDaily !== "" && (!/^\d+$/.test(alertDaily) || Number(alertDaily) < 1 || Number(alertDaily) > 10000));
+    || (alertDaily !== "" && (!/^\d+$/.test(alertDaily) || Number(alertDaily) < 1 || Number(alertDaily) > 10000))
+    || (bulkOver !== "" && (!/^\d+$/.test(bulkOver) || Number(bulkOver) < 1 || Number(bulkOver) > 1000));
 
   async function save() {
     const r = await fetch("/api/bff/api/v1/helpdesk/admin/settings/password-reset", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Student support password reset policy saved") },
-      body: JSON.stringify({ enabled, unlockByDefault: unlock, ticket, hourly: hourly === "" ? null : Number(hourly), statuses, alertDaily: alertDaily === "" ? null : Number(alertDaily) }),
+      body: JSON.stringify({ enabled, unlockByDefault: unlock, ticket, hourly: hourly === "" ? null : Number(hourly), statuses, alertDaily: alertDaily === "" ? null : Number(alertDaily),
+        bulkApprovalOver: bulkOver === "" ? null : Number(bulkOver) }),
     });
     if (!r.ok) { notifyProblem((await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }); return; }
     notify("Student support password reset policy saved");
@@ -61,6 +66,9 @@ export function ResetPolicyPanel({ policy }: { policy: ResetPolicy }) {
             </Field>
             <Field id="rp-alert" label="Tell the Head when one agent's resets in a day reach" hint="Leave empty to tell no one. Nothing is refused." style={{ width: 340 }}>
               <input id="rp-alert" className="ctl tnum" inputMode="numeric" placeholder="Never" value={alertDaily} onChange={(e) => setAlertDaily(e.target.value.replace(/[^0-9]/g, ""))} />
+            </Field>
+            <Field id="rp-bulk" label="A bulk reset of more students than this waits for approval" hint="By the Head of the Support Desk or the Director of ICT, never the one who asked. Empty: never waits; 1 to 1,000." style={{ width: 380 }}>
+              <input id="rp-bulk" className="ctl tnum" inputMode="numeric" placeholder="Never" value={bulkOver} onChange={(e) => setBulkOver(e.target.value.replace(/[^0-9]/g, ""))} />
             </Field>
           </div>
           <Field id="rp-statuses" label="Student statuses the reset may reach">

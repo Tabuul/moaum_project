@@ -8,7 +8,7 @@ import { Btn, LinkBtn, PageHead, Panel, PBody, Pil } from "@/components/proto/ui
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { STATUS, type BulkHistory } from "../BulkReset";
+import { STATUS, type BulkHistory } from "@/lib/bulk-reset";
 
 export interface HistoryFilters { from: string; to: string; status: string; q: string; page: number }
 
