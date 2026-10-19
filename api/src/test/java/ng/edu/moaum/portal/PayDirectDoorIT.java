@@ -144,8 +144,9 @@ class PayDirectDoorIT {
         Map<String, Object> out = new HashMap<>();
         try {
             it.db(() -> {
-                // anything newer on the log moved out of the way (undone with the rest); one call ten hours ago: quiet, but no rhythm to judge by
-                jdbc.sql("UPDATE finance.gateway_event SET received_at = received_at - interval '60 days' WHERE gateway = 'paydirect' AND received_at > now() - interval '10 hours'").update();
+                // everything on the door's log of the last fortnight moved out of the way (undone with the rest), so other tests' calls are
+                // not read as the door's rhythm; one call ten hours ago: quiet, but no rhythm to judge by
+                jdbc.sql("UPDATE finance.gateway_event SET received_at = received_at - interval '60 days' WHERE gateway = 'paydirect' AND received_at > now() - interval '15 days'").update();
                 jdbc.sql("UPDATE finance.paydirect_setting SET watch_enabled = true, silence_hours = 6, last_alert_seen_at = NULL WHERE id").update();
                 jdbc.sql("INSERT INTO finance.gateway_event (gateway, source, event, reference, signature_ok, outcome, received_at) VALUES ('paydirect', 'VALIDATE', 'validate', 'IT-PDD-0', true, 'IGNORED', now() - interval '10 hours')").update();
                 out.put("quietState", jdbc.sql("SELECT state FROM finance.paydirect_door_status()").query(String.class).single());
