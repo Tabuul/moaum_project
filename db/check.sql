@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 403
+\set EXPECTED 406
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19750,6 +19750,184 @@ BEGIN
                  AND bc = 'PROPOSED:MOAUM-FEE-997001-0003:2000' AND sent_twice LIKE 'SETTLEMENT_ITEM_SENT%' AND again LIKE 'SETTLEMENT_FILE_AGAIN%', false),
         format('rows %s | days %s | candidates %s | tied %s | lines %s | charges %s | not received %s → %s | items %s → %s | wrong %s | untied %s, line %s | bank credit %s, twice %s | again %s',
                states, days, cands, tied, lines, charges, nr_before, nr_after, items_before, items_after, left(wrong, 60), nr_untied, reversed, bc, left(sent_twice, 40), left(again, 40)));
+END $$;
+-- ── V571. Who is charged the spillover fee lines, by the Bursary's basis. Three invented students of one programme: A at the final
+-- level whom the cohort engine reads in a spillover year, B a level above the final level whom it reads within the length, G
+-- graduated. By level (the default) B is charged the spillover lines and A is not, and the two move between the bases; by the
+-- cohort (read for a transaction, nothing changed) A is and B is not, and never a graduate — in fee_profiles as in the one test.
+-- The Bursary's choice needs LEVEL or COHORT and a reason of ten characters, and keeps who and why. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); g uuid := gen_random_uuid();
+        fin int; dflt text; lv_a boolean; lv_b boolean; co_a boolean; co_b boolean; co_g boolean; prof_lv text; prof_co text; moves text;
+        e_basis text; e_reason text; set_to text; kept text; after_a boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V571', true);
+        fin := finance.final_level('C00023');
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/71/057101', 'MOAUM/ADM/71/571001', 'CHECKV571A', 'Invented', 'C00023', 'UTME', '2015/2016', 100, fin, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/71/057102', 'MOAUM/ADM/71/571002', 'CHECKV571B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, fin + 100, 'ACTIVE', now()),
+            (g, 'MOAUM/CHK/71/057103', 'MOAUM/ADM/71/571003', 'CHECKV571G', 'Invented', 'C00023', 'UTME', '2015/2016', 100, fin, 'GRADUATED', now());
+        -- the cohort engine's reading as it would stand: A and G past the programme's length, B within it
+        UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_2' WHERE student_id IN (a, g);
+        UPDATE people.academic_position SET spillover_state = 'NORMAL' WHERE student_id = b;
+
+        dflt := finance.spill_basis();
+        lv_a := finance.spill(a, fin, 'C00023', 'ACTIVE');
+        lv_b := finance.spill(b, fin + 100, 'C00023', 'ACTIVE');
+        prof_lv := (SELECT string_agg(st.surname || ':' || p.is_spill, ',' ORDER BY st.surname) FROM finance.fee_profiles() p JOIN people.student st ON st.id = p.student_id
+                     WHERE p.student_id IN (a, b));
+        moves := (SELECT string_agg(CASE m.student_id WHEN a THEN 'A' WHEN b THEN 'B' ELSE 'G' END || ':' || m.by_level || '/' || m.by_cohort, ',' ORDER BY m.by_level)
+                    FROM finance.spill_basis_moves() m WHERE m.student_id IN (a, b, g));
+        -- by the cohort, for this transaction only
+        PERFORM set_config('moaum.spill_basis', 'COHORT', true);
+        co_a := finance.spill(a, fin, 'C00023', 'ACTIVE');
+        co_b := finance.spill(b, fin + 100, 'C00023', 'ACTIVE');
+        co_g := finance.spill(g, fin, 'C00023', 'GRADUATED');
+        prof_co := (SELECT string_agg(st.surname || ':' || p.is_spill, ',' ORDER BY st.surname) FROM finance.fee_profiles() p JOIN people.student st ON st.id = p.student_id
+                     WHERE p.student_id IN (a, b));
+        PERFORM set_config('moaum.spill_basis', '', true);
+
+        -- the Bursary's choice
+        BEGIN PERFORM finance.set_spill_basis('AGE', 'Bursary decision on the spillover lines');
+        EXCEPTION WHEN check_violation THEN e_basis := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.set_spill_basis('COHORT', 'short');
+        EXCEPTION WHEN check_violation THEN e_reason := split_part(SQLERRM, ':', 1); END;
+        set_to := finance.set_spill_basis('cohort', 'Bursary decision: charged by the cohort');
+        kept := (SELECT s.spillover_basis || ':' || (s.spillover_basis_set_by = who) || ':' || s.spillover_basis_reason FROM finance.fee_setting s WHERE s.id = 1);
+        after_a := finance.is_spillover(a);
+        RAISE EXCEPTION 'the V571 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V571 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V571: the spillover lines are charged by the level (the default) or, when the Bursary chooses it with a reason, by the cohort engine''s spillover — never to a graduate; the preview reads the other basis without changing it',
+        coalesce(dflt = 'LEVEL' AND NOT lv_a AND lv_b AND prof_lv = 'CHECKV571A:false,CHECKV571B:true' AND moves = 'A:false/true,B:true/false'
+                 AND co_a AND NOT co_b AND NOT co_g AND prof_co = 'CHECKV571A:true,CHECKV571B:false'
+                 AND e_basis = 'FEE_SPILL_BASIS' AND e_reason = 'FEE_SPILL_REASON' AND set_to = 'COHORT'
+                 AND kept = 'COHORT:true:Bursary decision: charged by the cohort' AND after_a, false),
+        format('default %s | level A %s B %s profiles %s moves %s | cohort A %s B %s graduate %s profiles %s | refused %s/%s set %s kept %s A after %s',
+               dflt, lv_a, lv_b, prof_lv, moves, co_a, co_b, co_g, prof_co, e_basis, e_reason, set_to, kept, after_a));
+END $$;
+
+-- ── V572. Student contacts uploaded, and the spillover work told. A phone is read as the record keeps it (+234 and a dropped leading
+-- 0 put right). Four invented students — no contact, a phone only, an e-mail only, no contact — are listed as missing; a file of
+-- seven rows fills A's phone and e-mail, keeps B's phone and fills B's e-mail (matched by the admission number in lower case),
+-- refuses C a phone B holds and a malformed e-mail, refuses D the e-mail an earlier row gave A, and reports a repeated student, an
+-- unknown number and a row with no number; a student outside the uploader's department is refused. The spillover work is counted
+-- and told at most once a week. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        fac text; dept text; phones text; before_missing text; loaded text; outside text; after_a text; after_b text; after_missing text;
+        work jsonb; told1 int; told2 int; tpl boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V572', true);
+        SELECT faculty_code, dept_code INTO fac, dept FROM ref.programme WHERE code = 'C00023';
+        phones := people.contact_phone('8065720001') || ',' || people.contact_phone('+234 806 572 0001') || ',' || coalesce(people.contact_phone(' '), '-') || ','
+                  || people.contact_phone('12345');
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/72/057201', 'MOAUM/ADM/72/572001', 'CHECKV572A', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/72/057202', 'MOAUM/ADM/72/572002', 'CHECKV572B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/CHK/72/057203', 'MOAUM/ADM/72/572003', 'CHECKV572C', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (d, 'MOAUM/CHK/72/057204', 'MOAUM/ADM/72/572004', 'CHECKV572D', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, phone, email, updated_at) VALUES (b, '08065720002', NULL, now()), (c, NULL, 'checkv572c@example.com', now());
+        before_missing := (SELECT string_agg(m.name || ':' || m.no_phone || '/' || m.no_email, ',' ORDER BY m.name) FROM people.contacts_missing(fac, dept) m
+                            WHERE m.student_id IN (a, b, c, d));
+        loaded := (SELECT string_agg(l.row_no || ':' || l.outcome || ':' || l.phone_outcome || '/' || l.email_outcome, ',' ORDER BY l.row_no)
+                     FROM people.load_contacts(jsonb_build_array(
+                            jsonb_build_object('number', 'MOAUM/CHK/72/057201', 'phone', '8065720001', 'email', 'CheckV572A@Example.com'),
+                            jsonb_build_object('number', 'moaum/adm/72/572002', 'phone', '08065720009', 'email', 'checkv572b@example.com'),
+                            jsonb_build_object('number', 'MOAUM/CHK/72/057203', 'phone', '08065720002', 'email', 'not-an-email'),
+                            jsonb_build_object('number', 'MOAUM/CHK/72/057201', 'phone', '08065720005'),
+                            jsonb_build_object('number', 'MOAUM/CHK/72/999999', 'phone', '08065720006'),
+                            jsonb_build_object('number', '', 'phone', '08065720007'),
+                            jsonb_build_object('number', 'MOAUM/CHK/72/057204', 'email', 'checkv572a@example.com')), fac, dept) l);
+        outside := (SELECT string_agg(l.outcome, ',') FROM people.load_contacts(jsonb_build_array(jsonb_build_object('number', 'MOAUM/CHK/72/057204', 'phone', '08065720008')),
+                                                                                NULL, 'ZZNODEPT') l);
+        after_a := (SELECT x.phone || ':' || x.email FROM people.student_contact x WHERE x.student_id = a);
+        after_b := (SELECT x.phone || ':' || x.email FROM people.student_contact x WHERE x.student_id = b);
+        after_missing := (SELECT string_agg(m.name, ',' ORDER BY m.name) FROM people.contacts_missing(fac, dept) m WHERE m.student_id IN (a, b, c, d));
+
+        work := people.spillover_work();
+        told1 := people.tell_spillover_work();
+        told2 := people.tell_spillover_work();
+        tpl := EXISTS (SELECT 1 FROM platform.notice_template t WHERE t.key = 'SPILLOVER_WORK_WAITING' AND t.enabled);
+        RAISE EXCEPTION 'the V572 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V572 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V572: uploaded contacts fill only what a student does not hold — a contact held is kept, one another student (or an earlier row) holds refused, a malformed one refused — and only within the uploader''s reach; the spillover work is counted and told at most once a week',
+        coalesce(phones = '08065720001,08065720001,-,12345'
+                 AND before_missing = 'CHECKV572A, Invented:true/true,CHECKV572B, Invented:false/true,CHECKV572C, Invented:true/false,CHECKV572D, Invented:true/true'
+                 AND loaded = '1:FILLED:FILL/FILL,2:FILLED:KEPT/FILL,3:REFUSED:TAKEN/INVALID,4:DUPLICATE_ROW:NONE/NONE,5:NO_STUDENT:NONE/NONE,6:INCOMPLETE:NONE/NONE,7:REFUSED:NONE/TAKEN'
+                 AND outside = 'OUTSIDE_SCOPE' AND after_a = '08065720001:checkv572a@example.com' AND after_b = '08065720002:checkv572b@example.com'
+                 AND after_missing = 'CHECKV572C, Invented,CHECKV572D, Invented'
+                 AND work ? 'levelCorrections' AND work ? 'toReconcile' AND work ? 'graduationCandidates' AND work ? 'lastReconciledAt'
+                 AND (work->>'levelCorrections')::int >= 0 AND (work->>'toReconcile')::int >= 0
+                 AND told1 >= 0 AND (told1 = 0 OR (work->>'levelCorrections')::int + (work->>'toReconcile')::int > 0) AND told2 = 0 AND tpl, false),
+        format('phones %s | missing %s | loaded %s | outside %s | A %s B %s | still missing %s | work %s told %s then %s template %s',
+               phones, before_missing, loaded, outside, after_a, after_b, after_missing, work, told1, told2, tpl));
+END $$;
+
+-- ── V573. Faster reads, the same answers. The department's carryover students are those registration.carryovers finds student by
+-- student, in every department; the payments page counts and totals every confirmed payment, newest first in a stable order, each
+-- with its purpose's category, and the breakdown sums to the same count and total by category and by faculty; each undergraduate's
+-- GST fee is the most specific line stated for the session.
+DO $$
+DECLARE depts int; wrong text; q_n bigint; q_total numeric; q_rows int; d_n bigint; d_total numeric; ordered boolean; cats boolean;
+        b_cat_n numeric; b_cat_t numeric; b_fac_n numeric; b_fac_t numeric; s text; gst_rows int; gst_wrong int;
+BEGIN
+    SELECT count(*), string_agg(x.d, ',') FILTER (WHERE x.differs) INTO depts, wrong FROM (
+        SELECT dd.d, EXISTS ((SELECT c.student_id FROM registration.carryover_students(dd.d) c
+                              EXCEPT SELECT st.id FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                                      WHERE p.dept_code = dd.d AND st.status IN ('ACTIVE', 'PROBATION') AND EXISTS (SELECT 1 FROM registration.carryovers(st.id)))
+                             UNION ALL
+                             (SELECT st.id FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
+                               WHERE p.dept_code = dd.d AND st.status IN ('ACTIVE', 'PROBATION') AND EXISTS (SELECT 1 FROM registration.carryovers(st.id))
+                              EXCEPT SELECT c.student_id FROM registration.carryover_students(dd.d) c)) AS differs
+          FROM (SELECT DISTINCT p.dept_code AS d FROM people.student s JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE s.status IN ('ACTIVE', 'PROBATION') AND p.dept_code IS NOT NULL) dd) x;
+
+    SELECT max(q.match_count), max(q.match_total), count(*) INTO q_n, q_total, q_rows FROM finance.payments_query(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 2000) q;
+    SELECT count(*), coalesce(sum(r.amount), 0) INTO d_n, d_total
+      FROM finance.payment_reference r JOIN people.student st ON st.id = r.student_id JOIN ref.programme p ON p.code = st.programme_code
+      JOIN ref.department dp ON dp.code = p.dept_code JOIN ref.faculty f ON f.code = p.faculty_code
+     WHERE r.confirmed_at IS NOT NULL;
+    SELECT coalesce(bool_and(o.prev_at IS NULL OR (o.prev_at, o.prev_ref) > (o.confirmed_at, o.reference)), true),
+           coalesce(bool_and(o.category = finance.payment_category(o.purpose)), true)
+      INTO ordered, cats
+      FROM (SELECT q.confirmed_at, q.reference, q.category, q.purpose,
+                   lag(q.confirmed_at) OVER (ORDER BY q.ord) AS prev_at, lag(q.reference) OVER (ORDER BY q.ord) AS prev_ref
+              FROM finance.payments_query(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 2000) WITH ORDINALITY q(reference, confirmed_at, payer, number, programme_code,
+                   programme, dept_code, dept, faculty_code, faculty, level, purpose, category, channel, amount, receipt_no, session, match_count, match_total, ord)) o;
+    SELECT sum(b.cnt) FILTER (WHERE b.dim = 'category'), sum(b.total) FILTER (WHERE b.dim = 'category'),
+           sum(b.cnt) FILTER (WHERE b.dim = 'faculty'), sum(b.total) FILTER (WHERE b.dim = 'faculty')
+      INTO b_cat_n, b_cat_t, b_fac_n, b_fac_t
+      FROM finance.payments_breakdown(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) b;
+
+    s := coalesce((SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1), '2025/2026');
+    SELECT count(*), count(*) FILTER (WHERE g.fee IS DISTINCT FROM coalesce((
+               SELECT f.amount FROM finance.gst_fee f
+                WHERE f.session = s AND f.superseded_at IS NULL AND f.effective_from <= current_date
+                  AND (f.programme_code IS NULL OR f.programme_code = g.programme_code) AND (f.faculty_code IS NULL OR f.faculty_code = g.faculty_code)
+                  AND (f.level IS NULL OR f.level = g.level) AND (f.entry_mode IS NULL OR f.entry_mode = g.entry_mode)
+                ORDER BY (f.programme_code IS NOT NULL) DESC, (f.faculty_code IS NOT NULL) DESC, (f.level IS NOT NULL) DESC, (f.entry_mode IS NOT NULL) DESC, f.stated_at DESC
+                LIMIT 1), 0))
+      INTO gst_rows, gst_wrong
+      FROM finance.gst_population(s, NULL) g;
+    PERFORM pg_temp.assert('V573: the department''s carryover students are registration.carryovers'' in every department; the payments page''s count, total, order and categories, and its breakdown, agree with the payments; each GST fee is the most specific line',
+        coalesce(wrong IS NULL AND depts >= 1
+                 AND coalesce(q_n, 0) = d_n AND coalesce(q_total, 0) = d_total AND q_rows = least(d_n, 2000) AND ordered AND cats
+                 AND coalesce(b_cat_n, 0) = d_n AND coalesce(b_cat_t, 0) = d_total AND coalesce(b_fac_n, 0) = d_n AND coalesce(b_fac_t, 0) = d_total
+                 AND gst_wrong = 0, false),
+        format('departments %s, differing %s | payments %s/%s of %s/%s, %s rows, ordered %s, categories %s | breakdown %s/%s and %s/%s | GST %s rows, %s fees wrong',
+               depts, coalesce(wrong, 'none'), q_n, q_total, d_n, d_total, q_rows, ordered, cats, b_cat_n, b_cat_t, b_fac_n, b_fac_t, gst_rows, gst_wrong));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

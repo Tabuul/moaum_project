@@ -731,6 +731,91 @@ class FinanceController {
         return Map.of("amount", body.amount(), "stated", true);
     }
 
+    /* ── V571: who is charged the spillover fee lines — a level above the programme's final level (V088), or the cohort engine's
+          spillover (SP1, SP2 … and the limit reached); the Bursary's choice, with a preview of who would move and what they would owe ── */
+
+    @GetMapping("/spillover-basis")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> spillBasis() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>(jdbc.sql("""
+                SELECT g.spillover_basis AS basis, g.spillover_basis_set_at AS set_at, helpdesk.person_name(g.spillover_basis_set_by) AS set_by,
+                       g.spillover_basis_reason AS reason
+                  FROM finance.fee_setting g WHERE g.id = 1
+                """).query().singleRow());
+        out.putAll(jdbc.sql("""
+                SELECT count(*) FILTER (WHERE by_cohort AND NOT by_level) AS into_spill, count(*) FILTER (WHERE by_level AND NOT by_cohort) AS out_of_spill
+                  FROM finance.spill_basis_moves()
+                """).query().singleRow());
+        out.put("spillLines", jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE spillover").query(Long.class).single());
+        return out;
+    }
+
+    /**
+     * what changing the basis would do, for a session (the current one when none is named): each current student whose spillover
+     * differs between the two bases, with the session's charges under each — read in one transaction with the basis set for it
+     * (moaum.spill_basis), nothing changed. The first 200 by programme and name, or every one for the Excel.
+     */
+    @GetMapping("/spillover-basis/preview")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> spillBasisPreview(@RequestParam(required = false) String session, @RequestParam(defaultValue = "false") boolean all) {
+        String s = session != null && session.matches("\\d{4}/\\d{4}") ? session
+                : jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(ng.edu.moaum.portal.shared.Sessions::byDate);
+        List<Map<String, Object>> moves = jdbc.sql("""
+                SELECT m.student_id, m.by_level, m.by_cohort, upper(btrim(st.surname)) || coalesce(', ' || nullif(btrim(st.other_names), ''), '') AS name,
+                       coalesce(st.matric_no, st.admission_no) AS number, p.name AS programme, f.name AS faculty, st.current_level AS level, ap.spillover_state
+                  FROM finance.spill_basis_moves() m
+                  JOIN people.student st ON st.id = m.student_id
+                  LEFT JOIN ref.programme p ON p.code = st.programme_code
+                  LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                  LEFT JOIN people.academic_position ap ON ap.student_id = m.student_id
+                 ORDER BY f.name, p.name, name
+                """).query().listOfRows();
+        Map<Object, Object> byLevel = new java.util.HashMap<>();
+        Map<Object, Object> byCohort = new java.util.HashMap<>();
+        for (String basis : List.of("LEVEL", "COHORT")) {
+            jdbc.sql("SELECT set_config('moaum.spill_basis', :b, true)").param("b", basis).query().singleRow();
+            Map<Object, Object> into = "LEVEL".equals(basis) ? byLevel : byCohort;
+            jdbc.sql("SELECT ch.student_id, ch.total FROM finance.session_charges(:s) ch WHERE ch.student_id IN (SELECT m.student_id FROM finance.spill_basis_moves() m)")
+                    .param("s", s).query().listOfRows().forEach(r -> into.put(r.get("student_id"), r.get("total")));
+        }
+        jdbc.sql("SELECT set_config('moaum.spill_basis', '', true)").query().singleRow();
+        BigDecimal before = BigDecimal.ZERO, after = BigDecimal.ZERO;
+        long nothing = 0;
+        for (Map<String, Object> m : moves) {
+            BigDecimal l = byLevel.get(m.get("student_id")) instanceof BigDecimal v ? v : BigDecimal.ZERO;
+            BigDecimal c = byCohort.get(m.get("student_id")) instanceof BigDecimal v ? v : BigDecimal.ZERO;
+            m.put("by_level_due", l);
+            m.put("by_cohort_due", c);
+            before = before.add(l);
+            after = after.add(c);
+            if (c.signum() == 0) nothing++;
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("session", s);
+        out.put("students", moves.size());
+        out.put("intoSpill", moves.stream().filter(m -> Boolean.TRUE.equals(m.get("by_cohort"))).count());
+        out.put("outOfSpill", moves.stream().filter(m -> Boolean.TRUE.equals(m.get("by_level"))).count());
+        out.put("dueByLevel", before);
+        out.put("dueByCohort", after);
+        out.put("nothingStatedByCohort", nothing);
+        out.put("rows", all ? moves : moves.subList(0, Math.min(200, moves.size())));
+        return out;
+    }
+
+    public record SpillBasis(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp = "LEVEL|COHORT") String basis,
+                             @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(min = 10, max = 2000) String reason) {
+    }
+
+    @PutMapping("/spillover-basis")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setSpillBasis(@Valid @RequestBody SpillBasis body) {
+        jdbc.sql("SELECT finance.set_spill_basis(:b, :r)").param("b", body.basis()).param("r", body.reason().trim()).query(String.class).single();
+        return spillBasis();
+    }
+
     /* ── V401: the Bursary's rule for a session whose applicant fees are not stated: CARRY the last stated session's forward, or
           REFUSE a fee reference until they are stated ── */
 

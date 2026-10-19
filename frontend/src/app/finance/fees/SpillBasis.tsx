@@ -1,0 +1,147 @@
+"use client";
+
+/** V571: on the Bursary's fee page, who is charged the spillover fee lines — a level above the programme's final level (V088,
+ *  the rule in force until the Bursary changes it), or the cohort engine's spillover (SP1, SP2 … and the limit reached, by the
+ *  sessions past the programme's length). The change is previewed first — each student who would move, with the session's charges
+ *  under each basis — and made with a reason. */
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Problem } from "@/lib/api";
+import { reasonHeader } from "@/lib/reason";
+import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { DTable } from "@/components/proto/DTable";
+import { Field } from "@/components/proto/blocks";
+import { ProblemNotice } from "@/components/ProblemNotice";
+import { notify, notifyProblem } from "@/components/proto/Toast";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { spilloverWord } from "@/lib/student-query";
+
+interface Basis {
+  basis: "LEVEL" | "COHORT"; set_at?: string | null; set_by?: string | null; reason?: string | null;
+  into_spill: number; out_of_spill: number; spillLines: number;
+}
+interface Move {
+  student_id: string; name: string; number: string | null; programme: string | null; faculty: string | null; level: number | null; spillover_state: string | null;
+  by_level: boolean; by_cohort: boolean; by_level_due: number; by_cohort_due: number;
+}
+interface Preview {
+  session: string; students: number; intoSpill: number; outOfSpill: number; dueByLevel: number; dueByCohort: number; nothingStatedByCohort: number; rows: Move[];
+}
+
+const count = (n: number) => Number(n).toLocaleString("en-NG");
+const naira = (n: number) => `₦${Number(n).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
+const WORD = { LEVEL: "By level — a level above the programme's final level", COHORT: "By cohort — the sessions past the programme's length (SP1, SP2 …)" };
+
+export function SpillBasis({ session, may }: { session: string; may: boolean }) {
+  const router = useRouter();
+  const [basis, setBasis] = useState<Basis | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/bff/api/v1/finance/spillover-basis", { cache: "no-store" }).then(async (r) => { if (alive && r.ok) setBasis((await r.json()) as Basis); });
+    return () => { alive = false; };
+  }, [tick]);
+
+  if (!basis) return null;
+  const other = basis.basis === "LEVEL" ? "COHORT" : "LEVEL";
+
+  async function load(all = false): Promise<Preview | null> {
+    const r = await fetch(`/api/bff/api/v1/finance/spillover-basis/preview?session=${encodeURIComponent(session)}${all ? "&all=true" : ""}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { notifyProblem(j ?? { status: r.status, title: "The preview could not be read just now." }); return null; }
+    return j as Preview;
+  }
+
+  async function excel() {
+    const p = await load(true);
+    if (!p) return;
+    const head = ["S/N", "Student", "Number", "Faculty", "Programme", "Level", "Cohort engine", "Spillover lines by level", "Spillover lines by cohort", `Charged ${p.session} by level`, `Charged ${p.session} by cohort`];
+    const rows = p.rows.map((m, i) => [i + 1, m.name, m.number ?? "", m.faculty ?? "", m.programme ?? "", m.level ?? "", spilloverWord(m.spillover_state)?.long ?? "",
+      m.by_level ? "Yes" : "No", m.by_cohort ? "Yes" : "No", m.by_level_due, m.by_cohort_due]);
+    downloadBlob(await brandedXlsx("Spillover Fee Basis", head, rows, { sub: `${p.session}: who moves`, serial: docSerial("SPILL") }), `spillover-fee-basis-${p.session.replace("/", "-")}.xlsx`);
+  }
+
+  async function save() {
+    setBusy("save");
+    setProblem(null);
+    const r = await fetch("/api/bff/api/v1/finance/spillover-basis", {
+      method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Spillover fee lines charged ${other === "COHORT" ? "by the cohort" : "by the level"}: ${reason.trim()}`) },
+      body: JSON.stringify({ basis: other, reason: reason.trim() }),
+    });
+    const j = await r.json().catch(() => null);
+    setBusy(null);
+    if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); return; }
+    notify(`The spillover lines are now charged ${other === "COHORT" ? "by the cohort" : "by the level"}`);
+    setPreview(null);
+    setReason("");
+    setTick((n) => n + 1);
+    router.refresh();
+  }
+
+  const moving = basis.basis === "LEVEL" ? basis.into_spill : basis.out_of_spill;
+  return (
+    <Panel title="Who is charged the spillover lines" right={<Pil kind={basis.basis === "COHORT" ? "info" : "grey"}>{basis.basis === "COHORT" ? "By cohort" : "By level"}</Pil>}>
+      <PBody>
+        <div className="stack">
+          <div className="sub2">
+            {WORD[basis.basis]}{basis.set_at ? ` — since ${new Date(basis.set_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${basis.set_by ? `, ${basis.set_by}` : ""}${basis.reason ? `: ${basis.reason}` : ""}` : " (the rule since the spillover lines began)."}
+            {" "}{count(basis.spillLines)} spillover line{basis.spillLines === 1 ? "" : "s"} on the schedule.
+          </div>
+          {moving ? (
+            <Note kind="info" title={`${count(moving)} current student${moving === 1 ? "" : "s"} would be charged differently ${other === "COHORT" ? "by the cohort" : "by the level"}`}
+              action={<Btn kind="secondary" busy={busy === "preview"} onClick={async () => { setBusy("preview"); setPreview(await load()); setBusy(null); }}>Preview the change</Btn>}>
+              {other === "COHORT"
+                ? "The cohort engine reads these students as spillover by the sessions past their programme's length, but their record's level is not above the final level, so the spillover lines are not charged to them."
+                : "These students are charged the spillover lines by the cohort, but their level is not above the programme's final level."}
+            </Note>
+          ) : (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <span className="sub2">Both bases charge the same students: nothing would move.</span>
+              {!preview ? <Btn kind="ghost" busy={busy === "preview"} onClick={async () => { setBusy("preview"); setPreview(await load()); setBusy(null); }}>Change the basis</Btn> : null}
+            </div>
+          )}
+          {preview ? (
+            <>
+              <Tiles cls="grid--4" items={[
+                ["Students who move", count(preview.students), null, preview.intoSpill ? `${count(preview.intoSpill)} onto the spillover lines` : `${count(preview.outOfSpill)} off them`],
+                [`Charged ${preview.session} now`, naira(basis.basis === "LEVEL" ? preview.dueByLevel : preview.dueByCohort), null, "these students, as charged now"],
+                [`Charged ${preview.session} after`, naira(basis.basis === "LEVEL" ? preview.dueByCohort : preview.dueByLevel), null, "these students, after the change"],
+                ["Nothing stated after", count(preview.nothingStatedByCohort), preview.nothingStatedByCohort ? "var(--amber-ink)" : null, "no line matches them by the cohort"],
+              ]} />
+              {preview.rows.length ? <DTable noPrint title={`The first ${count(preview.rows.length)} of ${count(preview.students)}`} pageSize={10}
+                cols={["Student", "Programme", "Level|num", "Cohort engine", "Charged now|num", "After|num"]} rows={preview.rows.map((m) => [
+                  <span key="n">{m.name}<div className="sub2 tnum">{m.number ?? ""}</div></span>,
+                  <span key="p" className="sub2">{m.programme ?? "—"}<div>{m.faculty ?? ""}</div></span>,
+                  <span key="l" className="tnum">{m.level ?? "—"}</span>,
+                  <span key="s">{spilloverWord(m.spillover_state)?.short ?? "—"}</span>,
+                  <span key="a" className="tnum">{naira(basis.basis === "LEVEL" ? m.by_level_due : m.by_cohort_due)}</span>,
+                  <span key="b" className="tnum">{naira(basis.basis === "LEVEL" ? m.by_cohort_due : m.by_level_due)}</span>,
+                ])} /> : null}
+              {preview.rows.length ? <div className="row" style={{ gap: 8 }}><Btn kind="ghost" busyLabel="Preparing Excel..." onClick={excel}>Excel of every student who moves</Btn></div> : null}
+              {may ? (
+                <div className="stack">
+                  <Field id="sb-why" label="Reason (required)" hint="Who decided, and why: it is kept with the setting.">
+                    <textarea id="sb-why" className="ctl" rows={2} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)}
+                      placeholder="Bursary decision: spillover students charged the spillover lines by their years past the programme's length" />
+                  </Field>
+                  <div className="row" style={{ gap: 8 }}>
+                    <Btn kind="urgent" busy={busy === "save"} disabled={reason.trim().length < 10} onClick={save}>
+                      {other === "COHORT" ? "Charge the spillover lines by the cohort" : "Charge the spillover lines by the level"}
+                    </Btn>
+                    <span className="sub2">Charges, balances and clearance follow at once; the Bursary summaries within five minutes.</span>
+                  </div>
+                </div>
+              ) : <div className="sub2">The Bursar changes the basis.</div>}
+            </>
+          ) : null}
+          {problem ? <ProblemNotice problem={problem} /> : null}
+        </div>
+      </PBody>
+    </Panel>
+  );
+}

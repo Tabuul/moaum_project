@@ -165,11 +165,10 @@ class HodController {
                  WHERE p.dept_code = :d AND st.status = 'PROBATION'
                 """).param("d", dept).query(Long.class).single());
         // Oct 2026: reading every student's results, this took eight seconds for the largest department — the figure is kept
-        // a few minutes for the department's offices (FigureCache)
+        // a few minutes for the department's offices (FigureCache); V573: the department's results read at once
+        // (registration.carryover_students), under a second for the largest
         part(out, unavailable, "carryoverStudents", () -> figures.get(java.util.List.of("hod-carryovers", dept), false, () -> jdbc.sql("""
-                SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
-                 WHERE p.dept_code = :d AND st.status IN ('ACTIVE','PROBATION')
-                   AND EXISTS (SELECT 1 FROM registration.carryovers(st.id))
+                SELECT count(*) FROM registration.carryover_students(:d)
                 """).param("d", dept).query(Long.class).single()).value());
 
         // the department's lecturers and their teaching load this session

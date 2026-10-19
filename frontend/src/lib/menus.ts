@@ -144,6 +144,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
         ]
       },
       {
@@ -228,6 +229,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" }
         ]
       },
@@ -625,6 +627,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
@@ -984,6 +987,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matlist", "icon": "cap", "label": "Registered Students", "badge": "!" }
         ]
@@ -1048,6 +1052,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts", "badge": "9" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" }
         ]
       },
@@ -1113,6 +1118,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
@@ -1282,6 +1288,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/templates", "icon": "doc", "label": "Notification Templates" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
           { "id": "t/institution", "icon": "doc", "label": "Institution Profile" },
@@ -1370,6 +1377,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/biochange", "icon": "user", "label": "Biodata Changes", "badge": "4" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
+          { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },

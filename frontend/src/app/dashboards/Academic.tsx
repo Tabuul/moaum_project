@@ -8,6 +8,7 @@ import { LinkBtn, Note, Panel, PBody, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
+import { SpilloverWork } from "@/components/cohorts/SpilloverWork";
 
 interface ApplicantsPreview { counts: { total: number; registered: number }; applicants: { jamb_reg_no: string; surname: string; other_names: string; programme: string | null; registered: boolean }[] }
 
@@ -56,6 +57,7 @@ export async function AcademicDashboard({ session }: { session: string }) {
 
   return (
     <>
+      <SpilloverWork />
       {openTranscripts.length || inWorkflow ? (
         <Note kind="info" title={`${openTranscripts.length} transcript request${openTranscripts.length === 1 ? "" : "s"} and ${inWorkflow} result set${inWorkflow === 1 ? "" : "s"} are with Academic Affairs`}
           action={<LinkBtn kind="primary" href="/credentials/transcripts">Open transcripts</LinkBtn>}>

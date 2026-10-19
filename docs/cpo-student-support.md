@@ -292,3 +292,34 @@ On the live-shaped copy (19 Oct 2026), 13,866 of 48,320 active students (29%) ha
 - **Tests.**
   - `SupportReachIT`: refused, saved, the SMS, off the list.
   - check.sql's V565 block: the phone-only ticket, the counts.
+
+## 17. Contacts uploaded by the Registry and the departments (V572)
+
+The desk takes a contact one ticket at a time; the Registry and the departments hold class lists with the numbers. On the
+copy, 13,576 current students had neither a phone nor an e-mail on record, and 31,185 lacked one or the other.
+
+- **Student Contacts Upload** (`/student-contacts`, menu id `t/contactupload`): the Registrar, the Deputy Registrar, Records,
+  the Academic Office and the Super Administrator for the University; a Dean or Faculty Officer for their faculty; a Head of
+  Department for their department (held on the server, whatever the request names).
+- **The template** lists the current students (active, on probation, admitted, deferred) missing a contact, either everyone
+  missing one or only those with neither, with what is missing and empty Phone and E-mail columns
+  (`people.contacts_missing`).
+- **The upload** (.xlsx or .csv; the header row is found under the template's crest) is previewed row by row, with nothing
+  written, then loaded (`people.load_contacts`):
+  - Each row is matched to one student by matriculation, admission or JAMB number, in any case.
+  - A field is **filled only where the student holds none** (the contact they gave, otherwise their applicant account's, as
+    `people.student_reach` reads it). A contact the student holds is **kept**, never overwritten.
+  - **Refused:**
+    - a phone or e-mail another student holds, or one an earlier row of the file gives to another student (a reset link sent
+      there would reach someone else);
+    - a malformed one (a phone is 0 and ten digits; +234, and a number Excel stripped of its leading 0, are read as such);
+    - a student outside the uploader's reach;
+    - a number matching no student, or more than one;
+    - a second row for the same student;
+    - a row with no number or no contact.
+  - One upload holds up to 20,000 rows; 5,000 load in about 1.4 s on the copy.
+- **Each upload is kept** (`people.contact_upload`, audited) with the office, the reach, the file, the rows, the students,
+  phones and e-mails filled, the rows not written and the reason, and is listed on the page.
+- **API:** `GET /api/v1/student-contacts`, `GET /api/v1/student-contacts/missing?neitherOnly=`, `POST /upload/preview` and
+  `POST /upload` `{fileName, rows: [{number, phone, email}]}`.
+- **Tests:** `StudentContactUploadIT`; check.sql's V572 block; `lib/contact-upload.test.ts`.

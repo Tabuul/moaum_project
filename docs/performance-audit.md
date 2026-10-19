@@ -562,3 +562,33 @@ the saving, and is the Registry's call.
   - They now ask `finance.session_clears_for` for that department's students only. The rows are the same (the list's checksum is unchanged): the count went from 2.0 s to 0.6 s and the list from 4.1 s to 1.1 s on a fresh connection. Through the API's pooled connections the count had taken 9 s.
   - Its carry-over count (1.8 s, kept a few minutes by FigureCache) is left as it is.
 - **The local caveat, seen again.** The same prepared count, run repeatedly in one PG18 connection on Windows, took 2.1, 6.2, 8.7, 8.7 … s, and 29.9 s with custom plans forced. Compare fresh connections, as recorded before. Production is PG17 on Linux.
+
+## T. The slow screens of §S taken in turn (19 October 2026, V573)
+
+Each read below was timed on the live-shaped copy on fresh connections, the old and the new alternating (the median of
+three), and checked to return the same rows.
+
+| Read (screen) | Before | After | How |
+|---|---|---|---|
+| `registration.carryover_students` (Head of Department's home, carry-over count) | 12.0 s, largest department (4,807 students) | 0.5–0.9 s | the department's results read at once, below |
+| Post-UTME audit (`/admissions/computed-screening`) | 1.6–1.7 s | 0.06–0.08 s | counted by programme first; each programme's code and screening read once (some hundred), not once an application (12,649) |
+| `finance.payments_breakdown` (`/finance/payments`) | 0.66 s | 0.38 s | totalled once by category and faculty, each list summed from those groups |
+| `finance.payments_query` (`/finance/payments`) | 0.67 s | 0.54 s | the matches read narrow (reference, time, amount) for the count, total and newest page; only the page's 500 rows joined to the student |
+| `finance.gst_population` (`/gst/students`, `/eps/students`, the GST fee page) | 1.82 s | 1.72 s | the GST fee matched once a (programme, faculty, level, entry mode), not once a student |
+
+- **The carry-over count.**
+  - The home called `registration.carryovers` for each student, and that reads the student's results twice.
+  - `registration.carryover_students(department)` reads the department at once: each sheet's latest scores once,
+    `assessment.course_final`'s choice of sitting, then each course's last failure against its last pass in one pass.
+  - A first version compared every failure with every pass through a nested loop the planner chose (60 million
+    comparisons, 28 s) before it was restated.
+  - In all 45 departments it finds the same 6,842 students as the old way (30.7 s for the whole register against 98.7 s).
+- **What is left.**
+  - The GST/EPS pages spend about 1.2 s of their 1.7 s in the GST/EPS engine over the whole register (V468), which is left
+    as it is.
+  - Candidate data (`admissions.attachment_state` 0.7 s, the candidate list 0.5 s) is left as it is. Its passport test
+    reads no image (the payloads hold 112 kB in all).
+  - `clearance.migrated_summary`, warmed at the API's start, took 59 s on the copy. It is noted for its owner.
+- **Payments confirmed at the same moment** (an old-portal load) are now listed in a stable order, by reference. Before, 43
+  payments sharing the time at the 2,000-row cut came in whatever order the plan gave.
+- **The local caveat again.** Through the API's pooled connections the same reads took 4–7 s; on fresh connections, 0.5–2 s.

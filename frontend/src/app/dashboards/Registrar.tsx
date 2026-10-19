@@ -11,6 +11,7 @@ import { LinkBtn, Note, Panel, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { day } from "@/lib/format";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
+import { SpilloverWork } from "@/components/cohorts/SpilloverWork";
 
 /** rRegistrar — proto/part17.html, with the register's own figures. */
 export async function RegistrarDashboard({ session }: { session: string }) {
@@ -35,6 +36,7 @@ export async function RegistrarDashboard({ session }: { session: string }) {
 
   return (
     <>
+      <SpilloverWork />
       <Note kind="bad" title="The NDPA Compliance Audit Return is due on 31 March"
         action={<LinkBtn kind="urgent" href="/people">Open users &amp; roles</LinkBtn>}>
         Filed by the Data Protection Officer under your signature.

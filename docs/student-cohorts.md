@@ -217,3 +217,41 @@ everything completed), spillover year 1 and 2 and the maximum spillover are revi
 (`RECON/YYYY/NNNNNN`) — a spillover stays ACTIVE with the level raised, the maximum only on the officer's choice, a
 candidate goes on the graduation list for the Senate — with a deterministic explanation, a confidence, a preview, a
 history and corrections. See [student-lifecycle-reconciliation.md](student-lifecycle-reconciliation.md).
+
+## 12. Spillover fees by the cohort, when the Bursary chooses (V571)
+
+The fee rule (V088) charges a student the spillover fee lines when the record's level is above the programme's final level
+(a four-year programme's student at 500). The engine puts a spillover student **at** the final level, so once the levels
+above are corrected those students are charged as final-year students. On the live-shaped copy of 19 October 2026 the fee
+rule found 252 spillover students and the engine about 13,000 (SP1 2,039, SP2 5,543, the limit 5,489).
+
+- **The basis is the Bursary's** (`finance.fee_setting.spillover_basis`): **By level** (V088's rule, the default, so nothing
+  changes until the Bursary decides) or **By cohort** (the engine's spillover: SP1, SP2 … and the limit reached; never a
+  graduate). It is changed with a reason, and who, when and why are kept (`finance.set_spill_basis`;
+  `FEE_SPILL_BASIS`, `FEE_SPILL_REASON`).
+- **One test** (`finance.spill`) is read by every fee function that held V088's test: `fee_profiles` (so `session_charges`
+  and the summaries), `charges_of_as`, `due_for_semester`, `fee_stated`, `fee_gaps` and `is_spillover`. Each was restated
+  from its current text with only that test changed; under By level the session's charges were checked identical on the
+  live-shaped copy (54,573 students, the same checksum).
+- **The preview.** Finance → Fee Schedule shows the basis and how many current students would be charged differently.
+  **Preview the change** lists them (the first 200, an Excel of all) with the session's charges under each basis, read in
+  one transaction with the other basis set for it (`moaum.spill_basis`), so nothing changes. On the copy, by the cohort
+  12,819 students would move onto the spillover lines and none off; their 2025/2026 charges would fall from
+  ₦2,021,129,559 to ₦996,179,250, and 277 would have no line stated (the 84 spillover lines are for 2025/2026 only).
+- **API:** `GET /api/v1/finance/spillover-basis` and `/spillover-basis/preview?session=&all=` (the finance readers);
+  `PUT /api/v1/finance/spillover-basis` `{basis, reason}` (the Bursar or the Super Administrator).
+- **Tests:** `SpilloverFeeBasisIT`; check.sql's V571 block.
+
+## 13. The spillover work told (V572)
+
+On the copy, 10,748 spillover level corrections and 19,291 reconcilable recommendations were waiting, and Reconciliation had
+never been run. Until they are done, those students are charged, registered and listed at the wrong level, and graduation
+candidates do not reach the graduation list.
+
+- **On the homes of the Academic Office and the Registrar**, a notice gives the level corrections (spillover and other), the
+  recommendations to reconcile (graduation candidates, the limit reached, the spillover years) and when Reconciliation last
+  ran. Each figure opens Level corrections or Reconciliation. Nothing is shown while nothing waits.
+- **Each Monday at 08:30 (Lagos)**, while any of the work waits, the holders of the Academic Office and the Registrar are
+  told (template `SPILLOVER_WORK_WAITING`, once a week each; ICT may switch the template off; cron
+  `moaum.cohorts.spillover-work-cron`).
+- `people.spillover_work()` counts it; `GET /api/v1/cohorts/spillover-work` reads it, kept five minutes.

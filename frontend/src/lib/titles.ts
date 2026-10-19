@@ -26,6 +26,7 @@ export const TITLES: Record<string, string> = {
   "t/paidapplicants": "Paid Post-UTME applicants",
   "t/supportpassword": "Student password reset",
   "t/supportreach": "Students we cannot reach",
+  "t/contactupload": "Student contacts upload",
   "t/supportpwbulk": "Bulk password reset",
   "t/supportpwhistory": "Password reset history",
   "t/supportlevels": "Student level management",
