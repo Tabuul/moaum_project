@@ -56,7 +56,9 @@ export interface Hanging {
 }
 /** V480, V490: a receipt a payer reported for a Pay on Quickteller payment (finance.paydirect_claims), with where it stands */
 export type PaydirectClaimRow = ReportedReceipt;
-export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; claims?: PaydirectClaimRow[]; portalUrl: string }
+export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; settled: number; exceptions: number; bad_signatures: number; settled_today: number }; events: GatewayEvent[]; hanging: Hanging[]; claims?: PaydirectClaimRow[]; portalUrl: string;
+  /** the payments settled with no one's hand in the last three days, each reference once */
+  resolved?: { by_notification: number; by_sweep: number; on_request: number; total: number } }
 
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }
 export interface BursaryView {

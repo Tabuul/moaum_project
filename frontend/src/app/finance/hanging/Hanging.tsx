@@ -108,7 +108,10 @@ export function Hanging({ d, actingOffice }: { d: PaymentsDesk; actingOffice: st
       {said ? <Note kind="ok" title={said}>On the record; the student is told when a settlement posts.</Note> : null}
       <Tiles items={[
         ["Hanging now", String(d.hanging.length), d.hanging.length ? "var(--red-ink)" : null, "Checkout opened, nothing confirmed, last three days"],
-        ["Resolved without a person", String(settledBySweep + settledByVerify), "var(--green-ink)", `${settledBySweep} by the sweep, ${settledByVerify} on request`],
+        d.resolved
+          ? ["Resolved without a person", String(Number(d.resolved.total)), "var(--green-ink)",
+             `Last three days: ${Number(d.resolved.by_notification)} by Interswitch's notification, ${Number(d.resolved.by_sweep)} by the sweep, ${Number(d.resolved.on_request)} on request`]
+          : ["Resolved without a person", String(settledBySweep + settledByVerify), "var(--green-ink)", `${settledBySweep} by the sweep, ${settledByVerify} on request`],
         ["Needs a person", String(needsPerson.length), needsPerson.length ? "var(--red-ink)" : null, "Unknown reference, short paid, or the gateway silent"],
         ["The sweep", "Every 10 min", null, "Card checkouts; Pay on Quickteller waits for Interswitch's report"],
       ]} />

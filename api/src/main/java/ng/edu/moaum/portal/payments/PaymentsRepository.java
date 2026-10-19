@@ -237,6 +237,22 @@ class PaymentsRepository {
                 """).query().listOfRows();
     }
 
+    /** the payments settled with no one's hand in the last three days (the window "Hanging now" counts): a Pay on Quickteller payment
+     *  by Interswitch's own notification (the portal cannot ask about one, so every such payment hung until it came), a card checkout
+     *  by the sweep, or on a request to the gateway — each reference once. A payment confirmed by the collections report or a bank
+     *  credit is a person's act and is not counted. */
+    Map<String, Object> resolvedWithoutPerson() {
+        return jdbc.sql("""
+                SELECT count(DISTINCT e.reference) FILTER (WHERE e.gateway = 'paydirect' AND e.source = 'WEBHOOK') AS by_notification,
+                       count(DISTINCT e.reference) FILTER (WHERE e.source = 'SWEEP') AS by_sweep,
+                       count(DISTINCT e.reference) FILTER (WHERE e.source = 'VERIFY') AS on_request,
+                       count(DISTINCT e.reference) AS total
+                  FROM finance.gateway_event e
+                 WHERE e.outcome = 'SETTLED' AND e.reference IS NOT NULL AND e.received_at > now() - interval '3 days'
+                   AND ((e.gateway = 'paydirect' AND e.source = 'WEBHOOK') OR e.source IN ('SWEEP', 'VERIFY'))
+                """).query().singleRow();
+    }
+
     /** the events that concern money — Quickteller's reference checks (V299) are listed on their own */
     List<Map<String, Object>> events(int limit) {
         return jdbc.sql("""

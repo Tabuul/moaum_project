@@ -620,6 +620,14 @@ class PaymentsIT {
             assertThat(((Number) rec.get("repeats")).intValue()).as("the repeat counted on the one record").isEqualTo(1);
             assertThat(jdbc.sql("SELECT payment::text FROM finance.paydirect_inbox WHERE payment_log_id = :l").param("l", logId).query(String.class).single())
                     .doesNotContain("an-invented-password");
+            // the hanging desk counts it resolved without a person, by Interswitch's own notification
+            Map<String, Object> resolved = (Map<String, Object>) it.get(bursar, "/api/v1/payments/bursary").getBody().get("resolved");
+            assertThat(((Number) resolved.get("by_notification")).intValue()).isGreaterThanOrEqualTo(1);
+            assertThat(((Number) resolved.get("total")).intValue()).isGreaterThanOrEqualTo(((Number) resolved.get("by_notification")).intValue());
+            assertThat(jdbc.sql("""
+                    SELECT count(*) FROM finance.gateway_event WHERE gateway = 'paydirect' AND source = 'WEBHOOK' AND outcome = 'SETTLED' AND reference = :r
+                       AND received_at > now() - interval '3 days'
+                    """).param("r", quick).query(Long.class).single()).as("the notification that settled it is what is counted").isEqualTo(1L);
 
             // the portal held up: the reference's row held by another transaction, so its settling cannot finish
             String slowId = String.valueOf(Long.parseLong(logId) + 1);

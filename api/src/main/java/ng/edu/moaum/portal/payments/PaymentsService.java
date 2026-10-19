@@ -1635,6 +1635,7 @@ public class PaymentsService {
         out.put("tiles", repo.eventTiles());
         out.put("events", repo.events(200));
         out.put("hanging", repo.hanging());
+        out.put("resolved", repo.resolvedWithoutPerson());
         out.put("claims", repo.paydirectClaims(30));
         out.put("portalUrl", portalUrl);
         return out;
