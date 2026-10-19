@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 400
+\set EXPECTED 403
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -14261,6 +14261,10 @@ BEGIN
           ('MOAUM-FEE-947701-0001', 'paydirect', 'FEE', st, at10 - interval '30 hours'),
           ('MOAUM-FEE-947701-0002', 'paydirect', 'FEE', st, at10 - interval '2 hours'),
           ('MOAUM-FEE-947701-0003', 'paystack', 'FEE', st, at10 - interval '30 hours');
+        -- V568: Quickteller asked after it once it was opened, as it does when its payer goes on to pay (one never asked after is a checkout
+        -- nobody paid, off the unreported list)
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome, received_at)
+        VALUES ('paydirect', 'VALIDATE', 'validate', 'MOAUM-FEE-947701-0001', 53488.42, '0', true, 'VALID', at10 - interval '29 hours');
         listed := (SELECT string_agg(u.reference, ',' ORDER BY u.reference) FROM finance.paydirect_unreported(at10) u WHERE u.reference LIKE 'MOAUM-FEE-947701-%');
         told1 := finance.watch_paydirect_unreported(at10);
         -- the e-mail carries the list; the portal notice says how many and what to do
@@ -14682,6 +14686,10 @@ BEGIN
           ('MOAUM-FEE-948001-0001', 'paydirect', 'FEE', st, now() - interval '2 hours'),
           ('MOAUM-FEE-948001-0002', 'paydirect', 'FEE', st, now() - interval '30 hours'),
           ('MOAUM-FEE-948001-0003', 'paystack', 'FEE', st, now() - interval '30 hours');
+        -- V568: Quickteller asked after it once it was opened, as it does when its payer goes on to pay (one never asked after is a checkout
+        -- nobody paid, off the unreported list)
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome, received_at)
+        VALUES ('paydirect', 'VALIDATE', 'validate', 'MOAUM-FEE-948001-0002', 100.00, '0', true, 'VALID', now() - interval '29 hours');
         BEGIN
             PERFORM finance.paydirect_claim_set('MOAUM-FEE-948001-0001', st, 'PL-480001', today + 1, NULL, NULL, NULL);
         EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_day = MESSAGE_TEXT;
@@ -15334,6 +15342,10 @@ BEGIN
         VALUES (st, v_ses, 'MOAUM-FEE-949001-0009', 'check V490: the number the payer typed on Quickteller', 3000.00, now() + interval '30 days');
         INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at)
         SELECT 'MOAUM-FEE-949001-000' || g, 'paydirect', 'FEE', st, at10 - interval '30 hours' FROM generate_series(1, 5) g;
+        -- V568: Quickteller asked after it once it was opened, as it does when its payer goes on to pay (one never asked after is a checkout
+        -- nobody paid, off the unreported list)
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome, received_at)
+        SELECT 'paydirect', 'VALIDATE', 'validate', 'MOAUM-FEE-949001-000' || g, 1000.00 * g, '0', true, 'VALID', at10 - interval '29 hours' FROM generate_series(1, 5) g;
         -- the payer's receipts, as typed
         PERFORM set_config('moaum.actor_office', 'student', true);
         PERFORM finance.paydirect_claim_set('MOAUM-FEE-949001-0001', st, 'PL-490001', today, 1000, 'QUICKTELLER', NULL);
@@ -17012,6 +17024,10 @@ BEGIN
         VALUES (payer, v_any, 'MOAUM-FEE-952201-0001', 'check V522', 52200.00, now() + interval '30 days');
         INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at)
         VALUES ('MOAUM-FEE-952201-0001', 'paydirect', 'FEE', payer, at10 - interval '30 hours');
+        -- V568: Quickteller asked after it once it was opened, as it does when its payer goes on to pay (one never asked after is a checkout
+        -- nobody paid, off the unreported list)
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome, received_at)
+        VALUES ('paydirect', 'VALIDATE', 'validate', 'MOAUM-FEE-952201-0001', 1000, '0', true, 'VALID', at10 - interval '29 hours');
         PERFORM finance.watch_paydirect_unreported(at10);
         -- a live undergraduate whose open semester has no fee line
         SELECT p.code INTO v_prog FROM ref.programme p
@@ -19499,6 +19515,241 @@ BEGIN
         format('reach +%s/+%s/+%s/+%s | ticket %s, neither %s, staff %s | same %s parts %s waiting %s approved %s declined %s | many %s figure %s/%s',
                after.students - coalesce(before.students, 0), after.no_email - coalesce(before.no_email, 0), after.no_phone - coalesce(before.no_phone, 0),
                after.neither - coalesce(before.neither, 0), phone_kept, e_neither, e_staff, first = first_again, parts, waiting, approved, declined, e_many, figure_ok, e_figure));
+END $$;
+-- ── V568. The payers on the hanging desk told; checkouts nobody paid counted apart. Six references of made-up students, the desk's
+--          clocks at 24 hours: (a) opened on Pay on Quickteller 30 hours ago and never asked after by Quickteller — abandoned, never
+--          asked, and off the unreported list; (b) the same, but Quickteller asked an hour after — hanging, on the unreported list,
+--          and told; (c) a card checkout whose gateway last said not paid — abandoned, not paid; (d) a short payment and (e) a
+--          reversal Interswitch reported — told; (f) never asked after but its payer reported a receipt — not abandoned, still on the
+--          unreported list. Told once: a second press tells no one. (b) told 25 hours ago with no answer since is abandoned, told no
+--          answer; Quickteller asking again brings it back. With the clock at 48 hours, (a) is not abandoned yet. The block undoes its
+--          writes ──
+DO $$
+DECLARE ses text := '2396/2397'; prog text; s uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+        r text[] := ARRAY[]::text[]; i int; ab_rules text; unrep text; tellable text; told1 jsonb; told2 jsonb; told_rows text; notices int;
+        b_told_no_answer text; b_back boolean; a_at48 boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V568', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2396-10-01', DATE '2397-08-31');
+        SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        FOR i IN 1..6 LOOP
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (s[i], 'MOAUM/ADM/96/95680' || i, 'MOAUM/CHK/96/968' || i, 'CHECKV568', 'Payer ' || chr(96 + i), prog, 'UTME', ses, 100, 100, 'ACTIVE', now());
+            INSERT INTO people.student_contact (student_id, phone, email) VALUES (s[i], '0803000056' || i, 'checkv568.' || i || '@example.invalid');
+            r := r || finance.new_purpose_reference(s[i], ses, 50000, 'School fees ' || ses);
+        END LOOP;
+        -- (a), (b), (f) on Pay on Quickteller and (c) by card, 30 hours ago
+        INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at) VALUES
+            (r[1], 'paydirect', 'FEES', s[1], now() - interval '30 hours'), (r[2], 'paydirect', 'FEES', s[2], now() - interval '30 hours'),
+            (r[3], 'quickteller', 'FEES', s[3], now() - interval '30 hours'), (r[6], 'paydirect', 'FEES', s[6], now() - interval '30 hours');
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome, received_at) VALUES
+            ('paydirect', 'VALIDATE', 'validate', r[2], 50000, '0', true, 'VALID', now() - interval '29 hours'),
+            ('quickteller', 'SWEEP', 'verify', r[3], 0, 'Z25', true, 'NOT_SUCCESSFUL', now() - interval '26 hours'),
+            ('paydirect', 'WEBHOOK', 'notification', r[4], 20000, '0', true, 'SHORT_PAID', now() - interval '2 hours'),
+            ('paydirect', 'WEBHOOK', 'reversal', r[5], 50000, '0', true, 'REVERSED', now() - interval '1 hour');
+        INSERT INTO finance.paydirect_claim (reference, account_id, payment_log_id, paid_on, amount, channel)
+        VALUES (r[6], s[6], 'CHK568LOG', current_date - 1, 50000, 'BANK');
+
+        ab_rules := (SELECT string_agg(chr(96 + array_position(r, b.reference)) || ':' || b.rule, ',' ORDER BY array_position(r, b.reference)) FROM finance.abandoned_checkouts() b WHERE b.reference = ANY (r));
+        unrep := (SELECT string_agg(chr(96 + array_position(r, u.reference)), ',' ORDER BY array_position(r, u.reference)) FROM finance.paydirect_unreported() u WHERE u.reference = ANY (r));
+        tellable := (SELECT string_agg(chr(96 + array_position(r, t.reference)) || ':' || t.case_code, ',' ORDER BY array_position(r, t.reference)) FROM finance.payers_to_tell() t WHERE t.reference = ANY (r));
+        told1 := finance.tell_payers(NULL);
+        told2 := finance.tell_payers(NULL);
+        told_rows := (SELECT string_agg(chr(96 + array_position(r, t.reference)) || ':' || t.case_code || ':' || t.payer_kind, ',' ORDER BY array_position(r, t.reference)) FROM finance.payer_told t WHERE t.reference = ANY (r));
+        notices := (SELECT count(*) FROM platform.notice n WHERE n.event_key IN ('payer-told:HANGING:' || r[2], 'payer-told:SHORT_PAID:' || r[4], 'payer-told:REVERSED:' || r[5]));
+        -- (b) told 25 hours ago, nothing since: told no answer; Quickteller asks again, and it is back
+        UPDATE finance.payer_told SET told_at = now() - interval '25 hours' WHERE reference = r[2];
+        b_told_no_answer := (SELECT b.rule FROM finance.abandoned_checkouts() b WHERE b.reference = r[2]);
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome) VALUES ('paydirect', 'VALIDATE', 'validate', r[2], 50000, '0', true, 'VALID');
+        b_back := NOT EXISTS (SELECT 1 FROM finance.abandoned_checkouts() b WHERE b.reference = r[2]);
+        PERFORM finance.set_hanging_setting(48, 24);
+        a_at48 := NOT EXISTS (SELECT 1 FROM finance.abandoned_checkouts() b WHERE b.reference = r[1]);
+        RAISE EXCEPTION 'the V568 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V568 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V568: a checkout nobody went on to pay is abandoned (never asked, not paid, told with no answer) and off the unreported list; short payments, reversals and hanging Pay on Quickteller payers are told once per case',
+        coalesce(ab_rules = 'a:NEVER_ASKED,c:NOT_PAID' AND unrep = 'b,f' AND tellable = 'b:HANGING,d:SHORT_PAID,e:REVERSED'
+                 AND told_rows = 'b:HANGING:STUDENT,d:SHORT_PAID:STUDENT,e:REVERSED:STUDENT' AND notices >= 3
+                 AND (told2->>'told')::int = 0 AND b_told_no_answer = 'TOLD_NO_ANSWER' AND b_back AND a_at48, false),
+        format('abandoned %s | unreported %s | tellable %s | told %s (second press %s) | notices %s | b after 25 h %s, back %s | a at 48 h not abandoned %s',
+               ab_rules, unrep, tellable, told_rows, told2->>'told', notices, b_told_no_answer, b_back, a_at48));
+END $$;
+-- ── V569. Ageing alerts on the bank matching. A collections statement of this month, read on the 15th two months on at 09:00: this
+--          month signed, next month not (due the 10th) — the Bursar told once, naming next month; a credit for a reference never
+--          confirmed and not sent to the bank credits — the Bursar and the Students Account Officer told, naming it; a bank transfer
+--          confirmed on the portal and on no line though the statement runs five days past it — Internal Audit told. The next morning
+--          nothing is told again; at 07:00 nothing runs; with the day set to the 28th next month is not yet due. The block undoes its
+--          writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); sao uuid := gen_random_uuid(); aud uuid := gen_random_uuid(); s uuid := gen_random_uuid();
+        a text := '9969/9970'; v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date; m0 date; m1 date; at9 timestamptz; stmt uuid;
+        overdue text; waiting text; missing text; first jsonb; second jsonb; early jsonb; told_bur text; told_sao text; told_aud text; again int; before_again int;
+        at28 text; msg text;
+BEGIN
+    m0 := date_trunc('month', v_today)::date;
+    m1 := (m0 + interval '1 month')::date;
+    at9 := ((m0 + interval '2 months' + interval '14 days')::timestamp + interval '9 hours') AT TIME ZONE 'Africa/Lagos';
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V569', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9969-10-01', date '9970-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES
+            (bur, 'ZZCHKV569', 'Bursar', 'zz.check569.bursar@example.invalid'), (sao, 'ZZCHKV569', 'Accounts', 'zz.check569.sao@example.invalid'),
+            (aud, 'ZZCHKV569', 'Audit', 'zz.check569.audit@example.invalid');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), bur, 'bursar', 'institution', NULL, 'check V569', who, current_date - 1),
+            (gen_random_uuid(), sao, 'studentaccounts', 'institution', NULL, 'check V569', who, current_date - 1),
+            (gen_random_uuid(), aud, 'audit', 'institution', NULL, 'check V569', who, current_date - 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/69/996901', 'MOAUM/CHK/69/9969', 'ZZCHKV569', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+            (s, a, 'MOAUM-FEE-996901-0001', 'School fees ' || a, 2500, now() + interval '7 days', NULL, NULL, NULL, NULL, 'check V569'),
+            (s, a, 'MOAUM-FEE-996901-0002', 'School fees ' || a, 4000, now() + interval '7 days', now(), who, 'Bank transfer', 'RCT-ZZ569-0002', 'check V569');
+        -- the statement: the never-confirmed reference credited today, and a charge five days on (the statement runs that far)
+        stmt := finance.load_collections_statement('CHECK V569 collections', 'c.csv', jsonb_build_array(
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'Transfer MOAUM-FEE-996901-0001 ZZCHKV569', 'credit', '2500'),
+            jsonb_build_object('date', (v_today + 5)::text, 'reference', '', 'description', 'charges', 'debit', '50')));
+        -- this month signed (as the Bursary signs it); next month not
+        INSERT INTO finance.bank_reconciliation (account, period_from, period_to, statement_closing, ledger_balance, items_effect, difference, summary, items, state,
+                                                 prepared_by, prepared_at, signed_by, signed_at)
+        VALUES ('1010', m0, (m1 - 1), 0, 0, 0, 0, '{}'::jsonb, '[]'::jsonb, 'SIGNED', who, now(), bur, now());
+
+        overdue := (SELECT string_agg(u.account || ':' || CASE u.month WHEN m0 THEN 'this' WHEN m1 THEN 'next' ELSE u.month::text END, ',' ORDER BY u.month)
+                      FROM finance.months_unreconciled(at9) u WHERE u.account = '1010' AND u.month >= m0);
+        waiting := (SELECT string_agg(c.reference, ',') FROM finance.credits_waiting(at9) c WHERE c.reference LIKE 'MOAUM-FEE-996901-%');
+        missing := (SELECT string_agg(x.reference || ':' || x.channel, ',') FROM finance.payments_missing_from_bank(at9) x WHERE x.reference LIKE 'MOAUM-FEE-996901-%');
+        early := finance.watch_bank_matching(at9 - interval '2 hours');
+        first := finance.watch_bank_matching(at9);
+        -- what each office holder was told (the e-mail carries the list, the portal notice says how many)
+        told_bur := (SELECT string_agg(DISTINCT n.template_key, ',') FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = bur)
+                    || CASE WHEN EXISTS (SELECT 1 FROM platform.notice n WHERE n.about_id = bur AND n.event_key = 'bank-recon-overdue:1010:' || to_char(m1, 'YYYY-MM')) THEN '+next' ELSE '' END
+                    || CASE WHEN EXISTS (SELECT 1 FROM platform.notice n WHERE n.about_id = bur AND n.template_key = 'BANK_CREDITS_WAITING' AND n.body LIKE '%MOAUM-FEE-996901-0001%') THEN '+line' ELSE '' END;
+        told_sao := (SELECT string_agg(DISTINCT n.template_key, ',') FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = sao);
+        told_aud := (SELECT string_agg(DISTINCT n.template_key, ',') FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = aud)
+                    || CASE WHEN EXISTS (SELECT 1 FROM platform.notice n WHERE n.about_id = aud AND n.body LIKE '%Bank transfer%') THEN '+transfer' ELSE '' END;
+        before_again := (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id IN (bur, sao, aud));
+        second := finance.watch_bank_matching(at9 + interval '1 day');
+        again := (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id IN (bur, sao, aud)) - before_again;
+        PERFORM finance.set_matching_watch(true, 28, 24, 3);
+        at28 := coalesce((SELECT string_agg(u.month::text, ',') FROM finance.months_unreconciled(at9) u WHERE u.account = '1010' AND u.month >= m0), 'none');
+        RAISE EXCEPTION 'the V569 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V569 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V569: a month not reconciled by the set day, a credit for a never-confirmed reference not sent to the bank credits, a payment confirmed and not in the bank — each told once to the office whose act it is',
+        coalesce(overdue = '1010:next' AND waiting = 'MOAUM-FEE-996901-0001' AND missing = 'MOAUM-FEE-996901-0002:Bank transfer'
+                 AND (early->>'told')::int = 0
+                 AND told_bur = 'BANK_CREDITS_WAITING,BANK_RECON_OVERDUE+next+line' AND told_sao = 'BANK_CREDITS_WAITING' AND told_aud = 'BANK_PAYMENTS_MISSING+transfer'
+                 AND again = 0 AND (second->>'credits')::int = 0 AND (second->>'missing')::int = 0 AND at28 = 'none', false),
+        format('overdue %s | waiting %s | missing %s | at 07:00 %s | bursar %s | accounts %s | audit %s | next morning %s new, %s | day 28: %s',
+               overdue, waiting, missing, early, told_bur, told_sao, told_aud, again, second, at28));
+END $$;
+-- ── V570. Interswitch's settlement report matched, tied and its charges booked. Four references of an invented student — two paid
+--          (one found by its reference written without hyphens, one by WebPAY's transaction reference), one never confirmed, one paid
+--          and settled for another amount — a reference not the portal's, and the first again: MATCHED, MATCHED, NOT_CONFIRMED,
+--          UNKNOWN, AMOUNT_DIFFERS, DUPLICATE. Two days; the collections statement credits each day's net the day after, and the
+--          first day's net again a month on (too late to be it). Tied in one press: each line its day's settlement, Interswitch's
+--          fees booked against 5250 Bank charges and tied to the line, the paid references no longer "not received" nor reconciling
+--          items. A credit of another amount is refused; the second day taken back, its charges reversed and its payment "not
+--          received" again. The never-confirmed row goes to the bank credits once; the same report again is refused. The block
+--          undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); s uuid := gen_random_uuid(); a text := '9970/9971'; v_today date := (now() AT TIME ZONE 'Africa/Lagos')::date;
+        d1 date; d2 date; stmt uuid; f uuid; rows jsonb; states text; days text; cands text; tied int; lines text; charges text; nr_before text; nr_after text;
+        items_before text; items_after text; wrong text; nr_untied text; reversed text; bc text; sent_twice text; again text; msg text; la uuid; lb uuid; lc uuid; lx uuid;
+BEGIN
+    d1 := v_today - 10; d2 := v_today - 9;
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'check V570', true);
+        INSERT INTO iam.person (id, surname, given_names, email) VALUES (who, 'ZZCHKV570', 'Bursar', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), a, date '9970-10-01', date '9971-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        SELECT s, 'MOAUM/ADM/70/997001', 'MOAUM/CHK/70/9970', 'ZZCHKV570', 'Invented', code, 'UTME', a, 100, 100, 'ACTIVE', now()
+          FROM ref.programme WHERE NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+            (s, a, 'MOAUM-FEE-997001-0001', 'School fees ' || a, 10000, now() + interval '7 days', now(), who, 'Quickteller · WEB', 'RCT-ZZ570-0001', 'check V570'),
+            (s, a, 'MOAUM-FEE-997001-0002', 'School fees ' || a, 5000, now() + interval '7 days', now(), who, 'Card · Quickteller', 'RCT-ZZ570-0002', 'check V570'),
+            (s, a, 'MOAUM-FEE-997001-0003', 'School fees ' || a, 2000, now() + interval '7 days', NULL, NULL, NULL, NULL, 'check V570'),
+            (s, a, 'MOAUM-FEE-997001-0004', 'School fees ' || a, 3000, now() + interval '7 days', now(), who, 'Quickteller · WEB', 'RCT-ZZ570-0004', 'check V570');
+        -- issued before they were paid and settled, as a payer's reference is
+        UPDATE finance.payment_reference SET generated_at = now() - interval '12 days' WHERE reference LIKE 'MOAUM-FEE-997001-%';
+        INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at, txn_ref)
+        VALUES ('MOAUM-FEE-997001-0002', 'quickteller', 'FEES', s, now() - interval '11 days', 'TXNCHK570A');
+        PERFORM finance.gl_sync(NULL);
+        -- the collections statement: each day's net the day after; the first day's again a month on; another amount; a charge today
+        stmt := finance.load_collections_statement('CHECK V570 collections', 'c.csv', jsonb_build_array(
+            jsonb_build_object('date', (d1 + 1)::text, 'reference', '', 'description', 'ISW SETTLEMENT ZZ570 A', 'credit', '17,295.00'),
+            jsonb_build_object('date', (d2 + 1)::text, 'reference', '', 'description', 'ISW SETTLEMENT ZZ570 B', 'credit', '12969'),
+            jsonb_build_object('date', (d1 + 30)::text, 'reference', '', 'description', 'ISW SETTLEMENT ZZ570 LATE', 'credit', '17295'),
+            jsonb_build_object('date', (d1 + 1)::text, 'reference', '', 'description', 'ISW SETTLEMENT ZZ570 OTHER', 'credit', '17300'),
+            jsonb_build_object('date', v_today::text, 'reference', '', 'description', 'charges', 'debit', '10')));
+        SELECT max(l.id::text) FILTER (WHERE l.line_no = 1)::uuid, max(l.id::text) FILTER (WHERE l.line_no = 2)::uuid,
+               max(l.id::text) FILTER (WHERE l.line_no = 3)::uuid, max(l.id::text) FILTER (WHERE l.line_no = 4)::uuid
+          INTO la, lb, lc, lx FROM finance.bank_statement_line l WHERE l.statement_id = stmt;
+        nr_before := (SELECT string_agg(right(n.reference, 4), ',' ORDER BY n.reference) FROM finance.collections_not_received(stmt) n WHERE n.reference LIKE 'MOAUM-FEE-997001-%');
+        items_before := (SELECT string_agg(right(i.reference, 4) || ':' || i.kind, ',' ORDER BY i.reference) FROM finance.bank_reconciliation_items('1010', d1, v_today) i
+                          WHERE i.reference LIKE 'MOAUM-FEE-997001-%');
+        rows := jsonb_build_array(
+            jsonb_build_object('settledOn', d1::text, 'paidOn', (d1 - 1)::text, 'reference', 'MOAUMFEE9970010001', 'logId', 'LOG570001', 'amount', '10,000.00', 'fee', '100', 'channel', 'WEB'),
+            jsonb_build_object('settledOn', d1::text, 'paidOn', (d1 - 1)::text, 'txnRef', 'TXNCHK570A', 'logId', 'LOG570002', 'amount', '5000', 'net', '4925'),
+            jsonb_build_object('settledOn', d1::text, 'reference', 'moaum-fee-997001-0003', 'logId', 'LOG570003', 'amount', '2000', 'fee', '20'),
+            jsonb_build_object('settledOn', d1::text, 'reference', 'NOTTHEPORTALS9', 'logId', 'LOG570004', 'amount', '500', 'fee', '10'),
+            jsonb_build_object('settledOn', d2::text, 'reference', 'MOAUM-FEE-997001-0004', 'logId', 'LOG570005', 'amount', '3100', 'fee', '31'),
+            jsonb_build_object('settledOn', d2::text, 'reference', 'MOAUM-FEE-997001-0001', 'logId', 'LOG570006', 'amount', '10000', 'fee', '100'));
+        f := finance.load_settlement_file('CHECK V570 settlement', 'settlement.xlsx', rows);
+        states := (SELECT string_agg(i.row_no || ':' || i.state || coalesce(':' || i.matched_by, ''), ',' ORDER BY i.row_no) FROM finance.settlement_item i WHERE i.file_id = f);
+        days := (SELECT string_agg(CASE d.settled_on WHEN d1 THEN 'd1' ELSE 'd2' END || '=' || d.payments || '/' || d.gross::int || '/' || d.fees::int || '/' || d.net::int, ',' ORDER BY d.settled_on)
+                   FROM finance.settlement_day d WHERE d.file_id = f);
+        cands := (SELECT string_agg(CASE c.settled_on WHEN d1 THEN 'd1' ELSE 'd2' END || ':' || c.line_no, ',' ORDER BY c.settled_on, c.line_no) FROM finance.settlement_candidates(f) c);
+        tied := finance.tie_settlement_days(f);
+        lines := (SELECT string_agg(l.line_no || ':' || l.status || ':' || coalesce(l.expected_amount::int::text, '-') || ':' || (l.ledger_journal IS NOT NULL), ',' ORDER BY l.line_no)
+                    FROM finance.bank_statement_line l WHERE l.statement_id = stmt AND l.line_no IN (1, 2));
+        charges := (SELECT string_agg(p.account || ':' || p.debit::int || ':' || p.credit::int, ',' ORDER BY j.entry_date, p.account)
+                      FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id
+                     WHERE j.id IN (SELECT l.ledger_journal FROM finance.bank_statement_line l WHERE l.id IN (la, lb)));
+        nr_after := coalesce((SELECT string_agg(right(n.reference, 4), ',' ORDER BY n.reference) FROM finance.collections_not_received(stmt) n WHERE n.reference LIKE 'MOAUM-FEE-997001-%'), '');
+        items_after := coalesce((SELECT string_agg(right(i.reference, 4) || ':' || i.kind, ',' ORDER BY i.reference) FROM finance.bank_reconciliation_items('1010', d1, v_today) i
+                                  WHERE i.reference LIKE 'MOAUM-FEE-997001-%' OR i.line_id IN (la, lb)), '');
+        -- the second day taken back; tied by hand to a credit of another amount: refused
+        PERFORM finance.untie_settlement_day(f, d2);
+        BEGIN PERFORM finance.tie_settlement_day(f, d2, lx);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS wrong = MESSAGE_TEXT; END;
+        nr_untied := coalesce((SELECT string_agg(right(n.reference, 4), ',' ORDER BY n.reference) FROM finance.collections_not_received(stmt) n WHERE n.reference LIKE 'MOAUM-FEE-997001-%'), '');
+        reversed := (SELECT l.status || ':' || (l.ledger_journal IS NULL) FROM finance.bank_statement_line l WHERE l.id = lb)
+                    || '/' || (SELECT count(*) FROM finance.gl_journal j WHERE j.source_type = 'REVERSAL' AND j.source_ref IN (
+                                   SELECT j2.id::text FROM finance.gl_journal j2 WHERE j2.source_type = 'BANK_LINE' AND j2.source_ref LIKE 'LINE-' || lb || '%'));
+        -- the never-confirmed row to the bank credits, once
+        PERFORM finance.settlement_item_to_bank_credit((SELECT i.id FROM finance.settlement_item i WHERE i.file_id = f AND i.row_no = 3));
+        bc := (SELECT c.state || ':' || c.proposed_reference || ':' || c.amount::int FROM finance.bank_credit c
+                WHERE c.id = (SELECT i.bank_credit_id FROM finance.settlement_item i WHERE i.file_id = f AND i.row_no = 3));
+        BEGIN PERFORM finance.settlement_item_to_bank_credit((SELECT i.id FROM finance.settlement_item i WHERE i.file_id = f AND i.row_no = 3));
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS sent_twice = MESSAGE_TEXT; END;
+        BEGIN PERFORM finance.load_settlement_file('CHECK V570 settlement again', 'settlement.xlsx', rows);
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS again = MESSAGE_TEXT; END;
+        RAISE EXCEPTION 'the V570 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V570 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V570: an Interswitch settlement report is matched row by row, each day tied to the credit of its net with the fees booked to 5250, its payments in the bank; a tie is taken back with its charges reversed',
+        coalesce(states = '1:MATCHED:REFERENCE,2:MATCHED:TXN_REF,3:NOT_CONFIRMED:REFERENCE,4:UNKNOWN,5:AMOUNT_DIFFERS:REFERENCE,6:DUPLICATE:REFERENCE'
+                 AND days = 'd1=4/17500/205/17295,d2=2/13100/131/12969' AND cands = 'd1:1,d2:2' AND tied = 2
+                 AND lines = '1:SETTLEMENT:17500:true,2:SETTLEMENT:13100:true' AND charges = '1010:0:205,5250:205:0,1010:0:131,5250:131:0'
+                 AND nr_before = '0001,0002,0004' AND nr_after = '' AND items_before = '0001:RECEIPT_NOT_IN_BANK,0002:RECEIPT_NOT_IN_BANK,0004:RECEIPT_NOT_IN_BANK'
+                 AND items_after = '' AND wrong LIKE 'SETTLEMENT_AMOUNT%' AND nr_untied = '0004' AND reversed = 'UNMATCHED:true/1'
+                 AND bc = 'PROPOSED:MOAUM-FEE-997001-0003:2000' AND sent_twice LIKE 'SETTLEMENT_ITEM_SENT%' AND again LIKE 'SETTLEMENT_FILE_AGAIN%', false),
+        format('rows %s | days %s | candidates %s | tied %s | lines %s | charges %s | not received %s → %s | items %s → %s | wrong %s | untied %s, line %s | bank credit %s, twice %s | again %s',
+               states, days, cands, tied, lines, charges, nr_before, nr_after, items_before, items_after, left(wrong, 60), nr_untied, reversed, bc, left(sent_twice, 40), left(again, 40)));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

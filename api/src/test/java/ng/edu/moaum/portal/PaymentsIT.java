@@ -686,4 +686,72 @@ class PaymentsIT {
             it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
         }
     }
+
+    /**
+     * V568: a Pay on Quickteller checkout Quickteller never asked after is counted abandoned, apart from what hangs; one it asked after
+     * hangs, and its payer is told by the desk — once, by the Bursary or the Students Account Officer, never by a student. The desk's
+     * clocks are the Bursary's: with the abandon clock at 48 hours, the 30-hour checkout is not abandoned yet.
+     */
+    @Test
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    void theDeskTellsItsPayersOnceAndCountsCheckoutsNobodyPaidApart() {
+        String bursar = ItSupport.token("bursar");
+        String sao = ItSupport.token("studentaccounts");
+        it.session(SESSION, 2092);
+        String tag = String.format("%04d", it.freeDraw(0, 10_000, k -> List.of("MOAUM/ADM/98/98" + String.format("%04d", k), "MOAUM/ITQ/98/" + String.format("%04d", k))));
+        java.util.UUID payer = it.student("ZZHANGINGDESK", "C00023", "MOAUM/ADM/98/98" + tag, "MOAUM/ITQ/98/" + tag, 100);
+        String studentToken = TestTokens.token(payer, List.of("student"));
+        List<String> refs = it.db(() -> {
+            jdbc.sql("INSERT INTO people.student_contact (student_id, phone, email) VALUES (:s, '08030005680', 'zz.hangingdesk@example.invalid') ON CONFLICT (student_id) DO NOTHING")
+                    .param("s", payer).update();
+            String never = jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 50000, 'School fees ' || :ses)").param("s", payer).param("ses", SESSION).query(String.class).single();
+            String asked = jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 50000, 'School fees ' || :ses)").param("s", payer).param("ses", SESSION).query(String.class).single();
+            jdbc.sql("""
+                    INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, opened_at)
+                    VALUES (:n, 'paydirect', 'FEES', :s, now() - interval '30 hours'), (:a, 'paydirect', 'FEES', :s, now() - interval '30 hours')
+                    """).param("n", never).param("a", asked).param("s", payer).update();
+            jdbc.sql("""
+                    INSERT INTO finance.gateway_event (gateway, source, event, reference, amount, status, signature_ok, outcome, received_at)
+                    VALUES ('paydirect', 'VALIDATE', 'validate', :a, 50000, '0', true, 'VALID', now() - interval '29 hours')
+                    """).param("a", asked).update();
+            return List.of(never, asked);
+        });
+        String never = refs.get(0), asked = refs.get(1);
+        try {
+            // the desk: the one never asked after is abandoned, the other hangs and may be told
+            Map<String, Object> desk = it.get(bursar, "/api/v1/payments/bursary").getBody();
+            assertThat(desk).containsKeys("abandoned", "tellable", "hangingSetting");
+            assertThat((List<Map>) desk.get("hanging")).extracting(h -> h.get("reference")).contains(asked).doesNotContain(never);
+            assertThat(((Number) ((Map) desk.get("tellable")).get("hanging")).intValue()).isGreaterThanOrEqualTo(1);
+            List<Map> abandoned = (List<Map>) it.get(bursar, "/api/v1/payments/bursary/transactions?kind=abandoned").getBody().get("rows");
+            assertThat(abandoned).filteredOn(r -> never.equals(r.get("reference")))
+                    .extracting(r -> r.get("how") + ":" + (r.get("number") != null)).containsExactly("ABANDONED_NEVER_ASKED:true");
+
+            // a student does not tell payers; a case the desk does not know is refused
+            assertThat(it.call(studentToken, HttpMethod.POST, "/api/v1/payments/bursary/tell", Map.of("caseCode", "HANGING")).getStatusCode().value()).isEqualTo(403);
+            ResponseEntity<Map> unknownCase = it.call(sao, HttpMethod.POST, "/api/v1/payments/bursary/tell", Map.of("caseCode", "EVERYONE"));
+            assertThat(unknownCase.getStatusCode().value()).isEqualTo(422);
+            assertThat(unknownCase.getBody().get("code")).isEqualTo("TELL_PAYERS_CASE");
+
+            // the Students Account Officer tells the hanging payers: this one once, by the engine's event key
+            ResponseEntity<Map> told = it.call(sao, HttpMethod.POST, "/api/v1/payments/bursary/tell", Map.of("caseCode", "HANGING"));
+            assertThat(told.getStatusCode().value()).as(String.valueOf(told.getBody())).isEqualTo(200);
+            assertThat(((Number) told.getBody().get("told")).intValue()).isGreaterThanOrEqualTo(1);
+            it.call(sao, HttpMethod.POST, "/api/v1/payments/bursary/tell", Map.of("caseCode", "HANGING"));
+            assertThat(jdbc.sql("SELECT count(*) FROM finance.payer_told WHERE reference = :r AND case_code = 'HANGING' AND payer_kind = 'STUDENT'")
+                    .param("r", asked).query(Long.class).single()).isEqualTo(1L);
+            long notices = jdbc.sql("SELECT count(*) FROM platform.notice WHERE event_key = :k").param("k", "payer-told:HANGING:" + asked).query(Long.class).single();
+            assertThat(notices).as("e-mail, SMS and the portal, once").isBetween(1L, 3L);
+            List<Map> hanging = (List<Map>) it.get(bursar, "/api/v1/payments/bursary/transactions?kind=hanging").getBody().get("rows");
+            assertThat(hanging).filteredOn(r -> asked.equals(r.get("reference"))).extracting(r -> r.get("told_case")).containsExactly("HANGING");
+
+            // the clocks: out of range refused; at 48 hours the 30-hour checkout is not abandoned yet
+            assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/payments/bursary/hanging-setting", Map.of("abandonHours", 1, "tellAfterHours", 24)).getStatusCode().value()).isEqualTo(400);
+            assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/payments/bursary/hanging-setting", Map.of("abandonHours", 48, "tellAfterHours", 24)).getStatusCode().value()).isEqualTo(200);
+            assertThat((List<Map>) it.get(bursar, "/api/v1/payments/bursary/transactions?kind=abandoned").getBody().get("rows"))
+                    .noneMatch(r -> never.equals(r.get("reference")));
+        } finally {
+            it.call(bursar, HttpMethod.PUT, "/api/v1/payments/bursary/hanging-setting", Map.of("abandonHours", 24, "tellAfterHours", 24));
+        }
+    }
 }

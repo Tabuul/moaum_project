@@ -108,6 +108,21 @@ Accounting → Overview → **Closed months** lists the signed months, the lates
 | Prepare, sign (not one's own), book or tie a line, book a transfer | yes | — | — |
 | Ask to reopen a month, decide (not one's own request) | yes | — | — |
 
+## Reminders (V569)
+
+Every morning at 08:20, while the watch is on, `finance.watch_bank_matching` tells the office whose act each thing is, by e-mail and
+on the portal. Each thing is told once. **Reminders** on Reconcile shows what the alerts read now.
+
+| Alert | To | When | Function |
+|---|---|---|---|
+| A month not reconciled | Bursar | An account's month has no signed reconciliation for every day by the set day of the next month (the 10th by default); told once for each account and month, naming how many months are behind | `finance.months_unreconciled` |
+| A credit for a reference never confirmed | Bursar and Students Account Officer | A collections credit for a reference the portal issued and never confirmed, not sent to the bank credits a set number of hours (24) after its statement came; each line once | `finance.credits_waiting` |
+| A payment not in the bank | Internal Audit | A payment confirmed on the portal through the bank that the collections statements do not show, though a statement runs a set number of days (3) past it: not one by one, not in a gateway's day settled or tied (V570), not reconciled by hand; each payment once, grouped by channel and day | `finance.payments_missing_from_bank` |
+
+An account is watched once its first statement is loaded or its first reconciliation prepared. The Bursar sets the days, or
+switches the alerts off (`finance.matching_watch`, `PUT /api/v1/finance/bank-reconciliation/watch`). What has been told is kept in
+`finance.matching_told`.
+
 ## Tests
 
 - `db/check.sql` (V557) runs on last month (always ended). It covers:
@@ -129,3 +144,10 @@ Accounting → Overview → **Closed months** lists the signed months, the lates
   - reopening refused for an earlier month, twice, to the asker and without a note, then approved, the month open again and the
     signed copy kept.
 - `BankReconciliationIT` (V562) does the same through the API on a March after every earlier run's, with each office's rights.
+- `db/check.sql` (V569) reads a collections statement of this month on the 15th two months on. It covers:
+  - this month signed and next month not: the Bursar told once, naming next month;
+  - a never-confirmed credit not sent on: the Bursar and the Students Account Officer told;
+  - a bank transfer on no line: Internal Audit told;
+  - the next morning nothing told again; at 07:00 nothing run; with the day set to the 28th, nothing due.
+- `BankReconciliationIT` (V569): Internal Audit reads the reminders and cannot set them; the Bursary sets them, and a day past the
+  28th is refused.

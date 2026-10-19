@@ -1634,7 +1634,11 @@ public class PaymentsService {
                 quicktellerListing(), payOnQuicktellerListing()));
         out.put("tiles", repo.eventTiles());
         out.put("events", repo.events(200));
-        out.put("hanging", repo.hanging());
+        // V568: what hangs, without the checkouts nobody went on to pay — those counted apart, with why
+        out.put("hanging", repo.deskHanging());
+        out.put("abandoned", repo.abandonedCount());
+        out.put("tellable", repo.tellable());
+        out.put("hangingSetting", repo.hangingSetting());
         out.put("resolved", repo.resolvedWithoutPerson());
         // what needs a person, with who paid: the panel lists these rows and the tile counts them, so the two never differ
         java.util.List<Map<String, Object>> needs = repo.tileRows("needs");
@@ -1651,10 +1655,11 @@ public class PaymentsService {
     }
 
     /** the transactions behind one figure of the hanging desk — what hangs now, what settled with no one's hand, what needs a
-     *  person — each with who paid: name, number, faculty, department, programme, level, session and the contact on record */
+     *  person, what nobody went on to pay (V568) — each with who paid: name, number, faculty, department, programme, level, session
+     *  and the contact on record */
     public Map<String, Object> deskTransactions(String kind) {
-        if (!java.util.List.of("hanging", "resolved", "needs").contains(kind)) {
-            throw new DomainRuleViolation("DESK_FIGURE", "The desk's figures are hanging, resolved and needs.",
+        if (!java.util.List.of("hanging", "resolved", "needs", "abandoned").contains(kind)) {
+            throw new DomainRuleViolation("DESK_FIGURE", "The desk's figures are hanging, resolved, needs and abandoned.",
                     new DomainRuleViolation.Remedy("Open a figure from the Hanging payments screen.", "Bursary"));
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1678,6 +1683,23 @@ public class PaymentsService {
         }
         AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> { repo.attempt(reference, g, "TEST", student); return null; }));
         return Map.of("url", url, "gateway", g, "reference", reference, "amount", amt);
+    }
+
+    /** V568: the payers on the desk told what their case asks of them — a short payment, a reversal, a Pay on Quickteller checkout
+     *  hanging over a day — once per case and reference; returns how many were told, by case, and how many could not be reached */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> tellPayers(String caseCode) {
+        String c = caseCode == null || caseCode.isBlank() ? null : caseCode.trim().toUpperCase();
+        String said = AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> repo.tellPayers(c)));
+        Map<String, Object> out = new LinkedHashMap<>(mapper.readValue(said, Map.class));
+        out.put("tellable", repo.tellable());
+        return out;
+    }
+
+    /** V568: the hanging desk's clocks — when a checkout nobody paid counts as abandoned, when a hanging payer may be told */
+    public Map<String, Object> setHangingSetting(int abandonHours, int tellAfterHours) {
+        AuditContextHolder.with(AuditContextHolder.required(), () -> tx.execute(st -> { repo.setHangingSetting(abandonHours, tellAfterHours); return null; }));
+        return repo.hangingSetting();
     }
 
     public Map<String, Object> resolveEvent(UUID id, String resolution) {

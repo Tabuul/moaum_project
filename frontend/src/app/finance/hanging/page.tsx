@@ -6,10 +6,10 @@ import { Hanging } from "./Hanging";
 
 export const dynamic = "force-dynamic";
 
-const FIGURES: DeskFigure[] = ["hanging", "resolved", "needs"];
+const FIGURES: DeskFigure[] = ["hanging", "resolved", "needs", "abandoned"];
 
-/** t/hanging — successful at the gateway, pending here: asked about, not argued about. A figure opened (?show=hanging, resolved or
- *  needs) lists the transactions behind it with who paid. */
+/** t/hanging — successful at the gateway, pending here: asked about, not argued about. A figure opened (?show=hanging, resolved,
+ *  needs or abandoned) lists the transactions behind it with who paid. */
 export default async function HangingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   const show = FIGURES.find((f) => f === sp.show) ?? null;

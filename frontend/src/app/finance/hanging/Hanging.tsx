@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { DESK_HOW, OUTCOME, when, type DeskFigure, type DeskRow, type PaymentsDesk } from "@/lib/bursary";
+import { DESK_HOW, OUTCOME, when, type DeskFigure, type DeskRow, type HangingSetting, type PaymentsDesk } from "@/lib/bursary";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { ASK_HEADERS, CHANNEL_LABEL, CLAIM_STATE, askRows, paidDay, type AskRow, type ClaimChannel } from "@/lib/paydirect-claim";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
@@ -56,6 +56,24 @@ export function Hanging({ d, actingOffice, shown = null }: { d: PaymentsDesk; ac
   const [notFound, setNotFound] = useState<{ reference: string; log: string; note: string } | null>(null);
   const byWhom = (office: string | null) => !office || ["student", "applicant"].includes(office) ? "by the payer"
     : ["ictagent", "helpdeskhead"].includes(office) ? "by ICT Support" : `by ${office}`;
+  // V568: the payers on the desk are told by the Bursary and the Students Account Officer, who also set the desk's two clocks
+  const mayTell = ["bursar", "studentaccounts", "super"].includes(actingOffice ?? "");
+  const clocks: HangingSetting = d.hangingSetting ?? { abandon_hours: 24, tell_after_hours: 24 };
+  const [setting, setSetting] = useState<{ abandon: string; tell: string } | null>(null);
+  const ab = d.abandoned;
+
+  /** V568: the desk's clocks set */
+  async function saveClocks(abandon: number, tell: number) {
+    setProblem(null);
+    const r = await fetch("/api/bff/api/v1/payments/bursary/hanging-setting", { method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Hanging desk: abandoned after ${abandon} h, payers told after ${tell} h`) },
+      body: JSON.stringify({ abandonHours: abandon, tellAfterHours: tell }) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { const refusal = j ?? { status: r.status, title: r.statusText }; setProblem(refusal); notifyProblem(refusal); return; }
+    notify("The desk's clocks are set");
+    setSetting(null);
+    router.refresh();
+  }
 
   /** V490: the Bursary's word on a receipt: not found at Interswitch (the payer told), or reopened */
   async function mark(reference: string, found: "NOT_FOUND" | "REOPEN", note?: string) {
@@ -126,9 +144,18 @@ export function Hanging({ d, actingOffice, shown = null }: { d: PaymentsDesk; ac
              `Last three days: ${Number(d.resolved.by_notification)} by Interswitch's notification, ${Number(d.resolved.by_sweep)} by the sweep, ${Number(d.resolved.on_request)} on request`, figure("resolved")]
           : ["Resolved without a person", String(settledBySweep + settledByVerify), "var(--green-ink)", `${settledBySweep} by the sweep, ${settledByVerify} on request`],
         ["Needs a person", String(needsTotal), needsTotal ? "var(--red-ink)" : null, needsSub, figure("needs")],
-        ["The sweep", "Every 10 min", null, "Card checkouts; Pay on Quickteller waits for Interswitch's report"],
+        // V568: checkouts nobody went on to pay, counted apart from what hangs
+        ab ? ["Abandoned", String(Number(ab.total)), null,
+              `Last 14 days, after ${clocks.abandon_hours} h: ${Number(ab.never_asked)} never taken to Quickteller, ${Number(ab.not_paid)} the gateway said not paid, ${Number(ab.told_no_answer)} told with no answer`, figure("abandoned")]
+          : ["The sweep", "Every 10 min", null, "Card checkouts; Pay on Quickteller waits for Interswitch's report"],
       ]} />
-      {shown ? <DeskTransactions kind={shown.kind} rows={shown.rows} /> : null}
+      {ab ? (
+        <div className="sub2 row row--tight" style={{ flexWrap: "wrap" }}>
+          <span>A checkout nobody went on to pay is counted abandoned after <b>{clocks.abandon_hours} hours</b>, and a payer whose Pay on Quickteller payment hangs may be told after <b>{clocks.tell_after_hours} hours</b>{clocks.set_by_name ? ` (set by ${clocks.set_by_name}${clocks.set_at ? `, ${when(clocks.set_at)}` : ""})` : ""}. Anything that happens to an abandoned checkout brings it back.</span>
+          {mayTell ? <Btn kind="ghost" size="sm" onClick={() => setSetting({ abandon: String(clocks.abandon_hours), tell: String(clocks.tell_after_hours) })}>Change</Btn> : null}
+        </div>
+      ) : null}
+      {shown ? <DeskTransactions kind={shown.kind} rows={shown.rows} tellable={d.tellable ?? null} mayTell={mayTell} tellAfterHours={clocks.tell_after_hours} /> : null}
       {onQuickteller || claimsOpen ? (
         <Note kind="info" title={onQuickteller ? `${onQuickteller} opened on Pay on Quickteller — Interswitch reports these; the portal cannot ask` : `${claimsOpen} receipt${claimsOpen === 1 ? "" : "s"} reported by payers, not yet reported by Interswitch`}
           action={<div className="row row--tight">
@@ -207,6 +234,19 @@ export function Hanging({ d, actingOffice, shown = null }: { d: PaymentsDesk; ac
         ) : <PBody><div className="sub2">Nothing waits on a person.</div></PBody>}
       </Panel>
       <Note kind="ok" title="The student is told">Every settlement sends the receipt by email and SMS.</Note>
+      {setting ? (
+        <Modal title="The desk's clocks" onClose={() => setSetting(null)}
+          foot={<><Btn kind="ghost" onClick={() => setSetting(null)}>Cancel</Btn>
+            <Btn kind="primary" busyLabel="Saving..." disabled={!(Number(setting.abandon) >= 2 && Number(setting.abandon) <= 336 && Number(setting.tell) >= 1 && Number(setting.tell) <= 72)}
+              onClick={() => saveClocks(Number(setting.abandon), Number(setting.tell))}>Save</Btn></>}>
+          <Field id="hs-abandon" label="Abandoned after (hours)" required hint="2 to 336. A checkout with no receipt and nothing from Interswitch, never taken to Quickteller, said not paid by the gateway, or told with no answer">
+            <input id="hs-abandon" className="ctl" inputMode="numeric" value={setting.abandon} onChange={(e) => setSetting({ ...setting, abandon: e.target.value.replace(/\D/g, "") })} />
+          </Field>
+          <Field id="hs-tell" label="Tell a hanging Pay on Quickteller payer after (hours)" required hint="1 to 72">
+            <input id="hs-tell" className="ctl" inputMode="numeric" value={setting.tell} onChange={(e) => setSetting({ ...setting, tell: e.target.value.replace(/\D/g, "") })} />
+          </Field>
+        </Modal>
+      ) : null}
       {notFound ? (
         <Modal title={`Not found at Interswitch: ${notFound.log}`} sub={<>For <b className="tnum">{notFound.reference}</b></>} onClose={() => setNotFound(null)}
           foot={<><Btn kind="ghost" onClick={() => setNotFound(null)}>Cancel</Btn>

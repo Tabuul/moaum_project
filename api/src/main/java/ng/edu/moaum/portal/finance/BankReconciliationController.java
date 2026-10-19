@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -62,6 +65,12 @@ class BankReconciliationController {
 
     /** V562: a request to reopen decided */
     public record Decide(@NotNull Boolean approve, @Size(max = 2000) String note) {
+    }
+
+    /** V569: the bank matching's alerts — on or off, the day of the next month a month is reconciled by, the hours a credit for a
+     *  never-confirmed reference may wait, the days a confirmed payment may take to reach the bank */
+    public record Watch(@NotNull Boolean enabled, @NotNull @Min(1) @Max(28) Integer reconDay, @NotNull @Min(1) @Max(336) Integer creditHours,
+                        @NotNull @Min(1) @Max(60) Integer missingDays) {
     }
 
     private final JdbcClient jdbc;
@@ -261,5 +270,40 @@ class BankReconciliationController {
         jdbc.sql("SELECT finance.decide_reconciliation_reopen(:id, :a, :n)").param("id", id).param("a", body.approve())
                 .param("n", body.note(), Types.VARCHAR).query().singleRow();
         return closed();
+    }
+
+    /* ── V569: the bank matching's alerts ── */
+
+    /** what the morning's alerts read now — the months not reconciled by the set day, the credits for never-confirmed references not
+     *  sent to the bank credits, the payments confirmed on the portal and not in the bank — with the days the Bursary set */
+    @GetMapping("/watch")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> watch() {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("setting", jdbc.sql("""
+                SELECT w.enabled, w.recon_day, w.credit_hours, w.missing_days, w.set_at, w.set_office,
+                       CASE WHEN p.id IS NULL THEN NULL ELSE p.surname || ', ' || p.given_names END AS set_by_name
+                  FROM finance.matching_watch w LEFT JOIN iam.person p ON p.id = w.set_by WHERE w.id
+                """).query().singleRow());
+        out.put("overdue", jdbc.sql("SELECT account, month::text AS month, due_on::text AS due_on, days_late FROM finance.months_unreconciled()")
+                .query().listOfRows());
+        out.put("credits", jdbc.sql("""
+                SELECT line_id, statement, line_no, value_date::text AS value_date, reference, amount, payer, number, hours FROM finance.credits_waiting() LIMIT 500
+                """).query().listOfRows());
+        out.put("missing", jdbc.sql("""
+                SELECT reference, channel, day::text AS day, amount, purpose, payer, number, confirmed_at FROM finance.payments_missing_from_bank() LIMIT 3000
+                """).query().listOfRows());
+        return out;
+    }
+
+    /** the Bursary sets the days, or switches the alerts off */
+    @PutMapping("/watch")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setWatch(@Valid @RequestBody Watch body) {
+        jdbc.sql("SELECT finance.set_matching_watch(:e, :d, :h, :m)").param("e", body.enabled()).param("d", body.reconDay()).param("h", body.creditHours())
+                .param("m", body.missingDays()).query().singleRow();
+        return watch();
     }
 }

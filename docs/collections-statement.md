@@ -49,6 +49,9 @@ before (V068) is not listed. The result downloads as Excel.
 Statements are kept (`finance.bank_statement` with `account_kind = 'COLLECTIONS'`, its lines in `finance.bank_statement_line`,
 both audited). The disbursement statement list shows only disbursement statements.
 
+Interswitch's own settlement report ties a day to its credit and books the charges, without choosing the channel and day by hand:
+[interswitch-settlement.md](interswitch-settlement.md) (V570).
+
 ## Tests
 
 - `db/check.sql` (V552) covers every result above: a reference without its hyphens, a NELFUND remittance, a gateway's day

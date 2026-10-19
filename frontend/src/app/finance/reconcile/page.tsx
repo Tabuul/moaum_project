@@ -9,6 +9,8 @@ import { money } from "@/lib/format";
 import { ReconcileLedger } from "./ReconcileLedger";
 import { CollectionsStatement } from "./CollectionsStatement";
 import { BankReconciliation } from "./BankReconciliation";
+import { BankWatch } from "./BankWatch";
+import { SettlementFile } from "./SettlementFile";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +38,11 @@ export default async function ReconcilePage() {
       ]} />
       <ReconcileLedger canCheck={canCheck} />
       <CollectionsStatement canCheck={canCheck} canPropose={["bursar", "super"].includes(office ?? "")} />
+      {/* V570: Interswitch's settlement report, each day tied to its credit and the charges booked */}
+      <SettlementFile canUpload={canCheck} canTie={["bursar", "super"].includes(office ?? "")} />
       <BankReconciliation canPrepare={["bursar", "super"].includes(office ?? "")} />
+      {/* V569: the morning alerts on the bank matching, as they read now */}
+      <BankWatch canSet={["bursar", "super"].includes(office ?? "")} />
       <Panel title="Exceptions requiring action" right="Every exception is cleared before the period closes">
         {exceptions.length + open.length ? (
           <DTable cols={["Reference", "Amount|num", "Payer", "Exception", "Resolution|num"]} rows={[

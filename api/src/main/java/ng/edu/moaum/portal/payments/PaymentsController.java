@@ -268,11 +268,35 @@ class PaymentsController {
         return payments.bursary();
     }
 
-    /** the transactions behind a figure of the hanging desk (hanging, resolved, needs), each with who paid */
+    /** the transactions behind a figure of the hanging desk (hanging, resolved, needs, abandoned), each with who paid */
     @GetMapping("/bursary/transactions")
     @PreAuthorize(READERS)
     Map<String, Object> deskTransactions(@RequestParam String kind) {
         return payments.deskTransactions(kind);
+    }
+
+    /** V568: the payers on the desk are told by the Bursary and the Students Account Officer — of what is theirs to know about money */
+    private static final String PAYER_TELLERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
+
+    public record Tell(String caseCode) {
+    }
+
+    /** V568: the payers on the hanging desk told, once per case (SHORT_PAID, REVERSED, HANGING; none named: every case) */
+    @PostMapping("/bursary/tell")
+    @PreAuthorize(PAYER_TELLERS)
+    Map<String, Object> tellPayers(@RequestBody(required = false) Tell body) {
+        return payments.tellPayers(body == null ? null : body.caseCode());
+    }
+
+    public record HangingClocks(@jakarta.validation.constraints.Min(2) @jakarta.validation.constraints.Max(336) int abandonHours,
+                                @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(72) int tellAfterHours) {
+    }
+
+    /** V568: when a checkout nobody paid counts as abandoned, and when a hanging payer may be told — the Bursary's to set */
+    @org.springframework.web.bind.annotation.PutMapping("/bursary/hanging-setting")
+    @PreAuthorize(PAYER_TELLERS)
+    Map<String, Object> setHangingSetting(@Valid @RequestBody HangingClocks body) {
+        return payments.setHangingSetting(body.abandonHours(), body.tellAfterHours());
     }
 
     @PostMapping("/test-checkout")

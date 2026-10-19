@@ -215,9 +215,19 @@ class PaymentsRepository {
         jdbc.sql("UPDATE finance.gateway_attempt SET checked_at = now(), checks = checks + 1 WHERE reference = :r").param("r", reference).update();
     }
 
-    /** attempts opened in the last day with nothing confirmed behind them: the hanging payments, oldest first */
+    /** attempts opened in the last three days with nothing confirmed behind them: the hanging payments, oldest first — every one, as
+     *  the sweep asks after them */
     List<Map<String, Object>> hanging() {
-        return jdbc.sql("""
+        return jdbc.sql(HANGING.formatted("")).query().listOfRows();
+    }
+
+    /** V568: the hanging payments the desk shows — without the checkouts nobody went on to pay (finance.abandoned_checkouts) */
+    List<Map<String, Object>> deskHanging() {
+        return jdbc.sql("WITH ab AS MATERIALIZED (SELECT b.reference FROM finance.abandoned_checkouts(now(), 14) b) "
+                + HANGING.formatted("AND NOT EXISTS (SELECT 1 FROM ab WHERE ab.reference = a.reference)")).query().listOfRows();
+    }
+
+    private static final String HANGING = """
                 SELECT a.id, a.reference, a.gateway, a.kind, a.opened_at, a.checked_at, a.checks, st.amount, st.expires_at,
                        extract(epoch FROM now() - a.opened_at)::int / 60 AS minutes,
                        coalesce(s.surname || ', ' || s.other_names, c.surname || ', ' || c.other_names) AS payer,
@@ -233,8 +243,43 @@ class PaymentsRepository {
                   LEFT JOIN finance.paydirect_claim cl ON cl.reference = a.reference
                  WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL
                    AND a.id = (SELECT x.id FROM finance.gateway_attempt x WHERE x.reference = a.reference ORDER BY x.opened_at DESC LIMIT 1)
+                   %s
                  ORDER BY a.opened_at
-                """).query().listOfRows();
+                """;
+
+    /** V568: the checkouts of the last fortnight nobody went on to pay, counted by why */
+    Map<String, Object> abandonedCount() {
+        return jdbc.sql("""
+                SELECT count(*) AS total, count(*) FILTER (WHERE rule = 'NEVER_ASKED') AS never_asked,
+                       count(*) FILTER (WHERE rule = 'NOT_PAID') AS not_paid, count(*) FILTER (WHERE rule = 'TOLD_NO_ANSWER') AS told_no_answer
+                  FROM finance.abandoned_checkouts(now(), 14)
+                """).query().singleRow();
+    }
+
+    /** V568: who the desk would tell now, counted by case */
+    Map<String, Object> tellable() {
+        return jdbc.sql("""
+                SELECT count(*) FILTER (WHERE case_code = 'SHORT_PAID') AS short_paid, count(*) FILTER (WHERE case_code = 'REVERSED') AS reversed,
+                       count(*) FILTER (WHERE case_code = 'HANGING') AS hanging, count(*) AS total
+                  FROM finance.payers_to_tell()
+                """).query().singleRow();
+    }
+
+    /** V568: the payers of one case (or every case) told; the answer as the database counts it */
+    String tellPayers(String caseCode) {
+        return jdbc.sql("SELECT finance.tell_payers(:c::text)::text").param("c", caseCode, Types.VARCHAR).query(String.class).single();
+    }
+
+    /** V568: the desk's clocks */
+    Map<String, Object> hangingSetting() {
+        return jdbc.sql("""
+                SELECT h.abandon_hours, h.tell_after_hours, h.set_at, h.set_office, p.surname || ', ' || p.given_names AS set_by_name
+                  FROM finance.hanging_setting h LEFT JOIN iam.person p ON p.id = h.set_by WHERE h.id
+                """).query().singleRow();
+    }
+
+    void setHangingSetting(int abandonHours, int tellAfterHours) {
+        jdbc.sql("SELECT finance.set_hanging_setting(:a, :t)").param("a", abandonHours).param("t", tellAfterHours).query().singleRow();
     }
 
     /** the payments settled with no one's hand in the last three days (the window "Hanging now" counts): a Pay on Quickteller payment
@@ -257,8 +302,10 @@ class PaymentsRepository {
 
     /** the transactions behind the figure of one tile: what hangs now, what settled with no one's hand, what needs a person */
     private static final Map<String, String> TILE_ROWS = Map.of(
-            // a checkout opened in the last three days and nothing confirmed (the latest checkout of a reference)
+            // a checkout opened in the last three days and nothing confirmed (the latest checkout of a reference); V568: not one nobody
+            // went on to pay
             "hanging", """
+                WITH ab AS MATERIALIZED (SELECT b.reference FROM finance.abandoned_checkouts(now(), 14) b)
                 SELECT a.reference, a.opened_at AS at, a.gateway, 'HANGING'::text AS how,
                        CASE WHEN a.gateway = 'paydirect' THEN 'Opened on Pay on Quickteller; Interswitch reports it, the portal cannot ask'
                             WHEN a.checks > 0 THEN 'Asked ' || a.checks || ' times, last ' || to_char(a.checked_at AT TIME ZONE 'Africa/Lagos', 'DD Mon HH24:MI')
@@ -268,6 +315,13 @@ class PaymentsRepository {
                   LEFT JOIN LATERAL finance.reference_state(a.reference) st ON true
                  WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL
                    AND a.id = (SELECT x.id FROM finance.gateway_attempt x WHERE x.reference = a.reference ORDER BY x.opened_at DESC LIMIT 1)
+                   AND NOT EXISTS (SELECT 1 FROM ab WHERE ab.reference = a.reference)
+                """,
+            // V568: the checkouts of the last fortnight nobody went on to pay, and why
+            "abandoned", """
+                SELECT b.reference, b.opened_at AS at, b.gateway, 'ABANDONED_' || b.rule AS how, b.why, st.amount, NULL::uuid AS event_id
+                  FROM finance.abandoned_checkouts(now(), 14) b
+                  LEFT JOIN LATERAL (SELECT r.amount FROM finance.reference_state(b.reference) r LIMIT 1) st ON true
                 """,
             // settled with no one's hand in the last three days, each reference once: by Interswitch's notification, the sweep, a request
             "resolved", """
@@ -327,9 +381,12 @@ class PaymentsRepository {
                 SELECT t.reference, t.at, t.gateway, t.how, t.why, coalesce(t.amount, p.due) AS amount, p.due, t.event_id,
                        nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.other_names, ''), ', '), '') AS payer, p.number, p.faculty, p.department,
                        p.programme, p.level, p.session, p.purpose, p.confirmed_at, p.channel, p.payer_kind,
-                       coalesce(sc.phone, aa.phone, pa.phone, ja.phone) AS phone, coalesce(sc.email, aa.email, pa.email, ja.email) AS email
+                       coalesce(sc.phone, aa.phone, pa.phone, ja.phone) AS phone, coalesce(sc.email, aa.email, pa.email, ja.email) AS email,
+                       told.told_at, told.told_case
                   FROM t
                   LEFT JOIN p ON p.ref = upper(t.reference)
+                  LEFT JOIN LATERAL (SELECT pt.told_at, pt.case_code AS told_case FROM finance.payer_told pt WHERE pt.reference = upper(t.reference)
+                                      ORDER BY pt.told_at DESC LIMIT 1) told ON t.reference IS NOT NULL
                   LEFT JOIN people.student_contact sc ON sc.student_id = p.student_id
                   LEFT JOIN admissions.application ap ON ap.id = p.application_id
                   LEFT JOIN LATERAL (SELECT a.phone, a.email FROM admissions.applicant_account a WHERE a.candidate_id = ap.candidate_id

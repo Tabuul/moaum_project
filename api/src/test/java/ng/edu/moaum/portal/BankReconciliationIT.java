@@ -235,4 +235,31 @@ class BankReconciliationIT {
         assertThat(((Map) it.get(audit, path).getBody().get("saved")).get("state")).isEqualTo("DRAFT");
         assertThat(it.call(maker, HttpMethod.POST, "/api/v1/finance/accounting/journals", journal).getStatusCode().value()).as("open again").isEqualTo(200);
     }
+
+    /** V569: the morning alerts on the bank matching, as they read now — Internal Audit reads them and cannot change them; the Bursary
+     *  sets the days, a day past the 28th refused; the morning job's function answers what it found and told */
+    @Test
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    void theBankMatchingAlertsAreReadByAuditAndSetByTheBursary() {
+        String bursar = ItSupport.token("bursar");
+        String audit = ItSupport.token("audit");
+        String path = "/api/v1/finance/bank-reconciliation/watch";
+        ResponseEntity<Map> read = it.get(audit, path);
+        assertThat(read.getStatusCode().value()).as(String.valueOf(read.getBody())).isEqualTo(200);
+        assertThat(read.getBody()).containsKeys("setting", "overdue", "credits", "missing");
+        Map<String, Object> was = (Map<String, Object>) read.getBody().get("setting");
+        Map<String, Object> body = Map.of("enabled", true, "reconDay", 12, "creditHours", 48, "missingDays", 5);
+        assertThat(it.call(audit, HttpMethod.PUT, path, body).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(bursar, HttpMethod.PUT, path, Map.of("enabled", true, "reconDay", 30, "creditHours", 48, "missingDays", 5)).getStatusCode().value()).isEqualTo(400);
+        try {
+            ResponseEntity<Map> set = it.call(bursar, HttpMethod.PUT, path, body);
+            assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+            assertThat((Map<String, Object>) set.getBody().get("setting")).containsEntry("recon_day", 12).containsEntry("credit_hours", 48).containsEntry("missing_days", 5);
+            String said = it.db(() -> jdbc.sql("SELECT finance.watch_bank_matching()::text").query(String.class).single());
+            assertThat(said).contains("\"told\"", "\"overdue\"", "\"credits\"", "\"missing\"");
+        } finally {
+            it.call(bursar, HttpMethod.PUT, path, Map.of("enabled", was.get("enabled"), "reconDay", was.get("recon_day"), "creditHours", was.get("credit_hours"),
+                    "missingDays", was.get("missing_days")));
+        }
+    }
 }

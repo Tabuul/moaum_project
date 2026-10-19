@@ -62,20 +62,38 @@ export interface PaymentsDesk { gateways: GatewayRow[]; tiles: { today: number; 
   /** what needs a person, counted by what it is (UNKNOWN_REFERENCE, SHORT_PAID, REVERSED, GATEWAY_ERROR, NOT_SETTLED, RECEIPT_SEEN,
    *  RECEIPT_ELSEWHERE) with the total, and the rows themselves with who paid */
   needs?: Record<string, number> & { total: number };
-  needsRows?: DeskRow[] }
+  needsRows?: DeskRow[];
+  /** V568: the checkouts of the last fortnight nobody went on to pay, by why */
+  abandoned?: { total: number; never_asked: number; not_paid: number; told_no_answer: number };
+  /** V568: the payers the desk would tell now, by case */
+  tellable?: Tellable;
+  /** V568: the desk's two clocks */
+  hangingSetting?: HangingSetting }
+
+/** V568: who the desk would tell now, by case */
+export interface Tellable { short_paid: number; reversed: number; hanging: number; total: number }
+/** V568: after how many hours a checkout nobody paid is abandoned, and a hanging Pay on Quickteller payer may be told */
+export interface HangingSetting { abandon_hours: number; tell_after_hours: number; set_at?: string | null; set_office?: string | null; set_by_name?: string | null }
+/** V568: what the desk's tell answered */
+export interface TellAnswer { told: number; unreached: number; byCase: Record<string, number>; tellable: Tellable }
+/** V568: the cases a payer is told of, in words */
+export const TOLD_CASE: Record<string, string> = { SHORT_PAID: "short payment", REVERSED: "reversal", HANGING: "payment not reported" };
 
 /** a transaction behind a figure of the hanging desk, with who paid */
 export interface DeskRow {
   reference: string | null; at: string; gateway: string; how: string; why: string | null; amount: number | null; due: number | null; event_id: string | null;
   payer: string | null; number: string | null; faculty: string | null; department: string | null; programme: string | null; level: number | null;
   session: string | null; purpose: string | null; confirmed_at: string | null; channel: string | null; payer_kind: string | null; phone: string | null; email: string | null;
+  /** V568: when the payer was last told from the desk, and of what */
+  told_at?: string | null; told_case?: string | null;
 }
-export type DeskFigure = "hanging" | "resolved" | "needs";
+export type DeskFigure = "hanging" | "resolved" | "needs" | "abandoned";
 /** what each row of a figure is, in words */
 export const DESK_HOW: Record<string, [string, "ok" | "warn" | "bad" | "grey" | "info"]> = {
   HANGING: ["Hanging", "warn"], NOTIFICATION: ["Interswitch's notification", "ok"], SWEEP: ["The sweep", "ok"], REQUEST: ["On request", "ok"],
   UNKNOWN_REFERENCE: ["Unknown reference", "bad"], SHORT_PAID: ["Short paid", "bad"], REVERSED: ["Reversed", "bad"], GATEWAY_ERROR: ["Gateway silent", "bad"],
   NOT_SETTLED: ["Not settled", "bad"], RECEIPT_SEEN: ["Receipt: reported here", "warn"], RECEIPT_ELSEWHERE: ["Receipt: reported elsewhere", "warn"],
+  ABANDONED_NEVER_ASKED: ["Never taken to Quickteller", "grey"], ABANDONED_NOT_PAID: ["Gateway: not paid", "grey"], ABANDONED_TOLD_NO_ANSWER: ["Told, no answer", "grey"],
 };
 
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }
