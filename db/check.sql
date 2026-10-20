@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 417
+\set EXPECTED 418
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20795,6 +20795,86 @@ BEGIN
                  AND uni = 'ZQCHECK:Check University of Somewhere' AND uni_refused = 'UNIVERSITY_OFFICE', false),
         format('here %s to %s | codes %s | refused %s | started %s | pending %s unchanged %s again %s same %s | decided %s | out %s %s | made %s linked %s existing %s doubled %s contact %s | batch %s | uni %s %s',
                p_here, p_to, codes, refused, started, pending, unchanged, again, same_officer, decided, out_state, instrument, made, linked, existing, doubled, contact, batch_status, uni, uni_refused));
+END $$;
+-- ── V583. The old portal's e-wallet reconciled: top-ups (purpose E-WALLET TOP-UP) less the fees paid from the wallet (method
+--          E-Wallet) leave a balance computed, never trusted — verified by one officer, posted by another (the verifier is skipped and
+--          said), one LEGACY_WALLET credit a student (a second run and a second posting add nothing), dated the last top-up and
+--          drawn from suspense on the ledger; a student who paid more from the old wallet than the top-ups on file is held for review
+--          until the old portal's statement is entered; the credit is applied to the session's fees through the wallet that exists,
+--          confirmed from the wallet and not the bank; the top-up purpose reads WALLET. The block undoes its writes ──
+DO $$
+DECLARE ses text := '2395/2396'; prog text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        p1 uuid := '00000000-0000-0000-0000-00000000a583'; p2 uuid := '00000000-0000-0000-0000-00000000b583';
+        c record; ra record; rb record; v_ver int; self record; post1 record; post2 record; entry record; applied text; pos record; bal numeric;
+        credits int; stated record; cat text; sums record; v_channel text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM set_config('moaum.reason', 'CHECK V583', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2395-10-01', DATE '2396-08-31');
+    SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/95/958301', 'MOAUM/CHK/LW/95/9831', 'CHECKV583', 'Balance', prog, 'UTME', ses, 100, 200, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/95/958302', 'MOAUM/CHK/LW/95/9832', 'CHECKV583', 'Review', prog, 'UTME', ses, 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V583)', 180000, NULL, prog);
+    -- the old-fees export's rows: a top-up by its purpose, a fee paid from the wallet by the method on the note
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+        (a, '2394/2395', 'MOAUM-LEG-CHK583-A1', 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 1', 100000, now(), now() - interval '40 days', p1, 'Legacy', 'LEG-CHK583-A1', 'Imported from the old portal ' || chr(183) || ' Interswitch ' || chr(183) || ' old ref PR583A1'),
+        (a, '2394/2395', 'MOAUM-LEG-CHK583-A2', 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 2', 50000, now(), now() - interval '30 days', p1, 'Legacy', 'LEG-CHK583-A2', 'Imported from the old portal ' || chr(183) || ' Interswitch ' || chr(183) || ' old ref PR583A2'),
+        (a, '2394/2395', 'MOAUM-LEG-CHK583-A3', 'School fees (legacy) ' || chr(183) || ' semester 1', 50000, now(), now() - interval '20 days', p1, 'Legacy', 'LEG-CHK583-A3', 'Imported from the old portal ' || chr(183) || ' E-Wallet ' || chr(183) || ' old ref PR583A3'),
+        (b, '2394/2395', 'MOAUM-LEG-CHK583-B1', 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 1', 20000, now(), now() - interval '40 days', p1, 'Legacy', 'LEG-CHK583-B1', 'Imported from the old portal ' || chr(183) || ' Interswitch ' || chr(183) || ' old ref PR583B1'),
+        (b, '2394/2395', 'MOAUM-LEG-CHK583-B2', 'School fees (legacy) ' || chr(183) || ' semester 1', 60000, now(), now() - interval '20 days', p1, 'Legacy', 'LEG-CHK583-B2', 'Imported from the old portal ' || chr(183) || ' E-Wallet ' || chr(183) || ' old ref PR583B2');
+    SELECT * INTO c FROM finance.legacy_wallet_compute(NULL);
+    SELECT * INTO ra FROM finance.legacy_wallet WHERE student_id = a;
+    SELECT * INTO rb FROM finance.legacy_wallet WHERE student_id = b;
+    -- verified by the Students Account Officer; the row under review is left
+    v_ver := finance.legacy_wallet_verify(ARRAY[ra.id, rb.id], 'checked');
+    -- the verifier, now acting as Bursar, is skipped; another Bursar officer posts; the review row is skipped and said
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT * INTO self FROM finance.legacy_wallet_post(ARRAY[ra.id], NULL);
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    SELECT * INTO post1 FROM finance.legacy_wallet_post(ARRAY[ra.id, rb.id], 'check V583');
+    SELECT e.kind, e.source_code, e.amount, (e.at < now() - interval '20 days') AS old, finance.gl_wallet_credit_account(e.source_code, false) AS acct INTO entry
+      FROM finance.wallet_entry e WHERE e.student_id = a AND e.source_code = 'LEGACY_WALLET';
+    -- the student applies it to the session's fees through the wallet
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    applied := finance.apply_wallet(a, ses, NULL);
+    SELECT * INTO pos FROM finance.position(a, ses);
+    bal := finance.wallet_balance(a);
+    SELECT channel INTO v_channel FROM finance.payment_reference WHERE reference = applied;
+    -- a second run and a second posting add nothing
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.legacy_wallet_compute(NULL);
+    SELECT * INTO post2 FROM finance.legacy_wallet_post(ARRAY[ra.id], NULL);
+    SELECT count(*) INTO credits FROM finance.wallet_entry WHERE student_id = a AND kind = 'CREDIT' AND source_code = 'LEGACY_WALLET';
+    -- the old portal's statement governs the one under review
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    SELECT * INTO stated FROM finance.legacy_wallet_state(b, 80000, 60000, 0, 0, 20000, 'old portal wallet page', NULL);
+    cat := finance.categorise(NULL, 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 1');
+    SELECT (f->>'posted')::int AS posted, (f->>'review')::int AS review INTO sums FROM finance.legacy_wallet_figures() f;
+    RAISE EXCEPTION 'CHECK_V583_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V583_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V583: the old portal''s e-wallet balance is computed from the imported top-ups and wallet-paid fees, verified by one officer and posted once by another as a LEGACY_WALLET credit dated the old top-up and drawn from suspense, applied to the fees through the wallet from the wallet and not the bank, held for review where more was paid than topped up until the old portal''s statement governs, and the top-up purpose reads WALLET',
+        coalesce(ra.status = 'COMPUTED' AND ra.topups = 150000 AND ra.used = 50000 AND ra.available = 100000 AND ra.topup_count = 2 AND ra.used_count = 1
+                 AND rb.status = 'REQUIRES_REVIEW' AND rb.reason_code = 'USED_EXCEEDS_TOPUPS' AND rb.available = 0
+                 AND v_ver = 1 AND self.posted = 0 AND self.skipped = 1 AND self.skipped_why->0->>'why' LIKE 'verified by you%'
+                 AND post1.posted = 1 AND post1.skipped = 1 AND post1.amount = 100000 AND post1.batch_ref ~ '^LEGACY-WALLET/[0-9]{4}/[0-9]{6}$'
+                 AND entry.kind = 'CREDIT' AND entry.amount = 100000 AND entry.old AND entry.acct = '3900'
+                 AND applied IS NOT NULL AND pos.paid = 100000 AND pos.balance = 80000 AND bal = 0
+                 AND v_channel = 'NELFUND wallet'
+                 AND post2.posted = 0 AND credits = 1
+                 AND stated.status = 'COMPUTED' AND stated.available = 20000 AND stated.reason_code = 'STATEMENT_DIFFERS'
+                 AND cat = 'WALLET', false),
+        format('computed %s/%s | a %s top-ups %s used %s available %s | b %s %s available %s | verified %s | self posted %s skipped %s (%s) | posted %s skipped %s amount %s batch %s | entry %s %s old %s from %s | applied %s paid %s balance %s wallet left %s channel %s | again posted %s credits %s | stated %s %s %s | category %s | figures posted %s review %s',
+               c.students, c.with_balance, ra.status, ra.topups, ra.used, ra.available, rb.status, rb.reason_code, rb.available, v_ver, self.posted, self.skipped, self.skipped_why->0->>'why',
+               post1.posted, post1.skipped, post1.amount, post1.batch_ref, entry.kind, entry.amount, entry.old, entry.acct, applied, pos.paid, pos.balance, bal,
+               v_channel, post2.posted, credits, stated.status, stated.available, stated.reason_code, cat, sums.posted, sums.review));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

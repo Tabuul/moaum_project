@@ -101,6 +101,7 @@ export const TITLES: Record<string, string> = {
   "t/cashdesk": "Cash office and final account",
   "t/nelstatus": "NELFUND applicants",
   "t/nellegacy": "Old NELFUND payments",
+  "t/legacywallet": "Old E-Wallet Balances",
   "t/feesetup": "Fee Setup and Schedule",
   "t/acts": "Session record",
   "s/library": "Library",

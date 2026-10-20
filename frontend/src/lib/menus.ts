@@ -442,6 +442,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/ledger", "icon": "card", "label": "Ledger" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
+          { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -498,6 +499,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/ledger", "icon": "card", "label": "Ledger" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
+          { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -757,6 +759,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },
           { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Applicants" },
           { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
+          { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" },
           { "id": "jupeb/payments", "icon": "card", "label": "JUPEB Payments" },
           { "id": "cce/fees", "icon": "card", "label": "CCE Applicant Fees" },
@@ -826,7 +829,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/nelfund", "icon": "swap", "label": "NELFUND Reports & Wallets" },
           { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Students" },
-          { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" }
+          { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
+          { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" }
         ]
       },
       {

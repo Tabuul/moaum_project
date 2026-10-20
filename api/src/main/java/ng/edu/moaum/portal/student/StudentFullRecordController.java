@@ -346,7 +346,9 @@ class StudentFullRecordController {
                         SELECT w.reference, w.double_kind, w.kept_reference, w.session, w.purpose, w.amount, w.confirmed_at, w.withdrawn_at, w.reason
                           FROM finance.old_payment_withdrawn w WHERE w.student_id = :s) x),
                     'wallet', (SELECT coalesce(json_agg(x ORDER BY x.at DESC), '[]'::json) FROM (
-                        SELECT we.kind, we.amount, we.session, we.reference, we.source_code, we.note, we.at FROM finance.wallet_entry we WHERE we.student_id = :s) x)
+                        SELECT we.kind, we.amount, we.session, we.reference, we.source_code, we.note, we.at FROM finance.wallet_entry we WHERE we.student_id = :s) x),
+                    -- V583: the old portal's e-wallet — what it held, what is posted to the wallet, applied and left
+                    'legacyWallet', finance.legacy_wallet_of(:s)
                 )::text
                 """, id);
     }

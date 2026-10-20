@@ -387,6 +387,8 @@ function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name: string
   const sum = (d.summary ?? {}) as Row;
   const fees = (d.schoolFees ?? []) as Row[], refunds = (d.refunds ?? []) as Row[], over = (d.overpayments ?? []) as Row[], withdrawn = (d.withdrawn ?? []) as Row[];
   const wallet = (d.wallet ?? []) as Row[];
+  // V583: the old portal's e-wallet — what it held, what is posted, applied and left
+  const lw = (d.legacyWallet ?? null) as Row | null;
   const [kind, setKind] = useState<"ALL" | "SCHOOL" | "OTHER">("ALL");
   const [ses, setSes] = useState("");
   const sessions = Array.from(new Set(payments.map((p) => p.session).filter((x): x is string => !!x))).sort().reverse();
@@ -445,8 +447,18 @@ function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name: string
             rows={withdrawn.map((w) => [s(w.reference), words(w.double_kind), s(w.session), s(w.purpose), naira(w.amount), day(w.withdrawn_at), s(w.reason)])} />
         </Panel>
       ) : null}
+      {lw ? (
+        <Panel title="Old-portal e-wallet" right={<Pil kind={lw.status === "POSTED" ? "ok" : lw.status === "REQUIRES_REVIEW" ? "bad" : "info"}>{words(lw.status)}</Pil>}>
+          <PBody>
+            <KvGrid cls="grid--3" pairs={[["Topped up on the old portal", naira(lw.topups)], ["Paid from it", naira(lw.used)],
+              [lw.statedBalance != null ? "Balance the old portal states" : "Balance left", naira(lw.statedBalance ?? lw.available)],
+              ["Posted to the wallet", lw.status === "POSTED" ? `${naira(lw.posted)} · ${day(lw.postedAt)} · ${s(lw.batchRef)}` : "Not yet"],
+              ["Applied to fees", naira(lw.applied)], ["Still on the wallet", lw.status === "POSTED" ? naira(Number(lw.posted) - Number(lw.applied) - Number(lw.refunded)) : "—"]]} />
+          </PBody>
+        </Panel>
+      ) : null}
       {wallet.length ? (
-        <Panel title="Wallet (NELFUND and carried credit)">
+        <Panel title="Wallet (NELFUND, old e-wallet and carried credit)">
           <DTable pageSize={0} cols={["Date", "Kind", "Session", "Amount|num", "Reference", "Source", "Note"]}
             rows={wallet.map((w) => [day(w.at), words(w.kind), s(w.session), naira(w.amount), s(w.reference), s(w.source_code), s(w.note)])} />
         </Panel>
