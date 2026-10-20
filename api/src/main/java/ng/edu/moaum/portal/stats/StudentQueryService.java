@@ -168,7 +168,11 @@ public class StudentQueryService {
                 .param("jy", r.jambYear(), Types.INTEGER)
                 .param("q", r.like(), Types.VARCHAR)
                 .param("qid", r.searchId(), Types.OTHER)
-                .param("reg", r.registeredFlag(), Types.BOOLEAN);
+                .param("reg", r.registeredFlag(), Types.BOOLEAN)
+                .param("xlevel", r.expectedLevel(), Types.INTEGER)
+                .param("plen", r.programmeLength(), Types.INTEGER)
+                .param("rec", r.recommendation(), Types.VARCHAR)
+                .param("compl", r.completion(), Types.VARCHAR);
     }
 
     private JdbcClient.StatementSpec withFees(JdbcClient.StatementSpec s, StudentQueryRequest r) {
@@ -183,7 +187,31 @@ public class StudentQueryService {
     }
 
     private static String from(StudentQueryRequest r) {
-        return " FROM people.learner l " + (r.fees() != null ? FEES_JOIN : "") + WHERE + (r.fees() != null ? FEES_PREDICATE : "");
+        return " FROM people.learner l " + (r.fees() != null ? FEES_JOIN : "") + WHERE + (r.fees() != null ? FEES_PREDICATE : "") + position(r);
+    }
+
+    /** V593: the cohort engine's position and the lifecycle reconciliation's reading, joined only when one of their filters is asked
+     *  for — the expected level and whether the record stands below it (people.academic_position), the programme's own length,
+     *  the recommendation (people.lifecycle_recommendation) and the completion check (people.lifecycle_completion) */
+    private static String position(StudentQueryRequest r) {
+        StringBuilder sb = new StringBuilder();
+        if (r.expectedLevel() != null || r.levelBehind() != null) {
+            sb.append(" AND l.student_id IN (SELECT ap.student_id FROM people.academic_position ap JOIN people.student st ON st.id = ap.student_id WHERE ap.computed_level IS NOT NULL");
+            if (r.expectedLevel() != null) sb.append(" AND ap.computed_level = CAST(:xlevel AS int)");
+            if ("YES".equals(r.levelBehind())) sb.append(" AND st.current_level < ap.computed_level");
+            if ("NO".equals(r.levelBehind())) sb.append(" AND st.current_level >= ap.computed_level");
+            sb.append(")\n");
+        }
+        if (r.programmeLength() != null) {
+            sb.append(" AND l.programme_code IN (SELECT pr.code FROM ref.programme pr WHERE coalesce(pr.duration_years, pr.final_level / 100) = CAST(:plen AS int))\n");
+        }
+        if (r.recommendation() != null) {
+            sb.append(" AND l.student_id IN (SELECT lr.student_id FROM people.lifecycle_recommendation lr WHERE lr.recommendation = CAST(:rec AS text))\n");
+        }
+        if (r.completion() != null) {
+            sb.append(" AND l.student_id IN (SELECT lc.student_id FROM people.lifecycle_completion lc WHERE lc.completion = CAST(:compl AS text))\n");
+        }
+        return sb.toString();
     }
 
     /** a page of the learners the query selects, names A–Z, with the total and the scope it was read in */
@@ -326,7 +354,7 @@ public class StudentQueryService {
         StudentQueryRequest r = raw.normalized();
         Scope sc = scope();
         StudentQueryRequest only = new StudentQueryRequest(r.type(), null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         List<Map<String, Object>> sets = bind(jdbc.sql("""
                 SELECT grouping(l.admission_route) AS g_route, grouping(l.centre_code) AS g_centre, grouping(l.study_mode) AS g_mode,
                        grouping(l.status) AS g_status, grouping(l.level) AS g_level, grouping(l.admission_session) AS g_asession,

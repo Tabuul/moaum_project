@@ -58,11 +58,16 @@ class StudentStatsController {
 
     /** the filters, each applied only within the bound: a faculty outside a Dean's own is simply empty */
     record Filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q,
-                   String sex, String entry, String entrySession, String type) {
+                   String sex, String entry, String entrySession, String type, String position) {
     }
 
+    /** V593: the academic positions the figures are given by — the lifecycle reconciliation's own recommendation (V558), read from
+     *  the one cohort engine, so a figure here and the Reconciliation tab count the same students */
+    static final Map<String, String> POSITIONS = Map.of("SP1", "SPILLOVER_YEAR_1", "SP2", "SPILLOVER_YEAR_2",
+            "SP_LIMIT", "MAXIMUM_SPILLOVER_REACHED", "GRADUATION_CANDIDATE", "GRADUATION_CANDIDATE");
+
     private Filters filters(String session, Integer semester, String fac, String dept, String prog, Integer level, String status, String degree, String q,
-                            String sex, String entry, String entrySession, String type) {
+                            String sex, String entry, String entrySession, String type, String position) {
         String s = session != null && session.matches("\\d{4}/\\d{4}") ? session : currentSession();
         Integer sem = semester == null ? null : semester >= 1 && semester <= 3 ? semester : null;
         String sx = sex == null ? null : sex.trim().toUpperCase();
@@ -70,7 +75,15 @@ class StudentStatsController {
                 q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%",
                 "M".equals(sx) || "F".equals(sx) ? sx : null, blank(entry) == null ? null : entry.trim().toUpperCase(),
                 entrySession != null && entrySession.matches("\\d{4}/\\d{4}") ? entrySession : null,
-                type != null && type.trim().toUpperCase().matches("[A-Z][A-Z_]{1,30}") && !"ALL".equalsIgnoreCase(type.trim()) ? type.trim().toUpperCase() : null);
+                type != null && type.trim().toUpperCase().matches("[A-Z][A-Z_]{1,30}") && !"ALL".equalsIgnoreCase(type.trim()) ? type.trim().toUpperCase() : null,
+                position != null && POSITIONS.containsKey(position.trim().toUpperCase()) ? position.trim().toUpperCase() : null);
+    }
+
+    /** V593: the rows, narrowed to an academic position only when one is asked for (the recommendation is not read otherwise) */
+    private static String rows(Filters f) {
+        return f.position() == null ? ROWS : ROWS + """
+                   AND r.student_id IN (SELECT lr.student_id FROM people.lifecycle_recommendation lr WHERE lr.recommendation = :posrec)
+                """;
     }
 
     private static String blank(String v) {
@@ -116,7 +129,8 @@ class StudentStatsController {
                 .param("level", f.level(), Types.INTEGER).param("status", f.status(), Types.VARCHAR).param("degree", f.degree(), Types.VARCHAR)
                 .param("q", f.q(), Types.VARCHAR)
                 .param("sex", f.sex(), Types.VARCHAR).param("entry", f.entry(), Types.VARCHAR).param("es", f.entrySession(), Types.VARCHAR)
-                .param("ptype", f.type(), Types.VARCHAR);
+                .param("ptype", f.type(), Types.VARCHAR)
+                .param("posrec", f.position() == null ? null : POSITIONS.get(f.position()), Types.VARCHAR);
     }
 
     /** the figures: in all, and by faculty, department, programme and degree type — one pass over the rows */
@@ -129,9 +143,9 @@ class StudentStatsController {
                                 @RequestParam(required = false) String status, @RequestParam(required = false) String degree,
                                 @RequestParam(required = false) String q, @RequestParam(required = false) String sex,
                                 @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession,
-                                @RequestParam(required = false) String type) {
+                                @RequestParam(required = false) String type, @RequestParam(required = false) String position) {
         Bound b = bound();
-        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession, type);
+        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession, type, position);
         String key = b + "|" + f;
         Cached hit = summaries.get(key);
         if (hit != null && System.currentTimeMillis() - hit.at() < SUMMARY_TTL_MS) return hit.value();
@@ -143,7 +157,7 @@ class StudentStatsController {
 
     private Map<String, Object> count(Bound b, Filters f) {
         List<Map<String, Object>> groups = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + """
+                WITH r AS (""" + rows(f) + """
                 )
                 SELECT grouping(faculty_code) AS g_f, grouping(dept_code) AS g_d, grouping(programme_code) AS g_p, grouping(degree_type) AS g_t,
                        grouping(sex) AS g_s, grouping(entry_mode) AS g_e, grouping(level) AS g_l, grouping(entry_session) AS g_es,
@@ -203,10 +217,47 @@ class StudentStatsController {
         out.put("byLevel", byLevel);
         out.put("byEntrySession", byEntrySession);
         out.put("byProgrammeType", byType);
+        out.put("byPosition", positions(b, f));
         out.put("options", options(b, f));
         out.put("window", jdbc.sql("""
                 SELECT number, registration_opens, registration_closes, state FROM policy.semester WHERE session = :s ORDER BY number
                 """).param("s", f.session()).query().listOfRows());
+        return out;
+    }
+
+    /** V593: the figures by academic position — SP1, SP2, beyond the spillover limit, graduation candidate — as the lifecycle
+     *  reconciliation recommends them now; null for a session other than the current one, whose positions are not kept */
+    private List<Map<String, Object>> positions(Bound b, Filters f) {
+        if (!f.session().equals(currentSession())) return null;
+        List<Map<String, Object>> groups = bind(jdbc.sql("""
+                WITH r AS (""" + rows(f) + """
+                )
+                SELECT lr.recommendation,
+                       count(*) AS total,
+                       count(*) FILTER (WHERE r.paid) AS paid,
+                       count(*) FILTER (WHERE r.registered) AS registered,
+                       count(*) FILTER (WHERE r.paid AND NOT r.registered) AS paid_not_registered,
+                       count(*) FILTER (WHERE r.pay_status IN ('PART_PAYMENT','NOT_PAID')) AS not_paid,
+                       count(*) FILTER (WHERE r.pay_status = 'NO_CHARGE') AS no_charge,
+                       count(*) FILTER (WHERE NOT r.registered) AS not_registered,
+                       count(*) FILTER (WHERE r.registered AND r.pay_status IN ('PART_PAYMENT','NOT_PAID')) AS registered_owing,
+                       count(*) FILTER (WHERE r.pay_status = 'PART_PAYMENT') AS part_paid,
+                       count(*) FILTER (WHERE r.sex = 'M') AS male, count(*) FILTER (WHERE r.sex = 'F') AS female,
+                       count(*) FILTER (WHERE r.matriculated_at IS NOT NULL) AS matriculated,
+                       count(*) FILTER (WHERE r.entry_session = :s) AS fresh,
+                       coalesce(sum(r.payable), 0) AS payable, coalesce(sum(r.paid_amount), 0) AS paid_amount, coalesce(sum(r.outstanding), 0) AS outstanding
+                  FROM r JOIN people.lifecycle_recommendation lr ON lr.student_id = r.student_id
+                 WHERE lr.recommendation IN ('SPILLOVER_YEAR_1', 'SPILLOVER_YEAR_2', 'MAXIMUM_SPILLOVER_REACHED', 'GRADUATION_CANDIDATE')
+                 GROUP BY lr.recommendation
+                """), b, f).query().listOfRows();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String pos : List.of("SP1", "SP2", "SP_LIMIT", "GRADUATION_CANDIDATE")) {
+            Map<String, Object> g = groups.stream().filter(x -> POSITIONS.get(pos).equals(x.get("recommendation"))).findFirst().orElse(null);
+            Map<String, Object> row = counts(g == null ? Map.of("total", 0L, "paid", 0L, "registered", 0L, "paid_not_registered", 0L, "not_paid", 0L, "no_charge", 0L,
+                    "not_registered", 0L, "payable", java.math.BigDecimal.ZERO, "paid_amount", java.math.BigDecimal.ZERO, "outstanding", java.math.BigDecimal.ZERO) : g, b.money());
+            row.put("position", pos);
+            out.add(row);
+        }
         return out;
     }
 
@@ -261,9 +312,9 @@ class StudentStatsController {
                                  @RequestParam(defaultValue = "ALL") String which, @RequestParam(required = false) String q,
                                  @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
                                  @RequestParam(required = false) String sex, @RequestParam(required = false) String entry, @RequestParam(required = false) String entrySession,
-                                 @RequestParam(required = false) String type) {
+                                 @RequestParam(required = false) String type, @RequestParam(required = false) String position) {
         Bound b = bound();
-        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession, type);
+        Filters f = filters(session, semester, fac, dept, prog, level, status, degree, q, sex, entry, entrySession, type, position);
         String w = WHICH.contains(which.toUpperCase()) ? which.toUpperCase() : "ALL";
         String pred = switch (w) {
             case "PAID" -> " AND r.paid";
@@ -279,7 +330,7 @@ class StudentStatsController {
         int sz = Math.max(1, Math.min(size, 500));
         int pg = Math.max(0, page);
         List<Map<String, Object>> rows = bind(jdbc.sql("""
-                WITH r AS (""" + ROWS + """
+                WITH r AS (""" + rows(f) + """
                 )
                 SELECT count(*) OVER () AS total_rows, r.*
                   FROM r

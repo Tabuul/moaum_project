@@ -8,13 +8,17 @@ export interface QueryFilters {
   status: string; sex: string; matriculated: string; finalYear: string; spillover: string;
   graduation: string; registration: string; fees: string; classification: string;
   jupebCombination: string; jupebSubject: string; prelimRoute: string;
-  entryYear: string; matricYear: string; jambYear: string; q: string;
+  entryYear: string; matricYear: string; jambYear: string;
+  /** V593: the cohort engine's level, whether the record is below it, the programme's length, the lifecycle reconciliation's reading */
+  expectedLevel: string; levelBehind: string; programmeLength: string; recommendation: string; completion: string;
+  q: string;
 }
 
 export const QUERY_KEYS: (keyof QueryFilters)[] = [
   "type", "route", "centre", "studyMode", "fac", "dept", "prog", "pgAward", "session", "semester", "admissionSession", "level",
   "status", "sex", "matriculated", "finalYear", "spillover", "graduation", "registration", "fees", "classification",
-  "jupebCombination", "jupebSubject", "prelimRoute", "entryYear", "matricYear", "jambYear", "q",
+  "jupebCombination", "jupebSubject", "prelimRoute", "entryYear", "matricYear", "jambYear",
+  "expectedLevel", "levelBehind", "programmeLength", "recommendation", "completion", "q",
 ];
 
 export const EMPTY_QUERY: QueryFilters = Object.fromEntries(QUERY_KEYS.map((k) => [k, ""])) as unknown as QueryFilters;
@@ -27,6 +31,18 @@ const YEAR = /^(19[5-9]\d|20\d\d|2100)$/;
 const ONE_OF: Partial<Record<keyof QueryFilters, string[]>> = {
   sex: ["M", "F"], matriculated: ["YES", "NO"], finalYear: ["YES", "NO"], graduation: ["GRADUATED", "NOT_GRADUATED"],
   registration: ["REGISTERED", "NOT_REGISTERED"], fees: ["OUTSTANDING", "COMPLETED"], classification: ["CLASSIFIED", "REQUIRES_CLASSIFICATION"],
+  levelBehind: ["YES", "NO"],
+};
+
+/** V593: the lifecycle reconciliation's recommendations and completion states (Student Cohorts → Reconciliation), in words */
+export const RECOMMENDATION_WORD: Record<string, string> = {
+  WITHIN_NORMAL_DURATION: "Within the normal duration", GRADUATION_CANDIDATE: "Graduation candidate", SPILLOVER_YEAR_1: "Spillover year 1 (SP1)",
+  SPILLOVER_YEAR_2: "Spillover year 2 (SP2)", MAXIMUM_SPILLOVER_REACHED: "Maximum spillover reached", REQUIRES_REVIEW: "Requires review",
+  DATA_INCOMPLETE: "Data incomplete", ON_GRADUATION_LIST: "On the graduation list",
+};
+export const COMPLETION_WORD: Record<string, string> = {
+  COMPLETED: "Every course passed", OUTSTANDING_COURSES: "Courses outstanding", AWAITING_RESULT: "Awaiting a result",
+  FINAL_LEVEL_NOT_REACHED: "Final level not reached", NO_PUBLISHED_RESULT: "No published result",
 };
 
 /** the filters as the address carries them; anything malformed is dropped rather than sent (the server checks again) */
@@ -42,6 +58,10 @@ export function readQueryFilters(p: Record<string, string | string[] | undefined
     else if (k === "session" || k === "admissionSession") ok = SESSION.test(raw);
     else if (k === "semester") ok = /^[123]$/.test(raw);
     else if (k === "level") ok = /^\d{1,3}$/.test(raw);
+    else if (k === "expectedLevel") ok = /^[1-9]00$/.test(raw);
+    else if (k === "programmeLength") ok = /^([1-9]|10)$/.test(raw);
+    else if (k === "recommendation") ok = raw in RECOMMENDATION_WORD;
+    else if (k === "completion") ok = raw in COMPLETION_WORD;
     else if (k === "jupebCombination" || k === "jupebSubject") ok = UUID.test(raw);
     else if (k === "entryYear" || k === "matricYear" || k === "jambYear") ok = YEAR.test(raw);
     else if (k === "pgAward") ok = raw === "-" || CODE.test(raw);
@@ -213,6 +233,11 @@ export function activeFilters(f: QueryFilters, o: QueryOptions | null): { key: k
   push("entryYear", "Entry year", f.entryYear);
   push("matricYear", "Matriculation year", f.matricYear);
   push("jambYear", "JAMB year", f.jambYear);
+  push("expectedLevel", "Expected level", `${f.expectedLevel} Level`);
+  push("levelBehind", "Level on record", f.levelBehind === "YES" ? "Below the expected level" : "At or above the expected level");
+  push("programmeLength", "Programme length", `${f.programmeLength} years`);
+  push("recommendation", "Reconciliation", RECOMMENDATION_WORD[f.recommendation] ?? f.recommendation);
+  push("completion", "Completion", COMPLETION_WORD[f.completion] ?? f.completion);
   push("q", "Search", `“${f.q}”`);
   return out;
 }

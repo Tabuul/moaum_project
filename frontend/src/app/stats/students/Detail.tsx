@@ -12,7 +12,7 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/pr
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { DEGREE_WORD, SEMESTER_WORD, WHICH_WORD, statQuery, type StatFilters, type StatPage, type StatRow, type Which } from "@/lib/stats";
+import { DEGREE_WORD, POSITION_WORD, SEMESTER_WORD, WHICH_WORD, statQuery, type Position, type StatFilters, type StatPage, type StatRow, type Which } from "@/lib/stats";
 
 const PAY: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = { FULLY_PAID: ["Paid", "ok"], PART_PAYMENT: ["Part payment", "warn"], NOT_PAID: ["Not paid", "bad"], NO_CHARGE: ["No charge", "grey"] };
 const REG: Record<string, [string, "ok" | "warn" | "bad" | "grey" | "info"]> = { LOCKED: ["Locked", "ok"], APPROVED: ["Approved", "ok"], ENDORSED: ["Endorsed", "ok"], SUBMITTED: ["Submitted", "info"], REGISTERED: ["Registered", "ok"], DRAFT: ["Draft", "warn"], RETURNED: ["Returned", "warn"], OPEN: ["Not registered", "bad"] };
@@ -26,7 +26,7 @@ export function Detail({ data, filters, which, q: initialQ }: { data: StatPage; 
   const f: StatFilters = { ...filters, session: data.session, semester: data.semester == null ? "" : String(data.semester) };
   const money = data.scope.money;
   const pages = Math.max(1, Math.ceil(data.total / data.size));
-  const scopeWords = [data.scope.label, f.type ? `Student type: ${data.rows[0]?.programme_type_name ?? f.type}` : null, data.session, SEMESTER_WORD(data.semester), f.fac, f.dept, f.prog, f.level ? `${f.level} Level` : null, f.degree ? DEGREE_WORD[f.degree] : null, initialQ ? `search “${initialQ}”` : null].filter(Boolean).join(" · ");
+  const scopeWords = [data.scope.label, f.type ? `Student type: ${data.rows[0]?.programme_type_name ?? f.type}` : null, data.session, SEMESTER_WORD(data.semester), f.fac, f.dept, f.prog, f.level ? `${f.level} Level` : null, f.degree ? DEGREE_WORD[f.degree] : null, f.position ? POSITION_WORD[f.position as Position] : null, initialQ ? `search “${initialQ}”` : null].filter(Boolean).join(" · ");
   const go = (extra: Record<string, string | number | undefined>) => queryNav(`/stats/students?${statQuery(f, { which, q: initialQ, ...extra })}`);
 
   /* the columns follow the figure opened */

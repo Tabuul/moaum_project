@@ -282,10 +282,13 @@ class CohortController {
     @Transactional(readOnly = true)
     Map<String, Object> levels(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                @RequestParam(required = false) String basis, @RequestParam(required = false) String q,
+                               @RequestParam(required = false) Integer level, @RequestParam(required = false) String spillover,
                                @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size) {
         OfficeScope.Bound b = scope.bound(fac, dept, prog);
         String bs = blank(basis) == null ? null : basis.trim().toUpperCase();
         if (bs != null && !BASES.contains(bs)) bs = null;
+        Integer lv = toLevel(level);
+        String sp = spillover(spillover);
         String from = """
                  FROM people.level_correction c
                  JOIN people.student s ON s.id = c.student_id
@@ -294,11 +297,23 @@ class CohortController {
                  JOIN ref.faculty f ON f.code = p.faculty_code
                 WHERE (:fac::text IS NULL OR f.code = :fac) AND (:dept::text IS NULL OR d.code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
                   AND (:like::text IS NULL OR s.matric_no ILIKE :like OR s.surname ILIKE :like OR s.other_names ILIKE :like OR (s.surname || ' ' || s.other_names) ILIKE :like)
+                  AND (:lv::int IS NULL OR c.proposed_level = :lv)
+                  AND (:sp::text IS NULL OR (:sp = 'NONE' AND coalesce(c.spillover_state, '') NOT LIKE 'SPILLOVER%') OR c.spillover_state = :sp)
                 """;
         String like = blank(q) == null ? null : "%" + q.trim() + "%";
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("counts", jdbc.sql("SELECT c.basis, count(*) AS n" + from + " GROUP BY c.basis")
                 .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .param("lv", lv, Types.INTEGER).param("sp", sp, Types.VARCHAR)
+                .query().listOfRows());
+        // V593: where the waiting corrections would take the students, and their spillover position, under the other filters
+        out.put("byLevel", jdbc.sql("SELECT c.proposed_level AS level, count(*) AS n" + from + " GROUP BY c.proposed_level ORDER BY c.proposed_level")
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .param("lv", null, Types.INTEGER).param("sp", sp, Types.VARCHAR)
+                .query().listOfRows());
+        out.put("bySpillover", jdbc.sql("SELECT CASE WHEN c.spillover_state LIKE 'SPILLOVER%' THEN c.spillover_state ELSE 'NONE' END AS spillover, count(*) AS n" + from + " GROUP BY 1 ORDER BY 1")
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .param("lv", lv, Types.INTEGER).param("sp", null, Types.VARCHAR)
                 .query().listOfRows());
         int sz = Math.max(1, Math.min(size, 500));
         int pg = Math.max(1, page);
@@ -310,6 +325,7 @@ class CohortController {
                  ORDER BY lower(s.surname), lower(s.other_names), s.id
                  LIMIT :n OFFSET :o
                 """).param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .param("lv", lv, Types.INTEGER).param("sp", sp, Types.VARCHAR)
                 .param("basis", bs, Types.VARCHAR).param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
         rows.forEach(r -> r.remove("total_rows"));
@@ -321,7 +337,21 @@ class CohortController {
     }
 
     public record LevelApply(List<UUID> studentIds, List<String> bases, String fac, String dept, String prog,
-                             @Size(max = 2000) String reason, @Size(max = 60) String batch, Integer limit, Boolean dryRun) {
+                             @Size(max = 2000) String reason, @Size(max = 60) String batch, Integer limit, Boolean dryRun,
+                             Integer toLevel, @Size(max = 40) String spillover, @Size(max = 80) String q) {
+    }
+
+    private static final java.util.Set<String> SPILLOVER = java.util.Set.of("SPILLOVER_YEAR_1", "SPILLOVER_YEAR_2", "SPILLOVER_LIMIT_REACHED", "NONE");
+
+    /** V593: a level to correct to, when it is one */
+    private static Integer toLevel(Integer v) {
+        return v != null && v >= 100 && v <= 900 && v % 100 == 0 ? v : null;
+    }
+
+    /** V593: a spillover position, when it is one */
+    private static String spillover(String v) {
+        String t = blank(v) == null ? null : v.trim().toUpperCase();
+        return t != null && SPILLOVER.contains(t) ? t : null;
     }
 
     /** raise records to their computed level — the chosen students, or a basis within the scope — a batch at a time, never lowering,
@@ -337,12 +367,13 @@ class CohortController {
                 new DomainRuleViolation.Remedy("Choose spillover, registration or arithmetic.", "Registry"));
         if (body.studentIds() != null && body.studentIds().size() > 5000) throw new DomainRuleViolation("LEVEL_CORRECTION_SIZE", "Choose at most 5,000 students at a time.",
                 new DomainRuleViolation.Remedy("Apply by basis, or choose fewer students.", "Registry"));
-        Map<String, Object> r = jdbc.sql("SELECT * FROM people.apply_level_corrections(CAST(:ids AS uuid[]), CAST(:bases AS text[]), :fac, :dept, :prog, :reason, :batch, :lim, :dry)")
+        Map<String, Object> r = jdbc.sql("SELECT * FROM people.apply_level_corrections(CAST(:ids AS uuid[]), CAST(:bases AS text[]), :fac, :dept, :prog, :reason, :batch, :lim, :dry, :lv, :sp, :q)")
                 .param("ids", body.studentIds() == null || body.studentIds().isEmpty() ? null : body.studentIds().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
                 .param("bases", bases == null ? null : bases.toArray(String[]::new), Types.ARRAY)
                 .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR)
                 .param("reason", blank(body.reason()), Types.VARCHAR).param("batch", blank(body.batch()), Types.VARCHAR)
                 .param("lim", body.limit() == null ? 500 : Math.max(1, Math.min(body.limit(), 1000)), Types.INTEGER).param("dry", dry)
+                .param("lv", toLevel(body.toLevel()), Types.INTEGER).param("sp", spillover(body.spillover()), Types.VARCHAR).param("q", blank(body.q()), Types.VARCHAR)
                 .query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>(r);
         out.put("dryRun", dry);
@@ -367,12 +398,17 @@ class CohortController {
                  WHERE c.basis = ANY (CAST(:bases AS text[]))
                    AND (CAST(:ids AS uuid[]) IS NULL OR c.student_id = ANY (CAST(:ids AS uuid[])))
                    AND (:fac::text IS NULL OR p.faculty_code = :fac) AND (:dept::text IS NULL OR p.dept_code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+                   AND (:lv::int IS NULL OR c.proposed_level = :lv)
+                   AND (:sp::text IS NULL OR (:sp = 'NONE' AND coalesce(c.spillover_state, '') NOT LIKE 'SPILLOVER%') OR c.spillover_state = :sp)
+                   AND (:like::text IS NULL OR s.matric_no ILIKE :like OR s.surname ILIKE :like OR s.other_names ILIKE :like OR (s.surname || ' ' || s.other_names) ILIKE :like)
                    AND s.current_level < c.proposed_level
                  ORDER BY c.student_id
                  LIMIT :lim
                 """).param("bases", bases.toArray(String[]::new), Types.ARRAY)
                 .param("ids", body.studentIds() == null || body.studentIds().isEmpty() ? null : body.studentIds().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
                 .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("lim", lim)
+                .param("lv", toLevel(body.toLevel()), Types.INTEGER).param("sp", spillover(body.spillover()), Types.VARCHAR)
+                .param("like", blank(body.q()) == null ? null : "%" + body.q().trim() + "%", Types.VARCHAR)
                 .query().listOfRows();
         return FeeEffect.of(jdbc, pick.stream().map(r -> (UUID) r.get("student_id")).toList(),
                 pick.stream().map(r -> ((Number) r.get("proposed_level")).intValue()).toList());

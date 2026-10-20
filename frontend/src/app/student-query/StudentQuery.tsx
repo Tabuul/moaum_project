@@ -17,7 +17,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import {
-  PRESETS, SPILLOVER_WORD, activeFilters, spilloverWord, applyPreset, awardWord, exportHeading, levelWord, modeWord, queryString, statusWord,
+  COMPLETION_WORD, PRESETS, RECOMMENDATION_WORD, SPILLOVER_WORD, activeFilters, spilloverWord, applyPreset, awardWord, exportHeading, levelWord, modeWord, queryString, statusWord,
   typeStudentWord, withChange, EMPTY_QUERY, type Breakdown, type QueryFilters, type QueryOptions, type QueryPage, type QueryRow, type QuerySummary,
 } from "@/lib/student-query";
 
@@ -194,11 +194,17 @@ export function StudentQuery({ filters, group, options, summary, list }: {
       </div>
 
       <details className="mt-2">
-        <summary className="lnk" style={{ cursor: "pointer" }}>More filters — matriculation, final year, spillover, graduation, course registration{o.fees ? ", school fees" : ""}{boundType ? "" : ", classification"}, years</summary>
+        <summary className="lnk" style={{ cursor: "pointer" }}>More filters — matriculation, final year, spillover, expected level, reconciliation, graduation, course registration{o.fees ? ", school fees" : ""}{boundType ? "" : ", classification"}, years</summary>
         <div className="scope mt-2">
           {isJupeb || isPrelim ? null : <Sel id="sq-mat" label="Matriculated" value={f.matriculated} any="Any" opts={[["YES", "Matriculated"], ["NO", "Not yet matriculated"]]} onChange={(v) => set("matriculated", v)} />}
           {isJupeb || isPrelim ? null : <Sel id="sq-final" label="Final year" value={f.finalYear} any="Any" opts={[["YES", "Final year only"], ["NO", "Not final year"]]} onChange={(v) => set("finalYear", v)} />}
           {isJupeb || isPrelim ? null : <Sel id="sq-spill" label="Spillover" value={f.spillover} any="Any" opts={Object.entries(SPILLOVER_WORD)} onChange={(v) => set("spillover", v)} />}
+          {/* V593: where the cohort engine places the student, and the lifecycle reconciliation's reading */}
+          {isJupeb || isPrelim ? null : <Sel id="sq-xlevel" label="Expected level" value={f.expectedLevel} any="Any" opts={[100, 200, 300, 400, 500, 600].map((l) => [String(l), `${l} Level`])} onChange={(v) => set("expectedLevel", v)} />}
+          {isJupeb || isPrelim ? null : <Sel id="sq-behind" label="Level on record" value={f.levelBehind} any="Any" opts={[["YES", "Below the expected level"], ["NO", "At or above the expected level"]]} onChange={(v) => set("levelBehind", v)} />}
+          {isJupeb || isPrelim ? null : <Sel id="sq-plen" label="Programme length" value={f.programmeLength} any="Any" opts={[3, 4, 5, 6, 7].map((n) => [String(n), `${n} years`])} onChange={(v) => set("programmeLength", v)} />}
+          {isJupeb || isPrelim ? null : <Sel id="sq-rec" label="Reconciliation" value={f.recommendation} any="Any" opts={Object.entries(RECOMMENDATION_WORD)} onChange={(v) => set("recommendation", v)} />}
+          {isJupeb || isPrelim ? null : <Sel id="sq-compl" label="Completion (as last analysed)" value={f.completion} any="Any" opts={Object.entries(COMPLETION_WORD)} onChange={(v) => set("completion", v)} />}
           <Sel id="sq-grad" label="Graduation" value={f.graduation} any="Any" opts={[["GRADUATED", "Graduated / completed"], ["NOT_GRADUATED", "Not graduated"]]} onChange={(v) => set("graduation", v)} />
           {isPrelim ? null : <Sel id="sq-reg" label="Course registration" value={f.registration} any="Any" opts={[["REGISTERED", "Registered"], ["NOT_REGISTERED", "Not registered"]]} onChange={(v) => set("registration", v)} />}
           {o.fees && !isJupeb && !isPrelim ? <Sel id="sq-fees" label="School fees" value={f.fees} any="Any" opts={[["OUTSTANDING", "Outstanding"], ["COMPLETED", "Completed"]]} onChange={(v) => set("fees", v)} /> : null}

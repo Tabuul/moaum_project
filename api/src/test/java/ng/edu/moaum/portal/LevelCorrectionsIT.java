@@ -88,4 +88,70 @@ class LevelCorrectionsIT {
         assertThat(decision.get("previous_level")).isEqualTo(100);
         assertThat(decision.get("new_level")).isEqualTo(400);
     }
+
+    private void position(UUID student, int computed, String state, int years) {
+        jdbc.sql("""
+                UPDATE people.academic_position SET computed_level = :c, final_level = 400, spillover_years = :y, spillover_state = :st,
+                       classification = CASE WHEN :y > 0 THEN 'SPILLOVER' ELSE 'ACTIVE' END, issues = ARRAY['LEVEL_CONFLICT']
+                 WHERE student_id = :s
+                """).param("c", computed).param("y", years).param("st", state).param("s", student).update();
+    }
+
+    private static List<String> names(ResponseEntity<Map> r) {
+        return ((List<Map<String, Object>>) r.getBody().get("rows")).stream().map(x -> String.valueOf(x.get("other_names"))).sorted().toList();
+    }
+
+    /** V593: found by the level they should be at and by spillover position, every one found corrected after a count, the rest
+     *  left; Student Query finds them by the engine's level and whether the record is below it; the statistics take a position */
+    @Test
+    void everyOneFoundByTheLevelTheyShouldBeAtIsCorrectedAfterACount() {
+        String tag = it.freeSurname("ZZLW");
+        UUID sp1 = it.student(tag, "C00023", it.freeNumber("MOAUM/ADM/95/", 6), it.freeNumber("MOAUM/MTC/95/", 5), 100);
+        UUID sp2 = it.student(tag + "B", "C00023", it.freeNumber("MOAUM/ADM/95/", 6), it.freeNumber("MOAUM/MTC/95/", 5), 100);
+        UUID third = it.student(tag + "C", "C00023", it.freeNumber("MOAUM/ADM/95/", 6), it.freeNumber("MOAUM/MTC/95/", 5), 200);
+        position(sp1, 400, "SPILLOVER_YEAR_1", 1);
+        position(sp2, 400, "SPILLOVER_YEAR_2", 2);
+        position(third, 300, "NORMAL", 0);
+
+        // found by the level they should be at, by spillover position; the counts by level and position
+        ResponseEntity<Map> at400 = it.get(academic, "/api/v1/cohorts/levels?q=" + tag + "&level=400");
+        assertThat(at400.getStatusCode().value()).as(String.valueOf(at400.getBody())).isEqualTo(200);
+        assertThat(((Number) at400.getBody().get("total")).intValue()).isEqualTo(2);
+        assertThat(((Number) it.get(academic, "/api/v1/cohorts/levels?q=" + tag + "&spillover=SPILLOVER_YEAR_1").getBody().get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number) it.get(academic, "/api/v1/cohorts/levels?q=" + tag + "&spillover=NONE").getBody().get("total")).intValue()).isEqualTo(1);
+        Map<String, Object> all = it.get(academic, "/api/v1/cohorts/levels?q=" + tag).getBody();
+        assertThat((List<Map<String, Object>>) all.get("byLevel")).extracting(x -> x.get("level") + ":" + x.get("n")).containsExactly("300:1", "400:2");
+        assertThat((List<Map<String, Object>>) all.get("bySpillover")).extracting(x -> x.get("spillover") + ":" + x.get("n"))
+                .containsExactlyInAnyOrder("NONE:1", "SPILLOVER_YEAR_1:1", "SPILLOVER_YEAR_2:1");
+
+        // Student Query: by the engine's level and whether the record is below it
+        ResponseEntity<Map> behind = it.get(academic, "/api/v1/stats/students/query?q=" + tag + "&expectedLevel=300&levelBehind=YES");
+        assertThat(behind.getStatusCode().value()).as(String.valueOf(behind.getBody())).isEqualTo(200);
+        assertThat(((Number) behind.getBody().get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number) it.get(academic, "/api/v1/stats/students/query?q=" + tag + "&expectedLevel=400&levelBehind=YES").getBody().get("total")).intValue()).isEqualTo(2);
+        assertThat(it.get(academic, "/api/v1/stats/students/query?q=" + tag + "&recommendation=SPILLOVER_YEAR_1&completion=OUTSTANDING_COURSES&programmeLength=4")
+                .getStatusCode().value()).isEqualTo(200);
+
+        // every one found at 400 counted, then corrected; the one who should be at 300 is left
+        Map<String, Object> found = Map.of("toLevel", 400, "q", tag);
+        Map<String, Object> dry = it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/apply", found).getBody();
+        assertThat(((Number) dry.get("selected")).intValue()).isEqualTo(2);
+        assertThat(((Number) dry.get("corrected")).intValue()).isZero();
+        Map<String, Object> run = new java.util.HashMap<>(found);
+        run.put("dryRun", false);
+        run.put("reason", "Every student who should be at 400 Level, found by the level");
+        ResponseEntity<Map> done = it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/apply", run);
+        assertThat(done.getStatusCode().value()).as(String.valueOf(done.getBody())).isEqualTo(200);
+        assertThat(((Number) done.getBody().get("corrected")).intValue()).isEqualTo(2);
+        assertThat(((Number) done.getBody().get("remaining")).intValue()).isZero();
+        assertThat(jdbc.sql("SELECT string_agg(current_level::text, ',' ORDER BY surname) FROM people.student WHERE id IN (:a, :b, :c)")
+                .param("a", sp1).param("b", sp2).param("c", third).query(String.class).single()).isEqualTo("400,400,200");
+        assertThat(((Number) it.get(academic, "/api/v1/stats/students/query?q=" + tag + "&expectedLevel=400&levelBehind=YES").getBody().get("total")).intValue()).isZero();
+
+        // the statistics take a position (their figures are read when the University has a current session)
+        ResponseEntity<Map> stats = it.get(academic, "/api/v1/stats/students/summary?position=SP1");
+        assertThat(stats.getStatusCode().value()).as(String.valueOf(stats.getBody())).isEqualTo(200);
+        assertThat(stats.getBody()).containsKey("byPosition");
+        assertThat(it.get(academic, "/api/v1/stats/students?position=GRADUATION_CANDIDATE").getStatusCode().value()).isEqualTo(200);
+    }
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EMPTY_QUERY, PRESETS, activeFilters, applyPreset, exportHeading, levelWord, queryString, readQueryFilters, spilloverWord, withChange, type QueryOptions } from "./student-query.ts";
+import { EMPTY_QUERY, PRESETS, RECOMMENDATION_WORD, activeFilters, applyPreset, exportHeading, levelWord, queryString, readQueryFilters, spilloverWord, withChange, type QueryOptions } from "./student-query.ts";
 
 const OPTIONS: QueryOptions = {
   scope: { kind: "UNIVERSITY", label: "University", programmeType: null }, currentSession: "2025/2026", type: null,
@@ -76,4 +76,17 @@ test("a spillover reads SP1, SP2 or the limit reached; within the programme's le
   assert.equal(spilloverWord("NORMAL"), null);
   assert.equal(spilloverWord("NOT_APPLICABLE"), null);
   assert.equal(spilloverWord(null), null);
+});
+
+test("V593: the cohort engine's filters are read from the address only in their shapes and said in words", () => {
+  const f = readQueryFilters({ expectedLevel: "400", levelBehind: "YES", programmeLength: "5", recommendation: "SPILLOVER_YEAR_1", completion: "OUTSTANDING_COURSES" });
+  assert.deepEqual([f.expectedLevel, f.levelBehind, f.programmeLength, f.recommendation, f.completion], ["400", "YES", "5", "SPILLOVER_YEAR_1", "OUTSTANDING_COURSES"]);
+  const bad = readQueryFilters({ expectedLevel: "450", levelBehind: "maybe", programmeLength: "11", recommendation: "SP3", completion: "DONE" });
+  assert.deepEqual([bad.expectedLevel, bad.levelBehind, bad.programmeLength, bad.recommendation, bad.completion], ["", "", "", "", ""]);
+  const words = activeFilters(f, null).map((x) => `${x.label}: ${x.value}`);
+  assert.ok(words.includes("Expected level: 400 Level"));
+  assert.ok(words.includes("Level on record: Below the expected level"));
+  assert.ok(words.includes(`Reconciliation: ${RECOMMENDATION_WORD.SPILLOVER_YEAR_1}`));
+  assert.ok(words.includes("Completion: Courses outstanding"));
+  assert.match(queryString(f), /expectedLevel=400.*levelBehind=YES.*programmeLength=5.*recommendation=SPILLOVER_YEAR_1.*completion=OUTSTANDING_COURSES/);
 });

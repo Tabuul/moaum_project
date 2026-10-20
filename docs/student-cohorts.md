@@ -334,3 +334,35 @@ candidates do not reach the graduation list.
   hold the automatic start (`finance.fee_setting.spill_lines_hold_start`, off by default;
   `PUT /api/v1/finance/spillover-basis/hold-start`). A person may still make the session current.
 - **Tests:** `FeeGapsKeptClearanceStartWarningIT`; check.sql's V584 and V585 blocks.
+
+## 17. Corrected by the level a student should be at; the positions in Statistics and Student Query (V593)
+
+The level, spillover and graduation reconciliation the University asked for in October 2026 was already this engine: the
+cohort, the programme's own length (4, 5, 6 years; never guessed), merged sessions, deferments and the spillover limit
+(`people.academic_position`), the corrections that bring a record to its level and never lower it (§10), and the lifecycle
+reconciliation of graduation candidates, SP1, SP2 and the maximum, with batches, preview, history and correction (§11). V593
+adds what was missing to act on it a level at a time, and to see it everywhere from the same engine:
+
+- **Level corrections by the level a student should be at.** Student Cohorts → Level corrections finds the records by
+  *Should be at* (100–600 Level) and by *Spillover* (SP1, SP2, beyond the limit, or within the programme's length), with the
+  counts of each as buttons; *Choose all on this page*; and *Correct every one found*. The latter counts first (a dry run of
+  `people.apply_level_corrections` with the same filters — now also `p_to_level`, `p_spillover`, `p_q`): how many are found,
+  how many go by spillover and by their own registration, and how many only the count of sessions supports, which are left for
+  review unless included. Each batch of 500 is read again from the engine when it is applied, so a record changed since, or no
+  longer below its level, is left alone; no level is lowered; each change goes on the cohort decision history with the reason.
+  API: `GET /api/v1/cohorts/levels?level=&spillover=` (with `byLevel`, `bySpillover`), `POST /levels/apply`
+  `{toLevel, spillover, q, …}`.
+- **Student Statistics by academic position.** For the current session the figures carry *By academic position*: SP1, SP2,
+  beyond the spillover limit and graduation candidates, as the lifecycle reconciliation recommends them
+  (`people.lifecycle_recommendation`), each figure opening its students; the filter *Academic position* narrows every figure
+  (`GET /api/v1/stats/students/summary?position=SP1|SP2|SP_LIMIT|GRADUATION_CANDIDATE`, `byPosition`).
+- **Student Query.** *More filters* gains *Expected level* (the engine's), *Level on record* (below the expected level, or at or
+  above it), *Programme length* (the programme's own: its stated length, else its final level ÷ 100), *Reconciliation* (the
+  lifecycle recommendation) and *Completion (as last analysed)* (`people.lifecycle_completion`; run *Refresh analysis* on the
+  Reconciliation tab first). Each is joined only when asked for.
+
+Not changed, by the University's earlier decisions: a spillover student stays ACTIVE with the SP mark (no SPILLOVER status);
+nobody becomes GRADUATED except by the Senate's approval (a graduation candidate goes on the graduation list); the maximum is the
+officer's choice; a record above its computed level is never lowered and a graduated one never touched.
+
+- **Tests:** `LevelCorrectionsIT.everyOneFoundByTheLevelTheyShouldBeAtIsCorrectedAfterACount`; check.sql's V593 block.

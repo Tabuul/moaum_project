@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 424
+\set EXPECTED 425
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21195,6 +21195,71 @@ BEGIN
         coalesce(c_bsu = 'BSU-ZQX 106' AND c_moau = 'MOAU-ZQX 106' AND c_plain = 'ZQX 107' AND twin = 'MOAU-ZQX 106'
                  AND other_prefix = 'CAT_CODE' AND four_letters = 'CAT_CODE' AND again = 'EXISTS', false),
         format('bsu %s moau %s plain %s twin %s | other prefix %s four letters %s again %s', c_bsu, c_moau, c_plain, twin, other_prefix, four_letters, again));
+END $$;
+-- ── V593. Level corrections by the expected level and the spillover position. A made-up four-year programme and four made-up
+--          students at levels below the cohort engine's: one in its second spillover year and one in its first (both computed 400,
+--          basis SPILLOVER), one in its final year (computed 400, only the count of sessions), one at 300 (count of sessions). Counted
+--          by the level they should be at, by spillover position, by search; every one a filter finds corrected — the spillover ones
+--          by default, the sessions-only one left until chosen; a shape not known refused. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2393; v_prog text; v_dept text; v_fac text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid(); s5 uuid := gen_random_uuid();
+    at400 record; at400_all record; sp1 record; at300 record; none_all record; found record; applied record; after_left record;
+    l1 int; l4 int; l5 int; l2 int; bad_spill text; bad_level text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V593', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2393/01' WHERE name = format('%s/%s', y, y + 1);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V593', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/93/593001', 'MOAUM/ZZL/93/5931', 'CHECKV593', 'Year Two', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 100, 'ACTIVE', now()),
+        (s4, 'MOAUM/ADM/93/593004', 'MOAUM/ZZL/93/5934', 'CHECKV593', 'Year One', v_prog, 'UTME', format('%s/%s', y - 4, y - 3), 100, 100, 'ACTIVE', now()),
+        (s5, 'MOAUM/ADM/93/593005', 'MOAUM/ZZL/93/5935', 'CHECKV593', 'Final Year', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 200, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/93/593002', 'MOAUM/ZZL/93/5932', 'CHECKV593', 'Third Year', v_prog, 'UTME', format('%s/%s', y - 2, y - 1), 100, 100, 'ACTIVE', now());
+
+    -- counted: by the level they should be at, by spillover position, by search (each within the made-up programme)
+    SELECT * INTO at400 FROM people.apply_level_corrections(NULL, NULL, NULL, NULL, v_prog, NULL, NULL, 500, true, 400);
+    SELECT * INTO at400_all FROM people.apply_level_corrections(NULL, ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, v_prog, NULL, NULL, 500, true, 400);
+    SELECT * INTO sp1 FROM people.apply_level_corrections(NULL, NULL, NULL, NULL, v_prog, NULL, NULL, 500, true, NULL, 'SPILLOVER_YEAR_1');
+    SELECT * INTO at300 FROM people.apply_level_corrections(NULL, ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, v_prog, NULL, NULL, 500, true, 300);
+    SELECT * INTO none_all FROM people.apply_level_corrections(NULL, ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, v_prog, NULL, NULL, 500, true, NULL, 'none');
+    SELECT * INTO found FROM people.apply_level_corrections(NULL, NULL, NULL, NULL, v_prog, NULL, NULL, 500, true, 400, NULL, 'year one');
+    BEGIN PERFORM people.apply_level_corrections(NULL, NULL, NULL, NULL, v_prog, NULL, NULL, 500, true, NULL, 'SP3'); bad_spill := 'COUNTED';
+    EXCEPTION WHEN check_violation THEN bad_spill := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.apply_level_corrections(NULL, NULL, NULL, NULL, v_prog, NULL, NULL, 500, true, 450); bad_level := 'COUNTED';
+    EXCEPTION WHEN check_violation THEN bad_level := split_part(SQLERRM, ':', 1); END;
+    -- every one found at 400 corrected: the spillover ones by default, the sessions-only one left
+    SELECT * INTO applied FROM people.apply_level_corrections(NULL, NULL, NULL, NULL, v_prog, 'CHECK V593: every one who should be at 400 Level', 'CHK-593', 500, false, 400);
+    SELECT * INTO after_left FROM people.apply_level_corrections(NULL, ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, v_prog, NULL, NULL, 500, true, 400);
+    SELECT current_level INTO l1 FROM people.student WHERE id = s1;
+    SELECT current_level INTO l4 FROM people.student WHERE id = s4;
+    SELECT current_level INTO l5 FROM people.student WHERE id = s5;
+    SELECT current_level INTO l2 FROM people.student WHERE id = s2;
+    RAISE EXCEPTION 'the V593 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V593 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V593: level corrections are counted and applied by the level a student should be at, the spillover position and a search — spillover by default, sessions-only when chosen, never lowered',
+        coalesce(at400.selected = 2 AND at400.spillover = 2 AND at400_all.selected = 3 AND at400_all.arithmetic = 1 AND sp1.selected = 1
+                 AND at300.selected = 1 AND at300.arithmetic = 1 AND none_all.selected = 2 AND found.selected = 1
+                 AND bad_spill = 'LEVEL_CORRECTION_SPILLOVER' AND bad_level = 'LEVEL_CORRECTION_LEVEL'
+                 AND applied.corrected = 2 AND applied.remaining = 0 AND after_left.selected = 1 AND after_left.arithmetic = 1
+                 AND l1 = 400 AND l4 = 400 AND l5 = 200 AND l2 = 100, false),
+        format('at 400 %s/%s (all bases %s, sessions-only %s) | SP1 %s | at 300 %s | not spillover %s | found %s | bad %s %s | applied %s left %s, after: %s (%s sessions-only) | levels %s %s %s %s',
+               at400.selected, at400.spillover, at400_all.selected, at400_all.arithmetic, sp1.selected, at300.selected, none_all.selected, found.selected,
+               bad_spill, bad_level, applied.corrected, applied.remaining, after_left.selected, after_left.arithmetic, l1, l4, l5, l2));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -10,7 +10,7 @@ import { LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/u
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { Donut, GroupBars, VZ, vzNum, type LegendKey } from "@/components/proto/vz";
-import { DEGREE_WORD, SEMESTER_WORD, detailHref, entryWord, sexWord, statQuery, type StatCounts, type StatFilters, type StatSummary, type Which } from "@/lib/stats";
+import { DEGREE_WORD, POSITION_WORD, SEMESTER_WORD, detailHref, entryWord, sexWord, statQuery, type Position, type StatCounts, type StatFilters, type StatSummary, type Which } from "@/lib/stats";
 import { AdmissionFunnel } from "./AdmissionFunnel";
 
 const KEYS: LegendKey[] = [{ l: "Total", c: VZ.axis }, { l: "Paid", c: VZ.s3 }, { l: "Registered", c: VZ.s1 }, { l: "Paid not registered", c: VZ.s4 }, { l: "Not paid", c: VZ.crit }];
@@ -73,7 +73,8 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
   const scopeWords = [data.scope.label, f.type ? `${typeName(f.type)} students` : null, data.session, SEMESTER_WORD(data.semester),
     f.fac ? faculties.find((x) => x[0] === f.fac)?.[1] : null, f.dept ? depts.find((x) => x[0] === f.dept)?.[1] : null,
     f.prog ? opts.programmes.find((x) => x.programme_code === f.prog)?.programme : null, f.level ? `${f.level} Level` : null,
-    f.status ? f.status.charAt(0) + f.status.slice(1).toLowerCase() : null, f.degree ? DEGREE_WORD[f.degree] : null].filter(Boolean).join(" · ");
+    f.status ? f.status.charAt(0) + f.status.slice(1).toLowerCase() : null, f.degree ? DEGREE_WORD[f.degree] : null,
+    f.position ? POSITION_WORD[f.position as Position] : null].filter(Boolean).join(" · ");
   const open = data.window.find((w) => w.state === "OPEN");
 
   function go(next: Partial<StatFilters>) {
@@ -111,6 +112,8 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
   const levelRows = (data.byLevel ?? []).map((x) => ({ ...x, key: String(x.level), label: x.level == null ? "No level" : `${x.level} Level`, next: { level: x.level == null ? "" : String(x.level) } as Partial<StatFilters> }));
   const typeRows = (data.byProgrammeType ?? []).map((x) => ({ ...x, key: String(x.programme_type), label: typeName(x.programme_type), next: (x.programme_type ? { type: x.programme_type } : {}) as Partial<StatFilters> }));
   const esRows = (data.byEntrySession ?? []).map((x) => ({ ...x, key: String(x.entry_session), label: x.entry_session ?? "Unknown", next: { entrySession: x.entry_session ?? "" } as Partial<StatFilters> }));
+  // V593: SP1, SP2, beyond the limit and graduation candidates — the lifecycle reconciliation's own positions, for the current session
+  const posRows = (data.byPosition ?? []).map((x) => ({ ...x, key: x.position, label: POSITION_WORD[x.position], next: { position: x.position } as Partial<StatFilters> }));
 
   return (
     <>
@@ -180,6 +183,13 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
             <option value="">Any</option>{(opts.entrySessions ?? []).map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </Field></div>
+        {data.byPosition ? (
+          <div className="scope__f"><Field id="st-position" label="Academic position">
+            <select id="st-position" className="ctl" value={f.position} onChange={(e) => go({ position: e.target.value })}>
+              <option value="">Any</option>{(Object.keys(POSITION_WORD) as Position[]).map((k) => <option key={k} value={k}>{POSITION_WORD[k]}</option>)}
+            </select>
+          </Field></div>
+        ) : null}
         {opts.degreeTypes.length ? (
           <div className="scope__f"><Field id="st-degree" label="Degree type">
             <select id="st-degree" className="ctl" value={f.degree} onChange={(e) => go({ degree: e.target.value })}>
@@ -251,6 +261,7 @@ export function StudentStats({ data, filters, basePath, title }: { data: StatSum
             <Panel title="By gender">{table(sexRows, "Gender")}</Panel>
             <Panel title="By entry type">{table(entryRows, "Entry type")}</Panel>
             <Panel title="By level">{table(levelRows, "Level")}</Panel>
+            {posRows.length ? <Panel title="By academic position" right="Now, as Student Cohorts → Reconciliation reads it">{table(posRows, "Position")}</Panel> : null}
             <Panel title="By session admitted">{table(esRows, "Session admitted")}</Panel>
           </div>
           <AdmissionFunnel session={f.session} />

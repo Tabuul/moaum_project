@@ -12,11 +12,19 @@ export interface StatLevel extends StatCounts { level: number | null }
 export interface StatEntrySession extends StatCounts { entry_session: string | null }
 /** V469: the figures by programme type, from the one classification; null for the students that require classification */
 export interface StatProgrammeType extends StatCounts { programme_type: string | null }
+/** V593: an academic position the figures are given by (the lifecycle reconciliation's recommendation, from the cohort engine) */
+export type Position = "SP1" | "SP2" | "SP_LIMIT" | "GRADUATION_CANDIDATE";
+export interface StatPosition extends StatCounts { position: Position }
+export const POSITION_WORD: Record<Position, string> = {
+  SP1: "SP1 — first spillover year", SP2: "SP2 — second spillover year", SP_LIMIT: "Beyond the spillover limit", GRADUATION_CANDIDATE: "Graduation candidates",
+};
 export interface StatScope { kind: "UNIVERSITY" | "PG_SCHOOL" | "COLLEGE" | "FACULTY" | "DEPARTMENT"; label: string; faculty?: string; department?: string; money: boolean }
 export interface StatSummary {
   scope: StatScope; session: string; semester: number | null; totals: StatCounts;
   byFaculty: StatFaculty[]; byDepartment: StatDepartment[]; byProgramme: StatProgramme[]; byDegreeType: StatDegree[];
   byGender: StatGender[]; byEntryMode: StatEntry[]; byLevel: StatLevel[]; byEntrySession: StatEntrySession[]; byProgrammeType?: StatProgrammeType[];
+  /** V593: the figures by academic position, as the lifecycle reconciliation recommends them now; null for another session than the current */
+  byPosition?: StatPosition[] | null;
   options: { programmeTypes?: { code: string; name: string }[]; sessions: string[]; semesters: number[]; programmes: { faculty_code: string; faculty: string; dept_code: string; department: string; programme_code: string; programme: string }[]; levels: number[]; statuses: string[]; degreeTypes: string[]; genders: string[]; entryModes: string[]; entrySessions: string[] };
   window: { number: number; registration_opens: string | null; registration_closes: string | null; state: string }[];
 }
@@ -40,8 +48,8 @@ export const entryWord = (e: string | null | undefined) => (e ? e.replace(/_/g, 
 export const DEGREE_WORD: Record<string, string> = { PGD: "Postgraduate Diploma", MASTERS: "Master", MPHIL: "M.Phil.", PHD: "Ph.D." };
 export const SEMESTER_WORD = (n: number | null | string) => (n == null || n === "" ? "Whole session" : Number(n) === 1 ? "First semester" : Number(n) === 2 ? "Second semester" : "Third semester");
 
-export interface StatFilters { type: string; session: string; semester: string; fac: string; dept: string; prog: string; level: string; status: string; degree: string; sex: string; entry: string; entrySession: string }
-export const EMPTY_FILTERS: StatFilters = { type: "", session: "", semester: "", fac: "", dept: "", prog: "", level: "", status: "", degree: "", sex: "", entry: "", entrySession: "" };
+export interface StatFilters { type: string; session: string; semester: string; fac: string; dept: string; prog: string; level: string; status: string; degree: string; sex: string; entry: string; entrySession: string; position: string }
+export const EMPTY_FILTERS: StatFilters = { type: "", session: "", semester: "", fac: "", dept: "", prog: "", level: "", status: "", degree: "", sex: "", entry: "", entrySession: "", position: "" };
 
 /** the filters as the address carries them; anything malformed is dropped rather than sent */
 export function readStatFilters(p: Record<string, string | string[] | undefined>): StatFilters {
@@ -57,6 +65,7 @@ export function readStatFilters(p: Record<string, string | string[] | undefined>
     sex: ["M", "F"].includes(s("sex")) ? s("sex") : "",
     entry: /^[A-Z_]{1,30}$/.test(s("entry")) ? s("entry") : "",
     entrySession: /^\d{4}\/\d{4}$/.test(s("entrySession")) ? s("entrySession") : "",
+    position: s("position") in POSITION_WORD ? s("position") : "",
   };
 }
 

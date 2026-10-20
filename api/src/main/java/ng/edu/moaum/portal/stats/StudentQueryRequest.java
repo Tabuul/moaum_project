@@ -11,6 +11,10 @@ import java.util.regex.Pattern;
  * <p>{@code type} is the programme type ("ALL" or blank for every type); {@code session} is the academic session whose
  * registrations and fees are read (and the session of a JUPEB or Preliminary learner); {@code admissionSession} the
  * session a learner came in. {@code status} takes a student status or CURRENT, every learner who has not left.
+ *
+ * <p>V593: {@code expectedLevel} is the level the cohort engine computes (people.academic_position), {@code levelBehind} whether
+ * the record stands below it, {@code programmeLength} the programme's own length in years, {@code recommendation} the lifecycle
+ * reconciliation's recommendation and {@code completion} its completion check (people.lifecycle_completion, as last analysed).
  */
 public record StudentQueryRequest(String type, String route, String centre, String studyMode,
                                   String fac, String dept, String prog, String pgAward,
@@ -18,7 +22,14 @@ public record StudentQueryRequest(String type, String route, String centre, Stri
                                   String status, String sex, String matriculated, String finalYear, String spillover,
                                   String graduation, String registration, String fees, String classification,
                                   String jupebCombination, String jupebSubject, String prelimRoute,
-                                  Integer entryYear, Integer matricYear, Integer jambYear, String q) {
+                                  Integer entryYear, Integer matricYear, Integer jambYear,
+                                  Integer expectedLevel, String levelBehind, Integer programmeLength, String recommendation, String completion,
+                                  String q) {
+
+    /** V593: the lifecycle reconciliation's recommendations and completion states (V558) */
+    static final String[] RECOMMENDATIONS = {"WITHIN_NORMAL_DURATION", "GRADUATION_CANDIDATE", "SPILLOVER_YEAR_1", "SPILLOVER_YEAR_2",
+            "MAXIMUM_SPILLOVER_REACHED", "REQUIRES_REVIEW", "DATA_INCOMPLETE", "ON_GRADUATION_LIST"};
+    static final String[] COMPLETIONS = {"COMPLETED", "OUTSTANDING_COURSES", "AWAITING_RESULT", "FINAL_LEVEL_NOT_REACHED", "NO_PUBLISHED_RESULT"};
 
     private static final Pattern CODE = Pattern.compile("^[A-Z][A-Z0-9_]{0,40}$");
     private static final Pattern UNIT = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_./ -]{0,29}$");
@@ -38,6 +49,9 @@ public record StudentQueryRequest(String type, String route, String centre, Stri
                 oneOf(classification, "CLASSIFIED", "REQUIRES_CLASSIFICATION"),
                 uuid(jupebCombination), uuid(jupebSubject), code(prelimRoute),
                 year(entryYear), year(matricYear), year(jambYear),
+                expectedLevel != null && expectedLevel >= 100 && expectedLevel <= 900 && expectedLevel % 100 == 0 ? expectedLevel : null,
+                yesNo(levelBehind), programmeLength != null && programmeLength >= 1 && programmeLength <= 10 ? programmeLength : null,
+                oneOf(recommendation, RECOMMENDATIONS), oneOf(completion, COMPLETIONS),
                 q == null || q.isBlank() ? null : q.trim().length() > 80 ? q.trim().substring(0, 80) : q.trim());
     }
 
