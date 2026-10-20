@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 415
+\set EXPECTED 416
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20621,6 +20621,78 @@ BEGIN
         format('known %s flagged %s | codes %s hidden %s | plain %s/%s | started %s again %s | ref %s %s items %s held %s | other %s/%s own %s | failed %s again %s | second: %s %s | history %s',
                known, flagged, codes, hidden, plain_code, plain_none, started, again, ref, source, items, held, other_none, others, own,
                failed_tickets, open_again, resolved_states, settled, history));
+END $$;
+-- ── V587. Bulk inter-departmental transfer, on the programme swap. Four made-up students of one programme, and a programme of
+--          another department as the target. The rows: one valid; one whose OLD department is not the student's (SOURCE PROGRAMME
+--          MISMATCH); one whose NEW programme is named under the wrong department; a number no student holds; one student twice
+--          (both rows refused); a lower level without a reason (refused) and with one (a review point). Prepared with an invalid
+--          row: refused unless the valid rows alone are asked for; then a batch IDT/YYYY/NNNNNN of programme swaps (ACADEMIC_TRANSFER)
+--          under the batch, every row kept with its result, nothing on any student changed until another officer approves a swap.
+--          The template lists the department's students. The block undoes its writes ──
+DO $$
+DECLARE p_from text; p_to text; fac_to text; dept_to text; fac_from text; dept_from text; wrong_dept text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        off1 uuid := '00000000-0000-0000-0000-0000000587a1'; off2 uuid := '00000000-0000-0000-0000-0000000587b2';
+        v_rows jsonb; checked jsonb; codes text; refused text; started jsonb; batch_rows text; swaps int; unchanged boolean; decided jsonb; moved text;
+        template int; batch_status text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V587', true);
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_from, fac_from, dept_from FROM ref.programme p WHERE p.code = 'C00023';
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_to, fac_to, dept_to FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code <> dept_from AND p.dept_code IS NOT NULL
+           AND 200 = ANY (people.programme_levels(p.code)) ORDER BY p.code LIMIT 1;
+        SELECT dd.code INTO wrong_dept FROM ref.department dd WHERE dd.code NOT IN (dept_from, dept_to) ORDER BY dd.code LIMIT 1;
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAU/ZQ/IDT/87/58701', 'MOAUM/ADM/87/587001', 'CHECKIDTA', 'Alpha', p_from, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now()),
+            (b, 'MOAU/ZQ/IDT/87/58702', 'MOAUM/ADM/87/587002', 'CHECKIDTB', 'Bravo', p_from, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now()),
+            (c, 'MOAU/ZQ/IDT/87/58703', 'MOAUM/ADM/87/587003', 'CHECKIDTC', 'Charlie', p_from, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now()),
+            (d, 'MOAU/ZQ/IDT/87/58704', 'MOAUM/ADM/87/587004', 'CHECKIDTD', 'Delta', p_from, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now());
+        v_rows := jsonb_build_array(
+            jsonb_build_object('matric_no', 'MOAU/ZQ/IDT/87/58701', 'student', 'CHECKIDTA, Alpha', 'old_faculty', fac_from, 'old_dept', dept_from, 'old_programme', p_from, 'old_level', '200',
+                               'new_faculty', fac_to, 'new_dept', dept_to, 'new_programme', p_to, 'new_level', '200'),
+            jsonb_build_object('matric_no', 'MOAU/ZQ/IDT/87/58702', 'old_faculty', fac_from, 'old_dept', wrong_dept, 'old_programme', p_from, 'old_level', '200',
+                               'new_faculty', fac_to, 'new_dept', dept_to, 'new_programme', p_to, 'new_level', '200'),
+            jsonb_build_object('matric_no', 'MOAU/ZQ/IDT/87/58703', 'old_faculty', fac_from, 'old_dept', dept_from, 'old_programme', p_from, 'old_level', '200',
+                               'new_faculty', fac_to, 'new_dept', wrong_dept, 'new_programme', p_to, 'new_level', '200'),
+            jsonb_build_object('matric_no', 'MOAU/ZQ/IDT/87/99999', 'old_faculty', fac_from, 'old_dept', dept_from, 'old_programme', p_from, 'old_level', '200',
+                               'new_faculty', fac_to, 'new_dept', dept_to, 'new_programme', p_to, 'new_level', '200'),
+            jsonb_build_object('matric_no', 'MOAU/ZQ/IDT/87/58704', 'old_faculty', fac_from, 'old_dept', dept_from, 'old_programme', p_from, 'old_level', '200',
+                               'new_faculty', fac_to, 'new_dept', dept_to, 'new_programme', p_to, 'new_level', '100'),
+            jsonb_build_object('matric_no', 'MOAU/ZQ/IDT/87/58704', 'old_faculty', fac_from, 'old_dept', dept_from, 'old_programme', p_from, 'old_level', '200',
+                               'new_faculty', fac_to, 'new_dept', dept_to, 'new_programme', p_to, 'new_level', '100', 'reason', 'Repeats 100 level in the new programme'));
+        checked := people.transfer_upload_check(v_rows, NULL);
+        codes := (SELECT string_agg(x->>'row' || ':' || (x->>'status') || ':' || coalesce((SELECT string_agg(pr->>'code', '+' ORDER BY pr->>'code') FROM jsonb_array_elements(x->'problems') pr), ''), ',' ORDER BY (x->>'row')::int)
+                    FROM jsonb_array_elements(checked) x);
+        template := (SELECT count(*) FROM people.transfer_template(NULL, dept_from, p_from, 200) t WHERE t.matric_no LIKE 'MOAU/ZQ/IDT/87/%');
+        BEGIN PERFORM people.prepare_transfer_batch(v_rows, NULL, 'The Senate approved these transfers at its meeting', 'SEN/87/1', 'transfers.xlsx', false);
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1); END;
+        started := people.prepare_transfer_batch(v_rows, NULL, 'The Senate approved these transfers at its meeting', 'SEN/87/1', 'transfers.xlsx', true);
+        batch_rows := (SELECT string_agg(r.row_no || ':' || r.status, ',' ORDER BY r.row_no) FROM people.transfer_batch_row r WHERE r.batch_id = (started->>'id')::uuid);
+        swaps := (SELECT count(*) FROM people.programme_swap w WHERE w.batch_id = (started->>'id')::uuid AND w.kind = 'ACADEMIC_TRANSFER' AND w.status = 'PENDING_APPROVAL');
+        unchanged := (SELECT bool_and(s.programme_code = p_from) FROM people.student s WHERE s.id IN (a, b, c, d));
+        batch_status := (SELECT x.status FROM people.transfer_batches(50) x WHERE x.id = (started->>'id')::uuid);
+        -- another officer approves the student's swap: the move is made
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        decided := people.decide_programme_swap((SELECT w.id FROM people.programme_swap w WHERE w.batch_id = (started->>'id')::uuid AND w.student_id = a), true, 'Checked against the Senate minutes');
+        moved := (SELECT s.programme_code || ':' || s.current_level FROM people.student s WHERE s.id = a);
+        batch_status := batch_status || '>' || (SELECT x.status FROM people.transfer_batches(50) x WHERE x.id = (started->>'id')::uuid);
+        RAISE EXCEPTION 'the V587 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V587 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V587: a bulk inter-departmental transfer checks each row against the student''s current record and its target, and prepares programme swaps under one batch for another officer to decide',
+        coalesce(codes ~ '^1:(VALID|WARNING):,2:INVALID:SOURCE_PROGRAMME_MISMATCH,3:INVALID:TARGET_DEPARTMENT,4:INVALID:STUDENT_NOT_FOUND,5:INVALID:DUPLICATE_ROW\+LEVEL_REDUCED,6:INVALID:DUPLICATE_ROW$'
+                 AND template = 4 AND refused = 'TRANSFER_BATCH_INVALID'
+                 AND started->>'ref' ~ '^IDT/\d{4}/\d{6}$' AND (started->>'prepared')::int = 1 AND (started->>'invalid')::int = 5
+                 AND batch_rows = '1:PREPARED,2:INVALID,3:INVALID,4:INVALID,5:INVALID,6:INVALID' AND swaps = 1 AND unchanged
+                 AND decided->>'status' = 'COMPLETED' AND moved = p_to || ':200' AND batch_status = 'PENDING_APPROVAL>COMPLETED_WITH_EXCEPTIONS', false),
+        format('from %s to %s | codes %s | template %s | refused %s | started %s | rows %s swaps %s unchanged %s | decided %s moved %s | batch %s',
+               p_from, p_to, codes, template, refused, started, batch_rows, swaps, unchanged, decided->>'status', moved, batch_status));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
