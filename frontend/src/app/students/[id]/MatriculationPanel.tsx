@@ -18,7 +18,9 @@ export function MatriculationPanel({ studentId }: { studentId: string }) {
   }, [studentId]);
   if (problem) return null;
   if (!rec) return <Panel title="Matriculation"><PBody><div className="sub2">Reading…</div></PBody></Panel>;
-  const before = rec.usernameHistory.length ? rec.usernameHistory[rec.usernameHistory.length - 1].previous_username : rec.admission_no;
+  // the sign-in before matriculation: the oldest change that was not a correction of the number (V579), else the admission number
+  const issued = rec.usernameHistory.filter((u) => !u.reason.startsWith("Matriculation number corrected"));
+  const before = issued.length ? issued[issued.length - 1].previous_username : rec.admission_no;
   const open = rec.proposals.find((p) => p.state === "PROPOSED" && p.batch_state !== "CANCELLED");
   // V579: the number's corrections — the one made last, and one waiting for a decision
   const corrected = (rec.corrections ?? []).find((c) => c.state === "COMPLETED");
