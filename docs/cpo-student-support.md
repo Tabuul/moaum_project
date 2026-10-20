@@ -347,3 +347,11 @@ gone to someone else.
 - **Outcomes per upload.** Each upload counts its contacts awaiting the student, confirmed (by the student or the desk) and not
   the student's (`people.contact_upload_outcomes`). Uploads made since V572 were marked unconfirmed from the audit trail.
 - **Tests:** `ContactConfirmIT`; check.sql's V575 block.
+- **The uploader told (V580).** The person who uploaded a contact is told:
+  - At once, when the student says it is not theirs: the student, the contact, the file and its date
+    (`CONTACT_UPLOAD_REJECTED`, from `people.contact_refuse`), so the class list is put right.
+  - Each Monday at 08:45, for an upload at least 30 days old whose contacts still wait for the students: how many wait
+    (`CONTACT_UPLOAD_WAITING`, `people.chase_unconfirmed_contacts`, once a week per upload). Settings:
+    `moaum.contacts.chase-cron`, `moaum.contacts.chase-after-days`.
+  - ICT can switch either notice off under the notice templates. Tests: `LevelFeeEffectSpilloverCopyIT`; check.sql's second V580
+    block.

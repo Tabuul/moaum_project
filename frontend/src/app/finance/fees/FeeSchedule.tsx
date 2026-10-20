@@ -26,6 +26,7 @@ import { FeeCopy } from "./FeeCopy";
 import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
 import { SpillBasis } from "./SpillBasis";
+import { LevelFeeEffectRun } from "@/app/cohorts/LevelFeeEffectRun";
 import { FeeUploadPreview, type UploadRead } from "./FeeUploadPreview";
 import { FeeClearPreview } from "./FeeClearPreview";
 import type { GstFeePage } from "@/lib/gst";
@@ -383,7 +384,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       </Panel>
       <FeeWatch session={session} faculties={faculties} programmes={programmes} sessions={sessions} may={mayFees} />
       {/* V571: who is charged the spillover lines — by the level or by the cohort, the Bursar's choice after a preview */}
-      <SpillBasis session={session} may={actingOffice === "bursar" || actingOffice === "super"} />
+      <SpillBasis session={session} may={actingOffice === "bursar" || actingOffice === "super"} mayFees={mayFees} />
+      {/* V580: what correcting every waiting level would do to the current session's charges */}
+      <LevelFeeEffectRun mayStart={mayFees} />
       <FeeCopy session={session} sessions={sessions} may={mayFees} />
       {/* V520: every change to the session's fee lines, from the audit trail */}
       <FeeHistory session={session} />

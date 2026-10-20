@@ -668,9 +668,30 @@ class FinanceController {
         return copied(body.from(), session + "/" + year, true);
     }
 
+    /** V580: what copying another session's spillover lines alone into this one would do, each line COPY or KEPT as above */
+    @GetMapping("/sessions/{session}/{year}/schedule/copy-spillover")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> copySpilloverPreview(@PathVariable String session, @PathVariable String year,
+                                             @RequestParam @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String from) {
+        return copied(from, session + "/" + year, false, true);
+    }
+
+    /** V580: another session's spillover lines copied into this one on their own, where this one states none of the same scope */
+    @PostMapping("/sessions/{session}/{year}/schedule/copy-spillover")
+    @PreAuthorize(FEE_SETTERS)
+    @Transactional
+    Map<String, Object> copySpillover(@PathVariable String session, @PathVariable String year, @Valid @RequestBody CopyFees body) {
+        return copied(body.from(), session + "/" + year, true, true);
+    }
+
     private Map<String, Object> copied(String from, String to, boolean apply) {
-        List<Map<String, Object>> lines = jdbc.sql("SELECT * FROM finance.copy_session_fees(:f, :t, :a)").param("f", from).param("t", to).param("a", apply)
-                .query().listOfRows();
+        return copied(from, to, apply, false);
+    }
+
+    private Map<String, Object> copied(String from, String to, boolean apply, boolean spilloverOnly) {
+        List<Map<String, Object>> lines = jdbc.sql(spilloverOnly ? "SELECT * FROM finance.copy_spillover_lines(:f, :t, :a)" : "SELECT * FROM finance.copy_session_fees(:f, :t, :a)")
+                .param("f", from).param("t", to).param("a", apply).query().listOfRows();
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("from", from);
         out.put("to", to);
@@ -819,6 +840,13 @@ class FinanceController {
             Map<String, Object> m = new java.util.LinkedHashMap<>();
             m.put("session", s);
             m.put("lines", jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE session = :s AND spillover AND ended_at IS NULL").param("s", s).query(Long.class).single());
+            // V580: the last earlier session that states spillover lines, and how many of them this one does not state yet
+            jdbc.sql("SELECT max(session) FROM finance.fee_schedule WHERE session < :s AND spillover AND ended_at IS NULL").param("s", s).query(String.class).optional()
+                    .ifPresent(from -> {
+                        m.put("copyFrom", from);
+                        m.put("toCopy", jdbc.sql("SELECT count(*) FROM finance.copy_spillover_lines(:f, :s, false) WHERE action = 'COPY'").param("f", from).param("s", s)
+                                .query(Long.class).single());
+                    });
             jdbc.sql("SELECT basis, students, groups FROM finance.spill_readiness(:s)").param("s", s).query().listOfRows()
                     .forEach(r -> m.put("LEVEL".equals(r.get("basis")) ? "byLevel" : "byCohort", Map.of("students", r.get("students"), "groups", r.get("groups"))));
             out.add(m);

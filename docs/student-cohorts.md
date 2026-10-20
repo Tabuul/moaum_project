@@ -276,3 +276,31 @@ candidates do not reach the graduation list.
   ₦83.6m now and ₦44.0m after: 491 owe less and 8 would have no line.
   API: `POST /api/v1/cohorts/levels/fee-effect` (the Apply body), `POST /api/v1/cohorts/lifecycle/preview/fees` (the preview body).
 - **Tests:** `SpilloverReadinessKeptPopulationIT`; check.sql's V576 block.
+
+## 15. The fee effect of every waiting correction, and the spillover lines copied (V580)
+
+- **Every waiting correction at once.** §14's effect reads one batch. Under "What correcting every waiting level does to the fees",
+  on the Bursar's fee page and below the Level corrections list, a run reads every correction waiting. By default it reads the
+  spillover and own-registration bases; the records only the count of sessions supports can be added.
+  - The run takes the corrections as they stand when it begins (`people.start_level_fee_effect`, one run at a time).
+  - It reads them 1,000 at a time behind the screens, holding the basis in force when it began (`people.level_fee_effect_step`).
+    Each step is its own transaction in the starter's name. A run an API restart left open is taken up again within a minute; one
+    still open after an hour is let go.
+  - Each student's charges now and after are kept (`people.level_fee_effect_row`) and summed for the University, each faculty and
+    each programme (`people.level_fee_effect_report`). An Excel gives the sums, and another gives every student.
+  - Nothing on a record changes. A level corrected after the run is not in its figures: work it out again.
+  - Started by the Bursary, the Students Account Officer, the Academic Office or the Registry. Read by them, Records, Audit, ICT
+    and the Vice-Chancellor's offices. API: `GET /api/v1/finance/level-fee-effect`, `POST /api/v1/finance/level-fee-effect`
+    (`bases`), `GET /api/v1/finance/level-fee-effect/{id}/rows`.
+  - On the live-shaped copy of 20 October 2026, the 10,834 spillover and own-registration corrections took 45 s. They are charged
+    ₦1.854bn for 2025/2026 now and ₦968m after: 10,663 owe less, 171 the same, and 166 would have no fee line at their new level.
+- **Spillover lines copied on their own.** For each session under "Who is charged the spillover lines", the last earlier session
+  that states spillover lines is named, with how many of its lines this one lacks. The Bursary (or the Students Account Officer)
+  copies them from there after a preview (`finance.copy_spillover_lines`: the session copy's rule, spillover lines only). A line
+  the session already states for the same students is kept. On the copy, 2026/2027 is offered 2025/2026's 84 spillover lines.
+  API: `GET`/`POST /api/v1/finance/sessions/{session}/schedule/copy-spillover` (`from`).
+- **Readiness of the next session.** The calendar's transition readiness has a line `SPILLOVER_FEE_LINES`: how many spillover
+  students the session's fees charge nothing, by the basis in force, and how many spillover lines are stated. It reports only.
+  It never holds the transition, nor the automatic clock (which a line not met would hold), like the line for the current
+  session's open semesters.
+- **Tests:** `LevelFeeEffectSpilloverCopyIT`; check.sql's two V580 blocks.

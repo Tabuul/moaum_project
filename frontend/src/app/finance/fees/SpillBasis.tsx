@@ -3,18 +3,20 @@
 /** V571: on the Bursary's fee page, who is charged the spillover fee lines — a level above the programme's final level (V088,
  *  the rule in force until the Bursary changes it), or the cohort engine's spillover (SP1, SP2 … and the limit reached, by the
  *  sessions past the programme's length). The change is previewed first — each student who would move, with the session's charges
- *  under each basis — and made with a reason. */
+ *  under each basis — and made with a reason. V580: a session that lacks the spillover lines of the last one that states them has
+ *  them copied on their own from here, previewed first. */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Field } from "@/components/proto/blocks";
+import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { spilloverWord } from "@/lib/student-query";
+import { COPY_ACTION, copyScope, type CopyLine } from "@/lib/fee-copy";
 
 interface Basis {
   basis: "LEVEL" | "COHORT"; set_at?: string | null; set_by?: string | null; reason?: string | null;
@@ -25,7 +27,12 @@ interface Move {
   by_level: boolean; by_cohort: boolean; by_level_due: number; by_cohort_due: number;
 }
 /** V576: for the current session and the next, the spillover lines stated and the spillover students with none, by each basis */
-interface Ready { session: string; lines: number; byLevel?: { students: number; groups: number }; byCohort?: { students: number; groups: number } }
+interface Ready {
+  session: string; lines: number; byLevel?: { students: number; groups: number }; byCohort?: { students: number; groups: number };
+  /** V580: the last earlier session that states spillover lines, and how many of them this one does not state */
+  copyFrom?: string; toCopy?: number;
+}
+interface Copied { from: string; to: string; copy: number; kept: number; applied: boolean; lines: CopyLine[] }
 interface Preview {
   session: string; students: number; intoSpill: number; outOfSpill: number; dueByLevel: number; dueByCohort: number; nothingStatedByCohort: number; rows: Move[];
 }
@@ -34,7 +41,7 @@ const count = (n: number) => Number(n).toLocaleString("en-NG");
 const naira = (n: number) => `₦${Number(n).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 const WORD = { LEVEL: "By level — a level above the programme's final level", COHORT: "By cohort — the sessions past the programme's length (SP1, SP2 …)" };
 
-export function SpillBasis({ session, may }: { session: string; may: boolean }) {
+export function SpillBasis({ session, may, mayFees }: { session: string; may: boolean; mayFees: boolean }) {
   const router = useRouter();
   const [basis, setBasis] = useState<Basis | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -43,6 +50,7 @@ export function SpillBasis({ session, may }: { session: string; may: boolean }) 
   const [problem, setProblem] = useState<Problem | null>(null);
   const [tick, setTick] = useState(0);
   const [ready, setReady] = useState<Ready[] | null>(null);
+  const [copying, setCopying] = useState<Copied | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -88,6 +96,35 @@ export function SpillBasis({ session, may }: { session: string; may: boolean }) 
     router.refresh();
   }
 
+  /** V580: the spillover lines of the last session that states them, previewed for a session that lacks them */
+  async function lookCopy(r: Ready) {
+    setBusy(`look:${r.session}`);
+    try {
+      const x = await fetch(`/api/bff/api/v1/finance/sessions/${r.session}/schedule/copy-spillover?from=${encodeURIComponent(r.copyFrom ?? "")}`, { cache: "no-store" });
+      const j = await x.json().catch(() => null);
+      if (!x.ok) { notifyProblem(j ?? { status: x.status, title: "The spillover lines could not be read just now." }); return; }
+      setCopying(j as Copied);
+    } finally { setBusy(null); }
+  }
+
+  async function copySpill() {
+    if (!copying) return;
+    setBusy("copy");
+    try {
+      const x = await fetch(`/api/bff/api/v1/finance/sessions/${copying.to}/schedule/copy-spillover`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Spillover fee lines of ${copying.from} copied into ${copying.to}`) },
+        body: JSON.stringify({ from: copying.from }),
+      });
+      const j = await x.json().catch(() => null);
+      if (!x.ok) { notifyProblem(j ?? { status: x.status, title: x.statusText }); return; }
+      const c = j as Copied;
+      notify(`${c.copy.toLocaleString()} spillover line${c.copy === 1 ? "" : "s"} of ${c.from} copied into ${c.to}`);
+      setCopying(null);
+      setTick((n) => n + 1);
+      router.refresh();
+    } finally { setBusy(null); }
+  }
+
   const moving = basis.basis === "LEVEL" ? basis.into_spill : basis.out_of_spill;
   return (
     <Panel title="Who is charged the spillover lines" right={<Pil kind={basis.basis === "COHORT" ? "info" : "grey"}>{basis.basis === "COHORT" ? "By cohort" : "By level"}</Pil>}>
@@ -108,6 +145,9 @@ export function SpillBasis({ session, may }: { session: string; may: boolean }) 
                     <span style={now?.students ? { color: "var(--red-ink)" } : undefined}>{count(now?.students ?? 0)} spillover student{now?.students === 1 ? "" : "s"} with no line {basis.basis === "COHORT" ? "by the cohort" : "by the level"}</span>
                     {" "}· {count(other?.students ?? 0)} {basis.basis === "COHORT" ? "by the level" : "by the cohort"}
                     {now?.students || other?.students ? " — state the spillover lines (the /SP column of the approved structure) before charging by that basis" : ""}
+                    {r.copyFrom && r.toCopy ? (mayFees
+                      ? <> <Btn kind="ghost" size="sm" busy={busy === `look:${r.session}`} onClick={() => void lookCopy(r)}>{`Copy ${count(r.toCopy)} spillover line${r.toCopy === 1 ? "" : "s"} from ${r.copyFrom}`}</Btn></>
+                      : <> · {count(r.toCopy)} spillover line{r.toCopy === 1 ? "" : "s"} of {r.copyFrom} not stated here</>) : null}
                   </div>
                 );
               })}
@@ -163,6 +203,25 @@ export function SpillBasis({ session, may }: { session: string; may: boolean }) 
           {problem ? <ProblemNotice problem={problem} /> : null}
         </div>
       </PBody>
+      {copying ? (
+        <Modal title={`Copy the spillover lines of ${copying.from} into ${copying.to}`} sub={`${count(copying.copy)} to copy · ${count(copying.kept)} already stated, kept`}
+          onClose={() => { if (!busy) setCopying(null); }}
+          foot={<><Btn kind="ghost" disabled={!!busy} onClick={() => setCopying(null)}>Cancel</Btn>
+            <Btn kind="primary" disabled={!!busy || !copying.copy} busy={busy === "copy"} busyLabel="Copying…" onClick={() => void copySpill()}>
+              {`Copy ${count(copying.copy)} line${copying.copy === 1 ? "" : "s"}`}</Btn></>}>
+          <div className="sub2">
+            Only the spillover lines are copied, with {copying.from}&rsquo;s amounts; a line {copying.to} already states for the same students is kept, never overwritten.
+            The spillover students are charged them at once{basis.basis === "COHORT" ? " (by the cohort)" : " (by the level)"}; adjust any amount on the list of charges.
+          </div>
+          <DTable pageSize={10} cols={["Item", "Applies to", "Amount|num", `In ${copying.to}|num`, ""]} rows={copying.lines.map((l) => [
+            <strong key="i">{l.item}</strong>,
+            <span key="a" className="sub2">{copyScope(l)}</span>,
+            <span key="m" className="tnum">{money(Number(l.amount))}</span>,
+            <span key="t" className="tnum sub2">{l.target_amount != null ? money(Number(l.target_amount)) : "—"}</span>,
+            <Pil key="p" kind={COPY_ACTION[l.action][1]}>{COPY_ACTION[l.action][0]}</Pil>,
+          ])} />
+        </Modal>
+      ) : null}
     </Panel>
   );
 }

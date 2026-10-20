@@ -624,3 +624,7 @@ three), and checked to return the same rows.
   candidate's files are read once.
 - **Left as it is.** Computed screening's `admissions.non_sitter_post_utme` (about 2 s): its O'Level scoring was tuned in
   V486/V541.
+- **One connection per GST read (V580).** The GST fee page, its review list, and the GST and EPS dashboards and lists used to
+  open their read-only transaction first and then work the population out in a transaction of its own. The request held two
+  connections, and a pool under load could run short. Now the population is worked out first, and the read opens its own
+  transaction afterwards (`GstController`, a read-only `TransactionTemplate`).

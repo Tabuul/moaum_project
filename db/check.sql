@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 412
+\set EXPECTED 414
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20404,6 +20404,115 @@ BEGIN
         format('check ok %s, decided %s, after %s at %s (matric %s), registration entries %s, payments %s, history %s (admission %s, current %s), review %s, same officer refused %s, ICT refused %s, same again refused %s, legacy by ICT %s, flagged %s suggested %s',
                chk->>'ok', dec->>'status', after_prog, after_level, after_matric, regs, pays, hist, hist_admission, hist_current, swapped, same_officer, ict_refused, same_again, dec2->>'status', found, sugg));
 END $$;
+-- ── V580. The fee effect of the waiting level corrections. In an invented session the programme states 300,000 at 100 Level and
+-- 200,000 at 400 Level. A run holding two invented students at 100 — one to be corrected to 400, one to 300 (no line) — is read
+-- step by step: 300,000 → 200,000 and 300,000 → nothing, the run then DONE and summed for the University, the faculty and the
+-- programme; a second run is refused while one runs; both records still read 100. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); run uuid := gen_random_uuid(); ses text := '2861/2862';
+        steps text; state_after text; rows_after text; report text; second text; levels_after text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V580', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/80/058001', 'MOAUM/ADM/80/580001', 'CHECKV580A', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/80/058002', 'MOAUM/ADM/80/580002', 'CHECKV580B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES
+            (ses, 'School fees', 300000, 100, 'C00023'), (ses, 'School fees', 200000, 400, 'C00023');
+        -- a run of the two alone (a real one in progress is let go inside this block, and comes back when it is undone)
+        UPDATE people.level_fee_effect_run SET state = 'FAILED' WHERE state = 'RUNNING';
+        INSERT INTO people.level_fee_effect_run (id, session, basis, bases, students) VALUES (run, ses, 'LEVEL', ARRAY['SPILLOVER'], 2);
+        INSERT INTO people.level_fee_effect_row (run_id, student_id, basis, current_level, new_level) VALUES (run, a, 'SPILLOVER', 100, 400), (run, b, 'SPILLOVER', 100, 300);
+        steps := people.level_fee_effect_step(run, 1) || ',' || people.level_fee_effect_step(run, 1000) || ',' || people.level_fee_effect_step(run, 1000);
+        state_after := (SELECT r.state || ':' || r.done FROM people.level_fee_effect_run r WHERE r.id = run);
+        rows_after := (SELECT string_agg(x.current_level || '>' || x.new_level || ':' || x.charged_now::bigint || '>' || x.charged_after::bigint, ',' ORDER BY x.new_level DESC)
+                         FROM people.level_fee_effect_row x WHERE x.run_id = run);
+        report := (SELECT string_agg(r.scope || ':' || r.students || ':' || r.charged_now::bigint || '>' || r.charged_after::bigint || ':' || r.less || '/' || r.none_after, ','
+                                     ORDER BY r.scope DESC) FROM people.level_fee_effect_report(run) r);
+        UPDATE people.level_fee_effect_run SET state = 'RUNNING' WHERE id = run;
+        BEGIN PERFORM people.start_level_fee_effect(ARRAY['SPILLOVER']);
+        EXCEPTION WHEN check_violation THEN second := split_part(SQLERRM, ':', 1); END;
+        levels_after := (SELECT string_agg(s.current_level::text, ',' ORDER BY s.surname) FROM people.student s WHERE s.id IN (a, b));
+        RAISE EXCEPTION 'the V580 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V580 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V580: the fee effect of the waiting level corrections is read step by step and summed (nothing changed); one run at a time',
+        coalesce(steps = '1,1,0' AND state_after = 'DONE:2' AND rows_after = '100>400:300000>200000,100>300:300000>0'
+                 AND report = 'UNIVERSITY:2:600000>200000:2/1,PROGRAMME:2:600000>200000:2/1,FACULTY:2:600000>200000:2/1'
+                 AND second = 'LEVEL_EFFECT_RUNNING' AND levels_after = '100,100', false),
+        format('steps %s | %s | rows %s | report %s | second %s | levels after %s', steps, state_after, rows_after, report, second, levels_after));
+END $$;
+
+-- ── V580. Spillover lines copied and uploaders told. One invented session states an ordinary line and two spillover lines, the next
+-- one spillover line of the same scope as one of them: the copy offers the other alone, copies it once, and the next session's
+-- readiness says what its spillover students are charged without holding the transition. A contact an invented office uploaded and
+-- the student says is not theirs is told to that person at once; an upload a month old whose contact still waits is told once a
+-- week. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); up1 uuid := gen_random_uuid(); up2 uuid := gen_random_uuid();
+        s1 text := '2861/2862'; s2 text := '2862/2863'; fac text; dept text; preview text; applied text; again text; target text; ready text;
+        refused text; told text; chased int; chased_again int; waiting_told text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V580', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s1, DATE '2861-10-01', DATE '2862-08-31'), (gen_random_uuid(), s2, DATE '2862-10-01', DATE '2863-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        UPDATE finance.fee_schedule SET ended_at = now() WHERE session IN (s1, s2) AND ended_at IS NULL;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, spillover) VALUES
+            (s1, 'School fees', 100000, NULL, 'C00023', false), (s1, 'Spillover fees', 60000, NULL, 'C00023', true),
+            (s1, 'Spillover fees', 65000, NULL, 'C00024', true), (s2, 'Spillover fees', 70000, NULL, 'C00024', true);
+        preview := (SELECT string_agg(c.programme_code || ':' || c.action, ',' ORDER BY c.programme_code) FROM finance.copy_spillover_lines(s1, s2, false) c);
+        applied := (SELECT string_agg(c.programme_code || ':' || c.action, ',' ORDER BY c.programme_code) FROM finance.copy_spillover_lines(s1, s2, true) c);
+        again := (SELECT string_agg(c.programme_code || ':' || c.action, ',' ORDER BY c.programme_code) FROM finance.copy_spillover_lines(s1, s2, false) c);
+        target := (SELECT string_agg(f.programme_code || ':' || f.amount::bigint || ':' || f.spillover, ',' ORDER BY f.programme_code)
+                     FROM finance.fee_schedule f WHERE f.session = s2 AND f.ended_at IS NULL);
+        ready := (SELECT r.ok || ':' || r.blocking || ':' || (r.detail LIKE '%(2 stated%') FROM policy.transition_readiness(s2) r WHERE r.code = 'SPILLOVER_FEE_LINES');
+
+        -- the uploader told: at once when a student says a contact is not theirs, weekly while a month-old upload waits
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHK-V580-' || left(who::text, 8), 'CHECKV580', 'Invented', 'checkv580.office@example.com');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        SELECT faculty_code, dept_code INTO fac, dept FROM ref.programme WHERE code = 'C00023';
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/80/058003', 'MOAUM/ADM/80/580003', 'CHECKV580C', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/80/058004', 'MOAUM/ADM/80/580004', 'CHECKV580D', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.contact_upload (id, office, faculty_code, department_code, reason, file_name, uploaded_by) VALUES
+            (up1, 'registrar', fac, dept, 'CHECK V580 upload', 'check-v580-now.csv', who),
+            (up2, 'registrar', fac, dept, 'CHECK V580 upload', 'check-v580-old.csv', who);
+        PERFORM people.load_contacts(jsonb_build_array(jsonb_build_object('number', 'MOAUM/CHK/80/058003', 'phone', '08065800003')), fac, dept, up1);
+        PERFORM people.load_contacts(jsonb_build_array(jsonb_build_object('number', 'MOAUM/CHK/80/058004', 'phone', '08065800004')), fac, dept, up2);
+        UPDATE people.contact_upload SET uploaded_at = now() - interval '31 days' WHERE id = up2;
+        PERFORM set_config('moaum.actor_id', a::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        refused := people.contact_refuse(a, 'PHONE');
+        told := (SELECT string_agg(n.template_key || ':' || (n.body LIKE '%08065800003%check-v580-now.csv%'), ',') FROM platform.notice n
+                  WHERE n.recipient = 'checkv580.office@example.com');
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        chased := people.chase_unconfirmed_contacts(30);
+        chased_again := people.chase_unconfirmed_contacts(30);
+        waiting_told := (SELECT string_agg(n.template_key || ':' || (n.body LIKE '%check-v580-old.csv%'), ',') FROM platform.notice n
+                          WHERE n.recipient = 'checkv580.office@example.com' AND n.template_key = 'CONTACT_UPLOAD_WAITING');
+        RAISE EXCEPTION 'the V580 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V580 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V580: a session''s spillover lines are copied on their own (a line stated kept) and its readiness says so without holding it; an uploader is told of a contact refused and, weekly, of one still waiting',
+        coalesce(preview = 'C00023:COPY,C00024:KEPT' AND applied = preview AND again = 'C00023:KEPT,C00024:KEPT'
+                 AND target = 'C00023:60000:true,C00024:70000:true' AND ready = 'true:false:true'
+                 AND refused = 'REFUSED' AND told = 'CONTACT_UPLOAD_REJECTED:true' AND chased >= 1 AND chased_again = 0
+                 AND waiting_told = 'CONTACT_UPLOAD_WAITING:true', false),
+        format('preview %s applied %s again %s | target %s | ready %s | refused %s told %s | chased %s again %s told %s',
+               preview, applied, again, target, ready, refused, told, chased, chased_again, waiting_told));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

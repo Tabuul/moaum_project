@@ -15,7 +15,9 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -62,10 +64,13 @@ class GstController {
 
     private final JdbcClient jdbc;
     private final GstPopulationKeeper population;
+    private final TransactionTemplate reads;
 
-    GstController(JdbcClient jdbc, GstPopulationKeeper population) {
+    GstController(JdbcClient jdbc, GstPopulationKeeper population, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.population = population;
+        this.reads = new TransactionTemplate(transactions);
+        this.reads.setReadOnly(true);
     }
 
     /* ── the Bursar's door: the fee and the rule ── */
@@ -80,18 +85,20 @@ class GstController {
     /** the GST fee of a session: the live rules, the superseded ones, and the rule the payment enforces */
     @GetMapping("/fee")
     @PreAuthorize(READERS)
-    @Transactional(readOnly = true)
     Map<String, Object> fee(@RequestParam(required = false) String session, @RequestParam(defaultValue = "false") boolean refresh) {
-        return fee(session, refresh, true);
+        // V580: the population worked out (its own transaction) before the page's read opens one, so a request holds one connection at a time
+        String s = session(session);
+        Instant kept = population.ensure(s, null, refresh);
+        return reads.execute(st -> fee(s, kept));
     }
 
     /** V577: a write returns the fee page as it reads in its own transaction, the kept population not worked out again there (the
      *  change marked it out of date; the next read, after the change is committed, works it out) */
-    private Map<String, Object> fee(String session, boolean refresh, boolean ensure) {
+    private Map<String, Object> fee(String session, Instant kept) {
         String s = session(session);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
-        out.put("keptAt", ensure ? population.ensure(s, null, refresh) : null);   // V577: the population as last worked out
+        out.put("keptAt", kept);   // V577: the population as last worked out
         out.put("sessions", jdbc.sql("SELECT name, state FROM policy.academic_session ORDER BY name DESC").query().listOfRows());
         out.put("setting", setting());
         out.put("rules", rules(s, false));
@@ -128,12 +135,16 @@ class GstController {
      */
     @GetMapping("/fee/review")
     @PreAuthorize(READERS)
-    @Transactional(readOnly = true)
     Map<String, Object> review(@RequestParam(required = false) String session) {
         String s = session(session);
+        Instant kept = population.ensure(s, null, false);   // V577; V580: before the read's transaction
+        return reads.execute(st -> review(s, kept));
+    }
+
+    private Map<String, Object> review(String s, Instant kept) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
-        out.put("keptAt", population.ensure(s, null, false));   // V577
+        out.put("keptAt", kept);
         out.put("rows", jdbc.sql("""
                 SELECT p.student_id, p.number, p.surname, p.other_names, p.programme_code, p.programme, p.department, p.faculty, p.level, p.paid, p.reference, p.paid_at,
                        p.pay_source, p.gst_reason, p.eps_reason,
@@ -219,7 +230,7 @@ class GstController {
                 .param("f", blank(body.facultyCode()), Types.VARCHAR).param("p", blank(body.programmeCode()), Types.VARCHAR)
                 .param("d", body.effectiveFrom(), Types.DATE).param("n", blank(body.note()), Types.VARCHAR)
                 .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query(UUID.class).single();
-        return fee(body.session().trim(), false, false);
+        return fee(body.session().trim(), null);
     }
 
     /** a live rule withdrawn: students it priced fall back to the next rule, or to no fee */
@@ -228,7 +239,7 @@ class GstController {
     @Transactional
     Map<String, Object> endFee(@PathVariable UUID id, @RequestParam(required = false) String session) {
         jdbc.sql("SELECT finance.end_gst_fee(:id)").param("id", id).query().listOfRows();
-        return fee(session, false, false);
+        return fee(session, null);
     }
 
     /** the rule: what the GST payment gates, and that it covers EPS */
@@ -240,7 +251,7 @@ class GstController {
         jdbc.sql("SELECT finance.set_gst_setting(:a, :b, :c, :by, :office)")
                 .param("a", body.requiredForGstEps(), Types.BOOLEAN).param("b", body.requiredForAll(), Types.BOOLEAN).param("c", body.coversEps(), Types.BOOLEAN)
                 .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();
-        return fee(session, false, false);
+        return fee(session, null);
     }
 
     /* ── the offices' desks ── */
@@ -327,7 +338,6 @@ class GstController {
     /** the office's dashboard: the figures in all and by level, faculty, department, programme and gender; the courses; the results; the options the filters offer */
     @GetMapping("/{office}/dashboard")
     @PreAuthorize(READERS)
-    @Transactional(readOnly = true)
     Map<String, Object> dashboard(@PathVariable String office, @RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
                                   @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                   @RequestParam(required = false) Integer level, @RequestParam(required = false) String sex, @RequestParam(required = false) String status,
@@ -336,6 +346,10 @@ class GstController {
         String o = office(office);
         Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, null, null);
         Instant kept = population.ensure(f.session(), f.semester(), refresh);   // V577: the population as last worked out
+        return reads.execute(st -> dashboard(o, f, kept));   // V580: read after it is worked out, in a transaction of its own
+    }
+
+    private Map<String, Object> dashboard(String o, Filters f, Instant kept) {
         // V366: counted over every undergraduate in scope, so the students the office's courses do not concern are counted as such — never as unpaid
         List<Map<String, Object>> groups = bind(jdbc.sql("""
                 WITH r AS MATERIALIZED (""" + ROWS + """
@@ -432,7 +446,6 @@ class GstController {
     /** the students behind a figure: the same rows, paged, searched, in the order a people report takes */
     @GetMapping("/{office}/students")
     @PreAuthorize(READERS)
-    @Transactional(readOnly = true)
     Map<String, Object> students(@PathVariable String office, @RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
                                  @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                  @RequestParam(required = false) Integer level, @RequestParam(required = false) String sex, @RequestParam(required = false) String status,
@@ -443,6 +456,10 @@ class GstController {
         String o = office(office);
         Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, eligibility, q);
         Instant kept = population.ensure(f.session(), f.semester(), refresh);   // V577: the population as last worked out
+        return reads.execute(st -> students(o, f, kept, page, size));   // V580: read after it is worked out, in a transaction of its own
+    }
+
+    private Map<String, Object> students(String o, Filters f, Instant kept, int page, int size) {
         int sz = Math.max(1, Math.min(size, 500)), pg = Math.max(0, page);
         // the population is read once (V468): the page and the count of every row come from the same pass, and a student's
         // registered courses and result stages are read only for the page

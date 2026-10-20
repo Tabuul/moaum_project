@@ -7,6 +7,7 @@
  *  on a reason; no level is lowered and each change goes on the student's cohort history. */
 import { useCallback, useEffect, useState } from "react";
 import { FeeEffect } from "./FeeEffect";
+import { LevelFeeEffectRun } from "./LevelFeeEffectRun";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -179,6 +180,8 @@ export function LevelCorrections({ fac, dept, canApply }: { fac: string; dept: s
           </div></PBody>
         ) : null}
       </Panel>
+      {/* V580: what correcting every one waiting would do to the current session's charges, worked out behind the screens */}
+      <LevelFeeEffectRun mayStart={canApply} />
 
       {apply ? (
         <Modal title={apply.mode === "safe" ? `Correct ${fmt(safe)} records` : `Correct the ${fmt(chosen.size)} chosen records`}
