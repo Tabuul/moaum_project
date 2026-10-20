@@ -226,7 +226,15 @@ class ProblemHandler {
             // Oct 2026: the sign-in help form checks a student's number
             Map.entry("HELPDESK_HELP_NUMBER_UNKNOWN", "Number not on the register"), Map.entry("HELPDESK_CHECK_SLOW_DOWN", "Too many checks"),
             // V564: the postgraduate application door
-            Map.entry("PG_APP_EXISTS", "Already applied with this email"), Map.entry("PG_APPLY_RETRY", "Not saved: please try again"));
+            Map.entry("PG_APP_EXISTS", "Already applied with this email"), Map.entry("PG_APPLY_RETRY", "Not saved: please try again"),
+            // V578: the programme swap
+            Map.entry("PSW_SAME_OFFICER", "Another officer decides"), Map.entry("PSW_OFFICE", "Not for this office"), Map.entry("PSW_PENDING", "A swap is already pending"),
+            Map.entry("PSW_TRANSFER_OPEN", "A transfer is under way"), Map.entry("PSW_LEVEL", "Not a level of that programme"), Map.entry("PSW_CATEGORY", "Not a programme swap"),
+            Map.entry("PSW_SAME", "Nothing would change"), Map.entry("PSW_REASON", "Say why"), Map.entry("PSW_DECIDED", "Already decided"),
+            Map.entry("PSW_STUDENT_STATE", "The record is not live"), Map.entry("PSW_PROGRAMME", "Choose a programme"), Map.entry("PSW_PROGRAMME_ARCHIVED", "Programme archived"),
+            Map.entry("PSW_SESSION", "Not a session"), Map.entry("PSW_KIND", "Say what the swap is"), Map.entry("PSW_CHANGE_REQUESTED", "A change is requested at admissions"),
+            Map.entry("PSW_EVIDENCE_TYPE", "PDF, JPEG or PNG only"), Map.entry("PSW_EVIDENCE_SIZE", "File too large"), Map.entry("PSW_NOT_FOUND", "No such swap"),
+            Map.entry("PSW_REVIEW_STATUS", "Not a review status"), Map.entry("PSW_CHANGED", "The record changed; prepare again"));
 
     static String titleOf(String code) {
         if (code == null || code.isBlank()) return "The request was refused";

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 411
+\set EXPECTED 412
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20307,6 +20307,102 @@ BEGIN
                prog, sugg, left(chk_taken, 60), chk_shape, chk_ok->>'ok', edit_refused, prep->>'ref', left(again, 28), left(b_taken, 26), left(same_officer, 32),
                left(bursary, 28), left(ict, 28), done->>'state', now_a, former, resolved, found, left(gen_taken, 40), left(upload_refused, 60), signin, unchanged, written, series_same,
                back_points, alias_live, left(rej_short, 24), rej->>'state', canc->>'state', hist));
+END $$;
+-- ── V578. Programme swap: a swap prepared by one officer and decided by another moves the student's programme and level and nothing
+--          else (the matriculation number, the registration, the payment stay), the old placement is in the programme history with the
+--          admission, the officer who prepared it cannot decide it, the Director of ICT decides a legacy migration correction and no
+--          other, the same placement again is refused, and a record numbered in another department's series and registered on its
+--          courses is a confirmed mismatch. The block undoes its writes ──
+DO $$
+DECLARE prog text; dept text; tprog text; tdept text; seg text; own text; ses text := '2396/2397';
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); f uuid := gen_random_uuid(); o uuid := gen_random_uuid(); r uuid := gen_random_uuid();
+        p1 uuid := '00000000-0000-0000-0000-00000000a578'; p2 uuid := '00000000-0000-0000-0000-00000000b578'; chk jsonb; sw uuid; dec jsonb;
+        same_officer boolean := false; ict_refused boolean := false; same_again boolean := false;
+        after_prog text; after_level int; after_matric text; regs int; pays int; hist int; hist_admission text; hist_current text; sw2 uuid; dec2 jsonb;
+        found text; sugg text; swapped text; i int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V578', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2396-10-01', DATE '2397-08-31');
+    SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+     WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+    SELECT p.code, p.dept_code INTO tprog, tdept FROM ref.programme p
+     WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL AND p.dept_code <> dept ORDER BY p.code LIMIT 1;
+    seg := coalesce((SELECT matric_code FROM ref.programme WHERE code = tprog), 'ZPS');
+    own := coalesce((SELECT matric_code FROM ref.programme WHERE code = prog), 'ZPC');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/96/957801', 'MOAUM/CHK/' || own || '/96/9781', 'CHECKV578', 'Swapped', prog, 'UTME', ses, 100, 200, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/96/957802', 'MOAUM/CHK/' || own || '/96/9782', 'CHECKV578', 'Legacy', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (f, 'MOAUM/ADM/96/957803', 'MOAUM/CHK/' || seg || '/96/9783', 'CHECKV578', 'Flagged', prog, 'UTME', ses, 100, 200, 'ACTIVE', now());
+    -- the programmes' own series, where they have no code: enough students carrying each segment
+    FOR i IN 1..6 LOOP
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (gen_random_uuid(), 'MOAUM/ADM/96/9579' || lpad(i::text, 2, '0'), 'MOAUM/CHK/' || own || '/96/97' || lpad(i::text, 2, '0'), 'CHECKV578', 'Own ' || i, prog, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        IF i <= 3 THEN
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (gen_random_uuid(), 'MOAUM/ADM/96/9577' || lpad(i::text, 2, '0'), 'MOAUM/CHK/' || seg || '/96/96' || lpad(i::text, 2, '0'), 'CHECKV578', 'Target ' || i, tprog, 'UTME', ses, 100, 100, 'ACTIVE', now());
+        END IF;
+    END LOOP;
+    -- a registration on the target department's course, and a payment, on the student swapped and the one flagged
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZPV 201', 'Check V578 Course', 3, 1, 200, tdept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'ZPV 201', ses, 1);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (r, a, ses, 1, 200, 'APPROVED', now(), now()), (gen_random_uuid(), f, ses, 1, 200, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    SELECT cr.id, o, 3, 'CURRENT', 'REGISTERED' FROM registration.course_registration cr WHERE cr.student_id IN (a, f) AND cr.session = ses;
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (a, ses, 'MOAUM-CHK578-' || ses, 'School fees ' || ses, 50000, now(), now(), p1, 'INTERSWITCH', 'RCT-CHK578', 'check V578');
+
+    -- prepared by one officer: the check passes, nothing on the student yet
+    chk := people.programme_swap_check(a, tprog, 200, ses, NULL);
+    sw := people.prepare_programme_swap(a, tprog, 200, ses, 'PROGRAMME_CORRECTION', 'Check V578: the legacy record kept the old programme', NULL);
+    -- the same officer does not decide it; the Director of ICT does not decide a programme correction
+    BEGIN
+        dec := people.decide_programme_swap(sw, true, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN same_officer := SQLERRM LIKE 'PSW_SAME_OFFICER:%';
+    END;
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN
+        dec := people.decide_programme_swap(sw, true, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN ict_refused := SQLERRM LIKE 'PSW_OFFICE:%';
+    END;
+    -- another Academic Office officer approves: the placement moves, nothing else
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    dec := people.decide_programme_swap(sw, true, 'Check V578: approved');
+    SELECT programme_code, current_level, matric_no INTO after_prog, after_level, after_matric FROM people.student WHERE id = a;
+    SELECT count(*) INTO regs FROM registration.entry e JOIN registration.course_registration cr ON cr.id = e.registration_id WHERE cr.student_id = a;
+    SELECT count(*) INTO pays FROM finance.payment_reference WHERE student_id = a;
+    SELECT count(*), max(programme_code) FILTER (WHERE kind = 'ORIGINAL_ADMISSION'), max(programme_code) FILTER (WHERE current)
+      INTO hist, hist_admission, hist_current FROM people.programme_history(a);
+    SELECT status INTO swapped FROM people.programme_mismatch_review WHERE student_id = a;
+    -- the same placement again changes nothing
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    BEGIN
+        sw2 := people.prepare_programme_swap(a, tprog, 200, ses, 'PROGRAMME_CORRECTION', 'Check V578: the same placement again', NULL);
+    EXCEPTION WHEN check_violation THEN same_again := SQLERRM LIKE 'PSW_SAME:%';
+    END;
+    -- a legacy migration correction: the Director of ICT prepares it and another ICT officer decides it
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    sw2 := people.prepare_programme_swap(b, tprog, 100, ses, 'LEGACY_MIGRATION_CORRECTION', 'Check V578: mapped to the wrong programme at migration', NULL);
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    dec2 := people.decide_programme_swap(sw2, true, NULL);
+    -- the detector: the flagged record's number is in the target's series and its registration is the target department's
+    SELECT m.classification, m.suggested_dept INTO found, sugg FROM people.programme_mismatches(NULL, NULL, prog) m WHERE m.student_id = f;
+    RAISE EXCEPTION 'CHECK_V578_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V578_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V578: a programme swap prepared by one officer and decided by another moves the programme and level only, keeps the old placement in the history, refuses the same officer, the Director of ICT (but for a legacy correction) and the same placement again, and the detector flags a record numbered and registered in another department',
+        coalesce((chk->>'ok')::boolean AND dec->>'status' = 'COMPLETED' AND after_prog = tprog AND after_level = 200 AND after_matric = 'MOAUM/CHK/' || own || '/96/9781'
+                 AND regs = 1 AND pays = 1 AND hist >= 2 AND hist_admission = prog AND hist_current = tprog AND swapped = 'SWAPPED'
+                 AND same_officer AND ict_refused AND same_again AND dec2->>'status' = 'COMPLETED'
+                 AND found = 'CONFIRMED' AND sugg = tdept, false),
+        format('check ok %s, decided %s, after %s at %s (matric %s), registration entries %s, payments %s, history %s (admission %s, current %s), review %s, same officer refused %s, ICT refused %s, same again refused %s, legacy by ICT %s, flagged %s suggested %s',
+               chk->>'ok', dec->>'status', after_prog, after_level, after_matric, regs, pays, hist, hist_admission, hist_current, swapped, same_officer, ict_refused, same_again, dec2->>'status', found, sugg));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

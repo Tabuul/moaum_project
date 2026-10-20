@@ -17,6 +17,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { MessagesPanel } from "@/components/MessagesPanel";
 import { PaymentCorrections, type PaymentCorrection } from "@/components/finance/PaymentCorrections";
 import { ReceiptScreen } from "@/app/student/Screens2";
+import { ProgrammeHistory } from "@/app/programme-swap/ProgrammeHistory";
 import type { Receipt } from "@/lib/student-portal";
 import { printDocument } from "@/lib/document/html";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
@@ -174,7 +175,8 @@ function OverviewTab({ o, body }: { o: Overview; body: ReactNode }) {
         <PBody>
           <KvGrid pairs={[
             ["Matriculation number", dash(id.matric_no)], ["Admission number", dash(id.admission_no)], ["JAMB registration", dash(id.jamb_reg_no)],
-            ["Application number", dash(id.application_no)], ["Programme", `${dash(id.programme)} (${dash(id.programme_code)})`], ["Department", dash(id.department)],
+            ["Application number", dash(id.application_no)], ["Programme", `${dash(id.programme)} (${dash(id.programme_code)})`],
+            ...(id.admitted_programme ? [["Original admission programme", s(id.admitted_programme)] as [string, string]] : []), ["Department", dash(id.department)],
             ["Faculty", dash(id.faculty)], ["Entry", `${words(id.entry_mode)} · ${dash(id.entry_session)} · ${dash(id.entry_level)} Level`],
             ["Study mode", words(id.study_mode) || "—"], ["Matriculated", day(id.matriculated_at) || "—"],
             ...(o.contact ? [["E-mail", dash(o.contact.email)], ["Phone", dash(o.contact.phone)]] as [string, string][] : []),
@@ -249,6 +251,10 @@ function AdmissionTab({ d, name, file }: { d: Data; name: string; file: string }
         {docs.length ? <DTable pageSize={0} cols={["Document", "Detail", "Received", "Status"]}
           rows={docs.map((x) => [words(x.kind), s(x.detail), day(x.received_on) || "—", <Pil key="s" kind={pillOf(x.status)}>{words(x.status)}</Pil>])} />
           : <Empty>No admission document recorded on the student&rsquo;s file.</Empty>}
+      </Panel>
+      {/* V578: every placement the record has had — the original admission, transfers, record moves, programme swaps */}
+      <Panel title="Programme history" right="Original admission first; the current placement marked">
+        <ProgrammeHistory rows={(d.programmeHistory ?? []) as Row[]} />
       </Panel>
     </>
   );

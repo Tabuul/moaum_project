@@ -126,7 +126,10 @@ class StudentFullRecordController {
                                s.state_of_origin, s.programme_code, p.name AS programme, p.category, p.pg_award, d.code AS dept_code, d.name AS department,
                                f.code AS faculty_code, f.name AS faculty,
                                (SELECT a.application_no FROM admissions.application a WHERE a.candidate_id = s.candidate_id ORDER BY a.created_at DESC LIMIT 1) AS application_no,
-                               (SELECT c.session FROM admissions.candidate c WHERE c.id = s.candidate_id) AS jamb_session
+                               (SELECT c.session FROM admissions.candidate c WHERE c.id = s.candidate_id) AS jamb_session,
+                               -- V578: the programme the student was admitted to, where the record has moved since
+                               (SELECT ap.name FROM admissions.candidate c JOIN ref.programme ap ON ap.code = c.programme
+                                 WHERE c.id = s.candidate_id AND c.programme <> s.programme_code) AS admitted_programme
                           FROM people.student s
                           JOIN ref.programme p ON p.code = s.programme_code
                           LEFT JOIN ref.department d ON d.code = p.dept_code
@@ -205,7 +208,9 @@ class StudentFullRecordController {
                           LEFT JOIN ref.programme fp ON fp.code = t.from_programme_code LEFT JOIN ref.programme tp ON tp.code = t.to_programme_code
                          WHERE t.student_id = :s) x),
                     'documents', (SELECT coalesce(json_agg(x ORDER BY x.kind), '[]'::json) FROM (
-                        SELECT d.kind, d.detail, d.source, d.received_on, d.status FROM people.document d WHERE d.student_id = :s) x)
+                        SELECT d.kind, d.detail, d.source, d.received_on, d.status FROM people.document d WHERE d.student_id = :s) x),
+                    -- V578: every placement the record has had — the admission, transfers, record moves, swaps, other changes on the chain
+                    'programmeHistory', (SELECT coalesce(json_agg(h ORDER BY h.at NULLS FIRST), '[]'::json) FROM people.programme_history(:s) h)
                 )::text
                 """, id);
     }
