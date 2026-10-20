@@ -84,7 +84,11 @@ class ProgrammeMergeIT {
         String dept = jdbc.sql("SELECT code FROM ref.department WHERE faculty_code IS NOT NULL ORDER BY code LIMIT 1").query(String.class).single();
         List<String> codes = freeCodes(5);
         String x1 = codes.get(0), x2 = codes.get(1), c = codes.get(2), ug1 = codes.get(3), ug2 = codes.get(4);
-        String word = "Zzpm" + UUID.randomUUID().toString().replaceAll("[^a-f]", "").substring(0, 6);
+        // a made-up subject of six letters, drawn afresh each run (a UUID's hex letters may be fewer than six)
+        StringBuilder letters = new StringBuilder("Zzpm");
+        java.util.Random random = new java.util.Random();
+        for (int i = 0; i < 6; i++) letters.append((char) ('a' + random.nextInt(26)));
+        String word = letters.toString();
         programme(x1, "MSC " + word.toUpperCase() + " STUDIES", dept, "POST GRADUATE", null);
         programme(x2, "MSC " + word.toUpperCase() + " STUDIES", dept, "POST GRADUATE", null);
         programme(c, "M.Sc. " + word + " Studies", dept, "POST GRADUATE", "MSC");
