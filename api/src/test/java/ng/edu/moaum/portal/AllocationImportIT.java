@@ -113,7 +113,8 @@ class AllocationImportIT {
         rows.add(row(5, "ZZ-ALC-A", "ZZX 999"));
         rows.add(row(6, "ZZ-ALC-A", "ZZB 201"));
         rows.add(row(7, "ZZ-ALC-A", "ZZB 201", "crossDepartment", "YES"));
-        rows.add(row(8, "ZZ-ALC-A", "ZZA 203", "session", "2999/3000"));
+        // a session no test opens (OldFeesIT opens a random one of 2900/2901–2999/3000)
+        rows.add(row(8, "ZZ-ALC-A", "ZZA 203", "session", "1899/1900"));
         rows.add(row(9, "ZZ-ALC-A", "ZZA 299"));
         rows.add(row(10, "ZZ-ALC-B", "ZZA 203", "courseTitle", "A different title"));
         rows.add(row(11, "ZZ-ALC-B", "ZZA 203"));
