@@ -1547,7 +1547,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Notifications | None. |
 | Approval workflow | None in practice — courses go BOARD → LIVE directly; SENATE is never written. |
 | Statuses | `catalogue.course.state` BOARD / SENATE / LIVE / ENDED; kind Core / Required / Elective / GST; curriculum CCMAS / BMAS / null; tracks BMAS, CCMAS_BSU, CCMAS_MOAU. |
-| Validation rules | Form code `^[A-Z]{3}\s*[0-9]{3}$` ("a course code is three letters, a space and three digits, like CSC 311"); units 0–12; unique code; basis in four; ENDED course not bindable; `ca_max` 0–100 (default 40); import keeps LIVE/ENDED, lifts BOARD/SENATE to LIVE. |
+| Validation rules | Form code `^((BSU|MOAU)-)?[A-Z]{3} [0-9]{3}$` after `catalogue.normal_code` (V592: "a course code is three letters, a space and three digits (CSC 311), or the same after BSU- or MOAU- (BSU-PHY 106, MOAU-PHY 106)"); units 0–12; unique code; basis in four; ENDED course not bindable; `ca_max` 0–100 (default 40); import keeps LIVE/ENDED, lifts BOARD/SENATE to LIVE. |
 | Security | HOD confinement (`assertHodOwns` → "A Head of Department manages the catalogue of their own department only."); structure uploads ICT-only. |
 | Audit trail | `catalogue.course`, `course_offer`, `offering` attached; the bulk offering insert of open-registration runs with the audit trigger disabled. |
 | Related modules | Reference data (§3.10); Registration (§3.13 — the menu); Allocation (§3.12); Results (§3.30 — `ca_max`). |
@@ -3396,7 +3396,7 @@ Academic → Department Courses → /catalogue
 
 | Field (New course) | Description | Required | Validation |
 |---|---|---|---|
-| Code | "Three letters, a space, three digits — e.g. CSC 311" | Yes | `^[A-Z]{3}\s*[0-9]{3}$`, unique |
+| Code | "Three letters, a space, three digits — e.g. CSC 311; or BSU- or MOAU- before them — e.g. BSU-PHY 106" | Yes | `^((BSU|MOAU)-)?[A-Z]{3} [0-9]{3}$` after `catalogue.normal_code` (V592; `bsu-phy106` reads `BSU-PHY 106`), unique |
 | Units | — | Yes | 0–12 |
 | Title | — | Yes | Non-blank |
 | Level, Semester, Kind | 100–600; First/Second; Core Courses / Required / Elective / GST | Yes | — |
@@ -3409,7 +3409,7 @@ Academic → Department Courses → /catalogue
 | End N duplicate courses | Keeps the least messy code | `/duplicates/end?dept` |
 | Curriculum / Split (row or bulk) | Tags | `/courses/{code}/curriculum`, `/split`, `/curriculum/bulk`, `/split/bulk` |
 
-**Messages** "a course code is three letters, a space and three digits, like CSC 311 — % does not fit"; "a course with the code % already exists". · **Security** `assertHodOwns` on every write.
+**Messages** `CAT_CODE` "a course code is three letters, a space and three digits (CSC 311), or the same after BSU- or MOAU- (BSU-PHY 106, MOAU-PHY 106) — % fits neither" (V592); "a course with the code % already exists". · **Security** `assertHodOwns` on every write.
 
 > **Screenshot Required:** Department Courses — `/catalogue` — the table with binding pills and the duplicate panel.
 

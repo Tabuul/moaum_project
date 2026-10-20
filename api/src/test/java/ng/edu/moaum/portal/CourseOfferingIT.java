@@ -49,7 +49,7 @@ class CourseOfferingIT {
         academic = ItSupport.token("academic");
         // the shared CI database may carry this test's course from an earlier run; nothing hangs on it, so it goes
         it.db(() -> {
-            for (String c : List.of(CODE, RENAMED, "MOAUZZO 903", "MOAU-ZZO 903")) {
+            for (String c : List.of(CODE, RENAMED, "MOAUZZO 903", "MOAU-ZZO 903", "BSU-ZZO 904", "MOAU-ZZO 904")) {
                 if (jdbc.sql("SELECT count(*) FROM catalogue.course WHERE code = :c").param("c", c).query(Long.class).single() > 0) {
                     jdbc.sql("SELECT catalogue.remove_course(:c)").param("c", c).query().singleRow();
                 }
@@ -127,6 +127,25 @@ class CourseOfferingIT {
         ResponseEntity<Map> direct = it.call(academic, HttpMethod.POST, b -> b.path("/api/v1/catalogue/courses/{c}/offers").build(RENAMED), Map.of("programme", OTHER_PROG, "level", 300, "basis", "Elective"));
         assertThat(direct.getStatusCode().value()).as(String.valueOf(direct.getBody())).isEqualTo(200);
         assertThat(direct.getBody().get("outcome")).isEqualTo("BOUND");
+    }
+
+    /** V592: a course created under a BSU- or MOAU- code, as under the plain one — written loosely it is put right; another shape refused */
+    @Test
+    void aCourseIsCreatedUnderABsuOrMoauCode() {
+        ResponseEntity<Map> bsu = it.call(hodOther, HttpMethod.POST, "/api/v1/catalogue/courses", Map.of(
+                "code", "bsu-zzo904", "title", "Fundamental Modern Physics (IT)", "units", 2, "semester", 2, "level", 100, "dept", OTHER_DEPT, "kind", "Core",
+                "offers", List.of(Map.of("programme", OTHER_PROG, "level", 100))));
+        assertThat(bsu.getStatusCode().value()).as(String.valueOf(bsu.getBody())).isEqualTo(200);
+        assertThat(bsu.getBody()).containsEntry("code", "BSU-ZZO 904").containsEntry("state", "LIVE");
+        ResponseEntity<Map> moau = it.call(hodOther, HttpMethod.POST, "/api/v1/catalogue/courses", Map.of(
+                "code", "MOAU-ZZO 904", "title", "Fundamental Modern Physics (IT)", "units", 2, "semester", 2, "level", 100, "dept", OTHER_DEPT, "kind", "Core",
+                "offers", List.of(Map.of("programme", OTHER_PROG, "level", 100))));
+        assertThat(moau.getStatusCode().value()).as(String.valueOf(moau.getBody())).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT catalogue.twin_by_code('BSU-ZZO 904')").query(String.class).single()).isEqualTo("MOAU-ZZO 904");
+        ResponseEntity<Map> other = it.call(hodOther, HttpMethod.POST, "/api/v1/catalogue/courses", Map.of(
+                "code", "XYZ-ZZO 905", "title", "Another prefix (IT)", "units", 2, "semester", 2, "level", 100, "dept", OTHER_DEPT, "kind", "Core"));
+        assertThat(other.getStatusCode().value()).isEqualTo(422);
+        assertThat(other.getBody()).containsEntry("code", "CAT_CODE");
     }
 
     @Test

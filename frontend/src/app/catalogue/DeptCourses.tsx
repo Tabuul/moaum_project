@@ -358,7 +358,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             }}>Create</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="grid grid--2">
-            <Field id="nc-code" label="Code" hint="Three letters, a space, three digits — e.g. CSC 311"><input id="nc-code" className="ctl tnum" value={f.code} onChange={(e) => { setF({ ...f, code: e.target.value }); check(e.target.value, f.title, f.level); }} placeholder="CSC 311" autoComplete="off" /></Field>
+            <Field id="nc-code" label="Code" hint="Three letters, a space, three digits — e.g. CSC 311; or BSU- or MOAU- before them — e.g. BSU-PHY 106"><input id="nc-code" className="ctl tnum" value={f.code} onChange={(e) => { setF({ ...f, code: e.target.value }); check(e.target.value, f.title, f.level); }} placeholder="CSC 311" autoComplete="off" /></Field>
             <Field id="nc-units" label="Units"><input id="nc-units" className="ctl tnum" value={f.units} inputMode="numeric" onChange={(e) => setF({ ...f, units: e.target.value })} /></Field>
           </div>
           <Field id="nc-title" label="Title"><input id="nc-title" className="ctl" value={f.title} onChange={(e) => { setF({ ...f, title: e.target.value }); check(f.code, e.target.value, f.level); }} placeholder="Algorithms and Complexity" autoComplete="off" /></Field>

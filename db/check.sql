@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 423
+\set EXPECTED 424
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21165,6 +21165,37 @@ BEGIN
         format('bursar %s | officer new level %s, record %s by %s', e_bursar, r1->>'newLevel', lvl, who));
 END $$;
 
+-- ── V592. A course created under a BSU- or MOAU- code. Made-up courses of a made-up subject: written loosely, a BSU- code is put
+--          right (bsu-zqx106 → BSU-ZQX 106) and its MOAU- twin created beside it (the pair found by catalogue.twin_by_code); the plain
+--          code still created; another prefix, a four-letter subject and a code already held refused. The block undoes its writes ──
+DO $$
+DECLARE dept text; c_bsu text; c_moau text; c_plain text; twin text; other_prefix text; four_letters text; again text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V592', true);
+        SELECT d.code INTO dept FROM ref.department d ORDER BY d.code LIMIT 1;
+        c_bsu := catalogue.create_course('bsu-zqx106', 'Check V592 BSU course', 2, 2, 100, dept, 'Core');
+        c_moau := catalogue.create_course('MOAU - ZQX 106', 'Check V592 MOAU course', 2, 2, 100, dept, 'Core');
+        c_plain := catalogue.create_course('zqx 107', 'Check V592 plain course', 2, 2, 100, dept, 'Core');
+        twin := catalogue.twin_by_code(c_bsu);
+        BEGIN PERFORM catalogue.create_course('ABC-ZQX 108', 'Check V592 other prefix', 2, 2, 100, dept, 'Core'); other_prefix := 'CREATED';
+        EXCEPTION WHEN check_violation THEN other_prefix := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.create_course('BSU-ZQXY 108', 'Check V592 four letters', 2, 2, 100, dept, 'Core'); four_letters := 'CREATED';
+        EXCEPTION WHEN check_violation THEN four_letters := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM catalogue.create_course('BSU-ZQX 106', 'Check V592 again', 2, 2, 100, dept, 'Core'); again := 'CREATED';
+        EXCEPTION WHEN unique_violation THEN again := 'EXISTS'; END;
+        RAISE EXCEPTION 'the V592 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V592 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V592: a course is created under a BSU- or MOAU- code as under the plain one, put right when written loosely; another shape refused',
+        coalesce(c_bsu = 'BSU-ZQX 106' AND c_moau = 'MOAU-ZQX 106' AND c_plain = 'ZQX 107' AND twin = 'MOAU-ZQX 106'
+                 AND other_prefix = 'CAT_CODE' AND four_letters = 'CAT_CODE' AND again = 'EXISTS', false),
+        format('bsu %s moau %s plain %s twin %s | other prefix %s four letters %s again %s', c_bsu, c_moau, c_plain, twin, other_prefix, four_letters, again));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran
