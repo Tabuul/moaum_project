@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 416
+\set EXPECTED 417
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20693,6 +20693,108 @@ BEGIN
                  AND decided->>'status' = 'COMPLETED' AND moved = p_to || ':200' AND batch_status = 'PENDING_APPROVAL>COMPLETED_WITH_EXCEPTIONS', false),
         format('from %s to %s | codes %s | template %s | refused %s | started %s | rows %s swaps %s unchanged %s | decided %s moved %s | batch %s',
                p_from, p_to, codes, template, refused, started, batch_rows, swaps, unchanged, decided->>'status', moved, batch_status));
+END $$;
+-- ── V588. Inter-university transfer, incoming and outgoing. Made-up students and applicants only. The rows: a live student going
+--          OUT (valid); one going out whose level is not the record's (SOURCE LEVEL MISMATCH); one coming IN who is on the register
+--          already on the target placement (recorded on that record); one coming in who is on the register on another programme
+--          (refused: a second record is never made); an applicant under the JAMB number not yet on the register (linked); someone
+--          new (a record made); a university not on the list; one JAMB number on two rows (both refused). Prepared with an invalid
+--          row: refused unless the valid rows alone are asked for; then IUT/YYYY/NNNNNN with nothing changed until another officer
+--          decides; the preparer may not; the batch approved by the Registry: the student out TRANSFERRED_OUT on the batch's
+--          instrument, the records made ADMITTED by TRANSFER (the applicant linked), the existing record named, not doubled. The list
+--          of universities is kept by the Academic Office and refused to the Bursary. The block undoes its writes ──
+DO $$
+DECLARE p_here text; fac_here text; dept_here text; p_to text; fac_to text; dept_to text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); k uuid := gen_random_uuid();
+        off1 uuid := '00000000-0000-0000-0000-0000000588a1'; off2 uuid := '00000000-0000-0000-0000-0000000588b2';
+        v_rows jsonb; checked jsonb; codes text; refused text; started jsonb; pending int; unchanged boolean; same_officer text; again text;
+        decided jsonb; out_state text; instrument text; made text; linked boolean; existing text; doubled int; contact text; batch_status text;
+        uni text; uni_refused text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V588', true);
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_here, fac_here, dept_here FROM ref.programme p WHERE p.code = 'C00023';
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_to, fac_to, dept_to FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code <> dept_here AND p.dept_code IS NOT NULL
+           AND 200 = ANY (people.programme_levels(p.code)) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, matric_no, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAU/ZQ/IUT/88/58801', 'MOAUM/ADM/88/588001', 'ZQ58800001AA', 'CHECKIUTA', 'Alpha', p_here, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now()),
+            (b, 'MOAU/ZQ/IUT/88/58802', 'MOAUM/ADM/88/588002', 'ZQ58800002AA', 'CHECKIUTB', 'Bravo', p_here, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now()),
+            (e, 'MOAU/ZQ/IUT/88/58805', 'MOAUM/ADM/88/588005', 'ZQ58800005AA', 'CHECKIUTE', 'Echo', p_to, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now()),
+            (f, 'MOAU/ZQ/IUT/88/58806', 'MOAUM/ADM/88/588006', 'ZQ58800006AA', 'CHECKIUTF', 'Foxtrot', p_here, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now());
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (k, '2020/2021', 'ZQ58800007AA', 'CHECKIUTK', 'Kilo', (SELECT p.name FROM ref.programme p WHERE p.code = p_to), 'UTME', 100, 'PROPOSED');
+        v_rows := jsonb_build_array(
+            jsonb_build_object('direction', 'OUTGOING', 'matric_no', 'MOAU/ZQ/IUT/88/58801', 'student', 'CHECKIUTA, Alpha', 'faculty', fac_here, 'dept', dept_here,
+                               'programme', p_here, 'level', '200', 'university_code', 'UNIJOS', 'other_programme', 'B.Sc. Economics'),
+            jsonb_build_object('direction', 'OUTGOING', 'matric_no', 'MOAU/ZQ/IUT/88/58802', 'faculty', fac_here, 'dept', dept_here,
+                               'programme', p_here, 'level', '300', 'university_code', 'UNIJOS'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ58800005AA', 'student', 'CHECKIUTE, Echo', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'ABU', 'other_programme', 'B.Sc. Physics', 'other_level', '200'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ58800006AA', 'student', 'CHECKIUTF, Foxtrot', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'ABU'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ58800007AA', 'student', 'CHECKIUTK, Kilo', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'UNN', 'sex', 'Female'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ58800008AA', 'student', 'CHECKIUTL, Lima Oscar', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'UNN', 'email', 'lima.check@example.com', 'phone', '+234 803 000 5888'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ58800010AA', 'student', 'CHECKIUTN, November', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'ZZNOWHERE'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ58800009AA', 'student', 'CHECKIUTM, Mike', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'UNN'),
+            jsonb_build_object('direction', 'IN', 'jamb_reg_no', 'zq58800009aa', 'student', 'CHECKIUTM, Mike', 'faculty', fac_to, 'dept', dept_to,
+                               'programme', p_to, 'level', '200', 'university_code', 'UNN'));
+        checked := people.university_transfer_check(v_rows, NULL);
+        codes := (SELECT string_agg(x->>'row' || ':' || (x->>'status') || ':' || coalesce(x->>'action', '-') || ':'
+                                    || coalesce((SELECT string_agg(pr->>'code', '+' ORDER BY pr->>'code') FROM jsonb_array_elements(x->'problems') pr), ''), ',' ORDER BY (x->>'row')::int)
+                    FROM jsonb_array_elements(checked) x);
+        BEGIN PERFORM people.prepare_university_transfers(v_rows, NULL, 'The Senate approved these transfers at its meeting', 'SEN/88/1', 'iut.xlsx', false);
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1); END;
+        started := people.prepare_university_transfers(v_rows, NULL, 'The Senate approved these transfers at its meeting', 'SEN/88/1', 'iut.xlsx', true);
+        pending := (SELECT count(*) FROM people.university_transfer t WHERE t.batch_id = (started->>'id')::uuid AND t.status = 'PENDING_APPROVAL');
+        unchanged := (SELECT s.status FROM people.student s WHERE s.id = a) = 'ACTIVE'
+                     AND NOT EXISTS (SELECT 1 FROM people.student s WHERE upper(s.jamb_reg_no) IN ('ZQ58800007AA', 'ZQ58800008AA'));
+        again := (SELECT string_agg(pr->>'code', '+') FROM jsonb_array_elements(people.university_transfer_check(jsonb_build_array(v_rows->0, v_rows->5), NULL)) x,
+                         jsonb_array_elements(x->'problems') pr);
+        BEGIN PERFORM people.decide_university_transfer_batch((started->>'id')::uuid, true, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN same_officer := split_part(SQLERRM, ':', 1); END;
+        -- the Registry decides
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        decided := people.decide_university_transfer_batch((started->>'id')::uuid, true, 'Checked against the Senate minutes');
+        SELECT s.status, (SELECT c.instrument FROM people.status_change c WHERE c.student_id = a ORDER BY c.effective_on DESC LIMIT 1) INTO out_state, instrument
+          FROM people.student s WHERE s.id = a;
+        made := (SELECT string_agg(s.entry_mode || ':' || s.status || ':' || s.current_level || ':' || (s.admission_no ~ '^MOAUM/ADM/\d{2}/\d{6}$') || ':' || coalesce(s.sex, '-'), ',' ORDER BY s.jamb_reg_no)
+                   FROM people.student s WHERE upper(s.jamb_reg_no) IN ('ZQ58800007AA', 'ZQ58800008AA'));
+        linked := EXISTS (SELECT 1 FROM people.student s WHERE s.candidate_id = k AND upper(s.jamb_reg_no) = 'ZQ58800007AA');
+        existing := (SELECT t.status || ':' || t.created_student FROM people.university_transfer t WHERE t.batch_id = (started->>'id')::uuid AND t.student_id = e);
+        doubled := (SELECT count(*) FROM people.student s WHERE upper(s.jamb_reg_no) = 'ZQ58800005AA');
+        contact := (SELECT c.email || ':' || c.phone FROM people.student_contact c JOIN people.student s ON s.id = c.student_id WHERE upper(s.jamb_reg_no) = 'ZQ58800008AA');
+        batch_status := (SELECT x.status FROM people.university_transfer_batches(50) x WHERE x.id = (started->>'id')::uuid);
+        -- the list of universities: kept by the Academic Office, refused to the Bursary
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        uni := (SELECT u.code || ':' || u.name FROM ref.save_university('zqcheck', 'Check University of Somewhere', NULL, true) u);
+        PERFORM set_config('moaum.actor_office', 'bursary', true);
+        BEGIN PERFORM ref.save_university('ZQCHECKB', 'Another Check University', NULL, true);
+        EXCEPTION WHEN insufficient_privilege THEN uni_refused := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V588 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V588 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V588: an inter-university transfer finds the student first, prepares a batch for another officer, and transfers out or takes on without a second record',
+        coalesce(codes = '1:VALID:TRANSFER_OUT:,2:INVALID:TRANSFER_OUT:SOURCE_LEVEL_MISMATCH,3:WARNING:RECORD_ON_EXISTING:,4:INVALID:-:STUDENT_EXISTS,'
+                          || '5:WARNING:CREATE_FROM_APPLICANT:,6:VALID:CREATE:,7:INVALID:CREATE:UNIVERSITY_UNKNOWN,8:INVALID:CREATE:DUPLICATE_ROW,9:INVALID:CREATE:DUPLICATE_ROW'
+                 AND refused = 'UNIVERSITY_TRANSFER_INVALID' AND started->>'ref' ~ '^IUT/\d{4}/\d{6}$' AND (started->>'prepared')::int = 4 AND (started->>'invalid')::int = 5
+                 AND pending = 4 AND unchanged AND again = 'TRANSFER_PENDING+TRANSFER_PENDING' AND same_officer = 'UNIVERSITY_TRANSFER_SAME_OFFICER'
+                 AND jsonb_array_length(decided->'decided') = 4 AND jsonb_array_length(decided->'skipped') = 0
+                 AND out_state = 'TRANSFERRED_OUT' AND instrument = (started->>'ref') || ' (SEN/88/1)'
+                 AND made = 'TRANSFER:ADMITTED:200:true:F,TRANSFER:ADMITTED:200:true:-' AND linked AND existing = 'COMPLETED:false' AND doubled = 1
+                 AND contact = 'lima.check@example.com:08030005888' AND batch_status = 'COMPLETED_WITH_EXCEPTIONS'
+                 AND uni = 'ZQCHECK:Check University of Somewhere' AND uni_refused = 'UNIVERSITY_OFFICE', false),
+        format('here %s to %s | codes %s | refused %s | started %s | pending %s unchanged %s again %s same %s | decided %s | out %s %s | made %s linked %s existing %s doubled %s contact %s | batch %s | uni %s %s',
+               p_here, p_to, codes, refused, started, pending, unchanged, again, same_officer, decided, out_state, instrument, made, linked, existing, doubled, contact, batch_status, uni, uni_refused));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

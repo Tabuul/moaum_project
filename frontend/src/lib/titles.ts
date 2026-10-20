@@ -42,6 +42,7 @@ export const TITLES: Record<string, string> = {
   "t/cohorts": "Student Cohorts",
   "t/programmeswap": "Programme Swap",
   "t/transferbulk": "Bulk inter-departmental transfer",
+  "t/iut": "Inter-university transfer",
   "t/helpdeskagents": "Support Agents & Queues",
   "t/helpdeskoffice": "Support Escalations",
   "s/dashboard": "Dashboard",
