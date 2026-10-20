@@ -260,6 +260,7 @@ export const TITLES: Record<string, string> = {
   "t/exportlog": "Export log",
   "t/recordviews": "Record views",
   "t/recordcheck": "Records check",
+  "t/programmemerge": "Programme merge",
   "t/governance": "Data governance",
   "t/platform": "Platform & integrations",
   "t/security": "Security posture",

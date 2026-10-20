@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 406
+\set EXPECTED 407
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19928,6 +19928,109 @@ BEGIN
                  AND gst_wrong = 0, false),
         format('departments %s, differing %s | payments %s/%s of %s/%s, %s rows, ordered %s, categories %s | breakdown %s/%s and %s/%s | GST %s rows, %s fees wrong',
                depts, coalesce(wrong, 'none'), q_n, q_total, d_n, d_total, q_rows, ordered, cats, b_cat_n, b_cat_t, b_fac_n, b_fac_t, gst_rows, gst_wrong));
+END $$;
+-- ── V574. Duplicate programmes merged into one, with their students. Two older postgraduate codes of one name (X1 with two
+--          students, X2 with one), the School's catalogue programme of that subject (C) and a twin of it (T): the suggestions are X2
+--          into X1, X1 into C (the same subject), T into C (twins). The effect is shown and nothing changes. Merged in order: every
+--          student on C, each move recorded (three, and X2's student twice), X1 and X2 archived and aliases of C, X1's fee line of a
+--          session C states ended, X2's line of a session C does not state moved; a student written with X1 lands on C. Refused: a
+--          programme of another kind, a code already merged, the Bursary, a short reason; undoing X2's merge before X1's. Undone in
+--          order: every student back on the code they were on, the lines as they were, the codes in use again. Every column naming a
+--          programme by a foreign key is classed. The block undoes its writes ──
+DO $$
+DECLARE a text := '2374/2375'; b text := '2375/2376'; v_dept text; v_fac text; v_ug text;
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
+        f1 uuid := gen_random_uuid(); f2 uuid := gen_random_uuid(); f3 uuid := gen_random_uuid();
+        sugg text; effect text; untouched boolean; merged jsonb; on_c int; moves int; twice int; aliases text; arch text; fees text; landed text;
+        refused_kind text; refused_again text; refused_office text; refused_reason text; refused_early text;
+        back text; fees_back text; in_use boolean; aliases_after int; unclassed int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V574', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), a, DATE '2374-10-01', DATE '2375-08-31'), (gen_random_uuid(), b, DATE '2375-10-01', DATE '2376-08-31');
+        SELECT d.code, d.faculty_code INTO v_dept, v_fac FROM ref.department d WHERE d.faculty_code IS NOT NULL ORDER BY d.code LIMIT 1;
+        SELECT p.code INTO v_ug FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, archived, category, pg_award, pg_research) VALUES
+            ('C97401', 'MSC CHKVSEVENFOUR STUDIES', v_dept, v_fac, 0, false, 'POST GRADUATE', NULL, false),
+            ('C97402', 'MSC CHKVSEVENFOUR STUDIES', v_dept, v_fac, 0, false, 'POST GRADUATE', NULL, false),
+            ('C97403', 'M.Sc. Chkvsevenfour Studies', v_dept, v_fac, 0, false, 'POST GRADUATE', 'MSC', false),
+            ('C97404', 'M.Sc Chkvsevenfour Studies', v_dept, v_fac, 0, false, 'POST GRADUATE', 'MSC', false);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s1, 'MOAUM/ADM/74/974001', 'MOAUM/CHK/74/97401', 'CHECKV574', 'One', 'C97401', 'POSTGRADUATE', a, 800, 800, 'ACTIVE', now()),
+            (s2, 'MOAUM/ADM/74/974002', 'MOAUM/CHK/74/97402', 'CHECKV574', 'Two', 'C97401', 'POSTGRADUATE', a, 800, 800, 'ACTIVE', now()),
+            (s3, 'MOAUM/ADM/74/974003', 'MOAUM/CHK/74/97403', 'CHECKV574', 'Three', 'C97402', 'POSTGRADUATE', a, 800, 800, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (id, session, item, amount, programme_code, semester, entry_mode) VALUES
+            (f1, a, 'School fees (check V574, X1)', 100000, 'C97401', 1, 'POSTGRADUATE'),
+            (f2, a, 'School fees (check V574, C)', 120000, 'C97403', 1, 'POSTGRADUATE'),
+            (f3, b, 'School fees (check V574, X2)', 90000, 'C97402', 1, 'POSTGRADUATE');
+
+        sugg := (SELECT string_agg(s.step || ':' || s.kind || ':' || s.from_code || '>' || coalesce(s.to_code, '-'), ',' ORDER BY s.step, s.from_code)
+                   FROM ref.programme_merge_suggestions('POST GRADUATE') s WHERE s.from_code IN ('C97401', 'C97402', 'C97403', 'C97404'));
+        effect := (SELECT string_agg((x->>'from') || '>' || (x->>'to') || ':' || coalesce(x->>'students', x->>'refused'), ',')
+                     FROM jsonb_array_elements(ref.programme_merge_effect('[{"from":"C97402","to":"C97401"},{"from":"C97401","to":"C97403"}]')) x);
+        untouched := (SELECT count(*) FROM people.student WHERE id IN (s1, s2, s3) AND programme_code IN ('C97401', 'C97402')) = 3
+                     AND NOT EXISTS (SELECT 1 FROM ref.programme_merge WHERE from_code IN ('C97401', 'C97402'));
+
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM ref.merge_programme('C97402', 'C97401', 'the Bursary does not merge programmes');
+        EXCEPTION WHEN insufficient_privilege OR check_violation THEN GET STACKED DIAGNOSTICS refused_office = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        merged := ref.merge_programmes('[{"from":"C97402","to":"C97401"},{"from":"C97401","to":"C97403"},{"from":"C97404","to":"C97403"}]',
+                                       'The School of Postgraduate Studies list: one programme per name');
+        on_c := (SELECT count(*) FROM people.student WHERE id IN (s1, s2, s3) AND programme_code = 'C97403');
+        moves := (SELECT count(*) FROM people.record_move WHERE student_id IN (s1, s2, s3) AND reason LIKE 'Programme merge:%');
+        twice := (SELECT count(*) FROM people.record_move WHERE student_id = s3 AND reason LIKE 'Programme merge:%');
+        aliases := (SELECT string_agg(alias_code || '>' || programme_code, ',' ORDER BY alias_code) FROM ref.programme_alias WHERE alias_code IN ('C97401', 'C97402', 'C97404') AND ended_at IS NULL);
+        arch := (SELECT string_agg(code || ':' || archived, ',' ORDER BY code) FROM ref.programme WHERE code IN ('C97401', 'C97402', 'C97403', 'C97404'));
+        fees := (SELECT string_agg(CASE id WHEN f1 THEN 'x1' WHEN f2 THEN 'c' ELSE 'x2' END || ':' || programme_code || ':' || (ended_at IS NULL), ',' ORDER BY item) FROM finance.fee_schedule WHERE id IN (f1, f2, f3));
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (s4, 'MOAUM/ADM/74/974004', 'MOAUM/CHK/74/97404', 'CHECKV574', 'Four', 'C97401', 'POSTGRADUATE', a, 800, 800, 'ACTIVE', now());
+        landed := (SELECT programme_code FROM people.student WHERE id = s4);
+
+        BEGIN PERFORM ref.merge_programme('C97403', v_ug, 'a programme of another kind refused');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_kind = MESSAGE_TEXT; END;
+        BEGIN PERFORM ref.merge_programme('C97401', 'C97403', 'a code already merged refused');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_again = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        BEGIN PERFORM ref.merge_programme('C97403', 'C97401', 'short');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_reason = MESSAGE_TEXT; END;
+        BEGIN PERFORM ref.undo_programme_merge((SELECT id FROM ref.programme_merge WHERE from_code = 'C97402'), 'undone before the later one');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS refused_early = MESSAGE_TEXT; END;
+
+        PERFORM ref.undo_programme_merge((SELECT id FROM ref.programme_merge WHERE from_code = 'C97404'), 'the twin is a different programme');
+        PERFORM ref.undo_programme_merge((SELECT id FROM ref.programme_merge WHERE from_code = 'C97401'), 'the School asked for the merge to wait');
+        PERFORM ref.undo_programme_merge((SELECT id FROM ref.programme_merge WHERE from_code = 'C97402'), 'the School asked for the merge to wait');
+        back := (SELECT string_agg(CASE id WHEN s1 THEN '1' WHEN s2 THEN '2' WHEN s3 THEN '3' ELSE '4' END || ':' || programme_code, ',' ORDER BY other_names)
+                   FROM people.student WHERE id IN (s1, s2, s3));
+        fees_back := (SELECT string_agg(CASE id WHEN f1 THEN 'x1' WHEN f2 THEN 'c' ELSE 'x2' END || ':' || programme_code || ':' || (ended_at IS NULL), ',' ORDER BY item) FROM finance.fee_schedule WHERE id IN (f1, f2, f3));
+        in_use := NOT EXISTS (SELECT 1 FROM ref.programme WHERE code IN ('C97401', 'C97402', 'C97403', 'C97404') AND archived);
+        aliases_after := (SELECT count(*) FROM ref.programme_alias WHERE alias_code IN ('C97401', 'C97402', 'C97404') AND ended_at IS NULL);
+        RAISE EXCEPTION 'the V574 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V574 check undoes its writes' THEN RAISE; END IF;
+    END;
+    -- every column naming a programme by a foreign key is classed for a merge
+    unclassed := (SELECT count(*) FROM pg_constraint c JOIN pg_attribute att ON att.attrelid = c.conrelid AND att.attnum = ANY (c.conkey)
+                   WHERE c.contype = 'f' AND c.confrelid = 'ref.programme'::regclass
+                     AND c.conrelid NOT IN ('ref.programme_merge'::regclass, 'ref.programme_alias'::regclass)
+                     AND NOT EXISTS (SELECT 1 FROM ref.programme_reference r WHERE to_regclass(r.tab) = c.conrelid AND r.col = att.attname));
+    PERFORM pg_temp.assert('V574: duplicate programmes are merged into one with their students, each move recorded, the old code an alias, fee lines moved or ended; refused when it should be; undone in order to the record as it was',
+        coalesce(sugg = '1:SAME_NAME:C97402>C97401,2:EXACT:C97401>C97403,3:TWIN:C97404>C97403'
+                 AND effect = 'C97402>C97401:1,C97401>C97403:3' AND untouched
+                 AND jsonb_array_length(merged) = 3 AND on_c = 3 AND moves = 4 AND twice = 2
+                 AND aliases = 'C97401>C97403,C97402>C97403,C97404>C97403' AND arch = 'C97401:true,C97402:true,C97403:false,C97404:true'
+                 AND fees = 'c:C97403:true,x1:C97401:false,x2:C97403:true' AND landed = 'C97403'
+                 AND refused_kind LIKE 'PROGRAMME_MERGE_CATEGORY%' AND refused_again LIKE 'PROGRAMME_MERGE_DONE%' AND refused_office LIKE 'PROGRAMME_MERGE_OFFICE%'
+                 AND refused_reason LIKE 'PROGRAMME_MERGE_REASON%' AND refused_early LIKE 'PROGRAMME_MERGE_LATER%'
+                 AND back = '1:C97401,3:C97402,2:C97401' AND fees_back = 'c:C97403:true,x1:C97401:true,x2:C97402:true' AND in_use AND aliases_after = 0
+                 AND unclassed = 0, false),
+        format('suggested %s | effect %s untouched %s | merged %s on C %s moves %s (X2''s student %s) | aliases %s | archived %s | fees %s | landed %s | refused %s / %s / %s / %s / %s | back %s fees %s in use %s aliases %s | unclassed %s',
+               sugg, effect, untouched, jsonb_array_length(merged), on_c, moves, twice, aliases, arch, fees, landed,
+               left(refused_kind, 28), left(refused_again, 24), left(refused_office, 26), left(refused_reason, 26), left(refused_early, 26), back, fees_back, in_use, aliases_after, unclassed));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

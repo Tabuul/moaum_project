@@ -1053,7 +1053,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/certificates", "icon": "cap", "label": "Certificates" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
-          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" }
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" }
         ]
       },
       {
@@ -1124,6 +1125,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
           { "id": "t/transcripts", "icon": "doc", "label": "Transcripts" },
@@ -1257,7 +1259,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
-          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" }
+          { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" }
         ]
       },
       {
@@ -1368,6 +1371,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
@@ -2356,6 +2360,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
@@ -2587,6 +2592,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
       },
