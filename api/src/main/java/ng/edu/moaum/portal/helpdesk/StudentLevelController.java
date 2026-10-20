@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.studentportal.StudentPortalService;
 
-import static ng.edu.moaum.portal.helpdesk.SupportAccess.AGENTS;
+import static ng.edu.moaum.portal.helpdesk.SupportAccess.LEVEL_DESK;
 import static ng.edu.moaum.portal.helpdesk.SupportAccess.blank;
 import static ng.edu.moaum.portal.helpdesk.SupportAccess.can;
 
@@ -59,7 +59,7 @@ class StudentLevelController {
 
     /** the student, the level, the programme's levels, the evidence, the history, and what this agent may do */
     @GetMapping("/students/{id}/level")
-    @PreAuthorize(AGENTS)
+    @PreAuthorize(LEVEL_DESK)
     @Transactional(readOnly = true)
     Map<String, Object> level(Authentication auth, @PathVariable UUID id) {
         SupportAccess.Access a = support.on(auth, id);
@@ -112,7 +112,7 @@ class StudentLevelController {
     /** progress to the next level, or correct the level: with the reason, the ticket where there is one, and — when the student has
      *  registered for the session — the agent's word that they know the registration stays as it is */
     @PostMapping("/students/{id}/level")
-    @PreAuthorize(AGENTS)
+    @PreAuthorize(LEVEL_DESK)
     @Transactional
     Map<String, Object> change(Authentication auth, @PathVariable UUID id, @Valid @RequestBody LevelIn body) {
         SupportAccess.Access a = support.on(auth, id);
@@ -164,7 +164,7 @@ class StudentLevelController {
 
     /** Level Change History: every level change within the reader's reach, filtered, paged, and the whole of it for an export */
     @GetMapping("/levels/history")
-    @PreAuthorize(AGENTS)
+    @PreAuthorize(LEVEL_DESK)
     @Transactional(readOnly = true)
     Map<String, Object> changes(Authentication auth, @RequestParam(required = false) String action, @RequestParam(required = false) String q,
                                 @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to,

@@ -39,6 +39,10 @@ class FinanceController {
     /** V520: the school fees setup and binding — the fee schedule, its lines, copies and fee sources — the Bursary's and the Students
      *  Account Officer's; the officer holds none of the Bursary's other writes (confirmations, bank credits, old fees, clearance) */
     private static final String FEE_SETTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
+    /** V591: the Old Fees History desk's import — the old portal's fees history loaded, what is loaded, the item codes, records put
+     *  right and doubles withdrawn — the Bursary's and the Students Account Officer's; what needs the bank's word or moves money
+     *  (double charges, payments never received, an excess carried or refunded), the ledger and the go-live reset stay the Bursar's */
+    private static final String OLD_FEES_DESK = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
     /** who may reconcile a transaction against the bank: the Bursary and the audit directorate */
     private static final String RECONCILERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super')";
     private static final String MIGRATORS = "hasAnyAuthority('OFFICE_bursar','OFFICE_super','OFFICE_ict','OFFICE_admin')";
@@ -135,7 +139,7 @@ class FinanceController {
     /** old students' school-fees history from the old portal — each row settles a past session (or semester)
      *  by amount paid, or in full against the fee schedule when the amount is left blank. */
     @PostMapping("/legacy-fees")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(OLD_FEES_DESK)
     @Transactional
     Map<String, Object> importLegacyFees(@Valid @RequestBody FeeRows body) {
         if (body.rows() == null || body.rows().isEmpty()) {
@@ -148,7 +152,7 @@ class FinanceController {
 
     /** what the old-portal fees import has loaded (all sessions, or one) — shown before a reset */
     @GetMapping("/legacy-fees/loaded")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(OLD_FEES_DESK)
     @Transactional(readOnly = true)
     Map<String, Object> legacyFeesLoaded(@RequestParam(required = false) String session) {
         return jdbc.sql("SELECT * FROM finance.legacy_payment_count((:s)::text)")
@@ -185,7 +189,7 @@ class FinanceController {
      *  the record kept on the register, then removed (a whole-session record's payment number moving to the per-semester record
      *  that stands for it); one a deferment fee, a refund or the GST reconciliation points at is left */
     @PostMapping("/legacy-fees/doubles/withdraw")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(OLD_FEES_DESK)
     @Transactional
     Map<String, Object> withdrawPaymentHistoryDoubles(@Valid @RequestBody WithdrawDoubles body) {
         int n = body.limit() == null ? 5000 : Math.max(1, Math.min(body.limit(), 20_000));
@@ -195,7 +199,7 @@ class FinanceController {
     /** V498: the old portal's payment-item codes (the export's payment_type sheet: pcode, description, school), kept so the import
      *  reads a code as the item it names and what was recorded under a code can be put right */
     @PostMapping("/legacy-fees/item-codes")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(OLD_FEES_DESK)
     @Transactional
     Map<String, Object> legacyItemCodes(@Valid @RequestBody FeeRows body) {
         int n = jdbc.sql("SELECT finance.legacy_item_codes_set(:j::jsonb)").param("j", json.writeValueAsString(body.rows())).query(Integer.class).single();
@@ -229,7 +233,7 @@ class FinanceController {
     /** V498: puts a batch of them right (the screen asks again until none is left): renamed or relabelled so school fees count, or
      *  withdrawn where the same payment is on record under its item; each kept on its register with the reason */
     @PostMapping("/legacy-fees/mislabelled/put-right")
-    @PreAuthorize(BURSARY)
+    @PreAuthorize(OLD_FEES_DESK)
     @Transactional
     Map<String, Object> putRightLegacyItems(@Valid @RequestBody WithdrawDoubles body) {
         int n = body.limit() == null ? 5000 : Math.max(1, Math.min(body.limit(), 20_000));

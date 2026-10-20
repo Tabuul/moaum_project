@@ -1,5 +1,14 @@
 # ICT Support: student level management, the password reset for every agent, and the phone on tickets (V500)
 
+## The Students Account Officer (V591)
+
+The Bursary's Students Account Officer (V520) holds the level desk too: Student Level Management, Level Change History and
+the student finder they need, every student (`SupportAccess.LEVEL_DESK`, the officer's reach "The University" with the
+level capabilities only). `people.support_set_level` admits the office; its rules, its record on the cohort decision history
+and the support ledger (under the office's own name) are unchanged. Nothing else of the ICT Support Desk opens to the office:
+the support record, tickets, password resets, the student's portal and the support overrides stay `AGENTS`, and the screens
+offer those links to ICT Support's offices only. See [students-account-officer.md](students-account-officer.md).
+
 ## What changed
 
 ICT Support can now settle the common student problems at the desk instead of escalating each one. Two capabilities join
@@ -83,7 +92,7 @@ Both need a reason of ten characters or more, and the agent may name one of the 
 | `LEVEL_AT_FINAL` | a progression past the final level (a further session there is a spillover year, not a new level) |
 | `LEVEL_PG_PROGRESSION` | a postgraduate progression |
 | `LEVEL_UNCHANGED` | the level is the same |
-| `LEVEL_SUPPORT_OFFICE` | an office other than ICT Support's (the Registry's own level fix is V475's `apply_level_corrections`) |
+| `LEVEL_SUPPORT_OFFICE` | an office other than ICT Support's or, since V591, the Students Account Officer's (the Registry's own level fix is V475's `apply_level_corrections`) |
 | `LEVEL_CHANGED` | the screen showed a level the record no longer holds: someone else changed it meanwhile |
 
 The student's row is locked while the change is written. A second click within a minute from the same agent is

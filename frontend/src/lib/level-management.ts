@@ -97,8 +97,9 @@ export function refusalWords(s: string | null | undefined): string {
 /** how a level change came about, in words */
 export function ruleWord(rule: string | null | undefined): string {
   switch (rule) {
-    case "LEVEL_PROGRESS": return "Progressed (ICT Support)";
-    case "LEVEL_CORRECTION": return "Corrected (ICT Support)";
+    // V591: the level desk is ICT Support's and the Students Account Officer's; the row names the office
+    case "LEVEL_PROGRESS": return "Progressed (level desk)";
+    case "LEVEL_CORRECTION": return "Corrected (level desk)";
     case "LEVEL_SPILLOVER": return "Spillover correction";
     case "LEVEL_REGISTRATION": return "Correction from the registration";
     case "LEVEL_ARITHMETIC": return "Correction by the sessions counted";
@@ -141,8 +142,12 @@ export function levelBody(action: LevelAction, state: LevelState, level: number 
 /** the Level Change History filter */
 export const HISTORY_ACTIONS = [
   ["", "Every change"],
-  ["SUPPORT", "Made by ICT Support"],
+  ["SUPPORT", "Made on the level desk"],
   ["LEVEL_PROGRESS", "Progressed"],
   ["LEVEL_CORRECTION", "Corrected"],
   ["OTHER", "Registry and cohort corrections"],
 ] as const;
+
+/** the ICT Support Desk's own offices on the level desk (V500); the Students Account Officer holds the desk too (V591) but none of the
+ *  desk's other doors, so the screens offer the support record and the desk's links to these offices only */
+export const SUPPORT_DESK_OFFICES = ["ictagent", "helpdeskhead", "ict", "admin", "super"];

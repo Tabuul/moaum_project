@@ -29,6 +29,11 @@ import ng.edu.moaum.portal.shared.NotFound;
 class SupportAccess {
 
     static final String AGENTS = "hasAnyAuthority('OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    /** V591: the level desk (Student Level Management, its history, the student finder they need) is the support desk's and the
+     *  Students Account Officer's; every other door of the desk stays AGENTS */
+    static final String LEVEL_DESK = "hasAnyAuthority('OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_studentaccounts')";
+    /** what the Students Account Officer may do on the level desk: see the student, progress or correct the level, read the history */
+    static final Set<String> LEVEL_DESK_CAPS = Set.of("VIEW_STUDENT", "PROGRESS_LEVEL", "CORRECT_LEVEL", "VIEW_LEVEL_HISTORY");
     static final Set<String> HEADS = Set.of("OFFICE_helpdeskhead", "OFFICE_ict", "OFFICE_admin", "OFFICE_super");
     static final List<String> ALL = List.of("VIEW_STUDENT", "EDIT_CONTACT", "EDIT_PERSONAL", "EDIT_FAMILY", "EDIT_PHOTO", "REQUEST_CHANGE",
             "VIEW_PAYMENTS", "VIEW_DOCUMENTS", "MANAGE_REGISTRATION", "EXPORT_STUDENTS",
@@ -108,6 +113,9 @@ class SupportAccess {
     Access access(Authentication auth) {
         UUID me = UUID.fromString(auth.getName());
         if (head(auth)) return new Access(me, true, Set.copyOf(ALL), "The University");
+        // V591: the Students Account Officer (not also an agent) reaches every student on the level desk, with the level capabilities
+        // and no other; the desk's other doors never admit the office (LEVEL_DESK against AGENTS), so the reach carries nothing else
+        if (!has(auth, "OFFICE_ictagent") && has(auth, "OFFICE_studentaccounts")) return new Access(me, true, LEVEL_DESK_CAPS, "The University");
         Map<String, Object> row = jdbc.sql("SELECT helpdesk.agent_capabilities(:p) AS caps, (SELECT words FROM helpdesk.agent_student_scope(:p)) AS words")
                 .param("p", me).query().singleRow();
         return new Access(me, false, Set.copyOf(texts(row.get("caps"))), row.get("words") == null ? "" : String.valueOf(row.get("words")));

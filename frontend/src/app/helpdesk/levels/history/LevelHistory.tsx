@@ -22,7 +22,9 @@ export interface LevelHistoryFilters { action: string; q: string; from: string; 
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function LevelHistory({ list, page, filters }: { list: LevelHistoryList; page: number; filters: LevelHistoryFilters }) {
+/** desk: the ICT Support Desk's own offices, whose links open the support record and the password reset history (V591: the Students
+ *  Account Officer reads the same history and opens the student on the level desk instead) */
+export function LevelHistory({ list, page, filters, desk = true }: { list: LevelHistoryList; page: number; filters: LevelHistoryFilters; desk?: boolean }) {
   const go = useQueryNav();
   const qs = (patch: Partial<LevelHistoryFilters> & { page?: string }) => {
     const p = new URLSearchParams();
@@ -48,9 +50,9 @@ export function LevelHistory({ list, page, filters }: { list: LevelHistoryList; 
 
   return (
     <>
-      <PageHead title="Level change history" eyebrow="ICT Support Desk"
-        description={`Every change of a student's academic level within your reach (${list.scope}), newest first: progressions and corrections by ICT Support, with the reason and the ticket, and the Registry's and the cohort corrections.`}
-        actions={<><LinkBtn href="/helpdesk/levels">Student level management</LinkBtn><LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn></>} />
+      <PageHead title="Level change history" eyebrow={desk ? "ICT Support Desk" : "Students Account Officer"}
+        description={`Every change of a student's academic level within your reach (${list.scope}), newest first: progressions and corrections by ICT Support and the Students Account Officer, with the reason and the ticket, and the Registry's and the cohort corrections.`}
+        actions={<><LinkBtn href="/helpdesk/levels">Student level management</LinkBtn>{desk ? <LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn> : null}</>} />
       <form className="filterbar" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); nav({ action: String(f.get("action") ?? ""), q: String(f.get("q") ?? "").trim(), from: String(f.get("from") ?? ""), to: String(f.get("to") ?? "") }); }}>
         <Field id="lh-action" label="Action"><select id="lh-action" name="action" className="ctl" defaultValue={filters.action}>{HISTORY_ACTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field id="lh-q" label="Student, matric number or ticket"><input id="lh-q" name="q" className="ctl" defaultValue={filters.q} maxLength={80} /></Field>
@@ -74,7 +76,7 @@ export function LevelHistory({ list, page, filters }: { list: LevelHistoryList; 
           <DTable pageSize={0} cols={["S/N|num", "Student", "Matric No", "Previous|num", "New|num", "Action", "Changed by", "Reason", "Ticket|mid", "Date/time"]}
             rows={list.rows.map((r, i) => [
               <span key="sn" className="tnum sub2">{(page - 1) * (list.size || 50) + i + 1}</span>,
-              <span key="s"><Link className="lnk" href={`/helpdesk/students/${r.student_id}`}>{r.student}</Link><div className="sub2">{r.programme ?? ""}</div></span>,
+              <span key="s"><Link className="lnk" href={desk ? `/helpdesk/students/${r.student_id}` : `/helpdesk/levels?student=${r.student_id}`}>{r.student}</Link><div className="sub2">{r.programme ?? ""}</div></span>,
               <span key="m" className="tnum">{r.number ?? "—"}</span>,
               <span key="p" className="tnum">{r.previous_level ?? "—"}</span>,
               <b key="n" className="tnum">{r.new_level}</b>,

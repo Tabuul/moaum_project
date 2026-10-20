@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 422
+\set EXPECTED 423
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21135,6 +21135,36 @@ BEGIN
         format('prog %s | versions %s | shut: opened %s, a %s, b %s, check %s | open: opened %s, a %s, b %s, check %s | refused %s | switch kept %s',
                prog, versions, opened_shut, menu_a_shut, menu_b_shut, chk_shut, opened_open, menu_a_open, menu_b_open, chk_open, refused, registration.curriculum_open() = was_open));
 END $$;
+-- ── V591. The Students Account Officer progresses a student's level on the level desk as ICT Support does, recorded under the
+--          office on the cohort decision history; the Bursar is refused as before. The block undoes its writes ──
+DO $$
+DECLARE S text := '9591/9592'; pa text := 'C00023'; stu uuid := gen_random_uuid(); r1 jsonb; e_bursar text; lvl int; who text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V591', true);
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9591-10-01', date '9592-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (stu, 'MOAUM/ADM/59/591001', 'MOAUM/CHK/59/5911', 'ZZV591', 'Level', pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+    -- the Bursar is not the level desk's
+    BEGIN PERFORM people.support_set_level(stu, 'PROGRESS', NULL, 100, 'CHECK V591: by the Bursar', S, 1, NULL); e_bursar := 'accepted';
+    EXCEPTION WHEN insufficient_privilege THEN e_bursar := split_part(SQLERRM, ':', 1); END;
+    -- the Students Account Officer is
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    r1 := people.support_set_level(stu, 'PROGRESS', NULL, 100, 'CHECK V591: progressed by the Students Account Officer', S, 1, NULL);
+    SELECT current_level INTO lvl FROM people.student WHERE id = stu;
+    SELECT actor_office INTO who FROM people.cohort_decision WHERE student_id = stu ORDER BY decided_at DESC LIMIT 1;
+    RAISE EXCEPTION 'CHECK_V591_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V591_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V591: the Students Account Officer progresses a level on the level desk as ICT Support does, recorded under the office; the Bursar is refused',
+        coalesce(e_bursar = 'LEVEL_SUPPORT_OFFICE' AND (r1->>'newLevel')::int = 200 AND lvl = 200 AND who = 'studentaccounts', false),
+        format('bursar %s | officer new level %s, record %s by %s', e_bursar, r1->>'newLevel', lvl, who));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

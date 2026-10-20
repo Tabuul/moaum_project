@@ -821,7 +821,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Payment Management",
         "items": [
-          { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" }
+          { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
+          { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" }
         ]
       },
       {
@@ -837,6 +838,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/studentquery", "icon": "user", "label": "Student Accounts" },
+          { "id": "t/supportlevels", "icon": "cap", "label": "Student Level Management" },
+          { "id": "t/supportlevelhistory", "icon": "clock", "label": "Level Change History" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" }
         ]

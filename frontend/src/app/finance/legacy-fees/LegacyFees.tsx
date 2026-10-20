@@ -26,10 +26,14 @@ import { OldFeesNotReceived } from "./OldFeesNotReceived";
 import { OldFeesOverpaid } from "./OldFeesOverpaid";
 import { OldFeesPaymentHistoryLeft } from "./OldFeesPaymentHistoryLeft";
 import { OldFeesReconciliation } from "./OldFeesReconciliation";
-const MAY = ["bursar", "super", "admin"];
+/** the Bursary: what needs the bank's word or moves money, the ledger and the go-live reset */
+const BURSARY = ["bursar", "super", "admin"];
+/** V591: the import's own acts — the file loaded, item codes, records put right, doubles withdrawn — the Students Account Officer's too */
+const DESK = [...BURSARY, "studentaccounts"];
 
 export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
-  const may = MAY.includes(actingOffice ?? "");
+  const may = DESK.includes(actingOffice ?? "");
+  const bursary = BURSARY.includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [preview, setPreview] = useState<Row[] | null>(null);
@@ -314,11 +318,13 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
       <OldFeesReconciliation tick={changed} />
 
-      <OldFeesOverpaid may={may} tick={changed} onChanged={bump} />
+      {/* V591: an excess carried or refunded, a double charge or a payment never received checked with the bank, the ledger posted —
+          the Bursary's; the import, the item codes, records put right and doubles withdrawn — the desk's, the Students Account Officer's too */}
+      <OldFeesOverpaid may={bursary} tick={changed} onChanged={bump} />
 
-      <OldFeesDoubleCharges may={may} tick={changed} onChanged={bump} />
+      <OldFeesDoubleCharges may={bursary} tick={changed} onChanged={bump} />
 
-      <OldFeesNotReceived may={may} tick={changed} onChanged={bump} />
+      <OldFeesNotReceived may={bursary} tick={changed} onChanged={bump} />
 
       <OldFeesMislabelled key={`codes-${codesTick}`} may={may} tick={changed} onChanged={bump} />
 
@@ -326,7 +332,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
       <OldFeesPaymentHistoryLeft tick={changed} />
 
-      <OldFeesLedger may={may} tick={changed} />
+      <OldFeesLedger may={bursary} tick={changed} />
 
       <Panel title="Start over" right="Delete what this import has loaded, then load it again">
         <PBody>
@@ -336,8 +342,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
             Leave the session blank for everything, or give one (2022/2023).
           </div>
           <div className="row mt-3">
-            <input className="ctl" style={{ maxWidth: 160 }} placeholder="All sessions" value={resetSession} onChange={(e) => { setResetSession(e.target.value); setLoaded(null); }} disabled={!may || busy} />
-            <Btn kind="ghost" disabled={!may || busy} onClick={() => void checkLoaded()}>Show what is loaded</Btn>
+            <input className="ctl" style={{ maxWidth: 160 }} placeholder="All sessions" value={resetSession} onChange={(e) => { setResetSession(e.target.value); setLoaded(null); }} disabled={!bursary || busy} />
+            <Btn kind="ghost" disabled={!bursary || busy} onClick={() => void checkLoaded()}>Show what is loaded</Btn>
           </div>
           {loaded ? (
             <div className="mt-3">

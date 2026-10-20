@@ -41,6 +41,7 @@ import ng.edu.moaum.portal.studentportal.StudentAuthService;
 import ng.edu.moaum.portal.studentportal.StudentPortalService;
 
 import static ng.edu.moaum.portal.helpdesk.SupportAccess.AGENTS;
+import static ng.edu.moaum.portal.helpdesk.SupportAccess.LEVEL_DESK;
 import static ng.edu.moaum.portal.helpdesk.SupportAccess.blank;
 import static ng.edu.moaum.portal.helpdesk.SupportAccess.can;
 import static ng.edu.moaum.portal.helpdesk.SupportAccess.texts;
@@ -117,7 +118,7 @@ class StudentSupportController {
             """;
 
     @GetMapping("/students")
-    @PreAuthorize(AGENTS)
+    @PreAuthorize(LEVEL_DESK)   // V591: the finder serves the level desk too, where the Students Account Officer reaches every student
     @Transactional(readOnly = true)
     Map<String, Object> search(Authentication auth, @RequestParam(required = false) String q, @RequestParam(required = false) String fac,
                                @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,

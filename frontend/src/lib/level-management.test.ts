@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverOf, type LevelState } from "./level-management.ts";
+import { levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverOf, SUPPORT_DESK_OFFICES, type LevelState } from "./level-management.ts";
 
 const state = (over: Partial<LevelState> = {}): LevelState => ({
   student: { id: "s", full_name: "DOE, John", matric_no: "MOAU/SC/CSC/24/12345", jamb_reg_no: null, application_no: null, faculty: null, department: null, programme: null,
@@ -39,7 +39,7 @@ test("the levels on the record run one per session, and each change is named by 
     { session: "2024/2025", semester: 1, level: 200, status: "LOCKED", courses: 9 },
     { session: "2025/2026", semester: 1, level: 300, status: "APPROVED", courses: 9 },
   ]), [{ session: "2024/2025", level: 200 }, { session: "2025/2026", level: 300 }]);
-  assert.equal(ruleWord("LEVEL_PROGRESS"), "Progressed (ICT Support)");
+  assert.equal(ruleWord("LEVEL_PROGRESS"), "Progressed (level desk)");
   assert.equal(ruleWord("LEVEL_SPILLOVER"), "Spillover correction");
   assert.equal(ruleWord("PROMOTE"), "Registry decision");
 });
@@ -56,4 +56,11 @@ test("a spillover student is read as SP1, SP2 or the limit, at the final level, 
   assert.equal(levelLabel(400, "SPILLOVER_YEAR_1", 400), "400 Level (SP1)");
   assert.equal(levelLabel(100, "SPILLOVER_YEAR_1", 400), "100 Level");
   assert.equal(levelLabel(300, "NORMAL", 400), "300 Level");
+});
+
+test("the level desk's support-desk links are for ICT Support's offices, not the Students Account Officer (V591)", () => {
+  assert.equal(SUPPORT_DESK_OFFICES.includes("ictagent"), true);
+  assert.equal(SUPPORT_DESK_OFFICES.includes("helpdeskhead"), true);
+  assert.equal(SUPPORT_DESK_OFFICES.includes("studentaccounts"), false);
+  assert.equal(SUPPORT_DESK_OFFICES.includes("bursar"), false);
 });

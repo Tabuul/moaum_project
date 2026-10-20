@@ -25,7 +25,9 @@ import org.springframework.transaction.PlatformTransactionManager;
  * transactions, the Bursary's view, the hanging payments desk, NELFUND, Student Query and the unpaid registrations; it states the
  * session's school fees (a line added, the same line refused twice, ended) and reads the fee history; it acts on the hanging payments
  * desk; and it is refused everything else of the Bursar's: the clearance scheme, confirming a payment, refunds, bank credits, the
- * collections import, a test checkout, NELFUND credits and the transfer fee. A lecturer does not read the payments. Needs DATABASE_URL.
+ * collections import, a test checkout, NELFUND credits and the transfer fee. V591: it holds the Old Fees History desk's import (not
+ * the go-live reset or the ledger) and the level desk (finds any student, progresses the level, reads the history) and no other door
+ * of the ICT Support Desk. A lecturer does not read the payments. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -109,6 +111,41 @@ class StudentsAccountOfficerIT {
         assertThat(status(sao, HttpMethod.POST, "/api/v1/payments/test-checkout", Map.of("number", "MOAUM/TEST/1"))).isEqualTo(403);
         assertThat(status(sao, HttpMethod.POST, "/api/v1/nelfund/credit", Map.of("number", "MOAUM/TEST/1", "reason", "Integration test credit"))).isEqualTo(403);
         assertThat(status(sao, HttpMethod.PUT, "/api/v1/finance/transfer-fee", Map.of("amount", 1000))).isEqualTo(403);
-        assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees", Map.of("rows", List.of()))).isEqualTo(403);
+
+        // V591: the Old Fees History desk's import is the officer's (a body that passes the office and fails the form: FEE_ROWS, never
+        // 403), as is what is loaded; the go-live reset and the ledger stay the Bursar's
+        ResponseEntity<Map> oldFees = it.call(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees", Map.of("rows", List.of()));
+        assertThat(oldFees.getStatusCode().value()).as(String.valueOf(oldFees.getBody())).isEqualTo(422);
+        assertThat(oldFees.getBody()).containsEntry("code", "FEE_ROWS");
+        assertThat(it.get(sao, "/api/v1/finance/legacy-fees/loaded").getStatusCode().value()).isEqualTo(200);
+        assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees/reset", Map.of("session", "", "confirm", "RESET"))).isEqualTo(403);
+        assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=1", Map.of())).isEqualTo(403);
+
+        // V591: the level desk — the officer finds any student, reads the level with both acts offered, progresses it, and the history
+        // lists the change under the office; the rest of the ICT Support Desk stays closed to the office, and the level desk to the Bursar
+        String lvName = it.freeSurname("ZZSAOLEVEL");
+        UUID lv = it.student(lvName, "C00061", it.freeNumber("MOAUM/ADM/60/", 6), null, 100);
+        // the officer is a person on the register (the support ledger names the person who acts), as every office holder is
+        String officer = TestTokens.token(it.person("ZZ-SAO-" + lvName, "ZZSAOOFFICER"), List.of("studentaccounts"));
+        ResponseEntity<Map> found = it.get(officer, "/api/v1/helpdesk/support/students?q=" + lvName);
+        assertThat(found.getStatusCode().value()).as(String.valueOf(found.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(found.getBody())).contains(lv.toString());
+        ResponseEntity<Map> level = it.get(officer, "/api/v1/helpdesk/support/students/" + lv + "/level");
+        assertThat(level.getStatusCode().value()).as(String.valueOf(level.getBody())).isEqualTo(200);
+        assertThat(level.getBody()).containsEntry("mayProgress", true).containsEntry("mayCorrect", true).containsEntry("scope", "The University");
+        ResponseEntity<Map> progressed = it.call(officer, HttpMethod.POST, "/api/v1/helpdesk/support/students/" + lv + "/level",
+                Map.of("action", "PROGRESS", "expected", 100, "reason", "Integration test: progressed by the Students Account Officer"));
+        assertThat(progressed.getStatusCode().value()).as(String.valueOf(progressed.getBody())).isEqualTo(200);
+        int newLevel = ((Number) progressed.getBody().get("newLevel")).intValue();
+        assertThat(newLevel).isGreaterThan(100);
+        assertThat(jdbc.sql("SELECT current_level FROM people.student WHERE id = :s").param("s", lv).query(Integer.class).single()).isEqualTo(newLevel);
+        assertThat(jdbc.sql("SELECT actor_office FROM people.cohort_decision WHERE student_id = :s AND rule = 'LEVEL_PROGRESS' ORDER BY decided_at DESC LIMIT 1")
+                .param("s", lv).query(String.class).single()).isEqualTo("studentaccounts");
+        ResponseEntity<Map> changes = it.get(officer, "/api/v1/helpdesk/support/levels/history?q=" + lvName);
+        assertThat(changes.getStatusCode().value()).as(String.valueOf(changes.getBody())).isEqualTo(200);
+        assertThat(((Number) changes.getBody().get("total")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(it.get(sao, "/api/v1/helpdesk/support/students/" + lv).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(sao, "/api/v1/helpdesk/support/students/" + lv + "/tickets").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(ItSupport.token("bursar"), "/api/v1/helpdesk/support/students/" + lv + "/level").getStatusCode().value()).isEqualTo(403);
     }
 }
