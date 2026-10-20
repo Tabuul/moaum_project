@@ -256,7 +256,10 @@ class PgProgrammeStructureIT {
         String odd = newCode(3);
         course(odd, 300, pgDept);
         String a = newCode(7);
-        String b = newCode(7);
+        // two codes drawn from the same 67,600: never the same course, or the loop below is a course requiring itself
+        String drawn = newCode(7);
+        while (drawn.equals(a)) drawn = newCode(7);
+        String b = drawn;
         course(a, 700, pgDept);
         course(b, 700, pgDept);
         // what the desks refuse, written behind them: a postgraduate binding at 300 level, and a prerequisite loop
