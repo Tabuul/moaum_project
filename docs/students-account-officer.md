@@ -32,11 +32,12 @@ carries only the offices the person holds today. The officer's powers are theref
 | Hanging payments | The desk, the claims, the Ask Interswitch list, the payment events | Recheck any payer's reference at the gateway (`/payments/verify`, `/payments/sweep`), resolve an event, mark a reported receipt not found or reopen it (`PaymentsController.HANGING_DESK`; V522 batch: `/payments/verify` and `/payments/state` treat the officer as an office, not as the payer) |
 | Student levels (V591) | Student Level Management and Level Change History, every student (`SupportAccess.LEVEL_DESK`: the officer reaches the University there with the level capabilities only — `VIEW_STUDENT`, `PROGRESS_LEVEL`, `CORRECT_LEVEL`, `VIEW_LEVEL_HISTORY`); the student finder the desk needs | Progress a student to the next level or correct the level, with a reason (`people.support_set_level`, V500's rules unchanged; recorded on the cohort decision history and the support ledger under the office). No other door of the ICT Support Desk: the support record, tickets, password resets, the student's portal and support overrides stay `AGENTS` |
 | Old fees history (V591) | The Old Fees History desk: the reconciliation, doubles, mislabelled records, overpaid, double charges, payments never received, what is loaded | Load the old portal's fees export, set the item codes, put mislabelled records right, withdraw doubles (`FinanceController.OLD_FEES_DESK`). What needs the bank's word or moves money — a double charge checked, a payment never received raised or decided (`finance.bursary_actor`), an excess carried or refunded — the ledger posted and the go-live reset stay the Bursar's; the screen offers them to the Bursary only |
+| Old GST payments (V591) | The Old GST Payments desk: the figures, the runs, the staged rows, the exception queue, the report | Stage the old portal's GST export (and its dry run), apply a run to the ledger, match, reconcile, relabel or reject a row, find a student (`LegacyGstController.BURSARY`, as the Bursar and the finance controller) |
 
 **Never held by the officer:** confirming a payment by hand, refunds, bank credits, payment reversal, ledger and accounting,
-gateway keys and settings, the PAYDirect collections import, test payments, the clearance scheme, old GST uploads, the old fees
-go-live reset, applicant, postgraduate, deferment, transfer and GST fees, payroll and budget, users and roles, results, courses,
-admission and matriculation. `StudentsAccountOfficerIT` checks the refusals (403) with request bodies that pass validation, so each
+gateway keys and settings, the PAYDirect collections import, test payments, the clearance scheme, the old fees go-live reset,
+applicant, postgraduate, deferment, transfer and GST fees, payroll and budget, users and roles, results, courses, admission and
+matriculation. `StudentsAccountOfficerIT` checks the refusals (403) with request bodies that pass validation, so each
 refusal comes from the office check and not from the form.
 
 ## 3. Screens (menu: Students Account Officer)
@@ -53,6 +54,7 @@ refusal comes from the office check and not from the form.
 | Hanging Payments | The hanging payments desk: Ask the gateway, Resolve, Not found and Reopen are the officer's; importing Interswitch's collections report stays on the Bursary's gateways screen, so the screen does not offer it |
 | Student Level Management, Level Change History (V591) | ICT Support's level desk (`/helpdesk/levels`, `/helpdesk/levels/history`) under the officer's own eyebrow: the support record and the Support Desk links are not offered, a student in the history opens on the level desk |
 | Old Fees History (V591) | The Bursary's Old Fees History desk (`/finance/legacy-fees`): the import and its tabs; the Bursary-only acts (double charges, payments never received, overpaid decisions, the ledger, the reset) are shown without their buttons |
+| Old GST Payments (V591) | The Bursary's Old GST Payments desk (`/finance/legacy-gst`), every act |
 
 ## 4. Changes made
 

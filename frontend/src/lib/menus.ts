@@ -822,7 +822,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Payment Management",
         "items": [
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
-          { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" }
+          { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
+          { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" }
         ]
       },
       {

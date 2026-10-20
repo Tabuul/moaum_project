@@ -120,6 +120,13 @@ class StudentsAccountOfficerIT {
         assertThat(it.get(sao, "/api/v1/finance/legacy-fees/loaded").getStatusCode().value()).isEqualTo(200);
         assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees/reset", Map.of("session", "", "confirm", "RESET"))).isEqualTo(403);
         assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=1", Map.of())).isEqualTo(403);
+        // V591: Old GST Payments too — the figures read, a run staged (an empty file refused by the form, never by the office), a student found
+        assertThat(it.get(sao, "/api/v1/finance/legacy-gst/summary").getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<Map> oldGst = it.call(sao, HttpMethod.POST, "/api/v1/finance/legacy-gst/imports", Map.of("rows", List.of(), "dryRun", true));
+        assertThat(oldGst.getStatusCode().value()).as(String.valueOf(oldGst.getBody())).isEqualTo(422);
+        assertThat(oldGst.getBody()).containsEntry("code", "LEGACY_ROWS_REQUIRED");
+        assertThat(it.getBytes(sao, "/api/v1/finance/legacy-gst/students?q=zzsao").getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/finance/legacy-gst/summary").getStatusCode().value()).isEqualTo(403);
 
         // V591: the level desk — the officer finds any student, reads the level with both acts offered, progresses it, and the history
         // lists the change under the office; the rest of the ICT Support Desk stays closed to the office, and the level desk to the Bursar

@@ -15,7 +15,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const acting = me.ok ? me.data.activeOffice ?? "" : "";
   return (
     <Shell route="t/legacygst" me={me.ok ? me.data : null} sub={session ? `${session} session` : "every session"}>
-      {data.ok ? <LegacyGst data={data.data} canAct={["bursar", "financecontroller", "super"].includes(acting)} initialTab={tab} /> : <ProblemNotice problem={data.problem} />}
+      {/* V591: the Students Account Officer works the desk as the Bursary does */}
+      {data.ok ? <LegacyGst data={data.data} canAct={["bursar", "financecontroller", "studentaccounts", "super"].includes(acting)} initialTab={tab} /> : <ProblemNotice problem={data.problem} />}
     </Shell>
   );
 }

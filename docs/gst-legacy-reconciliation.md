@@ -134,14 +134,14 @@ the counts and the judged rows come back, nothing is kept.
 
 | Method and path | Who | What |
 |---|---|---|
-| `GET /summary?session=` | viewers (Bursary, finance controller, audit, Registry, ICT, admin, super) | the figures, exceptions by category, by session, the fees stated, the runs |
-| `POST /imports` `{rows, fileName, session, dryRun, note}` | Bursary / finance controller / super | stage + match + validate (or dry run) |
+| `GET /summary?session=` | viewers (Bursary, finance controller, the Students Account Officer since V591, audit, Registry, ICT, admin, super) | the figures, exceptions by category, by session, the fees stated, the runs |
+| `POST /imports` `{rows, fileName, session, dryRun, note}` | Bursary / finance controller / Students Account Officer (V591) / super | stage + match + validate (or dry run) |
 | `GET /imports`, `GET /imports/{id}?status=&q=&page=` | viewers | the runs; one run with its rows |
 | `POST /imports/{id}/apply` | Bursary | onto the ledger |
 | `GET /rows?importId=&status=&code=&session=&q=&page=` | viewers | search: legacy/transaction/gateway reference, matric, JAMB, application number, name, ledger reference, amount; status OPEN = review + unmatched |
 | `GET /rows/{id}` | viewers | one payment, its raw row, the student's current standing, the ledger rows of that session |
-| `POST /rows/{id}/{match\|reconcile\|relabel\|reject}` `{studentId, reason}` | Bursary | the officer's hand |
-| `GET /students?q=` | Bursary | a student for a manual match |
+| `POST /rows/{id}/{match\|reconcile\|relabel\|reject}` `{studentId, reason}` | Bursary (the Students Account Officer too, V591) | the officer's hand |
+| `GET /students?q=` | Bursary (the Students Account Officer too, V591) | a student for a manual match |
 | `GET /report?importId=&status=&session=` | viewers | the rows for the reconciliation and exception reports (exported branded, S/N first, names A–Z) |
 
 Coded refusals: `LEGACY_REASON_REQUIRED`, `LEGACY_IDENTIFIER_CONFLICT`, `LEGACY_DUPLICATE`,

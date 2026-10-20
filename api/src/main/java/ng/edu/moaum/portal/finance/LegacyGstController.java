@@ -40,10 +40,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/finance/legacy-gst")
 class LegacyGstController {
 
-    /** who reads old-portal financial records: the Bursary, audit, the Registry, ICT and the administrators */
-    private static final String VIEWERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
-    /** who stages, applies and resolves: the Bursary alone (and the Super Administrator) */
-    private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_super')";
+    /** who reads old-portal financial records: the Bursary (V591: the Students Account Officer too), audit, the Registry, ICT and the
+     *  administrators */
+    private static final String VIEWERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_studentaccounts','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    /** who stages, applies and resolves: the Bursary — the Bursar, the finance controller and, since V591, the Students Account Officer,
+     *  whose desk the old portal's student payments are (and the Super Administrator); nothing here moves money out */
+    private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_studentaccounts','OFFICE_super')";
     private static final Set<String> STATUSES = Set.of("UNPROCESSED", "MATCHED", "RECONCILED", "REQUIRES_REVIEW", "REJECTED", "DUPLICATE", "UNMATCHED");
     private static final Set<String> ACTIONS = Set.of("match", "reconcile", "relabel", "reject");
     private static final int MAX_ROWS = 50_000;
