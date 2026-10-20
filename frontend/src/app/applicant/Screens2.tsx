@@ -13,6 +13,7 @@ import { Bar } from "@/components/proto/blocks";
 import { Rail, when } from "./common";
 import { Eligibility } from "./Eligibility";
 import { AdmissionStatusCheck } from "./Admission";
+import { scoreReleased, utmeMeetsCutoff } from "@/lib/applicant-score";
 
 /* ── 4. screening slip: ScreeningSlip.tsx (V260) ── */
 
@@ -20,7 +21,8 @@ import { AdmissionStatusCheck } from "./Admission";
 
 export function Score({ a }: { a: Application }) {
   const r = a.result;
-  if (!at(a, 4) || !r) {
+  /* released by the Academic Office: the API gives the result only then (a programme screened from the O'Level results has no batch) */
+  if (!scoreReleased(a) || !r) {
     return (
       <>
         <Note kind="info" title="Scores are released when every batch has been screened" />
@@ -29,7 +31,8 @@ export function Score({ a }: { a: Application }) {
     );
   }
   const agg = r.aggregate;
-  const above = agg != null && r.cutoff != null ? agg >= r.cutoff : null;
+  /* the programme's cut-off is a UTME cut-off (of 400): read against the UTME score, never the aggregate (of 100) */
+  const above = utmeMeetsCutoff(r);
   const utmeContribution = r.utmeScaled != null ? Math.round(Number(r.utmeScaled) * r.weightUtme) / 100 : null;
   const screeningContribution = r.screening != null ? Math.round(Number(r.screening) * r.weightPutme) / 100 : null;
   return (
@@ -37,14 +40,14 @@ export function Score({ a }: { a: Application }) {
       <Tiles items={[
         ["UTME", String(r.utme ?? "—"), null, r.utmeScaled != null ? `of 400 · scaled to ${r.utmeScaled}` : "Direct Entry · no UTME"],
         ["Post-UTME screening", r.screening == null ? "—" : String(r.screening), null, r.screeningSource === "CBT" ? "of 100 · computer-based test" : r.screeningSource === "EXAM" ? (r.screening == null ? "your programme is screened by examination · score not yet entered" : "of 100 · the post-UTME examination") : r.screeningSource === "OLEVEL" ? "of 100 · your O’Level results, under the session’s grading" : "no screening component yet"],
-        ["Aggregate", agg == null ? "—" : String(agg), above === null ? null : above ? "var(--green-ink)" : "var(--red-ink)", `Weighted ${r.weightUtme} / ${r.weightPutme}`],
-        ["Departmental cut-off", r.cutoff == null ? "—" : String(r.cutoff), null, r.cutoff == null ? "Not stated in the settings yet" : `${a.programme ?? ""} · this session`],
+        ["Aggregate", agg == null ? "—" : String(agg), null, `Weighted ${r.weightUtme} / ${r.weightPutme}`],
+        ["UTME cut-off", r.cutoff == null ? "—" : String(r.cutoff), above === null ? null : above ? "var(--green-ink)" : "var(--red-ink)", r.cutoff == null ? "Not stated in the settings yet" : `of 400 · ${a.programme ?? ""} · this session`],
       ]} />
       {above === null ? (
         <Note kind="info" title="No cut-off is stated for your programme yet" />
       ) : (
-        <Note kind={above ? "ok" : "bad"} title={above ? `Your aggregate is above the cut-off for ${a.programme}` : `Your aggregate is below the cut-off for ${a.programme}`}>
-          {above ? "Being above the cut-off does not by itself give you a place. Places are filled from the merit list downwards until the approved quota is full, and the cut-off can rise as the list is worked through." : "You may still be considered for a related programme in the same faculty if places remain after the merit list is exhausted."}
+        <Note kind={above ? "ok" : "bad"} title={above ? `Your UTME score meets the cut-off for ${a.programme}` : `Your UTME score is below the cut-off for ${a.programme}`}>
+          {above ? "Meeting the cut-off does not by itself give you a place. Places are filled from the merit list, by aggregate, until the approved quota is full." : "You may still be considered for a related programme in the same faculty if places remain after the merit list is exhausted."}
         </Note>
       )}
       <Panel title="How your aggregate was calculated" right={`Weighting in force for ${a.session}`}>
