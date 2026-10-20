@@ -11,6 +11,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { ResetHistory } from "./ResetHistory";
 import { AVAILABILITY, Attachments, DetailsGrid, FILE_TYPES, MAX_FILE, PRIORITY, PriorityPil, StatusPil, TicketPhone, Timeline, parse, readBase64, requesterKind, requesterNumberLabel, when, type Agent, type Queue, type Ticket } from "@/lib/helpdesk";
 
 type Dialog = "assign" | "escalate" | "resolve" | "close" | "reopen" | "transfer" | "office" | "wait" | "reset" | null;
@@ -149,6 +150,8 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
           </PBody>
         </Panel>
       </div>
+
+      <ResetHistory ticketId={t.id} />
 
       <Panel title="Attachments" right={`${t.attachments.length} file${t.attachments.length === 1 ? "" : "s"}`}>
         <PBody>

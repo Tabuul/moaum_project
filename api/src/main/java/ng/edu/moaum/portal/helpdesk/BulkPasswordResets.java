@@ -33,7 +33,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * API restart left open. Every write is in the agent's name, with the operation's reason, and the operation's id as the audit
  * spine's correlation, and every act on the support ledger names the operation (V563: helpdesk.support_action.bulk_id, from the
  * transaction's moaum.bulk_reset). V563: a student's login ticket is resolved with the reset when the operation says so, and a
- * student refused for want of a matriculation number may be sent the single reset's one-hour link (sendLinks).
+ * student refused for want of a matriculation number may be sent the single reset's one-hour link (sendLinks). V582: an operation
+ * from tickets (source TICKETS) is checked again on the student's tickets — still open, still the agent's, the student within
+ * BULK_RESET_FROM_TICKETS's scope — and every ticket of the student it holds is resolved with the one reset.
  */
 @Component
 class BulkPasswordResets {
@@ -85,7 +87,7 @@ class BulkPasswordResets {
     void runNow() {
         while (true) {
             Map<String, Object> op = jdbc.sql("""
-                    SELECT id, reference, initiated_by, office, head, reason, unlock, resolve_tickets, resolution FROM helpdesk.bulk_reset
+                    SELECT id, reference, initiated_by, office, head, reason, unlock, resolve_tickets, resolution, source FROM helpdesk.bulk_reset
                      WHERE status IN ('PENDING', 'PROCESSING') ORDER BY created_at LIMIT 1
                     """).query().listOfRows().stream().findFirst().orElse(null);
             if (op == null) {
@@ -108,6 +110,7 @@ class BulkPasswordResets {
         String reference = (String) op.get("reference");
         String reason = (String) op.get("reason");
         String resolution = Boolean.TRUE.equals(op.get("resolve_tickets")) ? (String) op.get("resolution") : null;
+        boolean fromTickets = "TICKETS".equals(op.get("source"));
         AuditContext ctx = new AuditContext(agent, (String) op.get("office"), reason, id, null);
         SupportAccess.Access access = new SupportAccess.Access(agent, head, Set.of(), "");
         String sealed = studentAuth.sealedHash();   // one secret nobody holds, for every account of the operation
@@ -128,9 +131,9 @@ class BulkPasswordResets {
                 try {
                     AuditContextHolder.with(ctx, () -> tx.execute(st -> {
                         tag(id);
-                        UUID t = resetOne(itemId, student, ticket, agent, head, unlock, reference, reason, sealed, access, resolution);
-                        // the requester told of the resolution, queued with the student's reset (all of it, or none)
-                        if (t != null) notifier.resolved(t);
+                        List<UUID> resolved = resetOne(id, itemId, student, ticket, agent, head, unlock, reference, reason, sealed, access, resolution, fromTickets);
+                        // the requester told of each resolution, queued with the student's reset (all of it, or none)
+                        resolved.forEach(notifier::resolved);
                         return null;
                     }));
                 } catch (DomainRuleViolation refused) {
@@ -154,20 +157,28 @@ class BulkPasswordResets {
     }
 
     /**
-     * one student: checked again, reset, on the ledger and the ticket, the ticket resolved when the operation says so (its id
-     * returned, for the requester's notice), told — or refused with the reason the screen shows
+     * one student: checked again, reset, on the ledger and the ticket, the ticket resolved when the operation says so (V582: every
+     * ticket of the student an operation from tickets holds), the ids resolved returned for the requesters' notices, told — or
+     * refused with the reason the screen shows
      */
-    private UUID resetOne(UUID itemId, UUID student, UUID ticket, UUID agent, boolean head, boolean unlock, String reference, String reason,
-                          String sealed, SupportAccess.Access access, String resolution) {
+    private List<UUID> resetOne(UUID bulk, UUID itemId, UUID student, UUID ticket, UUID agent, boolean head, boolean unlock, String reference, String reason,
+                                String sealed, SupportAccess.Access access, String resolution, boolean fromTickets) {
         // held while the student is reset: a cancel that reached the student first leaves them as they are
         if (!"PENDING".equals(jdbc.sql("SELECT status FROM helpdesk.bulk_reset_item WHERE id = :i FOR UPDATE").param("i", itemId).query(String.class).single())) {
-            return null;
+            return List.of();
         }
-        Map<String, Object> check = jdbc.sql("SELECT eligible, code, status FROM helpdesk.bulk_reset_check(:a, :h, ARRAY[CAST(:s AS uuid)])")
-                .param("a", agent).param("h", head).param("s", student).query().singleRow();
+        Map<String, Object> check = fromTickets
+                // V582: the student's tickets still open and the agent's, the student within BULK_RESET_FROM_TICKETS's scope, the student's own checks
+                ? jdbc.sql("""
+                        SELECT bool_or(c.eligible) AS eligible, (array_agg(c.code ORDER BY c.eligible DESC))[1] AS code,
+                               (array_agg(c.student_status ORDER BY c.eligible DESC))[1] AS status
+                          FROM helpdesk.ticket_reset_check(:a, :h, ARRAY(SELECT x.ticket_id FROM helpdesk.bulk_reset_ticket x WHERE x.item_id = :i AND x.status = 'PENDING'), :b) c
+                        """).param("a", agent).param("h", head).param("i", itemId).param("b", bulk).query().singleRow()
+                : jdbc.sql("SELECT eligible, code, status FROM helpdesk.bulk_reset_check(:a, :h, ARRAY[CAST(:s AS uuid)])")
+                        .param("a", agent).param("h", head).param("s", student).query().singleRow();
         if (!Boolean.TRUE.equals(check.get("eligible"))) {
-            String code = (String) check.get("code");
-            throw new DomainRuleViolation(code, BulkPasswordResetController.words(code, (String) check.get("status")),
+            String code = check.get("code") == null ? "TICKET_SETTLED" : (String) check.get("code");
+            throw new DomainRuleViolation(code, TicketPasswordResetController.words(code, (String) check.get("status")),
                     new DomainRuleViolation.Remedy("See the reason; the student was not reset.", "ICT Support"));
         }
         boolean ticketRequired = "REQUIRED".equals(jdbc.sql("SELECT coalesce(g.student_reset_ticket, 'OPTIONAL') FROM (SELECT 1) one LEFT JOIN helpdesk.setting g ON g.row_no")
@@ -176,7 +187,7 @@ class BulkPasswordResets {
         StudentAuthService.DefaultReset r = studentAuth.resetToDefault(student, unlock, sealed);
         if (r.alreadyDone()) {
             jdbc.sql("UPDATE helpdesk.bulk_reset_item SET status = 'ALREADY_RESET', processed_at = now() WHERE id = :i").param("i", itemId).update();
-            return resolve(itemId, onTicket, agent, reference, resolution);
+            return fromTickets ? resolveTickets(itemId, agent, reference, resolution) : single(resolve(itemId, onTicket, agent, reference, resolution));
         }
         UUID action = support.act(student, onTicket, "PASSWORD_RESET", null, null, null, reason, null, null,
                 Map.of("method", "DEFAULT_CREDENTIAL", "authEventId", r.eventId().toString(), "bulkReference", reference,
@@ -190,14 +201,37 @@ class BulkPasswordResets {
         }
         jdbc.sql("UPDATE helpdesk.bulk_reset_item SET status = 'RESET', action_id = :a, processed_at = now() WHERE id = :i")
                 .param("a", action).param("i", itemId).update();
-        UUID resolved = resolve(itemId, onTicket, agent, reference, resolution);
+        List<UUID> resolved = fromTickets ? resolveTickets(itemId, agent, reference, resolution) : single(resolve(itemId, onTicket, agent, reference, resolution));
         // a student whose ticket is resolved reads it there (and is e-mailed the resolution); the others are told as a single reset tells them
-        if (resolved == null) {
+        if (resolved.isEmpty()) {
             support.tell(student, "Your portal password was reset by ICT Support",
                     "ICT Support reset your portal password. Sign in with the details ICT Support gave you; you will be asked to choose your own "
                             + "password at once. If you did not ask for this, contact ICT Support.");
         }
         return resolved;
+    }
+
+    private static List<UUID> single(UUID resolved) {
+        return resolved == null ? List.of() : List.of(resolved);
+    }
+
+    /** V582: every ticket of the student the operation holds, resolved with the one reset — one settled meanwhile is left as it is */
+    private List<UUID> resolveTickets(UUID itemId, UUID agent, String reference, String resolution) {
+        List<UUID> out = new ArrayList<>();
+        for (Map<String, Object> x : jdbc.sql("SELECT id, ticket_id FROM helpdesk.bulk_reset_ticket WHERE item_id = :i AND status = 'PENDING' ORDER BY id")
+                .param("i", itemId).query().listOfRows()) {
+            UUID t = (UUID) x.get("ticket_id");
+            boolean done = Boolean.TRUE.equals(jdbc.sql("SELECT helpdesk.resolve_for_reset(:t, :a, :s, :d)")
+                    .param("t", t).param("a", agent).param("s", "Password reset by ICT Support (" + reference + ")").param("d", resolution)
+                    .query(Boolean.class).single());
+            jdbc.sql("UPDATE helpdesk.bulk_reset_ticket SET status = :st, resolved_at = CASE WHEN :ok THEN now() END WHERE id = :x")
+                    .param("st", done ? "RESOLVED" : "UNRESOLVED").param("ok", done).param("x", x.get("id")).update();
+            if (done) out.add(t);
+        }
+        if (!out.isEmpty()) {
+            jdbc.sql("UPDATE helpdesk.bulk_reset_item SET ticket_resolved_at = now() WHERE id = :i").param("i", itemId).update();
+        }
+        return out;
     }
 
     /** V563: the student's login ticket resolved with the reset, through opened and in progress as the desk takes it */

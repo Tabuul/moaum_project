@@ -15,8 +15,10 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { AVAILABILITY, PRIORITY, PriorityPil, STATUS, StatusPil, requesterKind, when, type Agent, type Category, type Counts, type Queue, type TicketRow } from "@/lib/helpdesk";
 import { Ago, Due } from "@/components/helpdesk/Clock";
+import { RESET_STATE, selectable, tickPage, toggle, type ResetState, type Summary } from "@/lib/ticket-reset";
+import { TicketResetDialog } from "./TicketResetDialog";
 
-export interface Filters { q: string; status: string; category: string; priority: string; agent: string; queue: string; faculty: string; department: string; from: string; to: string; sort: string; dir: string; size: string }
+export interface Filters { q: string; status: string; category: string; priority: string; agent: string; queue: string; faculty: string; department: string; from: string; to: string; sort: string; dir: string; size: string; issue: string }
 export interface Faculty { code: string; name: string; departments: { code: string; name: string }[] }
 
 /** the status list as the desk filters it: the ticket's own states, and the desk's questions (new, unassigned, escalated, overdue) */
@@ -27,9 +29,11 @@ const STATUS_OPTIONS: [string, string][] = [
 ];
 const POLL_MS = 60_000;
 
-export function Desk({ me, head, queue, counts, categories, agents, queues, faculties, filters }: {
+export function Desk({ me, head, queue, counts, categories, agents, queues, faculties, filters, reset }: {
   me: string; head: boolean; queue: { rows: TicketRow[]; total: number; page: number; size: number }; counts: Counts | null;
   categories: Category[]; agents: Agent[]; queues: Queue[]; faculties: Faculty[]; filters: Filters;
+  /** V582: the login and password tickets in figures, and whether the reader may reset from tickets */
+  reset: Summary | null;
 }) {
   const go = useQueryNav();
   const router = useRouter();
@@ -39,6 +43,12 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
   const [to, setTo] = useState(filters.to);
   const [assign, setAssign] = useState<{ t: TicketRow; agents: Agent[] | null; agent: string; reason: string } | null>(null);
   const [arrived, setArrived] = useState(0);
+  // V582: the tickets ticked for a password reset — ticket ids only; the server checks each and finds its student
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [resetting, setResetting] = useState<string[] | null>(null);
+  const [findingAll, setFindingAll] = useState(false);
+  const mayTick = !!reset?.may;
+  const showReset = filters.issue === "login" || queue.rows.some((r) => r.reset_state);
   const baseline = useRef<{ n: number; latest: string | null }>({ n: counts?.new ?? 0, latest: counts?.latest_new ?? null });
   const n = (v: number | null | undefined) => Number(v ?? 0);
   const size = queue.size || 20;
@@ -59,7 +69,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
   }
   const sortBy = (key: string) => nav({ sort: key, dir: filters.sort === key && filters.dir === "desc" ? "asc" : "desc" });
   const arrow = (key: string) => (filters.sort === key ? (filters.dir === "asc" ? " ↑" : " ↓") : "");
-  const filtered = !!(filters.q || filters.category || filters.priority || filters.agent || filters.queue || filters.faculty || filters.department || filters.from || filters.to || filters.status !== "open");
+  const filtered = !!(filters.q || filters.category || filters.priority || filters.agent || filters.queue || filters.faculty || filters.department || filters.from || filters.to || filters.issue || filters.status !== "open");
   const settled = (r: TicketRow) => r.status === "RESOLVED" || r.status === "CLOSED";
   const departments = (faculties.find((f) => f.code === filters.faculty)?.departments ?? faculties.flatMap((f) => f.departments)).map((d) => ({ value: d.code, label: d.name }));
 
@@ -86,6 +96,21 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
     } catch {
       setAssign((s) => (s && s.t.id === r.id ? { ...s, agents } : s));
     }
+  }
+  /** V582: every eligible ticket the filters find, ids from the server (the reset checks each again) */
+  async function tickAllFiltered() {
+    setFindingAll(true);
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      qs.set("eligibleIds", "true");
+      if (!qs.get("issue")) qs.set("issue", "login");
+      if (!qs.get("status")) qs.set("status", "open");
+      const res = await fetch(`/api/bff/api/v1/helpdesk/tickets?${qs.toString()}`);
+      const j = await res.json().catch(() => null);
+      if (!res.ok) { notifyProblem(j ?? { status: res.status, title: res.statusText }); return; }
+      setTicked(new Set((j as { ids: string[] }).ids));
+      if ((j as { over: boolean }).over) notify("The first 10,000 eligible tickets are selected; reset them, then select again.");
+    } finally { setFindingAll(false); }
   }
   const describe = (a: Agent) => `${a.posted ? "Posted here · " : a.eligible ? "Eligible · " : ""}${a.name} · ${a.queues ?? a.offices}${a.scopes ? ` (${a.scopes})` : ""} · ${a.open} open${a.availability && a.availability !== "AVAILABLE" ? ` · ${AVAILABILITY[a.availability]?.[0] ?? a.availability}` : ""}`;
 
@@ -148,6 +173,13 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
                 {Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}
               </select>
             </Field>
+            <Field id="hd-issue" label="Issue type" style={{ flex: "1 1 170px" }}>
+              <select id="hd-issue" className="ctl" value={filters.issue} onChange={(e) => nav({ issue: e.target.value })}>
+                <option value="">All tickets</option>
+                <option value="login">Login and password issues</option>
+                <option value="other">Other support issues</option>
+              </select>
+            </Field>
             <Field id="hd-cat" label="Category" style={{ flex: "1 1 170px" }}>
               <SearchSelect id="hd-cat" value={filters.category} onChange={(v) => nav({ category: v })} allLabel="Any category" options={categories.map((c) => ({ value: c.code, label: c.name }))} />
             </Field>
@@ -168,7 +200,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
             <Field id="hd-to" label="To" style={{ flex: "1 1 130px" }}><input id="hd-to" className="ctl" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
             <div className="row row--tight" style={{ alignSelf: "flex-end" }}>
               <Btn kind="primary" type="submit">Search</Btn>
-              {filtered ? <Btn kind="ghost" onClick={() => { setQ(""); setFrom(""); setTo(""); go("/helpdesk"); }}>Clear</Btn> : null}
+              {filtered ? <Btn kind="ghost" onClick={() => { setQ(""); setFrom(""); setTo(""); setTicked(new Set()); go("/helpdesk"); }}>Clear</Btn> : null}
             </div>
           </form>
 
@@ -200,6 +232,18 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
                 </div>
                 <span className="sub2">Urgent counts urgent and critical; sort by priority puts them first.</span>
               </div>
+              {reset ? (
+                <div className="row row--base mt-2" role="group" aria-label="Login issues">
+                  <span className="sub2" style={{ minWidth: 72 }}>Login issues</span>
+                  <div className="tabs" role="tablist" aria-label="Login issues">
+                    {chip("Open", n(reset.figures.open), { issue: "login", status: "open", agent: "" }, filters.issue === "login" && statusValue === "open", "info")}
+                    {chip("Unassigned", n(reset.figures.unassigned), { issue: "login", status: "unassigned" }, filters.issue === "login" && statusValue === "unassigned", "warn")}
+                    {chip("In progress", n(reset.figures.inProgress), { issue: "login", status: "active", agent: "" }, filters.issue === "login" && statusValue === "active", "info")}
+                    {chip("Overdue", n(reset.figures.overdue), { issue: "login", status: "overdue", agent: "" }, filters.issue === "login" && statusValue === "overdue", "bad")}
+                  </div>
+                  <span className="sub2">{n(reset.figures.inOperation)} in a password reset · {n(reset.figures.failed)} whose reset failed · {n(reset.figures.resetToday)} reset today</span>
+                </div>
+              ) : null}
             </div>
           ) : <div className="sub2 mt-3">The counts are temporarily unavailable; the queue below still answers.</div>}
         </PBody>
@@ -212,12 +256,30 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
             <Btn key={k} kind={filters.sort === k ? "primary" : "ghost"} size="sm" onClick={() => sortBy(k)}>{l}{arrow(k)}</Btn>
           ))}
         </span>}>
+        {mayTick && showReset ? (
+          <PBody>
+            <div className="row row--base" role="group" aria-label="Password reset from tickets" style={{ flexWrap: "wrap", gap: 8 }}>
+              <strong className="tnum">Selected: {ticked.size}</strong>
+              <Btn kind="ghost" size="sm" disabled={!queue.rows.some((r) => selectable(r.reset_state))} onClick={() => setTicked((t) => tickPage(t, queue.rows, true))}>Select all eligible on this page</Btn>
+              <Btn kind="ghost" size="sm" busyLabel="Finding…" disabled={findingAll} onClick={() => tickAllFiltered()}>Select all filtered eligible tickets</Btn>
+              <Btn kind="ghost" size="sm" disabled={!ticked.size} onClick={() => setTicked(new Set())}>Clear selection</Btn>
+              <span className="grow" />
+              <Btn kind="primary" disabled={!ticked.size} onClick={() => setResetting([...ticked])}>Reset selected passwords</Btn>
+            </div>
+            <div className="sub2 mt-1">Only login and password tickets can be selected. The server checks every ticket again; a student with several tickets is reset once.</div>
+          </PBody>
+        ) : null}
         {queue.rows.length ? (
-          <DTable pageSize={0} cols={["S/N|num", "Priority|mid", "Ticket", "Requester", "Category", "Subject", "Queue", "Agent", "Status|mid", "Raised|mid", "SLA|mid", "|num"]} rows={queue.rows.map((r, i) => {
+          <DTable pageSize={0} cols={[...(mayTick && showReset ? ["|mid"] : []), "S/N|num", "Priority|mid", "Ticket", "Requester", "Category", "Subject", "Queue", "Agent", "Status|mid",
+            ...(showReset ? ["Password reset"] : []), "Raised|mid", "SLA|mid", "|num"]} rows={queue.rows.map((r, i) => {
             const isNew = r.status === "SUBMITTED";
             const unassigned = !r.assigned_to && !settled(r);
             const hot = r.priority === "CRITICAL" || r.priority === "URGENT";
+            const st = r.reset_state ? RESET_STATE[r.reset_state as ResetState] : null;
             return [
+              ...(mayTick && showReset ? [selectable(r.reset_state)
+                ? <input key="tk" type="checkbox" className="chk" aria-label={`Select ${r.number} for a password reset`} checked={ticked.has(r.id)} onChange={(e) => setTicked((t) => toggle(t, r.id, e.target.checked))} />
+                : <span key="tk" /> ] : []),
               <span key="sn" className="tnum sub2">{first + i + 1}</span>,
               <span key="p" className={hot ? "b600" : ""}><PriorityPil priority={r.priority} /></span>,
               <span key="n"><Link className="lnk tnum b600" href={`/helpdesk/tickets/${r.id}`}>{r.number}</Link>
@@ -233,6 +295,7 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
               <span key="qu" className={r.queue ? "" : "sub2"}>{r.queue ?? "No queue"}</span>,
               <span key="a">{r.agent ? <>{r.agent}{r.assigned_to === me ? <div><Pil kind="info">You</Pil></div> : null}</> : unassigned ? <Pil kind="warn">Unassigned</Pil> : <span className="sub2">—</span>}</span>,
               <StatusPil key="st" status={r.status} />,
+              ...(showReset ? [st ? <Pil key="rs" kind={st.tone}>{st.label}</Pil> : <span key="rs" className="sub2">Not eligible</span>] : []),
               <span key="cr" className="tnum sub2" title={`Raised ${when(r.created_at)} · updated ${when(r.updated_at)}`}><Ago iso={r.created_at} /><div>upd. <Ago iso={r.updated_at} /></div></span>,
               <span key="due" className={`tnum${r.overdue ? " ink-red b600" : settled(r) ? " sub2" : ""}`} title={when(r.due_at)}><Due iso={r.due_at} settled={settled(r)} /></span>,
               <span key="o" className="row row--inline row--tight row--right">
@@ -262,6 +325,10 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
           </div>
         </PBody>
       </Panel>
+
+      {resetting ? (
+        <TicketResetDialog ticketIds={resetting} onClose={(done) => { setResetting(null); if (done) { setTicked(new Set()); router.refresh(); } }} />
+      ) : null}
 
       {assign ? (
         <Modal title={assign.t.agent ? `Reassign ${assign.t.number}` : `Assign ${assign.t.number}`} sub={`${assign.t.category}${assign.t.queue ? ` · ${assign.t.queue} queue` : ""} · ${assign.t.subject}`} onClose={() => setAssign(null)}

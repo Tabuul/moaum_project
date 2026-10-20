@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 414
+\set EXPECTED 415
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20513,6 +20513,115 @@ BEGIN
                preview, applied, again, target, ready, refused, told, chased, chased_again, waiting_told));
 END $$;
 
+-- ── V582. Password resets from support tickets. An agent posted to a faculty with BULK_RESET_FROM_TICKETS ticks six tickets:
+--          two login tickets of one student (eligible, one reset), a course registration ticket (not a login ticket), a login
+--          ticket in another faculty (not found: nothing of it said), a login ticket of a student with no matriculation number, a
+--          resolved login ticket (settled). An agent without the capability reaches none. The operation (PWR-TKT/YYYY/NNNNNN, source
+--          TICKETS) takes the two tickets as one student, once for one key, and holds them: another operation finds them in it,
+--          the operation itself does not. The student not reset (cancelled) leaves both tickets FAILED with the reason and open,
+--          eligible again; reset the second time, both are resolved and settled. The ticket's history reads both, never a
+--          password. Only Login Issues is a password reset category; the capability is outside the baseline. The block undoes
+--          its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); agent uuid; plain uuid; q text; fac text; prog_in text; prog_out text; fac_out text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+        t1 uuid; t2 uuid; t3 uuid; t4 uuid; t5 uuid; t6 uuid; known boolean; flagged text; codes text; hidden boolean; plain_code text;
+        plain_none text; started jsonb; again jsonb; op uuid; ref text; source text; items int; held int; other_none text; others text; own text;
+        failed_tickets text; open_again text; history text; second jsonb; resolved_states text; settled text; summary jsonb; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        PERFORM set_config('moaum.reason', 'CHECK V582', true);
+        known := 'BULK_RESET_FROM_TICKETS' = ANY (helpdesk.support_capabilities()) AND NOT ('BULK_RESET_FROM_TICKETS' = ANY (helpdesk.agent_baseline()));
+        flagged := (SELECT string_agg(code, ',' ORDER BY code) FROM helpdesk.category WHERE password_reset_eligible);
+        SELECT code, faculty_code INTO prog_in, fac FROM ref.programme WHERE code = 'C00023';
+        SELECT code, faculty_code INTO prog_out, fac_out FROM ref.programme WHERE faculty_code <> fac AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKTKT', 'Agent') RETURNING id INTO agent;
+        INSERT INTO iam.person (id, surname, given_names) VALUES (gen_random_uuid(), 'CHECKTKT', 'Plain') RETURNING id INTO plain;
+        INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, capabilities) VALUES
+            (agent, q, 'FACULTY', fac, ARRAY['VIEW_STUDENT', 'RESET_PASSWORD', 'BULK_RESET_FROM_TICKETS']),
+            (plain, q, 'FACULTY', fac, ARRAY['VIEW_STUDENT', 'RESET_PASSWORD', 'BULK_RESET_PASSWORD']);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/82/058201', 'MOAUM/ADM/82/582001', 'CHECKTKTA', 'Login', prog_in, 'UTME', '2082/2083', 100, 100, 'ACTIVE', now()),
+            (b, NULL, 'MOAUM/ADM/82/582002', 'CHECKTKTB', 'No Number', prog_in, 'UTME', '2082/2083', 100, 100, 'ADMITTED', NULL),
+            (c, 'MOAUM/CHK/82/058203', 'MOAUM/ADM/82/582003', 'CHECKTKTC', 'Outside', prog_out, 'UTME', '2082/2083', 100, 100, 'ACTIVE', now());
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0582-00001', k.id, 'Cannot sign in', 'My password is not accepted', 'STUDENT', a, 'CHECKTKTA, Login', q, fac FROM helpdesk.category k WHERE k.code = 'LOGIN'
+        RETURNING id INTO t1;
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0582-00002', k.id, 'Forgot my password', 'Please reset my password', 'STUDENT', a, 'CHECKTKTA, Login', q, fac FROM helpdesk.category k WHERE k.code = 'LOGIN'
+        RETURNING id INTO t2;
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0582-00003', k.id, 'Course will not register', 'A missing course', 'STUDENT', a, 'CHECKTKTA, Login', q, fac FROM helpdesk.category k WHERE k.code = 'REGISTRATION'
+        RETURNING id INTO t3;
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0582-00004', k.id, 'Cannot sign in', 'Locked out', 'STUDENT', c, 'CHECKTKTC, Outside', q, fac_out FROM helpdesk.category k WHERE k.code = 'LOGIN'
+        RETURNING id INTO t4;
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0582-00005', k.id, 'Cannot sign in', 'No matriculation number yet', 'STUDENT', b, 'CHECKTKTB, No Number', q, fac FROM helpdesk.category k WHERE k.code = 'LOGIN'
+        RETURNING id INTO t5;
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0582-00006', k.id, 'Cannot sign in', 'An old one', 'STUDENT', a, 'CHECKTKTA, Login', q, fac FROM helpdesk.category k WHERE k.code = 'LOGIN'
+        RETURNING id INTO t6;
+        PERFORM helpdesk.resolve_for_reset(t6, agent, 'Settled at the counter', 'The student signed in at the counter with the desk.');
+
+        SELECT string_agg(x.code, ',' ORDER BY x.number NULLS LAST), bool_and(x.student_id IS NULL AND x.full_name IS NULL AND x.number IS NULL) FILTER (WHERE x.code = 'TICKET_NOT_FOUND')
+          INTO codes, hidden FROM helpdesk.ticket_reset_check(agent, false, ARRAY[t1, t2, t3, t4, t5, t6]) x;
+        plain_code := (SELECT x.code FROM helpdesk.ticket_reset_check(plain, false, ARRAY[t1]) x);
+        BEGIN PERFORM helpdesk.start_ticket_reset(plain, 'ictagent', false, ARRAY[t1, t2], 'Students login and password tickets', true, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN plain_none := split_part(SQLERRM, ':', 1); END;
+
+        started := helpdesk.start_ticket_reset(agent, 'ictagent', false, ARRAY[t1, t2, t3, t5, t6], 'Students login and password tickets', true, 'check-v582',
+                                               'Your password was reset: sign in with your matriculation number, then choose your own.');
+        again := helpdesk.start_ticket_reset(agent, 'ictagent', false, ARRAY[t1], 'Students login and password tickets', true, 'check-v582', NULL);
+        op := (started->>'id')::uuid;
+        SELECT r.reference, r.source INTO ref, source FROM helpdesk.bulk_reset r WHERE r.id = op;
+        items := (SELECT count(*) FROM helpdesk.bulk_reset_item WHERE bulk_id = op);
+        held := (SELECT count(*) FROM helpdesk.bulk_reset_ticket WHERE bulk_id = op AND status = 'PENDING');
+        BEGIN PERFORM helpdesk.start_ticket_reset(who, 'helpdeskhead', true, ARRAY[t1], 'Students login and password tickets', true, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN other_none := split_part(SQLERRM, ':', 1); END;
+        others := (SELECT x.code FROM helpdesk.ticket_reset_check(who, true, ARRAY[t1]) x);
+        own := (SELECT x.code FROM helpdesk.ticket_reset_check(agent, false, ARRAY[t1], op) x);
+
+        -- the student not reset (cancelled as the worker would find it): both tickets FAILED with the reason, open, eligible again
+        UPDATE helpdesk.bulk_reset_item SET status = 'FAILED', failure_code = 'CANCELLED', failure_words = 'CANCELLED before this student was reached', processed_at = now()
+         WHERE bulk_id = op;
+        failed_tickets := (SELECT string_agg(x.status || ':' || x.note, ',') FROM (SELECT DISTINCT status, note FROM helpdesk.bulk_reset_ticket WHERE bulk_id = op) x);
+        open_again := (SELECT string_agg(x.code, ',' ORDER BY x.number) FROM helpdesk.ticket_reset_check(agent, false, ARRAY[t1, t2]) x);
+
+        -- reset the second time: both tickets resolved with it, settled
+        second := helpdesk.start_ticket_reset(agent, 'ictagent', false, ARRAY[t1, t2], 'Students login and password tickets', true, NULL,
+                                              'Your password was reset: sign in with your matriculation number, then choose your own.');
+        UPDATE helpdesk.bulk_reset_item SET status = 'RESET', processed_at = now() WHERE bulk_id = (second->>'id')::uuid;
+        PERFORM helpdesk.resolve_for_reset(x.ticket_id, agent, 'Password reset by ICT Support', 'Sign in with your matriculation number, then choose your own.')
+           FROM helpdesk.bulk_reset_ticket x WHERE x.bulk_id = (second->>'id')::uuid;
+        UPDATE helpdesk.bulk_reset_ticket SET status = 'RESOLVED', resolved_at = now() WHERE bulk_id = (second->>'id')::uuid;
+        resolved_states := (SELECT string_agg(t.status, ',' ORDER BY t.number) FROM helpdesk.ticket t WHERE t.id IN (t1, t2));
+        settled := (SELECT string_agg(x.code, ',' ORDER BY x.number) FROM helpdesk.ticket_reset_check(agent, false, ARRAY[t1, t2]) x);
+        history := (SELECT string_agg(h.kind || ':' || h.result, ',' ORDER BY h.result) FROM helpdesk.ticket_password_resets(t1) h);
+        summary := helpdesk.login_ticket_summary(agent, false);
+        RAISE EXCEPTION 'the V582 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V582 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V582: passwords are reset from login and password tickets only — one reset a student, the tickets held, resolved with it or left open with the reason',
+        coalesce(known AND flagged = 'LOGIN'
+                 AND codes = 'ELIGIBLE,ELIGIBLE,TICKET_NOT_LOGIN,RESET_NO_MATRIC,TICKET_SETTLED,TICKET_NOT_FOUND' AND hidden
+                 AND plain_code = 'OUT_OF_SCOPE' AND plain_none = 'TICKET_RESET_NONE'
+                 AND (started->>'students')::int = 1 AND (started->>'tickets')::int = 2 AND (started->>'consolidated')::int = 1 AND (started->>'leftOut')::int = 3
+                 AND (again->>'repeated')::boolean AND again->>'id' = started->>'id'
+                 AND ref ~ '^PWR-TKT/\d{4}/\d{6}$' AND source = 'TICKETS' AND items = 1 AND held = 2
+                 AND other_none = 'TICKET_RESET_NONE' AND others = 'TICKET_IN_OPERATION' AND own = 'ELIGIBLE'
+                 AND failed_tickets = 'FAILED:CANCELLED before this student was reached' AND open_again = 'ELIGIBLE,ELIGIBLE'
+                 AND resolved_states = 'RESOLVED,RESOLVED' AND settled = 'TICKET_SETTLED,TICKET_SETTLED'
+                 AND history = 'FROM_TICKETS:FAILED,FROM_TICKETS:RESET' AND summary ? 'open', false),
+        format('known %s flagged %s | codes %s hidden %s | plain %s/%s | started %s again %s | ref %s %s items %s held %s | other %s/%s own %s | failed %s again %s | second: %s %s | history %s',
+               known, flagged, codes, hidden, plain_code, plain_none, started, again, ref, source, items, held, other_none, others, own,
+               failed_tickets, open_again, resolved_states, settled, history));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

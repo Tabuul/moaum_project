@@ -77,6 +77,19 @@ class HelpdeskController {
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
     /** a ticket as the lists show it */
+    /** V582: where a ticket stands for a password reset from tickets — only a login or password category's (else NULL) */
+    static final String RESET_STATE = """
+            CASE WHEN NOT c.password_reset_eligible THEN NULL
+                 WHEN t.requester_kind <> 'STUDENT' THEN 'NOT_STUDENT'
+                 WHEN EXISTS (SELECT 1 FROM helpdesk.bulk_reset_ticket x WHERE x.ticket_id = t.id AND x.status = 'PENDING') THEN 'IN_OPERATION'
+                 WHEN t.status <> 'REOPENED'
+                      AND (EXISTS (SELECT 1 FROM helpdesk.bulk_reset_ticket x WHERE x.ticket_id = t.id AND x.status IN ('RESOLVED', 'UNRESOLVED'))
+                           OR EXISTS (SELECT 1 FROM helpdesk.support_action a WHERE a.ticket_id = t.id AND a.action = 'PASSWORD_RESET' AND a.method = 'DEFAULT_CREDENTIAL'))
+                      THEN 'RESET_DONE'
+                 WHEN t.status IN ('RESOLVED', 'CLOSED') THEN 'SETTLED'
+                 WHEN EXISTS (SELECT 1 FROM helpdesk.bulk_reset_ticket x WHERE x.ticket_id = t.id AND x.status = 'FAILED') THEN 'FAILED_BEFORE'
+                 ELSE 'ELIGIBLE' END""";
+
     private static final String ROW = """
             SELECT t.id, t.number, t.subject, t.status, t.priority, t.created_at, t.updated_at, t.resolved_at, t.closed_at, t.reopen_count,
                    c.code AS category_code, c.name AS category, t.requester_kind, t.requester_name, t.requester_number, t.requester_email,
@@ -330,7 +343,8 @@ class HelpdeskController {
                               @RequestParam(required = false) String queue, @RequestParam(required = false) String office,
                               @RequestParam(defaultValue = "false") boolean overdue, @RequestParam(defaultValue = "false") boolean escalated,
                               @RequestParam(defaultValue = "updated") String sort, @RequestParam(defaultValue = "desc") String dir,
-                              @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+                              @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size,
+                              @RequestParam(required = false) String issue, @RequestParam(defaultValue = "false") boolean eligibleIds) {
         int sz = Math.max(1, Math.min(size, 100));
         int pg = Math.max(1, page);
         // the desk's order of attention: priority first, then the most recently touched; every other sort falls back to it
@@ -373,8 +387,11 @@ class HelpdeskController {
                    AND (NOT :overdue OR (t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.due_at(t.created_at, t.priority) < now()))
                    AND (NOT :escalated OR (t.status NOT IN ('RESOLVED','CLOSED') AND (t.escalated_to IS NOT NULL OR t.escalated_office IS NOT NULL)))
                    AND (:head OR helpdesk.can_view(:me, t.id))
+                   AND (:issue::text IS NULL OR (:issue = 'login' AND c.password_reset_eligible) OR (:issue = 'other' AND NOT c.password_reset_eligible))
                 """;
+        String issueKey = issue == null || issue.isBlank() || "all".equalsIgnoreCase(issue) ? null : issue.trim().toLowerCase();
         java.util.function.Function<String, JdbcClient.StatementSpec> with = sql -> jdbc.sql(sql)
+                .param("issue", issueKey, Types.VARCHAR)
                 .param("like", like, Types.VARCHAR).param("nst", statuses.size()).param("st", String.join(",", statuses))
                 .param("cat", category == null || category.isBlank() ? null : category.toUpperCase(), Types.VARCHAR)
                 .param("pri", priority == null || priority.isBlank() ? null : priority.toUpperCase(), Types.VARCHAR)
@@ -385,7 +402,16 @@ class HelpdeskController {
                 .param("office", office == null || office.isBlank() ? null : office.trim().toLowerCase(), Types.VARCHAR)
                 .param("overdue", overdue).param("escalated", escalated)
                 .param("head", head(auth)).param("me", me(auth));
-        List<Map<String, Object>> rows = with.apply(ROW.replace("SELECT t.id,", "SELECT count(*) OVER() AS total, t.id,") + where
+        // V582: every ticket the filters find that may be reset from tickets — ids only, for "Select all filtered eligible" (the reset checks each again)
+        if (eligibleIds) {
+            List<UUID> ids = with.apply("SELECT z.id FROM (SELECT t.id, t.created_at, " + RESET_STATE + " AS reset_state FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id"
+                    + where + ") z WHERE z.reset_state IN ('ELIGIBLE', 'FAILED_BEFORE') ORDER BY z.created_at LIMIT 10001").query(UUID.class).list();
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("over", ids.size() > 10_000);
+            out.put("ids", ids.subList(0, Math.min(ids.size(), 10_000)));
+            return out;
+        }
+        List<Map<String, Object>> rows = with.apply(ROW.replace("SELECT t.id,", "SELECT count(*) OVER() AS total, " + RESET_STATE + " AS reset_state, t.id,") + where
                 + " ORDER BY %s %s, %s LIMIT :n OFFSET :o".formatted(order, direction, then))
                 .param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue();
@@ -830,7 +856,7 @@ class HelpdeskController {
     List<Map<String, Object>> allCategories() {
         return jdbc.sql("""
                 SELECT c.id, c.code, c.name, c.description, c.active, c.ordinal, c.suggested_priority, c.fields::text AS fields, c.attachment_hint,
-                       (SELECT count(*) FROM helpdesk.ticket t WHERE t.category_id = c.id) AS tickets
+                       (SELECT count(*) FROM helpdesk.ticket t WHERE t.category_id = c.id) AS tickets, c.password_reset_eligible
                   FROM helpdesk.category c ORDER BY c.active DESC, c.ordinal, c.name
                 """).query().listOfRows();
     }

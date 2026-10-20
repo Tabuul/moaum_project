@@ -29,6 +29,19 @@ export function Settings({ categories, settings }: { categories: Category[]; set
   const [tell, setTell] = useState(settings.notify_agents_on_new);
   const [sla, setSla] = useState(settings.sla.map((s) => ({ ...s, first: String(s.first_response_hours), res: String(s.resolution_hours) })));
 
+  /** V582: whether a category is a login and password issue its tickets may be reset from, on the desk's queue */
+  async function resetFlag(c: Category) {
+    const on = !c.password_reset_eligible;
+    const why = `${c.name}: ${on ? "its tickets may be reset from the queue" : "its tickets are no longer reset from the queue"}`;
+    setBusy(true); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/helpdesk/tickets/password-reset/categories/${c.id}`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(why) }, body: JSON.stringify({ eligible: on }) });
+      if (!r.ok) { const p = (await r.json().catch(() => null)) ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
+      notify(why);
+      router.refresh();
+    } finally { setBusy(false); }
+  }
+
   async function call(method: "POST" | "PUT", path: string, body: unknown, reason: string): Promise<boolean> {
     setBusy(true); setProblem(null);
     try {
@@ -64,7 +77,7 @@ export function Settings({ categories, settings }: { categories: Category[]; set
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Panel title="Categories" right={`${categories.filter((c) => c.active !== false).length} open for new tickets · ${categories.length} in all`}>
-        <DTable cols={["Order|mid", "Category", "Asks for", "Handled as|mid", "Tickets|mid", "State|mid", "|num"]} rows={categories.map((c) => {
+        <DTable cols={["Order|mid", "Category", "Asks for", "Handled as|mid", "Tickets|mid", "State|mid", "Password reset from tickets|mid", "|num"]} rows={categories.map((c) => {
           const fs = parse<F[]>(c.fields, []);
           return [
             <span key="o" className="tnum sub2">{c.ordinal}</span>,
@@ -73,10 +86,12 @@ export function Settings({ categories, settings }: { categories: Category[]; set
             <Pil key="p" kind={PRIORITY[c.suggested_priority]?.[1] ?? "grey"}>{PRIORITY[c.suggested_priority]?.[0] ?? c.suggested_priority}</Pil>,
             <span key="t" className="tnum">{Number(c.tickets ?? 0)}</span>,
             <Pil key="s" kind={c.active === false ? "grey" : "ok"}>{c.active === false ? "Inactive" : "Active"}</Pil>,
+            <span key="r" className="row row--inline row--tight"><Pil kind={c.password_reset_eligible ? "ok" : "grey"}>{c.password_reset_eligible ? "Yes" : "No"}</Pil>
+              <Btn kind="ghost" size="sm" disabled={busy} onClick={() => resetFlag(c)}>{c.password_reset_eligible ? "Turn off" : "Turn on"}</Btn></span>,
             <Btn key="e" kind="ghost" size="sm" onClick={() => open(c)}>Edit</Btn>,
           ];
         })} />
-        <PBody><div className="sub2">A category with tickets is deactivated, not deleted.</div></PBody>
+        <PBody><div className="sub2">A category with tickets is deactivated, not deleted. A category with password reset from tickets on is a login or password issue: its students&rsquo; open tickets can be ticked on the queue and their passwords reset together.</div></PBody>
       </Panel>
 
       <div className="grid grid--2">

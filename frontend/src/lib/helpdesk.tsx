@@ -11,6 +11,8 @@ export interface TicketRow {
   student_phone?: string | null;
   department_code: string | null; department: string | null; faculty_code: string | null; faculty: string | null;
   assigned_to: string | null; agent: string | null; escalated: boolean; due_at: string | null; overdue: boolean; response_overdue: boolean; attachments: number;
+  /** V582: where a login or password ticket stands for a reset from tickets (null for any other category) — the desk's queue only */
+  reset_state?: string | null;
   /** V328: the support queue the ticket is worked in, and the University office it waits on, if any */
   queue_code: string | null; queue: string | null; escalated_office: string | null; office: string | null; waiting_since: string | null;
 }
@@ -39,7 +41,9 @@ export interface Ticket extends Omit<TicketRow, "attachments"> {
   escalation_offices?: { code: string; label: string; technical: boolean }[];
 }
 export interface Field { key: string; label: string; type: "text" | "date" | "number" | "select" | "session" | "semester" | "level"; required?: boolean; options?: string[]; hint?: string }
-export interface Category { id: string; code: string; name: string; description: string | null; suggested_priority: string; fields: string; attachment_hint: string | null; active?: boolean; ordinal?: number; tickets?: number }
+export interface Category { id: string; code: string; name: string; description: string | null; suggested_priority: string; fields: string; attachment_hint: string | null; active?: boolean; ordinal?: number; tickets?: number;
+  /** V582: a login or password category — its students' open tickets may be reset from the desk's queue */
+  password_reset_eligible?: boolean }
 export interface Profile { kind: "STUDENT" | "STAFF"; name: string; number: string | null; email: string | null; phone: string | null; department: string | null; departmentCode: string | null; faculty: string | null; facultyCode: string | null; programme: string | null; openTickets: number }
 export interface Agent {
   id: string; name: string; staff_number: string | null; reachable: boolean; offices: string; director: boolean; open: number;
