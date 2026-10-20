@@ -146,8 +146,31 @@ the Directorate of ICT or super, with a reason, on the audit trail (`registratio
 | Allow students to add other courses | On | Off: students register only the recommended list |
 | Courses a student may add | Programme | Programme: the programme's other levels and electives, and the University GST/EPS courses. Department or Faculty: also the department's or faculty's courses |
 | Allow a course of a higher level | Off | On: a course above the student's level may be added |
+| Every curriculum's courses open to every student (V590) | On | Off: each student sees and registers only their own cohort's curriculum, as before V590 |
 
 Whatever is set, the engine judges every course a student adds.
+
+### Every curriculum open (V590)
+
+*Oct 2026.* A student's list used to read the programme's structure through the student's cohort:
+- a course bound to the programme at a level for one curriculum track (BMAS, CCMAS_BSU, CCMAS_MOAU) was listed only to the
+  students of that track;
+- a course of one curriculum was listed only to the students of that curriculum, and refused when added beside the list
+  (`REG_OTHER_CURRICULUM`);
+- a class was opened for a track's courses only where the programme still had a live student of that track.
+
+Where a programme's structure is bound under one track while its students sit in another, whole levels saw few or none of their
+courses. With **every curriculum open** (`registration.flex_policy.curriculum_open`, On from V590):
+- every student sees and registers the programme's courses at their level, BMAS or CCMAS, whatever their cohort;
+- a course added beside the list is judged without the curriculum test;
+- the class openers (`registration.open_course_registration`, `catalogue.open_classes_for_courses`, and the CCE and postgraduate
+  openers) open the classes for every track's courses.
+
+Nothing else changes: the stream (CCE, postgraduate), the specialisation, the GST/EPS courses already passed, the BSU-/MOAU- code
+family of the cohort (one course taught once, registered under one code), carry-overs and deferred courses, the minimum and
+maximum load (still by the student's own curriculum), the fee and GST gates, and the approval rule. What a student owes for
+GST/EPS (`finance.gst_eps_rows`) is not touched. Turning the switch off (`registration.set_curriculum_open`, with a reason) keeps
+the curricula apart again.
 
 ## API
 
@@ -159,5 +182,6 @@ Whatever is set, the engine judges every course a student adds.
 | `POST /api/v1/me/registration/courses` `{session, semester, offering}` | the student | add a course; the engine refuses with its reason |
 | `GET /api/v1/registration/flex` | registration offices | the rule in force |
 | `PUT /api/v1/registration/flex` | Academic Office, Registry, ICT, super | set the rule with a reason |
+| `PUT /api/v1/registration/flex/curriculum` `{open, reason}` | Academic Office, Registry, ICT, super | every curriculum open, or kept apart (V590) |
 
 The student is always the signed-in student. No student, programme, level, unit or payment is taken from the browser.

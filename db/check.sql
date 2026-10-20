@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 421
+\set EXPECTED 422
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21063,6 +21063,78 @@ BEGIN
                roster, issued->'permit'->>'reference', issued->'permit'->>'printed'));
 END $$;
 
+-- ── V590. Course registration open to every level and both curricula. Two made-up students of one programme at 100 Level, one on
+--          the BMAS track and one on CCMAS_MOAU; three made-up courses bound to the programme at that level, one a track — BMAS,
+--          CCMAS_MOAU, and CCMAS_BSU, a track no live student of the programme is on. With the curricula kept apart (the switch OFF):
+--          each student lists their own track's course alone, the course of the other curriculum added beside the list is refused
+--          REG_OTHER_CURRICULUM, and the class opener leaves the CCMAS_BSU course without a class. With the curricula open (ON, as
+--          V590 leaves it): the class is opened, both students list all three courses, and the course of the other curriculum is not
+--          refused. The switch is set by the Directorate of ICT with a reason and refused to the Bursary. The block undoes its writes ──
+DO $$
+DECLARE ses text := '2490/2491'; prog text; dept text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        versions text; opened_shut text; opened_open text; menu_a_shut text; menu_b_shut text; menu_a_open text; menu_b_open text;
+        chk_shut text; chk_open text; refused text; was_open boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'check V590', true);
+        was_open := registration.curriculum_open();
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2490-10-01', DATE '2491-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 100, 1) IS NULL
+           AND NOT EXISTS (SELECT 1 FROM people.student st WHERE st.programme_code = p.code AND st.curriculum_track = 'CCMAS_BSU'
+                             AND st.status IN ('ACTIVE', 'PROBATION', 'ADMITTED'))
+         ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (a, 'MOAUM/ADM/90/959001', 'CHECKV590', 'Bmas', prog, 'UTME', ses, 100, 100, 'ADMITTED'),
+            (b, 'MOAUM/ADM/90/959002', 'CHECKV590', 'Ccmas', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+        UPDATE people.student SET curriculum_track = 'BMAS' WHERE id = a;
+        UPDATE people.student SET curriculum_track = 'CCMAS_MOAU' WHERE id = b;
+        versions := (SELECT string_agg(curriculum_track || ':' || curriculum_version, ',' ORDER BY other_names) FROM people.student WHERE id IN (a, b));
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, curriculum) VALUES
+            ('ZCV 101', 'Check V590 BMAS course', 3, 1, 100, dept, 'Core', 'LIVE', 'BMAS'),
+            ('ZCV 102', 'Check V590 CCMAS course', 3, 1, 100, dept, 'Core', 'LIVE', 'CCMAS'),
+            ('ZCV 103', 'Check V590 course of a track with no student', 2, 1, 100, dept, 'Core', 'LIVE', 'CCMAS');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis, track) VALUES
+            ('ZCV 101', prog, 100, 'Core', 'BMAS'), ('ZCV 102', prog, 100, 'Core', 'CCMAS_MOAU'), ('ZCV 103', prog, 100, 'Core', 'CCMAS_BSU');
+        -- the curricula kept apart
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM registration.set_curriculum_open(false, 'Check V590: the curricula kept apart');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM registration.open_course_registration(ses, 1);
+        opened_shut := (SELECT string_agg(o.course_code, ',' ORDER BY o.course_code) FROM catalogue.offering o WHERE o.session = ses AND o.semester = 1 AND o.course_code LIKE 'ZCV %');
+        menu_a_shut := (SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) FROM registration.student_menu(a, ses, 1) m WHERE m.course_code LIKE 'ZCV %');
+        menu_b_shut := (SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) FROM registration.student_menu(b, ses, 1) m WHERE m.course_code LIKE 'ZCV %');
+        chk_shut := (SELECT coalesce(split_part(k.refusal, ':', 1), 'ALLOWED') FROM registration.course_check(a, ses, 1, 'ZCV 102', '{}', '{}', '{}', '{}') k LIMIT 1);
+        -- the curricula open
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM registration.set_curriculum_open(true, 'Check V590: every curriculum open to every student');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM registration.open_course_registration(ses, 1);
+        opened_open := (SELECT string_agg(o.course_code, ',' ORDER BY o.course_code) FROM catalogue.offering o WHERE o.session = ses AND o.semester = 1 AND o.course_code LIKE 'ZCV %');
+        menu_a_open := (SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) FROM registration.student_menu(a, ses, 1) m WHERE m.course_code LIKE 'ZCV %');
+        menu_b_open := (SELECT string_agg(m.course_code, ',' ORDER BY m.course_code) FROM registration.student_menu(b, ses, 1) m WHERE m.course_code LIKE 'ZCV %');
+        chk_open := (SELECT coalesce(split_part(k.refusal, ':', 1), 'ALLOWED') FROM registration.course_check(a, ses, 1, 'ZCV 102', '{}', '{}', '{}', '{}') k LIMIT 1);
+        -- the Bursary does not set it
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM registration.set_curriculum_open(false, 'Check V590: the Bursary tries');
+        EXCEPTION WHEN insufficient_privilege THEN refused := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V590 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V590 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V590: every curriculum''s courses are open to every student while the switch is on; kept apart by track and curriculum when it is off',
+        coalesce(versions = 'BMAS:BMAS,CCMAS_MOAU:CCMAS'
+                 AND opened_shut = 'ZCV 101,ZCV 102' AND menu_a_shut = 'ZCV 101' AND menu_b_shut = 'ZCV 102' AND chk_shut = 'REG_OTHER_CURRICULUM'
+                 AND opened_open = 'ZCV 101,ZCV 102,ZCV 103' AND menu_a_open = 'ZCV 101,ZCV 102,ZCV 103' AND menu_b_open = 'ZCV 101,ZCV 102,ZCV 103'
+                 AND chk_open IS DISTINCT FROM 'REG_OTHER_CURRICULUM' AND refused = 'REG_FLEX_OFFICE'
+                 AND registration.curriculum_open() = was_open, false),
+        format('prog %s | versions %s | shut: opened %s, a %s, b %s, check %s | open: opened %s, a %s, b %s, check %s | refused %s | switch kept %s',
+               prog, versions, opened_shut, menu_a_shut, menu_b_shut, chk_shut, opened_open, menu_a_open, menu_b_open, chk_open, refused, registration.curriculum_open() = was_open));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

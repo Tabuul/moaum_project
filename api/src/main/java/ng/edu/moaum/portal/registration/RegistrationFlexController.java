@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
  * FACULTY — and whether a course of a higher level than the student's may be added (OFF by default). The Academic Office, the
  * Registry, the Directorate of ICT and super set it with a reason (registration.set_flex_policy refuses any other office too), on
  * the audit spine. Each course a student adds is still judged by the engine (registration.course_check) whatever the rule.
+ * V590: whether every curriculum's courses (BMAS, CCMAS) are open to every student whatever the cohort's track (ON from V590), set
+ * the same way (registration.set_curriculum_open).
  */
 @RestController
 @RequestMapping("/api/v1/registration/flex")
@@ -34,6 +36,9 @@ class RegistrationFlexController {
                          @NotBlank @Size(min = 10, max = 500) String reason) {
     }
 
+    public record CurriculumIn(@NotNull Boolean open, @NotBlank @Size(min = 10, max = 500) String reason) {
+    }
+
     private final JdbcClient jdbc;
 
     RegistrationFlexController(JdbcClient jdbc) {
@@ -42,7 +47,7 @@ class RegistrationFlexController {
 
     private Map<String, Object> rule() {
         return jdbc.sql("""
-                SELECT p.allow_other_courses, p.other_scope, p.allow_higher_levels, p.reason, p.set_at, helpdesk.person_name(p.set_by) AS set_by, p.set_office
+                SELECT p.allow_other_courses, p.other_scope, p.allow_higher_levels, p.curriculum_open, p.reason, p.set_at, helpdesk.person_name(p.set_by) AS set_by, p.set_office
                   FROM registration.flex_rule() p
                 """).query().singleRow();
     }
@@ -61,6 +66,15 @@ class RegistrationFlexController {
     Map<String, Object> set(@Valid @RequestBody FlexIn body) {
         jdbc.sql("SELECT registration.set_flex_policy(:a, :s, :h, :r)").param("a", body.allowOtherCourses())
                 .param("s", body.otherScope().trim().toUpperCase()).param("h", body.allowHigherLevels()).param("r", body.reason().trim()).query().listOfRows();
+        return rule();
+    }
+
+    /** V590: every curriculum's courses open to every student, or the curricula kept apart again */
+    @PutMapping("/curriculum")
+    @PreAuthorize(SETTERS)
+    @Transactional
+    Map<String, Object> curriculum(@Valid @RequestBody CurriculumIn body) {
+        jdbc.sql("SELECT registration.set_curriculum_open(:o, :r)").param("o", body.open()).param("r", body.reason().trim()).query().listOfRows();
         return rule();
     }
 }
