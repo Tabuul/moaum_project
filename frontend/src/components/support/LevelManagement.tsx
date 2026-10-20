@@ -139,8 +139,9 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
         <Kv k="Expected completion" v={state.position?.expected_completion ?? "—"} />
         <Kv k="Graduation" v={state.position?.graduation_state ? state.position.graduation_state.replace(/_/g, " ").toLowerCase() : "—"} />
       </div>
+      {/* V595: the final year is the one the register shows (the first session at the final level), so the sessions are counted past it */}
       {sp ? (
-        <Note kind={sp.atLimit || sp.behind ? "bad" : "info"} title={`${sp.long}${sp.years != null ? ` — ${sp.years} session${sp.years === 1 ? "" : "s"} past the programme's ${state.position?.duration_years ?? "?"} years` : ""}${sp.limit != null ? `; the policy allows ${sp.limit}` : ""}`}
+        <Note kind={sp.atLimit || sp.behind ? "bad" : "info"} title={`${sp.long}${sp.years != null ? ` — ${sp.years} session${sp.years === 1 ? "" : "s"} past the final year${state.position?.expected_completion ? ` (${state.position.expected_completion})` : ` of the programme's ${state.position?.duration_years ?? "?"}`}` : ""}${sp.limit != null ? `; the policy allows ${sp.limit}` : ""}`}
           action={sp.behind && state.mayCorrect && o.otherLevels.includes(sp.final)
             ? <Btn kind="primary" onClick={() => open("CORRECTION", sp.final)}>{`CORRECT TO ${sp.final} LEVEL (${sp.short})`}</Btn> : undefined}>
           {sp.behind

@@ -88,7 +88,8 @@ afterwards in one pass. Nothing is computed on page load.
 | R6 | within the length, not registered this session, and no registration or enrolment ever | REQUIRES_REVIEW | unchanged | REVIEW |
 | R3L | within the programme's length, not yet registered this session | ACTIVE | ACTIVE | LIKELY |
 
-Expected completion = cohort + (length − 1) + sessions deferred, cancelled sessions skipped. Spillover years = sessions
+Expected completion = cohort + (length − 1) + sessions deferred, cancelled sessions skipped — or, since V595, the first
+session the register shows the student at the programme's final level where that is later (§18). Spillover years = sessions
 elapsed beyond expected completion, never counting a deferred session against the student. The level the cohort
 implies = entry level + 100 a session elapsed (less deferments), capped at the final level; for a postgraduate
 programme it stays the entry level.
@@ -366,3 +367,31 @@ nobody becomes GRADUATED except by the Senate's approval (a graduation candidate
 officer's choice; a record above its computed level is never lowered and a graduated one never touched.
 
 - **Tests:** `LevelCorrectionsIT.everyOneFoundByTheLevelTheyShouldBeAtIsCorrectedAfterACount`; check.sql's V593 block.
+
+## 18. Spillover counted from the final year as the register shows it (V595)
+
+The engine counted spillover from the admission session alone, so a student admitted in 2020/2021 to a four-year programme
+read "spillover year 2 (SP2)" in 2025/2026 whatever the register showed. The register showed thousands of them at 400 Level for
+the first time in 2024/2025 — the 2020 set lost a year to the closures, others repeated a level or came over with a thin record
+— and the University reads them as SP1: on the live-shaped copy, 4,598 of the 5,543 students called SP2 first registered at the
+final level in 2024/2025. The University's instruction (20 October 2026): the student is SP1, not SP2; correct every student so
+affected.
+
+**The rule now.** The final year is the later of
+
+- the year the count of sessions gives (cohort + length − 1 + deferments, cancelled sessions skipped), and
+- the first session the register shows the student at the programme's final level: a course registration submitted, approved or
+  locked at that level, or the old portal's enrolment history (`people.enrolment`) at that level.
+
+Spillover years are the sessions elapsed beyond that final year. An approved deferment after the final year still pushes the
+completion on. Nothing is counted from before the counted year, so a wrong level on an early registration cannot make a spillover
+student. A student with no registration or enrolment at the final level is counted exactly as before. The level the cohort
+implies, the rules (R4, R4L), the limit, the fees by the cohort basis (§12), the lifecycle reconciliation (§11) and the level
+corrections (§10, §17) all read the position and follow.
+
+**On the live-shaped copy** (54,573 positions): SP1 2,039 → 5,308; SP2 5,543 → 934; beyond the limit 5,489 → 5,078; 1,751
+students are no longer in spillover at all (at the final level for the first time this session). Every position is recomputed by
+the migration in one set-based pass; the triggers keep them from there.
+
+- **Tests:** check.sql's V595 block (late final year SP1, enrolment-only SP2, no final-level record as before, final year now
+  NORMAL, an early wrong level ignored, a deferment after the final year counted); `SpilloverFinalYearIT`.

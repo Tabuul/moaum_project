@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 426
+\set EXPECTED 427
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4885,7 +4885,10 @@ BEGIN
         -- D: entered 2170/2171, no award, registered now: spillover year 1
         INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
         VALUES (d, 'MOAUM/ADM/70/700180', 'MOAUM/CHK/70/000180', 'CHECKCOHORTD', 'Student', prog, 'UTME', '2170/2171', 100, 400, 'ACTIVE', now());
-        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES (gen_random_uuid(), d, '2175/2176', 1, 400, 'APPROVED', now(), now(), who);
+        -- V595: at 400 Level in the counted final year (2174/2175) too — the register says when the final year was, and a student first at
+        -- the final level this session would be in the final year, not spillover
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at, approved_by) VALUES
+            (gen_random_uuid(), d, '2174/2175', 1, 400, 'APPROVED', now(), now(), who), (gen_random_uuid(), d, '2175/2176', 1, 400, 'APPROVED', now(), now(), who);
         -- E: entered 2169/2170, nothing since 2170/2171: beyond the limit once the limit is one
         INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
         VALUES (e, 'MOAUM/ADM/69/690179', 'MOAUM/CHK/69/000179', 'CHECKCOHORTE', 'Student', prog, 'UTME', '2169/2170', 100, 400, 'ACTIVE', now());
@@ -18679,6 +18682,12 @@ BEGIN
         (s6, 'MOAUM/ZZL/LCK/55806', 'CHECKV558', 'Moved', v_prog, 'UTME', format('%s/%s', y - 4, y - 3), 100, 400, 'ACTIVE', now());
     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at)
     SELECT gen_random_uuid(), x, cur, 1, 400, 'SUBMITTED', now() FROM unnest(ARRAY[s1, s3, s4, s6]) x;
+    -- V595: the register says when the final year was — s1 and s6 at 400 Level since last session (spillover year 1), s3 since three
+    -- sessions ago (the maximum); s4, at 400 Level for the first time now, is in the final year
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+    SELECT gen_random_uuid(), x, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now(), now() FROM unnest(ARRAY[s1, s6]) x;
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+    VALUES (gen_random_uuid(), s3, format('%s/%s', y - 3, y - 2), 1, 400, 'APPROVED', now(), now());
     PERFORM people.refresh_academic_positions(ARRAY[s1, s2, s3, s4, s5, s6]);
 
     SELECT * INTO r1 FROM people.lifecycle_recommendation WHERE student_id = s1;
@@ -18699,8 +18708,10 @@ BEGIN
 
     v_ref := people.lifecycle_open_batch('CHECK V558', 'The University');
     PERFORM people.lifecycle_prepare(ARRAY[s1, s3, s4, s6]);
-    -- one record moves after it was verified: three sessions beyond now, not one
-    UPDATE people.student SET entry_session = format('%s/%s', y - 6, y - 5) WHERE id = s6;
+    -- one record moves after it was verified: last session's registration was at 300 Level, not 400, so the final year is this one
+    -- and the student is no longer in spillover (V595)
+    UPDATE registration.course_registration SET level = 300 WHERE student_id = s6 AND session = format('%s/%s', y - 1, y);
+    PERFORM people.refresh_academic_positions(ARRAY[s6]);
     BEGIN PERFORM people.lifecycle_reconcile(v_ref, s6, 'SPILLOVER_YEAR_1', NULL, NULL, 'CHECK V558 reason', NULL, NULL, NULL);
     EXCEPTION WHEN check_violation THEN v_changed := split_part(SQLERRM, ':', 1); END;
     rc1 := people.lifecycle_reconcile(v_ref, s1, 'SPILLOVER_YEAR_1', NULL, NULL, 'CHECK V558 reason', NULL, NULL, NULL);
@@ -21313,6 +21324,74 @@ BEGIN
                  AND (summary->>'unmatched')::int >= 2 AND (summary->>'public')::int >= 4, false),
         format('found %s own %s | codes %s | started %s held %s students %s | summary unmatched %s public %s students %s',
                found, own_student, codes, started, held, students, summary->>'unmatched', summary->>'public', summary->>'students'));
+END $$;
+
+-- ── V595. Spillover counted from the final year as the register shows it: a student admitted five sessions ago to a four-year
+--          programme (the count of sessions completes it two sessions ago) whose first registration at 400 Level was last session is
+--          SP1, not SP2; one the old portal's enrolment shows at 400 Level last session likewise; one with no record at the final
+--          level is counted as before (SP2); one at 400 Level for the first time this session is not in spillover; a 400-Level
+--          registration before the counted final year does not make a spillover student; a deferment after the final year still
+--          pushes the completion on. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2195; v_prog text; v_dept text; v_fac text; cur text; e5 text; a1 record; a2 record; a3 record; a4 record; a5 record; a6 record; msg text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid(); s5 uuid := gen_random_uuid(); s6 uuid := gen_random_uuid();
+BEGIN
+  BEGIN   -- the check's own sessions, programme and students, undone at the end
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V595', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y + 2) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1); e5 := format('%s/%s', y - 5, y - 4);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2195/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V595', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/95/595001', 'MOAUM/ZZS/95/5951', 'CHECKV595', 'Final year late', v_prog, 'UTME', e5, 100, 400, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/95/595002', 'MOAUM/ZZS/95/5952', 'CHECKV595', 'No final record', v_prog, 'UTME', e5, 100, 100, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/95/595003', 'MOAUM/ZZS/95/5953', 'CHECKV595', 'Enrolled final', v_prog, 'UTME', e5, 100, 400, 'ACTIVE', now()),
+        (s4, 'MOAUM/ADM/95/595004', 'MOAUM/ZZS/95/5954', 'CHECKV595', 'Final year now', v_prog, 'UTME', e5, 100, 400, 'ACTIVE', now()),
+        (s5, 'MOAUM/ADM/95/595005', 'MOAUM/ZZS/95/5955', 'CHECKV595', 'Early wrong level', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 100, 'ACTIVE', now()),
+        (s6, 'MOAUM/ADM/95/595006', 'MOAUM/ZZS/95/5956', 'CHECKV595', 'Deferred after', v_prog, 'UTME', format('%s/%s', y - 6, y - 5), 100, 400, 'ACTIVE', now());
+    -- s1: first at 400 Level last session; s3: enrolled at 400 Level last session; s4: this session; s5: a 400-Level registration in the
+    -- entry session; s6 (admitted six sessions ago): first at 400 Level last session, then this session deferred
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (gen_random_uuid(), s1, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now(), now()),
+        (gen_random_uuid(), s1, format('%s/%s', y - 2, y - 1), 1, 300, 'APPROVED', now(), now()),
+        (gen_random_uuid(), s4, cur, 1, 400, 'SUBMITTED', now(), NULL),
+        (gen_random_uuid(), s5, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now(), now()),
+        (gen_random_uuid(), s6, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now(), now());
+    INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), s3, format('%s/%s', y - 1, y), 400);
+    INSERT INTO people.deferment (reference, student_id, kind, session, reason_code, state)
+    VALUES ('DEF-2195-00001', s6, 'SESSION', cur, (SELECT code FROM people.deferment_reason ORDER BY code LIMIT 1), 'APPROVED');
+    SELECT expected_completion, spillover_years, spillover_state, computed_level INTO a1 FROM people.academic_position_rows_of(ARRAY[s1]);
+    SELECT expected_completion, spillover_years, spillover_state, computed_level INTO a2 FROM people.academic_position_rows_of(ARRAY[s2]);
+    SELECT expected_completion, spillover_years, spillover_state, computed_level INTO a3 FROM people.academic_position_rows_of(ARRAY[s3]);
+    SELECT expected_completion, spillover_years, spillover_state, computed_level INTO a4 FROM people.academic_position_rows_of(ARRAY[s4]);
+    SELECT expected_completion, spillover_years, spillover_state, computed_level INTO a5 FROM people.academic_position_rows_of(ARRAY[s5]);
+    SELECT expected_completion, spillover_years, spillover_state, computed_level INTO a6 FROM people.academic_position_rows_of(ARRAY[s6]);
+    RAISE EXCEPTION 'CHECK_V595_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V595_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V595: spillover is counted from the final year as the register shows it — the first session registered or enrolled at the final level when later than the count of sessions gives — a deferment after it still counted, nothing counted from before the counted year, and a student with no final-level record counted as before',
+        coalesce(a1.spillover_years = 1 AND a1.spillover_state = 'SPILLOVER_YEAR_1' AND a1.expected_completion = format('%s/%s', y - 1, y) AND a1.computed_level = 400
+             AND a2.spillover_years = 2 AND a2.spillover_state = 'SPILLOVER_YEAR_2' AND a2.expected_completion = format('%s/%s', y - 2, y - 1)
+             AND a3.spillover_years = 1 AND a3.spillover_state = 'SPILLOVER_YEAR_1' AND a3.expected_completion = format('%s/%s', y - 1, y)
+             AND a4.spillover_years = 0 AND a4.spillover_state = 'NORMAL' AND a4.expected_completion = cur
+             AND a5.spillover_years = 0 AND a5.spillover_state = 'NORMAL' AND a5.expected_completion = format('%s/%s', y + 2, y + 3)
+             AND a6.spillover_years = 0 AND a6.spillover_state = 'NORMAL' AND a6.expected_completion = cur, false),
+        format('late final %s %s %s L%s | none %s %s %s | enrolled %s %s %s | now %s %s %s | early %s %s %s | deferred after %s %s %s',
+               a1.spillover_years, a1.spillover_state, a1.expected_completion, a1.computed_level, a2.spillover_years, a2.spillover_state, a2.expected_completion,
+               a3.spillover_years, a3.spillover_state, a3.expected_completion, a4.spillover_years, a4.spillover_state, a4.expected_completion,
+               a5.spillover_years, a5.spillover_state, a5.expected_completion, a6.spillover_years, a6.spillover_state, a6.expected_completion));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
