@@ -25,7 +25,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * V580: what correcting every waiting level would do to the current session's charges, for the Bursary before the Academic Office or
@@ -33,6 +39,9 @@ import org.springframework.web.bind.annotation.RestController;
  * time behind the screens (people.level_fee_effect_step: the levels raised and undone, the basis of its start held), each step its
  * own transaction in the starter's name; the screen polls how far it got and reads the sums by faculty and programme, and every
  * student's row for the Excel. Nothing on a record changes. One run at a time; a run an API restart left open is taken up again.
+ * V584: the students it finds charged nothing after, grouped by programme and corrected level with the lines each could be stated
+ * from (people.level_fee_effect_gaps), stated in one step after a preview (finance.copy_programme_lines, the Bursary's); and how
+ * many of each programme have been corrected since, so the Registry corrects programme by programme from the report.
  */
 @RestController
 @RequestMapping("/api/v1/finance/level-fee-effect")
@@ -42,21 +51,25 @@ class LevelFeeEffectController {
     private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic',"
             + "'OFFICE_records','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
     private static final String STARTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
+    /** V584: who states fee lines (FinanceController's FEE_SETTERS) */
+    private static final String FEE_SETTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
     private static final List<String> BASES = List.of("SPILLOVER", "REGISTRATION", "ARITHMETIC");
     private static final int STEP = 1000;
 
     private final JdbcClient jdbc;
     private final JobLock lock;
     private final TransactionTemplate tx;
+    private final tools.jackson.databind.ObjectMapper json;
     private final ExecutorService now = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "level-fee-effect");
         t.setDaemon(true);
         return t;
     });
 
-    LevelFeeEffectController(JdbcClient jdbc, JobLock lock, PlatformTransactionManager transactions) {
+    LevelFeeEffectController(JdbcClient jdbc, JobLock lock, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
         this.lock = lock;
+        this.json = json;
         this.tx = new TransactionTemplate(transactions);
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -83,7 +96,50 @@ class LevelFeeEffectController {
         out.put("waiting", jdbc.sql("SELECT basis, count(*) AS students FROM people.level_correction GROUP BY basis ORDER BY basis").query().listOfRows());
         if (run != null && "DONE".equals(run.get("state"))) {
             out.put("report", jdbc.sql("SELECT * FROM people.level_fee_effect_report(:r)").param("r", run.get("id")).query().listOfRows());
+            // V584: the programme and corrected level of those charged nothing after, each with the lines it could be stated from
+            List<Map<String, Object>> gaps = jdbc.sql("""
+                    SELECT programme_code, programme, faculty_code, faculty, department, level, students, corrected, programme_states, sources::text AS sources
+                      FROM people.level_fee_effect_gaps(:r)
+                    """).param("r", run.get("id")).query().listOfRows();
+            gaps.forEach(g -> g.put("sources", json.readValue(String.valueOf(g.get("sources")), List.class)));
+            out.put("gaps", gaps);
         }
+        return out;
+    }
+
+    /** V584: what stating a gap from another programme's or level's lines would do — each line COPY or KEPT (already stated) */
+    @GetMapping("/gap-lines")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> gapLinesPreview(@RequestParam String fromSession, @RequestParam String fromProgramme, @RequestParam int fromLevel,
+                                        @RequestParam String session, @RequestParam String programme, @RequestParam int level) {
+        return gapLines(new GapLines(fromSession, fromProgramme, fromLevel, session, programme, level), false);
+    }
+
+    public record GapLines(@NotBlank @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String fromSession, @NotBlank String fromProgramme, @NotNull Integer fromLevel,
+                           @NotBlank @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String session, @NotBlank String programme, @NotNull Integer level) {
+    }
+
+    /** V584: the gap stated — the source's lines copied to the programme and level, a line already stated kept; the Bursary adjusts
+     *  any amount afterwards on the Fee Schedule */
+    @PostMapping("/gap-lines")
+    @PreAuthorize(FEE_SETTERS)
+    @Transactional
+    Map<String, Object> gapLinesApply(@Valid @RequestBody GapLines body) {
+        return gapLines(body, true);
+    }
+
+    private Map<String, Object> gapLines(GapLines g, boolean apply) {
+        List<Map<String, Object>> lines = jdbc.sql("SELECT * FROM finance.copy_programme_lines(:fs, :fp, :fl, :ts, :tp, :tl, :a)")
+                .param("fs", g.fromSession()).param("fp", g.fromProgramme().trim()).param("fl", g.fromLevel())
+                .param("ts", g.session()).param("tp", g.programme().trim()).param("tl", g.level()).param("a", apply).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("from", Map.of("session", g.fromSession(), "programme", g.fromProgramme(), "level", g.fromLevel()));
+        out.put("to", Map.of("session", g.session(), "programme", g.programme(), "level", g.level()));
+        out.put("copy", lines.stream().filter(l -> "COPY".equals(l.get("action"))).count());
+        out.put("kept", lines.stream().filter(l -> "KEPT".equals(l.get("action"))).count());
+        out.put("applied", apply);
+        out.put("lines", lines);
         return out;
     }
 

@@ -17,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -92,6 +93,26 @@ class ContactUploadController {
                  WHERE (CAST(:f AS text) IS NULL OR u.faculty_code = :f OR d.faculty_code = :f) AND (CAST(:d AS text) IS NULL OR u.department_code = :d)
                  ORDER BY u.uploaded_at DESC LIMIT 50
                 """).param("f", r.faculty(), java.sql.Types.VARCHAR).param("d", r.department(), java.sql.Types.VARCHAR).query().listOfRows());
+        return out;
+    }
+
+    /** V584: the students an upload within reach gave a contact to, field by field, with what became of it — waiting for the student
+     *  (a code sent or not), confirmed by the student or at the desk, said not to be theirs — so the department chases the waiting */
+    @GetMapping("/uploads/{id}/students")
+    @PreAuthorize(UPLOADERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> uploadStudents(@PathVariable java.util.UUID id) {
+        Reach r = reach(null, null);
+        Map<String, Object> upload = jdbc.sql("""
+                SELECT u.id, u.uploaded_at, u.file_name, f.name AS faculty, d.name AS department, helpdesk.person_name(u.uploaded_by) AS uploaded_by
+                  FROM people.contact_upload u
+                  LEFT JOIN ref.faculty f ON f.code = u.faculty_code
+                  LEFT JOIN ref.department d ON d.code = u.department_code
+                 WHERE u.id = :u AND (CAST(:f AS text) IS NULL OR u.faculty_code = :f OR d.faculty_code = :f) AND (CAST(:d AS text) IS NULL OR u.department_code = :d)
+                """).param("u", id).param("f", r.faculty(), java.sql.Types.VARCHAR).param("d", r.department(), java.sql.Types.VARCHAR)
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("contact upload", id.toString()));
+        Map<String, Object> out = new LinkedHashMap<>(upload);
+        out.put("rows", jdbc.sql("SELECT * FROM people.contact_upload_students(:u)").param("u", id).query().listOfRows());
         return out;
     }
 

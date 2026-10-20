@@ -3,7 +3,7 @@
 /** V572: the Registry's and the departments' upload of student phone numbers and e-mail addresses. The students missing a contact
  *  within the office's reach are counted and written into a template; the filled file is previewed row by row (nothing written)
  *  and then loaded, filling only the contacts a student does not hold — a contact held is kept, one another student holds refused. */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { csvRows, xlsxRows } from "@/lib/xlsx";
@@ -12,6 +12,7 @@ import { contactRows, missingWord, OUTCOME, TEMPLATE_HEAD, type ContactLoad, typ
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { UploadStudents } from "./UploadStudents";
 
 export interface ContactSummary {
   scope: string; faculty: string | null; department: string | null; missing: number; neither: number; no_phone: number; no_email: number;
@@ -38,6 +39,9 @@ export function ContactUpload({ summary }: { summary: ContactSummary }) {
   const [file, setFile] = useState<{ name: string; rows: ContactRow[] } | null>(null);
   const [preview, setPreview] = useState<ContactLoad | null>(null);
   const [done, setDone] = useState<ContactLoad | null>(null);
+  // V584: the upload whose students are shown
+  const [shownUpload, setShownUpload] = useState<string | null>(null);
+  const closeUpload = useCallback(() => setShownUpload(null), []);
 
   async function template(neitherOnly: boolean) {
     setBusy(neitherOnly ? "neither" : "all");
@@ -147,7 +151,7 @@ export function ContactUpload({ summary }: { summary: ContactSummary }) {
 
       {summary.uploads.length ? (
         <Panel title="Uploads">
-          <DTable pageSize={10} cols={["When", "By", "File", "Reach", "Rows|num", "Students filled|num", "Phones|num", "E-mails|num", "Not written|num", "Awaiting the student|num", "Confirmed|num", "Not theirs|num"]} rows={summary.uploads.map((u) => [
+          <DTable pageSize={10} cols={["When", "By", "File", "Reach", "Rows|num", "Students filled|num", "Phones|num", "E-mails|num", "Not written|num", "Awaiting the student|num", "Confirmed|num", "Not theirs|num", ""]} rows={summary.uploads.map((u) => [
             <span key="w" className="tnum">{new Date(u.uploaded_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
             <span key="b">{u.uploaded_by ?? "—"}</span>,
             <span key="f" className="sub2">{u.file_name ?? "—"}</span>,
@@ -160,11 +164,13 @@ export function ContactUpload({ summary }: { summary: ContactSummary }) {
             <span key="w" className="tnum">{n(u.waiting ?? 0)}</span>,
             <span key="c" className="tnum">{n(u.confirmed ?? 0)}</span>,
             <span key="r" className="tnum" style={u.rejected ? { color: "var(--red-ink)" } : undefined}>{n(u.rejected ?? 0)}</span>,
+            <Btn key="s" kind="ghost" size="sm" aria-label={`The students of ${u.file_name ?? "this upload"}`} onClick={() => setShownUpload(u.id)}>Students</Btn>,
           ])} />
         </Panel>
       ) : (
         <Note kind="info" title="No upload yet">Uploads made from this page are listed here with what each filled.</Note>
       )}
+      {shownUpload ? <UploadStudents key={shownUpload} id={shownUpload} onClose={closeUpload} /> : null}
     </div>
   );
 }

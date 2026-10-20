@@ -32,7 +32,7 @@ const BASIS: Record<Basis, [string, string, "warn" | "info" | "grey"]> = {
 };
 const fmt = (v: number) => Number(v).toLocaleString("en-GB");
 
-export function LevelCorrections({ fac, dept, canApply }: { fac: string; dept: string; canApply: boolean }) {
+export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: { fac: string; dept: string; canApply: boolean; canStateFees?: boolean }) {
   const [basis, setBasis] = useState<"" | Basis>("");
   const [q, setQ] = useState("");
   const [search, setSearch] = useState("");
@@ -181,7 +181,7 @@ export function LevelCorrections({ fac, dept, canApply }: { fac: string; dept: s
         ) : null}
       </Panel>
       {/* V580: what correcting every one waiting would do to the current session's charges, worked out behind the screens */}
-      <LevelFeeEffectRun mayStart={canApply} />
+      <LevelFeeEffectRun mayStart={canApply} mayCorrect={canApply} mayStateFees={canStateFees} />
 
       {apply ? (
         <Modal title={apply.mode === "safe" ? `Correct ${fmt(safe)} records` : `Correct the ${fmt(chosen.size)} chosen records`}

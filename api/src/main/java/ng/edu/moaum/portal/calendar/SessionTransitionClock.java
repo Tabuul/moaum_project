@@ -64,6 +64,11 @@ public class SessionTransitionClock {
         } catch (RuntimeException e) {
             LOG.warn("session clock: the overrun reminder did not run: {}", e.getMessage());
         }
+        try {
+            remindStart();
+        } catch (RuntimeException e) {
+            LOG.warn("session clock: the start warning did not run: {}", e.getMessage());
+        }
     }
 
     /** V400: once the current session's end date has passed and it is still current, the Registry, the Academic Office and the
@@ -80,6 +85,15 @@ public class SessionTransitionClock {
             }
             return told;
         }));
+    }
+
+    /** V585: a week before a planned session's automatic transition date, and the day before while a check is not met, the
+     *  Registrar's and the Bursar's offices are told what its readiness shows (policy.tell_session_start, once each) */
+    public int remindStart() {
+        Integer told = AuditContextHolder.with(new AuditContext(NOBODY, "registrar", "session clock: start warning", null, null),
+                () -> tx.execute(st -> jdbc.sql("SELECT policy.tell_session_start()").query(Integer.class).single()));
+        if (told != null && told > 0) LOG.info("session clock: {} start warning(s) queued", told);
+        return told == null ? 0 : told;
     }
 
     /** every planned session due today, transitioned in turn; each attempt's outcome is returned as the log holds it */

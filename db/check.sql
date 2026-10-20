@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 418
+\set EXPECTED 420
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20876,6 +20876,127 @@ BEGIN
                post1.posted, post1.skipped, post1.amount, post1.batch_ref, entry.kind, entry.amount, entry.old, entry.acct, applied, pos.paid, pos.balance, bal,
                v_channel, post2.posted, credits, stated.status, stated.available, stated.reason_code, cat, sums.posted, sums.review));
 END $$;
+-- ── V584. Fee gaps after level corrections, and each upload's students. In an invented session Computer Science states a line
+-- at 100 Level, the Faculty of Science one at 300 for every programme, Mathematics (its department) and Chemistry (its faculty)
+-- their own at 400. A run reading an invented student going from 100 to 400 finds them charged nothing after: the gap offers what
+-- applies to the programme at the nearest level first (the faculty's 300 Level line), then Mathematics, then Chemistry; the
+-- faculty's line reads as Computer Science's own at 400; Mathematics' 400 Level line copied to Computer Science is stated once and
+-- kept the second time; the report counts the student corrected once the level is raised. An upload's students: one waiting for
+-- the student, one said not to be theirs. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+        run uuid := gen_random_uuid(); up uuid := gen_random_uuid(); ses text := '2864/2865'; fac text; dept text;
+        gap text; sources text; facpreview text; preview text; applied text; again text; stated text; corrected text; listed text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V584', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2864-10-01', DATE '2865-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        UPDATE finance.fee_schedule SET ended_at = now() WHERE session = ses AND ended_at IS NULL;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES
+            (ses, 'School fees', 300000, 100, 'C00023'), (ses, 'School fees', 250000, 400, 'C00028'), (ses, 'School fees', 240000, 400, 'C00022');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, faculty_code) VALUES (ses, 'Departmental dues', 5000, 300, 'SC');
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/84/058401', 'MOAUM/ADM/84/584001', 'CHECKV584A', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/84/058402', 'MOAUM/ADM/84/584002', 'CHECKV584B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/CHK/84/058403', 'MOAUM/ADM/84/584003', 'CHECKV584C', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.level_fee_effect_run (id, session, basis, bases, state, students, done) VALUES (run, ses, 'LEVEL', ARRAY['SPILLOVER'], 'DONE', 1, 1);
+        INSERT INTO people.level_fee_effect_row (run_id, student_id, basis, current_level, new_level, charged_now, charged_after)
+        VALUES (run, a, 'SPILLOVER', 100, 400, 300000, 0);
+        SELECT g.programme_code || ':' || g.level || ':' || g.students || ':' || g.programme_states,
+               (SELECT string_agg(x->>'kind' || ':' || (x->>'programme_code') || ':' || (x->>'level') || ':' || (x->>'tier'), ',' ORDER BY o)
+                  FROM jsonb_array_elements(g.sources) WITH ORDINALITY e(x, o) WHERE x->>'kind' <> 'LAST_SESSION')
+          INTO gap, sources FROM people.level_fee_effect_gaps(run) g;
+        facpreview := (SELECT string_agg(l.item || ':' || l.amount::bigint || ':' || l.action, ',') FROM finance.copy_programme_lines(ses, 'C00023', 300, ses, 'C00023', 400, false) l);
+        preview := (SELECT string_agg(l.amount::bigint || ':' || l.action, ',') FROM finance.copy_programme_lines(ses, 'C00028', 400, ses, 'C00023', 400, false) l);
+        applied := (SELECT string_agg(l.action, ',') FROM finance.copy_programme_lines(ses, 'C00028', 400, ses, 'C00023', 400, true) l);
+        again := (SELECT string_agg(l.action || ':' || l.target_amount::bigint, ',') FROM finance.copy_programme_lines(ses, 'C00028', 400, ses, 'C00023', 400, false) l);
+        stated := (SELECT string_agg(f.level || ':' || f.amount::bigint, ',' ORDER BY f.level) FROM finance.fee_schedule f
+                    WHERE f.session = ses AND f.programme_code = 'C00023' AND f.ended_at IS NULL);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        UPDATE people.student SET current_level = 400 WHERE id = a;
+        corrected := (SELECT r.students || '/' || r.corrected FROM people.level_fee_effect_report(run) r WHERE r.scope = 'PROGRAMME');
+
+        -- an upload's students: b's phone said not to be theirs, c's still waiting
+        SELECT faculty_code, dept_code INTO fac, dept FROM ref.programme WHERE code = 'C00023';
+        INSERT INTO people.contact_upload (id, office, faculty_code, department_code, reason, file_name, uploaded_by) VALUES (up, 'registrar', fac, dept, 'CHECK V584 upload', 'check-v584.csv', who);
+        PERFORM people.load_contacts(jsonb_build_array(jsonb_build_object('number', 'MOAUM/CHK/84/058402', 'phone', '08065840002'),
+                                                       jsonb_build_object('number', 'MOAUM/CHK/84/058403', 'phone', '08065840003')), fac, dept, up);
+        PERFORM set_config('moaum.actor_id', b::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM people.contact_refuse(b, 'PHONE');
+        listed := (SELECT string_agg(x.outcome || ':' || x.field || ':' || x.value || ':' || x.code_sent, ',') FROM people.contact_upload_students(up) x);
+        RAISE EXCEPTION 'the V584 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V584 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V584: the fee lines a corrected level leaves missing are offered from the nearest sources and stated once; the report counts the corrected; an upload lists its students',
+        coalesce(gap = 'C00023:400:1:true' AND sources = 'SAME_PROGRAMME:C00023:300:FACULTY,SAME_DEPARTMENT:C00028:400:PROGRAMME,SAME_FACULTY:C00022:400:PROGRAMME'
+                 AND facpreview = 'Departmental dues:5000:COPY' AND preview = '250000:COPY' AND applied = 'COPY' AND again = 'KEPT:250000' AND stated = '100:300000,400:250000'
+                 AND corrected = '1/1' AND listed = 'WAITING:PHONE:08065840003:false,REFUSED:PHONE:08065840002:false', false),
+        format('gap %s | sources %s | faculty line %s | preview %s applied %s again %s | stated %s | corrected %s | listed %s', gap, sources, facpreview, preview, applied, again, stated, corrected, listed));
+END $$;
+
+-- ── V585. The cleared gate pairs kept, and the start warned of. An invented student cleared at every gate purpose and unit is kept
+-- at every pair; a later hold on one pair takes one off, and a later clearing puts it back. A session set to start automatically in
+-- three days tells an invented Registrar once (not twice); the Bursar's hold makes the spillover line not met exactly when
+-- spillover students lack a line. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); d uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); ses text := '2866/2867';
+        need int; kept_all int; kept_held int; kept_back int; told int; told_again int; free_ok boolean; held_ok boolean; lacking boolean; msg text;
+BEGIN
+    SELECT count(*) INTO need FROM ref.clearance_purpose pu CROSS JOIN clearance.unit u WHERE pu.gate;
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V585', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (d, 'MOAUM/CHK/85/058501', 'MOAUM/ADM/85/585001', 'CHECKV585D', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 200, 'ACTIVE', now());
+        INSERT INTO clearance.item (id, student_id, purpose, unit, state, decided_at)
+        SELECT gen_random_uuid(), d, pu.code, u.code, 'CLEARED', now() - interval '1 hour' FROM ref.clearance_purpose pu CROSS JOIN clearance.unit u WHERE pu.gate;
+        kept_all := (SELECT k.cleared FROM clearance.gate_pairs_kept k WHERE k.student_id = d);
+        INSERT INTO clearance.item (id, student_id, purpose, unit, state, item, decided_at)
+        SELECT gen_random_uuid(), d, (SELECT code FROM ref.clearance_purpose WHERE gate ORDER BY code LIMIT 1), (SELECT code FROM clearance.unit ORDER BY code LIMIT 1),
+               'HELD', 'CHECK V585 hold', now() - interval '30 minutes';
+        kept_held := (SELECT k.cleared FROM clearance.gate_pairs_kept k WHERE k.student_id = d);
+        INSERT INTO clearance.item (id, student_id, purpose, unit, state, decided_at)
+        SELECT gen_random_uuid(), d, (SELECT code FROM ref.clearance_purpose WHERE gate ORDER BY code LIMIT 1), (SELECT code FROM clearance.unit ORDER BY code LIMIT 1),
+               'CLEARED', now();
+        kept_back := (SELECT k.cleared FROM clearance.gate_pairs_kept k WHERE k.student_id = d);
+
+        -- the start warned of: an invented Registrar, a session starting automatically in three days
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (reg, 'CHK-V585-' || left(reg::text, 8), 'CHECKV585', 'Invented', 'checkv585.registrar@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), reg, 'registrar', 'institution', 'CHECK V585', who, current_date - 1);
+        -- a plain insert: ON CONFLICT DO UPDATE would fire the session's UPDATE statement trigger, every position worked out again
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state, transition_mode, transitions_on)
+        VALUES (gen_random_uuid(), ses, DATE '2866-10-01', DATE '2867-08-31', 'PLANNED', 'AUTOMATIC', (now() AT TIME ZONE 'Africa/Lagos')::date + 3);
+        PERFORM policy.tell_session_start();
+        told := (SELECT count(*) FROM platform.notice n WHERE n.recipient = 'checkv585.registrar@example.com' AND n.template_key = 'SESSION_START_READINESS');
+        PERFORM policy.tell_session_start();
+        told_again := (SELECT count(*) FROM platform.notice n WHERE n.recipient = 'checkv585.registrar@example.com' AND n.template_key = 'SESSION_START_READINESS');
+
+        -- the Bursar's hold
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        lacking := (SELECT coalesce(sum(g.students), 0) > 0 FROM finance.fee_gaps(ses) g WHERE g.spillover AND NOT g.stated);
+        PERFORM finance.set_spill_hold_start(false);
+        free_ok := (SELECT r.ok FROM policy.transition_readiness(ses) r WHERE r.code = 'SPILLOVER_FEE_LINES');
+        PERFORM finance.set_spill_hold_start(true);
+        held_ok := (SELECT r.ok FROM policy.transition_readiness(ses) r WHERE r.code = 'SPILLOVER_FEE_LINES');
+        RAISE EXCEPTION 'the V585 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V585 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V585: a student''s cleared gate pairs are kept as decisions are made; the start of a session is warned of once; the Bursar''s hold holds only when spillover lines are missing',
+        coalesce(need > 0 AND kept_all = need AND kept_held = need - 1 AND kept_back = need AND told = 1 AND told_again = 1
+                 AND free_ok AND held_ok = NOT lacking, false),
+        format('need %s kept %s held %s back %s | told %s again %s | free %s held %s lacking %s', need, kept_all, kept_held, kept_back, told, told_again, free_ok, held_ok, lacking));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

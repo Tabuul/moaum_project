@@ -39,6 +39,7 @@ export default async function CohortsPage({ searchParams }: { searchParams: Prom
           settings={settings && settings.ok ? settings.data : null}
           structure={structure.ok ? structure.data.faculties : []} filters={filters} page={Number(s("page") || 1)}
           canDecide={["academic", "registrar", "dregistrar", "records"].includes(office ?? "")} canSet={["registrar", "dregistrar", "academic", "super"].includes(office ?? "")}
+          canStateFees={["bursar", "studentaccounts", "super"].includes(office ?? "")}
           generatedBy={me.ok ? me.data.name ?? null : null}
           life={{ view: s("view"), rec: s("rec"), state: s("lstate"), conf: s("lconf"), basis: s("basis"), completion: s("completion"), batch: s("batch"), outcome: s("outcome"), corrected: s("corrected"), page: s("page") }} />
       )}

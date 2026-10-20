@@ -23,6 +23,7 @@ The spine everything else hangs on.
 - [ ] Create the academic session and make it current under a Senate minute — `/calendar` · **done when** the Current session tile names the session
 - [ ] State each semester's windows — lectures, registration open/close, late registration, examinations, results due, query window — `/calendar` · **done when** the Semesters table shows the open semester with every date set
 - [ ] Roll the register into the session (promote continuing students), or Enrol all to match a re-uploaded cohort — `/calendar` · **done when** continuing students are enrolled at their level in the new session
+- [ ] If the next session is set to start automatically, read the warning the Registrar's and the Bursar's offices receive a week before (V585) — `/calendar` · **done when** every check it lists is met, or the Registrar has chosen to start the session by hand
 
 ## 2 · Structure — *Registry / ICT*
 Faculties, departments, programmes on the register.
@@ -61,6 +62,8 @@ A score sheet is generated only for an offering that has a lecturer.
 What a payment costs, and what it releases.
 
 - [ ] Upload the Council-approved fee structure for the session — `/finance/fees`
+- [ ] Upload the Council-approved fee structure for the session — `/finance/fees`
+- [ ] State the session's spillover lines (copy last session's from *Who is charged the spillover lines*, V580) and the lines a level correction would leave missing (*Fee lines missing at the corrected level*, V584) — `/finance/fees` · **done when** both panels show none missing
 - [ ] Put the clearance scheme in force under a minute — `/finance/fees` · **[critical]** · **done when** a payment actually releases registration, the exam and results
 - [ ] State the applicant and Post-UTME fees (screening, portal charge, acceptance, checking) — `/finance/fees`
 - [ ] State the CCE applicant fees for the CCE session (application, admission checking, acceptance) — `/cce/fees` · **done when** the readiness screen's *CCE admission* panel reads "CCE applicant fees set" (it is blocking once a CCE list is loaded, the CCE window is open or CCE applications exist — V412)

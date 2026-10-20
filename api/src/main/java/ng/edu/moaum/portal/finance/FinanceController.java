@@ -761,7 +761,8 @@ class FinanceController {
     Map<String, Object> spillBasis() {
         Map<String, Object> out = new java.util.LinkedHashMap<>(jdbc.sql("""
                 SELECT g.spillover_basis AS basis, g.spillover_basis_set_at AS set_at, helpdesk.person_name(g.spillover_basis_set_by) AS set_by,
-                       g.spillover_basis_reason AS reason
+                       g.spillover_basis_reason AS reason,
+                       g.spill_lines_hold_start AS hold_start, g.spill_hold_set_at AS hold_set_at, helpdesk.person_name(g.spill_hold_set_by) AS hold_set_by
                   FROM finance.fee_setting g WHERE g.id = 1
                 """).query().singleRow());
         out.putAll(jdbc.sql("""
@@ -863,6 +864,19 @@ class FinanceController {
     @Transactional
     Map<String, Object> setSpillBasis(@Valid @RequestBody SpillBasis body) {
         jdbc.sql("SELECT finance.set_spill_basis(:b, :r)").param("b", body.basis()).param("r", body.reason().trim()).query(String.class).single();
+        return spillBasis();
+    }
+
+    public record SpillHold(@jakarta.validation.constraints.NotNull Boolean hold) {
+    }
+
+    /** V585: whether spillover students with no spillover line hold a session's automatic start (the transition readiness's
+     *  SPILLOVER_FEE_LINES check is then not met until they are stated); the Bursar's choice, off by default */
+    @PutMapping("/spillover-basis/hold-start")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setSpillHold(@Valid @RequestBody SpillHold body) {
+        jdbc.sql("SELECT finance.set_spill_hold_start(:h)").param("h", body.hold()).query(Boolean.class).single();
         return spillBasis();
     }
 

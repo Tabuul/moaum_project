@@ -24,9 +24,9 @@ type Tab = "overview" | "current" | "graduated" | "spillover" | "review" | "life
 const TAB_TITLE: Record<Tab, string> = { overview: "Overview", current: "Current students", graduated: "Graduated students", spillover: "Spillover students", review: "Reconciliation review", lifecycle: "Lifecycle reconciliation", all: "Every student", levels: "Level corrections", quality: "Data quality", settings: "Policy and sessions" };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
-export function Cohorts({ tab, summary, list, listProblem, settings, structure, filters, page, canDecide, canSet, generatedBy, life }: {
+export function Cohorts({ tab, summary, list, listProblem, settings, structure, filters, page, canDecide, canSet, canStateFees = false, generatedBy, life }: {
   tab: string; summary: CohortSummary; list: CohortList | null; listProblem: { title?: string; detail?: string } | null; settings: CohortSettings | null;
-  structure: { code: string; name: string; departments: { code: string; name: string }[] }[]; filters: Filters; page: number; canDecide: boolean; canSet: boolean; generatedBy: string | null;
+  structure: { code: string; name: string; departments: { code: string; name: string }[] }[]; filters: Filters; page: number; canDecide: boolean; canSet: boolean; canStateFees?: boolean; generatedBy: string | null;
   life: LifeParams;
 }) {
   const go = useQueryNav();
@@ -216,7 +216,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
         </Panel>
       ) : null}
 
-      {tab === "levels" ? <LevelCorrections fac={filters.fac} dept={filters.dept} canApply={canSet} /> : null}
+      {tab === "levels" ? <LevelCorrections fac={filters.fac} dept={filters.dept} canApply={canSet} canStateFees={canStateFees} /> : null}
 
       {tab === "lifecycle" ? <Lifecycle params={life} scope={{ fac: filters.fac, dept: filters.dept, prog: filters.prog, cohort: filters.cohort, q: filters.q }}
         structure={structure} canAct={canDecide} generatedBy={generatedBy} /> : null}

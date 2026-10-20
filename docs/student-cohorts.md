@@ -304,3 +304,33 @@ candidates do not reach the graduation list.
   It never holds the transition, nor the automatic clock (which a line not met would hold), like the line for the current
   session's open semesters.
 - **Tests:** `LevelFeeEffectSpilloverCopyIT`; check.sql's two V580 blocks.
+
+## 16. Missing fee lines stated, levels corrected by programme, the start warned of (V584, V585)
+
+- **The lines a correction leaves missing.** Below the run's table, "Fee lines missing at the corrected level" groups the students
+  charged nothing after by programme and corrected level (`people.level_fee_effect_gaps`). For each group it says whether the
+  programme states no line in the session at all, or none at that level.
+  - Each group offers the lines it could be stated from, nearest first: what applies to the programme at the nearest other level
+    this session (the level below first), what applied to it at that level in the last session that states any, then another
+    programme of the department, then of the faculty, stating its own lines at that level.
+  - What applies to a programme at a level (`finance.programme_level_lines`) is its own lines, else its faculty's, else the
+    University's: the most specific stated. On the live-shaped copy 544 of 2025/2026's 756 ordinary lines are faculty-wide by
+    level, so a structure kept faculty by faculty is offered as readily as one kept programme by programme.
+  - "See the lines" previews the copy (`finance.copy_programme_lines`): those lines, not the spillover ones, as the target
+    programme's own at its level, so no student is charged twice. A line already stated for the same students is kept; the
+    preview writes nothing. The Bursary or the Students Account Officer states them; the amounts are adjusted afterwards on the
+    charges.
+  - On the live-shaped copy of 20 October 2026 the 166 are three College programmes that state no 2025/2026 line at all (B.Sc.
+    Biochemistry, Radiography, Medical Laboratory Science; 2,223 students on them), each offered B.Sc. Human Anatomy's or
+    Human Physiology's 400 Level lines.
+  - API: `GET /api/v1/finance/level-fee-effect` (`gaps`), `GET`/`POST /api/v1/finance/level-fee-effect/gap-lines`.
+- **Corrected programme by programme.** The run's report counts, for each faculty and programme, the students brought to their
+  level since the run. The Academic Office or the Registry corrects one programme's waiting corrections from its row ("Correct",
+  with a reason, on the run's bases), its fee effect beside it.
+- **The start of a session warned of.** A week before a planned session's automatic transition date the Registrar's and the
+  Bursar's offices are told whether it will start on its own, every check not met, and what its fees and spillover lines stand at
+  (`policy.tell_session_start` from the nightly session clock, template SESSION_START_READINESS); again the day before while a
+  check is still not met. Under "Who is charged the spillover lines" the Bursar chooses whether spillover students with no line
+  hold the automatic start (`finance.fee_setting.spill_lines_hold_start`, off by default;
+  `PUT /api/v1/finance/spillover-basis/hold-start`). A person may still make the session current.
+- **Tests:** `FeeGapsKeptClearanceStartWarningIT`; check.sql's V584 and V585 blocks.

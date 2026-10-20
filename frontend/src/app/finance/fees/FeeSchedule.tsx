@@ -386,7 +386,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {/* V571: who is charged the spillover lines — by the level or by the cohort, the Bursar's choice after a preview */}
       <SpillBasis session={session} may={actingOffice === "bursar" || actingOffice === "super"} mayFees={mayFees} />
       {/* V580: what correcting every waiting level would do to the current session's charges */}
-      <LevelFeeEffectRun mayStart={mayFees} />
+      <LevelFeeEffectRun mayStart={mayFees} mayStateFees={mayFees} mayCorrect={["academic", "registrar", "dregistrar", "super"].includes(actingOffice ?? "")} />
       <FeeCopy session={session} sessions={sessions} may={mayFees} />
       {/* V520: every change to the session's fee lines, from the audit trail */}
       <FeeHistory session={session} />

@@ -4,7 +4,8 @@
  *  the rule in force until the Bursary changes it), or the cohort engine's spillover (SP1, SP2 … and the limit reached, by the
  *  sessions past the programme's length). The change is previewed first — each student who would move, with the session's charges
  *  under each basis — and made with a reason. V580: a session that lacks the spillover lines of the last one that states them has
- *  them copied on their own from here, previewed first. */
+ *  them copied on their own from here, previewed first. V585: the Bursar chooses whether spillover students with no line hold a
+ *  session's automatic start. */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -21,6 +22,8 @@ import { COPY_ACTION, copyScope, type CopyLine } from "@/lib/fee-copy";
 interface Basis {
   basis: "LEVEL" | "COHORT"; set_at?: string | null; set_by?: string | null; reason?: string | null;
   into_spill: number; out_of_spill: number; spillLines: number;
+  /** V585: spillover students with no spillover line hold a session's automatic start */
+  hold_start?: boolean; hold_set_at?: string | null; hold_set_by?: string | null;
 }
 interface Move {
   student_id: string; name: string; number: string | null; programme: string | null; faculty: string | null; level: number | null; spillover_state: string | null;
@@ -125,6 +128,22 @@ export function SpillBasis({ session, may, mayFees }: { session: string; may: bo
     } finally { setBusy(null); }
   }
 
+  /** V585: the Bursar's hold on the automatic start */
+  async function setHold(hold: boolean) {
+    setBusy("hold");
+    try {
+      const x = await fetch("/api/bff/api/v1/finance/spillover-basis/hold-start", {
+        method: "PUT", headers: { "Content-Type": "application/json",
+          "X-Reason": reasonHeader(hold ? "Spillover students with no spillover line hold a session's automatic start" : "Spillover lines no longer hold a session's automatic start") },
+        body: JSON.stringify({ hold }),
+      });
+      const j = await x.json().catch(() => null);
+      if (!x.ok) { notifyProblem(j ?? { status: x.status, title: x.statusText }); return; }
+      notify(hold ? "Missing spillover lines now hold the automatic start" : "Missing spillover lines no longer hold the automatic start");
+      setTick((n) => n + 1);
+    } finally { setBusy(null); }
+  }
+
   const moving = basis.basis === "LEVEL" ? basis.into_spill : basis.out_of_spill;
   return (
     <Panel title="Who is charged the spillover lines" right={<Pil kind={basis.basis === "COHORT" ? "info" : "grey"}>{basis.basis === "COHORT" ? "By cohort" : "By level"}</Pil>}>
@@ -153,6 +172,15 @@ export function SpillBasis({ session, may, mayFees }: { session: string; may: bo
               })}
             </div>
           ) : null}
+          <label className="sub2 row" style={{ gap: 6, alignItems: "flex-start" }}>
+            <input type="checkbox" checked={!!basis.hold_start} disabled={!may || busy === "hold"} onChange={(e) => void setHold(e.target.checked)} />
+            <span>
+              Hold a session&rsquo;s automatic start while spillover students have no spillover line
+              {basis.hold_start && basis.hold_set_at ? ` — since ${new Date(basis.hold_set_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${basis.hold_set_by ? `, ${basis.hold_set_by}` : ""}` : ""}.
+              {" "}The calendar&rsquo;s readiness then shows the check as not met; the Registrar may still make the session current by hand.
+              {may ? "" : " The Bursar sets this."}
+            </span>
+          </label>
           {moving ? (
             <Note kind="info" title={`${count(moving)} current student${moving === 1 ? "" : "s"} would be charged differently ${other === "COHORT" ? "by the cohort" : "by the level"}`}
               action={<Btn kind="secondary" busy={busy === "preview"} onClick={async () => { setBusy("preview"); setPreview(await load()); setBusy(null); }}>Preview the change</Btn>}>

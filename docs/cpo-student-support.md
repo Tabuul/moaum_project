@@ -355,3 +355,7 @@ gone to someone else.
     `moaum.contacts.chase-cron`, `moaum.contacts.chase-after-days`.
   - ICT can switch either notice off under the notice templates. Tests: `LevelFeeEffectSpilloverCopyIT`; check.sql's second V580
     block.
+- **Each upload's students (V584).** On Student Contacts, "Students" beside an upload lists every contact it gave, field by field,
+  with what became of it: waiting for the student (and whether a code has been sent), confirmed by the student, confirmed at the
+  desk, or said not to be theirs. Waiting first, with an Excel, so the department chases the students who have not answered
+  (`people.contact_upload_students`, `GET /api/v1/student-contacts/uploads/{id}/students`, within the office's reach).

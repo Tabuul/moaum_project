@@ -628,3 +628,18 @@ three), and checked to return the same rows.
   open their read-only transaction first and then work the population out in a transaction of its own. The request held two
   connections, and a pool under load could run short. Now the population is worked out first, and the read opens its own
   transaction afterwards (`GstController`, a read-only `TransactionTemplate`).
+
+## V. The migrated students' clearance figures kept (20 October 2026, V585)
+
+| Read | Before | After |
+|---|---|---|
+| `clearance.migrated_summary(100, 400)` on the live-shaped copy | 13–19 s (V577's one pass over 2.85 million decisions) | 0.11–0.32 s |
+
+- Each student's count of gate pairs whose latest decision reads CLEARED is kept in `clearance.gate_pairs_kept`.
+- Statement triggers on `clearance.item` count again only the students a write touches: 4 ms for one student, 0.2–1.6 s for
+  2,000 in one statement. The students' kept rows are locked first, so two officers deciding on the same student are both
+  counted. A change to the gate purposes or the units counts everyone again (about 16 s on the copy; a rare act).
+- The summary reads the register and the kept counts. Its figures are the old function's in every level range tried: 100–400,
+  100–100, 200–300, 100–900 and 500–600.
+- Not for a test: deleting clearance items is slow. The self-reference `superseded_by` has no index, so each deleted item scans
+  the table. The portal never deletes decisions.
