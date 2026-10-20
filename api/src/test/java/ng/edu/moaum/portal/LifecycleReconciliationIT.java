@@ -79,9 +79,16 @@ class LifecycleReconciliationIT {
     }
 
     private UUID student(String tag, String suffix, int entryBack, int level, boolean registered) {
+        return student(tag, suffix, entryBack, level, registered, 0);
+    }
+
+    /** finalSince: V595 — the register shows the student at 400 Level since that many sessions ago (0: no earlier final-level
+     *  registration), which the engine reads as the final year when it is later than the count of sessions gives */
+    private UUID student(String tag, String suffix, int entryBack, int level, boolean registered, int finalSince) {
         // no two-digit year in the number: the test's far-future entry session is the only evidence of the cohort
         String matric = it.freeNumber("MOAUM/MTC/LC" + suffix + "/", 6);
         UUID id = it.student(tag + suffix, "C00023", null, matric, level);
+        if (finalSince > 0) it.session(before(finalSince), Integer.parseInt(before(finalSince).substring(0, 4)));
         it.db(() -> {
             jdbc.sql("UPDATE people.student SET entry_session = :e, entry_level = 100 WHERE id = :s").param("e", before(entryBack)).param("s", id).update();
             if (registered) {
@@ -90,6 +97,13 @@ class LifecycleReconciliationIT {
                         VALUES (gen_random_uuid(), :s, :ses, 1, :l, 'SUBMITTED', now())
                         ON CONFLICT (student_id, session, semester) DO NOTHING
                         """).param("s", id).param("ses", current).param("l", level).update();
+            }
+            if (finalSince > 0) {
+                jdbc.sql("""
+                        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+                        VALUES (gen_random_uuid(), :s, :ses, 1, 400, 'APPROVED', now(), now())
+                        ON CONFLICT (student_id, session, semester) DO NOTHING
+                        """).param("s", id).param("ses", before(finalSince)).update();
             }
             return null;
         });
@@ -115,12 +129,14 @@ class LifecycleReconciliationIT {
     @Test
     void recommendationsAreReviewedVerifiedReconciledInBatchesAndCorrected() {
         String tag = it.freeSurname("ZZLC");
-        UUID sp1 = student(tag, "A", 4, 300, true);      // expected to complete last session: spillover year 1, at 300 Level on the record
-        UUID sp2 = student(tag, "B", 5, 400, false);     // two sessions beyond, no registration on record: low confidence
-        UUID max1 = student(tag, "C", 6, 400, true);     // three beyond, the limit is two
-        UUID max2 = student(tag, "E", 6, 400, true);
-        UUID fin = student(tag, "D", 3, 400, true);      // the final year
-        UUID moved = student(tag, "F", 4, 400, true);    // verified as spillover year 1, then its record changes
+        // V595: the final year is the first session the register shows the student at 400 Level when that is later than the count of
+        // sessions gives, so a student beyond the length has been at 400 Level on the register that long
+        UUID sp1 = student(tag, "A", 4, 300, true);         // expected to complete last session: spillover year 1, at 300 Level on the record
+        UUID sp2 = student(tag, "B", 5, 400, false);        // two sessions beyond, no registration on record: low confidence
+        UUID max1 = student(tag, "C", 6, 400, true, 3);     // three beyond (at 400 Level since three sessions ago), the limit is two
+        UUID max2 = student(tag, "E", 6, 400, true, 3);
+        UUID fin = student(tag, "D", 3, 400, true);         // the final year
+        UUID moved = student(tag, "F", 4, 400, true, 1);    // verified as spillover year 1 (at 400 Level since last session), then its record changes
         List<UUID> all = List.of(sp1, sp2, max1, max2, fin, moved);
         Map<UUID, String> matrics = new HashMap<>();
         for (UUID s : all) matrics.put(s, matric(s));
@@ -189,8 +205,12 @@ class LifecycleReconciliationIT {
         assertThat(jdbc.sql("SELECT count(*) FROM people.lifecycle_reconciliation WHERE student_id = ANY (CAST(:ids AS uuid[]))")
                 .param("ids", ids(all.toArray(UUID[]::new)).toArray(String[]::new), java.sql.Types.ARRAY).query(Long.class).single()).isZero();
 
-        // the record of one student moves after it was verified: three sessions beyond now, not one
-        it.db(() -> jdbc.sql("UPDATE people.student SET entry_session = :e WHERE id = :s").param("e", before(6)).param("s", moved).update());
+        // the record of one student moves after it was verified: last session's registration was at 300 Level, not 400, so the final
+        // year is this one and the student is no longer in spillover (V595)
+        it.db(() -> {
+            jdbc.sql("UPDATE registration.course_registration SET level = 300 WHERE student_id = :s AND session = :ses").param("s", moved).param("ses", before(1)).update();
+            return jdbc.sql("SELECT people.refresh_academic_positions(ARRAY[:s]::uuid[])").param("s", moved).query(Integer.class).single();
+        });
 
         // a batch, reconciled in one step; the student whose recommendation changed is left out with the reason
         ResponseEntity<Map> opened = it.call(registrar, HttpMethod.POST, PATH + "/batches", Map.of("description", "Integration test: spillover and graduation candidates"));
