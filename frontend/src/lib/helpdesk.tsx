@@ -13,6 +13,8 @@ export interface TicketRow {
   assigned_to: string | null; agent: string | null; escalated: boolean; due_at: string | null; overdue: boolean; response_overdue: boolean; attachments: number;
   /** V582: where a login or password ticket stands for a reset from tickets (null for any other category) — the desk's queue only */
   reset_state?: string | null;
+  /** V594: for a request from the sign-in page, the student holding the number given (none when no student, or more than one, does) */
+  matched_student_id?: string | null; matched_name?: string | null; matched_matric?: string | null; matched_programme?: string | null; matched_level?: number | null;
   /** V328: the support queue the ticket is worked in, and the University office it waits on, if any */
   queue_code: string | null; queue: string | null; escalated_office: string | null; office: string | null; waiting_since: string | null;
 }

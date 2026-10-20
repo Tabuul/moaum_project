@@ -289,7 +289,8 @@ export function Desk({ me, head, queue, counts, categories, agents, queues, facu
                   {r.escalated ? <Pil kind="warn">Escalated</Pil> : null}
                   {r.office ? <Pil kind="warn">With {r.office}</Pil> : null}
                 </div></span>,
-              <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {requesterKind(r.requester_kind)}</div>{r.student_phone ? <div className="sub2 tnum">{r.student_phone}</div> : null}</span>,
+              <span key="r"><strong>{r.requester_name}</strong><div className="sub2 tnum">{r.requester_number ?? r.requester_email ?? ""} · {requesterKind(r.requester_kind)}</div>{r.student_phone ? <div className="sub2 tnum">{r.student_phone}</div> : null}
+                {r.matched_name ? <div className="sub2" title="The student holding the number given (V594)">Student: {r.matched_name}</div> : null}</span>,
               <span key="c" className="sub2">{r.category}</span>,
               <span key="s">{r.subject}{r.faculty ? <div className="sub2">{r.faculty}{r.department ? ` · ${r.department}` : ""}</div> : null}</span>,
               <span key="qu" className={r.queue ? "" : "sub2"}>{r.queue ?? "No queue"}</span>,

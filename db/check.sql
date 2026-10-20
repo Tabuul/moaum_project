@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 425
+\set EXPECTED 426
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21261,6 +21261,60 @@ BEGIN
                at400.selected, at400.spillover, at400_all.selected, at400_all.arithmetic, sp1.selected, at300.selected, none_all.selected, found.selected,
                bad_spill, bad_level, applied.corrected, applied.remaining, after_left.selected, after_left.arithmetic, l1, l4, l5, l2));
 END $$;
+-- ── V594. Login tickets raised from the sign-in page matched to the student by the number given. An invented student; four
+--          requests from the sign-in page: the student portal with the matriculation number typed in lower case with spaces
+--          (eligible: the student found), the student portal with the admission number (the same student: one reset for both),
+--          a number no student holds and the applicant portal with the student's number (neither: TICKET_NO_STUDENT). A student's
+--          own ticket still reads its requester. The reset takes the two matched tickets as one student; the desk's figures count
+--          the requests whose number no student holds. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); q text; fac text;
+        p1 uuid := gen_random_uuid(); p2 uuid := gen_random_uuid(); p3 uuid := gen_random_uuid(); p4 uuid := gen_random_uuid(); own uuid;
+        found text; codes text; own_student boolean; started jsonb; held int; students int; summary jsonb; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        PERFORM set_config('moaum.reason', 'CHECK V594', true);
+        SELECT faculty_code INTO fac FROM ref.programme WHERE code = 'C00023';
+        SELECT code INTO q FROM helpdesk.queue WHERE active ORDER BY ordinal LIMIT 1;
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/94/059401', 'MOAUM/ADM/94/594001', 'CHECKPUBA', 'Signin', 'C00023', 'UTME', '2094/2095', 100, 100, 'ACTIVE', now());
+        INSERT INTO helpdesk.ticket (id, number, category_id, subject, description, requester_kind, requester_id, requester_name, requester_number, requester_email, queue_code, details)
+        SELECT x.id, x.number, k.id, x.subject, 'My password is not accepted', 'PUBLIC', x.id, 'Checkpuba Signin', x.num, 'checkv594@example.com', q,
+               jsonb_build_object('account_type', x.account, 'username', x.num)
+          FROM helpdesk.category k,
+               (VALUES (p1, 'TICK-0594-00001', 'Cannot sign in — Student portal', 'Student portal', ' moaum/chk/94/ 059401 '),
+                       (p2, 'TICK-0594-00002', 'Cannot sign in — Student portal', 'Student portal', 'MOAUM/ADM/94/594001'),
+                       (p3, 'TICK-0594-00003', 'Cannot sign in — Student portal', 'Student portal', 'MOAUM/CHK/94/999999'),
+                       (p4, 'TICK-0594-00004', 'Cannot sign in — Applicant portal', 'Applicant portal', 'MOAUM/CHK/94/059401')) x(id, number, subject, account, num)
+         WHERE k.code = 'LOGIN';
+        INSERT INTO helpdesk.ticket (number, category_id, subject, description, requester_kind, requester_id, requester_name, queue_code, faculty_code)
+        SELECT 'TICK-0594-00005', k.id, 'Cannot sign in', 'Locked out', 'STUDENT', a, 'CHECKPUBA, Signin', q, fac FROM helpdesk.category k WHERE k.code = 'LOGIN'
+        RETURNING id INTO own;
+
+        found := (SELECT string_agg(coalesce((helpdesk.ticket_student(t.requester_kind, t.requester_id, t.requester_number, t.details) = a)::text, 'none'), ',' ORDER BY t.number)
+                    FROM helpdesk.ticket t WHERE t.id IN (p1, p2, p3, p4));
+        own_student := (SELECT helpdesk.ticket_student(t.requester_kind, t.requester_id, t.requester_number, t.details) = a FROM helpdesk.ticket t WHERE t.id = own);
+        codes := (SELECT string_agg(x.code, ',' ORDER BY x.number) FROM helpdesk.ticket_reset_check(who, true, ARRAY[p1, p2, p3, p4]) x);
+        started := helpdesk.start_ticket_reset(who, 'helpdeskhead', true, ARRAY[p1, p2, p3, p4], 'Login tickets from the sign-in page', true, 'check-v594',
+                                               'Your password was reset: sign in with your matriculation number, then choose your own.');
+        held := (SELECT count(*) FROM helpdesk.bulk_reset_ticket WHERE bulk_id = (started->>'id')::uuid AND status = 'PENDING');
+        students := (SELECT count(*) FROM helpdesk.bulk_reset_item WHERE bulk_id = (started->>'id')::uuid AND student_id = a);
+        summary := helpdesk.login_ticket_summary(who, true);
+        RAISE EXCEPTION 'the V594 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V594 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V594: a login ticket from the sign-in page is matched to the student holding the number given (student portal only, one student) and reset with the rest',
+        coalesce(found = 'true,true,none,none' AND own_student AND codes = 'ELIGIBLE,ELIGIBLE,TICKET_NO_STUDENT,TICKET_NO_STUDENT'
+                 AND held = 2 AND students = 1 AND (started->>'students')::int = 1 AND (started->>'leftOut')::int = 2
+                 AND (summary->>'unmatched')::int >= 2 AND (summary->>'public')::int >= 4, false),
+        format('found %s own %s | codes %s | started %s held %s students %s | summary unmatched %s public %s students %s',
+               found, own_student, codes, started, held, students, summary->>'unmatched', summary->>'public', summary->>'students'));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -2,7 +2,7 @@
  *  selection the desk keeps (ticket ids only, never a student). Node-tested. */
 
 /** where a ticket stands for a reset from tickets (the queue's reset_state) */
-export type ResetState = "ELIGIBLE" | "FAILED_BEFORE" | "IN_OPERATION" | "RESET_DONE" | "SETTLED" | "NOT_STUDENT";
+export type ResetState = "ELIGIBLE" | "FAILED_BEFORE" | "IN_OPERATION" | "RESET_DONE" | "SETTLED" | "NOT_STUDENT" | "NO_STUDENT";
 
 export const RESET_STATE: Record<ResetState, { label: string; tone: "ok" | "info" | "warn" | "bad" | "grey"; selectable: boolean }> = {
   ELIGIBLE: { label: "Eligible for password reset", tone: "ok", selectable: true },
@@ -11,6 +11,8 @@ export const RESET_STATE: Record<ResetState, { label: string; tone: "ok" | "info
   RESET_DONE: { label: "Password reset completed", tone: "ok", selectable: false },
   SETTLED: { label: "Not eligible — resolved or closed", tone: "grey", selectable: false },
   NOT_STUDENT: { label: "Not eligible — not a student's", tone: "grey", selectable: false },
+  /** V594: asked from the sign-in page with a number no student holds (or about another portal) */
+  NO_STUDENT: { label: "Not eligible — no student holds the number given", tone: "grey", selectable: false },
 };
 
 /** a ticket the desk may tick for a reset; a row of another category has no state and is never ticked */
@@ -37,7 +39,11 @@ export interface Operation {
 }
 export interface Summary {
   may: boolean;
-  figures: { open: number; unassigned: number; inProgress: number; students: number; inOperation: number; failed: number; overdue: number; resetToday: number };
+  figures: {
+    open: number; unassigned: number; inProgress: number; students: number; inOperation: number; failed: number; overdue: number; resetToday: number;
+    /** V594: the requests from the sign-in page, and those whose number no student holds */
+    public?: number; unmatched?: number;
+  };
   categories: { code: string; name: string }[];
 }
 

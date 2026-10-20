@@ -151,7 +151,9 @@ class SupportAccess {
         return jdbc.sql("""
                 SELECT t.id, t.number, t.subject, t.status, c.name AS category, c.code AS category_code
                   FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id
-                 WHERE t.id = :t AND t.requester_kind = 'STUDENT' AND t.requester_id = :s
+                 WHERE t.id = :t
+                   -- V594: the student's own ticket, or a request from the sign-in page whose number the student holds
+                   AND helpdesk.ticket_student(t.requester_kind, t.requester_id, t.requester_number, t.details) = :s
                 """).param("t", ticket).param("s", student).query().listOfRows().stream().findFirst().orElse(null);
     }
 

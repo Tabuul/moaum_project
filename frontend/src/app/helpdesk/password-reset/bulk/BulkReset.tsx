@@ -6,6 +6,7 @@
  * changed at the next sign-in) by the one reset service of the single reset. Before anything is done the server says which may be
  * reset and why not the others; the reason is required; the work runs on the server and its real progress is shown; the result
  * names every student reset and every one not, with why. No password is ever sent or shown.
+ * V594: reached from Bulk Password Reset, which lists the Login Issues tickets; here the students are chosen without a ticket.
  */
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
@@ -81,7 +82,7 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
     for (const k of ["q", "fac", "dept", "prog", "level", "status", "account"] as const) if (next[k]) qs.set(k, String(next[k]));
     if (next.login) qs.set("login", "1");
     if (next.page > 1) qs.set("page", String(next.page));
-    nav(`/helpdesk/password-reset/bulk${qs.toString() ? `?${qs.toString()}` : ""}`);
+    nav(`/helpdesk/password-reset/bulk/students${qs.toString() ? `?${qs.toString()}` : ""}`);
   };
   const pageIds = list.rows.map((r) => r.id);
   const allOnPage = pageIds.length > 0 && pageIds.every((id) => chosen.has(id));
@@ -139,13 +140,13 @@ export function BulkReset({ f, list, summary, history }: { f: Filters; list: Can
 
   return (
     <>
-      <PageHead title="Bulk password reset" eyebrow="ICT Support Desk"
-        description="Choose the students — by search, by filter, or those with an open Login Issues ticket — and reset them together. Each is reset to the matriculation number and must change it at the next sign-in; each is checked against your scope and the desk's policy, and a student who cannot be reset is named with the reason. No password is shown or recorded."
-        actions={<><LinkBtn href="/helpdesk/password-reset">One student</LinkBtn><LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn></>} />
+      <PageHead title="Bulk password reset" eyebrow="ICT Support Desk — students without a ticket"
+        description="Choose the students — by search or by filter — and reset them together; the Login Issues tickets are reset from Bulk Password Reset. Each is reset to the matriculation number and must change it at the next sign-in; each is checked against your scope and the desk's policy, and a student who cannot be reset is named with the reason. No password is shown or recorded."
+        actions={<><LinkBtn href="/helpdesk/password-reset/bulk">Login Issues tickets</LinkBtn><LinkBtn href="/helpdesk/password-reset">One student</LinkBtn><LinkBtn href="/helpdesk/password-reset/history">Password reset history</LinkBtn></>} />
 
       {summary ? (
         <Tiles cls="grid--3" items={[
-          ["Login issues", count(summary.loginIssues), summary.loginIssues ? "var(--amber-ink)" : null, "students with an open ticket", "/helpdesk/password-reset/bulk?login=1"],
+          ["Login issues", count(summary.loginIssues), summary.loginIssues ? "var(--amber-ink)" : null, "students with an open ticket", "/helpdesk/password-reset/bulk"],
           ["Awaiting approval", count(summary.awaitingApproval ?? 0), summary.awaitingApproval ? "var(--amber-ink)" : null,
             summary.scope === "The University" ? "bulk resets for you to decide" : "your bulk resets", "/helpdesk/password-reset/bulk/history?status=AWAITING_APPROVAL"],
           ["Resets today", count(summary.resetsToday), null, summary.scope === "The University" ? "at the desk" : "yours", "/helpdesk/password-reset/history"],

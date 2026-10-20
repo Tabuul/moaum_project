@@ -38,6 +38,9 @@ import org.springframework.web.bind.annotation.RestController;
  * each, however many tickets they raised, by the bulk reset's worker and the one reset service (PWR-TKT/…), and every ticket of
  * theirs is resolved with the reset; a student not reset leaves their tickets open with the reason. No password is ever sent,
  * shown, returned or recorded. The student bulk reset (V559) stays apart: its capability is not this one, and it takes students.
+ * V594: a request from the sign-in page about the student portal is a student's ticket too — for the one student holding the
+ * number given (helpdesk.ticket_student), by the Head of the ICT Support Desk's decision; a number no student holds is
+ * TICKET_NO_STUDENT.
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk/tickets/password-reset")
@@ -67,6 +70,7 @@ class TicketPasswordResetController {
             case "TICKET_NOT_FOUND" -> "TICKET NOT FOUND — or outside your support scope";
             case "TICKET_NOT_LOGIN" -> "NOT ELIGIBLE — not a login or password ticket";
             case "TICKET_NOT_STUDENT" -> "NOT ELIGIBLE — not a student's ticket";
+            case "TICKET_NO_STUDENT" -> "NOT ELIGIBLE — no student holds the number given";
             case "TICKET_SETTLED" -> "NOT ELIGIBLE — the ticket is resolved or closed";
             case "TICKET_IN_OPERATION" -> "ALREADY IN A PASSWORD RESET that has not finished";
             case "TICKET_RESET_DONE" -> "PASSWORD RESET COMPLETED on this ticket already";

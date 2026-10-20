@@ -80,7 +80,8 @@ class HelpdeskController {
     /** V582: where a ticket stands for a password reset from tickets — only a login or password category's (else NULL) */
     static final String RESET_STATE = """
             CASE WHEN NOT c.password_reset_eligible THEN NULL
-                 WHEN t.requester_kind <> 'STUDENT' THEN 'NOT_STUDENT'
+                 WHEN helpdesk.ticket_student(t.requester_kind, t.requester_id, t.requester_number, t.details) IS NULL
+                      THEN CASE WHEN t.requester_kind = 'PUBLIC' THEN 'NO_STUDENT' ELSE 'NOT_STUDENT' END
                  WHEN EXISTS (SELECT 1 FROM helpdesk.bulk_reset_ticket x WHERE x.ticket_id = t.id AND x.status = 'PENDING') THEN 'IN_OPERATION'
                  WHEN t.status <> 'REOPENED'
                       AND (EXISTS (SELECT 1 FROM helpdesk.bulk_reset_ticket x WHERE x.ticket_id = t.id AND x.status IN ('RESOLVED', 'UNRESOLVED'))
@@ -101,8 +102,16 @@ class HelpdeskController {
                    helpdesk.due_at(t.created_at, t.priority) AS due_at,
                    (t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.due_at(t.created_at, t.priority) < now()) AS overdue,
                    (t.first_response_at IS NULL AND t.status NOT IN ('RESOLVED','CLOSED') AND helpdesk.response_due_at(t.created_at, t.priority) < now()) AS response_overdue,
-                   (SELECT count(*) FROM helpdesk.ticket_attachment a WHERE a.ticket_id = t.id AND NOT a.internal) AS attachments
+                   (SELECT count(*) FROM helpdesk.ticket_attachment a WHERE a.ticket_id = t.id AND NOT a.internal) AS attachments,
+                   -- V594: the student a request from the sign-in page names by its number (a student's own ticket is its requester)
+                   ms.id AS matched_student_id, ms.full_name AS matched_name, ms.matric_no AS matched_matric, ms.programme AS matched_programme,
+                   ms.current_level AS matched_level
               FROM helpdesk.ticket t JOIN helpdesk.category c ON c.id = t.category_id
+              LEFT JOIN LATERAL (SELECT s.id, upper(btrim(s.surname)) || coalesce(', ' || nullif(btrim(s.other_names), ''), '') AS full_name, s.matric_no,
+                                        pg.name AS programme, s.current_level
+                                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
+                                  WHERE t.requester_kind = 'PUBLIC'
+                                    AND s.id = helpdesk.ticket_student(t.requester_kind, t.requester_id, t.requester_number, t.details)) ms ON true
               LEFT JOIN ref.department d ON d.code = t.department_code LEFT JOIN ref.faculty f ON f.code = t.faculty_code
               LEFT JOIN helpdesk.queue qu ON qu.code = t.queue_code LEFT JOIN ref.office oo ON oo.code = t.escalated_office
             """;

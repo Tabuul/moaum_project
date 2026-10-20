@@ -40,7 +40,8 @@ password ticket can never be reached this way.
 |---|---|
 | `TICKET_NOT_FOUND` | the agent cannot see the ticket (nothing of it is said) |
 | `TICKET_NOT_LOGIN` | its category is not a login and password issue (course registration, fees, GST, hostel, results, admission, payment …) |
-| `TICKET_NOT_STUDENT` | the ticket was not raised by a student |
+| `TICKET_NO_STUDENT` | asked from the sign-in page, and no student (or more than one) holds the number given, or the request is about another portal (V594) |
+| `TICKET_NOT_STUDENT` | the ticket was not raised by a student (staff, a JUPEB candidate) |
 | `TICKET_SETTLED` | the ticket is resolved or closed |
 | `TICKET_IN_OPERATION` | the ticket is in another reset that has not finished |
 | `TICKET_RESET_DONE` | the ticket's reset is done already (a reopened ticket may be reset again) |
@@ -54,6 +55,47 @@ student is reset. Two agents ticking the same ticket reset its student once: a t
 **Which categories count** is configured under ICT Support Settings → Categories → *Password reset from tickets*
 (`helpdesk.category.password_reset_eligible`). Login Issues is on. The Director of ICT can switch on another category, an
 account-locked category for example, without a change of code.
+
+## Requests from the sign-in page (V594)
+
+A person who cannot sign in asks from the sign-in page (V363). Such a request names no account (`requester_kind` PUBLIC), and until
+V594 the reset from tickets refused every one as *not a student's*: 611 open Login Issues tickets on 20 October 2026, nearly all
+of them asked from the sign-in page.
+
+- **The student is found by the number given.** `helpdesk.ticket_student` matches a request about the student portal to the one
+  student whose matriculation number, admission number or former matriculation number (V579) is the number given. The number is
+  read as the sign-in help reads it: upper case, no spaces. When no student holds the number, or more than one does, there is no
+  match (`TICKET_NO_STUDENT`). A request about the applicant portal or a staff account is never matched.
+- **It is reset like a student's own ticket.** It goes through the same checks and is reset to the matriculation number, which
+  the student changes at the next sign-in. The ticket is resolved, and its requester is e-mailed at the address given.
+- **The Head of the ICT Support Desk chose this on 20 October 2026.** What the person typed is not proven. Someone who typed another
+  student's number could sign in as that student before the student does. Each reset stays on the ticket it was made from, which
+  keeps the name, number, e-mail and phone given.
+- **On the desk.** The queue shows the student under such a request ("Student: …"). The ticket page names the student and opens
+  them in Support Mode. The queue's *Password reset* column reads *Not eligible — no student holds the number given* when there is
+  no match.
+
+## Bulk Password Reset lists the tickets (V594)
+
+*ICT Support → Bulk Password Reset* lists only the open Login Issues tickets within your reach, the oldest first. Each shows:
+
+- the requester, as raised;
+- the student: their own record, or the one holding the number given;
+- where the ticket stands for a reset.
+
+To reset them:
+
+- **Select all eligible tickets** selects every eligible ticket of the search, across pages. The server sends the ticket ids, and
+  the reset checks each again.
+- **Clear selection** empties it.
+- **Reset and resolve** opens the check and the reset described below. Each student is reset once and every one of their tickets
+  is resolved.
+
+The figures at the top give the open tickets and how many were asked from the sign-in page. They also give how many have a
+student found, how many have none for the number, and those in a reset now, failed before, or reset today.
+
+The earlier student finder (V559: choose students by search or filter, without a ticket) is a link away, under *Students without a
+ticket* (`/helpdesk/password-reset/bulk/students`).
 
 ## What the reset does
 

@@ -138,7 +138,13 @@ export function DeskTicket({ t, me, head, agents, queues }: { t: Ticket; me: str
               {t.requester_kind === "STUDENT" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=registration`}>Course Registration</LinkBtn>{parse<Record<string, string>>(t.details, {}).payment_reference ? <LinkBtn size="sm" href={`/helpdesk/payments/${encodeURIComponent(parse<Record<string, string>>(t.details, {}).payment_reference.trim())}?ticket=${t.id}`}>Payment Support</LinkBtn> : <LinkBtn size="sm" href={`/helpdesk/students/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn>}</div>
               : t.requester_kind === "JUPEB" && t.requester_id ? <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/jupeb/${t.requester_id}?ticket=${t.id}`}>Open the JUPEB Record in Support Mode</LinkBtn><LinkBtn size="sm" href={`/helpdesk/jupeb/${t.requester_id}?ticket=${t.id}&tab=payments`}>Payments</LinkBtn></div>
               : t.requester_kind === "STUDENT" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Open the Student Record</LinkBtn></div>
-              : t.requester_kind === "PUBLIC" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Search for the number given</LinkBtn></div> : null}
+              : t.requester_kind === "PUBLIC" && t.matched_student_id ? (
+                  <div className="stack" style={{ gap: 4 }}>
+                    <div className="sub2">The number given is held by <b>{t.matched_name}</b>{t.matched_matric ? ` (${t.matched_matric})` : ""}{t.matched_programme ? `, ${t.matched_programme}` : ""}{t.matched_level ? `, ${t.matched_level} Level` : ""}.</div>
+                    <div className="row row--tight"><LinkBtn size="sm" kind="primary" href={`/helpdesk/students/${t.matched_student_id}?ticket=${t.id}`}>Open the Student in Support Mode</LinkBtn></div>
+                  </div>
+                )
+              : t.requester_kind === "PUBLIC" && t.requester_number ? <div><LinkBtn size="sm" href={`/search?q=${encodeURIComponent(t.requester_number)}`}>Search for the number given</LinkBtn><div className="sub2 mt-1">No student is found for this request (a number no student holds, or another portal).</div></div> : null}
             </div>
           </PBody>
         </Panel>
