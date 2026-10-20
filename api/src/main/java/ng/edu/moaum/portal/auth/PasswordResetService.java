@@ -69,10 +69,12 @@ public class PasswordResetService {
             }
             return new Subject("STAFF", (UUID) c.get("person_id"), email, (String) c.get("phone"), "staff account");
         }
-        // student: by matriculation or admission number, or by the email on file
+        // student: by matriculation or admission number, or by the email on file; V575: the link goes only to a contact the
+        // student gave or confirmed, never to one a department uploaded that the student has not confirmed
         var student = jdbc.sql("""
-                SELECT s.id, r.email, r.phone FROM people.student s
+                SELECT s.id, rr.email, rr.phone FROM people.student s
                   LEFT JOIN LATERAL people.student_reach(s.id) r ON true
+                  LEFT JOIN LATERAL people.student_reset_reach(s.id) rr ON true
                  WHERE s.duplicate_of IS NULL AND (upper(s.matric_no) = :k OR upper(s.admission_no) = :k OR lower(r.email) = :e)
                  ORDER BY s.matric_no IS NULL, s.admission_no
                  LIMIT 1
@@ -173,8 +175,11 @@ public class PasswordResetService {
      * in — used only when the record holds no email, so a student whose record lacks an address can still be reached.
      */
     public StudentReset forStudent(UUID student, String ticketEmail) {
-        var row = jdbc.sql("SELECT r.email, r.phone FROM people.student s LEFT JOIN LATERAL people.student_reach(s.id) r ON true WHERE s.id = :s")
-                .param("s", student).query().listOfRows();
+        // V575: never to a contact a department uploaded that the student has not confirmed
+        var row = jdbc.sql("""
+                SELECT r.email, r.phone, r.unconfirmed_email, r.unconfirmed_phone
+                  FROM people.student s LEFT JOIN LATERAL people.student_reset_reach(s.id) r ON true WHERE s.id = :s
+                """).param("s", student).query().listOfRows();
         if (row.isEmpty()) {
             throw new DomainRuleViolation("AUTH_NO_STUDENT", "No such student.", new DomainRuleViolation.Remedy("Open the student from the search.", "ICT Support"));
         }
@@ -182,6 +187,13 @@ public class PasswordResetService {
         String phone = (String) row.get(0).get("phone");
         if ((email == null || email.isBlank()) && ticketEmail != null && EMAIL.matcher(ticketEmail.trim()).matches()) {
             email = ticketEmail.trim().toLowerCase();
+        }
+        if ((email == null || email.isBlank()) && (phone == null || phone.isBlank())
+                && (row.get(0).get("unconfirmed_email") != null || row.get(0).get("unconfirmed_phone") != null)) {
+            throw new DomainRuleViolation("AUTH_CONTACT_UNCONFIRMED",
+                    "The e-mail or phone on the record came from a department's upload and the student has not confirmed it, so no reset link goes to it.",
+                    new DomainRuleViolation.Remedy("Check the contact with the student and mark it confirmed on their record, then send the link; or issue a temporary password at the desk.",
+                            "ICT Support"));
         }
         if ((email == null || email.isBlank()) && (phone == null || phone.isBlank())) {
             throw new DomainRuleViolation("AUTH_NO_ADDRESS", "The record holds no email or phone to send a reset link to.",

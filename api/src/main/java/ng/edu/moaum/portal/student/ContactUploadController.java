@@ -83,8 +83,10 @@ class ContactUploadController {
         out.put("department", r.department());
         out.put("uploads", jdbc.sql("""
                 SELECT u.id, u.uploaded_at, u.file_name, u.office, f.name AS faculty, d.name AS department, u.rows_read, u.students_filled, u.phones_filled,
-                       u.emails_filled, u.refused, u.reason, helpdesk.person_name(u.uploaded_by) AS uploaded_by
+                       u.emails_filled, u.refused, u.reason, helpdesk.person_name(u.uploaded_by) AS uploaded_by,
+                       o.waiting, o.confirmed, o.refused AS rejected
                   FROM people.contact_upload u
+                  CROSS JOIN LATERAL people.contact_upload_outcomes(u.id) o
                   LEFT JOIN ref.faculty f ON f.code = u.faculty_code
                   LEFT JOIN ref.department d ON d.code = u.department_code
                  WHERE (CAST(:f AS text) IS NULL OR u.faculty_code = :f OR d.faculty_code = :f) AND (CAST(:d AS text) IS NULL OR u.department_code = :d)
@@ -120,37 +122,40 @@ class ContactUploadController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> preview(@Valid @RequestBody UploadIn body) {
-        Map<String, Object> out = load(body, reach(body.faculty(), body.department()));
+        Map<String, Object> out = load(body, reach(body.faculty(), body.department()), null);
         TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
         return out;
     }
 
-    /** the same rows loaded — the empty contacts filled — and the upload kept with its counts and reason */
+    /** the same rows loaded — the empty contacts filled, held unconfirmed until each student confirms them (V575) — and the upload
+     *  kept with its counts and reason (recorded first, so each filled field names it) */
     @PostMapping("/upload")
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> upload(@Valid @RequestBody UploadIn body) {
         Reach r = reach(body.faculty(), body.department());
-        Map<String, Object> out = load(body, r);
         AuditContext ctx = AuditContextHolder.current().orElse(null);
-        @SuppressWarnings("unchecked") Map<String, Integer> fields = (Map<String, Integer>) out.get("fields");
-        @SuppressWarnings("unchecked") Map<String, Integer> counts = (Map<String, Integer>) out.get("counts");
         Object id = jdbc.sql("""
-                INSERT INTO people.contact_upload (file_name, office, faculty_code, department_code, rows_read, students_filled, phones_filled, emails_filled,
-                                                   refused, reason, uploaded_by)
-                VALUES (:file, :office, :f, :d, :n, :students, :phones, :emails, :refused, :reason, :by) RETURNING id
+                INSERT INTO people.contact_upload (file_name, office, faculty_code, department_code, reason, uploaded_by)
+                VALUES (:file, :office, :f, :d, :reason, :by) RETURNING id
                 """).param("file", blank(body.fileName()), java.sql.Types.VARCHAR).param("office", ctx == null ? "registrar" : ctx.actorOffice())
                 .param("f", r.faculty(), java.sql.Types.VARCHAR).param("d", r.department(), java.sql.Types.VARCHAR)
-                .param("n", out.get("total")).param("students", counts.get("FILLED")).param("phones", fields.get("phones")).param("emails", fields.get("emails"))
-                .param("refused", (Integer) out.get("total") - counts.get("FILLED") - counts.get("ALREADY"))
                 .param("reason", ctx == null || ctx.reason() == null || ctx.reason().isBlank() ? "Student contacts uploaded" : ctx.reason())
                 .param("by", ctx == null ? null : ctx.actorId(), java.sql.Types.OTHER)
                 .query().singleValue();
+        Map<String, Object> out = load(body, r, id);
+        @SuppressWarnings("unchecked") Map<String, Integer> fields = (Map<String, Integer>) out.get("fields");
+        @SuppressWarnings("unchecked") Map<String, Integer> counts = (Map<String, Integer>) out.get("counts");
+        jdbc.sql("""
+                UPDATE people.contact_upload SET rows_read = :n, students_filled = :students, phones_filled = :phones, emails_filled = :emails, refused = :refused
+                 WHERE id = :id
+                """).param("n", out.get("total")).param("students", counts.get("FILLED")).param("phones", fields.get("phones")).param("emails", fields.get("emails"))
+                .param("refused", (Integer) out.get("total") - counts.get("FILLED") - counts.get("ALREADY")).param("id", id).update();
         out.put("uploadId", id);
         return out;
     }
 
-    private Map<String, Object> load(UploadIn body, Reach r) {
+    private Map<String, Object> load(UploadIn body, Reach r, Object upload) {
         List<Map<String, String>> rows = body.rows().stream().map(m -> Map.of(
                 "number", text(m.get("number")), "phone", text(m.get("phone")), "email", text(m.get("email")))).toList();
         String json;
@@ -159,9 +164,9 @@ class ContactUploadController {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("the rows could not be read", e);
         }
-        List<Map<String, Object>> loaded = jdbc.sql("SELECT * FROM people.load_contacts(CAST(:rows AS jsonb), :f, :d)")
+        List<Map<String, Object>> loaded = jdbc.sql("SELECT * FROM people.load_contacts(CAST(:rows AS jsonb), :f, :d, :u)")
                 .param("rows", json).param("f", r.faculty(), java.sql.Types.VARCHAR).param("d", r.department(), java.sql.Types.VARCHAR)
-                .query().listOfRows();
+                .param("u", upload, java.sql.Types.OTHER).query().listOfRows();
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (String k : List.of("FILLED", "ALREADY", "REFUSED", "NO_STUDENT", "AMBIGUOUS", "OUTSIDE_SCOPE", "DUPLICATE_ROW", "INCOMPLETE")) counts.put(k, 0);
         int phones = 0, emails = 0;

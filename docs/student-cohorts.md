@@ -255,3 +255,24 @@ candidates do not reach the graduation list.
   told (template `SPILLOVER_WORK_WAITING`, once a week each; ICT may switch the template off; cron
   `moaum.cohorts.spillover-work-cron`).
 - `people.spillover_work()` counts it; `GET /api/v1/cohorts/spillover-work` reads it, kept five minutes.
+
+## 14. Fee lines ready for the cohort basis, and the fee effect of a level change (V576)
+
+- **Readiness.** Under "Who is charged the spillover lines", the Bursary sees two things for the current and the next session: the
+  spillover lines stated, and the spillover students with no line by the level and by the cohort (`finance.spill_readiness`,
+  `GET /api/v1/finance/spillover-basis/readiness`). On the copy of 20 October 2026:
+
+  | Session | No line, by the level | No line, by the cohort |
+  |---|---|---|
+  | 2025/2026 | 81 | 358 |
+  | 2026/2027 | 249 | 13,068 |
+
+  No spillover line is stated yet for 2026/2027. The session copy already carries spillover lines: `finance.fee_line_same_scope`
+  tells a spillover line from an ordinary one.
+- **The fee effect, before a level changes.** Level corrections (in the dialog, for the first batch of 500) and Reconciliation's
+  preview (for the levels it raises, the first 1,000) show the effect on the current session's charges: now, after, how many owe
+  more, less or the same, and how many would have no fee line at their new level. `finance.level_fee_effect` raises the levels in a
+  sub-transaction that is always undone, so nothing changes. On the copy, the first 500 spillover corrections are charged
+  ₦83.6m now and ₦44.0m after: 491 owe less and 8 would have no line.
+  API: `POST /api/v1/cohorts/levels/fee-effect` (the Apply body), `POST /api/v1/cohorts/lifecycle/preview/fees` (the preview body).
+- **Tests:** `SpilloverReadinessKeptPopulationIT`; check.sql's V576 block.

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 407
+\set EXPECTED 410
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20031,6 +20031,167 @@ BEGIN
         format('suggested %s | effect %s untouched %s | merged %s on C %s moves %s (X2''s student %s) | aliases %s | archived %s | fees %s | landed %s | refused %s / %s / %s / %s / %s | back %s fees %s in use %s aliases %s | unclassed %s',
                sugg, effect, untouched, jsonb_array_length(merged), on_c, moves, twice, aliases, arch, fees, landed,
                left(refused_kind, 28), left(refused_again, 24), left(refused_office, 26), left(refused_reason, 26), left(refused_early, 26), back, fees_back, in_use, aliases_after, unclassed));
+END $$;
+-- ── V575. Uploaded contacts held unconfirmed. Three invented students' contacts come from an upload: held unconfirmed, so the
+-- reset reach names none of them. A's e-mail is confirmed by its code after a wrong try (a second code is then refused: nothing
+-- waits); A's phone has three codes sent and a fourth refused within the hour, then is said not to be A's and is emptied. B's phone
+-- is confirmed at the desk. C's code runs out; C's own later save of another e-mail is C's own. The upload counts what became of
+-- its contacts. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); up uuid := gen_random_uuid();
+        fac text; dept text; loaded text; reach_before text; sent_to text; wrong text; ok text; again text; limit_code text; refused text; phone_after text;
+        desk text; expired text; own text; reach_after text; outcomes text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V575', true);
+        SELECT faculty_code, dept_code INTO fac, dept FROM ref.programme WHERE code = 'C00023';
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/75/057501', 'MOAUM/ADM/75/575001', 'CHECKV575A', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/75/057502', 'MOAUM/ADM/75/575002', 'CHECKV575B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (c, 'MOAUM/CHK/75/057503', 'MOAUM/ADM/75/575003', 'CHECKV575C', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.contact_upload (id, office, faculty_code, department_code, reason) VALUES (up, 'registrar', fac, dept, 'CHECK V575 upload');
+        loaded := (SELECT string_agg(l.outcome, ',' ORDER BY l.row_no) FROM people.load_contacts(jsonb_build_array(
+                        jsonb_build_object('number', 'MOAUM/CHK/75/057501', 'phone', '08065750001', 'email', 'checkv575a@example.com'),
+                        jsonb_build_object('number', 'MOAUM/CHK/75/057502', 'phone', '08065750002'),
+                        jsonb_build_object('number', 'MOAUM/CHK/75/057503', 'email', 'checkv575c@example.com')), fac, dept, up) l);
+        reach_before := (SELECT coalesce(r.email, '-') || '/' || coalesce(r.phone, '-') || '/' || r.unconfirmed_email || '/' || r.unconfirmed_phone FROM people.student_reset_reach(a) r);
+
+        -- A's e-mail: a wrong try, then the code; nothing then waits
+        PERFORM set_config('moaum.actor_id', a::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        sent_to := people.contact_code_issue(a, 'EMAIL', 'hash-a1');
+        wrong := people.contact_code_check(a, 'EMAIL', 'hash-wrong');
+        ok := people.contact_code_check(a, 'EMAIL', 'hash-a1');
+        BEGIN PERFORM people.contact_code_issue(a, 'EMAIL', 'hash-a2');
+        EXCEPTION WHEN check_violation THEN again := split_part(SQLERRM, ':', 1); END;
+        -- A's phone: three codes an hour, then refused; then not A's
+        PERFORM people.contact_code_issue(a, 'PHONE', 'p1');
+        PERFORM people.contact_code_issue(a, 'PHONE', 'p2');
+        PERFORM people.contact_code_issue(a, 'PHONE', 'p3');
+        BEGIN PERFORM people.contact_code_issue(a, 'PHONE', 'p4');
+        EXCEPTION WHEN check_violation THEN limit_code := split_part(SQLERRM, ':', 1); END;
+        refused := people.contact_refuse(a, 'PHONE');
+        phone_after := (SELECT coalesce(x.phone, '-') || ':' || x.phone_pending FROM people.student_contact x WHERE x.student_id = a);
+        reach_after := (SELECT coalesce(r.email, '-') || '/' || coalesce(r.phone, '-') FROM people.student_reset_reach(a) r);
+
+        -- B's phone at the desk
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        desk := people.contact_confirm_desk(b, 'PHONE');
+        desk := desk || ':' || (SELECT x.phone_pending FROM people.student_contact x WHERE x.student_id = b);
+
+        -- C's code runs out; C's own save of another e-mail is C's own
+        PERFORM set_config('moaum.actor_id', c::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM people.contact_code_issue(c, 'EMAIL', 'hash-c1');
+        UPDATE people.contact_confirmation SET expires_at = now() - interval '1 second' WHERE student_id = c AND outcome IS NULL;
+        expired := people.contact_code_check(c, 'EMAIL', 'hash-c1');
+        UPDATE people.student_contact SET email = 'checkv575c.own@example.com' WHERE student_id = c;
+        own := (SELECT x.email || ':' || x.email_pending FROM people.student_contact x WHERE x.student_id = c);
+
+        outcomes := (SELECT o.waiting || '/' || o.confirmed || '/' || o.refused FROM people.contact_upload_outcomes(up) o);
+        RAISE EXCEPTION 'the V575 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V575 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V575: an uploaded contact waits for the student''s code (or the desk) before a reset link goes to it; codes are limited and run out, a contact said not to be the student''s is emptied, and the student''s own save is theirs',
+        coalesce(loaded = 'FILLED,FILLED,FILLED' AND reach_before = '-/-/checkv575a@example.com/08065750001'
+                 AND sent_to = 'checkv575a@example.com' AND wrong = 'WRONG' AND ok = 'CONFIRMED' AND again = 'CONTACT_NOT_PENDING'
+                 AND limit_code = 'CONTACT_CODE_LIMIT' AND refused = 'REFUSED' AND phone_after = '-:false' AND reach_after = 'checkv575a@example.com/-'
+                 AND desk = 'DESK:false' AND expired = 'EXPIRED' AND own = 'checkv575c.own@example.com:false' AND outcomes = '0/2/1', false),
+        format('loaded %s | reach %s | sent %s wrong %s ok %s again %s | limit %s refused %s phone %s reach %s | desk %s | expired %s own %s | outcomes %s',
+               loaded, reach_before, sent_to, wrong, ok, again, limit_code, refused, phone_after, reach_after, desk, expired, own, outcomes));
+END $$;
+
+-- ── V576. Spillover fee readiness and the fee effect of a level change. In an invented session the programme states 300,000
+-- at 100 Level and 200,000 at 400 Level. A student at 100 raised to 400 would be charged 200,000 instead of 300,000; one raised
+-- to 300 (no line) nothing — and both records read 100 afterwards: the effect is read and undone. The readiness reads each basis and
+-- leaves the basis as it was; a spillover line is never taken for an ordinary one when fees are copied. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); ses text := '2963/2964';
+        effect text; levels_after text; ready text; basis_after text; same_scope boolean; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V576', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/76/057601', 'MOAUM/ADM/76/576001', 'CHECKV576A', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/76/057602', 'MOAUM/ADM/76/576002', 'CHECKV576B', 'Invented', 'C00023', 'UTME', '2065/2066', 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES
+            (ses, 'School fees', 300000, 100, 'C00023'), (ses, 'School fees', 200000, 400, 'C00023');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, spillover) VALUES (ses, 'School fees', 250000, NULL, 'C00023', true);
+        same_scope := (SELECT finance.fee_line_same_scope(x, y) FROM finance.fee_schedule x, finance.fee_schedule y
+                        WHERE x.session = ses AND y.session = ses AND x.level = 100 AND y.spillover AND NOT x.spillover);
+
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        effect := (SELECT string_agg(e.current_level || '>' || e.new_level || ':' || e.charged_now::bigint || '>' || e.charged_after::bigint, ',' ORDER BY e.new_level DESC)
+                     FROM finance.level_fee_effect(ses, ARRAY[a, b], ARRAY[400, 300]) e);
+        levels_after := (SELECT string_agg(s.current_level::text, ',' ORDER BY s.surname) FROM people.student s WHERE s.id IN (a, b));
+        PERFORM set_config('moaum.spill_basis', '', true);
+        ready := (SELECT string_agg(r.basis || ':' || (r.students >= 0), ',' ORDER BY r.basis DESC) FROM finance.spill_readiness(ses) r);
+        basis_after := coalesce(current_setting('moaum.spill_basis', true), '');
+        RAISE EXCEPTION 'the V576 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V576 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V576: a level change''s fee effect is read and undone (the charges before and after, nothing changed); the spillover readiness reads both bases and leaves the basis as it was; a spillover line is its own scope',
+        coalesce(effect = '100>400:300000>200000,100>300:300000>0' AND levels_after = '100,100' AND ready = 'LEVEL:true,COHORT:true' AND basis_after = ''
+                 AND NOT same_scope, false),
+        format('effect %s | levels after %s | ready %s basis after "%s" | spillover line same scope %s', effect, levels_after, ready, basis_after, same_scope));
+END $$;
+
+-- ── V577. The GST/EPS population kept, and two reads made faster with the same answers. The kept population of the current session
+-- is the live one row for row, and a change to the GST setting marks it out of date. The migrated students cleared and Candidate
+-- data's findings answer as the rules they restate (the committed numbers, the cleared pairs) read the long way.
+DO $$
+DECLARE s text; kept int; same boolean; invalid_after boolean; mig record; mig_rule record; att_new text; att_rule text; msg text;
+BEGIN
+    s := coalesce((SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1), '2025/2026');
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'CHECK V577', true);
+        kept := finance.keep_gst_population(s, NULL);
+        same := (SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x.student_id), '')) FROM finance.gst_population(s, NULL) x)
+              = (SELECT md5(coalesce(string_agg(x::text, '|' ORDER BY x.student_id), '')) FROM finance.gst_population_kept_of(s, NULL) x);
+        UPDATE finance.gst_setting SET covers_eps = covers_eps WHERE id = 1;
+        invalid_after := (SELECT st.invalid FROM finance.gst_population_state st WHERE st.session = s AND st.semester = 0);
+        RAISE EXCEPTION 'the V577 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V577 check undoes its writes' THEN RAISE; END IF;
+    END;
+    SELECT * INTO mig FROM clearance.migrated_summary(100, 400);
+    -- the rule, read the long way: a migrated student is cleared when no gate purpose at any unit reads otherwise at its latest decision
+    WITH m AS (SELECT st.id FROM people.student st WHERE st.matric_no IS NOT NULL AND st.matriculation_run IS NULL AND st.current_level BETWEEN 100 AND 400
+                 AND st.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')),
+         latest AS (SELECT DISTINCT ON (c.student_id, c.purpose, c.unit) c.student_id, c.purpose, c.unit, c.state FROM clearance.item c JOIN m ON m.id = c.student_id
+                     WHERE c.superseded_by IS NULL ORDER BY c.student_id, c.purpose, c.unit, c.decided_at DESC),
+         not_clear AS (SELECT DISTINCT m.id FROM m CROSS JOIN ref.clearance_purpose pu CROSS JOIN clearance.unit u
+                         LEFT JOIN latest l ON l.student_id = m.id AND l.purpose = pu.code AND l.unit = u.code
+                        WHERE pu.gate AND coalesce(l.state, 'HELD') <> 'CLEARED')
+    SELECT count(*) AS migrated, count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM not_clear n WHERE n.id = m.id)) AS cleared,
+           count(*) FILTER (WHERE EXISTS (SELECT 1 FROM not_clear n WHERE n.id = m.id)) AS uncleared INTO mig_rule FROM m;
+    att_new := (SELECT string_agg(x.n::text, ',') FROM admissions.attachment_state(s) x);
+    att_rule := (SELECT (SELECT count(*) FROM admissions.attachment WHERE session = s AND read_as = 'UNREADABLE')::text || ','
+              || (SELECT count(*) FROM admissions.attachment a WHERE a.session = s AND a.candidate_id IS NULL AND a.jamb_key IS NOT NULL
+                     AND EXISTS (SELECT 1 FROM admissions.candidate c WHERE c.session = a.session AND c.jamb_key = a.jamb_key)
+                     AND NOT admissions.candidate_is_committed(a.session, a.jamb_key))::text || ','
+              || (SELECT count(*) FROM admissions.attachment a WHERE a.session = s AND a.candidate_id IS NULL AND a.jamb_key IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM admissions.candidate c WHERE c.session = a.session AND c.jamb_key = a.jamb_key))::text || ','
+              || (SELECT count(*) FROM admissions.candidate c WHERE c.session = s AND admissions.candidate_is_committed(c.session, c.jamb_key)
+                     AND NOT EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT'))::text || ','
+              || (SELECT count(*) FROM admissions.attachment WHERE session = s AND read_as IN ('EMBEDDED','COLUMN') AND candidate_id IS NOT NULL)::text);
+    PERFORM pg_temp.assert('V577: the kept GST/EPS population is the live one and a GST change puts it out of date; the migrated students cleared and Candidate data''s findings answer as their rules',
+        coalesce(kept >= 0 AND same AND invalid_after AND mig.migrated = mig_rule.migrated AND mig.cleared = mig_rule.cleared AND mig.uncleared = mig_rule.uncleared
+                 AND att_new = att_rule, false),
+        format('kept %s same %s invalid after %s | migrated %s/%s/%s rule %s/%s/%s | findings %s rule %s',
+               kept, same, invalid_after, mig.migrated, mig.cleared, mig.uncleared, mig_rule.migrated, mig_rule.cleared, mig_rule.uncleared, att_new, att_rule));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

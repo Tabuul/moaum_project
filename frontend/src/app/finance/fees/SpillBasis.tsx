@@ -24,6 +24,8 @@ interface Move {
   student_id: string; name: string; number: string | null; programme: string | null; faculty: string | null; level: number | null; spillover_state: string | null;
   by_level: boolean; by_cohort: boolean; by_level_due: number; by_cohort_due: number;
 }
+/** V576: for the current session and the next, the spillover lines stated and the spillover students with none, by each basis */
+interface Ready { session: string; lines: number; byLevel?: { students: number; groups: number }; byCohort?: { students: number; groups: number } }
 interface Preview {
   session: string; students: number; intoSpill: number; outOfSpill: number; dueByLevel: number; dueByCohort: number; nothingStatedByCohort: number; rows: Move[];
 }
@@ -40,10 +42,13 @@ export function SpillBasis({ session, may }: { session: string; may: boolean }) 
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [tick, setTick] = useState(0);
+  const [ready, setReady] = useState<Ready[] | null>(null);
 
   useEffect(() => {
     let alive = true;
     void fetch("/api/bff/api/v1/finance/spillover-basis", { cache: "no-store" }).then(async (r) => { if (alive && r.ok) setBasis((await r.json()) as Basis); });
+    // the readiness is read after the panel (a second or two): it never holds the page
+    void fetch("/api/bff/api/v1/finance/spillover-basis/readiness", { cache: "no-store" }).then(async (r) => { if (alive && r.ok) setReady((await r.json()) as Ready[]); });
     return () => { alive = false; };
   }, [tick]);
 
@@ -92,6 +97,22 @@ export function SpillBasis({ session, may }: { session: string; may: boolean }) 
             {WORD[basis.basis]}{basis.set_at ? ` — since ${new Date(basis.set_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}${basis.set_by ? `, ${basis.set_by}` : ""}${basis.reason ? `: ${basis.reason}` : ""}` : " (the rule since the spillover lines began)."}
             {" "}{count(basis.spillLines)} spillover line{basis.spillLines === 1 ? "" : "s"} on the schedule.
           </div>
+          {ready?.length ? (
+            <div className="stack" style={{ gap: 2 }}>
+              {ready.map((r) => {
+                const now = basis.basis === "COHORT" ? r.byCohort : r.byLevel;
+                const other = basis.basis === "COHORT" ? r.byLevel : r.byCohort;
+                return (
+                  <div key={r.session} className="sub2">
+                    <b className="tnum">{r.session}</b>: {count(r.lines)} spillover line{r.lines === 1 ? "" : "s"} stated ·{" "}
+                    <span style={now?.students ? { color: "var(--red-ink)" } : undefined}>{count(now?.students ?? 0)} spillover student{now?.students === 1 ? "" : "s"} with no line {basis.basis === "COHORT" ? "by the cohort" : "by the level"}</span>
+                    {" "}· {count(other?.students ?? 0)} {basis.basis === "COHORT" ? "by the level" : "by the cohort"}
+                    {now?.students || other?.students ? " — state the spillover lines (the /SP column of the approved structure) before charging by that basis" : ""}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           {moving ? (
             <Note kind="info" title={`${count(moving)} current student${moving === 1 ? "" : "s"} would be charged differently ${other === "COHORT" ? "by the cohort" : "by the level"}`}
               action={<Btn kind="secondary" busy={busy === "preview"} onClick={async () => { setBusy("preview"); setPreview(await load()); setBusy(null); }}>Preview the change</Btn>}>

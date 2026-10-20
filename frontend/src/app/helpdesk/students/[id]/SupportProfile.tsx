@@ -6,6 +6,7 @@
  *  with their diagnosis, the documents, the Support Action History and the tickets. Every change takes a reason; the ticket
  *  opened from is carried on every act; what the postings do not carry is not offered, and the server refuses it anyway. */
 import Link from "next/link";
+import { UploadedContact } from "./UploadedContact";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
@@ -295,7 +296,11 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
             <Panel title="Reach" right="Where the University reaches the student">
               <PBody><div className="stack" style={{ gap: 4 }}>
                 {([["Phone", data.contact.phone ?? data.contact.reach_phone], ["Email", data.contact.email ?? data.contact.reach_email], ["Address", data.contact.address]] as [string, unknown][]).map(([k, v]) => (
-                  <div key={k} className="row row--between"><span className="sub2">{k}</span><span className="tnum" style={{ textAlign: "right" }}>{v == null || v === "" ? "—" : String(v)}</span></div>
+                  <div key={k} className="row row--between"><span className="sub2">{k}</span><span className="tnum" style={{ textAlign: "right" }}>{v == null || v === "" ? "—" : String(v)}
+                    {/* V575: from a department's upload and not confirmed by the student: no reset link goes to it */}
+                    {(k === "Phone" && data.contact.phone_pending) || (k === "Email" && data.contact.email_pending)
+                      ? <UploadedContact id={id} field={k === "Phone" ? "PHONE" : "EMAIL"} may={caps.has("EDIT_CONTACT")} ticket={ticket?.id ?? null} /> : null}
+                  </span></div>
                 ))}
                 {data.record.pendingChanges.length ? <div className="mt-2"><div className="eyebrow">Awaiting the Registry</div>{data.record.pendingChanges.map((c) => <div key={c.id} className="sub2">{c.label}: {c.fromValue ?? "—"} → <b>{c.toValue}</b> · {c.state.toLowerCase()}</div>)}</div> : null}
               </div></PBody>

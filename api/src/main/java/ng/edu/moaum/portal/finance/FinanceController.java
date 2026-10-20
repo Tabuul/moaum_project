@@ -804,6 +804,28 @@ class FinanceController {
         return out;
     }
 
+    /** V576: for the current session and the next, the spillover students with no fee line stated — by the level and by the cohort —
+     *  so the Bursary sees, before choosing the basis or uploading the next session's fees, who would be charged nothing */
+    @GetMapping("/spillover-basis/readiness")
+    @PreAuthorize(READERS)
+    @Transactional
+    List<Map<String, Object>> spillReadiness() {
+        String current = jdbc.sql("SELECT policy.university_current_session()").query(String.class).optional().orElseGet(ng.edu.moaum.portal.shared.Sessions::byDate);
+        List<String> sessions = new java.util.ArrayList<>(List.of(current));
+        jdbc.sql("SELECT name FROM policy.academic_session WHERE name > :c AND state = 'PLANNED' ORDER BY name LIMIT 1").param("c", current)
+                .query(String.class).optional().ifPresent(sessions::add);
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (String s : sessions) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("session", s);
+            m.put("lines", jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE session = :s AND spillover AND ended_at IS NULL").param("s", s).query(Long.class).single());
+            jdbc.sql("SELECT basis, students, groups FROM finance.spill_readiness(:s)").param("s", s).query().listOfRows()
+                    .forEach(r -> m.put("LEVEL".equals(r.get("basis")) ? "byLevel" : "byCohort", Map.of("students", r.get("students"), "groups", r.get("groups"))));
+            out.add(m);
+        }
+        return out;
+    }
+
     public record SpillBasis(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp = "LEVEL|COHORT") String basis,
                              @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(min = 10, max = 2000) String reason) {
     }

@@ -77,6 +77,16 @@ class WaitingRepository {
                 .param("k", student ? "student" : "person").param("id", actor).query().listOfRows().stream().findFirst().orElse(null);
     }
 
+    /** V575: a student's contacts a department uploaded and the student has not confirmed; null when there are none — and while
+     *  the student must change their password (V485), which comes first and is all that is open until it is done */
+    Map<String, Object> contactConfirm(UUID student) {
+        return jdbc.sql("""
+                SELECT unconfirmed_email AS email, unconfirmed_phone AS phone FROM people.student_reset_reach(:s)
+                 WHERE (unconfirmed_email IS NOT NULL OR unconfirmed_phone IS NOT NULL)
+                   AND NOT coalesce((SELECT a.must_change FROM iam.student_account a WHERE a.student_id = :s), false)
+                """).param("s", student).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
     /** V441: the published legal documents the person has still to accept in their current version — the Privacy Policy first */
     List<Map<String, Object>> policyAcceptanceNeeded(String subjectKind, UUID subject) {
         return jdbc.sql("SELECT document_id, kind, version, title, effective_on::text AS effective_on FROM platform.policy_acceptance_needed(:k, :id)")

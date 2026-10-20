@@ -5,6 +5,7 @@
  *  way into its students; the Registry reviews and verifies, previews a batch and reconciles it step by step, and a reconciliation
  *  is corrected on a reason. The server holds the scope, the rules and the history; the screen only asks. */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FeeEffect } from "./FeeEffect";
 import { useQueryNav } from "@/lib/query-nav";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
@@ -483,6 +484,13 @@ function ReconcileModal({ ids, filter, session, onClose, onDone }: {
               ) : <div className="sub2">Nobody: every chosen student is verified and reconcilable.</div>}
             </div>
           </div>
+          {/* V576: what the levels the batch raises do to the students' fees, read before anything is changed */}
+          {preview.levelsRaised ? (
+            <FeeEffect key={limit} label={`See what the ${fmt(preview.levelsRaised)} raised would be charged`} request={() => fetch(`${API}/preview/fees`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...(ids ? { studentIds: ids } : { filter }), limitOutcome: choice?.outcome ?? null, limitStatus: choice?.status ?? null }),
+            })} />
+          ) : null}
           {atLimit ? (
             <Field id="lc-limit" label={`At the maximum spillover (${fmt(atLimit)} chosen) — your decision`}>
               <select id="lc-limit" className="ctl" value={limit} onChange={(e) => setLimit(e.target.value)}>

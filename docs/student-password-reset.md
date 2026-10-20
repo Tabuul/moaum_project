@@ -175,3 +175,13 @@ Many students reset in one operation, by the same service as the single reset. T
 No password was found in logs, browser storage or analytics, and no hard-coded default password exists. The only answers that
 carry a password are the temporary-password reset (V346) and JUPEB's old-portal import, which hands out one-time passwords
 once, by design.
+
+## Uploaded contacts and reset links (V575)
+
+A contact a department uploaded is held unconfirmed until the student confirms it with a code, or the desk confirms it with them
+(docs/cpo-student-support.md §18). Until then:
+
+- the forgotten-password door sends it no link;
+- the desk's reset link, a bulk reset's included, is refused with `AUTH_CONTACT_UNCONFIRMED`.
+
+Notices still reach it.

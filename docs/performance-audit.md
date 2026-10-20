@@ -592,3 +592,35 @@ three), and checked to return the same rows.
 - **Payments confirmed at the same moment** (an old-portal load) are now listed in a stable order, by reference. Before, 43
   payments sharing the time at the 2,000-row cut came in whatever order the plan gave.
 - **The local caveat again.** Through the API's pooled connections the same reads took 4–7 s; on fresh connections, 0.5–2 s.
+
+## U. The GST/EPS population kept, the migrated summary, Candidate data (20 October 2026, V577)
+
+| Read (screen) | Before | After |
+|---|---|---|
+| GST students list, through the API | 5.7–6.9 s | 0.5–0.6 s (the first read of a session works the population out: 7.9 s locally) |
+| EPS students list | 5.4–5.7 s | 0.27 s |
+| GST fee page standing (`/gst/fee`) | 4.9 s | 0.19 s |
+| `clearance.migrated_summary` (worked out at the API's start) | 25–58 s | 16–18 s, and five minutes after the start |
+| `admissions.attachment_state` (Candidate data) | 1.3 s | 0.3 s |
+| Candidate data's candidate list | 0.7–2.2 s | 0.3–0.55 s |
+
+- **The GST/EPS population is kept** (`finance.gst_population_kept`).
+  - It is worked out once per session and semester, and again behind the screens once five minutes old
+    (`GstPopulationKeeper`, `moaum.gst.population-fresh-seconds`).
+  - A change to the GST fee, its setting or a payment review marks it out of date (statement triggers), and Refresh works it out
+    at once. The screens say "Figures as of …".
+  - A student's own GST/EPS standing (the permit, registration, the fee gate) still reads the engine live.
+  - The kept rows are the live function's, row for row (51,121 for 2025/2026).
+  - A GST write answers from its own transaction without working the population out there, because that would wait on its own
+    lock.
+- **The migrated summary.**
+  - The old version crossed 44,497 students with 64 gate pairs. The new one reads each pair's latest decision once, with the
+    memory to sort them in, and counts the CLEARED pairs each student holds. The figures are the same in every range tried.
+  - The 2.85 million decisions are still read either way. A per-student index scan (43 s) and a covering index (16 s to build,
+    upkeep on every decision) were both measured and set aside.
+  - The warm-up now runs five minutes after the start (`moaum.figures.migrated-warm-delay-seconds`), not during the first
+    health checks.
+- **Candidate data.** The session's committed numbers are read once (`admissions.candidate_is_committed`'s rule), and each
+  candidate's files are read once.
+- **Left as it is.** Computed screening's `admissions.non_sitter_post_utme` (about 2 s): its O'Level scoring was tuned in
+  V486/V541.

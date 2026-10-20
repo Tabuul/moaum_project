@@ -102,6 +102,16 @@ class IamController {
         } catch (RuntimeException notAsked) {
             // the prompt is a convenience: a record that cannot be read never fails the sign-in
         }
+        /* V575: a contact a department uploaded that the student has not confirmed — asked on the first screen until it is confirmed
+         * by a code sent to it or said not to be theirs; no reset link goes to it meanwhile */
+        try {
+            if (authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()))) {
+                Map<String, Object> c = waiting.contactConfirm(UUID.fromString(authentication.getName()));
+                if (c != null) me.put("contactConfirm", c);
+            }
+        } catch (RuntimeException notAsked) {
+            // a convenience: never fails the sign-in
+        }
         /* V441: the Privacy Policy (or another legal document) published since the person last accepted one — asked once per
          * version, by the person's own act, never again for an unchanged one; a CBT-only token is nobody's account */
         try {

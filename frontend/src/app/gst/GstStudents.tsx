@@ -4,6 +4,7 @@
  *  V366: each student with the office's own answer — whether its courses concern them and why — the lists of carryovers, of the
  *  students no course concerns, of payments no course requires, and "View eligibility" for the whole answer. */
 import { useState } from "react";
+import { KeptAt } from "./KeptAt";
 import { useQueryNav } from "@/lib/query-nav";
 import { notifyProblem } from "@/components/proto/Toast";
 import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
@@ -75,7 +76,7 @@ export function GstStudents({ data, filters, base }: { data: GstStudentPage; fil
     <>
       <PageHead title={`${word} students`} description={scope}
         actions={<span className="row row--inline row--tight"><LinkBtn kind="ghost" size="sm" href={`${base}/dashboard?${gstQuery(f)}`}>Dashboard</LinkBtn><Btn kind="secondary" size="sm" disabled={busy || !data.total} onClick={() => void exportAs("xlsx")}>Excel</Btn><Btn kind="ghost" size="sm" disabled={busy || !data.total} onClick={() => void exportAs("pdf")}>PDF</Btn></span>} />
-      <Panel title={`${num(data.total)} STUDENT${data.total === 1 ? "" : "S"} FOUND`} right={<span className="sub2">page {data.page + 1} of {pages}</span>}>
+      <Panel title={`${num(data.total)} STUDENT${data.total === 1 ? "" : "S"} FOUND`} right={<span className="row row--inline row--tight"><KeptAt at={data.keptAt} /><span className="sub2">page {data.page + 1} of {pages}</span></span>}>
         <PBody>
           <form className="row row--inline row--tight" onSubmit={(e) => { e.preventDefault(); nav({ q, page: 0 }); }}>
             <Field id="gs-q" label="Search"><input id="gs-q" className="ctl" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Matric number, name, programme" /></Field>

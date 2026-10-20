@@ -349,6 +349,35 @@ class CohortController {
         return out;
     }
 
+    /** V576: what Apply would do to the students' fees for the current session — the same selection and the same batch (the first
+     *  `limit` by student), the levels raised and undone; nothing is changed */
+    @PostMapping("/levels/fee-effect")
+    @PreAuthorize(LEVEL_SETTERS)
+    @Transactional
+    Map<String, Object> levelsFeeEffect(@RequestBody LevelApply body) {
+        OfficeScope.Bound b = scope.bound(body.fac(), body.dept(), body.prog());
+        List<String> bases = body.bases() == null || body.bases().isEmpty() ? List.of("SPILLOVER", "REGISTRATION")
+                : body.bases().stream().map(x -> x.trim().toUpperCase()).filter(BASES::contains).toList();
+        int lim = body.limit() == null ? 500 : Math.max(1, Math.min(body.limit(), 1000));
+        List<Map<String, Object>> pick = jdbc.sql("""
+                SELECT c.student_id, c.proposed_level
+                  FROM people.level_correction c
+                  JOIN people.student s ON s.id = c.student_id
+                  JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE c.basis = ANY (CAST(:bases AS text[]))
+                   AND (CAST(:ids AS uuid[]) IS NULL OR c.student_id = ANY (CAST(:ids AS uuid[])))
+                   AND (:fac::text IS NULL OR p.faculty_code = :fac) AND (:dept::text IS NULL OR p.dept_code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+                   AND s.current_level < c.proposed_level
+                 ORDER BY c.student_id
+                 LIMIT :lim
+                """).param("bases", bases.toArray(String[]::new), Types.ARRAY)
+                .param("ids", body.studentIds() == null || body.studentIds().isEmpty() ? null : body.studentIds().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("lim", lim)
+                .query().listOfRows();
+        return FeeEffect.of(jdbc, pick.stream().map(r -> (UUID) r.get("student_id")).toList(),
+                pick.stream().map(r -> ((Number) r.get("proposed_level")).intValue()).toList());
+    }
+
     /* ── the policy: the spillover limit, the programmes' lengths, the sessions merged ── */
 
     @GetMapping("/settings")

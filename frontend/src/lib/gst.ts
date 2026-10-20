@@ -52,6 +52,8 @@ export interface GstOptions {
 }
 export interface GstDashboardData {
   office: GstOffice; session: string; semester: number | null; filters: Record<string, string>;
+  /** V577: when the population these figures come from was worked out */
+  keptAt?: string | null;
   sessions: { name: string; state: string }[]; semesters: { number: number; state: string }[];
   fee: { rules: GstFeeRule[]; setting: GstSetting }; totals: GstCounts;
   byLevel: GstGroup[]; byFaculty: GstGroup[]; byDepartment: GstGroup[]; byProgramme: GstGroup[]; byGender: GstGroup[];
@@ -78,7 +80,9 @@ export interface GstStudentRow {
   office_required?: boolean; office_reason?: string; office_carryover?: boolean; office_completed?: boolean; office_owed?: string | null; review?: boolean;
   gst_reason?: string; eps_reason?: string;
 }
-export interface GstStudentPage { office: GstOffice; session: string; semester: number | null; eligibility?: string; total: number; page: number; size: number; rows: GstStudentRow[] }
+export interface GstStudentPage { office: GstOffice; session: string; semester: number | null; eligibility?: string; total: number; page: number; size: number; rows: GstStudentRow[];
+  /** V577: when the population these rows come from was worked out */
+  keptAt?: string | null }
 
 export const GST_FILTER_KEYS = ["session", "semester", "fac", "dept", "prog", "level", "sex", "status", "course", "payment", "registration", "eligibility", "q"] as const;
 export type GstFilterKey = (typeof GST_FILTER_KEYS)[number];
@@ -178,3 +182,8 @@ export const pct = (part: number | string | null | undefined, whole: number | st
   return w ? `${Math.round((100 * Number(part ?? 0)) / w)}%` : "—";
 };
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+
+/** V577: the refresh asked for in the address (KeptAt's Refresh), passed on to the API; read on the server */
+export function refreshParam(p: Record<string, string | string[] | undefined>): string {
+  return p.refresh === "1" ? "&refresh=true" : "";
+}

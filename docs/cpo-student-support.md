@@ -323,3 +323,27 @@ copy, 13,576 current students had neither a phone nor an e-mail on record, and 3
 - **API:** `GET /api/v1/student-contacts`, `GET /api/v1/student-contacts/missing?neitherOnly=`, `POST /upload/preview` and
   `POST /upload` `{fileName, rows: [{number, phone, email}]}`.
 - **Tests:** `StudentContactUploadIT`; check.sql's V572 block; `lib/contact-upload.test.ts`.
+
+## 18. Uploaded contacts confirmed by the student (V575)
+
+A phone or e-mail a department uploads (§17) could be mistyped. Until V575, that student's password reset link would then have
+gone to someone else.
+
+- **Held unconfirmed.** `people.student_contact.email_pending` and `phone_pending` are set, with the upload named, when an upload
+  fills the field. Notices and announcements reach the contact at once. A password reset link does not
+  (`people.student_reset_reach`).
+- **Kept only on the write that set it.** A trigger clears the mark when anyone else changes the value: the student's own save, or
+  the desk's edit.
+- **The student confirms on the first screen** ("Is this yours?", `/iam/me` → `contactConfirm`). A six-digit code is sent to the
+  contact (at most three an hour, each valid for fifteen minutes, five tries) and entered while signed in. Or the student says it
+  is not theirs, and the field is emptied. API: `GET /api/v1/me/contact/pending`, `POST /api/v1/me/contact/confirm/code`,
+  `POST /api/v1/me/contact/confirm`, `POST /api/v1/me/contact/not-mine`. The code is kept only as a hash.
+- **The desk confirms it after checking with the student.** The student's Reach panel marks the contact "From an upload — not
+  confirmed". An agent with contact editing records how it was checked; this goes on the history as a contact edit
+  (`POST /api/v1/helpdesk/support/students/{id}/contact/confirm`).
+- **Reset links.** The forgotten-password door sends no link to an unconfirmed contact (its answer is the same as ever). The desk's
+  reset link, including a bulk reset's, is refused with `AUTH_CONTACT_UNCONFIRMED`: confirm the contact first, or issue a temporary
+  password.
+- **Outcomes per upload.** Each upload counts its contacts awaiting the student, confirmed (by the student or the desk) and not
+  the student's (`people.contact_upload_outcomes`). Uploads made since V572 were marked unconfirmed from the audit trail.
+- **Tests:** `ContactConfirmIT`; check.sql's V575 block.

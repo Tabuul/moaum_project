@@ -6,6 +6,7 @@
  *  alone — for review, applied only when chosen). The Academic Office or the Registry raises them in one act, a batch at a time,
  *  on a reason; no level is lowered and each change goes on the student's cohort history. */
 import { useCallback, useEffect, useState } from "react";
+import { FeeEffect } from "./FeeEffect";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -189,6 +190,12 @@ export function LevelCorrections({ fac, dept, canApply }: { fac: string; dept: s
               : <>Chosen records may include ones whose level only the count of sessions supports — a repeated year or a gap reads the same. Check each before going on.</>}
             {" "}The changes run in batches of 500; each goes on the student&rsquo;s cohort history in your name.
           </Note>
+          {/* V576: what the first batch does to the students' fees, read before anything is changed */}
+          <FeeEffect label="See what the first 500 would be charged" request={() => fetch("/api/bff/api/v1/cohorts/levels/fee-effect", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...(apply.mode === "safe" ? { bases: ["SPILLOVER", "REGISTRATION"], fac: fac || null, dept: dept || null }
+              : { studentIds: [...chosen], bases: ["SPILLOVER", "REGISTRATION", "ARITHMETIC"] }), limit: 500 }),
+          })} />
           <Field id="lv-reason" label="Reason" required>
             <textarea id="lv-reason" className="ctl" rows={3} maxLength={2000} value={apply.reason} onChange={(e) => setApply({ ...apply, reason: e.target.value })}
               placeholder="e.g. Students migrated from the old portal at 100 Level; their level is the programme's final level as spillover students" />

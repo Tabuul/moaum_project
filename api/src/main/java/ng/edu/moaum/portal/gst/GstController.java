@@ -2,6 +2,7 @@ package ng.edu.moaum.portal.gst;
 
 import java.math.BigDecimal;
 import java.sql.Types;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -60,9 +61,11 @@ class GstController {
     private static final Set<String> MODES = Set.of("UTME", "DIRECT_ENTRY", "TRANSFER", "JUPEB", "SANDWICH");
 
     private final JdbcClient jdbc;
+    private final GstPopulationKeeper population;
 
-    GstController(JdbcClient jdbc) {
+    GstController(JdbcClient jdbc, GstPopulationKeeper population) {
         this.jdbc = jdbc;
+        this.population = population;
     }
 
     /* ── the Bursar's door: the fee and the rule ── */
@@ -78,10 +81,17 @@ class GstController {
     @GetMapping("/fee")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
-    Map<String, Object> fee(@RequestParam(required = false) String session) {
+    Map<String, Object> fee(@RequestParam(required = false) String session, @RequestParam(defaultValue = "false") boolean refresh) {
+        return fee(session, refresh, true);
+    }
+
+    /** V577: a write returns the fee page as it reads in its own transaction, the kept population not worked out again there (the
+     *  change marked it out of date; the next read, after the change is committed, works it out) */
+    private Map<String, Object> fee(String session, boolean refresh, boolean ensure) {
         String s = session(session);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
+        out.put("keptAt", ensure ? population.ensure(s, null, refresh) : null);   // V577: the population as last worked out
         out.put("sessions", jdbc.sql("SELECT name, state FROM policy.academic_session ORDER BY name DESC").query().listOfRows());
         out.put("setting", setting());
         out.put("rules", rules(s, false));
@@ -104,7 +114,7 @@ class GstController {
                        count(*) FILTER (WHERE p.gst_required) AS gst_required,
                        count(*) FILTER (WHERE p.eps_required) AS eps_required,
                        count(*) FILTER (WHERE p.gst_carryover OR p.eps_carryover) AS carryover
-                  FROM finance.gst_population(:s, NULL) p
+                  FROM finance.gst_population_kept_of(:s, NULL) p
                 """).param("s", s).query().singleRow());
         // V367: GST/EPS courses bound to programmes but not opened this session — their students owe nothing until the office opens them
         out.put("gaps", gaps(s, null));
@@ -123,6 +133,7 @@ class GstController {
         String s = session(session);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
+        out.put("keptAt", population.ensure(s, null, false));   // V577
         out.put("rows", jdbc.sql("""
                 SELECT p.student_id, p.number, p.surname, p.other_names, p.programme_code, p.programme, p.department, p.faculty, p.level, p.paid, p.reference, p.paid_at,
                        p.pay_source, p.gst_reason, p.eps_reason,
@@ -133,7 +144,7 @@ class GstController {
                            AND r.amount > finance.gst_refunded(r.reference)
                            AND NOT EXISTS (SELECT 1 FROM finance.gst_payment_review d LEFT JOIN finance.refund rf ON rf.id = d.refund_id
                                             WHERE d.reference = r.reference AND (d.decision = 'KEEP' OR rf.state <> 'REJECTED'))) AS payments
-                  FROM finance.gst_population(:s, NULL) p WHERE p.review
+                  FROM finance.gst_population_kept_of(:s, NULL) p WHERE p.review
                  ORDER BY p.surname, p.other_names LIMIT 2000
                 """).param("s", s).query().listOfRows());
         out.put("decided", jdbc.sql("""
@@ -208,7 +219,7 @@ class GstController {
                 .param("f", blank(body.facultyCode()), Types.VARCHAR).param("p", blank(body.programmeCode()), Types.VARCHAR)
                 .param("d", body.effectiveFrom(), Types.DATE).param("n", blank(body.note()), Types.VARCHAR)
                 .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query(UUID.class).single();
-        return fee(body.session().trim());
+        return fee(body.session().trim(), false, false);
     }
 
     /** a live rule withdrawn: students it priced fall back to the next rule, or to no fee */
@@ -217,7 +228,7 @@ class GstController {
     @Transactional
     Map<String, Object> endFee(@PathVariable UUID id, @RequestParam(required = false) String session) {
         jdbc.sql("SELECT finance.end_gst_fee(:id)").param("id", id).query().listOfRows();
-        return fee(session);
+        return fee(session, false, false);
     }
 
     /** the rule: what the GST payment gates, and that it covers EPS */
@@ -229,7 +240,7 @@ class GstController {
         jdbc.sql("SELECT finance.set_gst_setting(:a, :b, :c, :by, :office)")
                 .param("a", body.requiredForGstEps(), Types.BOOLEAN).param("b", body.requiredForAll(), Types.BOOLEAN).param("c", body.coversEps(), Types.BOOLEAN)
                 .param("by", ctx.actorId(), Types.OTHER).param("office", ctx.actorOffice(), Types.VARCHAR).query().listOfRows();
-        return fee(session);
+        return fee(session, false, false);
     }
 
     /* ── the offices' desks ── */
@@ -280,7 +291,7 @@ class GstController {
                        CASE WHEN :office = 'EPS' THEN p.eps_completed ELSE p.gst_completed END AS office_completed,
                        CASE WHEN :office = 'EPS' THEN p.eps_owed ELSE p.gst_owed END AS office_owed,
                        (CASE WHEN :office = 'EPS' THEN p.eps_required OR p.eps_registered ELSE p.gst_required OR p.gst_registered OR p.paid > 0 END) AS involved
-                  FROM finance.gst_population(:s, :sem) p) x
+                  FROM finance.gst_population_kept_of(:s, :sem) p) x
              WHERE (CASE :elig WHEN 'ALL' THEN true
                                WHEN 'REQUIRED' THEN x.office_required
                                WHEN 'CARRYOVER' THEN x.office_carryover
@@ -320,9 +331,11 @@ class GstController {
     Map<String, Object> dashboard(@PathVariable String office, @RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
                                   @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                   @RequestParam(required = false) Integer level, @RequestParam(required = false) String sex, @RequestParam(required = false) String status,
-                                  @RequestParam(required = false) String course, @RequestParam(required = false) String payment, @RequestParam(required = false) String registration) {
+                                  @RequestParam(required = false) String course, @RequestParam(required = false) String payment, @RequestParam(required = false) String registration,
+                                  @RequestParam(defaultValue = "false") boolean refresh) {
         String o = office(office);
         Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, null, null);
+        Instant kept = population.ensure(f.session(), f.semester(), refresh);   // V577: the population as last worked out
         // V366: counted over every undergraduate in scope, so the students the office's courses do not concern are counted as such — never as unpaid
         List<Map<String, Object>> groups = bind(jdbc.sql("""
                 WITH r AS MATERIALIZED (""" + ROWS + """
@@ -411,6 +424,7 @@ class GstController {
         // V370: whom the office's notices reach
         out.put("reach", reach(o));
         out.put("options", options(f));
+        out.put("keptAt", kept);
         out.put("now", OffsetDateTime.now());
         return out;
     }
@@ -424,9 +438,11 @@ class GstController {
                                  @RequestParam(required = false) Integer level, @RequestParam(required = false) String sex, @RequestParam(required = false) String status,
                                  @RequestParam(required = false) String course, @RequestParam(required = false) String payment, @RequestParam(required = false) String registration,
                                  @RequestParam(required = false) String eligibility,
-                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
+                                 @RequestParam(defaultValue = "false") boolean refresh) {
         String o = office(office);
         Filters f = filters(o, session, semester, fac, dept, prog, level, sex, status, course, payment, registration, eligibility, q);
+        Instant kept = population.ensure(f.session(), f.semester(), refresh);   // V577: the population as last worked out
         int sz = Math.max(1, Math.min(size, 500)), pg = Math.max(0, page);
         // the population is read once (V468): the page and the count of every row come from the same pass, and a student's
         // registered courses and result stages are read only for the page
@@ -463,6 +479,7 @@ class GstController {
         out.put("page", pg);
         out.put("size", sz);
         out.put("rows", rows);
+        out.put("keptAt", kept);
         return out;
     }
 
@@ -1017,7 +1034,7 @@ class GstController {
         // planner then leaves the course engine out, which the dashboard's figures have already run once (V468)
         List<Map<String, Object>> all = jdbc.sql("""
                 WITH r AS MATERIALIZED (SELECT p.faculty_code, p.faculty, p.dept_code, p.department, p.programme_code, p.programme, p.level
-                                          FROM finance.gst_population(:s, :sem) p)
+                                          FROM finance.gst_population_kept_of(:s, :sem) p)
                 SELECT DISTINCT 'F'::text AS kind, faculty_code::text AS code, faculty::text AS name, NULL::text AS dept_code, NULL::text AS faculty_code, NULL::int AS level FROM r
                 UNION SELECT DISTINCT 'D'::text, dept_code::text, department::text, NULL::text, faculty_code::text, NULL::int FROM r
                 UNION SELECT DISTINCT 'P'::text, programme_code::text, programme::text, dept_code::text, faculty_code::text, NULL::int FROM r

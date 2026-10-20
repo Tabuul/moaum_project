@@ -72,10 +72,16 @@ class StudentController {
     }
 
     /** Oct 2026: the migrated students' figures read every clearance decision on the register (2.85 million, about forty
-     *  seconds): kept a few minutes for every office that asks, worked out ahead when the service starts */
+     *  seconds): kept a few minutes for every office that asks, worked out ahead when the service starts. V577: read in one pass
+     *  (clearance.migrated_summary), and worked out a few minutes after the start (moaum.figures.migrated-warm-delay-seconds,
+     *  300 by default) rather than while the service is still answering its first health checks and requests */
+    @org.springframework.beans.factory.annotation.Value("${moaum.figures.migrated-warm-delay-seconds:300}")
+    long migratedWarmDelay;
+
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     void warmMigrated() {
-        figures.warm(java.util.List.of("migrated", 100, 400), () -> migratedNow(100, 400));
+        java.util.concurrent.CompletableFuture.delayedExecutor(Math.max(0, migratedWarmDelay), java.util.concurrent.TimeUnit.SECONDS)
+                .execute(() -> figures.warm(java.util.List.of("migrated", 100, 400), () -> migratedNow(100, 400)));
     }
 
     private java.util.Map<String, Object> migratedNow(int from, int to) {

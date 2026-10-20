@@ -11,6 +11,7 @@
  */
 import { AccountMenu } from "./AccountMenu";
 import { ContactPrompt, type ContactPromptData } from "@/components/ContactPrompt";
+import { ContactConfirm, type ContactConfirmData } from "@/components/ContactConfirm";
 import { IdleWatch } from "@/components/IdleWatch";
 import { SupportViewBanner, useSupportView } from "@/components/support/SupportViewBanner";
 import { PolicyPrompt, type PolicyPromptData } from "@/components/PolicyPrompt";
@@ -624,6 +625,8 @@ export interface Me {
   menu?: string | null;
   /** V430: "how do we reach you" — ASK while the portal holds no usable e-mail or phone for the person (iam/me) */
   contactPrompt?: ContactPromptData | null;
+  /** V575: a student's contact a department uploaded and the student has not confirmed (iam/me) */
+  contactConfirm?: ContactConfirmData | null;
   /** V441: a legal document (the Privacy Policy) published since the person last accepted one — asked once per version (iam/me) */
   privacyPrompt?: PolicyPromptData | null;
 }
@@ -923,6 +926,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
             {/* V521: ICT Support viewing the student's portal: said on every screen; the student's own prompts are the student's to answer */}
             <SupportViewBanner />
             {!viewing && me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
+            {!viewing && me?.contactConfirm ? <ContactConfirm c={me.contactConfirm} /> : null}
             {!viewing && me?.privacyPrompt && me.privacyPrompt.documents.length ? <PolicyPrompt p={me.privacyPrompt} /> : null}
             <IdleWatch />
             <ShellTitle.Provider value={t0}>{children}</ShellTitle.Provider>

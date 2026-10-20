@@ -399,6 +399,41 @@ class LifecycleController {
         return out;
     }
 
+    /** V576: what the batch previewed would do to the students' fees for the current session — the levels Reconciliation raises (to
+     *  the final level, where the record reads lower and the status is kept), raised and undone, for the first 1,000; the students
+     *  leaving active study counted apart. Nothing is changed. */
+    @PostMapping("/preview/fees")
+    @PreAuthorize(ACTORS)
+    @Transactional
+    Map<String, Object> previewFees(@RequestBody Preview body) {
+        @SuppressWarnings("unchecked") List<String> eligible = (List<String>) preview(body).get("studentIds");
+        String limit = limitOutcome(body.limitOutcome(), body.limitStatus());
+        List<UUID> ids = new ArrayList<>();
+        List<Integer> levels = new ArrayList<>();
+        int raised = 0, leaving = 0;
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT lr.student_id, lr.recommendation, lr.current_level, lr.final_level FROM people.lifecycle_recommendation lr
+                 WHERE lr.student_id = ANY (CAST(:ids AS uuid[])) ORDER BY lr.student_id
+                """).param("ids", eligible.toArray(String[]::new), Types.ARRAY).query().listOfRows()) {
+            boolean statusChange = "MAXIMUM_SPILLOVER_REACHED".equals(r.get("recommendation")) && limit != null && limit.startsWith("STATUS_");
+            Number cur = (Number) r.get("current_level"), fin = (Number) r.get("final_level");
+            if (statusChange) {
+                leaving++;
+            } else if (cur != null && fin != null && cur.intValue() < fin.intValue()) {
+                raised++;
+                if (ids.size() < 1000) {
+                    ids.add((UUID) r.get("student_id"));
+                    levels.add(fin.intValue());
+                }
+            }
+        }
+        Map<String, Object> out = FeeEffect.of(jdbc, ids, levels);
+        out.put("levelsRaised", raised);
+        out.put("readFor", ids.size());
+        out.put("leavingActiveStudy", leaving);
+        return out;
+    }
+
     /** the officer's choice at the maximum spillover: kept active and flagged, or dormant or withdrawn — nothing else, never by default */
     private static String limitOutcome(String outcome, String status) {
         String o = upper(outcome);

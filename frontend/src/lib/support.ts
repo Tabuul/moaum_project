@@ -51,7 +51,9 @@ export interface SupportProfile {
     decidedChanges: { id: string; field: string; label: string; fromValue: string | null; toValue: string; evidence: string | null; requestedAt: string; state: string; decision: string | null; decidedAt: string | null }[];
   };
   portal: Record<string, unknown>;
-  contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null };
+  contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null;
+    /** V575: from a department's upload and not confirmed by the student */
+    email_pending?: boolean; phone_pending?: boolean };
   position: Record<string, unknown> | null;
   capabilities: string[];
   scope: string;

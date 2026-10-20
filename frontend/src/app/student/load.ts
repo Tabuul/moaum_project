@@ -34,6 +34,8 @@ export async function loadStudent(opts: { gateOpen?: boolean } = {}): Promise<{ 
     // biodata gate holds sees only what completes it
     menu: held ? "studentgate" : mine.data.entryMode === "POSTGRADUATE" ? "pgstudent" : null,
     unit: mine.data.entryMode === "POSTGRADUATE" ? mine.data.programme : null,
+    // V575: a contact a department uploaded that the student has not confirmed, asked on every screen until answered
+    contactConfirm: who.ok ? who.data.contactConfirm ?? null : null,
   };
   return { me, student: mine.data, gate };
 }

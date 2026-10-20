@@ -6,6 +6,7 @@
  *  V366: the figures are of the students a GST/EPS course concerns — the programme's offering at their level, a carryover — and
  *  the rest are counted as not applicable, never as unpaid. */
 import { useState } from "react";
+import { KeptAt } from "./KeptAt";
 import { useQueryNav } from "@/lib/query-nav";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -105,9 +106,9 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
 
   return (
     <>
-      <PageHead title={`${word} Office dashboard`} description={eps
+      <PageHead title={`${word} Office dashboard`} description={<>{eps
         ? "Entrepreneurship Studies · the GST payment covers EPS; there is no separate EPS fee."
-        : "General Studies · one payment covers GST and EPS."}
+        : "General Studies · one payment covers GST and EPS."} <KeptAt at={data.keptAt} /></>}
         actions={<span className="row row--inline row--tight">
           <label htmlFor="gd-session" className="sub2">Session</label>
           <select id="gd-session" className="ctl" value={data.session} onChange={(e) => go(withFilter({ session: e.target.value }))}>{data.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>

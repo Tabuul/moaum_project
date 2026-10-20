@@ -16,7 +16,9 @@ import { DTable } from "@/components/proto/DTable";
 export interface ContactSummary {
   scope: string; faculty: string | null; department: string | null; missing: number; neither: number; no_phone: number; no_email: number;
   uploads: { id: string; uploaded_at: string; file_name: string | null; office: string; faculty: string | null; department: string | null; rows_read: number;
-    students_filled: number; phones_filled: number; emails_filled: number; refused: number; reason: string; uploaded_by: string | null }[];
+    students_filled: number; phones_filled: number; emails_filled: number; refused: number; reason: string; uploaded_by: string | null;
+    /** V575: the contacts it filled still waiting for the student, confirmed (by the student or the desk), and rejected by the student */
+    waiting?: number; confirmed?: number; rejected?: number }[];
 }
 
 const n = (v: number) => Number(v ?? 0).toLocaleString("en-NG");
@@ -97,6 +99,7 @@ export function ContactUpload({ summary }: { summary: ContactSummary }) {
           <div className="sub2 mt-2">
             The template lists the current students (active, on probation, admitted or deferred) missing a contact, with the Phone and E-mail columns to fill from the class
             lists or the students themselves. Only a contact the student does not hold is filled: one they hold is kept, and a phone or e-mail another student holds is refused.
+            A filled contact waits for the student to confirm it with a code sent to it (or say it is not theirs); notices reach it at once, password reset links only once it is confirmed.
           </div>
           <div className="row mt-2" style={{ gap: 8, flexWrap: "wrap" }}>
             <Btn kind="secondary" busy={busy === "neither"} busyLabel="Preparing…" disabled={!summary.neither || !!busy} onClick={() => void template(true)}>
@@ -144,7 +147,7 @@ export function ContactUpload({ summary }: { summary: ContactSummary }) {
 
       {summary.uploads.length ? (
         <Panel title="Uploads">
-          <DTable pageSize={10} cols={["When", "By", "File", "Reach", "Rows|num", "Students filled|num", "Phones|num", "E-mails|num", "Not written|num"]} rows={summary.uploads.map((u) => [
+          <DTable pageSize={10} cols={["When", "By", "File", "Reach", "Rows|num", "Students filled|num", "Phones|num", "E-mails|num", "Not written|num", "Awaiting the student|num", "Confirmed|num", "Not theirs|num"]} rows={summary.uploads.map((u) => [
             <span key="w" className="tnum">{new Date(u.uploaded_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
             <span key="b">{u.uploaded_by ?? "—"}</span>,
             <span key="f" className="sub2">{u.file_name ?? "—"}</span>,
@@ -154,6 +157,9 @@ export function ContactUpload({ summary }: { summary: ContactSummary }) {
             <span key="p" className="tnum">{n(u.phones_filled)}</span>,
             <span key="e" className="tnum">{n(u.emails_filled)}</span>,
             <span key="x" className="tnum">{n(u.refused)}</span>,
+            <span key="w" className="tnum">{n(u.waiting ?? 0)}</span>,
+            <span key="c" className="tnum">{n(u.confirmed ?? 0)}</span>,
+            <span key="r" className="tnum" style={u.rejected ? { color: "var(--red-ink)" } : undefined}>{n(u.rejected ?? 0)}</span>,
           ])} />
         </Panel>
       ) : (

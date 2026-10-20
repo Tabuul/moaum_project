@@ -187,7 +187,8 @@ class StudentSupportController {
         if (!a.has("VIEW_PAYMENTS")) { me.remove("fees"); me.remove("wallet"); me.remove("receipts"); }
         out.put("portal", me);
         out.put("contact", jdbc.sql("""
-                SELECT c.phone, c.email, c.address, r.email AS reach_email, r.phone AS reach_phone
+                SELECT c.phone, c.email, c.address, r.email AS reach_email, r.phone AS reach_phone,
+                       coalesce(c.email_pending, false) AS email_pending, coalesce(c.phone_pending, false) AS phone_pending   -- V575
                   FROM people.student_reach(:s) r LEFT JOIN people.student_contact c ON c.student_id = :s
                 """).param("s", id).query().listOfRows().stream().findFirst().orElse(Map.of()));
         Map<String, Object> position = jdbc.sql("SELECT * FROM people.academic_position WHERE student_id = :s").param("s", id).query().listOfRows().stream().findFirst().orElse(null);
@@ -340,6 +341,27 @@ class StudentSupportController {
                 Map.of("summary", label + " updated"));
         support.tell(id, "Your " + label.toLowerCase() + " was updated by ICT Support", "Your " + label.toLowerCase() + " on the portal now reads \"" + value + "\" (it read \"" + (old == null ? "nothing" : old) + "\"). Reason: " + reason + ". If this is not what you asked for, reply to your support ticket.");
         return Map.of("field", f, "value", value, "old", old == null ? "" : old, "pending", false, "tier", tier);
+    }
+
+    /** V575: an e-mail or phone a department uploaded, confirmed with the student at the desk (EDIT_CONTACT): a reset link may then
+     *  go to it. On the student's history as a contact edit, the value unchanged. */
+    public record ContactConfirm(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "EMAIL|PHONE") String field,
+                                 @NotBlank @Size(min = 10, max = 2000) String reason, UUID ticket) {
+    }
+
+    @PostMapping("/students/{id}/contact/confirm")
+    @Transactional
+    Map<String, Object> confirmContact(Authentication auth, @PathVariable UUID id, @Valid @RequestBody ContactConfirm body) {
+        SupportAccess.Access a = support.on(auth, id);
+        can(a, "EDIT_CONTACT");
+        String value = jdbc.sql("SELECT value FROM people.contact_pending_value(:s, :f)").param("s", id).param("f", body.field())
+                .query(String.class).optional().orElse(null);
+        jdbc.sql("SELECT people.contact_confirm_desk(:s, :f)").param("s", id).param("f", body.field()).query(String.class).single();
+        UUID ticket = support.ticketFor(a, body.ticket(), id, false);
+        String label = "EMAIL".equals(body.field()) ? "e-mail address" : "phone number";
+        support.act(id, ticket, "CONTACT_EDITED", "EMAIL".equals(body.field()) ? "personal_email" : "mobile", value, value, body.reason().trim(), null, null,
+                Map.of("summary", "The " + label + " from a department's upload confirmed with the student"));
+        return Map.of("field", body.field(), "confirmed", true);
     }
 
     /* ── the photograph ── */

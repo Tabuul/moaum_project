@@ -87,14 +87,26 @@ class CandidateDataController {
                 """).param("s", s).query().listOfRows()
                 .forEach(r -> held.put(String.valueOf(r.get("kind")), new Held(((Number) r.get("total")).longValue(), ((Number) r.get("matched")).longValue(),
                         ((Number) r.get("pending")).longValue(), ((Number) r.get("unreadable")).longValue())));
+        // V577: the session's committed numbers (admissions.candidate_is_committed's rule) and each candidate's files read once,
+        // not five lookups a candidate: about 0.7–2 s to 0.3–0.5 s for 12,649 candidates on the live-shaped copy, the same rows
         List<Candidate> candidates = jdbc.sql("""
+                WITH committed AS MATERIALIZED (
+                    SELECT DISTINCT r.jamb_key FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
+                     WHERE r.session = :s AND NOT r.withdrawn AND b.committed_at IS NOT NULL),
+                att AS MATERIALIZED (
+                    SELECT a.candidate_id, bool_or(a.kind = 'PASSPORT') AS passport,
+                           bool_or(a.kind = 'PASSPORT' AND (a.object_id IS NOT NULL OR jsonb_exists(a.payload, 'dataUrl'))) AS passport_image,
+                           bool_or(a.kind = 'DATE_OF_BIRTH') AS dob, bool_or(a.kind = 'OLEVEL') AS olevel
+                      FROM admissions.attachment a
+                     WHERE a.candidate_id IN (SELECT c.id FROM admissions.candidate c WHERE c.session = :s)
+                     GROUP BY a.candidate_id)
                 SELECT c.id, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
-                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT') AS has_passport,
-                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'PASSPORT' AND (jsonb_exists(a.payload, 'dataUrl') OR a.object_id IS NOT NULL)) AS has_passport_image,
-                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'DATE_OF_BIRTH') AS has_dob,
-                       EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.candidate_id = c.id AND a.kind = 'OLEVEL') AS has_olevel,
-                       admissions.candidate_is_committed(c.session, c.jamb_key) AS committed
-                  FROM admissions.candidate c WHERE c.session = :s ORDER BY c.surname, c.other_names
+                       coalesce(att.passport, false) AS has_passport, coalesce(att.passport_image, false) AS has_passport_image,
+                       coalesce(att.dob, false) AS has_dob, coalesce(att.olevel, false) AS has_olevel, (k.jamb_key IS NOT NULL) AS committed
+                  FROM admissions.candidate c
+                  LEFT JOIN att ON att.candidate_id = c.id
+                  LEFT JOIN committed k ON k.jamb_key = c.jamb_key
+                 WHERE c.session = :s ORDER BY c.surname, c.other_names, c.id
                 """).param("s", s).query(Candidate.class).list();
         return new State(s, intake.attachmentState(s), held, candidates);
     }
