@@ -133,6 +133,11 @@ public class StudentAuthService {
                courses under it; matriculation issues the matric number afterwards */
             if (s == null || (s.matricNo() == null && s.admissionNo() == null)) {
                 repo.event(matricNo, s == null ? null : s.id(), "UNKNOWN", ip);
+                // V579: a number the Registry corrected is answered as such, without saying the new one
+                if (s == null && repo.correctedNumber(matricNo)) {
+                    return new DomainRuleViolation("STUDENT_NUMBER_CORRECTED", "This matriculation number was corrected.",
+                            new DomainRuleViolation.Remedy("Sign in with your new matriculation number. The University sent it to the e-mail and phone it holds for you; not received it? Ask the Registry or ICT Support.", "Registry"));
+                }
                 return badCredentials();
             }
             StudentPortalRepository.Account a = repo.account(s.id()).orElse(null);

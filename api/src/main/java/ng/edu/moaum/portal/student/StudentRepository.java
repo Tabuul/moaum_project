@@ -54,7 +54,8 @@ class StudentRepository {
                         OR s.admission_no ILIKE CAST(:like AS text)
                         OR s.surname ILIKE CAST(:like AS text)
                         OR s.other_names ILIKE CAST(:like AS text)
-                        OR (s.surname || ' ' || s.other_names) ILIKE CAST(:like AS text))
+                        OR (s.surname || ' ' || s.other_names) ILIKE CAST(:like AS text)
+                        OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE CAST(:like AS text)))
                  ORDER BY s.surname, s.other_names
                  LIMIT 2000
                 """), scope)

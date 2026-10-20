@@ -60,6 +60,12 @@ class StudentPortalRepository {
         return found.stream().findFirst();
     }
 
+    /** V579: a former matriculation number, kept when the Registry corrected it: it opens nothing, and the door says so */
+    boolean correctedNumber(String number) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.matric_alias WHERE upper(old_no) = upper(btrim(:n)) AND ended_at IS NULL)")
+                .param("n", number == null ? "" : number).query(Boolean.class).single());
+    }
+
     Optional<Student> byId(UUID id) {
         return jdbc.sql(STUDENT + " WHERE s.id = :id").param("id", id).query(Student.class).optional();
     }

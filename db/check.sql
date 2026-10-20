@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 410
+\set EXPECTED 411
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20192,6 +20192,121 @@ BEGIN
                  AND att_new = att_rule, false),
         format('kept %s same %s invalid after %s | migrated %s/%s/%s rule %s/%s/%s | findings %s rule %s',
                kept, same, invalid_after, mig.migrated, mig.cleared, mig.uncleared, mig_rule.migrated, mig_rule.cleared, mig_rule.uncleared, att_new, att_rule));
+END $$;
+-- ── V579. A matriculation number corrected, the old number kept. Two made-up students of one programme, A and B. The
+--          configuration proposes A's number under the programme's codes, same year and sequence. Refused before anything is
+--          written: B's number (already assigned), a non-number, a plain edit (BR-007 stands). Prepared by the Academic Office;
+--          a second correction of A waits behind it; B cannot be given the number proposed for A. Refused at the decision: the
+--          officer who prepared it, the Bursary, the Director of ICT on a data-entry error. Approved by the Registry: A's number
+--          changed and nothing else, the old number a former number that resolves to A, that the generator and an upload never
+--          give again, the sign-in moved, the number on the history (the series' counter where it was). Given back by a second correction (A's own former number), rejected and cancelled
+--          ones for B; A's history reads the three numbers. The block undoes its writes ──
+DO $$
+DECLARE prog text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); x uuid := gen_random_uuid();
+        off1 uuid := '00000000-0000-0000-0000-0000000579a1'; off2 uuid := '00000000-0000-0000-0000-0000000579b2'; off3 uuid := '00000000-0000-0000-0000-0000000579c3';
+        old_a text := 'MOAU/ZQ/ZQ/74/97901'; no_b text := 'MOAU/ZQ/ZQ/74/97902'; sugg text; chk_taken text; chk_shape text; chk_ok jsonb; edit_refused boolean := false;
+        prep jsonb; corr uuid; again text; b_taken text; same_officer text; bursary text; ict text; done jsonb; now_a text; former text; resolved text; found text;
+        gen_taken text; upload_refused text; signin text; back jsonb; back_points text; alias_live text; rej_short text; rej jsonb; canc jsonb; hist text; unchanged boolean; msg text; v_series text; last_before bigint; written boolean; series_same boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V579', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), '2374/2375', DATE '2374-10-01', DATE '2375-08-31');
+        SELECT p.code INTO prog FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(p.matric_faculty_code, f.matric_code) IS NOT NULL
+           AND (NOT p.matric_uses_code OR p.matric_code IS NOT NULL)
+           AND EXISTS (SELECT 1 FROM people.matric_series ms WHERE ms.code = coalesce(p.matric_series, f.matric_series, 'GENERAL') AND ms.active)
+         ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/74/979001', old_a, 'CHECKV579', 'Alpha', prog, 'UTME', '2374/2375', 100, 200, 'ACTIVE', now()),
+            (b, 'MOAUM/ADM/74/979002', no_b, 'CHECKV579', 'Bravo', prog, 'UTME', '2374/2375', 100, 200, 'ACTIVE', now());
+
+        v_series := (SELECT c.series_code FROM people.matric_components(a) c);
+        last_before := (SELECT last_issued FROM people.matric_series WHERE code = v_series);
+        sugg := (SELECT g.matric_no FROM people.matric_correction_suggestions(a) g ORDER BY g.label LIKE 'The same%' DESC LIMIT 1);
+        chk_taken := (SELECT people.matric_correction_check(a, no_b)->'problems'->0->>'message');
+        chk_shape := (SELECT people.matric_correction_check(a, 'not a number')->'problems'->0->>'code');
+        chk_ok := people.matric_correction_check(a, sugg);
+        BEGIN UPDATE people.student SET matric_no = sugg WHERE id = a;
+        EXCEPTION WHEN check_violation THEN edit_refused := true; END;
+
+        prep := people.prepare_matric_correction(a, lower(sugg), 'PROGRAMME_CODE', 'The programme code was imported wrongly from the old portal', 'REG/MEMO/74/1');
+        corr := (prep->>'id')::uuid;
+        BEGIN PERFORM people.prepare_matric_correction(a, sugg || '9', 'DATA_ENTRY', 'a second correction while one waits');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS again = MESSAGE_TEXT; END;
+        BEGIN PERFORM people.prepare_matric_correction(b, sugg, 'DATA_ENTRY', 'the number proposed for another student');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS b_taken = MESSAGE_TEXT; END;
+        BEGIN PERFORM people.decide_matric_correction(corr, true, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS same_officer = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM people.decide_matric_correction(corr, true, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS bursary = MESSAGE_TEXT; END;
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        BEGIN PERFORM people.decide_matric_correction(corr, true, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS ict = MESSAGE_TEXT; END;
+
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        done := people.decide_matric_correction(corr, true, 'Checked against the matriculation register');
+        now_a := (SELECT matric_no FROM people.student WHERE id = a);
+        former := (SELECT string_agg(old_no, ',') FROM people.matric_alias WHERE student_id = a AND ended_at IS NULL);
+        resolved := (SELECT matched || ':' || (student_id = a) || ':' || matric_no FROM people.student_of_number(lower(old_a)));
+        found := (SELECT former_no || '>' || matric_no FROM people.matric_correction_search(old_a) WHERE student_id = a);
+        gen_taken := people.matric_number_taken(old_a, NULL, NULL, NULL);
+        BEGIN
+            INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (x, old_a, 'CHECKV579', 'Upload', prog, 'UTME', '2374/2375', 100, 200, 'ACTIVE', now());
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS upload_refused = MESSAGE_TEXT; END;
+        signin := (SELECT previous_username || '>' || new_username FROM people.student_username_change WHERE student_id = a ORDER BY changed_at DESC LIMIT 1);
+        written := EXISTS (SELECT 1 FROM people.matric_history h WHERE h.student_id = a AND h.matric_no = sugg AND h.series_code = v_series AND h.components ? 'correction');
+        series_same := (SELECT last_issued FROM people.matric_series WHERE code = v_series) = last_before;
+        unchanged := (SELECT s.admission_no = 'MOAUM/ADM/74/979001' AND s.current_level = 200 AND s.programme_code = prog AND s.status = 'ACTIVE' FROM people.student s WHERE s.id = a);
+
+        -- the number given back by a second correction: the student's own former number
+        PERFORM set_config('moaum.actor_id', off3::text, true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        back := people.prepare_matric_correction(a, old_a, 'OTHER', 'The first correction was made in error', NULL);
+        back_points := (SELECT string_agg(p->>'code', ',' ORDER BY p->>'code') FROM jsonb_array_elements(back->'check'->'points') p WHERE p->>'code' IN ('FORMER', 'SIGN_IN'));
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'dregistrar', true);
+        PERFORM people.decide_matric_correction((back->>'id')::uuid, true, NULL);
+        alias_live := (SELECT string_agg(old_no, ',') FROM people.matric_alias WHERE student_id = a AND ended_at IS NULL);
+
+        -- B: rejected with a reason, then cancelled
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        rej := people.prepare_matric_correction(b, 'MOAU/ZQ/ZQ/74/97903', 'SEQUENCE', 'The sequence was keyed with a slip', NULL);
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM people.decide_matric_correction((rej->>'id')::uuid, false, 'no');
+        EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS rej_short = MESSAGE_TEXT; END;
+        rej := people.decide_matric_correction((rej->>'id')::uuid, false, 'The register shows the number as issued');
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        canc := people.prepare_matric_correction(b, 'MOAU/ZQ/ZQ/74/97903', 'SEQUENCE', 'The sequence was keyed with a slip', NULL);
+        canc := people.cancel_matric_correction((canc->>'id')::uuid, 'Prepared against the wrong student');
+        hist := (SELECT string_agg(h.event, ',' ORDER BY h.event) FROM people.matric_number_history(a) h);
+        RAISE EXCEPTION 'the V579 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V579 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V579: a matriculation number is corrected by one officer''s preparation and another''s decision, the old number kept, resolving to the student and never given again',
+        coalesce(sugg LIKE '%/74/97901' AND sugg <> old_a AND chk_taken LIKE 'MATRICULATION NUMBER ALREADY ASSIGNED: ' || no_b || '%' AND chk_shape = 'SHAPE'
+                 AND (chk_ok->>'ok')::boolean AND (chk_ok->'parts'->>'sequence')::bigint = 97901 AND edit_refused
+                 AND prep->>'ref' LIKE 'MCR/%' AND again LIKE 'MATRIC_CORRECTION_PENDING%' AND b_taken LIKE 'MATRIC_CORRECTION_TAKEN%'
+                 AND same_officer LIKE 'MATRIC_CORRECTION_SAME_OFFICER%' AND bursary LIKE 'MATRIC_CORRECTION_DECIDER%' AND ict LIKE 'MATRIC_CORRECTION_DECIDER%'
+                 AND done->>'state' = 'COMPLETED' AND now_a = sugg AND former = old_a AND resolved = 'CORRECTED:true:' || sugg AND found = old_a || '>' || sugg
+                 AND gen_taken LIKE 'Number is a former number of CHECKV579%' AND upload_refused LIKE 'MATRIC_NUMBER_CORRECTED: ' || old_a || ' was corrected to ' || sugg || '%'
+                 AND signin = old_a || '>' || sugg AND unchanged AND written AND series_same
+                 AND back_points = 'FORMER,SIGN_IN' AND alias_live = sugg
+                 AND rej_short LIKE 'MATRIC_CORRECTION_NOTE%' AND rej->>'state' = 'REJECTED' AND canc->>'state' = 'CANCELLED'
+                 AND hist = 'CORRECTED,CORRECTED,ON_THE_REGISTER', false),
+        format('prog %s suggested %s | taken %s shape %s ok %s edit refused %s | prepared %s again %s B %s | same %s bursary %s ict %s | done %s now %s former %s resolved %s found %s gen %s upload %s sign-in %s unchanged %s history row %s series kept %s | back %s live %s | rejected %s/%s cancelled %s | history %s',
+               prog, sugg, left(chk_taken, 60), chk_shape, chk_ok->>'ok', edit_refused, prep->>'ref', left(again, 28), left(b_taken, 26), left(same_officer, 32),
+               left(bursary, 28), left(ict, 28), done->>'state', now_a, former, resolved, found, left(gen_taken, 40), left(upload_refused, 60), signin, unchanged, written, series_same,
+               back_points, alias_live, left(rej_short, 24), rej->>'state', canc->>'state', hist));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

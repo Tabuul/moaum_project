@@ -128,6 +128,7 @@ export const ROUTES: Record<string, string> = {
   "t/matriculation": "/matriculation",
   "t/matriculation-config": "/matriculation/config",
   "t/matriculation-manage": "/matriculation/manage",
+  "t/matriccorrection": "/matriculation/corrections",
   "t/reports": "/reports",
   "t/studentstats": "/stats",
   "t/studentquery": "/student-query",

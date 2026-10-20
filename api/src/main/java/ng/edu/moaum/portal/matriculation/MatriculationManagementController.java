@@ -416,6 +416,13 @@ class MatriculationManagementController {
                   FROM people.student_username_change u LEFT JOIN people.matric_batch b ON b.id = u.batch_id WHERE u.student_id = :id ORDER BY u.changed_at DESC
                 """).param("id", id).query().listOfRows());
         out.put("history", jdbc.sql("SELECT h.matric_no, h.series_code, h.sequence, h.issued_at, h.reason, h.actor_office FROM people.matric_history h WHERE h.student_id = :id ORDER BY h.issued_at DESC").param("id", id).query().listOfRows());
+        // V579: the numbers through time, and the corrections prepared, made, rejected or cancelled
+        out.put("numberHistory", jdbc.sql("SELECT h.at, h.event, h.matric_no, h.previous_no, h.ref, h.reason, h.by_name, h.office FROM people.matric_number_history(:id) h")
+                .param("id", id).query().listOfRows());
+        out.put("corrections", jdbc.sql("""
+                SELECT c.id, c.ref, c.old_no, c.new_no, c.kind, c.reason, c.state, c.prepared_at, c.prepared_by_name, c.decided_at, c.decided_by_name, c.decision_note
+                  FROM people.matric_corrections(NULL, NULL, :id, 50) c
+                """).param("id", id).query().listOfRows());
         out.put("proposals", jdbc.sql("""
                 SELECT br.proposed_no, br.state, br.problems, br.edited, b.ref AS batch_ref, b.state AS batch_state FROM people.matric_batch_row br JOIN people.matric_batch b ON b.id = br.batch_id WHERE br.student_id = :id ORDER BY b.prepared_at DESC
                 """).param("id", id).query().listOfRows());

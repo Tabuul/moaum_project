@@ -51,6 +51,11 @@ export interface StudentMatricRecord {
   usernameHistory: { previous_username: string | null; new_username: string; reason: string; changed_at: string; office: string | null; batch_ref: string | null; officer: string | null }[];
   history: { matric_no: string; series_code: string; sequence: number; issued_at: string; reason: string | null; actor_office: string | null }[];
   proposals: { proposed_no: string | null; state: RowState; problems: string[]; edited: boolean; batch_ref: string; batch_state: BatchState }[];
+  /** V579: the number through time — issued, on the register from the old portal, corrected */
+  numberHistory?: { at: string | null; event: "ISSUED" | "ON_THE_REGISTER" | "CORRECTED"; matric_no: string; previous_no: string | null; ref: string | null; reason: string | null; by_name: string | null; office: string | null }[];
+  /** V579: the corrections of the number, prepared, made, rejected or cancelled */
+  corrections?: { id: string; ref: string; old_no: string; new_no: string; kind: string; reason: string; state: "PENDING_REVIEW" | "COMPLETED" | "REJECTED" | "CANCELLED";
+                  prepared_at: string; prepared_by_name: string | null; decided_at: string | null; decided_by_name: string | null; decision_note: string | null }[];
 }
 
 export const BATCH_WORD: Record<BatchState, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {

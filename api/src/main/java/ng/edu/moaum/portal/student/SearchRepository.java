@@ -27,7 +27,9 @@ class SearchRepository {
                 SELECT 'students' AS kind,
                        coalesce(s.matric_no, s.admission_no, '—') AS identifier,
                        s.surname || ', ' || s.other_names AS name,
-                       p.name || ' · ' || s.current_level || ' Level' AS detail,
+                       p.name || ' · ' || s.current_level || ' Level'
+                         || coalesce(' · Matriculation number corrected from ' || (SELECT string_agg(a.old_no, ', ') FROM people.matric_alias a
+                                                                                    WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE :like), '') AS detail,
                        s.status, s.id::text AS id
                   FROM people.student s
                   JOIN ref.programme p ON p.code = s.programme_code
@@ -35,6 +37,7 @@ class SearchRepository {
                     OR s.surname ILIKE :like OR s.other_names ILIKE :like
                     OR (s.surname || ' ' || s.other_names) ILIKE :like
                     OR s.jamb_reg_no ILIKE :like
+                    OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE :like)
                  ORDER BY s.surname, s.other_names
                  LIMIT 200
                 """).param("like", like).query(SearchHit.class).list();

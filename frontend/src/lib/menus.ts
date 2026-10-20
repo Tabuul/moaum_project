@@ -612,6 +612,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation", "badge": "!" },
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
+          { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
@@ -1054,7 +1055,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
-          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" }
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
+          { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" }
         ]
       },
       {
@@ -1115,6 +1117,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation" },
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
+          { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance" },
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
@@ -1260,7 +1263,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
-          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" }
+          { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
+          { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" }
         ]
       },
       {
@@ -1369,6 +1373,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation" },
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
+          { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/programmemerge", "icon": "swap", "label": "Programme Merge" },
@@ -1472,6 +1477,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
+          { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
@@ -2733,6 +2739,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
 { "id": "t/supportlevels", "icon": "cap", "label": "Student Level Management" },
 { "id": "t/supportlevelhistory", "icon": "clock", "label": "Level Change History" },
+{ "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" },
 { "id": "t/supportpayments", "icon": "card", "label": "Payment Support" },
 { "id": "t/supportjupeb", "icon": "cap", "label": "JUPEB Student Support" },
 { "id": "t/supportaudit", "icon": "shield", "label": "Support Action History" },

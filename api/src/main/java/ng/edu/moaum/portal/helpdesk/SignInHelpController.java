@@ -84,9 +84,16 @@ class SignInHelpController {
         return number == null ? "" : number.replaceAll("\\s+", "").toUpperCase(java.util.Locale.ROOT);
     }
 
-    /** whether a student holds the number — the matriculation number, or the admission number before one is issued */
+    /** whether a student holds the number — the matriculation number, or the admission number before one is issued, or a former
+     *  matriculation number the Registry corrected (V579) */
     private boolean studentHolds(String number) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student WHERE upper(matric_no) = :n OR upper(admission_no) = :n)")
+                .param("n", number).query(Boolean.class).single()) || corrected(number);
+    }
+
+    /** V579: a former matriculation number, kept when the Registry corrected it */
+    private boolean corrected(String number) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.matric_alias WHERE upper(old_no) = :n AND ended_at IS NULL)")
                 .param("n", number).query(Boolean.class).single());
     }
 
@@ -107,7 +114,8 @@ class SignInHelpController {
             return Map.of("applies", true, "found", false);
         }
         throttle.take(Throttle.Door.SIGN_IN_HELP_CHECK, ClientAddress.of(request));
-        return Map.of("applies", true, "found", studentHolds(n));
+        // V579: a former number the Registry corrected is said as such; any other answer stays whether a student holds the number
+        return corrected(n) ? Map.of("applies", true, "found", true, "corrected", true) : Map.of("applies", true, "found", studentHolds(n));
     }
 
     @PostMapping

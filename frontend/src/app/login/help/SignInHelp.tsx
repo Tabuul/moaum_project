@@ -23,7 +23,7 @@ const LEAD = <>Cannot sign in? Tell the Directorate of ICT. The desk never asks 
 /** the account type names the student portal ("Student portal", as the desk words it) — the API's own test */
 const studentPortal = (accountType: string | undefined) => (accountType ?? "").toLowerCase().includes("student");
 
-type NumberCheck = { state: "checking" | "found" | "missing" | "slow"; words?: string };
+type NumberCheck = { state: "checking" | "found" | "corrected" | "missing" | "slow"; words?: string };
 
 export function SignInHelp({ reachable, open, fields }: { reachable: boolean; open: boolean; fields: HelpField[] }) {
   const [f, setF] = useState<Record<string, string>>({});
@@ -52,7 +52,7 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
         if (mine !== seq.current) return;
         if (r.status === 429) { setNumberCheck({ state: "slow", words: j?.detail ?? "Too many checks from this connection; wait a few minutes." }); return; }
         if (!r.ok || !j?.applies) { setNumberCheck(null); return; }
-        setNumberCheck({ state: j.found ? "found" : "missing" });
+        setNumberCheck({ state: j.corrected ? "corrected" : j.found ? "found" : "missing" });
       } catch {
         if (mine === seq.current) setNumberCheck(null);
       }
@@ -118,7 +118,8 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
             {fields.filter((x) => x.type !== "file").map((x) => (
               <Field key={x.key} id={`sh-${x.key}`} label={x.label} required={x.required}
                 hint={x.key === "username" && studentPortal(details.account_type) && numberCheck
-                  ? numberCheck.state === "checking" ? "Checking the register…" : numberCheck.state === "found" ? "✓ A student record holds this number." : numberCheck.state === "slow" ? numberCheck.words : x.hint
+                  ? numberCheck.state === "checking" ? "Checking the register…" : numberCheck.state === "found" ? "✓ A student record holds this number."
+                    : numberCheck.state === "corrected" ? "This matriculation number was corrected: sign in with your new number. The University sent it to the e-mail and phone it holds for you; if you have not received it, ask here." : numberCheck.state === "slow" ? numberCheck.words : x.hint
                   : x.hint}
                 error={x.key === "username" && numberUnknown
                   ? "No student record holds this number. Type it as it is on your identity card, or your admission number if you have no matriculation number yet; if it is right, visit the Registry with your admission letter."

@@ -3,7 +3,7 @@
 /** The student's matriculation, before and after (V267): the number, the date, the status, the sign-in username as it was and as it is. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
-import { Note, Panel, PBody, Pil, KvGrid } from "@/components/proto/ui";
+import { LinkBtn, Note, Panel, PBody, Pil, KvGrid } from "@/components/proto/ui";
 import { dayOf, whenAt, type StudentMatricRecord } from "@/lib/matric-manage";
 
 export function MatriculationPanel({ studentId }: { studentId: string }) {
@@ -20,6 +20,9 @@ export function MatriculationPanel({ studentId }: { studentId: string }) {
   if (!rec) return <Panel title="Matriculation"><PBody><div className="sub2">Reading…</div></PBody></Panel>;
   const before = rec.usernameHistory.length ? rec.usernameHistory[rec.usernameHistory.length - 1].previous_username : rec.admission_no;
   const open = rec.proposals.find((p) => p.state === "PROPOSED" && p.batch_state !== "CANCELLED");
+  // V579: the number's corrections — the one made last, and one waiting for a decision
+  const corrected = (rec.corrections ?? []).find((c) => c.state === "COMPLETED");
+  const waiting = (rec.corrections ?? []).find((c) => c.state === "PENDING_REVIEW");
   return (
     <Panel title="Matriculation" right={<Pil kind={rec.matriculation_status === "MATRICULATED" ? "ok" : "info"}>{rec.matriculation_status === "MATRICULATED" ? "MATRICULATED" : "PRE-MATRICULATION"}</Pil>}>
       <PBody>
@@ -27,11 +30,14 @@ export function MatriculationPanel({ studentId }: { studentId: string }) {
           <>
             <div className="eyebrow">Matriculation number</div>
             <div className="t-lg b700 tnum mb-2">{rec.matric_no}</div>
+            {corrected ? <div className="sub2 mb-2"><Pil kind="info">Corrected</Pil> from <span className="tnum">{corrected.old_no}</span> ({corrected.ref}, {dayOf(corrected.decided_at)}); the old number is kept and still finds this record.</div> : null}
+            {waiting ? <Note kind="info" title={`${waiting.ref}: a correction to ${waiting.new_no} waits for a decision`} action={<LinkBtn size="sm" href={`/matriculation/corrections?student=${rec.id}`}>Open</LinkBtn>}>{waiting.reason}</Note> : null}
             <KvGrid cls="grid--3" pairs={[["Matriculation date", dayOf(rec.matriculated_at)], ["Batch / run", rec.batch_ref ?? rec.run_ref ?? "—"], ["Portal sign-in username", <b key="u" className="tnum">{rec.username}</b>]]} />
             <div className="grid grid--2 mt-2">
               <div><div className="eyebrow mb-1">Before</div><div className="sub2">Username: <span className="tnum">{before ?? "—"}</span></div><div className="sub2">Status: Admitted / Pre-matriculation</div><div className="sub2">Matric number: Not assigned</div></div>
               <div><div className="eyebrow mb-1">After</div><div className="sub2">Username: <b className="tnum">{rec.matric_no}</b></div><div className="sub2">Status: Matriculated</div><div className="sub2">Matric number: <b className="tnum">{rec.matric_no}</b> · {dayOf(rec.matriculated_at)}</div></div>
             </div>
+            {(rec.numberHistory ?? []).some((h) => h.event === "CORRECTED") ? <div className="mt-2"><div className="eyebrow mb-1">Matriculation number history</div>{(rec.numberHistory ?? []).map((h, i) => <div key={i} className="sub2">{whenAt(h.at)} · {h.event === "CORRECTED" ? <>corrected <span className="tnum">{h.previous_no}</span> → <b className="tnum">{h.matric_no}</b></> : h.event === "ISSUED" ? <>issued <b className="tnum">{h.matric_no}</b></> : <>on the register as <b className="tnum">{h.matric_no}</b></>}{h.ref ? ` · ${h.ref}` : ""}{h.by_name ? ` · ${h.by_name}` : ""}{h.office ? ` (${h.office})` : ""}{h.event === "CORRECTED" && h.reason ? ` · ${h.reason}` : ""}</div>)}</div> : null}
             {rec.usernameHistory.length ? <div className="mt-2"><div className="eyebrow mb-1">Username history</div>{rec.usernameHistory.map((u, i) => <div key={i} className="sub2">{whenAt(u.changed_at)} · {u.previous_username ?? "—"} → <b className="tnum">{u.new_username}</b> · {u.reason}{u.officer ? ` · ${u.officer}` : ""}{u.office ? ` (${u.office})` : ""}{u.batch_ref ? ` · ${u.batch_ref}` : ""}</div>)}</div> : null}
           </>
         ) : (
