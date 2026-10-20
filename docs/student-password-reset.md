@@ -185,3 +185,6 @@ A contact a department uploaded is held unconfirmed until the student confirms i
 - the desk's reset link, a bulk reset's included, is refused with `AUTH_CONTACT_UNCONFIRMED`.
 
 Notices still reach it.
+
+V596: an e-mail or phone a student gives on the sign-in help form, saved to a record that held none, is held unconfirmed in the
+same way (docs/ticket-password-reset.md, *The sign-in help form*).

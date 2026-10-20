@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 427
+\set EXPECTED 428
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21392,6 +21392,52 @@ BEGIN
                a1.spillover_years, a1.spillover_state, a1.expected_completion, a1.computed_level, a2.spillover_years, a2.spillover_state, a2.expected_completion,
                a3.spillover_years, a3.spillover_state, a3.expected_completion, a4.spillover_years, a4.spillover_state, a4.expected_completion,
                a5.spillover_years, a5.spillover_state, a5.expected_completion, a6.spillover_years, a6.spillover_state, a6.expected_completion));
+END $$;
+
+-- ── V596. The sign-in help form shortened, the student shown masked, a missing contact saved unconfirmed. An invented student
+--          with no e-mail and an invented student with both. The number typed in lower case with a space names the first by name
+--          with no contact held; the second's e-mail and phone come back masked, never in full. A request with only the account
+--          and the number (no description, no "what the portal says") is taken and says what it is about. The first student's
+--          record takes the e-mail and phone given, unconfirmed (no reset link goes there yet); the second keeps their own. The
+--          block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); t uuid;
+        shown_a text; shown_b text; leaked boolean; descr text; saved_a text; saved_b text; record_a text; reach_a text; record_b text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'CHECK V596', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/96/059601', 'MOAUM/ADM/96/596001', 'CHECKHELPA', 'No Contact', 'C00023', 'UTME', '2096/2097', 100, 100, 'ACTIVE', now()),
+            (b, 'MOAUM/CHK/96/059602', 'MOAUM/ADM/96/596002', 'CHECKHELPB', 'Has Contact', 'C00023', 'UTME', '2096/2097', 100, 100, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, email, phone) VALUES (b, 'checkhelpb.own@example.com', '08035960002');
+
+        shown_a := (SELECT x.name || ':' || coalesce(x.email, '-') || ':' || coalesce(x.phone, '-') || ':' || x.has_email || ':' || x.has_phone
+                      FROM helpdesk.sign_in_help_student(' moaum/chk/96/ 059601') x);
+        shown_b := (SELECT x.email || ':' || x.phone || ':' || x.has_email || ':' || x.has_phone FROM helpdesk.sign_in_help_student('MOAUM/CHK/96/059602') x);
+        leaked := (SELECT x.email LIKE '%checkhelpb.own%' OR x.phone LIKE '%59600%' FROM helpdesk.sign_in_help_student('MOAUM/CHK/96/059602') x);
+
+        t := helpdesk.submit_public('Checkhelpa No Contact', 'checkv596a@example.com', '+234 803 596 0001',
+                                    jsonb_build_object('account_type', 'Student portal', 'username', 'MOAUM/CHK/96/059601'), NULL);
+        descr := (SELECT description FROM helpdesk.ticket WHERE id = t);
+        saved_a := people.contact_from_sign_in(a, 'CheckV596A@Example.com', '+234 803 596 0001');
+        saved_b := people.contact_from_sign_in(b, 'someone.else@example.com', '08039999999');
+        record_a := (SELECT c.email || ':' || c.email_pending || ':' || c.phone || ':' || c.phone_pending FROM people.student_contact c WHERE c.student_id = a);
+        reach_a := (SELECT coalesce(r.email, '-') || ':' || coalesce(r.unconfirmed_email, '-') FROM people.student_reset_reach(a) r);
+        record_b := (SELECT c.email || ':' || c.email_pending || ':' || c.phone FROM people.student_contact c WHERE c.student_id = b);
+        RAISE EXCEPTION 'the V596 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V596 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V596: the sign-in help names the student by the number with the contacts masked, takes a request without a description, and saves a missing contact unconfirmed',
+        coalesce(shown_a = 'CHECKHELPA No Contact:-:-:false:false' AND shown_b = 'c•••••n@example.com:0803•••0002:true:true' AND NOT leaked
+                 AND descr = 'Cannot sign in to the student portal with MOAUM/CHK/96/059601.'
+                 AND saved_a = 'EMAIL,PHONE' AND saved_b = '' AND record_a = 'checkv596a@example.com:true:08035960001:true'
+                 AND reach_a = '-:checkv596a@example.com' AND record_b = 'checkhelpb.own@example.com:false:08035960002', false),
+        format('a %s | b %s leaked %s | description %s | saved %s / %s | record a %s reach %s | record b %s',
+               shown_a, shown_b, leaked, descr, saved_a, saved_b, record_a, reach_a, record_b));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -55,6 +55,9 @@ class HelpdeskIT {
         otherToken = TestTokens.token(other, List.of("student"));
         agentId = it.person("MOAUM/IT/HD01", "ZZHDAGENT");
         it.db(() -> {
+            // V596: the sign-in help saves the e-mail and phone it is given to a student record that holds none, and the tickets
+            // a student raises in the portal reach the record's e-mail; each test starts from the two students holding none
+            jdbc.sql("DELETE FROM people.student_contact WHERE student_id IN (:s, :o)").param("s", student).param("o", other).update();
             jdbc.sql("UPDATE iam.person SET email = 'agent@example.edu' WHERE id = :id").param("id", agentId).update();
             jdbc.sql("""
                     INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
@@ -233,7 +236,8 @@ class HelpdeskIT {
         assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
         String number = String.valueOf(path(asked.getBody(), "number"));
         assertThat(number).matches("TICK-\\d{4}-\\d{5}");
-        assertThat(asked.getBody()).containsOnlyKeys("number", "status");
+        // V596: and what was saved to a student record that held no e-mail or phone (nothing else of the record)
+        assertThat(asked.getBody()).containsOnlyKeys("number", "status", "saved");
 
         // the ticket names no account, though the number given is a real student's; nothing the form did not ask is kept
         Map<String, Object> row = jdbc.sql("""

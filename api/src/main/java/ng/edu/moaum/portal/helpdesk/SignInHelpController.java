@@ -39,6 +39,12 @@ import org.springframework.web.bind.annotation.RestController;
  * no student holds is refused, so the desk is not sent numbers it cannot find. The check says only whether a student holds
  * the number, never whose it is, and each connection may check a limited number of times (Throttle, SIGN_IN_HELP_CHECK). An
  * email, or a staff or applicant name, is still never said to name an account.
+ *
+ * <p>V596 (the Head of the ICT Support Desk's choice of 20 October 2026): the check names the student a number belongs to — the
+ * name in full and the e-mail and phone on the record masked (helpdesk.sign_in_help_student), never in full — so the student
+ * recognises their own; the request asks only the account and the number (no "what the portal says", no "since when", no
+ * description); and when the student's record holds no e-mail or no phone, the one given is saved to it, unconfirmed until the
+ * student confirms it with a code at sign-in or the desk confirms it (people.contact_from_sign_in, V575's rule).
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk/sign-in-help")
@@ -71,7 +77,7 @@ class SignInHelpController {
     }
 
     public record Ask(@NotBlank @Size(max = 120) String name, @NotBlank @Size(max = 200) String email, @Size(max = 30) String phone,
-                      @NotBlank @Size(max = 4000) String description, Map<String, String> details) {
+                      @Size(max = 4000) String description, Map<String, String> details) {
     }
 
     /** the account type names the student portal ("Student portal", as the desk words it) */
@@ -101,8 +107,9 @@ class SignInHelpController {
     }
 
     /**
-     * Oct 2026: the number checked as it is typed, for the student portal only — whether a student holds it, never whose; every
-     * check counted against the connection (SIGN_IN_HELP_CHECK). A number in the body, not the address, so it is not logged.
+     * Oct 2026: the number checked as it is typed, for the student portal only — whether a student holds it; V596: and whose, by
+     * name, with the contacts on the record masked (never in full); every check counted against the connection
+     * (SIGN_IN_HELP_CHECK). A number in the body, not the address, so it is not logged.
      */
     @PostMapping("/check")
     Map<String, Object> check(@Valid @RequestBody Check body, HttpServletRequest request) {
@@ -114,8 +121,22 @@ class SignInHelpController {
             return Map.of("applies", true, "found", false);
         }
         throttle.take(Throttle.Door.SIGN_IN_HELP_CHECK, ClientAddress.of(request));
-        // V579: a former number the Registry corrected is said as such; any other answer stays whether a student holds the number
-        return corrected(n) ? Map.of("applies", true, "found", true, "corrected", true) : Map.of("applies", true, "found", studentHolds(n));
+        // V596: whose the number is — the name, and the contacts on the record masked; V579: a former number is said as such
+        Map<String, Object> who = jdbc.sql("SELECT corrected, name, email, phone, has_email, has_phone FROM helpdesk.sign_in_help_student(:n)")
+                .param("n", n).query().listOfRows().stream().findFirst().orElse(null);
+        if (who == null) {
+            return Map.of("applies", true, "found", studentHolds(n));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("applies", true);
+        out.put("found", true);
+        if (Boolean.TRUE.equals(who.get("corrected"))) out.put("corrected", true);
+        out.put("name", who.get("name"));
+        out.put("email", who.get("email"));
+        out.put("phone", who.get("phone"));
+        out.put("hasEmail", who.get("has_email"));
+        out.put("hasPhone", who.get("has_phone"));
+        return out;
     }
 
     @PostMapping
@@ -134,17 +155,26 @@ class SignInHelpController {
                     new DomainRuleViolation.Remedy("Type your matriculation number as it is on your identity card (or your admission number if you have no matriculation number yet). "
                             + "If it is right and still not found, visit the Registry with your admission letter.", "Registry"));
         }
+        String[] saved = {""};
         String number = AuditContextHolder.with(new AuditContext(NOBODY, "ict", "sign-in help asked from the sign-in page", null, from), () -> tx.execute(st -> {
             UUID id = jdbc.sql("SELECT helpdesk.submit_public(:n, :e, :p, :d::jsonb, :desc)")
                     .param("n", body.name()).param("e", body.email()).param("p", body.phone(), java.sql.Types.VARCHAR)
-                    .param("d", JSON.writeValueAsString(details)).param("desc", body.description())
+                    .param("d", JSON.writeValueAsString(details))
+                    .param("desc", body.description() == null || body.description().isBlank() ? null : body.description(), java.sql.Types.VARCHAR)
                     .query(UUID.class).single();
+            // V596: a student's record that holds no e-mail or phone takes the one given, unconfirmed (V575)
+            if (studentPortal(details.get("account_type"))) {
+                saved[0] = jdbc.sql("SELECT people.contact_from_sign_in(helpdesk.ticket_student('PUBLIC', :t, :u, :d::jsonb), :e, :p)")
+                        .param("t", id).param("u", details.get("username"), java.sql.Types.VARCHAR).param("d", JSON.writeValueAsString(details))
+                        .param("e", body.email()).param("p", body.phone(), java.sql.Types.VARCHAR).query(String.class).single();
+            }
             // routed as any Login Issues ticket is; with no faculty or department, to the queue's general agents or the Head
             jdbc.sql("SELECT helpdesk.route(:t)").param("t", id).query(String.class).single();
             notifier.submitted(id);
             return jdbc.sql("SELECT number FROM helpdesk.ticket WHERE id = :id").param("id", id).query(String.class).single();
         }));
-        return Map.of("number", number, "status", "SUBMITTED");
+        return Map.of("number", number, "status", "SUBMITTED",
+                "saved", saved[0] == null || saved[0].isBlank() ? java.util.List.of() : java.util.List.of(saved[0].split(",")));
     }
 
     private Set<String> declaredKeys() {

@@ -75,6 +75,25 @@ of them asked from the sign-in page.
   them in Support Mode. The queue's *Password reset* column reads *Not eligible — no student holds the number given* when there is
   no match.
 
+## The sign-in help form (V596)
+
+The form at `/login/help` asks less and says whose a number is. These were the Head of the ICT Support Desk's choices of 20 October
+2026.
+
+- **Asked.** The form asks only the account type, the number, the name, the e-mail and the phone. It no longer asks what the portal
+  says, when the problem started or what happened. `helpdesk.submit_public`, restated from V363's text, requires only the account
+  type and the number of the Login Issues fields. A request without a description says what it is about, for example "Cannot sign
+  in to the student portal with MOAU/SC/CSC/26/10001." The in-portal ticket form keeps the category's fields as they are.
+- **Whose number it is.** As a student-portal number is typed, the form names the student and shows the e-mail and phone on the
+  record masked (`a•••••e@gmail.com`, `0803•••4567`), never in full. A person stepping through numbers therefore collects no one's
+  contacts. The answer comes from `helpdesk.sign_in_help_student` (`POST /api/v1/helpdesk/sign-in-help/check`), with the same
+  throttle as before. The name fills *Your name* when that is still empty.
+- **A missing contact saved.** When the record holds no e-mail, or no phone, the one given on the request is saved to it
+  (`people.contact_from_sign_in`; a phone given as +234 is kept as 0 and ten digits). It is held unconfirmed as an uploaded contact
+  is (V575): notices reach it, but a password-reset link goes there only after the student confirms it with a code at sign-in, or
+  the desk confirms it with them. A contact the record already holds is never replaced. The answer to the request says what was
+  saved (`saved`: EMAIL, PHONE), and the form tells the student.
+
 ## Bulk Password Reset lists the tickets (V594)
 
 *ICT Support → Bulk Password Reset* lists only the open Login Issues tickets within your reach, the oldest first. Each shows:
