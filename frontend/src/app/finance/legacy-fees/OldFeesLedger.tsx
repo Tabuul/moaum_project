@@ -26,10 +26,12 @@ export function OldFeesLedger({ may, tick = 0 }: { may: boolean; tick?: number }
   const [said, setSaid] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const asked = `${tick}#${own}`;
-  const loading = answered !== asked;
+  // V591: the ledger is the Bursary's — an office that holds the desk without it (the Students Account Officer) never reads it
+  const loading = may && answered !== asked;
 
   useEffect(() => {
     let alive = true;
+    if (!may) return () => { alive = false; };
     void (async () => {
       const r = await fetch("/api/bff/api/v1/finance/accounting/unposted", { cache: "no-store" }).catch(() => null);
       const j = r ? await r.json().catch(() => null) : null;
@@ -39,7 +41,7 @@ export function OldFeesLedger({ may, tick = 0 }: { may: boolean; tick?: number }
       setData(j as Unposted);
     })();
     return () => { alive = false; };
-  }, [asked]);
+  }, [asked, may]);
 
   async function post() {
     setPosting(true); setSaid(null); setProblem(null); setLeft(null);
@@ -78,7 +80,7 @@ export function OldFeesLedger({ may, tick = 0 }: { may: boolean; tick?: number }
       <PBody>
         {said ? <Note kind="ok" title="Posted">{said}</Note> : null}
         {problem ? <Note kind="bad" title={problem.title}>{problem.detail ?? ""}</Note> : null}
-        {!data ? <div className="sub2">{loading ? "Looking…" : ""}</div> : (
+        {!may ? <div className="sub2">The ledger is posted by the Bursary, here or on the Accounting desk.</div> : !data ? <div className="sub2">{loading ? "Looking…" : ""}</div> : (
           <>
             <Tiles items={[
               ["Payments waiting", Number(data.payments).toLocaleString(), Number(data.payments) ? "var(--red-ink)" : null, "Not yet on the books"],
