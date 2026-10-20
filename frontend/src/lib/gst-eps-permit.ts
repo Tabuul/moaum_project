@@ -1,7 +1,8 @@
 /**
  * The GST & EPS examination permit card (V492): what the API says about a student's permit, and the words and groups the
- * screens and the PDF show. The courses are the API's — the GST and EPS courses on the student's approved registration,
- * chosen by the database; nothing here decides which courses belong on a permit, it only lays them out.
+ * screens and the PDF show. The courses are the API's — the GST and EPS courses on the student's submitted registration,
+ * chosen by the database; nothing here decides which courses belong on a permit, it only lays them out. V589: the permit is
+ * issued on the examination card's own terms (courses registered, school fees paid) and the GST fee, nothing more.
  */
 
 /** one GST or EPS course on the permit, with its examination's slot where one is set */
@@ -115,12 +116,12 @@ export function permitStatusLabel(s: PermitState): string {
 
 /** the refusals a course registration puts right: the screen offers the way back to it */
 export function registrationRemedy(code: string | null | undefined): boolean {
-  return code === "GST_EPS_PERMIT_NO_REGISTRATION" || code === "GST_EPS_PERMIT_NOT_APPROVED" || code === "GST_EPS_PERMIT_NO_COURSES";
+  return code === "GST_EPS_PERMIT_NO_REGISTRATION" || code === "GST_EPS_PERMIT_NOT_SUBMITTED" || code === "GST_EPS_PERMIT_NO_COURSES";
 }
 
-/** the refusals a payment puts right */
+/** the refusals a payment puts right: the GST fee, or the school fees (V589: as the examination card asks them) */
 export function paymentRemedy(code: string | null | undefined): "GST" | "FEES" | null {
-  return code === "GST_EPS_PERMIT_GST_PAYMENT" ? "GST" : code === "GST_EPS_PERMIT_NOT_CLEARED" ? "FEES" : null;
+  return code === "GST_EPS_PERMIT_GST_PAYMENT" ? "GST" : code === "GST_EPS_PERMIT_NOT_PAID" ? "FEES" : null;
 }
 
 /** the public path the permit's QR opens */

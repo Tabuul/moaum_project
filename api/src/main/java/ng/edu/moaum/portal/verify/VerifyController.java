@@ -369,10 +369,11 @@ class VerifyController {
         out.put("semester", row.get("semester"));
         if (revoked) out.put("revokedAt", row.get("revoked_at"));
         if (!valid && !revoked) out.put("reason", switch (String.valueOf(state.get("code"))) {
-            case "GST_EPS_PERMIT_NO_REGISTRATION", "GST_EPS_PERMIT_NOT_APPROVED" -> "The course registration it was issued for is no longer approved.";
-            case "GST_EPS_PERMIT_NO_COURSES" -> "The student's approved course registration carries no GST or EPS course.";
+            // V589: the permit stands on the examination card's own terms (registered and paid) and the GST fee
+            case "GST_EPS_PERMIT_NO_REGISTRATION", "GST_EPS_PERMIT_NOT_SUBMITTED" -> "The course registration it was issued for no longer stands.";
+            case "GST_EPS_PERMIT_NO_COURSES" -> "The student's course registration carries no GST or EPS course.";
             case "GST_EPS_PERMIT_GST_PAYMENT" -> "The student's GST fee is not confirmed as paid.";
-            case "GST_EPS_PERMIT_NOT_CLEARED" -> "The student is not cleared by the Bursary for the examination.";
+            case "GST_EPS_PERMIT_NOT_PAID" -> "The student's school fees for the session are not paid.";
             case "GST_EPS_PERMIT_NOT_IN_STUDY" -> "The student is not in study.";
             default -> "The permit may not be issued for this semester now.";
         });

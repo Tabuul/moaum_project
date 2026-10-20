@@ -50,6 +50,16 @@ class GstEpsPermitController {
         return out;
     }
 
+    /** V589: the permit as the student last issued it, with its check code when it stands — read-only, for ICT Support's view of
+     *  the student's portal (V521), from which nothing is made or counted: the view shows the permit the student has opened */
+    @GetMapping("/document")
+    Map<String, Object> document(Authentication auth, @RequestParam(required = false) Integer semester) {
+        if (semester != null && (semester < 1 || semester > 3)) throw new DomainRuleViolation("GST_EPS_PERMIT_SEMESTER", "A permit is issued for semester 1, 2 or 3.");
+        UUID id = UUID.fromString(auth.getName());
+        String session = portal.examSession(id);
+        return permits.issued(id, session, semester == null ? portal.openSemester(id, session) : semester);
+    }
+
     /** the permit issued for viewing, downloading or printing, with its check code */
     @PostMapping("/issue")
     Map<String, Object> issue(Authentication auth, @Valid @RequestBody IssueIn body) {

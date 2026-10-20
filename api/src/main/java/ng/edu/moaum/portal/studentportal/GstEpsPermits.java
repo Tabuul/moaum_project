@@ -11,8 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * V492: a student's GST & EPS examination permit — whether it may be issued and why not, the GST and EPS courses on the
- * student's approved registration (read by the database, never filtered in the browser), and its issue with the signed
- * check code its QR carries. The rules are the database's (registration.gst_eps_permit_state); this reads them.
+ * student's submitted registration (read by the database, never filtered in the browser), and its issue with the signed
+ * check code its QR carries. The rules are the database's (registration.gst_eps_permit_state; V589: the examination card's
+ * own terms and the GST fee); this reads them.
  */
 @Service
 public class GstEpsPermits {
@@ -43,6 +44,20 @@ public class GstEpsPermits {
         @SuppressWarnings("unchecked")
         Map<String, Object> permit = (Map<String, Object>) out.get("permit");
         out.put("checkCode", codes.sign(CheckCodes.Kind.GST_EPS_PERMIT, String.valueOf(permit.get("reference"))));
+        return out;
+    }
+
+    /** V589: the permit as the student last issued it — the state and, when the permit stands and may be issued, the check code
+     *  its QR carries — for ICT Support's read-only view of the student's portal (V521), which may make or count nothing: a permit
+     *  the student has not opened yet has no number and so no code here */
+    @Transactional(readOnly = true)
+    public Map<String, Object> issued(UUID student, String session, int semester) {
+        Map<String, Object> out = state(student, session, semester);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> permit = (Map<String, Object>) out.get("permit");
+        if (permit != null && Boolean.TRUE.equals(out.get("available"))) {
+            out.put("checkCode", codes.sign(CheckCodes.Kind.GST_EPS_PERMIT, String.valueOf(permit.get("reference"))));
+        }
         return out;
     }
 

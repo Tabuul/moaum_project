@@ -1,4 +1,4 @@
-# The GST & EPS examination permit card (V492)
+# The GST & EPS examination permit card (V492, V589)
 
 ## What it is
 
@@ -19,14 +19,15 @@ The permit sets itself apart from the card in three ways:
 
 ## The one rule
 
-The permit carries only the GST and EPS courses on the student's approved course registration for the session and
+The permit carries only the GST and EPS courses on the student's submitted course registration for the session and
 semester. Nothing else appears on it:
 - no departmental course;
 - no course of another semester;
 - no GST or EPS course the programme offers but the student did not register.
 
 `registration.gst_eps_permit_courses(student, session, semester)` reads the courses in one targeted query:
-- the student's registration for the semester, `APPROVED` or `LOCKED`;
+- the student's registration for the semester, submitted — `SUBMITTED`, `RETURNED`, `APPROVED` or `LOCKED`, never a
+  `DRAFT` (V589; before it, approved or locked only);
 - its entries that stand (`REGISTERED` or `APPROVED`);
 - the course classified GST or EPS.
 
@@ -46,18 +47,29 @@ Each issue logs the courses it carried.
 
 ## When it is issued
 
+V589 (the University's instruction of 20 October 2026: a student who owes nothing prints the examination card and the
+permit without effort). The permit is issued on the examination card's own terms (V567) and the GST fee, nothing more.
+Before V589 the permit still asked what V567 had taken off the card — the registration approved, the Bursary's clearance
+scheme satisfied for the examination (on the scheme in force, the session paid in full) and the cards released — so
+students holding the card were refused the permit (226 of the 475 students with GST or EPS courses on the live-shaped
+copy, and 2 more whose registration waited for the Head).
+
 `registration.gst_eps_permit_state` gives the first rule that fails, with its code and its words:
 
 | Code | Why |
 |---|---|
 | `GST_EPS_PERMIT_NOT_IN_STUDY` | the student is not admitted, active or on probation |
 | `GST_EPS_PERMIT_NO_REGISTRATION` | no course registration for the semester |
-| `GST_EPS_PERMIT_NOT_APPROVED` | the registration is a draft, submitted, or returned |
+| `GST_EPS_PERMIT_NOT_SUBMITTED` | the registration is a draft never submitted (the card's `EXAM_CARD_NOT_SUBMITTED`) |
 | `GST_EPS_PERMIT_NO_COURSES` | "You have not registered any GST or EPS course for the selected session and semester." No empty permit is made. |
 | `GST_EPS_PERMIT_REVOKED` | the GST or EPS office withdrew it (the student reads why) |
 | `GST_EPS_PERMIT_GST_PAYMENT` | the GST fee the existing gate (`registration.gst_gate`) asks for is not confirmed. GST payment covers EPS. |
-| `GST_EPS_PERMIT_NOT_CLEARED` | the Bursary does not clear the student for the examination (`finance.clears_or_null`, EXAMINATION). This is the examination card's own condition. |
-| `GST_EPS_PERMIT_NOT_RELEASED` | the V491 rule does not offer the card on approval, and the semester's examination cards are not released |
+| `GST_EPS_PERMIT_NOT_PAID` | no confirmed school-fees payment for the session, as the card reads it (`registration.exam_card_paid`: any amount, through any channel the portal records it by — the card's `EXAM_CARD_NOT_PAID`) |
+
+Gone with V589: `GST_EPS_PERMIT_NOT_APPROVED` (a submitted or returned registration now issues the permit as it issues the
+card), `GST_EPS_PERMIT_NOT_CLEARED` (no clearance scheme is asked) and `GST_EPS_PERMIT_NOT_RELEASED` (no release switch
+or V491 card-on-approval rule is asked). The courses are listed for any submitted registration, so an unpaid student sees
+what the permit will carry.
 
 No payment rule was added. Finance remains the payment authority, and the course registration remains the registration
 authority.
@@ -99,6 +111,12 @@ REVOKED.
 - `GET /api/v1/me/gst-eps-permit?semester=` — the permit's state for the student's own session (the examination card's)
   and the semester (the open one by default).
 - `POST /api/v1/me/gst-eps-permit/issue {semester, act}` — the permit issued, with its check code.
+- `GET /api/v1/me/gst-eps-permit/document?semester=` (V589) — the permit as the student last issued it, with its check code
+  when it stands; nothing is made or counted. ICT Support's read-only view of the student's portal (V521) is refused every
+  POST, so the PDF route falls back to this for the view: the agent sees the permit the student has opened, and is told
+  when the student has not opened it yet (a permit is made, with its number, at the student's first view). The examination
+  card's check code (`/api/v1/me/check-code?kind=EXAM`) likewise counts no issue from the view, which it used to refuse
+  (the card's PDF route then said "Try again in a moment"; it now shows the API's own refusal).
 
 The student comes from the session token, and the session is decided by the server. No student or permit id is ever taken
 from the browser, so one student cannot ask for another's.
@@ -108,7 +126,7 @@ Screens:
   three buttons and the counts. When the permit is not available, it shows why, with BACK TO COURSE REGISTRATION, GST FEE
   or FEES & PAYMENTS as the remedy.
 - **Examinations** shows a permit panel for each semester it shows, beside the examination card.
-- **Dashboard**: VIEW GST & EPS PERMIT next to VIEW EXAM CARD, when the approved registration carries a GST-kind course.
+- **Dashboard**: VIEW GST & EPS PERMIT next to VIEW EXAM CARD, when the submitted registration carries a GST-kind course.
 
 The PDF (`/student/exams/gst-eps-permit/pdf?semester=&act=`) is drawn by the portal's PDF engine (`lib/pdf-write`,
 `finishPdf`). Its buttons are VIEW PERMIT ("Loading permit..."), DOWNLOAD PDF ("Preparing permit...") and PRINT PERMIT
@@ -133,8 +151,8 @@ No internal id is shown.
 
 **General Studies → Examination Permits** (`/gst/permits`, and `/eps/permits` for the EPS office) shows, for a session and
 semester:
-- the students an approved registration of the office's courses concerns, with each permit's status, reference and
-  counts;
+- the students a submitted registration of the office's courses concerns (V589; approved only before it), with each
+  permit's status, reference and counts;
 - figures that open their lists (students, generated, not generated, downloaded, printed, withdrawn);
 - the examination schedule of the office's courses;
 - a permit found by its number;
@@ -143,7 +161,7 @@ semester:
 The two offices are kept apart:
 - The GST office reads the GST desk and the EPS office the EPS desk. Other readers (Registry, Academic Office, Bursary, ICT
   and so on) see both.
-- A GST or EPS officer reads a student only when an approved registration of the semester carries one of the office's
+- A GST or EPS officer reads a student only when a submitted registration of the semester carries one of the office's
   courses.
 - An office withdraws or restores a permit, with a reason of at least ten characters, only when it carries one of the
   office's courses (super may act on any).
@@ -162,10 +180,15 @@ here.
 - another student's permit;
 - a catalogue course not registered;
 - an old-portal approval (no approver);
-- the GST fee gate.
+- the GST fee gate;
+- V589: the school fees unpaid read NOT_PAID with the courses still listed; a registration submitted and waiting for the
+  Head, with part of the fees paid, has the permit as it has the card while the scheme refuses the examination and the
+  cards are neither offered on approval nor released, and is on the offices' roster; ICT Support's view reads the card's
+  check code and the issued permit without counting, while the student's own card is counted.
 
 It also covers the offices' reach and the verification states. `check.sql` asserts the course rule and the issue,
-logging, revocation and reset properties (EXPECTED 332).
+logging, revocation and reset properties (the V492 block, restated for V589's codes) and, in the V589 block, the card's
+terms with the scheme refusing and the cards unreleased, the draft and the unpaid, and the roster.
 
 ## Not built
 

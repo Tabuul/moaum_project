@@ -29,18 +29,31 @@ const REGULATIONS = EXAM_REGULATIONS.map(forPermit);
 /**
  * The GST & EPS examination permit card as a PDF (V492), drawn with the examination card's design (lib/exam-card-pdf): the
  * University's header, the photograph, the particulars, the courses, the instructions, the verification QR. The API issues it
- * (POST /api/v1/me/gst-eps-permit/issue): the student from the session token, the GST and EPS courses of the approved
- * registration chosen by the database, the issue counted (VIEW, DOWNLOAD, PRINT), refused with the reason when a rule fails.
- * This draws what it is given and never adds a course; a date, time or venue the timetable has not set reads TO BE SCHEDULED.
+ * (POST /api/v1/me/gst-eps-permit/issue): the student from the session token, the GST and EPS courses of the submitted
+ * registration chosen by the database (V589: on the examination card's own terms, registered and paid, and the GST fee), the
+ * issue counted (VIEW, DOWNLOAD, PRINT), refused with the reason when a rule fails. ICT Support viewing the student's portal
+ * (V521) may change nothing, so for the view the permit the student last issued is read instead (GET …/document), with its
+ * code, and nothing is made or counted. This draws what it is given and never adds a course; a date, time or venue the
+ * timetable has not set reads TO BE SCHEDULED.
  */
 export async function GET(request: NextRequest) {
   const inst = await loadInstitution();
   const q = request.nextUrl.searchParams;
   const semester = ["1", "2", "3"].includes(q.get("semester") ?? "") ? Number(q.get("semester")) : undefined;
   const act = q.get("act") === "download" ? "DOWNLOAD" : q.get("act") === "print" ? "PRINT" : "VIEW";
-  const r = await api<PermitState>("/api/v1/me/gst-eps-permit/issue", { method: "POST", body: { semester, act } });
+  let r = await api<PermitState>("/api/v1/me/gst-eps-permit/issue", { method: "POST", body: { semester, act } });
+  if (!r.ok && r.problem.code === "SUPPORT_VIEW_READ_ONLY") {
+    r = await api<PermitState>(`/api/v1/me/gst-eps-permit/document${semester ? `?semester=${semester}` : ""}`);
+    if (r.ok && r.data.available && !r.data.permit) {
+      return NextResponse.json({ status: 409, title: "The student has not opened the permit yet",
+        detail: "A GST & EPS permit is made, with its number, at the student's first view. ICT Support reads the permit the student has opened; none is made from the student view." }, { status: 409 });
+    }
+  }
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   const v = r.data;
+  if (!v.available) {
+    return NextResponse.json({ status: 409, title: "GST & EPS permit not available", detail: v.reason ?? "The GST & EPS permit cannot be issued yet." }, { status: 409 });
+  }
   if (!v.permit || !v.checkCode || !v.courses.length) {
     return NextResponse.json({ status: 409, title: "No GST & EPS permit", detail: "You have not registered any GST or EPS course for the selected session and semester." }, { status: 409 });
   }

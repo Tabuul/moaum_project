@@ -24,7 +24,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.client.RestClient;
 
 /**
- * The GST & EPS examination permit card (V492): a permit carries only the GST and EPS courses on the student's approved
+ * The GST & EPS examination permit card (V492; V589: issued on the examination card's own terms — a registration submitted and
+ * the school fees paid — and the GST fee, with no approval, clearance scheme or release switch between, and read without a count
+ * from ICT Support's view of the student's portal): a permit carries only the GST and EPS courses on the student's submitted
  * registration for the semester — GST only, EPS only, both, none (no permit), never a departmental course, never a course of
  * another semester, never one the student did not register; a reset takes the courses off, a new registration puts the new ones
  * on, under the same permit number; the GST fee the gate asks for holds it; the student's own door names no student; the GST and
@@ -70,6 +72,7 @@ class GstEpsPermitIT {
             if (session != null) {
                 jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", session).update();
                 jdbc.sql("DELETE FROM finance.gst_fee WHERE session = :s").param("s", session).update();
+                jdbc.sql("DELETE FROM registration.approval_policy WHERE session = :s").param("s", session).update();
             }
             jdbc.sql("UPDATE finance.gst_setting SET required_for_gst_eps = :a, required_for_all = :b, covers_eps = :c WHERE id = 1")
                     .param("a", setting.get("required_for_gst_eps")).param("b", setting.get("required_for_all")).param("c", setting.get("covers_eps")).update();
@@ -91,9 +94,31 @@ class GstEpsPermitIT {
     }
 
     private void payInFull(String token, String s) {
-        Map<String, Object> ref = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", s, "amount", 100000)).getBody();
+        pay(token, s, 100000);
+    }
+
+    private void pay(String token, String s, int amount) {
+        Map<String, Object> ref = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", s, "amount", amount)).getBody();
         ResponseEntity<Map> ok = it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + ref.get("reference") + "/confirm", Map.of("channel", "Bank transfer", "note", "permit test"));
         assertThat(ok.getStatusCode().value()).as(String.valueOf(ok.getBody())).isEqualTo(200);
+    }
+
+    /** V589: a registration submitted and waiting for the Head, never approved, with the courses given */
+    private void submitted(UUID student, int semester, String... courses) {
+        it.db(() -> {
+            UUID reg = jdbc.sql("""
+                    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at)
+                    VALUES (gen_random_uuid(), :st, :s, :sem, 100, 'SUBMITTED', now()) RETURNING id
+                    """).param("st", student).param("s", session).param("sem", semester).query(UUID.class).single();
+            for (String c : courses) {
+                jdbc.sql("""
+                        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+                        SELECT :r, o.id, c.units, 'CURRENT', 'REGISTERED' FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
+                         WHERE o.course_code = :c AND o.session = :s AND o.semester = :sem AND o.stream = 'REGULAR'
+                        """).param("r", reg).param("c", c).param("s", session).param("sem", semester).update();
+            }
+            return reg;
+        });
     }
 
     /** an approved registration (as the old portal's were brought over: no approver, no approval mode) with the courses given */
@@ -202,7 +227,8 @@ class GstEpsPermitIT {
         assertThat(refusal).contains("GST_EPS_PERMIT_NO_COURSES");
         assertThat(jdbc.sql("SELECT count(*) FROM registration.gst_eps_permit WHERE student_id = :d").param("d", d).query(Long.class).single()).isZero();
 
-        // the school fees stated and the scheme in force; H pays in full, so H's permit may be issued
+        // the school fees stated and the scheme in force (the examination released only when paid in full); the cards neither
+        // offered on approval nor released; H pays in full, so H's permit may be issued
         assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + session + "/schedule", Map.of("item", "School fees", "amount", 100000, "level", 100)).getStatusCode().value()).isEqualTo(200);
         it.db(() -> {
             jdbc.sql("""
@@ -213,15 +239,38 @@ class GstEpsPermitIT {
                      WHERE policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL
                     """).param("i", instrument).update();
             jdbc.sql("INSERT INTO policy.clearance_scheme SELECT id, true FROM policy.version WHERE instrument = :i ON CONFLICT DO NOTHING").param("i", instrument).update();
-            return jdbc.sql("""
-                    INSERT INTO policy.clearance_rule SELECT v.id, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END
+            jdbc.sql("""
+                    INSERT INTO policy.clearance_rule SELECT v.id, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' WHEN 'EXAMINATION' THEN 'PAID_IN_FULL' ELSE 'INSTALMENT_1' END
                       FROM policy.version v, ref.clearance_purpose p WHERE v.instrument = :i ON CONFLICT DO NOTHING
                     """).param("i", instrument).update();
+            return jdbc.sql("""
+                    INSERT INTO registration.approval_policy (session, semester, mode, allow_student_reset, card_on_approval, reason, set_by, set_office)
+                    VALUES (:s, 1, 'HOD_APPROVAL_REQUIRED', false, false, 'Integration test: the cards are released with the timetable', gen_random_uuid(), 'academic')
+                    """).param("s", session).update();
         });
-        assertThat(state(a, 1)).containsEntry("code", "GST_EPS_PERMIT_NOT_CLEARED");   // the examination card's own condition
+        // V589: the school fees unpaid hold the permit as they hold the examination card (NOT_PAID), nothing else does
+        assertThat(state(a, 1)).containsEntry("available", false).containsEntry("code", "GST_EPS_PERMIT_NOT_PAID");
+        assertThat(codesOf(state(a, 1))).containsExactly("GST 497/GST");   // the courses are still listed
         String th = signedIn(h, "MOAUM/ITQ/" + yy + "/" + n);
         payInFull(th, session);
         assertThat(state(h, 1)).containsEntry("available", true);
+
+        // V589 (the University's instruction): a student whose registration is submitted and waiting for the Head, who has paid
+        // part of the school fees, prints the permit as the examination card — the scheme refusing the examination, the cards
+        // neither offered on approval nor released; what the card issues on, the permit issues on
+        UUID k = it.student("ZZPERMK" + n, "C00061", "MOAUM/ADM/" + yy + "/59" + n, "MOAUM/ITR/" + yy + "/" + n, 100);
+        submitted(k, 1, "GST 497", "EPS 497");
+        assertThat(state(k, 1)).containsEntry("available", false).containsEntry("code", "GST_EPS_PERMIT_NOT_PAID");
+        pay(signedIn(k, "MOAUM/ITR/" + yy + "/" + n), session, 40000);
+        assertThat(jdbc.sql("SELECT finance.clears_or_null(:k, :s, 'EXAMINATION')").param("k", k).param("s", session).query(Boolean.class).single()).isFalse();
+        Map<String, Object> waiting = state(k, 1);
+        assertThat(waiting).as(String.valueOf(waiting)).containsEntry("available", true).containsEntry("cleared", true);
+        assertThat(((Map) waiting.get("registration")).get("status")).isEqualTo("SUBMITTED");
+        assertThat(codesOf(waiting)).containsExactly("GST 497/GST", "EPS 497/EPS");
+        assertThat(jdbc.sql("SELECT (registration.exam_card_state(:k, :s, 1)->>'available')::boolean").param("k", k).param("s", session).query(Boolean.class).single()).isTrue();
+        assertThat(((Map) issue(k, 1, "PRINT").get("permit")).get("reference")).asString().matches("GST-EPS/" + y + "/\\d{6,}");
+        // on the offices' roster beside the approved ones
+        assertThat(jdbc.sql("SELECT reg_status FROM registration.gst_eps_permit_roster(:s, 1, 'EPS') WHERE student_id = :k").param("s", session).param("k", k).query(String.class).single()).isEqualTo("SUBMITTED");
 
         // issued: one permit, made once, counted each time, its courses logged
         Map<String, Object> first = issue(h, 1, "VIEW");
@@ -265,10 +314,36 @@ class GstEpsPermitIT {
         assertThat(it.call(gst, HttpMethod.POST, "/api/v1/gst/GST/permits/" + permit + "/restore", Map.of("reason", "Integration test: the office confirmed the candidate")).getStatusCode().value()).isEqualTo(200);
         assertThat(verify(reference, code).getBody()).containsEntry("status", "VALID");
 
+        // V589/V521: ICT Support, viewing the student's portal read-only, reads the examination card's check code (the card was
+        // refused the view — "try again" — because the code counted an issue) and the permit the student issued, and counts nothing
+        UUID agentId = it.person("ZZ-PERMIT-AGENT" + n, "ZZPERMITAGENT" + n);
+        it.db(() -> jdbc.sql("""
+                INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                VALUES (gen_random_uuid(), :p, 'ictagent', 'platform', NULL, 'integration test', :p, current_date)
+                """).param("p", agentId).update());
+        ResponseEntity<Map> opened = it.call(TestTokens.token(agentId, List.of("ictagent")), HttpMethod.POST, "/api/v1/helpdesk/support/students/" + h + "/portal-view",
+                Map.of("reason", "The student says the examination card will not print"));
+        assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
+        String view = String.valueOf(opened.getBody().get("token"));
+        long cardsBefore = jdbc.sql("SELECT coalesce(sum(times), 0) FROM registration.exam_card_issue WHERE student_id = :h").param("h", h).query(Long.class).single();
+        ResponseEntity<Map> viewedCode = it.get(view, "/api/v1/me/check-code?kind=EXAM&session=" + session + "&semester=1");
+        assertThat(viewedCode.getStatusCode().value()).as(String.valueOf(viewedCode.getBody())).isEqualTo(200);
+        assertThat(viewedCode.getBody()).containsEntry("number", "MOAUM/ITQ/" + yy + "/" + n);
+        assertThat(jdbc.sql("SELECT coalesce(sum(times), 0) FROM registration.exam_card_issue WHERE student_id = :h").param("h", h).query(Long.class).single()).isEqualTo(cardsBefore);
+        assertThat(it.call(view, HttpMethod.POST, "/api/v1/me/gst-eps-permit/issue", Map.of("semester", 1, "act", "PRINT")).getBody()).containsEntry("code", "SUPPORT_VIEW_READ_ONLY");
+        ResponseEntity<Map> document = it.get(view, "/api/v1/me/gst-eps-permit/document?semester=1");
+        assertThat(document.getStatusCode().value()).as(String.valueOf(document.getBody())).isEqualTo(200);
+        assertThat(document.getBody()).containsEntry("available", true).containsEntry("checkCode", code);   // the permit as the student issued it
+        assertThat(((Map) document.getBody().get("permit")).get("reference")).isEqualTo(reference);
+        assertThat(jdbc.sql("SELECT viewed + downloaded + printed FROM registration.gst_eps_permit WHERE id = :p").param("p", permit).query(Integer.class).single()).isEqualTo(2);
+        // the student's own card is counted
+        assertThat(it.get(th, "/api/v1/me/check-code?kind=EXAM&session=" + session + "&semester=1").getStatusCode().value()).isEqualTo(200);
+        assertThat(jdbc.sql("SELECT coalesce(sum(times), 0) FROM registration.exam_card_issue WHERE student_id = :h").param("h", h).query(Long.class).single()).isEqualTo(cardsBefore + 1);
+
         // TEST H: a reset takes the courses off — the permit is not issued, and the QR says INVALID; nothing is kept from before
         it.db(() -> jdbc.sql("SELECT registration.student_reset(:h, :s, 1, 'Integration test: wrong courses', 'ICT_SUPPORT')::text").param("h", h).param("s", session).query(String.class).single());
         Map<String, Object> afterReset = state(h, 1);
-        assertThat(afterReset).containsEntry("available", false).containsEntry("code", "GST_EPS_PERMIT_NOT_APPROVED");
+        assertThat(afterReset).containsEntry("available", false).containsEntry("code", "GST_EPS_PERMIT_NOT_SUBMITTED");
         assertThat((List<?>) afterReset.get("courses")).isEmpty();
         assertThat(verify(reference, code).getBody()).containsEntry("status", "INVALID");
         // TEST I: registered again with other courses and approved: the same permit number, the new courses only

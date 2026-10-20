@@ -1,6 +1,6 @@
 "use client";
-/** The GST & EPS examination permits on the GST or EPS office's desk (V492): the students an approved registration of the
- *  office's courses concerns for a session and semester, each with their permit (generated, downloaded, printed, withdrawn), the
+/** The GST & EPS examination permits on the GST or EPS office's desk (V492): the students a submitted registration of the
+ *  office's courses concerns for a session and semester (V589: the permit is issued on the examination card's own terms), each with their permit (generated, downloaded, printed, withdrawn), the
  *  examination schedule of the office's courses, a permit found by its reference, and a student's permit as the student sees it,
  *  withdrawn or restored with a reason. The office never changes a registration here. */
 import { useState } from "react";
@@ -103,7 +103,7 @@ export function GstPermits({ data, base, filters }: { data: RosterPage; base: st
           </form>
           <div className="mt-2">
             <Tiles cls="grid--3" items={[
-              ["Students", f.students.toLocaleString(), null, "an approved registration carries the office's course", query({ status: undefined, page: undefined })],
+              ["Students", f.students.toLocaleString(), null, "a submitted registration carries the office's course", query({ status: undefined, page: undefined })],
               ["Generated", f.generated.toLocaleString(), null, "viewed at least once", query({ status: "GENERATED", page: undefined })],
               ["Not generated", f.not_generated.toLocaleString(), null, "not yet viewed", query({ status: "NOT_GENERATED", page: undefined })],
               ["Downloaded", f.downloaded.toLocaleString(), null, undefined, query({ status: "DOWNLOADED", page: undefined })],
@@ -148,7 +148,7 @@ export function GstPermits({ data, base, filters }: { data: RosterPage; base: st
             <span key="v" className="tnum">{r.viewed} · {r.downloaded} · {r.printed}</span>,
             <Btn key="b" kind="ghost" busyLabel="Loading permit..." onClick={() => show(r.student_id)}>VIEW</Btn>,
           ])} />
-        ) : <PBody><Note kind="info" title="No student matches">An approved registration carrying one of the office&rsquo;s courses puts a student here.</Note></PBody>}
+        ) : <PBody><Note kind="info" title="No student matches">A submitted registration carrying one of the office&rsquo;s courses puts a student here.</Note></PBody>}
         {pages > 1 ? (
           <PBody>
             <div className="row row--inline" style={{ gap: 8 }}>
@@ -172,7 +172,7 @@ export function GstPermits({ data, base, filters }: { data: RosterPage; base: st
             </div>
           ) : undefined}>
           <Note kind={open.available ? "ok" : open.permit?.status === "REVOKED" ? "bad" : "info"} title={permitStatusLabel(open)}>
-            {open.available ? "The permit may be issued: an approved registration with GST or EPS courses, the GST fee and the Bursary's clearance in order." : open.reason}
+            {open.available ? "The permit may be issued: a submitted registration with GST or EPS courses, the school fees paid and the GST fee in order." : open.reason}
           </Note>
           <KvGrid cls="grid--3" pairs={[
             ["Permit number", open.permit?.reference ?? "Not generated"],

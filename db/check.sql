@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 420
+\set EXPECTED 421
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15000,7 +15000,7 @@ BEGIN
     st2 := registration.gst_eps_permit_state(stu, S, 2);
     st_dep := registration.gst_eps_permit_state(dep, S, 1);
     st_draft := registration.gst_eps_permit_state(dra, S, 1);
-    -- the school fees stated and not paid: the examination card's own condition holds the permit
+    -- the school fees stated and not paid: the examination card's own condition holds the permit (V589: NOT_PAID, as the card)
     INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'School fees', 100000, 100);
     st_unpaid := registration.gst_eps_permit_state(stu, S, 1);
     PERFORM set_config('moaum.actor_office', 'bursar', true);
@@ -15044,17 +15044,17 @@ BEGIN
     GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
     IF msg <> 'CHECK_V492_UNDONE' THEN RAISE; END IF;
   END;
-    PERFORM pg_temp.assert('V492: a GST & EPS permit carries exactly the GST and EPS courses on the approved registration for its semester — never a departmental course, another semester''s or one not registered; none without one, none for a draft, none until the examination card''s fees are cleared',
+    PERFORM pg_temp.assert('V492: a GST & EPS permit carries exactly the GST and EPS courses on the approved registration for its semester — never a departmental course, another semester''s or one not registered; none without one, none for a draft never submitted, none until the school fees are paid (V589)',
         coalesce(courses = 'GST 929:GST,EPS 929:EPS' AND (st->>'gstCount')::int = 1 AND (st->>'epsCount')::int = 1 AND (st->>'units')::int = 4
             AND courses2 = 'GST 928' AND st_dep->>'code' = 'GST_EPS_PERMIT_NO_COURSES' AND jsonb_array_length(st_dep->'courses') = 0
-            AND st_draft->>'code' = 'GST_EPS_PERMIT_NOT_APPROVED' AND jsonb_array_length(st_draft->'courses') = 0
-            AND st_unpaid->>'code' = 'GST_EPS_PERMIT_NOT_CLEARED', false),
+            AND st_draft->>'code' = 'GST_EPS_PERMIT_NOT_SUBMITTED' AND jsonb_array_length(st_draft->'courses') = 0
+            AND st_unpaid->>'code' = 'GST_EPS_PERMIT_NOT_PAID', false),
         format('first %s (%s) | second %s | departmental only %s | draft %s | unpaid %s', courses, st->>'units', courses2, st_dep->>'code', st_draft->>'code', st_unpaid->>'code'));
     PERFORM pg_temp.assert('V492: a permit is issued once with its reference and counted; its log is written once; withdrawn only with a reason by an office whose course it carries, and restored; a reset takes its courses off and a new registration puts the new ones on under the same number',
         coalesce(ref ~ '^GST-EPS/9592/[0-9]{6,}$' AND i2->'permit'->>'reference' = ref AND n_permits = 1 AND (i2->'permit'->>'viewed')::int = 1 AND (i2->'permit'->>'printed')::int = 1
             AND events = 'GST_EPS_PERMIT_GENERATED,GST_EPS_PERMIT_PRINTED,GST_EPS_PERMIT_VIEWED' AND once = 'refused' AND short_reason = 'GST_EPS_PERMIT_REASON'
             AND revoked->>'code' = 'GST_EPS_PERMIT_REVOKED' AND (restored->>'available')::boolean
-            AND after_reset->>'code' = 'GST_EPS_PERMIT_NOT_APPROVED' AND jsonb_array_length(after_reset->'courses') = 0
+            AND after_reset->>'code' = 'GST_EPS_PERMIT_NOT_SUBMITTED' AND jsonb_array_length(after_reset->'courses') = 0
             AND i3->'permit'->>'reference' = ref AND courses3 = 'GST 928', false),
         format('reference %s / %s, permits %s, counts %s/%s | log %s, update %s | short reason %s | revoked %s, restored %s | after reset %s | again %s %s',
                ref, i2->'permit'->>'reference', n_permits, i2->'permit'->>'viewed', i2->'permit'->>'printed', events, once, short_reason,
@@ -20995,6 +20995,72 @@ BEGIN
         coalesce(need > 0 AND kept_all = need AND kept_held = need - 1 AND kept_back = need AND told = 1 AND told_again = 1
                  AND free_ok AND held_ok = NOT lacking, false),
         format('need %s kept %s held %s back %s | told %s again %s | free %s held %s lacking %s', need, kept_all, kept_held, kept_back, told, told_again, free_ok, held_ok, lacking));
+END $$;
+
+-- ── V589. The GST & EPS permit on the examination card's own terms: a registration submitted (not yet approved) carrying a GST or
+--          EPS course and the school fees paid (any confirmed amount, as the card reads it) issue the permit — the Bursary's clearance
+--          scheme refusing the examination and the cards neither offered on approval nor released notwithstanding; a draft never
+--          submitted reads NOT_SUBMITTED, the school fees unpaid NOT_PAID; the offices' roster lists the submitted registrations.
+--          The block undoes its writes ──
+DO $$
+DECLARE S text := '9589/9590'; pa text := 'C00023'; acad uuid := gen_random_uuid(); dept text;
+        sub uuid := gen_random_uuid(); dra uuid := gen_random_uuid(); unp uuid := gen_random_uuid();
+        reg1 uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid(); reg3 uuid := gen_random_uuid();
+        st_sub jsonb; st_dra jsonb; st_unp jsonb; card jsonb; clears boolean; issued jsonb; roster text; courses text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V589', true);
+    PERFORM set_config('moaum.actor_id', acad::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, date '9589-10-01', date '9590-08-31') ON CONFLICT (name) DO NOTHING;
+    SELECT dept_code INTO dept FROM ref.programme WHERE code = pa;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('GST 589', 'Check permit terms English', 2, 1, 100, dept, 'GST', 'LIVE'), ('EPS 589', 'Check permit terms Entrepreneurship', 2, 1, 100, dept, 'GST', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) SELECT gen_random_uuid(), c, S, 1 FROM unnest(ARRAY['GST 589', 'EPS 589']) c;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (sub, 'MOAUM/ADM/58/589001', 'MOAUM/CHK/58/5891', 'ZZV589', 'Submitted', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (dra, 'MOAUM/ADM/58/589002', 'MOAUM/CHK/58/5892', 'ZZV589', 'Draft', pa, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (unp, 'MOAUM/ADM/58/589003', 'MOAUM/CHK/58/5893', 'ZZV589', 'Unpaid', pa, 'UTME', S, 100, 100, 'ACTIVE', now());
+    -- submitted and waiting for the Head, never approved; a draft never submitted; submitted and unpaid
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES
+        (reg1, sub, S, 1, 100, 'SUBMITTED', now()), (reg3, unp, S, 1, 100, 'SUBMITTED', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg2, dra, S, 1, 100, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    SELECT x.r, o.id, 2, 'CURRENT', 'REGISTERED' FROM (VALUES (reg1, 'GST 589'), (reg1, 'EPS 589'), (reg2, 'GST 589'), (reg3, 'GST 589')) x(r, c)
+      JOIN catalogue.offering o ON o.course_code = x.c AND o.session = S AND o.semester = 1;
+    -- the school fees stated; the cards neither offered on approval nor released; the scheme in force releases the examination only
+    -- when the session is paid in full, and the student pays part
+    INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (S, 'School fees', 100000, 100);
+    INSERT INTO registration.approval_policy (session, semester, mode, allow_student_reset, card_on_approval, reason, set_by, set_office)
+    VALUES (S, 1, 'HOD_APPROVAL_REQUIRED', false, false, 'CHECK V589: the cards are released with the timetable', acad, 'academic');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(sub, S, 40000, NULL), 'Bank transfer', 'CHECK V589');
+    clears := finance.clears_or_null(sub, S, 'EXAMINATION');
+    st_sub := registration.gst_eps_permit_state(sub, S, 1);
+    card := registration.exam_card_state(sub, S, 1);
+    st_dra := registration.gst_eps_permit_state(dra, S, 1);
+    st_unp := registration.gst_eps_permit_state(unp, S, 1);
+    SELECT string_agg((c->>'course_code') || ':' || (c->>'course_type'), ',' ORDER BY c->>'course_type' DESC, c->>'course_code') INTO courses FROM jsonb_array_elements(st_sub->'courses') c;
+    SELECT string_agg(number || ' ' || reg_status, ',' ORDER BY number) INTO roster FROM registration.gst_eps_permit_roster(S, 1, 'GST') WHERE student_id IN (sub, dra, unp);
+    PERFORM set_config('moaum.actor_id', sub::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    issued := registration.issue_gst_eps_permit(sub, S, 1, 'PRINT');
+    RAISE EXCEPTION 'CHECK_V589_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V589_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V589: the GST & EPS permit is issued on the examination card''s terms — a registration submitted (not approved) carrying GST or EPS courses and the school fees paid in any amount — with the clearance scheme refusing the examination and the cards unreleased; a draft reads NOT_SUBMITTED, the fees unpaid NOT_PAID with the courses still listed; the roster lists the submitted registrations',
+        coalesce((st_sub->>'available')::boolean AND courses = 'GST 589:GST,EPS 589:EPS' AND (st_sub->'registration'->>'status') = 'SUBMITTED' AND (st_sub->>'cleared')::boolean
+            AND (card->>'available')::boolean AND clears IS FALSE
+            AND st_dra->>'code' = 'GST_EPS_PERMIT_NOT_SUBMITTED' AND jsonb_array_length(st_dra->'courses') = 0
+            AND st_unp->>'code' = 'GST_EPS_PERMIT_NOT_PAID' AND st_unp->'courses'->0->>'course_code' = 'GST 589' AND NOT (st_unp->>'cleared')::boolean
+            AND roster = 'MOAUM/CHK/58/5891 SUBMITTED,MOAUM/CHK/58/5893 SUBMITTED'
+            AND issued->'permit'->>'reference' ~ '^GST-EPS/9589/[0-9]{6,}$' AND (issued->'permit'->>'printed')::int = 1, false),
+        format('submitted %s %s (%s, registration %s, cleared %s) | card %s | scheme clears %s | draft %s (%s courses) | unpaid %s (%s, cleared %s) | roster %s | issued %s printed %s',
+               st_sub->>'available', st_sub->>'code', courses, st_sub->'registration'->>'status', st_sub->>'cleared', card->>'code', clears,
+               st_dra->>'code', jsonb_array_length(st_dra->'courses'), st_unp->>'code', st_unp->'courses'->0->>'course_code', st_unp->>'cleared',
+               roster, issued->'permit'->>'reference', issued->'permit'->>'printed'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

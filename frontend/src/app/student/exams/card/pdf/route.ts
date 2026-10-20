@@ -4,7 +4,7 @@ import { sessionToken } from "@/lib/session";
 import type { Me, Docket } from "@/lib/student-portal";
 import type { ExamCardState } from "@/lib/exam-card";
 import { A4, jpegSize } from "@/lib/pdf-write";
-import { examVerifyPath, studentCheckCode } from "@/lib/qr";
+import { examVerifyPath, studentCheckCodeResult } from "@/lib/qr";
 import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardTableEnd, cardTableHead, cardVerify } from "@/lib/exam-card-pdf";
 import { semesterName } from "@/lib/student-portal";
 import { inUniversityOrder } from "@/lib/course-order";
@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
   const semester = q.get("semester") === "2" ? 2 : q.get("semester") === "3" ? 3 : 1;
   const matric = s.matricNo ?? s.admissionNo ?? "";
 
-  // V501: the card's own rule (registration.exam_card_state): an approved registration carrying a course, the Bursary's clearance not
-  // refused, the card released — and every course on the registration, departmental, GST and EPS alike
+  // V501/V567: the card's own rule (registration.exam_card_state): a registration submitted carrying a course and the school fees paid —
+  // and every course on the registration, departmental, GST and EPS alike
   const [v, dk] = await Promise.all([
     api<ExamCardState>(`/api/v1/me/exam-card?session=${encodeURIComponent(session)}&semester=${semester}`),
     api<Docket>("/api/v1/me/docket"),
@@ -85,8 +85,9 @@ export async function GET(request: NextRequest) {
   y = cardRules(p, y, EXAM_INSTRUCTIONS, EXAM_REGULATIONS);
 
   // ── a small verify QR, bottom-left, with the check code (no explanatory paragraph) ──
-  const check = await studentCheckCode("EXAM", session, semester);
-  if (!check) return NextResponse.json({ status: 503, title: "The card's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
+  // V589: the API's own refusal is shown as it is (the card's rule, or a read-only support view), never a bare "try again"
+  const check = await studentCheckCodeResult("EXAM", session, semester);
+  if (!check.ok) return NextResponse.json(check.problem, { status: check.problem.status || 503 });
   const url = originOf(request) + examVerifyPath(check.number, session, semester, check.code);
   const beside = cardVerify(p, y, url, check.code);
 

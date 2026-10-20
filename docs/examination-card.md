@@ -50,7 +50,8 @@ reason (`registration.exam_cards_withheld`; the session's payers read in one pas
 Academic Office, the Students Account Officer, ICT and the administrator read it. Exams & Records, the Bursary and the Registry tell
 the students why, once a day at most (`EXAM_CARD_WITHHELD`).
 
-The GST & EPS examination permit keeps its own rule (the GST fee): [gst-eps-examination-permit.md](gst-eps-examination-permit.md).
+The GST & EPS examination permit is issued on the card's own terms and the GST fee besides (V589):
+[gst-eps-examination-permit.md](gst-eps-examination-permit.md).
 
 ## Tests
 

@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * The student's GST & EPS examination permit (V492): the GST and EPS courses on the approved course registration for the
+ * The student's GST & EPS examination permit (V492): the GST and EPS courses on the submitted course registration for the
  * semester, as the API chose them, each under its own heading, with the examination's date, time and venue where the timetable
  * sets them (TO BE SCHEDULED until then); the permit viewed, downloaded or printed; or why it is not available, with the way to
- * put it right. It sits apart from the examination card, which keeps every registered course.
+ * put it right. It sits apart from the examination card, which keeps every registered course, and is issued on the card's own
+ * terms — courses registered and school fees paid — and the GST fee (V589).
  */
 import type { ReactNode } from "react";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
@@ -67,7 +68,7 @@ export function GstEpsPermit({ v, semesters }: { v: PermitState; semesters: numb
         </Note>
       ) : (
         <Note kind="ok" title="Your GST & EPS examination permit is ready">
-          It lists only the GST and EPS courses on your approved course registration for {v.session} {sem.toLowerCase()} semester. Bring it, with your student I.D. card, to every GST and EPS examination. Your examination card is separate.
+          It lists only the GST and EPS courses on your course registration for {v.session} {sem.toLowerCase()} semester. Bring it, with your student I.D. card, to every GST and EPS examination. Your examination card is separate.
         </Note>
       )}
 

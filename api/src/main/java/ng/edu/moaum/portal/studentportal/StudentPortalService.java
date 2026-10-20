@@ -10,6 +10,7 @@ import java.util.UUID;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.platform.SupportView;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -55,13 +56,13 @@ public class StudentPortalService {
             throw new DomainRuleViolation("CHECK_CODE_SESSION", "A check code is made for one session (such as 2026/2027) and one semester.");
         }
         StudentPortalRepository.Student s = student(id);
-        // V495/V501: an examination card's code is signed only when the card's own rule says it may be issued (an approved
-        // registration carrying a course, the Bursary's clearance not refused, the card released) — the card issued is counted only then
+        // V495/V501/V567: an examination card's code is signed only when the card's own rule says it may be issued (a registration
+        // submitted carrying a course, the school fees paid) — the card issued is counted only then
         if (k == CheckCodes.Kind.EXAM) {
             Map<String, Object> card = examCard(id, session, semester);
             if (!Boolean.TRUE.equals(card.get("available"))) {
                 throw new DomainRuleViolation(String.valueOf(card.get("code")), String.valueOf(card.get("reason")),
-                        new DomainRuleViolation.Remedy("Register your courses, have them approved, and settle the fees the Bursary's scheme requires; the card follows.", "Academic Office"));
+                        new DomainRuleViolation.Remedy("Register and submit your courses and pay your school fees; the card follows.", "Academic Office"));
             }
         }
         String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
@@ -71,8 +72,9 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("semester", semester);
         out.put("code", codes.sign(k, number, session, String.valueOf(semester)));
-        // V491: the examination card is issued with its code; counted once a student and semester, with how many times
-        if (k == CheckCodes.Kind.EXAM) repo.recordExamCard(id, session, semester);
+        // V491: the examination card is issued with its code; counted once a student and semester, with how many times — V589: not
+        // when ICT Support looks at the card as the student (V521): the view reads, counts nothing, and is no longer refused the card
+        if (k == CheckCodes.Kind.EXAM && !SupportView.active()) repo.recordExamCard(id, session, semester);
         return out;
     }
 

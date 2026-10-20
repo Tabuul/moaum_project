@@ -43,10 +43,13 @@ test("the permit's state reads as a word, and a refusal names its remedy", () =>
   assert.equal(permitStatusLabel({ ...base, permit: { reference: "GST-EPS/2026/000001", status: "PRINTED", generatedAt: "", lastIssuedAt: "", viewed: 1, downloaded: 0, printed: 1 } }), "Printed");
   assert.equal(permitStatusLabel({ ...base, available: false, permit: { reference: "GST-EPS/2026/000001", status: "REVOKED", generatedAt: "", lastIssuedAt: "", viewed: 1, downloaded: 0, printed: 0 } }), "Withdrawn");
   assert.equal(registrationRemedy("GST_EPS_PERMIT_NO_COURSES"), true);
-  assert.equal(registrationRemedy("GST_EPS_PERMIT_NOT_APPROVED"), true);
+  assert.equal(registrationRemedy("GST_EPS_PERMIT_NOT_SUBMITTED"), true);
   assert.equal(registrationRemedy("GST_EPS_PERMIT_GST_PAYMENT"), false);
+  assert.equal(registrationRemedy("GST_EPS_PERMIT_NOT_PAID"), false);
   assert.equal(paymentRemedy("GST_EPS_PERMIT_GST_PAYMENT"), "GST");
-  assert.equal(paymentRemedy("GST_EPS_PERMIT_NOT_CLEARED"), "FEES");
+  // V589: the school fees, as the examination card asks them — no clearance scheme, approval or release stands between
+  assert.equal(paymentRemedy("GST_EPS_PERMIT_NOT_PAID"), "FEES");
+  assert.equal(paymentRemedy("GST_EPS_PERMIT_NOT_CLEARED"), null);
   assert.equal(paymentRemedy("GST_EPS_PERMIT_REVOKED"), null);
 });
 

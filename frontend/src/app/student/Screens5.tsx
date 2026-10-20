@@ -137,7 +137,7 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
       {permits.filter((permit) => permit.courses.length || permit.permit).map((permit) => (
         <Panel key={permit.semester} title={`GST & EPS EXAMINATION PERMIT · ${permit.session} · ${semesterName(permit.semester)} semester`} right={permitStatusLabel(permit)}>
           <PBody>
-            <div className="sub2">{permit.available ? `${permitSummary(permit)}. The permit lists only the GST and EPS courses on your approved registration.` : permit.reason}</div>
+            <div className="sub2">{permit.available ? `${permitSummary(permit)}. The permit lists only the GST and EPS courses on your course registration.` : permit.reason}</div>
             <div className="row row--inline mt-2" style={{ gap: 8, flexWrap: "wrap" }}>
               {permit.available ? <PermitActions session={permit.session} semester={permit.semester} /> : null}
               <LinkBtn kind="ghost" href={`/student/exams/gst-eps-permit?semester=${permit.semester}`}>VIEW GST & EPS PERMIT</LinkBtn>

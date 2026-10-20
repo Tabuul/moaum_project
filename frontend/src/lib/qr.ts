@@ -1,6 +1,6 @@
 import "server-only";
 import QRCode from "qrcode";
-import { api } from "./api";
+import { api, type Problem } from "./api";
 
 /**
  * Verification by QR. A printed document is not trusted by its appearance — it is checked against the University's
@@ -28,10 +28,17 @@ export function resultVerifyPath(number: string, session: string, semester: numb
   return `/verify/results?m=${encodeURIComponent(number)}&s=${encodeURIComponent(session)}&sem=${semester}&c=${encodeURIComponent(code)}`;
 }
 
-/** V360: the signed check code for the signed-in student's own document, and the number it is made over */
-export async function studentCheckCode(kind: "EXAM" | "REG" | "RESULT", session: string, semester: number): Promise<{ number: string; code: string } | null> {
+/** V360: the signed check code for the signed-in student's own document, and the number it is made over — or the API's own
+ *  refusal (V589: the examination card's route shows it, so a student or ICT Support reads why rather than "try again") */
+export async function studentCheckCodeResult(kind: "EXAM" | "REG" | "RESULT", session: string, semester: number): Promise<{ ok: true; number: string; code: string } | { ok: false; problem: Problem }> {
   const r = await api<{ number: string; code: string }>(`/api/v1/me/check-code?kind=${kind}&session=${encodeURIComponent(session)}&semester=${semester}`);
-  return r.ok ? { number: r.data.number, code: r.data.code } : null;
+  return r.ok ? { ok: true, number: r.data.number, code: r.data.code } : { ok: false, problem: r.problem };
+}
+
+/** the check code alone, or null when it could not be made */
+export async function studentCheckCode(kind: "EXAM" | "REG" | "RESULT", session: string, semester: number): Promise<{ number: string; code: string } | null> {
+  const r = await studentCheckCodeResult(kind, session, semester);
+  return r.ok ? { number: r.number, code: r.code } : null;
 }
 
 /** the QR as a monochrome module grid, for drawing into a PDF as filled squares */
