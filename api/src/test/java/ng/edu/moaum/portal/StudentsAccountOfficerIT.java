@@ -24,9 +24,10 @@ import org.springframework.transaction.PlatformTransactionManager;
  * transactions, the Bursary's view, the hanging payments desk, NELFUND, Student Query and the unpaid registrations; it states the
  * session's school fees (a line added, the same line refused twice, ended) and reads the fee history; it acts on the hanging payments
  * desk; and it is refused everything else of the Bursar's: the clearance scheme, confirming a payment, refunds, bank credits, the
- * collections import, a test checkout, NELFUND credits and the transfer fee. V591: it holds the Old Fees History desk's import (not
- * the go-live reset or the ledger) and the level desk (finds any student, progresses the level, reads the history) and no other door
- * of the ICT Support Desk. A lecturer does not read the payments. Needs DATABASE_URL.
+ * collections import, a test checkout, NELFUND credits and the transfer fee. V591: it holds the Old Fees History desk (not the
+ * go-live reset or the ledger) and the level desk (finds any student, progresses the level, reads the history) and no other door
+ * of the ICT Support Desk; V607: its old fees file waits for the Bursar's approval (OldFeesUploadIT), never loaded directly. A
+ * lecturer does not read the payments. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -111,11 +112,10 @@ class StudentsAccountOfficerIT {
         assertThat(status(sao, HttpMethod.POST, "/api/v1/nelfund/credit", Map.of("number", "MOAUM/TEST/1", "reason", "Integration test credit"))).isEqualTo(403);
         assertThat(status(sao, HttpMethod.PUT, "/api/v1/finance/transfer-fee", Map.of("amount", 1000))).isEqualTo(403);
 
-        // V591: the Old Fees History desk's import is the officer's (a body that passes the office and fails the form: FEE_ROWS, never
-        // 403), as is what is loaded; the go-live reset and the ledger stay the Bursar's
-        ResponseEntity<Map> oldFees = it.call(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees", Map.of("rows", List.of()));
-        assertThat(oldFees.getStatusCode().value()).as(String.valueOf(oldFees.getBody())).isEqualTo(422);
-        assertThat(oldFees.getBody()).containsEntry("code", "FEE_ROWS");
+        // V607: the Old Fees History desk's file and its item codes are loaded directly by the Bursary only — the officer's upload
+        // waits for the Bursar's approval (OldFeesUploadIT); what is loaded is read; the go-live reset and the ledger stay the Bursar's
+        assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees", Map.of("rows", List.of()))).isEqualTo(403);
+        assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees/item-codes", Map.of("rows", List.of()))).isEqualTo(403);
         assertThat(it.get(sao, "/api/v1/finance/legacy-fees/loaded").getStatusCode().value()).isEqualTo(200);
         assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/legacy-fees/reset", Map.of("session", "", "confirm", "RESET"))).isEqualTo(403);
         assertThat(status(sao, HttpMethod.POST, "/api/v1/finance/accounting/sync?limit=1", Map.of())).isEqualTo(403);

@@ -31,7 +31,7 @@ carries only the offices the person holds today. The officer's powers are theref
 | Students | Student Query, the student's record with its school fees and payment history, unpaid registrations, examination cards withheld | — |
 | Hanging payments | The desk, the claims, the Ask Interswitch list, the payment events | Recheck any payer's reference at the gateway (`/payments/verify`, `/payments/sweep`), resolve an event, mark a reported receipt not found or reopen it (`PaymentsController.HANGING_DESK`; V522 batch: `/payments/verify` and `/payments/state` treat the officer as an office, not as the payer) |
 | Student levels (V591) | Student Level Management and Level Change History, every student (`SupportAccess.LEVEL_DESK`: the officer reaches the University there with the level capabilities only — `VIEW_STUDENT`, `PROGRESS_LEVEL`, `CORRECT_LEVEL`, `VIEW_LEVEL_HISTORY`); the student finder the desk needs | Progress a student to the next level or correct the level, with a reason (`people.support_set_level`, V500's rules unchanged; recorded on the cohort decision history and the support ledger under the office). No other door of the ICT Support Desk: the support record, tickets, password resets, the student's portal and support overrides stay `AGENTS` |
-| Old fees history (V591) | The Old Fees History desk: the reconciliation, doubles, mislabelled records, overpaid, double charges, payments never received, what is loaded | Load the old portal's fees export, set the item codes, put mislabelled records right, withdraw doubles (`FinanceController.OLD_FEES_DESK`). What needs the bank's word or moves money — a double charge checked, a payment never received raised or decided (`finance.bursary_actor`), an excess carried or refunded — the ledger posted and the go-live reset stay the Bursar's; the screen offers them to the Bursary only |
+| Old fees history (V591, V607) | The Old Fees History desk: the reconciliation, doubles, mislabelled records, overpaid, double charges, payments never received, what is loaded, the officer's uploads and what became of them | Send the old portal's fees export, with its item codes, **for the Bursar's approval** (V607: nothing is written to the records until the Bursar approves; `LegacyFeeUploadController`), withdraw an upload not yet decided, put mislabelled records right, withdraw doubles (`FinanceController.OLD_FEES_DESK`). What needs the bank's word or moves money — a double charge checked, a payment never received raised or decided (`finance.bursary_actor`), an excess carried or refunded — the ledger posted and the go-live reset stay the Bursar's; the screen offers them to the Bursary only |
 | Old GST payments (V591) | The Old GST Payments desk: the figures, the runs, the staged rows, the exception queue, the report | Stage the old portal's GST export (and its dry run), apply a run to the ledger, match, reconcile, relabel or reject a row, find a student (`LegacyGstController.BURSARY`, as the Bursar and the finance controller) |
 
 **Never held by the officer:** confirming a payment by hand, refunds, bank credits, payment reversal, ledger and accounting,
@@ -53,10 +53,37 @@ refusal comes from the office check and not from the form.
 | Unpaid Registrations, Examination Cards Withheld | As for the Bursary |
 | Hanging Payments | The hanging payments desk: Ask the gateway, Resolve, Not found and Reopen are the officer's; importing Interswitch's collections report stays on the Bursary's gateways screen, so the screen does not offer it |
 | Student Level Management, Level Change History (V591) | ICT Support's level desk (`/helpdesk/levels`, `/helpdesk/levels/history`) under the officer's own eyebrow: the support record and the Support Desk links are not offered, a student in the history opens on the level desk |
-| Old Fees History (V591) | The Bursary's Old Fees History desk (`/finance/legacy-fees`): the import and its tabs; the Bursary-only acts (double charges, payments never received, overpaid decisions, the ledger, the reset) are shown without their buttons |
+| Old Fees History (V591, V607) | The Bursary's Old Fees History desk (`/finance/legacy-fees`): the file is sent to the Bursar for approval ("Send N rows to the Bursar for approval"), and **Uploads for the Bursar's approval** lists each upload with its state; the tabs; the Bursary-only acts (double charges, payments never received, overpaid decisions, the ledger, the reset) are shown without their buttons |
 | Old GST Payments (V591) | The Bursary's Old GST Payments desk (`/finance/legacy-gst`), every act |
 
 ## 4. Changes made
+
+### V607: the officer's old fees uploads wait for the Bursar's approval
+
+V591 let the officer load the old portal's fees export straight onto the records. Since V607 the officer keeps the desk and the
+upload, but nothing the officer uploads is written to the records until the Bursar approves it.
+
+- **The officer** chooses the file as before and presses **Send N rows to the Bursar for approval**. The upload (reference
+  `OFU-YYYY-NNNNN`) is opened with the file's payment-item codes, its rows are sent in parts and it is sent to the Bursar, who is
+  told (`OLD_FEES_UPLOAD_WAITING`). Once sent, its rows cannot be changed or removed, so what the Bursar approves is what the
+  officer sent. The officer may withdraw an upload not yet decided and is told when it is approved or rejected
+  (`OLD_FEES_UPLOAD_DECIDED`).
+- **The Bursar** opens it under **Uploads for the Bursar's approval**: the summary (rows, students, sessions, the amount stated),
+  the rows (and all of them as Excel), and **Check what approving would do** — the import run on the rows and undone, so nothing
+  is written (each part is checked on its own). **Approve and load** sets the item codes, then loads the rows a few parts at a time
+  exactly as the Bursar's own upload is, and keeps the totals. **Reject** needs a reason of ten characters or more. The person who
+  uploaded never approves the upload, even when they also hold the Bursar's office.
+- The Bursary's own file still loads directly. Loading a file directly and setting item codes directly are now the Bursary's
+  only (`POST /finance/legacy-fees`, `POST /finance/legacy-fees/item-codes`). The officer's other acts on the desk (records put
+  right, doubles withdrawn) are unchanged.
+- **Database (V607):** `finance.legacy_fee_upload` and `finance.legacy_fee_upload_part`, with `finance.legacy_upload_open`, `_add`,
+  `_submit`, `_withdraw` (the officer) and `_check`, `_approve`, `_reject` (the Bursar). The functions check the offices and states
+  themselves.
+- **API:** `GET/POST /finance/legacy-fees/uploads`, `GET /{id}`, `GET /{id}/rows`, `POST /{id}/rows`, `/submit`, `/withdraw`,
+  `/check`, `/approve`, `/reject`.
+- **Tests:** check.sql's V607 block; `OldFeesUploadIT`; `StudentsAccountOfficerIT` (the direct load refused).
+
+### V520
 
 - **Database (V520):** the office row. Nothing else is written.
 - **Fee setup:** a fee line added or edited by hand is refused (`FEE_LINE_DUPLICATE`) while an active line already states the

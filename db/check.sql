@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 438
+\set EXPECTED 439
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22086,6 +22086,107 @@ BEGIN
         coalesce(acted = 1 AND nursing = '100:ACTIVE:0' AND opened = 'COLLEGE_NOT_MBBS'
                  AND before_n IS NOT NULL AND held_n = before_n AND confirmed_n = before_n - 1, false),
         format('acted %s | nursing %s | opened %s | no e-mail before %s, held %s, confirmed %s', acted, nursing, opened, before_n, held_n, confirmed_n));
+END $$;
+-- ── V607. Old Fees History uploads by the Students Account Officer held for the Bursar's approval. Made-up students: the
+--          officer's upload (two parts, its item codes) writes nothing to the records until approved; the Bursary may not open
+--          one and the officer may not approve one; once sent, rows are not added and a part is not removed; the Bursar's check
+--          counts what approving would do and writes nothing; a rejection needs a reason; the uploader never approves their own;
+--          the approval loads a part at a time (APPROVING, then APPROVED) with the item codes, the payments and the totals; a
+--          second upload is rejected and a third withdrawn. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9871/9872'; pa text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
+    sao uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); up record; u2 record; u3 record; u finance.legacy_fee_upload;
+    chk record; a1 record; a2 record; before_n int; after_check int; after_one int; after_all int; code_now text; tally text;
+    bursar_open text; sao_approve text; added_late text; part_gone text; short_reject text; own_decision text; msg text;
+    st_rej text; st_wd text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', sao::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V607', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9871-10-01', date '9872-08-31') ON CONFLICT (name) DO NOTHING;
+    SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' ORDER BY code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+      (s1, 'MOAUM/ADM/71/607001', 'MOAUM/CHK/71/6071', 'ZZCHKV607A', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+      (s2, 'MOAUM/ADM/71/607002', 'MOAUM/CHK/71/6072', 'ZZCHKV607B', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees', 250000, NULL, pa);
+
+    -- the Bursary does not open an upload for approval (it loads its own file directly)
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.legacy_upload_open('x.xlsx', NULL, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS bursar_open = MESSAGE_TEXT; END;
+
+    -- the officer's upload: the item codes and two parts
+    PERFORM set_config('moaum.actor_id', sao::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    SELECT * INTO up FROM finance.legacy_upload_open('old-portal-export.xlsx', 'CHECK V607', jsonb_build_array(jsonb_build_object('code', '96071', 'description', 'SCHOOL FEES')));
+    PERFORM finance.legacy_upload_add(up.id, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/71/6071', 'session', ses, 'semester', 'First', 'amount', '100,000', 'purpose', '96071', 'paidOn', '9871-11-02', 'payref', 'PRV6070001'),
+        jsonb_build_object('matric', 'MOAUM/CHK/71/6072', 'session', ses, 'semester', 'First', 'amount', '', 'purpose', 'SCHOOL FEES', 'paidOn', '9871-11-03', 'payref', 'PRV6070002')));
+    PERFORM finance.legacy_upload_add(up.id, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/71/6099', 'session', ses, 'semester', 'First', 'amount', '5000', 'purpose', 'SCHOOL FEES', 'paidOn', '9871-11-04', 'payref', 'PRV6070003')));
+    BEGIN PERFORM * FROM finance.legacy_upload_approve(up.id, NULL, 1);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS sao_approve = MESSAGE_TEXT; END;
+    u := finance.legacy_upload_submit(up.id);
+    tally := u.state || ':' || u.parts || '/' || u.row_count || '/' || u.students || '/' || u.sessions || '/' || u.amount::int;
+    BEGIN PERFORM finance.legacy_upload_add(up.id, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/CHK/71/6071', 'session', ses)));
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS added_late = MESSAGE_TEXT; END;
+    BEGIN DELETE FROM finance.legacy_fee_upload_part WHERE upload_id = up.id AND seq = 2;
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS part_gone = MESSAGE_TEXT; END;
+    SELECT count(*) INTO before_n FROM finance.payment_reference WHERE student_id IN (s1, s2);
+    code_now := (SELECT description FROM finance.legacy_item_code WHERE code = '96071');
+
+    -- the Bursar: what approving would do (nothing written), a rejection needs a reason, never the uploader's own approval
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT * INTO chk FROM finance.legacy_upload_check(up.id, 1, 10);
+    SELECT count(*) INTO after_check FROM finance.payment_reference WHERE student_id IN (s1, s2);
+    code_now := coalesce(code_now, '-') || '|' || coalesce((SELECT description FROM finance.legacy_item_code WHERE code = '96071'), '-');
+    BEGIN PERFORM finance.legacy_upload_reject(up.id, 'no');
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS short_reject = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', sao::text, true);
+    BEGIN PERFORM * FROM finance.legacy_upload_approve(up.id, NULL, 1);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS own_decision = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    SELECT * INTO a1 FROM finance.legacy_upload_approve(up.id, 'Checked against the old portal', 1);
+    SELECT count(*) INTO after_one FROM finance.payment_reference WHERE student_id IN (s1, s2) AND channel = 'Legacy';
+    SELECT * INTO a2 FROM finance.legacy_upload_approve(up.id, NULL, 1);
+    SELECT count(*) INTO after_all FROM finance.payment_reference WHERE student_id IN (s1, s2) AND channel = 'Legacy';
+    code_now := code_now || '|' || coalesce((SELECT description FROM finance.legacy_item_code WHERE code = '96071'), '-');
+
+    -- a second upload rejected with the reason, a third withdrawn by the officer
+    PERFORM set_config('moaum.actor_id', sao::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    SELECT * INTO u2 FROM finance.legacy_upload_open('second.xlsx', NULL, NULL);
+    PERFORM finance.legacy_upload_add(u2.id, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/CHK/71/6071', 'session', ses, 'amount', '1')));
+    PERFORM finance.legacy_upload_submit(u2.id);
+    SELECT * INTO u3 FROM finance.legacy_upload_open('third.xlsx', NULL, NULL);
+    st_wd := (finance.legacy_upload_withdraw(u3.id, 'Wrong file chosen')).state;
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    st_rej := (finance.legacy_upload_reject(u2.id, 'The amounts do not match the old portal')).state;
+    RAISE EXCEPTION 'the V607 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V607 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V607: the Students Account Officer''s old fees upload is written to the records only when the Bursar approves it',
+        coalesce(bursar_open LIKE 'LEGACY_UPLOAD_OFFICE%' AND sao_approve LIKE 'LEGACY_UPLOAD_OFFICE%'
+                 AND tally = 'PENDING:2/3/3/' || ses || '/105000'
+                 AND added_late LIKE 'LEGACY_UPLOAD_STATE%' AND part_gone LIKE 'LEGACY_UPLOAD_FIXED%'
+                 AND before_n = 0 AND after_check = 0 AND chk.checked_parts = 2
+                 AND (chk.totals->>'rows')::int = 3 AND (chk.totals->>'cleared')::int = 2 AND (chk.totals->>'no_student')::int = 1
+                 AND short_reject LIKE 'LEGACY_UPLOAD_REASON%' AND own_decision LIKE 'LEGACY_UPLOAD_OWN_DECISION%'
+                 AND a1.state = 'APPROVING' AND a1.remaining = 1 AND after_one = 2
+                 AND a2.state = 'APPROVED' AND a2.remaining = 0 AND after_all = 2
+                 AND (a2.result->>'rows')::int = 3 AND (a2.result->>'cleared')::int = 2 AND (a2.result->>'no_student')::int = 1
+                 AND code_now = '-|-|SCHOOL FEES' AND st_rej = 'REJECTED' AND st_wd = 'WITHDRAWN', false),
+        format('bursar opens %s | officer approves %s | sent %s | added late %s | part removed %s | payments before %s, after check %s | check %s parts %s | short reject %s | own %s | approve 1: %s left %s payments %s | approve 2: %s left %s payments %s totals %s | codes %s | rejected %s withdrawn %s',
+               left(bursar_open, 22), left(sao_approve, 22), tally, left(added_late, 20), left(part_gone, 20), before_n, after_check,
+               chk.checked_parts, chk.totals, left(short_reject, 22), left(own_decision, 27), a1.state, a1.remaining, after_one,
+               a2.state, a2.remaining, after_all, a2.result, code_now, st_rej, st_wd));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

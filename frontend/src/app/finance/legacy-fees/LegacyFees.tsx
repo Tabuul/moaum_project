@@ -1,6 +1,6 @@
 "use client";
 
-import { notifyProblem } from "@/components/proto/Toast";
+import { notify, notifyProblem } from "@/components/proto/Toast";
 /** t/legacyfees — old students' school-fees history from the old portal (V087). Each row settles a past
  *  session (or semester) by the amount paid, or in full against the fee schedule when the amount is blank.
  *  Columns are matched by keyword, so a template or an old-portal export both read. Bursary only.
@@ -9,7 +9,8 @@ import { notifyProblem } from "@/components/proto/Toast";
  *  reconciled against the fee setup. V502: a payment the retired screen recorded under its number is taken over when the
  *  export names it (its item, semester and day), and what it recorded that nothing matches is listed. V506: the overpaid,
  *  carried into the next session or refunded, and the ledger posted from here. V561: possible bank double charges checked with the
- *  bank before an excess is decided, and a payment the bank never received withdrawn by two Bursary officers. */
+ *  bank before an excess is decided, and a payment the bank never received withdrawn by two Bursary officers. V607: the Students
+ *  Account Officer's file (with its item codes) is sent to the Bursar and loaded only when the Bursar approves it. */
 import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
@@ -17,7 +18,7 @@ import { xlsxWorkbook, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
-import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
+import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type ItemCode, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
 import { OldFeesDoubleCharges } from "./OldFeesDoubleCharges";
 import { OldFeesDoubles } from "./OldFeesDoubles";
 import { OldFeesLedger } from "./OldFeesLedger";
@@ -26,6 +27,7 @@ import { OldFeesNotReceived } from "./OldFeesNotReceived";
 import { OldFeesOverpaid } from "./OldFeesOverpaid";
 import { OldFeesPaymentHistoryLeft } from "./OldFeesPaymentHistoryLeft";
 import { OldFeesReconciliation } from "./OldFeesReconciliation";
+import { OldFeesUploads } from "./OldFeesUploads";
 /** the Bursary: what needs the bank's word or moves money, the ledger and the go-live reset */
 const BURSARY = ["bursar", "super", "admin"];
 /** V591: the import's own acts — the file loaded, item codes, records put right, doubles withdrawn — the Students Account Officer's too */
@@ -34,6 +36,11 @@ const DESK = [...BURSARY, "studentaccounts"];
 export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   const may = DESK.includes(actingOffice ?? "");
   const bursary = BURSARY.includes(actingOffice ?? "");
+  // V607: the Students Account Officer's file waits for the Bursar's approval before anything is written
+  const held = actingOffice === "studentaccounts";
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [heldCodes, setHeldCodes] = useState<ItemCode[]>([]);
+  const [sent, setSent] = useState<{ ref: string; rows: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [preview, setPreview] = useState<Row[] | null>(null);
@@ -80,6 +87,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     setResumeAt(null);
     jobRef.current = null;
     setPreview(null);
+    setSent(null);
+    setFileName(file.name);
     try {
       const sheets = await xlsxWorkbook(await file.arrayBuffer());
       /* V326: the columns are matched by keyword in lib/legacy-fees — the old portal's export (Purpose/Payment Item,
@@ -91,7 +100,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       const { columns: ci, rows: read } = legacyFeeRows(main?.rows ?? []);
       const { rows, named } = withItemNames(read, codes);
       setCodesRead(codes.length ? { codes: codes.length, named, kept: false } : null);
-      if (codes.length && may) {
+      setHeldCodes(codes);
+      if (codes.length && bursary) {
         const r = await fetch("/api/bff/api/v1/finance/legacy-fees/item-codes", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("The old portal's payment-item codes read from its export") },
@@ -226,8 +236,42 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     } finally { setBusy(false); bump(); }
   }
 
+  /* V607: the officer's file sent to the Bursar — the upload opened with its item codes, the rows in parts, then sent; nothing is
+     written to the records until the Bursar approves it */
+  async function sendForApproval() {
+    if (!preview) return;
+    setBusy(true); setProblem(null); setSent(null);
+    const post = async (path: string, body: unknown) => {
+      const r = await fetch(`/api/bff/api/v1/finance/legacy-fees/uploads${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Old students' school-fees history sent for the Bursar's approval") },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw (j ?? { status: r.status, title: r.statusText || "The server refused the upload" }) as Problem;
+      return (j ?? {}) as Record<string, unknown>;
+    };
+    try {
+      const up = await post("", { fileName, note: null, itemCodes: heldCodes });
+      const PART = 1000;
+      for (let at = 0; at < preview.length; at += PART) {
+        setProgress(`Sending ${Math.min(at + PART, preview.length).toLocaleString()} of ${preview.length.toLocaleString()} rows…`);
+        await post(`/${String(up.id)}/rows`, { rows: preview.slice(at, at + PART) });
+      }
+      const done = await post(`/${String(up.id)}/submit`, {});
+      setSent({ ref: String(done.ref), rows: Number(done.row_count ?? preview.length) });
+      notify(`Upload ${String(done.ref)} sent to the Bursar for approval`);
+      setPreview(null);
+    } catch (e) {
+      setProblem(e as Problem); notifyProblem(e as Problem);
+    } finally {
+      setBusy(false); setProgress(null); bump();
+    }
+  }
+
   function upload() {
     if (!preview) return;
+    if (held) { void sendForApproval(); return; }
     jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0, matched: 0, separate: 0, taken_over: 0 }, sample: [] };
     void run();
   }
@@ -244,6 +288,12 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
         with its item, semester and the day paid.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Bursary">Your office may not import fees history.</Note> : null}
+      {held ? (
+        <Note kind="info" title="Your upload waits for the Bursar's approval">
+          The file you load here is sent to the Bursar with its payment-item codes. Nothing of it is written to the records until the
+          Bursar approves it; you are told when it is approved or rejected, and you may withdraw it while it waits.
+        </Note>
+      ) : null}
 
       <Panel title="Old-portal fees export" right="Matriculation number · session · amount (or blank for cleared)">
         <PBody>
@@ -262,10 +312,16 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       {codesRead ? (
         <Note kind="info" title={`${codesRead.codes.toLocaleString()} payment-item codes read from the export`}>
           The export&rsquo;s payment_type sheet names each code (10048 is SCHOOL FEES). {codesRead.named.toLocaleString()} row{codesRead.named === 1 ? "" : "s"} of this
-          file carried a code and {codesRead.named === 1 ? "is" : "are"} read as the item it names.{codesRead.kept ? " The codes are kept: what earlier uploads recorded under a code is listed below, to be put right." : ""}
+          file carried a code and {codesRead.named === 1 ? "is" : "are"} read as the item it names.{codesRead.kept ? " The codes are kept: what earlier uploads recorded under a code is listed below, to be put right." : held ? " The codes go with your upload and are kept when the Bursar approves it." : ""}
         </Note>
       ) : null}
       {resetDone ? <Note kind="ok" title="Reset done">{resetDone}</Note> : null}
+      {sent ? (
+        <Note kind="ok" title={`Upload ${sent.ref} sent to the Bursar`}>
+          {sent.rows.toLocaleString()} row{sent.rows === 1 ? "" : "s"} wait for the Bursar&rsquo;s approval; nothing is on the records yet. Follow it under
+          Uploads for the Bursar&rsquo;s approval below.
+        </Note>
+      ) : null}
       {resumeAt !== null && preview ? (
         <Note kind="info" title={`Stopped at row ${resumeAt.toLocaleString()} of ${preview.length.toLocaleString()}`}
               action={<Btn kind="primary" disabled={busy} onClick={() => void run()}>Resume from the failed batch</Btn>}>
@@ -295,7 +351,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       ) : null}
 
       {preview ? (
-        <Panel title="Read from the file — check, then load" right={`${preview.length} row${preview.length === 1 ? "" : "s"}`}>
+        <Panel title={held ? "Read from the file — check, then send to the Bursar" : "Read from the file — check, then load"} right={`${preview.length} row${preview.length === 1 ? "" : "s"}`}>
           <PBody>
             <div className="tablewrap" tabIndex={0} style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
               <table className="tbl--data">
@@ -308,13 +364,16 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               </table>
             </div>
             <div className="row mt-3">
-              <Btn kind="primary" size="md" disabled={busy || !may} onClick={upload}>{busy ? (progress ?? "Loading…") : `Load ${preview.length.toLocaleString()} rows`}</Btn>
+              <Btn kind="primary" size="md" disabled={busy || !may} onClick={upload}>{busy ? (progress ?? (held ? "Sending…" : "Loading…")) : held ? `Send ${preview.length.toLocaleString()} rows to the Bursar for approval` : `Load ${preview.length.toLocaleString()} rows`}</Btn>
               <Btn kind="ghost" size="md" disabled={busy} onClick={() => setPreview(null)}>Cancel</Btn>
               {busy && progress ? <span className="sub2">{progress}</span> : null}
             </div>
           </PBody>
         </Panel>
       ) : null}
+
+      {/* V607: the Students Account Officer's uploads, held for the Bursar's approval */}
+      <OldFeesUploads office={actingOffice} tick={changed} onChanged={bump} />
 
       <OldFeesReconciliation tick={changed} />
 
