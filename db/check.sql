@@ -21606,7 +21606,7 @@ BEGIN
         told := helpdesk.sign_in_lookup_record('192.0.2.59', 'moaum/chk/99/ 059901', true, a);
         told := told + helpdesk.sign_in_lookup_record('192.0.2.59', 'MOAU/NOT/A/NUMBER', false, NULL);
         told_again := helpdesk.sign_in_lookup_record('192.0.2.59', 'MOAU/NOT/A/NUMBER/2', false, NULL);
-        logged := (SELECT string_agg(l.number || ':' || l.found, ',' ORDER BY l.number) FROM helpdesk.sign_in_lookup l WHERE l.source = '192.0.2.59');
+        logged := (SELECT string_agg(l.number || ':' || l.found, ',' ORDER BY l.number COLLATE "C") FROM helpdesk.sign_in_lookup l WHERE l.source = '192.0.2.59');
         capped := helpdesk.sign_in_lookup_refused('192.0.2.59');
         other_capped := helpdesk.sign_in_lookup_refused('192.0.2.60');
         by_source := (SELECT x.checks || ':' || x.numbers || ':' || x.found || ':' || x.told || ':' || x.refused
