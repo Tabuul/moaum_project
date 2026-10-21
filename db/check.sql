@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 442
+\set EXPECTED 443
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22396,6 +22396,74 @@ BEGIN
         format('carry %s awaited %s | 101 %s/%s/%s | 105 %s | 108 %s | added %s/%s kept %s let go %s | before reset %s after %s',
                ctx.carry, ctx.awaited, k101.category, k101.added_as, coalesce(k101.refusal, '-'), left(k105.refusal, 20), left(k108.refusal, 20),
                added_type, added_as, kept, let_go, reset_kept, after_reset));
+END $$;
+
+-- ── V612. The expected completion pinned by the Registry: a student the count puts in SP2 pinned to last session is SP1, pinned to
+--          this session is not in spillover, and is SP2 again when the pin is removed; the pin is read before the final-year rule
+--          (V595); a pin needs a person, a reason and a session on the calendar not before the cohort; removing a pin that is not
+--          there is refused; every act is a COMPLETION row on the decision history. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2612; v_prog text; v_dept text; v_fac text; cur text; e5 text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
+    a0 record; a1 record; a2 record; a3 record; b0 record; b1 record; n_dec int; r_reason text := ''; r_session text := ''; r_before text := ''; r_none text := ''; msg text;
+BEGIN
+  BEGIN   -- the check's own sessions, programme and students, undone at the end
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V612', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 6, y + 2) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1); e5 := format('%s/%s', y - 5, y - 4);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2612/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V612', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    -- s1: admitted five sessions ago to a four-year programme, no final-level record — the count completes it two sessions ago (SP2);
+    -- s2: the same, first registered at 400 Level last session — the final-year rule reads SP1
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/12/612001', 'MOAUM/ZZS/12/6121', 'CHECKV612', 'Counted', v_prog, 'UTME', e5, 100, 400, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/12/612002', 'MOAUM/ZZS/12/6122', 'CHECKV612', 'Final year late', v_prog, 'UTME', e5, 100, 400, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (gen_random_uuid(), s2, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now(), now());
+    SELECT expected_completion, spillover_years, spillover_state INTO a0 FROM people.academic_position WHERE student_id = s1;
+    SELECT expected_completion, spillover_years, spillover_state INTO b0 FROM people.academic_position WHERE student_id = s2;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    -- the refusals: no reason; a session off the calendar; a session before the cohort; a pin removed that is not there
+    BEGIN PERFORM people.set_completion_override(s1, format('%s/%s', y - 1, y), '  '); EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.set_completion_override(s1, '1900/1901', 'check'); EXCEPTION WHEN check_violation THEN r_session := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.set_completion_override(s1, format('%s/%s', y - 6, y - 5), 'check'); EXCEPTION WHEN check_violation THEN r_before := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.set_completion_override(s1, NULL, 'check'); EXCEPTION WHEN check_violation THEN r_none := split_part(SQLERRM, ':', 1); END;
+    -- pinned to last session: SP1; pinned to this session: not in spillover; the pin read before the final-year rule; removed: as counted
+    PERFORM people.set_completion_override(s1, format('%s/%s', y - 1, y), 'Senate directive of 1 March: the final year was ' || format('%s/%s', y - 1, y));
+    SELECT expected_completion, spillover_years, spillover_state INTO a1 FROM people.academic_position WHERE student_id = s1;
+    PERFORM people.set_completion_override(s1, cur, 'The Registrar''s letter: in the final year this session');
+    SELECT expected_completion, spillover_years, spillover_state INTO a2 FROM people.academic_position WHERE student_id = s1;
+    PERFORM people.set_completion_override(s2, format('%s/%s', y - 2, y - 1), 'The 400-Level registration of last session was a repeat; the final year was the one before');
+    SELECT expected_completion, spillover_years, spillover_state INTO b1 FROM people.academic_position WHERE student_id = s2;
+    PERFORM people.set_completion_override(s1, NULL, 'Pinned in error');
+    SELECT expected_completion, spillover_years, spillover_state INTO a3 FROM people.academic_position WHERE student_id = s1;
+    SELECT count(*) INTO n_dec FROM people.cohort_decision WHERE student_id = s1 AND rule = 'COMPLETION';
+    msg := format('counted %s/%s/%s | pinned last %s/%s/%s | pinned now %s/%s/%s | removed %s/%s/%s | s2 rule %s/%s pinned %s/%s | refusals %s %s %s %s | decisions %s',
+                  a0.expected_completion, a0.spillover_years, a0.spillover_state, a1.expected_completion, a1.spillover_years, a1.spillover_state,
+                  a2.expected_completion, a2.spillover_years, a2.spillover_state, a3.expected_completion, a3.spillover_years, a3.spillover_state,
+                  b0.expected_completion, b0.spillover_state, b1.expected_completion, b1.spillover_state, r_reason, r_session, r_before, r_none, n_dec);
+    RAISE EXCEPTION 'the V612 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    NULL;
+  END;
+  PERFORM pg_temp.assert('V612: the expected completion pinned by the Registry — SP2 by the count, SP1 pinned to last session, not in spillover pinned to this session, SP2 again unpinned; the pin read before the final-year rule; a reason, a calendar session not before the cohort; nothing to remove refused; each act on the decision history',
+      coalesce(a0.spillover_state = 'SPILLOVER_YEAR_2' AND a0.expected_completion = format('%s/%s', y - 2, y - 1)
+               AND a1.spillover_state = 'SPILLOVER_YEAR_1' AND a1.expected_completion = format('%s/%s', y - 1, y) AND a1.spillover_years = 1
+               AND a2.spillover_state = 'NORMAL' AND a2.expected_completion = cur AND a2.spillover_years = 0
+               AND a3.spillover_state = 'SPILLOVER_YEAR_2' AND a3.expected_completion = a0.expected_completion
+               AND b0.spillover_state = 'SPILLOVER_YEAR_1' AND b1.spillover_state = 'SPILLOVER_YEAR_2' AND b1.expected_completion = format('%s/%s', y - 2, y - 1)
+               AND r_reason = 'COMPLETION_REASON' AND r_session = 'COMPLETION_SESSION' AND r_before = 'COMPLETION_BEFORE_COHORT' AND r_none = 'COMPLETION_NOT_PINNED'
+               AND n_dec = 3, false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

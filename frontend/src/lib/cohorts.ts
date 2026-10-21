@@ -37,6 +37,8 @@ export interface CohortStudent extends CohortRow {
   matricHistory: { matric_no: string; issued_at: string; reason: string | null }[];
   outstanding: { course_code: string; title: string; units: number; failed_in: string }[];
   override: { effective_cohort: string; reason: string; set_by: string | null; set_at: string } | null;
+  /** V612: the expected completion the Registry pinned — spillover is counted from it */
+  completionOverride?: { expected_completion: string; reason: string; set_by: string | null; set_at: string } | null;
   sessions: { name: string; state: string; merged_into: string | null }[];
 }
 export interface CohortSettings {

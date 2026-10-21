@@ -215,6 +215,9 @@ class CohortController {
                 """).param("s", id).query().listOfRows());
         out.put("matricHistory", jdbc.sql("SELECT matric_no, issued_at, reason FROM people.matric_history WHERE student_id = :s ORDER BY issued_at").param("s", id).query().listOfRows());
         out.put("outstanding", jdbc.sql("SELECT course_code, title, units, failed_in FROM registration.carryovers(:s) ORDER BY course_code").param("s", id).query().listOfRows());
+        // V612: the expected completion the Registry pinned, if any — spillover is counted from it
+        out.put("completionOverride", jdbc.sql("SELECT expected_completion, reason, helpdesk.person_name(set_by) AS set_by, set_at FROM people.completion_override WHERE student_id = :s")
+                .param("s", id).query().listOfRows().stream().findFirst().orElse(null));
         out.put("override", jdbc.sql("SELECT effective_cohort, reason, helpdesk.person_name(set_by) AS set_by, set_at FROM people.cohort_override WHERE student_id = :s").param("s", id).query().listOfRows().stream().findFirst().orElse(null));
         out.put("sessions", jdbc.sql("SELECT name, state, merged_into FROM policy.academic_session ORDER BY starts_on").query().listOfRows());
         return out;
@@ -243,6 +246,19 @@ class CohortController {
     Map<String, Object> cohort(@PathVariable UUID id, @Valid @RequestBody CohortIn body) {
         jdbc.sql("SELECT people.set_cohort_override(:s, :c, :r)").param("s", id).param("c", blank(body.cohort()), Types.VARCHAR).param("r", body.reason().trim()).query().singleRow();
         return Map.of("studentId", id, "cohort", blank(body.cohort()) == null ? "" : body.cohort());
+    }
+
+    public record CompletionIn(@Size(max = 9) String session, @NotBlank @Size(max = 2000) String reason) {
+    }
+
+    /** V612: the expected completion pinned on evidence — spillover is counted from it, the count of sessions and the final-year rule
+     *  set aside while it stands — or the pin removed; the entry session, the cohort and the level stay */
+    @PostMapping("/students/{id}/completion")
+    @PreAuthorize(DECIDERS)
+    @Transactional
+    Map<String, Object> completion(@PathVariable UUID id, @Valid @RequestBody CompletionIn body) {
+        jdbc.sql("SELECT people.set_completion_override(:s, :c, :r)").param("s", id).param("c", blank(body.session()), Types.VARCHAR).param("r", body.reason().trim()).query().singleRow();
+        return Map.of("studentId", id, "expectedCompletion", blank(body.session()) == null ? "" : body.session());
     }
 
     public record Apply(@NotBlank String rule, @Size(max = 2000) String reason, @Size(max = 60) String batch, Boolean dryRun) {

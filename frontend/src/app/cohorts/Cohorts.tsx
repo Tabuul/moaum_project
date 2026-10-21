@@ -439,6 +439,8 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
   const [reason, setReason] = useState("");
   const [cohort, setCohort] = useState("");
   const [why, setWhy] = useState("");
+  const [completion, setCompletion] = useState("");
+  const [whyC, setWhyC] = useState("");
   if (s === undefined) {
     fetch(`/api/bff/api/v1/cohorts/students/${id}`).then(async (r) => { const j = r.ok ? ((await r.json()) as CohortStudent) : null; setS(j); if (j) setStatus(j.existing_status); });
     setS(null);
@@ -456,7 +458,7 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
           <div className="grid grid--3">
             {([["JAMB year", d.jamb_year], ["Entry session", d.entry_session], ["Effective cohort", `${d.effective_cohort ?? "—"}${d.cohort_source === "MERGED" ? " (session merged)" : d.cohort_source === "OVERRIDE" ? " (set by the Registry)" : ""}`],
               ["Matriculation", d.matric_no], ["Programme length", d.duration_years ? `${d.duration_years} sessions` : "not configured"], ["Current session", d.current_session],
-              ["Level on record", d.current_level], ["Level the cohort implies", d.computed_level], ["Expected completion", d.expected_completion],
+              ["Level on record", d.current_level], ["Level the cohort implies", d.computed_level], ["Expected completion", `${d.expected_completion ?? "—"}${d.completionOverride ? " (pinned by the Registry)" : ""}`],
               ["Deferred sessions", d.deferred_sessions], ["Spillover", SPILL[d.spillover_state] ?? d.spillover_state], ["This session", d.registered_current ? "Registered" : d.enrolled_current ? "Enrolled" : "Not registered"],
               ["Last session on record", d.last_session], ["Graduation record", d.graduation_state ? `${d.graduation_state.toLowerCase()} · ${d.graduation_session}` : "none"], ["Outstanding courses", d.outstanding.length]] as [string, unknown][]).map(([k, v]) => (
               <div key={k} className="kv"><span className="k">{k}</span><span className="v tnum">{v == null || v === "" ? "—" : String(v)}</span></div>
@@ -477,11 +479,11 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
               <div className="b600">Outstanding courses</div>
               {d.outstanding.length ? <DTable pageSize={0} noPrint cols={["Course", "Units|mid", "Failed in"]} rows={d.outstanding.map((o, i) => [<span key={"c" + i}><b>{o.course_code}</b> {o.title}</span>, <span key={"u" + i} className="tnum">{o.units}</span>, <span key={"f" + i} className="sub2">{o.failed_in}</span>])} /> : <div className="sub2">None on the published record.</div>}
               <div className="b600">Decisions taken</div>
-              {d.decisions.length ? <DTable pageSize={0} noPrint cols={["When|mid", "Decision", "By"]} rows={d.decisions.map((x, i) => [<span key={"w" + i} className="tnum sub2">{when(x.decided_at)}</span>, <span key={"d" + i}>{x.rule === "COHORT" ? `Cohort ${x.previous_cohort ?? "—"} → ${x.effective_cohort ?? "—"}` : `${statusWord(x.previous_status)} → ${statusWord(x.final_status)}`}<div className="sub2">{x.reason}{x.batch_ref ? ` · ${x.batch_ref}` : ""}</div></span>, <span key={"b" + i} className="sub2">{x.officer ?? "—"}{x.actor_office ? ` · ${x.actor_office}` : ""}</span>])} /> : <div className="sub2">None yet.</div>}
+              {d.decisions.length ? <DTable pageSize={0} noPrint cols={["When|mid", "Decision", "By"]} rows={d.decisions.map((x, i) => [<span key={"w" + i} className="tnum sub2">{when(x.decided_at)}</span>, <span key={"d" + i}>{x.rule === "COHORT" ? `Cohort ${x.previous_cohort ?? "—"} → ${x.effective_cohort ?? "—"}` : x.rule === "COMPLETION" ? "Expected completion" : `${statusWord(x.previous_status)} → ${statusWord(x.final_status)}`}<div className="sub2">{x.reason}{x.batch_ref ? ` · ${x.batch_ref}` : ""}</div></span>, <span key={"b" + i} className="sub2">{x.officer ?? "—"}{x.actor_office ? ` · ${x.actor_office}` : ""}</span>])} /> : <div className="sub2">None yet.</div>}
             </div>
           </div>
           {canDecide ? (
-            <div className="grid grid--2">
+            <div className="grid grid--3">
               <Panel title="Decide the standing" right="On evidence; recorded in your name">
                 <PBody><div className="stack">
                   <Field id="dc-status" label="Status on the record" required>
@@ -500,6 +502,19 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
                   <div className="row row--tight">
                     <Btn kind="secondary" disabled={busy || !cohort || why.trim().length < 5} onClick={async () => { const j = await call("POST", `/students/${id}/cohort`, { cohort, reason: why.trim() }, `${fullName(d)}: cohort set to ${cohort}`); if (j) { setWhy(""); setS(undefined); } }}>Set the Cohort</Btn>
                     {d.override ? <Btn kind="ghost" disabled={busy || why.trim().length < 5} onClick={async () => { const j = await call("POST", `/students/${id}/cohort`, { cohort: null, reason: why.trim() }, `${fullName(d)}: cohort correction removed`); if (j) { setWhy(""); setS(undefined); } }}>Remove the Correction</Btn> : null}
+                  </div>
+                </div></PBody>
+              </Panel>
+              {/* V612: the spillover override — the expected completion pinned; the engine reads it before any count */}
+              <Panel title="Pin the expected completion" right={d.completionOverride ? `Pinned by ${d.completionOverride.set_by ?? "the Registry"} on ${when(d.completionOverride.set_at)}` : "Spillover is counted from it"}>
+                <PBody><div className="stack">
+                  <Field id="oe-session" label="Expected completion session" hint="The final session as the University reads it: SP1 is the session after it. The count of sessions and the final-year rule are set aside while the pin stands; the cohort and the level stay">
+                    <select id="oe-session" className="ctl" value={completion} onChange={(e) => setCompletion(e.target.value)}><option value="">Choose…</option>{d.sessions.filter((x) => x.state !== "CANCELLED").map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
+                  </Field>
+                  <Field id="oe-why" label="Reason" required><input id="oe-why" className="ctl" value={whyC} onChange={(e) => setWhyC(e.target.value)} maxLength={2000} /></Field>
+                  <div className="row row--tight">
+                    <Btn kind="secondary" disabled={busy || !completion || whyC.trim().length < 5} onClick={async () => { const j = await call("POST", `/students/${id}/completion`, { session: completion, reason: whyC.trim() }, `${fullName(d)}: expected completion pinned to ${completion}`); if (j) { setWhyC(""); setS(undefined); } }}>Pin the Completion</Btn>
+                    {d.completionOverride ? <Btn kind="ghost" disabled={busy || whyC.trim().length < 5} onClick={async () => { const j = await call("POST", `/students/${id}/completion`, { session: null, reason: whyC.trim() }, `${fullName(d)}: pinned expected completion removed`); if (j) { setWhyC(""); setS(undefined); } }}>Remove the Pin</Btn> : null}
                   </div>
                 </div></PBody>
               </Panel>

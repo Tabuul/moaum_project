@@ -51,6 +51,17 @@ skipped, so a 2020/2021 cohort on a four-year programme with 2021/2022 cancelled
 `people.cohort_override` for that student on evidence (a re-admission, a transfer in). The source is recorded as
 `ENTRY`, `MERGED` or `OVERRIDE`. The entry session itself is never changed.
 
+**The expected completion may be pinned (V612).** Beside the cohort override, `people.completion_override` lets the Registry pin
+a student's expected completion session on a reason (a Senate directive, a case decided on paper, a history the register does
+not carry). The engine reads the pin before any count: the count of sessions and the final-year rule (V595) are set aside while
+it stands, deferments are in the pin as the Registry made it, and spillover is counted from it — SP1 the session after, SP2 the
+one after that, the limit the policy's. `people.set_completion_override(student, session, reason)` needs a person, a reason and
+a session on the calendar that was not cancelled and is not before the student's cohort; NULL removes the pin and the count
+returns; each act is a `COMPLETION` row on `people.cohort_decision`, and the row itself is on the audit spine. The entry
+session, the cohort, the level, the status and the history are never touched. Screen: Student Cohorts → the student → "Pin the
+expected completion"; API `POST /api/v1/cohorts/students/{id}/completion` `{session, reason}` (`session` empty removes it), the
+Registry's offices as for the cohort override; the student's detail carries `completionOverride`.
+
 **The programme's length is configured, never guessed.** `ref.programme.final_level` is the last level of a level-based
 programme; a student's length follows from their entry level ((final − entry)/100 + 1 sessions, so a direct-entry
 student on a 400-level programme has three). `ref.programme.duration_years` is the length in sessions of a programme
