@@ -2004,7 +2004,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Screening",
         "items": [
           { "id": "a/screening", "icon": "print", "label": "Screening Slip" },
-          { "id": "a/score", "icon": "chart", "label": "Screening Result" }
+          { "id": "a/score", "icon": "chart", "label": "Screening Result", "when": "decided" }
         ]
       },
       {

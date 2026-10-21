@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { admitted, at, confirmedReference, dob, openReference, reportingTime, BODY, NEXT, STAGES, type Application, type FeeReference } from "@/lib/applicant";
 import { applicantReceiptTitle } from "@/lib/applicant-receipt";
-import { putmeOnDashboard } from "@/lib/applicant-score";
+import { putmeOnDashboard, screeningResultOpen } from "@/lib/applicant-score";
 import { ReceiptCheck } from "@/components/ReceiptCheck";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -49,7 +49,7 @@ export function Dashboard({ a }: { a: Application }) {
         ["Stage", `${a.stage + 1} of 10`, a.stage >= 9 ? "var(--green-ink)" : "var(--chrome)", STAGES[Math.min(a.stage, 9)][0]],
       ]} />
       {pu?.kind === "RELEASED" ? (
-        <Note kind="info" title="Your Post-UTME score has been released" action={<LinkBtn href="/applicant/score">See your full result</LinkBtn>}>
+        <Note kind="info" title="Your Post-UTME score has been released" action={screeningResultOpen(a) ? <LinkBtn href="/applicant/score">See your full result</LinkBtn> : undefined}>
           {`Post-UTME ${pu.score ?? "—"} (${pu.of}); aggregate ${pu.aggregate ?? "—"} (${pu.weights}). A place is not decided by the score alone: the admission decision follows.`}
         </Note>
       ) : null}

@@ -178,6 +178,9 @@ class ApplicantIT {
         assertThat(released.get("screeningSource")).isEqualTo("CBT");
         assertThat(afterRelease.get("scoreReleasedAt")).isNotNull();
         assertThat(afterRelease.get("decision")).isNull();
+        // the Screening result screen waits for the admission decision (21 October 2026): the cut-off and where the applicant stands are
+        // not given before it
+        for (String withheld : List.of("cutoff", "meritPosition", "applied", "places")) assertThat(released.get(withheld)).as(withheld).isNull();
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = CAST(:a AS uuid) AND channel = 'EMAIL' "
                 + "AND subject = 'Your screening result is released' AND body LIKE '%Sign in to see your score and where you stand%'").param("a", appId).query(Long.class).single()).isEqualTo(1);
 
@@ -208,6 +211,14 @@ class ApplicantIT {
         assertThat(String.valueOf(result.get("screening"))).startsWith("68.5");
         assertThat(result.get("screeningSource")).isEqualTo("CBT");
         assertThat(offered.get("scoreReleasedAt")).isNotNull();
+        // with the decision read the Screening result screen opens: the cut-off and the merit position are the record's
+        Map<String, Object> standing = jdbc.sql("SELECT cutoff, merit_position, applied, places FROM admissions.screening_result(CAST(:a AS uuid))")
+                .param("a", appId).query().singleRow();
+        assertThat(result.get("meritPosition")).as(String.valueOf(result)).isNotNull();
+        assertThat(String.valueOf(result.get("meritPosition"))).isEqualTo(String.valueOf(standing.get("merit_position")));
+        assertThat(String.valueOf(result.get("applied"))).isEqualTo(String.valueOf(standing.get("applied")));
+        assertThat(String.valueOf(result.get("cutoff"))).isEqualTo(String.valueOf(standing.get("cutoff")));
+        assertThat(String.valueOf(result.get("places"))).isEqualTo(String.valueOf(standing.get("places")));
 
         // accepting: the undertaking, then the acceptance fee confirmed
         ResponseEntity<Map> undertaken = it.call(token, HttpMethod.POST, "/api/v1/applicant/me/accept", Map.of("undertaking", true));

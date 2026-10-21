@@ -22,6 +22,13 @@ export function scoreOf(source: string | null | undefined): string {
   }
 }
 
+/** the Screening result screen (21 October 2026): held from every applicant until their admission is decided — a decision they may
+ *  read, offered, waiting list or not offered (the API gives it only then, and the cut-off and the merit position with it). The
+ *  score and the aggregate stay on the Overview from the release (V610). */
+export function screeningResultOpen(a: Pick<Application, "decision">): boolean {
+  return !!a.decision;
+}
+
 /** a score released by the Academic Office and given to this applicant: the release and the result the API gives with it — only
  *  for a score of the examination */
 export function scoreReleased(a: Pick<Application, "result" | "scoreReleasedAt">): boolean {

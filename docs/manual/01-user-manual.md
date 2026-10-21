@@ -773,7 +773,7 @@ At the centre the door scans the QR; the check-in desk warns of "a second arriva
 
 #### Stage 4 — Screening result
 
-**Screening Result** `/applicant/score` reads "Scores are released when every batch has been screened" until release; the result is the sitter's — an applicant with a score of the Post-UTME examination (the index programmes) reads it from the release, whatever the Board then decides, and a programme screened without the examination (its aggregate computed from the O'Level result) never shows one, nor that scores were released (21 October 2026, V610); then tiles **UTME** (scaled), **Post-UTME screening** (its source — CBT, examination or O'Level computation), **Aggregate** (green or red against the cut-off) and **Departmental cut-off**, with **How your aggregate was calculated** and **Where you stand** (merit position, places). "No cut-off is stated for your programme yet" if none is set. You are told "Your screening result is released". A remark on a score is made at the Registry within seven days. The O'Level screening score itself is never shown to applicants.
+**Screening Result** `/applicant/score` is held until your admission is decided (21 October 2026): its menu item appears with the decision you may read (offered, waiting list or not offered), and before then the page says "Your screening result is shown once your admission is decided" — your Post-UTME score is on your Overview from the release — with a link to Admission Status. Once decided, it reads "Scores are released when every batch has been screened" until release; the result is the sitter's — an applicant with a score of the Post-UTME examination (the index programmes) reads it from the release, whatever the Board then decides, and a programme screened without the examination (its aggregate computed from the O'Level result) never shows one, nor that scores were released (21 October 2026, V610); then tiles **UTME** (scaled), **Post-UTME screening** (its source — CBT, examination or O'Level computation), **Aggregate** (green or red against the cut-off) and **Departmental cut-off**, with **How your aggregate was calculated** and **Where you stand** (merit position, places). "No cut-off is stated for your programme yet" if none is set. You are told "Your screening result is released". A remark on a score is made at the Registry within seven days. The O'Level screening score itself is never shown to applicants.
 
 #### Stage 5 — Admission decision
 
@@ -1466,7 +1466,7 @@ Each entry gives the message you see, the real cause and what to do.
 5. Download the application form PDF for your records.
 6. Watch **Screening Slip**; when the schedule is published, download the slip and note the reporting time, centre, room and seat.
 7. Sit the examination with the slip and an identification document.
-8. Read **Screening Result** when released, then **Admission Status** when the decision is released.
+8. Read your Post-UTME score on the **Overview** when released, then **Admission Status** when the decision is released; **Screening Result** opens with the decision.
 9. If offered: on **Accept Your Offer** sign the undertaking and pay the acceptance fee; print the offer letter.
 10. Present your six originals at the Registry for clearance; when your admission number appears on **Matriculation**, sign in as a student and follow §11.1.
 

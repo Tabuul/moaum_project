@@ -24,6 +24,8 @@ export async function loadApplication(): Promise<{ me: Me; app: Application } | 
     staffNumber: mine.data.applicationNo,
     sessionId: who.ok ? who.data.sessionId ?? null : null,
     waiting: {},
+    /* the Screening Result item shows once the admission is decided (21 October 2026): the decision is the applicant's to read */
+    flags: mine.data.decision ? ["decided"] : [],
     /* V379: a CCE applicant reads the CCE application's menu — no Post-UTME screening */
     menu: mine.data.route === "CCE" ? "cceapplicant" : mine.data.route === "PRELIMINARY_SCIENCE" ? "prelimapplicant" : null,
     unit: mine.data.route === "CCE" ? `Centre for Continuing Education · ${mine.data.session}`

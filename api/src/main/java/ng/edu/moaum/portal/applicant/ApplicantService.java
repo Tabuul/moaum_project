@@ -451,6 +451,10 @@ public class ApplicantService {
                 ? repo.screeningResult(applicationId) : Optional.empty();
         boolean sat = r.map(x -> "CBT".equals(x.get("screening_source")) || "EXAM".equals(x.get("screening_source"))).orElse(false);
         boolean scoreVisible = forOffice || sat;
+        /* the Screening result screen is held from every applicant until their admission is decided (21 October 2026): the cut-off
+           and where they stand on the merit list come with the decision they may read (offered, waiting list or not offered); the
+           score and the aggregate stay the sitter's from the release (V610), on the Overview */
+        boolean decided = forOffice || (decisionVisible && a.get("decision") != null);
         v.put("scoreReleasedAt", scoreVisible ? a.get("score_released_at") : null);
         if (scoreVisible) {
             v.put("result", r.map(x -> {
@@ -462,10 +466,10 @@ public class ApplicantService {
                 m.put("weightUtme", x.get("weight_utme"));
                 m.put("weightPutme", x.get("weight_putme"));
                 m.put("aggregate", x.get("aggregate"));
-                m.put("cutoff", x.get("cutoff"));
-                m.put("meritPosition", x.get("merit_position"));
-                m.put("applied", x.get("applied"));
-                m.put("places", x.get("places"));
+                m.put("cutoff", decided ? x.get("cutoff") : null);
+                m.put("meritPosition", decided ? x.get("merit_position") : null);
+                m.put("applied", decided ? x.get("applied") : null);
+                m.put("places", decided ? x.get("places") : null);
                 return m;
             }).orElse(null));
         } else {

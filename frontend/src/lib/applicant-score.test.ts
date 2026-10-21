@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { putmeOnDashboard, scoreOf, scoreReleased, utmeMeetsCutoff } from "./applicant-score.ts";
+import { putmeOnDashboard, scoreOf, scoreReleased, screeningResultOpen, utmeMeetsCutoff } from "./applicant-score.ts";
 import type { ScreeningResult, ScreeningSlip } from "./applicant.ts";
 
 const result = (r: Partial<ScreeningResult>): ScreeningResult => ({ utme: 240, utmeScaled: 60, screening: 68, screeningSource: "CBT", weightUtme: 70, weightPutme: 30,
@@ -46,4 +46,12 @@ test("the cut-off is a UTME cut-off: read against the UTME score, never the aggr
 test("what a score is out of, by where it came from", () => {
   assert.equal(scoreOf("EXAM"), "of 100 · the Post-UTME examination");
   assert.equal(scoreOf("NONE"), "no screening component");
+});
+
+test("the Screening result screen waits for the admission decision: offered, waiting list or not offered, once the applicant may read it", () => {
+  // the API gives the decision only once it is the applicant's to read (released and, under Admission Status Checking, checked)
+  assert.equal(screeningResultOpen({ decision: null }), false);
+  assert.equal(screeningResultOpen({ decision: "OFFERED" }), true);
+  assert.equal(screeningResultOpen({ decision: "WAITING" }), true);
+  assert.equal(screeningResultOpen({ decision: "NOT_OFFERED" }), true);
 });

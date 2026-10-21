@@ -12,6 +12,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Passport } from "@/components/proto/blocks";
 import QRCode from "qrcode";
 import { Rail, clock, onDay } from "./common";
+import { screeningResultOpen } from "@/lib/applicant-score";
 
 const ATTEND: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
   NOT_CHECKED_IN: ["Not yet checked in", "grey"], CHECKED_IN: ["Checked in", "info"], PRESENT: ["Present", "ok"], ABSENT: ["Absent", "bad"], DISQUALIFIED: ["Disqualified", "bad"],
@@ -49,8 +50,8 @@ export function Screening({ a }: { a: Application }) {
         </Note>
       ) : (
         <Note kind={sat ? "ok" : "info"} title={sat ? `You sat the examination on ${onDay(slip.heldOn)}` : `Report at ${reportingTime(slip)} on ${onDay(slip.heldOn)} with this slip and a valid identification document`}
-          action={<span className="row row--inline row--tight">{at(a, 4) ? <LinkBtn kind="primary" href="/applicant/score">See your screening result</LinkBtn> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
-          {sat ? "This slip is kept for your records. Your score is on the screening result page once it is released." : `You will not be admitted into the hall without both. Check-in closes when your batch begins at ${clock(slip.startsAt)}.`}
+          action={<span className="row row--inline row--tight">{at(a, 4) && screeningResultOpen(a) ? <LinkBtn kind="primary" href="/applicant/score">See your screening result</LinkBtn> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
+          {sat ? "This slip is kept for your records. Your score is on your Overview once it is released; the full screening result follows with your admission decision." : `You will not be admitted into the hall without both. Check-in closes when your batch begins at ${clock(slip.startsAt)}.`}
         </Note>
       )}
       <Panel title={slip.examName ?? "Post-UTME examination slip"} right={a.applicationNo}>

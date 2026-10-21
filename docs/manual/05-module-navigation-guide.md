@@ -3832,7 +3832,7 @@ My application → Application Fee → /applicant/fee
 ```text
 Screening → Screening Slip → /applicant/screening
 ```
-**URL** `/applicant/screening` · **Purpose** The slip once the batch is published. · **Who** applicant. · **Layout** "Your examination schedule has not been published yet" or the slip (report time = batch start − check-in minutes; attendance pill; QR to `/verify/putme/{token}`; Batch, Date, Report by, Examination time, Centre, Room, Seat, Workstation, Bring; instructions). · **Actions** Download slip (PDF) → `/applicant/screening/slip` (409 "No examination slip yet" before scheduling); See your screening result. · **Messages** "Your batch has been postponed/cancelled".
+**URL** `/applicant/screening` · **Purpose** The slip once the batch is published. · **Who** applicant. · **Layout** "Your examination schedule has not been published yet" or the slip (report time = batch start − check-in minutes; attendance pill; QR to `/verify/putme/{token}`; Batch, Date, Report by, Examination time, Centre, Room, Seat, Workstation, Bring; instructions). · **Actions** Download slip (PDF) → `/applicant/screening/slip` (409 "No examination slip yet" before scheduling); See your screening result (once the admission is decided). · **Messages** "Your batch has been postponed/cancelled".
 
 > **Screenshot Required:** Screening Slip — `/applicant/screening` — the slip with the QR.
 
@@ -3841,7 +3841,7 @@ Screening → Screening Slip → /applicant/screening
 ```text
 Screening → Screening Result → /applicant/score
 ```
-**URL** `/applicant/score` · **Purpose** UTME, Post-UTME and aggregate against the cut-off. · **Who** applicant. · **Layout** Before release — and always, for a programme screened without the examination (21 Oct 2026, V610) — "Scores are released when every batch has been screened"; after: tiles UTME (of 400, scaled), Post-UTME screening (source CBT / EXAM / OLEVEL / NONE), Aggregate, Departmental cut-off; "How your aggregate was calculated"; "Where you stand"; "If you think this score is wrong". · **Actions** None.
+**URL** `/applicant/score` · **Purpose** UTME, Post-UTME and aggregate against the cut-off. · **Who** applicant. · **Layout** Held until the admission is decided (21 Oct 2026): the menu item appears only with a decision the applicant may read, and the page says "Your screening result is shown once your admission is decided" (the score is on the Overview) with Admission status; the API gives the cut-off and the merit position only then. Once decided: before release — and always, for a programme screened without the examination (V610) — "Scores are released when every batch has been screened"; after: tiles UTME (of 400, scaled), Post-UTME screening (source CBT / EXAM / OLEVEL / NONE), Aggregate, Departmental cut-off; "How your aggregate was calculated"; "Where you stand"; "If you think this score is wrong". · **Actions** None.
 
 > **Screenshot Required:** Screening Result — `/applicant/score` — the four tiles and the calculation panel.
 
