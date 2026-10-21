@@ -79,6 +79,10 @@ class CohortIT {
             jdbc.sql("SELECT people.refresh_academic_position(:s)").param("s", student).query().listOfRows();
             String counted = jdbc.sql("SELECT expected_completion FROM people.academic_position WHERE student_id = :s").param("s", student).query(String.class).optional().orElse(null);
 
+            // the student is the same on every run (the nightly suite runs twice on one database): this run's decisions are counted
+            long decisionsBefore = jdbc.sql("SELECT count(*) FROM people.cohort_decision WHERE student_id = :s AND rule = 'COMPLETION'")
+                    .param("s", student).query(Long.class).single();
+
             // pinned to the session before the current one: SP1, from the pin
             ResponseEntity<Map> pinned = it.call(registrar, HttpMethod.POST, door, Map.of("session", before, "reason", "Senate's directive of 1 March: the final year was " + before));
             assertThat(pinned.getStatusCode().value()).as(String.valueOf(pinned.getBody())).isEqualTo(200);
@@ -111,7 +115,8 @@ class CohortIT {
             ResponseEntity<Map> none = it.call(registrar, HttpMethod.POST, door, Map.of("reason", "Nothing stands"));
             assertThat(none.getStatusCode().value()).isEqualTo(422);
             assertThat(String.valueOf(none.getBody())).contains("COMPLETION_NOT_PINNED");
-            assertThat(jdbc.sql("SELECT count(*) FROM people.cohort_decision WHERE student_id = :s AND rule = 'COMPLETION'").param("s", student).query(Long.class).single()).isEqualTo(3L);
+            assertThat(jdbc.sql("SELECT count(*) FROM people.cohort_decision WHERE student_id = :s AND rule = 'COMPLETION'").param("s", student).query(Long.class).single())
+                    .isEqualTo(decisionsBefore + 3);
         } finally {
             it.db(() -> {
                 jdbc.sql("UPDATE policy.academic_session SET state = :st WHERE name = :n").param("st", latestState).param("n", latest).update();
