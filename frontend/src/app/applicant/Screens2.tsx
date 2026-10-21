@@ -20,13 +20,13 @@ import { scoreReleased, utmeMeetsCutoff } from "@/lib/applicant-score";
 
 export function Score({ a }: { a: Application }) {
   const r = a.result;
-  /* the admitted sitter's alone (21 October 2026): the API gives the result only with a released offer of admission the applicant may
-     read, and only for a score of the Post-UTME examination — a computed aggregate is never shown; nothing here says a score exists */
+  /* the sitter's (21 October 2026, V608 then V610): the API gives the result once the Academic Office releases the scores, and only for
+     a score of the Post-UTME examination — a computed aggregate is never shown; nothing here says a score exists before then */
   if (!scoreReleased(a) || !r) {
     return (
       <>
-        <Note kind="info" title="Post-UTME scores are shown to admitted candidates who sat the examination">
-          The Academic Office releases the scores when every batch has been screened. A score of the Post-UTME examination is shown here with the Board&rsquo;s offer of admission, read through Admission Status Checking; a programme screened without the examination has no score to show.
+        <Note kind="info" title="Scores are released when every batch has been screened">
+          A score of the Post-UTME examination is shown here once the Academic Office releases the scores; a programme screened without the examination has no score to show.
         </Note>
         <Rail a={a} />
       </>

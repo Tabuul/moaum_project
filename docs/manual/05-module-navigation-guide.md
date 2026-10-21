@@ -3841,7 +3841,7 @@ Screening → Screening Slip → /applicant/screening
 ```text
 Screening → Screening Result → /applicant/score
 ```
-**URL** `/applicant/score` · **Purpose** UTME, Post-UTME and aggregate against the cut-off. · **Who** applicant. · **Layout** Until the Board's offer is read through Admission Status Checking — and always, for an applicant not offered a place or a programme screened without the examination (21 Oct 2026) — "Post-UTME scores are shown to admitted candidates who sat the examination"; with the offer read: tiles UTME (of 400, scaled), Post-UTME screening (source CBT / EXAM / OLEVEL / NONE), Aggregate, Departmental cut-off; "How your aggregate was calculated"; "Where you stand"; "If you think this score is wrong". · **Actions** None.
+**URL** `/applicant/score` · **Purpose** UTME, Post-UTME and aggregate against the cut-off. · **Who** applicant. · **Layout** Before release — and always, for a programme screened without the examination (21 Oct 2026, V610) — "Scores are released when every batch has been screened"; after: tiles UTME (of 400, scaled), Post-UTME screening (source CBT / EXAM / OLEVEL / NONE), Aggregate, Departmental cut-off; "How your aggregate was calculated"; "Where you stand"; "If you think this score is wrong". · **Actions** None.
 
 > **Screenshot Required:** Screening Result — `/applicant/score` — the four tiles and the calculation panel.
 
@@ -5816,7 +5816,7 @@ Every notice is a `platform.notice` row queued by `platform.queue_notice` and di
 | CBT seating moved (published batch) | `putme_move` | candidate | Email + SMS | "Your Post-UTME schedule has changed" | Admissions (CBT) |
 | CBT seating withdrawn | `putme_unschedule` | candidate | Email + SMS | "Your Post-UTME seating has been withdrawn" | Admissions (CBT) |
 | CBT batch postponed / cancelled | `putme_batch_state` | every candidate of a published batch | Email + SMS | "Your Post-UTME batch has been postponed/cancelled" | Admissions (CBT) |
-| Screening scores released | `release_scores` | applicant | Email + SMS | "Post-UTME screening results released" (V608: the score is shown with an offer of admission, never before) | Admissions |
+| Screening scores released | `release_scores` | applicant | Email + SMS | "Your screening result is released" (V610; the sitter reads the score from the release) | Admissions |
 | Decision released | `release_decisions` | applicant | Email + SMS | "You have been offered provisional admission" / "You are on the waiting list" / "The admission decision on your application" | Admissions |
 | Acceptance settled | `settle_acceptance` | applicant | Email + SMS | "Your place is held" | Applicant portal |
 | Clearance query | `clear_document` (QUERY) | applicant | Email + SMS | "A query on your clearance documents" | Admissions |

@@ -409,7 +409,7 @@ class AdmissionEligibilityIT {
         assertThat(earlyRun.getStatusCode().value()).isEqualTo(422);
         assertThat(String.valueOf(earlyRun.getBody())).contains("ELIG_NOT_ADMITTED");
         assertThat(jdbc.sql("SELECT count(*) FROM admissions.programme_change_request WHERE application_id = :a").param("a", b.app()).query(Long.class).single()).isZero();
-        // nor a score, released or not: the view says nothing of one
+        // nor a score: b's programme is screened without the examination (no screening_score), so a release shows nothing (V610)
         it.db(() -> jdbc.sql("UPDATE admissions.application SET score_released_at = now() WHERE id = :a").param("a", b.app()).update());
         Map<String, Object> view = (Map<String, Object>) it.get(me, "/api/v1/applicant/me").getBody();
         assertThat(view.get("decision")).isNull();
@@ -467,7 +467,7 @@ class AdmissionEligibilityIT {
         assertThat(String.valueOf(late.getBody())).doesNotContain("ELIG_NOT_ADMITTED");
         Map<String, Object> admittedView = (Map<String, Object>) it.get(me, "/api/v1/applicant/me").getBody();
         assertThat(admittedView.get("decision")).isEqualTo("OFFERED");
-        assertThat(admittedView.get("result")).as("an aggregate computed from the O'Level result is never the applicant's to see").isNull();
+        assertThat(admittedView.get("result")).as("an aggregate computed from the O'Level result is never the applicant's to see, admitted or not").isNull();
         assertThat(admittedView.get("scoreReleasedAt")).isNull();
     }
 

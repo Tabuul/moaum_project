@@ -26,7 +26,7 @@ export function Dashboard({ a }: { a: Application }) {
   const open = openReference(a, "APPLICATION");
   const uploaded = a.documents.find((d) => d.kind === "PASSPORT");
   const photoSrc = uploaded ? `/api/bff/api/v1/applicant/me/documents/${uploaded.id}/content` : a.jambPassport ?? null;
-  /* the Post-UTME score: the admitted sitter's, with the offer read (the API gives it to nobody else); awaited before the decision */
+  /* the Post-UTME score: the sitter's, once the Academic Office releases the scores (the API gives a computed aggregate to nobody); awaited before then */
   const pu = putmeOnDashboard(a);
   return (
     <>

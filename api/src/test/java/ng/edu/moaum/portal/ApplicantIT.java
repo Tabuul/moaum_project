@@ -165,17 +165,21 @@ class ApplicantIT {
         assertThat(slip).isNotNull();
         assertThat(String.valueOf(slip.get("seat"))).startsWith(label + "-");
 
-        // the CBT score is entered and released together; released, it is the Board's — the applicant reads it only with an offer of
-        // admission read (21 Oct 2026), and the notice of the release says so
+        // the CBT score is entered and released together; the applicant — a sitter of the examination — reads it on the release, whatever
+        // the Board then decides (V610), and the notice of the release says so
         ResponseEntity<Map> scored = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + appId + "/screening-score", Map.of("score", 68.5));
         assertThat(scored.getStatusCode().value()).as(String.valueOf(scored.getBody())).isEqualTo(200);
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("result")).isNull();
         it.call(academic, HttpMethod.POST, PATH + "/screening-scores/release", Map.of());
         Map<String, Object> afterRelease = it.get(token, "/api/v1/applicant/me").getBody();
-        assertThat(afterRelease.get("result")).isNull();
-        assertThat(afterRelease.get("scoreReleasedAt")).isNull();
+        Map<String, Object> released = (Map<String, Object>) afterRelease.get("result");
+        assertThat(released).as(String.valueOf(afterRelease)).isNotNull();
+        assertThat(String.valueOf(released.get("screening"))).startsWith("68.5");
+        assertThat(released.get("screeningSource")).isEqualTo("CBT");
+        assertThat(afterRelease.get("scoreReleasedAt")).isNotNull();
+        assertThat(afterRelease.get("decision")).isNull();
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = CAST(:a AS uuid) AND channel = 'EMAIL' "
-                + "AND subject = 'Post-UTME screening results released' AND body LIKE '%with an offer of admission%'").param("a", appId).query(Long.class).single()).isEqualTo(1);
+                + "AND subject = 'Your screening result is released' AND body LIKE '%Sign in to see your score and where you stand%'").param("a", appId).query(Long.class).single()).isEqualTo(1);
 
         // the Board offers; released, the candidate is ADMITTED — the same candidate the register is built from
         // an offer names its basis (V025): what goes back to JAMB as the general remark
@@ -198,7 +202,7 @@ class ApplicantIT {
         assertThat(offered.get("decision")).isEqualTo("OFFERED");
         assertThat(offered.get("offerState")).isEqualTo("ADMITTED");
         assertThat(offered.get("stage")).isEqualTo(5);
-        // and with the offer read, the score: the CBT's, as entered — the applicant's own result
+        // and still with the offer read: the CBT's score, as entered — the applicant's own result
         Map<String, Object> result = (Map<String, Object>) offered.get("result");
         assertThat(result).as(String.valueOf(offered)).isNotNull();
         assertThat(String.valueOf(result.get("screening"))).startsWith("68.5");
