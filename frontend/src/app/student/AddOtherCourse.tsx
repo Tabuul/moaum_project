@@ -24,7 +24,7 @@ const LEVELS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 /** what the list holds: the student's own courses (V507) or every course the search found, and how many */
 const OWN: Record<string, string> = {
   "": "Your programme's courses, the University GST/EPS courses and your carry-overs",
-  CARRY_OVER: "Your carry-overs",
+  CARRY_OVER: "Your carry-overs — failed on a published result, or registered in an earlier session with no result on the portal",
   GST: "GST and EPS courses — your programme's and the University's",
   CORE: "Core courses of your programme",
   ELECTIVE: "Electives of your programme",
@@ -34,23 +34,26 @@ function listWords(found: CourseSearch, from: number, to: number, cat: string | 
   const range = `${from}–${to} of ${found.total.toLocaleString("en-GB")}, the ones you can add first`;
   if (found.listed === "YOUR_COURSES") {
     if (found.total) return `${OWN[cat ?? ""] ?? OWN[""]}: ${range}. Type a code or title, or choose a department, to search every course.`;
-    return cat === "CARRY_OVER" ? "You have no carry-over: no published result shows a course failed and not since passed."
+    return cat === "CARRY_OVER" ? "You have no carry-over to add: no published result shows a course failed and not since passed, and no course of an earlier session waits without a result on the portal."
       : "None of these has a class this session. Type a code or title, or choose a department, to search every course.";
   }
   return found.total ? `Courses ${range}.` : "No course matches the search.";
 }
 
-export function AddOtherCourse({ session, semester, level, total, max, addDrop, onAdded, onClose }: {
+export function AddOtherCourse({ session, semester, level, total, max, addDrop, onAdded, onClose, initialCategory }: {
   session: string; semester: number; level: number; total: number; max: number;
   /** the registration is submitted or approved: the course is added by add and drop */
   addDrop: boolean;
   onAdded: (offeringId: string) => void; onClose: () => void;
+  /** V611: opened from Carry-over courses — the student's carry-overs first (the category can still be changed) */
+  initialCategory?: string | null;
 }) {
   const { act, busy, problem } = useAct();
   const [q, setQ] = useState("");
   const [lvl, setLvl] = useState<number | null>(null);
   const [dept, setDept] = useState<string | null>(null);
-  const [cat, setCat] = useState<string | null>(null);
+  const [cat, setCat] = useState<string | null>(initialCategory ?? null);
+  const carryMode = initialCategory === "CARRY_OVER";
   const [page, setPage] = useState(0);
   const [found, setFound] = useState<CourseSearch | null>(null);
   const [loading, setLoading] = useState(false);
@@ -107,8 +110,10 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
   const closed = found && !found.flex.allow_other_courses;
 
   return (
-    <Modal wide title="ADD OTHER COURSE" onClose={onClose}
-      sub={`Find a course beside your recommended list for ${session}, ${semester === 1 ? "first" : semester === 2 ? "second" : "third"} semester. The University's rules decide whether it can be added.`}
+    <Modal wide title={carryMode ? "ADD CARRY-OVER COURSE" : "ADD OTHER COURSE"} onClose={onClose}
+      sub={carryMode
+        ? `Your courses to carry over into ${session}, ${semester === 1 ? "first" : semester === 2 ? "second" : "third"} semester: those a published result shows failed, and those you registered in an earlier session whose result is not on the portal (the old portal's). Add only a course you failed — it is marked as a carry-over you declared, and your department sees it.`
+        : `Find a course beside your recommended list for ${session}, ${semester === 1 ? "first" : semester === 2 ? "second" : "third"} semester. The University's rules decide whether it can be added.`}
       foot={<Btn kind="ghost" onClick={onClose}>Done</Btn>}>
       <form className="row row--inline" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }} onSubmit={(e) => { e.preventDefault(); setPage(0); void search(0); }}>
         <div style={{ flex: "2 1 260px" }}>
@@ -141,7 +146,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
           </Field>
         </div>
       </form>
-      {closed ? <div className="mt-2"><Note kind="info" title="Adding other courses is closed for now">The Academic Office has closed adding courses beside the recommended list. Your carry-overs and the courses listed for your level are registered as before; ask your department about any other course.</Note></div> : null}
+      {closed && cat !== "CARRY_OVER" ? <div className="mt-2"><Note kind="info" title="Adding other courses is closed for now">The Academic Office has closed adding courses beside the recommended list. Your carry-overs and the courses listed for your level are registered as before; ask your department about any other course.</Note></div> : null}
       {problem && problem.code === "GST_PAYMENT_REQUIRED" ? (
         <div className="mt-2"><Note kind="bad" title="GST/EPS PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(session)}`}>PAY GST/EPS FEE</LinkBtn>}>
           {problem.detail} Once the payment is confirmed, come back here and register the course — no ICT Support needed.</Note></div>
@@ -170,7 +175,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
                 <tr key={c.course_code}>
                   <td className="tnum b600">{c.course_code}</td>
                   <td>{c.title}
-                    <div className="sub2">{c.refusal ? refusalText(c.refusal) : [c.why, addedAsLabel(c.added_as)].filter(Boolean).join(" · ")}{c.recommended ? " · on your recommended list" : ""}</div>
+                    <div className="sub2">{c.refusal ? refusalText(c.refusal) : [c.why, c.added_as === "CARRY_OVER_DECLARED" ? null : addedAsLabel(c.added_as)].filter(Boolean).join(" · ")}{c.recommended ? " · on your recommended list" : ""}</div>
                     {st.ok && after.over ? <div className="sub2 ink-red">Adding it takes you to {after.total} units, over the maximum of {max}.</div> : null}
                   </td>
                   <td className="mid tnum">{c.units}</td>

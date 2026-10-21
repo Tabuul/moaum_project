@@ -104,6 +104,8 @@ const ADDED_AS: Record<string, string> = {
   UNIVERSITY_EPS: "University EPS course",
   DEPARTMENT: "Your department",
   FACULTY: "Your faculty",
+  // V611: an earlier course whose result is not on the portal (the old portal's), carried over on the student's word
+  CARRY_OVER_DECLARED: "A carry-over you declared (no result on the portal)",
 };
 
 export function addedAsLabel(a: string | null | undefined): string | null {

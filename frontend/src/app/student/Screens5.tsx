@@ -89,6 +89,13 @@ export function Carryover({ r }: { r: Results }) {
       ) : (
         <Note kind="ok" title="You are carrying nothing">No published sheet has a fail against you that a later pass has not settled.</Note>
       )}
+      {/* V611: the old portal's results are not here — a course failed there is declared on Course Registration */}
+      <Note kind="info" title="Failed a course whose result is on the old portal?"
+        action={<LinkBtn kind="primary" href="/student/register">Course registration</LinkBtn>}>
+        This page lists the carry-overs the published results on this portal show. A course you registered in an earlier session whose
+        result is not on this portal is not listed: add it yourself on Course Registration with + ADD CARRY-OVER COURSE. It is marked as a
+        carry-over you declared, and your department sees it.
+      </Note>
       <Tiles items={[
         ["Courses carried", String(r.carryovers.length), r.carryovers.length ? "var(--red-ink)" : null, `${units} units`],
         ["Units they take", String(units), null, "Against the level's maximum"],

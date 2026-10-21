@@ -84,8 +84,12 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const auto = v.approval?.mode === "AUTO_APPROVAL";
   const [askReset, setAskReset] = useState(false);
   const [adding, setAdding] = useState(false);
+  // V611: the course finder opened on the student's carry-overs (those a published result states, and those declared)
+  const [addingCarry, setAddingCarry] = useState(false);
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
-  const chosenNow = new Set((reg?.entries ?? []).filter((e) => e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED").map((e) => e.offeringId));
+  // the carry-overs and deferred courses the menu puts on are not the student's choice; a carry-over the student added (V611: one
+  // declared, its result not on the portal) is
+  const chosenNow = new Set((reg?.entries ?? []).filter((e) => (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED") || e.studentAdded).map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
   const carry = v.menu.filter((m) => m.carryover && !m.deferred);
   const deferredCourses = v.menu.filter((m) => m.deferred);
@@ -117,6 +121,21 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       note: m.deferred ? "Deferred" : m.carryover ? (m.kind === "GST" ? `Carry-over · ${gstOffice(m.course_code)}` : "Carry-over") : null })),
     ...chosenExtras.map((e) => ({ key: e.offeringId, code: e.courseCode, title: e.title, units: e.units, category: courseCategory(e), note: addedAsLabel(e.addedAs) ?? "Added by you" })),
   ]);
+  // a course the student added beside the menu, with its Remove (saving the selection without it): V611 lists a declared carry-over
+  // under Carry-over courses, the others under Add other courses
+  const extraRow = (e: (typeof extras)[number]) => (
+    <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "center" }}>
+      <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
+      <span className="grow">{e.title} <span className="sub2">· {addedAsLabel(e.addedAs) ?? "added by you"}</span></span>
+      <Pil kind="grey">{CATEGORY_LABEL[courseCategory(e)]}</Pil>
+      <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
+      <Btn kind="ghost" size="sm" disabled={busy !== null} busy={busy === `remove-${e.offeringId}`} busyLabel="Removing..." onClick={async () => {
+        const n = new Set(chosen); n.delete(e.offeringId);
+        const j = await act(`remove-${e.offeringId}`, "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...n] }, `Course ${e.courseCode} removed by the student`, `${e.courseCode} removed`);
+        if (j) setChosen(n);
+      }}>Remove</Btn>
+    </div>
+  );
   // a registration submitted or approved is read from itself, not from today's menu: a course whose binding changed after
   // approval, or one added on the student's behalf, is not on the menu, and the page then showed nothing ticked and
   // "0 units · Below minimum" under "Approved · 15 units"
@@ -132,7 +151,8 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   // the same at submission, registration.load_kind)
   const isCarry = (t: string | null | undefined) => t === "CARRYOVER" || t === "DEFERRED" || t === "REPEAT";
   const carryUnits = locked ? registered.filter((e) => isCarry(e.entryType)).reduce((n, e) => n + e.units, 0)
-    : carry.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0) + deferredCourses.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0);
+    : carry.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0) + deferredCourses.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0)
+      + chosenExtras.filter((e) => isCarry(e.entryType)).reduce((n, e) => n + e.units, 0);
   const currentUnits = total - carryUnits;
   const kind: LoadKind = locked && v.loadKind ? v.loadKind
     : loadKind([...chosenMenu.map((m) => ({ category: menuCategory(m) })), ...chosenExtras.map((e) => ({ category: courseCategory(e) }))], carryUnits);
@@ -301,7 +321,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         <Panel title="CURRENT COURSE REGISTRATION" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg.units} units`}>
           <PBody>
             <div className="row" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <span className="sub2 grow">Courses brought over from the old portal, or chosen in error? Clear this semester&rsquo;s registration and choose your courses again. Your carryovers stay; your results, payments and earlier semesters are not touched.</span>
+              <span className="sub2 grow">Courses brought over from the old portal, or chosen in error? Clear this semester&rsquo;s registration and choose your courses again. The carry-overs your published results state stay (those you declared are cleared with your other courses); your results, payments and earlier semesters are not touched.</span>
               <Btn kind="ghost" disabled={busy !== null} onClick={() => setAskReset(true)}>RESET COURSE REGISTRATION</Btn>
             </div>
             {v.reset.history.length ? <div className="sub2 mt-1">Reset {v.reset.history.length} time{v.reset.history.length === 1 ? "" : "s"} this semester; last on {onDay(v.reset.history[0].reset_at)}.</div> : null}
@@ -326,19 +346,20 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
             <div className="kv"><span className="k">Level</span><span className="v tnum">{v.level} Level</span></div>
             <div className="kv"><span className="k">Current courses</span><span className="v tnum">{registered.length} ({reg.units} units)</span></div>
           </div>
-          <p className="sub2" style={{ marginBottom: 0 }}>Your carryover courses stay on the registration. Your results, payments, GST/EPS entitlement and earlier semesters are not changed.</p>
+          <p className="sub2" style={{ marginBottom: 0 }}>The carry-overs your published results state stay on the registration; a carry-over you declared is cleared with your other courses. Your results, payments, GST/EPS entitlement and earlier semesters are not changed.</p>
         </Modal>
       ) : null}
 
       {locked && v.addDropOpen ? (() => {
         const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
-        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED"));
+        // V611: a carry-over the student declared is dropped as it was added; one the results state is repeated
+        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && (e.entryType !== "CARRYOVER" || e.addedAs === "CARRY_OVER_DECLARED") && e.entryType !== "DEFERRED"));
         const addable = v.menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
         return (
           <Panel title="Add or drop courses" right="the add/drop window is open">
             <PBody>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <div className="sub2">You can still add or drop a course (not a carryover or a course with a mark). Total: {min}–{max} units.</div>
+              <div className="sub2">You can still add or drop a course (not a carry-over your results state, or a course with a mark). Total: {min}–{max} units.</div>
               {droppable.length ? (<>
                 <div className="eyebrow mt-2">Registered — drop</div>
                 {droppable.map((e) => (
@@ -360,6 +381,12 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 ))}
               </>) : null}
               {!droppable.length && !addable.length ? <div className="sub2">Nothing to add or drop.</div> : null}
+              {!v.siwes ? (
+                <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
+                  <span className="sub2 grow">A carry-over from an earlier session whose result is not on the portal?</span>
+                  <Btn kind="secondary" disabled={busy !== null} onClick={() => setAddingCarry(true)}>+ ADD CARRY-OVER COURSE</Btn>
+                </div>
+              ) : null}
               {v.flex?.allow_other_courses !== false ? (
                 <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
                   <span className="sub2 grow">A course not listed here — of your programme at another level, or a University GST/EPS course?</span>
@@ -455,24 +482,24 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
             <div className="sub2 mt-2">A deficiency course earns no credit; register it where the School requires it of you.</div></PBody></Panel>
       ) : null}
       {!locked && !v.siwes ? (
+        <Panel title="CARRY-OVER COURSES" right={<Btn kind="secondary" disabled={busy !== null} onClick={() => setAddingCarry(true)}>+ ADD CARRY-OVER COURSE</Btn>}>
+          <PBody>
+            <div className="sub2">
+              Failed a course in an earlier session? A carry-over that a published result on the portal shows is listed above and put on your
+              registration for you. Your results from the old portal are not on this portal: add such a carry-over yourself from the courses
+              you registered before. Add only a course you failed — it is marked as a carry-over you declared, and your department sees it.
+            </div>
+            {extras.filter((e) => e.addedAs === "CARRY_OVER_DECLARED").map(extraRow)}
+          </PBody>
+        </Panel>
+      ) : null}
+      {!locked && !v.siwes ? (
         <Panel title="ADD OTHER COURSES" right={v.flex?.allow_other_courses !== false ? <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn> : "closed for now"}>
           <PBody>
             <div className="sub2">{v.flex?.allow_other_courses !== false
               ? <>A course not listed above — of your programme at another level{v.flex?.allow_higher_levels ? "" : " below yours"}, an elective, or a University GST/EPS course{v.flex?.other_scope === "FACULTY" ? ", or one of your faculty" : v.flex?.other_scope === "DEPARTMENT" ? ", or one of your department" : ""}? Search for it; the University&rsquo;s rules decide whether you may add it, and your registration is approved on the same rules.</>
               : "The Academic Office has closed adding courses beside your recommended list for now."}</div>
-            {extras.map((e) => (
-              <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "center" }}>
-                <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
-                <span className="grow">{e.title} <span className="sub2">· {addedAsLabel(e.addedAs) ?? "added by you"}</span></span>
-                <Pil kind="grey">{CATEGORY_LABEL[courseCategory(e)]}</Pil>
-                <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
-                <Btn kind="ghost" size="sm" disabled={busy !== null} busy={busy === `remove-${e.offeringId}`} busyLabel="Removing..." onClick={async () => {
-                  const n = new Set(chosen); n.delete(e.offeringId);
-                  const j = await act(`remove-${e.offeringId}`, "PUT", "/me/registration", { session: v.session, semester: v.semester, offerings: [...n] }, `Course ${e.courseCode} removed by the student`, `${e.courseCode} removed`);
-                  if (j) setChosen(n);
-                }}>Remove</Btn>
-              </div>
-            ))}
+            {extras.filter((e) => e.addedAs !== "CARRY_OVER_DECLARED").map(extraRow)}
           </PBody>
         </Panel>
       ) : null}
@@ -501,6 +528,10 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       {adding ? (
         <AddOtherCourse session={v.session} semester={v.semester} level={v.level} total={total} max={max} addDrop={locked}
           onAdded={(id) => { if (!locked) setChosen((c) => new Set(c).add(id)); }} onClose={() => setAdding(false)} />
+      ) : null}
+      {addingCarry ? (
+        <AddOtherCourse initialCategory="CARRY_OVER" session={v.session} semester={v.semester} level={v.level} total={total} max={max} addDrop={locked}
+          onAdded={(id) => { if (!locked) setChosen((c) => new Set(c).add(id)); }} onClose={() => setAddingCarry(false)} />
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!locked ? (

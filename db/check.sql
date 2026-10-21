@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 441
+\set EXPECTED 442
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22316,6 +22316,86 @@ BEGIN
                left(sao_open, 20), left(no_rows, 18), left(other_part, 18), a, b, c->>'rows_loaded', h.kind, h.state, h.file_name, h.parts, h.rows_read, h.file_rows,
                h.recorded, h.no_student, h.students, h.sessions, h.amount, h.file_amount, h.office, part1.resent, part1.recorded, pays_before,
                door, rs.state, rs.deleted, rs.students, reset_pays, pays_after, drafts, pending, left(kept, 18)));
+END $$;
+-- ── V611. A student adds a carry-over the portal holds no result for, declared and marked so. A made-up student at 200 Level: of
+--          the earlier session's courses, one with no score sheet here and one on a published sheet without them are carry-overs
+--          the student may declare; one whose sheet is still at entry, and one registered earlier this session, await their
+--          results. The declared one is added (a carry-over, marked declared), kept while chosen and let go when not, and cleared
+--          by a reset. The block undoes its writes ──
+DO $$
+DECLARE e_ses text := '2391/2392'; c_ses text := '2392/2393'; st uuid := gen_random_uuid(); prog text; dept text; msg text;
+        r_e uuid := gen_random_uuid(); r_c1 uuid := gen_random_uuid(); reg uuid;
+        ctx record; k101 record; k105 record; k108 record; o101 uuid; o103 uuid;
+        added_type text; added_as text; kept int; let_go int; after_reset int; reset_kept int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V611', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), e_ses, DATE '2391-10-01', DATE '2392-08-31'), (gen_random_uuid(), c_ses, DATE '2392-10-01', DATE '2393-08-31');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 200, 1) IS NULL AND registration.siwes_units(p.code, 200, 2) IS NULL ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (st, 'MOAUM/ADM/91/911101', 'CHECKV611', 'Declared', prog, 'UTME', e_ses, 100, 200, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+            ('ZQW 101', 'Check Carry No Sheet', 2, 2, 100, dept, 'Core', 'LIVE', NULL), ('ZQW 103', 'Check Carry Sheet Without', 2, 2, 100, dept, 'Core', 'LIVE', NULL),
+            ('ZQW 105', 'Check Carry Sheet At Entry', 2, 2, 100, dept, 'Core', 'LIVE', NULL), ('ZQW 108', 'Check Carry This Session', 2, 2, 100, dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis)
+        SELECT c, prog, 100, 'Core' FROM unnest(ARRAY['ZQW 101', 'ZQW 103', 'ZQW 105', 'ZQW 108']) c;
+        -- the earlier session's classes (first semester), this session's first-semester class of ZQW 108, and the second semester's classes
+        INSERT INTO catalogue.offering (id, course_code, session, semester)
+        SELECT gen_random_uuid(), c, e_ses, 1 FROM unnest(ARRAY['ZQW 101', 'ZQW 103', 'ZQW 105']) c
+        UNION ALL SELECT gen_random_uuid(), 'ZQW 108', c_ses, 1
+        UNION ALL SELECT gen_random_uuid(), c, c_ses, 2 FROM unnest(ARRAY['ZQW 101', 'ZQW 103', 'ZQW 105', 'ZQW 108']) c;
+        SELECT id INTO o101 FROM catalogue.offering WHERE course_code = 'ZQW 101' AND session = c_ses AND semester = 2;
+        SELECT id INTO o103 FROM catalogue.offering WHERE course_code = 'ZQW 103' AND session = c_ses AND semester = 2;
+        -- registered and approved: the three in the earlier session, ZQW 108 in this session's first semester
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+            (r_e, st, e_ses, 1, 100, 'APPROVED', now(), now()), (r_c1, st, c_ses, 1, 200, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT r_e, o.id, 2, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.session = e_ses AND o.course_code IN ('ZQW 101', 'ZQW 103', 'ZQW 105')
+        UNION ALL SELECT r_c1, o.id, 2, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.session = c_ses AND o.semester = 1 AND o.course_code = 'ZQW 108';
+        -- ZQW 103's sheet published without the student; ZQW 105's still at entry
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, published_at, senate_minute)
+        SELECT gen_random_uuid(), o.id, 'PUBLISHED', now(), 'CHECK V611' FROM catalogue.offering o WHERE o.session = e_ses AND o.course_code = 'ZQW 103';
+        INSERT INTO assessment.score_sheet (id, offering_id, stage)
+        SELECT gen_random_uuid(), o.id, 'ENTRY' FROM catalogue.offering o WHERE o.session = e_ses AND o.course_code = 'ZQW 105';
+
+        SELECT * INTO ctx FROM registration.course_context(st, c_ses, 2);
+        SELECT * INTO k101 FROM registration.course_check(st, c_ses, 2, 'ZQW 101', ctx.passed, ctx.awaited, ctx.carry, ctx.other_semester);
+        SELECT * INTO k105 FROM registration.course_check(st, c_ses, 2, 'ZQW 105', ctx.passed, ctx.awaited, ctx.carry, ctx.other_semester);
+        SELECT * INTO k108 FROM registration.course_check(st, c_ses, 2, 'ZQW 108', ctx.passed, ctx.awaited, ctx.carry, ctx.other_semester);
+
+        -- the student declares ZQW 101: a carry-over on the draft, marked declared; kept while chosen, let go when not
+        PERFORM registration.student_add_other(st, c_ses, 2, o101);
+        SELECT id INTO reg FROM registration.course_registration WHERE student_id = st AND session = c_ses AND semester = 2;
+        SELECT e.entry_type, e.added_as INTO added_type, added_as FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = o101;
+        PERFORM registration.student_choose(reg, ARRAY[o101]);
+        kept := (SELECT count(*) FROM registration.entry WHERE registration_id = reg AND offering_id = o101);
+        PERFORM registration.student_choose(reg, ARRAY[]::uuid[]);
+        let_go := (SELECT count(*) FROM registration.entry WHERE registration_id = reg AND offering_id = o101);
+        -- declared again (ZQW 103 too), then the registration reset: both cleared
+        PERFORM registration.student_add_other(st, c_ses, 2, o101);
+        PERFORM registration.student_add_other(st, c_ses, 2, o103);
+        reset_kept := (SELECT count(*) FROM registration.entry WHERE registration_id = reg);
+        PERFORM registration.student_reset(st, c_ses, 2, 'CHECK V611: declared in error', 'ICT_SUPPORT');
+        after_reset := (SELECT count(*) FROM registration.entry WHERE registration_id = reg);
+        RAISE EXCEPTION 'the V611 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V611 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V611: a course of an earlier session with no result of the student on the portal is a carry-over the student declares (marked so, kept while chosen, cleared by a reset); one whose result is on its way waits',
+        coalesce('ZQW 101' = ANY (ctx.carry) AND 'ZQW 103' = ANY (ctx.carry) AND NOT 'ZQW 105' = ANY (ctx.carry) AND NOT 'ZQW 108' = ANY (ctx.carry)
+                 AND 'ZQW 105' = ANY (ctx.awaited) AND 'ZQW 108' = ANY (ctx.awaited) AND NOT 'ZQW 101' = ANY (ctx.awaited)
+                 AND k101.refusal IS NULL AND k101.category = 'CARRY_OVER' AND k101.added_as = 'CARRY_OVER_DECLARED' AND k101.why LIKE 'Carry-over you declare%'
+                 AND k105.refusal LIKE 'REG_RESULT_AWAITED:%' AND k108.refusal LIKE 'REG_ALREADY_REGISTERED:%'
+                 AND added_type = 'CARRYOVER' AND added_as = 'CARRY_OVER_DECLARED' AND kept = 1 AND let_go = 0 AND reset_kept = 2 AND after_reset = 0, false),
+        format('carry %s awaited %s | 101 %s/%s/%s | 105 %s | 108 %s | added %s/%s kept %s let go %s | before reset %s after %s',
+               ctx.carry, ctx.awaited, k101.category, k101.added_as, coalesce(k101.refusal, '-'), left(k105.refusal, 20), left(k108.refusal, 20),
+               added_type, added_as, kept, let_go, reset_kept, after_reset));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

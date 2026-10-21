@@ -70,4 +70,8 @@ test("units after an add", () => {
   assert.deepEqual(unitsAfter(22, 3, 24), { total: 25, over: true });
   assert.equal(addedAsLabel("UNIVERSITY_GST"), "University GST course");
   assert.equal(addedAsLabel(null), null);
+  // V611: an earlier course with no result on the portal, carried over on the student's word
+  assert.equal(addedAsLabel("CARRY_OVER_DECLARED"), "A carry-over you declared (no result on the portal)");
+  // a declared carry-over is a carry-over wherever the page orders and counts courses
+  assert.equal(courseCategory({ entryType: "CARRYOVER" }), "CARRY_OVER");
 });
