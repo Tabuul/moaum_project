@@ -420,6 +420,108 @@ class CohortController {
                 pick.stream().map(r -> ((Number) r.get("proposed_level")).intValue()).toList());
     }
 
+    /* ── V601: records above the programme's final level, brought to it ── */
+
+    private static final String ABOVE_FROM = """
+             FROM people.level_above_final a
+             JOIN people.student s ON s.id = a.student_id
+             JOIN ref.programme p ON p.code = s.programme_code
+             JOIN ref.department d ON d.code = p.dept_code
+             JOIN ref.faculty f ON f.code = p.faculty_code
+            WHERE (:fac::text IS NULL OR f.code = :fac) AND (:dept::text IS NULL OR d.code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+              AND (:like::text IS NULL OR s.matric_no ILIKE :like OR s.surname ILIKE :like OR s.other_names ILIKE :like OR (s.surname || ' ' || s.other_names) ILIKE :like)
+            """;
+
+    /** the records above their programme's final level within the scope: how many, how many hold a registration above it this
+     *  session, the levels on record against the final level, and a page of the students, names A–Z */
+    @GetMapping("/levels/above-final")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> aboveFinal(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
+                                   @RequestParam(required = false) String q,
+                                   @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size) {
+        OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        String like = blank(q) == null ? null : "%" + q.trim() + "%";
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("counts", jdbc.sql("SELECT count(*) AS total, count(*) FILTER (WHERE a.registered_above_now) AS registered_now" + ABOVE_FROM)
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .query().singleRow());
+        out.put("byShape", jdbc.sql("SELECT a.current_level, a.final_level, count(*) AS n" + ABOVE_FROM + " GROUP BY 1, 2 ORDER BY 2, 1")
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .query().listOfRows());
+        int sz = Math.max(1, Math.min(size, 500));
+        int pg = Math.max(1, page);
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT count(*) OVER () AS total_rows, s.id, s.surname, s.other_names, s.matric_no, p.code AS programme_code, p.name AS programme,
+                       d.name AS department, f.name AS faculty, a.current_level, a.final_level, a.computed_level, a.spillover_state,
+                       a.last_registration_session, a.last_registration_level, a.registered_above_now""" + ABOVE_FROM + """
+                 ORDER BY lower(s.surname), lower(s.other_names), s.id
+                 LIMIT :n OFFSET :o
+                """).param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR).param("like", like, Types.VARCHAR)
+                .param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
+        long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
+        rows.forEach(r -> r.remove("total_rows"));
+        out.put("total", total);
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("rows", rows);
+        return out;
+    }
+
+    public record AboveFinalApply(List<UUID> studentIds, String fac, String dept, String prog, @Size(max = 80) String q,
+                                  @Size(max = 2000) String reason, @Size(max = 60) String batch, Integer limit, Boolean includeRegistered, Boolean dryRun) {
+    }
+
+    /** bring records above the final level to it — the chosen students, or every one within the scope or search — a batch at a
+     *  time, each change on the cohort decision history; a student registered above the final level this session only when
+     *  included; a dry run counts. The database holds the office and the reason. */
+    @PostMapping("/levels/above-final/apply")
+    @PreAuthorize(LEVEL_SETTERS)
+    @Transactional
+    Map<String, Object> applyAboveFinal(@Valid @RequestBody AboveFinalApply body) {
+        OfficeScope.Bound b = scope.bound(body.fac(), body.dept(), body.prog());
+        boolean dry = body.dryRun() == null || body.dryRun();
+        if (body.studentIds() != null && body.studentIds().size() > 5000) throw new DomainRuleViolation("LEVEL_CORRECTION_SIZE", "Choose at most 5,000 students at a time.",
+                new DomainRuleViolation.Remedy("Apply to every one found, or choose fewer students.", "Registry"));
+        Map<String, Object> r = jdbc.sql("SELECT * FROM people.lower_to_final_level(CAST(:ids AS uuid[]), :fac, :dept, :prog, :q, :reason, :batch, :lim, :inc, :dry)")
+                .param("ids", body.studentIds() == null || body.studentIds().isEmpty() ? null : body.studentIds().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR)
+                .param("q", blank(body.q()), Types.VARCHAR).param("reason", blank(body.reason()), Types.VARCHAR).param("batch", blank(body.batch()), Types.VARCHAR)
+                .param("lim", body.limit() == null ? 500 : Math.max(1, Math.min(body.limit(), 1000)), Types.INTEGER)
+                .param("inc", Boolean.TRUE.equals(body.includeRegistered())).param("dry", dry)
+                .query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(r);
+        out.put("dryRun", dry);
+        return out;
+    }
+
+    /** what bringing them to the final level would do to their fees for the current session — the same selection and batch; nothing is changed */
+    @PostMapping("/levels/above-final/fee-effect")
+    @PreAuthorize(LEVEL_SETTERS)
+    @Transactional
+    Map<String, Object> aboveFinalFeeEffect(@RequestBody AboveFinalApply body) {
+        OfficeScope.Bound b = scope.bound(body.fac(), body.dept(), body.prog());
+        int lim = body.limit() == null ? 500 : Math.max(1, Math.min(body.limit(), 1000));
+        List<Map<String, Object>> pick = jdbc.sql("""
+                SELECT a.student_id, a.final_level
+                  FROM people.level_above_final a
+                  JOIN people.student s ON s.id = a.student_id
+                  JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (CAST(:ids AS uuid[]) IS NULL OR a.student_id = ANY (CAST(:ids AS uuid[])))
+                   AND (:fac::text IS NULL OR p.faculty_code = :fac) AND (:dept::text IS NULL OR p.dept_code = :dept) AND (:prog::text IS NULL OR p.code = :prog)
+                   AND (:like::text IS NULL OR s.matric_no ILIKE :like OR s.surname ILIKE :like OR s.other_names ILIKE :like OR (s.surname || ' ' || s.other_names) ILIKE :like)
+                   AND (:inc OR NOT a.registered_above_now)
+                 ORDER BY a.student_id
+                 LIMIT :lim
+                """).param("ids", body.studentIds() == null || body.studentIds().isEmpty() ? null : body.studentIds().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).param("prog", b.prog(), Types.VARCHAR)
+                .param("like", blank(body.q()) == null ? null : "%" + body.q().trim() + "%", Types.VARCHAR)
+                .param("inc", Boolean.TRUE.equals(body.includeRegistered())).param("lim", lim)
+                .query().listOfRows();
+        return FeeEffect.of(jdbc, pick.stream().map(r -> (UUID) r.get("student_id")).toList(),
+                pick.stream().map(r -> ((Number) r.get("final_level")).intValue()).toList());
+    }
+
     /* ── the policy: the spillover limit, the programmes' lengths, the sessions merged ── */
 
     @GetMapping("/settings")

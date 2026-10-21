@@ -10,6 +10,7 @@
  *  alone — for review, applied only when chosen). The Academic Office or the Registry raises them in one act, a batch at a time,
  *  on a reason; no level is lowered and each change goes on the student's cohort history. */
 import { useCallback, useEffect, useState } from "react";
+import { AboveFinal } from "./AboveFinal";
 import { FeeEffect } from "./FeeEffect";
 import { LevelFeeEffectRun } from "./LevelFeeEffectRun";
 import { reasonHeader } from "@/lib/reason";
@@ -166,7 +167,8 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
       <Note kind="info" title="Records whose level is below where the cohort engine places the student">
         A student past the programme&rsquo;s length is in spillover — SP1, then SP2, each a session of both semesters, up to the limit set under Policy (approved
         deferments push the expected completion on) — and stands at the programme&rsquo;s final level. Many such students came over from the old portal at 100 Level.
-        Raise them here; no level is ever lowered, and each change goes on the student&rsquo;s history with your reason.
+        Raise them here; these corrections never lower a level, and each change goes on the student&rsquo;s history with your reason. A record above the
+        programme&rsquo;s final level is brought down to it in the list below this one.
       </Note>
       <Tiles items={[
         ["Spillover", fmt(count("SPILLOVER")), count("SPILLOVER") ? "var(--amber-ink)" : null, BASIS.SPILLOVER[1]],
@@ -264,6 +266,8 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
           </div></PBody>
         ) : null}
       </Panel>
+      {/* V601: records above the programme's final level, brought to it */}
+      <AboveFinal fac={fac} dept={dept} canApply={canApply} />
       {/* V580: what correcting every one waiting would do to the current session's charges, worked out behind the screens */}
       <LevelFeeEffectRun mayStart={canApply} mayCorrect={canApply} mayStateFees={canStateFees} />
 

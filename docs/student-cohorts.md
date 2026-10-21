@@ -424,3 +424,43 @@ lists them.
 Other lengths are set on Policy & sessions → programme length (`ref.set_programme_length`) by the Registry.
 
 - **Tests:** check.sql's V598 block; `LevelCorrectionsIT` (by the level on record).
+
+## 20. Records above the final level brought to it; spillover not progressed a level at a time (V601)
+
+A level above the programme's last one (500 or 600 on a four-year programme) is not a level the programme has. Most such records
+came from the old portal. Level corrections (V475, V593, V598) never lower a level, so nothing listed them; on the live-shaped copy there
+were 37 once V598 set the five-year programmes at 500.
+
+**Student Cohorts → Level corrections → Records above the programme's final level** lists every student in study (not
+postgraduate) whose level on record is above the final level as the cohort engine reads it (`people.academic_position.final_level`:
+the programme's, or the CCE route's). Each row shows:
+
+- the level on record and the final level;
+- the level the engine computes and the spillover position;
+- the latest registration, and whether the student holds a registration above the final level in the current session.
+
+The Academic Office or the Registry brings them to the final level — never below it — with **Bring every one found to the final
+level** (the faculty, department and search on the screen) or **Bring the chosen**:
+
+- a dry run counts first; the fee effect of the first batch can be read before anything changes;
+- a reason is required and kept on each student's cohort history (rule `LEVEL_ABOVE_FINAL`, the levels before and after, the batch);
+- the changes run in batches of 500;
+- a student registered above the final level this session is left for review unless included in so many words. The registration
+  keeps its level; Course Registration support puts it right.
+
+Where the engine's own level is lower than the final level (a student at 600 who should be at 300), that is a separate
+correction: the list shows the computed level beside the final one.
+
+- **API:** `GET /api/v1/cohorts/levels/above-final?fac&dept&prog&q&page&size` (counts, `byShape`, rows);
+  `POST /api/v1/cohorts/levels/above-final/apply` `{studentIds | fac, dept, prog, q, reason, batch, limit, includeRegistered, dryRun}`;
+  `POST /api/v1/cohorts/levels/above-final/fee-effect` (same body).
+- **Database:** `people.level_above_final` (view); `people.lower_to_final_level(...)` returns selected, corrected,
+  registered_now and remaining.
+
+**Level Management at the ICT desk (V500)** progressed a spillover student a level at a time — a spillover record at 100 could be
+moved to 200 — though the screen offered the correction to the final level instead. `people.level_options` now refuses the
+progression on the server too (`LEVEL_IN_SPILLOVER`): a student past the programme's length belongs at its final level, by a
+correction. The next level is still shown, and `spilloverState` is returned for the screen.
+
+- **Tests:** check.sql's V601 block; `LevelCorrectionsIT` (records above the final level); `StudentLevelSupportIT` (a spillover
+  student not progressed).

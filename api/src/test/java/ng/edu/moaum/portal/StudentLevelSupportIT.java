@@ -165,4 +165,33 @@ class StudentLevelSupportIT {
         assertThat(String.valueOf(found)).contains(ticket.toString());
         assertThat(it.get(studentTok, "/api/v1/helpdesk/my/tickets/" + ticket).getBody()).doesNotContainKey("student_phone");
     }
+
+    /** V601: a student past the programme's length is not progressed a level at a time at the desk — the server refuses it, not
+     *  only the screen — while the correction to the final level stays open */
+    @Test
+    void aSpilloverStudentIsNotProgressedALevelAtATime() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        String surname = it.freeSurname("ZZLVSP");
+        String programme = jdbc.sql("""
+                SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1
+                """).query(String.class).single();
+        UUID student = it.student(surname, programme, it.freeNumber("MOAUM/ADM/26/", 6), it.freeNumber("MOAUM/ITS/26/", 5), 100);
+        // the engine's position for a student one session past a four-year programme (SP1), as it reads with a current session
+        jdbc.sql("""
+                UPDATE people.academic_position SET computed_level = 400, final_level = 400, spillover_years = 1, spillover_state = 'SPILLOVER_YEAR_1',
+                       classification = 'SPILLOVER' WHERE student_id = :s
+                """).param("s", student).update();
+        String agent = TestTokens.token(agent(it, "SP" + surname.substring(6)), List.of("ictagent"));
+
+        Map<String, Object> options = (Map<String, Object>) it.get(agent, "/api/v1/helpdesk/support/students/" + student + "/level").getBody().get("options");
+        assertThat(options).containsEntry("nextLevel", 200).containsEntry("spilloverState", "SPILLOVER_YEAR_1");
+        assertThat(String.valueOf(options.get("progressRefusal"))).startsWith("LEVEL_IN_SPILLOVER");
+        ResponseEntity<Map> progressed = change(it, agent, student, Map.of("action", "PROGRESS", "expected", 100, "reason", "Left at 100 Level after the session's promotion"));
+        assertThat(progressed.getStatusCode().value()).as(String.valueOf(progressed.getBody())).isEqualTo(422);
+        assertThat(progressed.getBody().get("code")).isEqualTo("LEVEL_IN_SPILLOVER");
+        ResponseEntity<Map> corrected = change(it, agent, student, Map.of("action", "CORRECTION", "level", 400, "expected", 100,
+                "reason", "A spillover student recorded at 100 Level from the old portal"));
+        assertThat(corrected.getStatusCode().value()).as(String.valueOf(corrected.getBody())).isEqualTo(200);
+        assertThat(corrected.getBody()).containsEntry("newLevel", 400).containsEntry("action", "LEVEL_CORRECTION");
+    }
 }

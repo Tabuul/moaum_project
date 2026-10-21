@@ -175,7 +175,7 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
       </div>
       {!state.mayProgress && !state.mayCorrect ? <Note kind="info" title="You can read this student's level but not change it">Your posting does not carry level changes for this student. The Head of the ICT Support Desk grants them.</Note> : null}
       {o.correctRefusal ? <Note kind="bad" title="The level cannot be changed">{refusalWords(o.correctRefusal)}</Note>
-        : o.progressRefusal ? <div className="sub2">{refusalWords(o.progressRefusal)}</div> : null}
+        : o.progressRefusal && !sp ? <div className="sub2">{refusalWords(o.progressRefusal)}</div> : null}
 
       <div className="eyebrow">Level history</div>
       {state.history.length ? (

@@ -15,6 +15,7 @@ const state = (over: Partial<LevelState> = {}): LevelState => ({
 test("a refusal reads without its code, and a reason needs ten characters", () => {
   assert.equal(refusalWords("LEVEL_AT_FINAL: the student is at the programme's final level (400)"), "The student is at the programme's final level (400)");
   assert.equal(refusalWords(null), "");
+  assert.equal(refusalWords("LEVEL_IN_SPILLOVER: the student is past the programme's length (SP2)"), "The student is past the programme's length (SP2)");
   assert.equal(reasonOk("too short"), false);
   assert.equal(reasonOk("Left at 300 after promotion"), true);
 });
@@ -41,6 +42,7 @@ test("the levels on the record run one per session, and each change is named by 
   ]), [{ session: "2024/2025", level: 200 }, { session: "2025/2026", level: 300 }]);
   assert.equal(ruleWord("LEVEL_PROGRESS"), "Progressed (level desk)");
   assert.equal(ruleWord("LEVEL_SPILLOVER"), "Spillover correction");
+  assert.equal(ruleWord("LEVEL_ABOVE_FINAL"), "Brought to the final level");
   assert.equal(ruleWord("PROMOTE"), "Registry decision");
 });
 

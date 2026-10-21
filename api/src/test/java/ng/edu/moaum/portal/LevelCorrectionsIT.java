@@ -158,4 +158,64 @@ class LevelCorrectionsIT {
         assertThat(stats.getBody()).containsKey("byPosition");
         assertThat(it.get(academic, "/api/v1/stats/students?position=GRADUATION_CANDIDATE").getStatusCode().value()).isEqualTo(200);
     }
+
+    /** V601: records above the programme's final level listed, counted and brought to it on a reason — a student registered above
+     *  it in the current session only when included, the registration left at its level; the Records office and ICT Support may not */
+    @Test
+    void recordsAboveTheFinalLevelAreBroughtToItOnAReason() {
+        String tag = it.freeSurname("ZZLF");
+        UUID six = it.student(tag, "C00023", it.freeNumber("MOAUM/ADM/94/", 6), it.freeNumber("MOAUM/MTC/94/", 5), 600);
+        UUID five = it.student(tag + "B", "C00023", it.freeNumber("MOAUM/ADM/94/", 6), it.freeNumber("MOAUM/MTC/94/", 5), 500);
+        UUID four = it.student(tag + "C", "C00023", it.freeNumber("MOAUM/ADM/94/", 6), it.freeNumber("MOAUM/MTC/94/", 5), 400);
+        // a session no test holds stands as the engine's current one for these students, and one holds a registration at 500 in it
+        int y = it.freeYear(2200, 2300);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        UUID reg = it.db(() -> jdbc.sql("""
+                INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)
+                VALUES (gen_random_uuid(), :s, :ses, 1, 500, 'APPROVED', now()) RETURNING id
+                """).param("s", five).param("ses", session).query(UUID.class).single());
+        for (UUID s : List.of(six, five, four)) {
+            jdbc.sql("UPDATE people.academic_position SET final_level = 400, current_session = :ses WHERE student_id = :s").param("ses", session).param("s", s).update();
+        }
+
+        // the list: the two above 400, one of them registered above it this session; the one at 400 is not listed
+        ResponseEntity<Map> list = it.get(academic, "/api/v1/cohorts/levels/above-final?q=" + tag);
+        assertThat(list.getStatusCode().value()).as(String.valueOf(list.getBody())).isEqualTo(200);
+        assertThat(((Number) list.getBody().get("total")).intValue()).isEqualTo(2);
+        assertThat(((Number) ((Map) list.getBody().get("counts")).get("registered_now")).intValue()).isEqualTo(1);
+        assertThat((List<Map<String, Object>>) list.getBody().get("byShape")).extracting(x -> x.get("current_level") + ">" + x.get("final_level") + ":" + x.get("n"))
+                .containsExactly("500>400:1", "600>400:1");
+
+        // only the Academic Office or the Registry, never without a reason
+        Map<String, Object> body = Map.of("q", tag, "dryRun", false, "reason", "Migrated above the programme's last level; a four-year programme ends at 400");
+        assertThat(it.call(ItSupport.token("records"), HttpMethod.POST, "/api/v1/cohorts/levels/above-final/apply", body).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(ItSupport.token("ictagent"), HttpMethod.POST, "/api/v1/cohorts/levels/above-final/apply", body).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/above-final/apply", Map.of("q", tag, "dryRun", false)).getStatusCode().is4xxClientError()).isTrue();
+
+        // a dry run counts both and leaves the registered one out; the fee effect is read for the one to be brought down
+        Map<String, Object> dry = it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/above-final/apply", Map.of("q", tag)).getBody();
+        assertThat(dry).containsEntry("selected", 2).containsEntry("registered_now", 1).containsEntry("corrected", 0).containsEntry("remaining", 1);
+        ResponseEntity<Map> fees = it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/above-final/fee-effect", Map.of("q", tag));
+        assertThat(fees.getStatusCode().value()).as(String.valueOf(fees.getBody())).isEqualTo(200);
+        assertThat(fees.getBody()).containsEntry("students", 1);
+
+        // brought to 400 on the cohort history; then the registered one, when included, its registration left at 500
+        ResponseEntity<Map> done = it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/above-final/apply", body);
+        assertThat(done.getStatusCode().value()).as(String.valueOf(done.getBody())).isEqualTo(200);
+        assertThat(done.getBody()).containsEntry("corrected", 1).containsEntry("remaining", 0);
+        Map<String, Object> decision = jdbc.sql("SELECT rule, previous_level, new_level FROM people.cohort_decision WHERE student_id = :s ORDER BY decided_at DESC LIMIT 1")
+                .param("s", six).query().singleRow();
+        assertThat(decision).containsEntry("rule", "LEVEL_ABOVE_FINAL").containsEntry("previous_level", 600).containsEntry("new_level", 400);
+        Map<String, Object> withRegistered = new java.util.HashMap<>(body);
+        withRegistered.put("includeRegistered", true);
+        withRegistered.put("reason", "Registered at 500 this session; reviewed, the programme ends at 400");
+        ResponseEntity<Map> second = it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/above-final/apply", withRegistered);
+        assertThat(second.getStatusCode().value()).as(String.valueOf(second.getBody())).isEqualTo(200);
+        assertThat(second.getBody()).containsEntry("corrected", 1);
+        assertThat(jdbc.sql("SELECT string_agg(current_level::text, ',' ORDER BY surname) FROM people.student WHERE id IN (:a, :b, :c)")
+                .param("a", six).param("b", five).param("c", four).query(String.class).single()).isEqualTo("400,400,400");
+        assertThat(jdbc.sql("SELECT level FROM registration.course_registration WHERE id = :r").param("r", reg).query(Integer.class).single()).isEqualTo(500);
+        assertThat(((Number) it.get(academic, "/api/v1/cohorts/levels/above-final?q=" + tag).getBody().get("total")).intValue()).isZero();
+    }
 }

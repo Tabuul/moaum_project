@@ -16,8 +16,9 @@ export interface FeeEffectResult {
 const naira = (n: number) => `₦${Number(n ?? 0).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("en-NG");
 
-/** the button and, once read, the effect; `request` posts the selection to the endpoint that reads it */
-export function FeeEffect({ label, request }: { label: string; request: () => Promise<Response> }) {
+/** the button and, once read, the effect; `request` posts the selection to the endpoint that reads it; `change` says which way the
+ *  levels move (V601: records above the final level fall to it) */
+export function FeeEffect({ label, request, change = "rise" }: { label: string; request: () => Promise<Response>; change?: "rise" | "fall" }) {
   const [busy, setBusy] = useState(false);
   const [e, setE] = useState<FeeEffectResult | null>(null);
 
@@ -38,7 +39,7 @@ export function FeeEffect({ label, request }: { label: string; request: () => Pr
     <Note kind={e.noneAfter ? "bad" : "info"} title={`Fees for ${e.session}: ${naira(e.chargedNow)} now, ${naira(e.chargedAfter)} after (${diff >= 0 ? "+" : "−"}${naira(Math.abs(diff))})`}>
       <div className="stack" style={{ gap: 4 }}>
         <span>
-          {e.students === 0 ? "No level would change." : <>For the {fmt(e.students)} student{e.students === 1 ? "" : "s"} whose level would rise{partial ? ` (the first ${fmt(e.readFor ?? 0)} of ${fmt(e.levelsRaised ?? 0)})` : ""},
+          {e.students === 0 ? "No level would change." : <>For the {fmt(e.students)} student{e.students === 1 ? "" : "s"} whose level would {change}{partial ? ` (the first ${fmt(e.readFor ?? 0)} of ${fmt(e.levelsRaised ?? 0)})` : ""},
           {" "}charged {e.basis === "COHORT" ? "by the cohort" : "by the level"}: {fmt(e.more)} would owe more, {fmt(e.less)} less and {fmt(e.same)} the same.</>}
           {e.noneAfter ? <> <b>{fmt(e.noneAfter)}</b> would have no fee line stated at their new level — state it on the Fee Schedule first, or they owe nothing and cannot register.</> : null}
           {e.leavingActiveStudy ? <> {fmt(e.leavingActiveStudy)} leave active study (dormant or withdrawn) and are not read here.</> : null}

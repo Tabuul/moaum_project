@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 435
+\set EXPECTED 436
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21853,6 +21853,83 @@ BEGIN
     PERFORM pg_temp.assert('V604: a deferred student''s registration draft is still made in the database (the deferment engine''s academic effect makes it; the API judges the status at the student''s doors), while a graduated record''s draft is refused on every path',
         v_draft IS NOT NULL AND gr_err = 'REG_STUDENT_NOT_ELIGIBLE',
         format('deferred draft %s | graduated %s', v_draft IS NOT NULL, gr_err));
+END $$;
+-- ── V601. Records above the final level brought to it; a spillover student not progressed a level at a time. Made-up students of
+--          a four-year programme: one at 600 and one at 500 (registered at 500 this session) are listed above the final level, one
+--          at 400 is not; a dry run counts both and leaves the registered one out; the correction brings the first to 400 on the
+--          cohort decision history (LEVEL_ABOVE_FINAL), then the registered one when included; ICT Support may not, and a reason is
+--          needed. A student six sessions in at 100 is in spillover: Level Management refuses the progression (LEVEL_IN_SPILLOVER) and
+--          the ICT desk's PROGRESS is refused with it, while the correction to 400 stays open. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2388; ses text := format('%s/%s', 2388, 2389);
+    a6 uuid := gen_random_uuid(); a5 uuid := gen_random_uuid(); a4 uuid := gen_random_uuid(); sp uuid := gen_random_uuid();
+    listed int; reg_now boolean; dry record; run1 record; run2 record; lvl6 int; lvl5 int; dec1 text; ospill jsonb; ofour jsonb;
+    ict_refused text; reason_refused text; prog_refused text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V601', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 6, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2388/01' WHERE name = ses;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a6, 'MOAUM/ADM/88/601001', 'MOAUM/ZZF/88/6011', 'CHECKV601', 'Six Hundred', 'C00023', 'UTME', format('%s/%s', y - 3, y - 2), 100, 600, 'ACTIVE', now()),
+        (a5, 'MOAUM/ADM/88/601002', 'MOAUM/ZZF/88/6012', 'CHECKV601', 'Five Hundred', 'C00023', 'UTME', format('%s/%s', y - 3, y - 2), 100, 500, 'ACTIVE', now()),
+        (a4, 'MOAUM/ADM/88/601004', 'MOAUM/ZZF/88/6014', 'CHECKV601', 'Four Hundred', 'C00023', 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now()),
+        (sp, 'MOAUM/ADM/88/601009', 'MOAUM/ZZF/88/6019', 'CHECKV601', 'Spillover', 'C00023', 'UTME', format('%s/%s', y - 5, y - 4), 100, 100, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES
+        (gen_random_uuid(), a5, ses, 1, 500, 'APPROVED', now());
+    SELECT count(*) INTO listed FROM people.level_above_final a JOIN people.student s ON s.id = a.student_id WHERE s.surname = 'CHECKV601';
+    SELECT registered_above_now INTO reg_now FROM people.level_above_final WHERE student_id = a5;
+    SELECT * INTO dry FROM people.lower_to_final_level(NULL, NULL, NULL, 'C00023', 'CHECKV601', NULL, NULL, 500, false, true);
+    -- ICT Support may not, and a reason is needed
+    BEGIN
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        PERFORM * FROM people.lower_to_final_level(ARRAY[a6], NULL, NULL, NULL, NULL, 'not the desk''s', NULL, 500, false, false);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS ict_refused = MESSAGE_TEXT;
+    END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN
+        PERFORM * FROM people.lower_to_final_level(ARRAY[a6], NULL, NULL, NULL, NULL, '  ', NULL, 500, false, false);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS reason_refused = MESSAGE_TEXT;
+    END;
+    SELECT * INTO run1 FROM people.lower_to_final_level(NULL, NULL, NULL, 'C00023', 'CHECKV601', 'CHECK V601: four-year programme ends at 400', 'CHK-601', 500, false, false);
+    SELECT * INTO run2 FROM people.lower_to_final_level(NULL, NULL, NULL, 'C00023', 'CHECKV601', 'CHECK V601: registered at 500, reviewed', 'CHK-601', 500, true, false);
+    SELECT current_level INTO lvl6 FROM people.student WHERE id = a6;
+    SELECT current_level INTO lvl5 FROM people.student WHERE id = a5;
+    SELECT rule || ':' || previous_level || '>' || new_level || ':' || batch_ref INTO dec1 FROM people.cohort_decision WHERE student_id = a6 ORDER BY decided_at DESC LIMIT 1;
+    -- the spillover student: no progression a level at a time, at the desk either
+    ospill := people.level_options(sp);
+    ofour := people.level_options(a4);
+    BEGIN
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        PERFORM people.support_set_level(sp, 'PROGRESS', NULL, 100, 'CHECK V601: progress a spillover student', NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS prog_refused = MESSAGE_TEXT;
+    END;
+    RAISE EXCEPTION 'the V601 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V601 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V601: records above the final level are listed and brought to it on a reason (a registered one when included), and a spillover student is not progressed a level at a time',
+        coalesce(listed = 2 AND reg_now
+                 AND dry.selected = 2 AND dry.registered_now = 1 AND dry.corrected = 0 AND dry.remaining = 1
+                 AND ict_refused LIKE 'LEVEL_CORRECTION_OFFICE%' AND reason_refused LIKE 'LEVEL_CORRECTION_REASON%'
+                 AND run1.corrected = 1 AND run1.remaining = 0 AND run2.corrected = 1 AND run2.remaining = 0
+                 AND lvl6 = 400 AND lvl5 = 400 AND dec1 = 'LEVEL_ABOVE_FINAL:600>400:CHK-601'
+                 AND ospill->>'spilloverState' LIKE 'SPILLOVER%' AND ospill->>'progressRefusal' LIKE 'LEVEL_IN_SPILLOVER%' AND (ospill->>'nextLevel')::int = 200
+                 AND ospill->>'correctRefusal' IS NULL AND prog_refused LIKE 'LEVEL_IN_SPILLOVER%'
+                 AND ofour->>'progressRefusal' LIKE 'LEVEL_AT_FINAL%', false),
+        format('listed %s registered %s | dry %s/%s/%s/%s | ict %s | reason %s | run1 %s/%s run2 %s/%s | levels %s %s | decision %s | spillover %s %s next %s correct %s desk %s | at 400 %s',
+               listed, reg_now, dry.selected, dry.registered_now, dry.corrected, dry.remaining, left(ict_refused, 25), left(reason_refused, 25),
+               run1.corrected, run1.remaining, run2.corrected, run2.remaining, lvl6, lvl5, dec1,
+               ospill->>'spilloverState', left(ospill->>'progressRefusal', 16), ospill->>'nextLevel', left(ospill->>'correctRefusal', 16), left(prog_refused, 16),
+               left(ofour->>'progressRefusal', 15)));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

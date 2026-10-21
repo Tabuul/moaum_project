@@ -90,6 +90,7 @@ Both need a reason of ten characters or more, and the agent may name one of the 
 | `LEVEL_MERGED_RECORD` | the record was merged into another |
 | `LEVEL_NOT_IN_PROGRAMME` | the level is not one of the programme's |
 | `LEVEL_AT_FINAL` | a progression past the final level (a further session there is a spillover year, not a new level) |
+| `LEVEL_IN_SPILLOVER` | since V601, a progression of a student the cohort engine reads in spillover (SP1, SP2 or beyond the limit): the record belongs at the final level, by a correction |
 | `LEVEL_PG_PROGRESSION` | a postgraduate progression |
 | `LEVEL_UNCHANGED` | the level is the same |
 | `LEVEL_SUPPORT_OFFICE` | an office other than ICT Support's or, since V591, the Students Account Officer's (the Registry's own level fix is V475's `apply_level_corrections`) |

@@ -16,6 +16,8 @@ export interface LevelOptions {
   status: string;
   progressRefusal: string | null;
   correctRefusal: string | null;
+  /** V601: the cohort engine's spillover state; a student in spillover is not progressed a level at a time (LEVEL_IN_SPILLOVER) */
+  spilloverState?: string | null;
 }
 
 export interface LevelChange {
@@ -103,6 +105,7 @@ export function ruleWord(rule: string | null | undefined): string {
     case "LEVEL_SPILLOVER": return "Spillover correction";
     case "LEVEL_REGISTRATION": return "Correction from the registration";
     case "LEVEL_ARITHMETIC": return "Correction by the sessions counted";
+    case "LEVEL_ABOVE_FINAL": return "Brought to the final level";   // V601
     default: return rule ? "Registry decision" : "Level change";
   }
 }
