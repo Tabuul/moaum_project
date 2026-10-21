@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { activityWord, levelHistory, printBody, resultWord, sectionTables, tabOf, tabsFor, timeline, words, type Progression } from "./full-record.ts";
+import { activityWord, levelHistory, printBody, purposeOnly, resultWord, sectionTables, semesterOf, tabOf, tabsFor, timeline, words, type Progression } from "./full-record.ts";
 
 const progression = (o: Partial<Progression> = {}): Progression => ({ held: [], changes: [], decisions: [], statuses: [], deferments: [], position: null, ...o });
 
@@ -66,10 +66,28 @@ test("the payments table numbers its rows, keeps the kobo and says each state", 
       confirmed_at: null, channel: null, receipt_no: null, term: null, status: "EXPIRED", school_fees: false, gateway: null, gateway_ref: null, gateway_outcome: null },
   ], schoolFees: [], refunds: [] });
   assert.equal(p.headers[0], "S/N");
-  assert.equal(p.rows[0][5], 121849.8);
-  assert.equal(p.rows[0][6], "Paid");
-  assert.equal(p.rows[1][6], "Expired, not paid");
+  assert.equal(p.headers[3], "Semester");
+  assert.equal(p.rows[0][6], 121849.8);
+  assert.equal(p.rows[0][7], "Paid");
+  assert.equal(p.rows[1][7], "Expired, not paid");
   assert.equal(p.rows[1][0], 2);
+});
+
+test("a payment's semester is its own column, never part of the purpose", () => {
+  assert.equal(purposeOnly("School fees (legacy) · semester 1"), "School fees (legacy)");
+  assert.equal(purposeOnly("School fees (legacy) · semester 2"), "School fees (legacy)");
+  assert.equal(purposeOnly("School fees 2025/2026 - Second Semester"), "School fees 2025/2026");
+  assert.equal(purposeOnly("School fees (semester 1)"), "School fees");
+  assert.equal(purposeOnly("GST fee 2016/2017"), "GST fee 2016/2017");
+  assert.equal(purposeOnly(null), "");
+  assert.equal(semesterOf("First Semester"), "First");
+  assert.equal(semesterOf("Second Semester"), "Second");
+  assert.equal(semesterOf("Full session"), "Full session");
+  assert.equal(semesterOf(null), "");
+  // a payment that is not school fees has no term: the semester its purpose names stands
+  assert.equal(semesterOf(null, "Late registration fee · semester 2"), "Second");
+  assert.equal(semesterOf(null, "Hostel fee, first semester"), "First");
+  assert.equal(semesterOf(null, "GST fee 2016/2017"), "");
 });
 
 test("the print escapes what the record holds and says when a section has nothing", () => {

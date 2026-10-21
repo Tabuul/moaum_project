@@ -23,7 +23,7 @@ import { printDocument } from "@/lib/document/html";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
 import {
-  PAYMENT_WORDS, TAB_LABELS, day, levelHistory, naira, printBody, resultWord, sectionTables, tabOf, tabsFor, timeline, words,
+  PAYMENT_WORDS, TAB_LABELS, day, levelHistory, naira, printBody, purposeOnly, resultWord, sectionTables, semesterOf, tabOf, tabsFor, timeline, words,
   type Payment, type Progression, type ResultRow, type Section, type Tab, type Table,
 } from "@/lib/full-record";
 
@@ -419,10 +419,11 @@ function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name: string
             </select>
           </div>
         </PBody>
-        {shown.length ? <DTable cols={["Date", "Session", "Purpose", "Reference", "Amount|num", "Status", "Channel", "Receipt"]}
-          texts={shown.map((p) => `${p.reference} ${p.purpose ?? ""} ${p.session ?? ""} ${p.receipt_no ?? ""} ${p.gateway_ref ?? ""}`)}
-          rows={shown.map((p) => [day(p.confirmed_at ?? p.generated_at), s(p.session), <span key="p">{s(p.purpose)}{p.term ? <div className="sub2">{p.term}</div> : null}</span>,
-            <span key="r" className="tnum">{p.reference}{p.gateway_ref ? <div className="sub2">Gateway {p.gateway_ref}</div> : null}</span>, <span key="a" className="tnum">{naira(p.amount)}</span>,
+        {/* Oct 2026: the semester its own column, out of the purpose; the reference is on the receipt (still found by the search) */}
+        {shown.length ? <DTable cols={["Date", "Session", "Semester", "Purpose", "Amount|num", "Status", "Channel", "Receipt"]}
+          texts={shown.map((p) => `${p.reference} ${p.purpose ?? ""} ${p.session ?? ""} ${semesterOf(p.term, p.purpose)} ${p.receipt_no ?? ""} ${p.gateway_ref ?? ""}`)}
+          rows={shown.map((p) => [day(p.confirmed_at ?? p.generated_at), s(p.session), semesterOf(p.term, p.purpose) || "—", purposeOnly(p.purpose) || "—",
+            <span key="a" className="tnum">{naira(p.amount)}</span>,
             <Pil key="s" kind={pillOf(p.status)}>{PAYMENT_WORDS[p.status] ?? p.status}</Pil>, s(p.channel) || "—",
             p.status === "PAID" && p.receipt_no ? <Btn key="v" kind="ghost" size="sm" onClick={() => onReceipt(p.reference)}>View receipt</Btn> : <span key="v" className="sub2">—</span>])} />
           : <Empty>No payment of this kind on record.</Empty>}

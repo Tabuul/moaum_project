@@ -108,6 +108,25 @@ export interface Payment { id: string; session: string | null; reference: string
 
 export const PAYMENT_WORDS: Record<Payment["status"], string> = { PAID: "Paid", PENDING: "Pending", EXPIRED: "Expired, not paid" };
 
+/** a payment's purpose without the semester it names ("School fees (legacy) · semester 1" → "School fees (legacy)"): the semester has
+ *  its own column */
+export function purposeOnly(purpose: string | null | undefined): string {
+  return (purpose ?? "").replace(/\s*[·•,–—-]?\s*\(?\s*(first|second|third|1st|2nd|3rd)?\s*semester\s*[123]?\s*\)?\s*$/i, "").trim();
+}
+
+const ORDINAL: Record<string, string> = { first: "First", "1st": "First", "1": "First", second: "Second", "2nd": "Second", "2": "Second", third: "Third", "3rd": "Third", "3": "Third" };
+
+/** the semester a payment is for, as the column says it: the school-fees term the API works out (finance.payment_term: First,
+ *  Second, Third, Full session), else the semester the purpose names ("· semester 2"), else "" */
+export function semesterOf(term: string | null | undefined, purpose?: string | null): string {
+  const t = (term ?? "").trim();
+  const m = /^(first|second|third)\s+semester$/i.exec(t);
+  if (m) return ORDINAL[m[1].toLowerCase()];
+  if (t) return t;
+  const p = /(first|second|third|1st|2nd|3rd)\s+semester|semester\s*([123])\b/i.exec(purpose ?? "");
+  return p ? ORDINAL[(p[1] ?? p[2]).toLowerCase()] : "";
+}
+
 /** a table for the print and the downloads: the title, the columns (S/N first) and the rows */
 export interface Table { title: string; headers: string[]; rows: (string | number)[][] }
 const n = (rows: (string | number)[][]) => rows.map((r, i) => [i + 1, ...r]);
@@ -148,8 +167,8 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
       ];
     case "finance":
       return [
-        { title: "Payments", headers: ["S/N", "Date", "Session", "Purpose", "Reference", "Amount (₦)", "Status", "Channel", "Receipt"],
-          rows: n((a("payments") as unknown as Payment[]).map((p) => [day(p.confirmed_at ?? p.generated_at), p.session ?? "", p.purpose ?? "", p.reference,
+        { title: "Payments", headers: ["S/N", "Date", "Session", "Semester", "Purpose", "Reference", "Amount (₦)", "Status", "Channel", "Receipt"],
+          rows: n((a("payments") as unknown as Payment[]).map((p) => [day(p.confirmed_at ?? p.generated_at), p.session ?? "", semesterOf(p.term, p.purpose), purposeOnly(p.purpose), p.reference,
             Math.round(Number(p.amount) * 100) / 100, PAYMENT_WORDS[p.status] ?? p.status, p.channel ?? "", p.receipt_no ?? ""])) },
         { title: "School fees by session", headers: ["S/N", "Session", "Due (₦)", "Paid (₦)", "Outstanding (₦)", "Position"],
           rows: n(a("schoolFees").map((s) => [String(s.session), Number(s.payable ?? 0), Number(s.paid ?? 0), Number(s.outstanding ?? 0), words(s.status)])) },
