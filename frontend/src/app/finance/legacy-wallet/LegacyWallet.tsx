@@ -46,13 +46,15 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState<LegacyWalletRow | null>(null);
   const [posting, setPosting] = useState(false);
+  // V625: the verification is confirmed in a window that shows the figures, never by one click
+  const [verifying, setVerifying] = useState(false);
   const faculties = Array.from(new Map(structure.map((u) => [u.faculty_code, u.faculty])).entries());
   const departments = structure.filter((u) => !filters.fac || u.faculty_code === filters.fac);
   const title = "Legacy wallet report";
   const scopeWords = [filters.status ? STATUS_WORDS[filters.status as LegacyWalletStatus]?.[0] : "", filters.fac ? faculties.find(([c]) => c === filters.fac)?.[1] ?? filters.fac : "",
     filters.dept ? departments.find((u) => u.dept_code === filters.dept)?.department ?? filters.dept : ""].filter(Boolean).join(" · ") || "Every student";
   const selectable = rows.filter((r) => chosen.has(r.id));
-  const toVerify = selectable.filter((r) => r.status === "COMPUTED" && num(r.available) > 0);
+  const toVerify = selectable.filter((r) => ["COMPUTED", "RETURNED"].includes(r.status) && num(r.available) > 0);
   const toPost = selectable.filter((r) => r.status === "VERIFIED");
 
   async function compute() {
@@ -62,11 +64,11 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
       if (r) { notify(`${n(r.students)} students read: ${n(r.with_balance)} with a balance (${naira(r.available)}), ${n(r.review)} to review, ${n(r.no_balance)} with nothing left`); go(legacyWalletHref(filters)); }
     } finally { setBusy(null); }
   }
-  async function verify() {
+  async function verify(note: string) {
     setBusy("verify");
     try {
-      const r = await post<{ verified: number; asked: number }>("/verify", { ids: toVerify.map((x) => x.id) }, `Old e-wallet balances verified: ${toVerify.length}`);
-      if (r) { notify(`${n(r.verified)} of ${n(r.asked)} verified`); setChosen(new Set()); go(legacyWalletHref(filters)); }
+      const r = await post<{ verified: number; asked: number }>("/verify", { ids: toVerify.map((x) => x.id), note }, `Old e-wallet balances verified: ${toVerify.length}`);
+      if (r) { notify(`${n(r.verified)} of ${n(r.asked)} verified and sent to the Bursar for posting`); setChosen(new Set()); setVerifying(false); go(legacyWalletHref(filters)); }
     } finally { setBusy(null); }
   }
 
@@ -78,6 +80,7 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
         ["To verify", n(figures.computed), figures.computed ? "var(--amber-ink)" : null, `${naira(figures.computedAmount)} computed`, legacyWalletHref({ ...filters, status: "COMPUTED" })],
         ["To post", n(figures.verified), figures.verified ? "var(--amber-ink)" : null, `${naira(figures.verifiedAmount)} verified`, legacyWalletHref({ ...filters, status: "VERIFIED" })],
         ["Posted to the wallet", n(figures.posted), "var(--green-ink)", `${naira(figures.postedAmount)} credited · ${naira(figures.applied)} applied to fees · ${naira(figures.remaining)} still on the wallet`, legacyWalletHref({ ...filters, status: "POSTED" })],
+        ["Returned for correction", n(figures.returned ?? 0), figures.returned ? "var(--red-ink)" : null, `${naira(figures.returnedAmount ?? 0)} to correct and verify again`, legacyWalletHref({ ...filters, status: "RETURNED" })],
         ["Requires review", n(figures.review), figures.review ? "var(--red-ink)" : null, `${naira(figures.reviewUsed)} paid beyond the top-ups on file · ${n(figures.differs)} statements differ · ${n(figures.changed)} changed since`, legacyWalletHref({ ...filters, status: "REQUIRES_REVIEW" })],
         ["No balance", n(figures.noBalance), null, `${n(figures.rejected)} rejected · ${n(figures.frozen)} frozen`, legacyWalletHref({ ...filters, status: "NO_BALANCE" })],
         ["Last reconciliation", figures.lastComputed ? day(figures.lastComputed) : "Not yet", null, figures.lastComputed ? new Date(figures.lastComputed).toLocaleTimeString("en-GB") : "Run it to read the imported payments"],
@@ -107,7 +110,7 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
             {verifies ? <Btn kind="secondary" busy={busy === "compute"} busyLabel="Reconciling…" disabled={!!busy} onClick={compute} title="Read the imported old-portal payments again: every student's top-ups and wallet-paid fees">Run the reconciliation</Btn> : null}
           </div>
           <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
-            {verifies ? <Btn kind="primary" size="sm" busy={busy === "verify"} busyLabel="Verifying…" disabled={!toVerify.length || !!busy} onClick={verify}>Verify selected ({toVerify.length})</Btn> : null}
+            {verifies ? <Btn kind="primary" size="sm" disabled={!toVerify.length || !!busy} onClick={() => setVerifying(true)}>Verify selected ({toVerify.length})</Btn> : null}
             {posts ? <Btn kind="primary" size="sm" disabled={!toPost.length || !!busy} onClick={() => setPosting(true)}>Post selected to the wallet ({toPost.length})</Btn> : null}
             <Btn kind="ghost" size="sm" busy={busy === "excel"} busyLabel="Preparing…" disabled={!rows.length} onClick={async () => {
               setBusy("excel");
@@ -122,7 +125,7 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
           <DTable pageSize={50} cols={[...(verifies ? ["|mid"] : []), "Student", "Top-ups|num", "Paid from it|num", "Balance|num", "How", "Status", "On the wallet", "Action"]}
             texts={rows.map((r) => `${r.student} ${r.matric_no ?? ""} ${r.jamb_reg_no ?? ""} ${r.batch_ref ?? ""} ${r.status}`)}
             rows={rows.map((r) => [
-              ...(verifies ? [<input key="c" type="checkbox" className="pchk" aria-label={`Select ${r.student}`} checked={chosen.has(r.id)} disabled={!["COMPUTED", "VERIFIED"].includes(r.status)}
+              ...(verifies ? [<input key="c" type="checkbox" className="pchk" aria-label={`Select ${r.student}`} checked={chosen.has(r.id)} disabled={!["COMPUTED", "VERIFIED", "RETURNED"].includes(r.status)}
                 onChange={(e) => setChosen((s) => { const t = new Set(s); if (e.target.checked) t.add(r.id); else t.delete(r.id); return t; })} />] : []),
               <span key="s"><b>{r.student}</b><div className="sub2 tnum">{r.matric_no ?? r.jamb_reg_no ?? "—"} · {r.programme ?? ""}</div></span>,
               <span key="t" className="tnum">{naira(r.topups)}<div className="sub2">{r.topup_count} · last {day(r.last_topup_at)}</div></span>,
@@ -155,6 +158,7 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
 
       {open ? <RowModal row={open} verifies={verifies} posts={posts} onClose={() => setOpen(null)} onChanged={() => { setOpen(null); go(legacyWalletHref(filters)); }} /> : null}
       {posting ? <PostModal rows={toPost} onClose={() => setPosting(false)} onDone={() => { setPosting(false); setChosen(new Set()); go(legacyWalletHref({ ...filters, status: "POSTED" })); }} /> : null}
+      {verifying ? <VerifyModal rows={toVerify} busy={busy === "verify"} onClose={() => setVerifying(false)} onConfirm={verify} /> : null}
     </>
   );
 }
@@ -185,17 +189,18 @@ function RowModal({ row, verifies, posts, onClose, onChanged }: { row: LegacyWal
       if (r) { notify("Statement entered: the balance now rests on it; verify it afresh"); onChanged(); }
     } finally { setBusy(null); }
   }
-  async function decide(action: "REJECT" | "FREEZE" | "REOPEN") {
+  async function decide(action: "REJECT" | "FREEZE" | "REOPEN" | "RETURN") {
     setBusy(action);
     try {
       const r = await post(`/${row.id}/decide`, { action, reason }, `Old e-wallet ${action.toLowerCase()}: ${row.matric_no ?? row.student}`);
-      if (r) { notify(`${action === "REJECT" ? "Rejected" : action === "FREEZE" ? "Frozen" : "Reopened"}`); onChanged(); }
+      if (r) { notify(`${action === "REJECT" ? "Rejected" : action === "FREEZE" ? "Frozen" : action === "RETURN" ? "Returned to the officer for correction" : "Reopened"}`); onChanged(); }
     } finally { setBusy(null); }
   }
   return (
     <Modal wide title={row.student} sub={`${row.matric_no ?? row.jamb_reg_no ?? ""} · ${row.programme ?? ""}`} onClose={onClose}
       foot={<>
         <Btn kind="ghost" onClick={onClose}>Close</Btn>
+        {posts && row.status === "VERIFIED" ? <Btn kind="ghost" busy={busy === "RETURN"} busyLabel="Returning…" disabled={!!busy || reason.trim().length < 10} onClick={() => decide("RETURN")}>Return for correction</Btn> : null}
         {posts && live ? <Btn kind="ghost" busy={busy === "FREEZE"} busyLabel="Freezing…" disabled={!!busy || reason.trim().length < 10} onClick={() => decide("FREEZE")}>Freeze</Btn> : null}
         {posts && live ? <Btn kind="ghost" busy={busy === "REJECT"} busyLabel="Rejecting…" disabled={!!busy || reason.trim().length < 10} onClick={() => decide("REJECT")}>Reject</Btn> : null}
         {posts && ["REJECTED", "FROZEN"].includes(row.status) ? <Btn kind="primary" busy={busy === "REOPEN"} busyLabel="Reopening…" disabled={!!busy || reason.trim().length < 10} onClick={() => decide("REOPEN")}>Reopen</Btn> : null}
@@ -237,7 +242,30 @@ function RowModal({ row, verifies, posts, onClose, onChanged }: { row: LegacyWal
           <Btn kind="secondary" size="sm" busy={busy === "stmt"} busyLabel="Saving the statement…" disabled={!!busy || !stmt.balance || stmt.source.trim().length < 3} onClick={statement}>Enter the statement</Btn>
         </>
       ) : null}
-      {posts ? <Field id="lw-reason" label="Reason (to reject, freeze or reopen)" full><input id="lw-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} /></Field> : null}
+      {posts ? <Field id="lw-reason" label="Reason (to reject, freeze, return for correction or reopen)" full><input id="lw-reason" className="ctl" value={reason} onChange={(e) => setReason(e.target.value)} /></Field> : null}
+    </Modal>
+  );
+}
+
+/* ── V625: the verification confirmed — the figures in front of the officer, the explicit confirmation, the remarks ── */
+function VerifyModal({ rows, busy, onClose, onConfirm }: { rows: LegacyWalletRow[]; busy: boolean; onClose: () => void; onConfirm: (note: string) => void }) {
+  const [note, setNote] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const total = rows.reduce((a, r) => a + num(r.available), 0);
+  return (
+    <Modal wide title={`Confirm ${rows.length} old e-wallet balance${rows.length === 1 ? "" : "s"}`} sub={`${naira(total)} to send to the Bursar for posting`} onClose={onClose}
+      foot={<><Btn kind="primary" busy={busy} busyLabel="Confirming…" disabled={busy || !confirmed} onClick={() => onConfirm(note)}>Confirm &amp; send to the Bursar</Btn><Btn kind="ghost" disabled={busy} onClick={onClose}>Cancel</Btn></>}>
+      <DTable pageSize={0} cols={["Student", "Original top-ups|num", "Already used|num", "Eligible balance|num", "Amount to credit|num", "How"]}
+        rows={rows.map((r) => [<span key="s"><b>{r.student}</b><div className="sub2 tnum">{r.matric_no ?? r.jamb_reg_no ?? ""}</div></span>,
+          <span key="t" className="tnum">{naira(r.stated_balance != null ? r.stated_topups : r.topups)}</span>, <span key="u" className="tnum">{naira(r.stated_balance != null ? r.stated_used : r.used)}</span>,
+          <span key="e" className="tnum">{naira(r.available)}</span>, <span key="a" className="tnum b600">{naira(r.available)}</span>,
+          <span key="h" className="sub2">{r.stated_balance != null ? `The old portal's statement (${r.stated_source})` : "Top-ups less what was paid from the old wallet"}</span>])} />
+      <Field id="lv-note" label="Confirmation remarks" hint="What the balances were checked against; the Bursar reads it" full><input id="lv-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      <label className="row row--inline row--tight" style={{ alignItems: "flex-start", gap: 8 }}>
+        <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+        <span>I confirm that each legacy record and amount has been reviewed against the available records and that the amount to credit is correct.</span>
+      </label>
+      <Note kind="bad" title="Nothing is credited yet">Once confirmed, these balances wait for a Bursar officer other than you to post them to the students&rsquo; wallets, or to return them for correction.</Note>
     </Modal>
   );
 }

@@ -82,3 +82,13 @@ constraint, the unique credit).
 ## 5. Tests
 
 `LegacyWalletIT`; `lib/legacy-wallet.test.ts`; check.sql V583.
+
+## 6. Returned for correction, the desks told, the verification confirmed (V625)
+
+The Bursar may **return** a verified balance for correction (`finance.legacy_wallet_decide('RETURN')`: a Bursar officer other than
+the verifier; status RETURNED; the officer corrects it — the old portal's statement entered, or the figures read again — and
+verifies it afresh). The verification is confirmed in a window that shows each balance's original top-ups, what was used, the
+eligible balance and the amount to credit, with the explicit confirmation and the remarks. The Bursar's office holders are told
+of balances verified and waiting (`LEGACY_WALLET_WAITING`), the verifier of a rejection, freeze or return (`LEGACY_WALLET_DECIDED`),
+the student of a rejection (`LEGACY_WALLET_REJECTED`). The Legacy Financial Reconciliation desk (`docs/legacy-financial-reconciliation.md`)
+reads this desk's figures beside the outstanding fees.

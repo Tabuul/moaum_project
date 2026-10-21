@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 452
+\set EXPECTED 453
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23002,6 +23002,135 @@ BEGIN
         format('rows %s duplicate %s blank reason %s stream %s triggers %s', rows_in, dup, blank, bad_stream, triggers));
 END $$;
 
+-- ── V625. Legacy financial reconciliation: on a made-up session a student who paid above the fees stated (a credit the University
+--          holds) and one who paid less (a liability, never wallet money); the officer's request is refused for the one who owes, above
+--          the excess, and for a different amount without its reason; a request at a lower amount is marked adjusted; a second request
+--          is refused while one stands; the initiator cannot approve it; the Bursar returns it, the officer corrects and resubmits, the
+--          Bursar approves: one OVERPAID credit on the wallet drawn from the session's fee income, the overpayment decided WALLET so it
+--          is never carried as well, the student and the officer told; a second approval is refused; the credit pays the next session's
+--          fees through the wallet. The old e-wallet: a verified balance returned for correction by another Bursar officer, verified
+--          again. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9625/9626'; T constant text := '9626/9627'; v_prog text;
+    s_over uuid := gen_random_uuid(); s_owes uuid := gen_random_uuid(); s_lw uuid := gen_random_uuid();
+    p1 uuid := gen_random_uuid(); p2 uuid := gen_random_uuid(); p3 uuid := gen_random_uuid();
+    row_over record; row_owes record; r_owes text; r_amt text; r_adj text; req finance.legacy_credit_request; r_open text; r_self text;
+    ret finance.legacy_credit_request; resub finance.legacy_credit_request; done finance.legacy_credit_request; r_again text;
+    entry record; dec record; bal numeric; acct text; n_student_told int; n_officer_told int; n_bursar_told int;
+    carried record; after record; fig jsonb; of jsonb; applied text; pos record; bal2 numeric;
+    lw record; v_ver int; r_lwself text; lw2 record; v_ver2 int; lw3 record; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM set_config('moaum.reason', 'CHECK V625', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p1, 'CHK/625/1', 'CHECKV625', 'Officer'), (p2, 'CHK/625/2', 'CHECKV625', 'Bursar'), (p3, 'CHK/625/3', 'CHECKV625', 'Other');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to)
+    VALUES (gen_random_uuid(), p2, 'bursar', 'institution', NULL, 'check V625', gen_random_uuid(), current_date - 1, NULL);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S, date '9625-10-01', date '9626-09-30', 'PLANNED'), (gen_random_uuid(), T, date '9626-10-01', date '9627-09-30', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    SELECT p.code INTO v_prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s_over, 'MOAUM/ADM/25/962501', 'MOAUM/CHK/LR/25/6251', 'CHECKV625', 'Overpaid', v_prog, 'UTME', S, 100, 200, 'ACTIVE', now()),
+        (s_owes, 'MOAUM/ADM/25/962502', 'MOAUM/CHK/LR/25/6252', 'CHECKV625', 'Owes', v_prog, 'UTME', S, 100, 200, 'ACTIVE', now()),
+        (s_lw, 'MOAUM/ADM/25/962503', 'MOAUM/CHK/LR/25/6253', 'CHECKV625', 'Wallet', v_prog, 'UTME', S, 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (S, 'School fees (check V625)', 100000, NULL, v_prog), (T, 'School fees (check V625)', 100000, NULL, v_prog);
+    -- the old-fees export's rows: one student paid 130,000 against 100,000, the other 60,000
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+        (s_over, S, 'MOAUM-LEG-CHK625-O1', 'School fees (legacy) ' || chr(183) || ' semester 1', 80000, now(), now() - interval '30 days', p1, 'Legacy', 'LEG-CHK625-O1', 'Imported from the old portal'),
+        (s_over, S, 'MOAUM-LEG-CHK625-O2', 'School fees (legacy) ' || chr(183) || ' semester 2', 50000, now(), now() - interval '20 days', p1, 'Legacy', 'LEG-CHK625-O2', 'Imported from the old portal'),
+        (s_owes, S, 'MOAUM-LEG-CHK625-W1', 'School fees (legacy) ' || chr(183) || ' semester 1', 60000, now(), now() - interval '30 days', p1, 'Legacy', 'LEG-CHK625-W1', 'Imported from the old portal'),
+        (s_lw, '9624/9625', 'MOAUM-LEG-CHK625-L1', 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 1', 40000, now(), now() - interval '40 days', p1, 'Legacy', 'LEG-CHK625-L1', 'Imported from the old portal'),
+        (s_lw, '9624/9625', 'MOAUM-LEG-CHK625-L2', 'School fees (legacy) ' || chr(183) || ' semester 1', 15000, now(), now() - interval '20 days', p1, 'Legacy', 'LEG-CHK625-L2', 'Imported from the old portal ' || chr(183) || ' E-Wallet');
+    -- the desk's rows: the credit and the liability, kept apart
+    SELECT * INTO row_over FROM finance.legacy_outstanding_rows(S, NULL, NULL, NULL, NULL, 500, true) x WHERE x.student_id = s_over;
+    SELECT * INTO row_owes FROM finance.legacy_outstanding_rows(S, NULL, NULL, NULL, NULL, 500, true) x WHERE x.student_id = s_owes;
+    -- the officer's request: refused for the student who owes, above the excess, and for a lower amount without its reason
+    BEGIN PERFORM finance.legacy_credit_initiate(s_owes, S, NULL, 'the old portal shows a balance', 'export row W1', NULL);
+    EXCEPTION WHEN check_violation THEN r_owes := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, 50000, 'the old portal shows a balance', 'export rows O1 and O2', NULL);
+    EXCEPTION WHEN check_violation THEN r_amt := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, 20000, 'the old portal shows a balance', 'export rows O1 and O2', NULL);
+    EXCEPTION WHEN check_violation THEN r_adj := split_part(SQLERRM, ':', 1); END;
+    req := finance.legacy_credit_initiate(s_over, S, 20000, 'the old portal shows a balance of 20,000 after a part refund', 'export rows O1 and O2; old-portal statement', 'the old portal refunded 10,000 in cash');
+    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, NULL, 'the old portal shows a balance', 'export rows O1 and O2', NULL);
+    EXCEPTION WHEN check_violation THEN r_open := split_part(SQLERRM, ':', 1); END;
+    -- the initiator, now acting as Bursar, cannot decide it
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.legacy_credit_decide(req.id, 'APPROVE', NULL);
+    EXCEPTION WHEN check_violation THEN r_self := split_part(SQLERRM, ':', 1); END;
+    -- another Bursar officer returns it for correction; the officer corrects and resubmits at the full excess; the Bursar approves
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    ret := finance.legacy_credit_decide(req.id, 'RETURN', 'the refund is not on the statement; confirm the full excess');
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    resub := finance.legacy_credit_resubmit(req.id, NULL, 'the old portal shows the full 30,000 overpaid; no refund was made', 'export rows O1 and O2; the receipts', NULL);
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    done := finance.legacy_credit_decide(req.id, 'APPROVE', NULL);
+    SELECT e.kind, e.amount, e.source_code, e.reference, e.session INTO entry FROM finance.wallet_entry e WHERE e.id = done.wallet_entry_id;
+    SELECT d.decision, d.amount, d.reference INTO dec FROM finance.overpayment_decision d WHERE d.id = done.decision_id;
+    bal := finance.wallet_balance(s_over);
+    acct := finance.gl_wallet_credit_account('OVERPAID', false);
+    SELECT count(*) INTO n_student_told FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = s_over AND n.template_key = 'LEGACY_CREDIT_POSTED';
+    SELECT count(*) INTO n_officer_told FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = p1 AND n.template_key = 'LEGACY_CREDIT_DECIDED';
+    SELECT count(*) INTO n_bursar_told FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = p2 AND n.template_key = 'LEGACY_CREDIT_WAITING';
+    -- never twice: a second approval is refused, and the overpayment is not carried as well
+    PERFORM set_config('moaum.actor_id', p3::text, true);
+    BEGIN PERFORM finance.legacy_credit_decide(req.id, 'APPROVE', NULL);
+    EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+    SELECT * INTO carried FROM finance.decide_overpayments(S, 'CARRY', ARRAY[s_over], 'carry the excess into the next session');
+    SELECT * INTO after FROM finance.legacy_outstanding_rows(S, NULL, NULL, NULL, NULL, 500, true) x WHERE x.student_id = s_over;
+    fig := finance.legacy_reconciliation_figures(S);
+    of := finance.legacy_credit_of(s_over);
+    -- the credit is wallet money the student uses: applied to the next session's fees through the wallet that exists
+    PERFORM set_config('moaum.actor_id', s_over::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    applied := finance.apply_wallet(s_over, T, NULL);
+    SELECT * INTO pos FROM finance.position(s_over, T);
+    bal2 := finance.wallet_balance(s_over);
+    -- the old e-wallet: verified by the officer, returned for correction by another Bursar officer (not the verifier), verified again
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM finance.legacy_wallet_compute(s_lw);
+    SELECT * INTO lw FROM finance.legacy_wallet WHERE student_id = s_lw;
+    v_ver := finance.legacy_wallet_verify(ARRAY[lw.id], 'checked against the export');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.legacy_wallet_decide(lw.id, 'RETURN', 'the statement is missing; enter it');
+    EXCEPTION WHEN check_violation THEN r_lwself := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    SELECT * INTO lw2 FROM finance.legacy_wallet_decide(lw.id, 'RETURN', 'the statement is missing; enter it');
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    v_ver2 := finance.legacy_wallet_verify(ARRAY[lw.id], 'the statement entered and checked');
+    SELECT * INTO lw3 FROM finance.legacy_wallet WHERE id = lw.id;
+    msg := format('rows: over %s/%s owes %s/%s | refusals %s %s %s | request %s adjusted %s | open %s self %s | returned %s resubmitted %s/%s adjusted %s | done %s | entry %s %s %s %s | decision %s %s | balance %s acct %s | told student %s officer %s bursar %s | again %s carried %s | after %s %s | figures owes %s credit %s toWallet %s credited %s | of %s | applied %s paid %s balance %s | wallet %s ver %s self %s returned %s/%s ver2 %s %s',
+                  row_over.state, row_over.excess, row_owes.state, row_owes.owed, r_owes, r_amt, r_adj, req.status, req.adjusted, r_open, r_self,
+                  ret.status, resub.status, resub.confirmed_amount, resub.adjusted, done.status, entry.kind, entry.amount, entry.source_code, entry.reference,
+                  dec.decision, dec.amount, bal, acct, n_student_told, n_officer_told, n_bursar_told, r_again, carried.carried, after.state, after.decision,
+                  fig #>> '{outstanding,owes}', fig #>> '{outstanding,credit}', fig #>> '{outstanding,toWallet}', fig #>> '{requests,credited}', of -> 0 ->> 'status',
+                  applied IS NOT NULL, pos.paid, bal2, lw.status, v_ver, r_lwself, lw2.status, lw2.verified_by IS NULL, v_ver2, lw3.status);
+    RAISE EXCEPTION 'the V625 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V625 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V625: legacy financial reconciliation — a liability is never wallet money; a verified overpayment reaches the wallet only by the officer''s confirmation (never above the excess, a different amount with its reason) and a different Bursar officer''s approval, once, drawn from the session''s fee income, decided WALLET so it is never carried too, the student and the desks told, and usable for fees; the old e-wallet balance is returned for correction and verified again',
+      coalesce(row_over.state = 'CREDIT' AND row_over.excess = 30000 AND row_owes.state = 'OWES' AND row_owes.owed = 40000
+               AND r_owes = 'LEGACY_CREDIT_NOT_OVERPAID' AND r_amt = 'LEGACY_CREDIT_AMOUNT' AND r_adj = 'LEGACY_CREDIT_ADJUSTMENT_REASON'
+               AND req.status = 'PENDING_BURSAR_APPROVAL' AND req.adjusted AND req.ref ~ '^LOR/[0-9]{4}/[0-9]{6}$' AND r_open = 'LEGACY_CREDIT_OPEN' AND r_self = 'LEGACY_CREDIT_SAME_OFFICER'
+               AND ret.status = 'RETURNED_FOR_CORRECTION' AND resub.status = 'PENDING_BURSAR_APPROVAL' AND resub.confirmed_amount = 30000 AND NOT resub.adjusted AND resub.resubmissions = 1
+               AND done.status = 'CREDITED' AND entry.kind = 'CREDIT' AND entry.amount = 30000 AND entry.source_code = 'OVERPAID' AND entry.reference = req.ref AND entry.session = S
+               AND dec.decision = 'WALLET' AND dec.amount = 30000 AND dec.reference = req.ref AND bal = 30000 AND acct = finance.gl_income_account('School fees')
+               AND n_student_told >= 1 AND n_officer_told >= 1 AND n_bursar_told >= 1
+               AND r_again = 'LEGACY_CREDIT_STATE' AND carried.carried = 0 AND after.state = 'CREDIT_DECIDED' AND after.decision = 'WALLET'
+               AND (fig #>> '{outstanding,owes}')::int = 1 AND (fig #>> '{outstanding,credit}')::int = 0 AND (fig #>> '{outstanding,toWallet}')::int = 1 AND (fig #>> '{requests,credited}')::int >= 1
+               AND of -> 0 ->> 'status' = 'CREDITED'
+               AND applied IS NOT NULL AND pos.paid = 30000 AND bal2 = 0
+               AND lw.status = 'COMPUTED' AND v_ver = 1 AND r_lwself = 'LEGACY_WALLET_SAME_OFFICER' AND lw2.status = 'RETURNED' AND lw2.verified_by IS NULL AND v_ver2 = 1 AND lw3.status = 'VERIFIED', false),
+      msg);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

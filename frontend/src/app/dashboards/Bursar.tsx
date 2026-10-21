@@ -10,6 +10,7 @@ import { money } from "@/lib/format";
 import { when } from "@/lib/bursary";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 import { BursaryAudit } from "./BursaryAudit";
+import type { ReconFigures } from "@/lib/legacy-reconciliation";
 
 /** the CCE applicant fees as the Bursary's dashboard reads them (V414): the CCE session's fees and whether CCE is in use */
 interface CceFeesRead {
@@ -20,8 +21,10 @@ interface CceFeesRead {
 
 /** rBursar — proto/part17.html, with the ledger's own figures (V037). */
 export async function BursarDashboard({ session }: { session: string }) {
-  const [v, p, cf] = await Promise.all([api<BursaryView>(`/api/v1/finance/bursary?session=${encodeURIComponent(session)}`), api<PaymentsDesk>("/api/v1/payments/bursary"),
-    api<CceFeesRead>("/api/v1/cce/fees")]);
+  const [v, p, cf, rcf] = await Promise.all([api<BursaryView>(`/api/v1/finance/bursary?session=${encodeURIComponent(session)}`), api<PaymentsDesk>("/api/v1/payments/bursary"),
+    api<CceFeesRead>("/api/v1/cce/fees"), api<ReconFigures>("/api/v1/finance/legacy-reconciliation/figures")]);
+  // V625: the legacy wallet credit approvals waiting on the Bursar
+  const recon = rcf.ok ? rcf.data : null;
   if (!v.ok) {
     return <Note kind="bad" title="The Bursary's figures could not be read">{v.problem.detail ?? v.problem.title}</Note>;
   }
@@ -80,6 +83,9 @@ export async function BursarDashboard({ session }: { session: string }) {
             ...(cce ? [[<Two key="a" a={`CCE applicant fees · ${cce.session}`} b={cceWord ?? ""} />, <Link key="l" href={`/cce/fees?session=${encodeURIComponent(cce.session)}`}>CCE applicant fees</Link>,
               <Pil key="s" kind={cce.feesStated ? "ok" : cce.inUse ? "bad" : "info"}>{cce.feesStated ? "Set" : cce.inUse ? "Not set" : "Not set yet"}</Pil>]] : []),
             [<Two key="a" a="NELFUND" b="Remittances and suspense" />, <Link key="l" href="/finance/nelfund">NELFUND desk</Link>, <Pil kind="info" key="s">Open</Pil>],
+            ...(recon ? [[<Two key="a" a="Legacy wallet credit approvals" b="Overpaid school fees and old e-wallet balances the Students Account Officer confirmed" />,
+              <Link key="l" href="/finance/legacy-reconciliation?tab=requests">Legacy reconciliation</Link>,
+              <Pil key="s" kind={recon.requests.pending + recon.wallet.verified ? "bad" : "ok"}>{recon.requests.pending + recon.wallet.verified} waiting</Pil>]] : []),
             [<Two key="a" a="Held scripts" b="Students who sat a paper unregistered; the mark waits on their fees" />, <Link key="l" href="/finance/held-scripts">Who owes</Link>, <Pil kind="info" key="s">Open</Pil>],
           ]} />
         </Panel>

@@ -389,6 +389,8 @@ export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name:
   const wallet = (d.wallet ?? []) as Row[];
   // V583: the old portal's e-wallet — what it held, what is posted, applied and left
   const lw = (d.legacyWallet ?? null) as Row | null;
+  // V625: the legacy credit requests — overpaid school fees on their way to the wallet, and credited
+  const lcr = (d.legacyCredits ?? []) as Row[];
   const [kind, setKind] = useState<"ALL" | "SCHOOL" | "OTHER">("ALL");
   const [ses, setSes] = useState("");
   const sessions = Array.from(new Set(payments.map((p) => p.session).filter((x): x is string => !!x))).sort().reverse();
@@ -446,6 +448,17 @@ export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name:
         <Panel title="Payments withdrawn" right="Kept on record, never deleted">
           <DTable pageSize={0} cols={["Reference", "Kind", "Session", "Purpose", "Amount|num", "Withdrawn", "Reason"]}
             rows={withdrawn.map((w) => [s(w.reference), words(w.double_kind), s(w.session), s(w.purpose), naira(w.amount), day(w.withdrawn_at), s(w.reason)])} />
+        </Panel>
+      ) : null}
+      {lcr.length ? (
+        <Panel title="Legacy financial reconciliation" right="Overpaid school fees credited to the wallet by the Bursar (V625)">
+          <DTable pageSize={0} cols={["Request", "Session", "Fees due|num", "Paid|num", "Excess|num", "Confirmed|num", "Status", "Officer", "Bursar", "Wallet"]}
+            rows={lcr.map((q) => [<span key="r" className="tnum">{s(q.ref)}</span>, <span key="s" className="tnum">{s(q.session)}</span>, <span key="d" className="tnum">{naira(q.due)}</span>,
+              <span key="p" className="tnum">{naira(q.paid)}</span>, <span key="e" className="tnum">{naira(q.legacyAmount)}</span>,
+              <span key="c" className="tnum">{naira(q.confirmedAmount)}{q.adjusted ? <div className="sub2">amount adjusted</div> : null}</span>,
+              <Pil key="x" kind={q.status === "CREDITED" ? "ok" : q.status === "PENDING_BURSAR_APPROVAL" ? "warn" : q.status === "WITHDRAWN" ? "grey" : "bad"}>{words(String(q.status))}</Pil>,
+              <span key="o" className="sub2">{s(q.initiatedBy)} · {day(q.initiatedAt)}</span>, <span key="b" className="sub2">{q.decidedAt ? `${s(q.decidedBy)} · ${day(q.decidedAt)}` : "—"}</span>,
+              <span key="w" className="tnum sub2">{q.walletReference ? `${s(q.walletReference)} · ${day(q.creditedAt)}` : "—"}</span>])} />
         </Panel>
       ) : null}
       {lw ? (

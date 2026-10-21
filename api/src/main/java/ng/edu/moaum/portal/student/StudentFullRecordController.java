@@ -348,7 +348,9 @@ class StudentFullRecordController {
                     'wallet', (SELECT coalesce(json_agg(x ORDER BY x.at DESC), '[]'::json) FROM (
                         SELECT we.kind, we.amount, we.session, we.reference, we.source_code, we.note, we.at FROM finance.wallet_entry we WHERE we.student_id = :s) x),
                     -- V583: the old portal's e-wallet — what it held, what is posted to the wallet, applied and left
-                    'legacyWallet', finance.legacy_wallet_of(:s)
+                    'legacyWallet', finance.legacy_wallet_of(:s),
+                    -- V625: the legacy credit requests — overpaid school fees on their way to the wallet, and credited
+                    'legacyCredits', finance.legacy_credit_of(:s)
                 )::text
                 """, id);
     }

@@ -7,6 +7,8 @@ import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
 
+import type { ReconFigures } from "@/lib/legacy-reconciliation";
+
 /** the NELFUND desk's figures as the Bursary reads them (finance.nelfund_desk_figures, V327) */
 interface NelfundFigures { session: string; figures: { students_funded: number; nelfund_credited: number; students_shortfall: number; shortfall_amount: number } }
 
@@ -22,14 +24,17 @@ const vz = (n: number | null | undefined) => Number(n ?? 0).toLocaleString("en-G
 export async function StudentAccountsDashboard({ session }: { session: string }) {
   const windows = (["today", "this_week", "this_month", "this_year"] as const).map((k) => ({ key: k, r: presetRange(k)! }));
   const sum = (from: string, to: string) => api<FinSummary>(`/api/v1/analytics/finance/summary?from=${from}&to=${to}&compare=false`);
-  const [[today, week, month, year], [inSession, v, nel]] = await Promise.all([
+  const [[today, week, month, year], [inSession, v, nel, recon]] = await Promise.all([
     Promise.all(windows.map((w) => sum(w.r.from, w.r.to))),
     Promise.all([
       api<FinSummary>(`/api/v1/analytics/finance/summary?session=${encodeURIComponent(session)}&compare=false`),
       api<BursaryView>(`/api/v1/finance/bursary?session=${encodeURIComponent(session)}`),
       api<NelfundFigures>(`/api/v1/nelfund/figures?session=${encodeURIComponent(session)}`),
+      api<ReconFigures>("/api/v1/finance/legacy-reconciliation/figures"),
     ] as const),
   ]);
+  // V625: legacy financial reconciliation — the student liabilities and the student credits, never combined
+  const rc = recon.ok ? recon.data : null;
   const t = (s: typeof today) => (s.ok ? s.data.totals : null);
   const ses = t(inSession);
   // the session's outstanding: what is due less what is collected, faculty by faculty, as the Bursary's view states them
@@ -61,6 +66,17 @@ export async function StudentAccountsDashboard({ session }: { session: string })
         ["Refunded", ses ? vz(ses.refunded_count) : "—", null, ses ? money(Number(ses.refunded_amount)) : ""],
       ]} />
 
+      {rc ? (
+        <>
+          <div className="eyebrow">Legacy financial reconciliation · {rc.session} · liabilities and credits kept apart</div>
+          <Tiles items={[
+            ["Students who owe", vz(rc.outstanding.owes), rc.outstanding.owes ? "var(--red-ink)" : null, `${money(Number(rc.outstanding.owesAmount))} legacy outstanding (liabilities)`, "/finance/legacy-reconciliation?tab=outstanding&state=OWES"],
+            ["Credits held", vz(rc.outstanding.credit), rc.outstanding.credit ? "var(--amber-ink)" : null, `${money(Number(rc.outstanding.creditAmount))} eligible for wallet credit, not yet requested`, "/finance/legacy-reconciliation?tab=outstanding&state=CREDIT"],
+            ["Pending Bursar approval", vz(rc.requests.pending + rc.wallet.verified), rc.requests.pending + rc.wallet.verified ? "var(--amber-ink)" : null, `${money(Number(rc.requests.pendingAmount) + Number(rc.wallet.verifiedAmount))} · ${vz(rc.requests.returned + rc.wallet.returned)} returned for correction`, "/finance/legacy-reconciliation?tab=requests"],
+            ["Credited to wallets", vz(rc.requests.credited + rc.wallet.posted), "var(--green-ink)", `${money(Number(rc.requests.creditedAmount) + Number(rc.wallet.postedAmount))} · ${vz(rc.wallet.computed)} e-wallet balances to verify · ${vz(rc.wallet.review)} require review`, "/finance/legacy-reconciliation?tab=history"],
+          ]} />
+        </>
+      ) : null}
       <Panel title="Quick actions">
         <PBody>
           <div className="row row--tight" style={{ flexWrap: "wrap" }}>
@@ -70,6 +86,7 @@ export async function StudentAccountsDashboard({ session }: { session: string })
             <LinkBtn kind="secondary" href="/finance/nelfund">NELFUND reports</LinkBtn>
             <LinkBtn kind="secondary" href="/student-query">Students</LinkBtn>
             <LinkBtn kind="secondary" href="/finance/hanging">Hanging payments</LinkBtn>
+            <LinkBtn kind="secondary" href="/finance/legacy-reconciliation">Legacy reconciliation</LinkBtn>
           </div>
           <div className="row row--tight mt-2" style={{ flexWrap: "wrap" }}>
             <span className="sub2">Reports:</span>

@@ -1,11 +1,12 @@
 /** The old portal's e-wallet reconciled (V583): the shapes /api/v1/finance/legacy-wallet returns, the words its states are shown in,
  *  and the report's rows (S/N first). The balance is computed by the server from the imported payments; nothing here works one out. */
 
-export type LegacyWalletStatus = "COMPUTED" | "VERIFIED" | "POSTED" | "NO_BALANCE" | "REQUIRES_REVIEW" | "REJECTED" | "FROZEN";
+export type LegacyWalletStatus = "COMPUTED" | "VERIFIED" | "POSTED" | "NO_BALANCE" | "REQUIRES_REVIEW" | "REJECTED" | "FROZEN" | "RETURNED";
 
 export const STATUS_WORDS: Record<LegacyWalletStatus, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
   COMPUTED: ["Computed: to verify", "info"], VERIFIED: ["Verified: to post", "warn"], POSTED: ["Posted to the wallet", "ok"],
   NO_BALANCE: ["No balance", "grey"], REQUIRES_REVIEW: ["Requires review", "bad"], REJECTED: ["Rejected", "bad"], FROZEN: ["Frozen", "grey"],
+  RETURNED: ["Returned for correction", "bad"],
 };
 export const REASON_WORDS: Record<string, string> = {
   USED_EXCEEDS_TOPUPS: "Paid from the old wallet more than the top-ups on file",
@@ -33,6 +34,8 @@ export interface LegacyWalletFigures {
   verified: number; verifiedAmount: number | string; posted: number; postedAmount: number | string; applied: number | string; refunded: number | string;
   remaining: number | string; review: number; reviewUsed: number | string; noBalance: number; rejected: number; frozen: number; stated: number; differs: number;
   changed: number; orphanStudents: number; orphanAmount: number | string; lastComputed: string | null;
+  /** V625: balances the Bursar returned for correction */
+  returned?: number; returnedAmount?: number | string;
   batches: { ref: string; posted_at: string; students: number; amount: number | string; skipped: number; posted_by: string | null; office: string | null }[];
 }
 
