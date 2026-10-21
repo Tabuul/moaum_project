@@ -85,7 +85,7 @@ class DoubleChargeIT {
     @Test
     void aPossibleDoubleChargeIsCheckedWithTheBankBeforeTheExcessIsDecidedAndAPaymentNeverReceivedIsWithdrawn() {
         Random random = new Random();
-        int year = 3100 + random.nextInt(80);
+        int year = it.freeYear(3100, 3180, 0, 1);
         a = year + "/" + (year + 1);
         b = (year + 1) + "/" + (year + 2);
         it.session(a, year);

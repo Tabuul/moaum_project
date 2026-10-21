@@ -10,6 +10,7 @@
  * when or what happened. A student-portal number found names its student (the name in full, the e-mail and phone on the record
  * masked, never in full), and the name is filled in; where the record holds no e-mail or phone, the one given is saved to it,
  * unconfirmed until the student confirms it with a code when they sign in.
+ * V599: until then no notice goes to it either (the desk sees it on Sign-In Help Contacts, and confirms or removes it).
  */
 import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
@@ -126,7 +127,7 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
             </Note>
             {saved.length ? (
               <Note kind="info" title={`${savedWords} added to your student record`}>
-                When you next sign in you will be asked to confirm {saved.length === 2 ? "them" : "it"} with a code sent there. Until then no password-reset link is sent to {saved.length === 2 ? "them" : "it"}.
+                When you next sign in you will be asked to confirm {saved.length === 2 ? "them" : "it"} with a code sent there. Until then the University sends no notice and no password-reset link to {saved.length === 2 ? "them" : "it"}.
               </Note>
             ) : null}
             <div><LinkBtn kind="primary" size="md" href="/track">Track the request</LinkBtn></div>
@@ -161,7 +162,7 @@ export function SignInHelp({ reachable, open, fields }: { reachable: boolean; op
                 <span className="blk">E-mail on your record: <b className="tnum">{student.email ?? "none"}</b></span>
                 <span className="blk">Phone on your record: <b className="tnum">{student.phone ?? "none"}</b></span>
                 {!student.hasEmail || !student.hasPhone
-                  ? <span className="blk sub2 mt-1">Your record has no {!student.hasEmail && !student.hasPhone ? "e-mail or phone" : !student.hasEmail ? "e-mail" : "phone"}: the one you give below is saved to it, and you confirm it with a code when you next sign in.</span>
+                  ? <span className="blk sub2 mt-1">Your record has no {!student.hasEmail && !student.hasPhone ? "e-mail or phone" : !student.hasEmail ? "e-mail" : "phone"}: the one you give below is saved to it, and you confirm it with a code when you next sign in (until then nothing is sent to it).</span>
                   : null}
               </Note>
             ) : null}

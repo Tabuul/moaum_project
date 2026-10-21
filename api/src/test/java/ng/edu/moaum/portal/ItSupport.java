@@ -131,6 +131,33 @@ final class ItSupport {
         return jdbc;
     }
 
+    /**
+     * Oct 2026: a year from min (inclusive) to bound (exclusive) whose session no test has opened — and, for a test that opens more
+     * than one, the sessions `before` years before it and `after` years after it too. Tests drew their sessions at random from
+     * shared ranges (eight of them from 2300–2899), and a session another test opened first carries that test's fees, rules and
+     * windows: two CI runs went red on it in two days (AllocationImportIT, FlexibleRegistrationIT). Drawn at random, then stepped
+     * on; a range used up on a database that has run the suite many times gives the random draw, as before.
+     */
+    int freeYear(int min, int bound) {
+        return freeYear(min, bound, 0, 0);
+    }
+
+    int freeYear(int min, int bound, int before, int after) {
+        int size = bound - min;
+        int start = min + java.util.concurrent.ThreadLocalRandom.current().nextInt(size);
+        for (int i = 0; i < size; i++) {
+            int y = min + (start - min + i) % size;
+            StringBuilder names = new StringBuilder();
+            for (int x = y - before; x <= y + after; x++) names.append(names.length() == 0 ? "" : ",").append(x).append('/').append(x + 1);
+            boolean opened = jdbc.sql("SELECT EXISTS (SELECT 1 FROM policy.academic_session WHERE name = ANY (string_to_array(:n, ',')))")
+                    .param("n", names.toString()).query(Boolean.class).single();
+            if (!opened) {
+                return y;
+            }
+        }
+        return start;
+    }
+
     /** a far-future session for the test's own use, non-overlapping with every other test's */
     void session(String name, int startYear) {
         db(() -> jdbc.sql("""

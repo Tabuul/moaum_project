@@ -93,11 +93,7 @@ class FlexibleRegistrationIT {
     void aStudentAddsAValidCourseBesideTheListAndIsApprovedWithItInOrder() {
         // a session no test has opened: seven other tests draw theirs from 2300–2899 as well, and a session one of them opened first
         // carries that test's fees, rules and windows
-        int y = 2300 + new Random().nextInt(600);
-        for (int tries = 0; tries < 600 && jdbc.sql("SELECT count(*) FROM policy.academic_session WHERE name = :n")
-                .param("n", y + "/" + (y + 1)).query(Long.class).single() > 0; tries++) {
-            y = 2300 + (y - 2300 + 1) % 600;
-        }
+        int y = it.freeYear(2300, 2900);
         session = y + "/" + (y + 1);
         it.session(session, y);
         int n = 1000 + new Random().nextInt(8999);

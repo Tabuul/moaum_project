@@ -48,7 +48,10 @@ public class Throttle {
         /* V363: help asked from the sign-in page by a person not signed in, counted every request */
         SIGN_IN_HELP(5, "HELPDESK_HELP_SLOW_DOWN", "Too many requests for sign-in help from this connection", "One request is enough: track it with its number and your email, or visit the Directorate of ICT."),
         /* Oct 2026: the sign-in help form checking a student's number as it is typed, counted every check, so the register cannot be walked */
-        SIGN_IN_HELP_CHECK(30, "HELPDESK_CHECK_SLOW_DOWN", "Too many number checks from this connection", "Check your own number; if the portal does not recognise it, visit the Registry with your admission letter.");
+        SIGN_IN_HELP_CHECK(30, "HELPDESK_CHECK_SLOW_DOWN", "Too many number checks from this connection", "Check your own number; if the portal does not recognise it, visit the Registry with your admission letter."),
+        /* V599: the day's number checks from one connection, counted in the database (helpdesk.setting.sign_in_lookups_daily): the
+           limit here is never read — the refusal comes from refuseFor, until the next Lagos day */
+        SIGN_IN_HELP_CHECK_DAY(1, "HELPDESK_CHECK_DAY_LIMIT", "This connection has checked the day's number of student numbers", "Check your own number tomorrow, or visit the Registry with your admission letter.");
 
         final int limit;
         final String code;
@@ -73,8 +76,8 @@ public class Throttle {
         private final long retryAfterSeconds;
 
         Throttled(Door door, long retryAfterSeconds) {
-            super(door.code, door.said + "; try again in " + Math.max(1, (retryAfterSeconds + 59) / 60) + " minute"
-                    + ((retryAfterSeconds + 59) / 60 == 1 ? "" : "s") + ".", new Remedy(door.remedy, "You"));
+            super(door.code, door.said + (door == Door.SIGN_IN_HELP_CHECK_DAY ? "; try again tomorrow." : "; try again in " + Math.max(1, (retryAfterSeconds + 59) / 60) + " minute"
+                    + ((retryAfterSeconds + 59) / 60 == 1 ? "" : "s") + "."), new Remedy(door.remedy, "You"));
             this.retryAfterSeconds = retryAfterSeconds;
         }
 
@@ -130,6 +133,11 @@ public class Throttle {
     public void take(Door door, String source) {
         refuse(door, source);
         count(door, source);
+    }
+
+    /** V599: refused at a door whose count is kept elsewhere (the database), for the seconds given — answered 429 like any other */
+    public static void refuseFor(Door door, long retryAfterSeconds) {
+        throw new Throttled(door, Math.max(1, retryAfterSeconds));
     }
 
     private static void prune(ArrayDeque<Long> q, long now) {

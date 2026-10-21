@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -92,7 +91,7 @@ class PrdFollowupsIT {
                 SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
                    AND NOT EXISTS (SELECT 1 FROM registration.department_heads(p.dept_code)) ORDER BY p.code LIMIT 1
                 """).query(String.class).single();
-        int y = 5800 + new Random().nextInt(100);
+        int y = it.freeYear(5800, 5900);
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);
@@ -107,7 +106,7 @@ class PrdFollowupsIT {
 
     @Test
     void theRegistryRegistersAStudentLateWithTheWindowClosed() {
-        int y = 5900 + new Random().nextInt(99);
+        int y = it.freeYear(5900, 5999);
         String session = y + "/" + (y + 1);
         feeSession = session;
         it.session(session, y);

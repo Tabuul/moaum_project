@@ -92,7 +92,7 @@ class OverpaidFeesIT {
         Random random = new Random();
         String tag = String.format("%04d", random.nextInt(10_000));
         // years no other test uses, and two sessions next to each other on the calendar
-        int year = 3000 + random.nextInt(90);
+        int year = it.freeYear(3000, 3090, 0, 1);
         a = year + "/" + (year + 1);
         b = (year + 1) + "/" + (year + 2);
         it.session(a, year);

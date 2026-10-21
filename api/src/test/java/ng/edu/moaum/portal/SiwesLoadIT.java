@@ -74,7 +74,7 @@ class SiwesLoadIT {
 
     @Test
     void theSiwesCourseAloneIsSubmittedAndApprovedAndAnythingMoreIsRefusedWithTheSiwesWords() {
-        int y = 4500 + new Random().nextInt(450);
+        int y = it.freeYear(4500, 4950);
         session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);

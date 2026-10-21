@@ -90,9 +90,39 @@ The form at `/login/help` asks less and says whose a number is. These were the H
   throttle as before. The name fills *Your name* when that is still empty.
 - **A missing contact saved.** When the record holds no e-mail, or no phone, the one given on the request is saved to it
   (`people.contact_from_sign_in`; a phone given as +234 is kept as 0 and ten digits). It is held unconfirmed as an uploaded contact
-  is (V575): notices reach it, but a password-reset link goes there only after the student confirms it with a code at sign-in, or
-  the desk confirms it with them. A contact the record already holds is never replaced. The answer to the request says what was
+  is (V575): a password-reset link goes there only after the student confirms it with a code at sign-in, or the desk confirms it
+  with them; since V599 no notice goes there either until then (below). A contact the record already holds is never replaced. The answer to the request says what was
   saved (`saved`: EMAIL, PHONE), and the form tells the student.
+
+## Sign-in help contacts and number checks (V599)
+
+Anyone can type any student's number on the sign-in help form, so a contact it saves must not become the address the University
+writes to until someone who knows the student says it is theirs.
+
+- **Held from notices.** The contact is marked as the sign-in help's, with the request that saved it
+  (`people.student_contact.email_from_sign_in` / `phone_from_sign_in`, `email_sign_in_ticket` / `phone_sign_in_ticket`).
+  `people.student_reach`, the one address every notice reads, leaves it out while it is unconfirmed and falls back to the
+  applicant account's, as before. Once the student confirms it with a code at sign-in, or the desk confirms it, notices reach it
+  like any other. Anyone writing another value (the student's own save, the desk's edit, an upload) clears the mark with it.
+- **The desk.** *ICT Support → Sign-In Help Contacts* (`/helpdesk/sign-in-contacts`) lists the unconfirmed ones within the agent's
+  contact-editing scope (`helpdesk.sign_in_contacts`): the student, the contact, the request and who asked. The student's support
+  profile marks the contact *From the sign-in page — not confirmed* with the request's number. With `EDIT_CONTACT` the agent
+  either:
+  - confirms it after checking it with the student (`POST /api/v1/helpdesk/support/students/{id}/contact/confirm`); or
+  - removes it as not the student's (`POST …/contact/refuse`, `people.contact_refuse_desk`): the field is emptied and the outcome
+    kept as `DESK_REFUSED` with the request (`people.contact_confirmation.sign_in_ticket`). The same refusal serves a contact a
+    department uploaded, whose uploader is told as a student's own refusal tells them (V580).
+- **Number checks watched.** Each student number checked on the form from a connection on a network is logged
+  (`helpdesk.sign_in_lookup`: the address, the number, whether a student holds it; kept 180 days). A check from the machine itself
+  (development, the test suite) is neither logged nor capped.
+  - Past the day's figure (`helpdesk.setting.sign_in_lookups_daily`, 200 by default) the connection is refused until the next
+    Lagos day: 429, `HELPDESK_CHECK_DAY_LIMIT`. The fifteen-minute limit of 30 checks (V359's throttle) stands beside it.
+  - When one connection has checked the alert figure of different numbers in a day (`sign_in_lookups_alert`, 50 by default), the
+    Head of the ICT Support Desk is told once that day (the Director of ICT where no Head is in office): notice
+    `SIGN_IN_LOOKUP_ALERT`, with the address, the numbers, how many were students' and when it began.
+  - A University network shares one address among many students, so the Head and the Director see the day's checks by
+    connection on the same page (`GET /api/v1/helpdesk/support/sign-in-contacts/lookups?day=`) and set both figures there
+    (`PUT …/lookups/figures {daily, alert}`; empty is none).
 
 ## Bulk Password Reset lists the tickets (V594)
 

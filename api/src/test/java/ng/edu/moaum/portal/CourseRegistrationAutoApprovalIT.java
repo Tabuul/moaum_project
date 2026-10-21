@@ -97,7 +97,7 @@ class CourseRegistrationAutoApprovalIT {
 
     @Test
     void aRegistrationThatPassesTheRulesIsApprovedAtOnceResetAndRegisteredAgain() {
-        int y = 2300 + new Random().nextInt(600);
+        int y = it.freeYear(2300, 2900);
         session = y + "/" + (y + 1);
         String sp = y + "/" + (y + 1);
         it.session(session, y);

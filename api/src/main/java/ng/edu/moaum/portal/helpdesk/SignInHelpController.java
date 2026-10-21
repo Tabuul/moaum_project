@@ -45,12 +45,19 @@ import org.springframework.web.bind.annotation.RestController;
  * recognises their own; the request asks only the account and the number (no "what the portal says", no "since when", no
  * description); and when the student's record holds no e-mail or no phone, the one given is saved to it, unconfirmed until the
  * student confirms it with a code at sign-in or the desk confirms it (people.contact_from_sign_in, V575's rule).
+ *
+ * <p>V599: that contact is marked as the request's and reaches no notice until it is confirmed (people.student_reach); the desk
+ * confirms or refuses it from Sign-In Help Contacts. Each number checked from a connection on a network is logged
+ * (helpdesk.sign_in_lookup_record), refused past the day's figure until the next Lagos day (helpdesk.setting.sign_in_lookups_daily,
+ * answered 429 as the fifteen-minute limit is) and told to the Head of the ICT Support Desk when one connection checks the alert
+ * figure of different numbers in a day. A check from the machine itself (development, the test suite) is neither logged nor capped.
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk/sign-in-help")
 class SignInHelpController {
 
     private static final UUID NOBODY = new UUID(0, 0);
+    private static final java.time.ZoneId LAGOS = java.time.ZoneId.of("Africa/Lagos");
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
     private final JdbcClient jdbc;
@@ -109,7 +116,8 @@ class SignInHelpController {
     /**
      * Oct 2026: the number checked as it is typed, for the student portal only — whether a student holds it; V596: and whose, by
      * name, with the contacts on the record masked (never in full); every check counted against the connection
-     * (SIGN_IN_HELP_CHECK). A number in the body, not the address, so it is not logged.
+     * (SIGN_IN_HELP_CHECK). A number in the body, not the address, so the web logs never hold it; V599: the desk's own log does
+     * (helpdesk.sign_in_lookup), with the day's figure and the Head's alert.
      */
     @PostMapping("/check")
     Map<String, Object> check(@Valid @RequestBody Check body, HttpServletRequest request) {
@@ -120,12 +128,28 @@ class SignInHelpController {
         if (n.length() < 4) {
             return Map.of("applies", true, "found", false);
         }
-        throttle.take(Throttle.Door.SIGN_IN_HELP_CHECK, ClientAddress.of(request));
+        String from = ClientAddress.of(request);
+        throttle.take(Throttle.Door.SIGN_IN_HELP_CHECK, from);
+        // V599: the day's checks from the connection, counted in the database (every instance alike); never the machine itself
+        boolean counted = !ClientAddress.local(from);
+        if (counted && jdbc.sql("SELECT helpdesk.sign_in_lookup_refused(:s)").param("s", from).query(Integer.class).optional().isPresent()) {
+            java.time.ZonedDateTime now = java.time.ZonedDateTime.now(LAGOS);
+            Throttle.refuseFor(Throttle.Door.SIGN_IN_HELP_CHECK_DAY, java.time.Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay(LAGOS)).toSeconds());
+        }
         // V596: whose the number is — the name, and the contacts on the record masked; V579: a former number is said as such
-        Map<String, Object> who = jdbc.sql("SELECT corrected, name, email, phone, has_email, has_phone FROM helpdesk.sign_in_help_student(:n)")
+        Map<String, Object> who = jdbc.sql("SELECT student_id, corrected, name, email, phone, has_email, has_phone FROM helpdesk.sign_in_help_student(:n)")
                 .param("n", n).query().listOfRows().stream().findFirst().orElse(null);
+        boolean holds = who != null || studentHolds(n);
+        // V599: each check logged — the connection, the number, whether a student holds it — and the Head told of a connection
+        // stepping through numbers
+        if (counted) {
+            UUID student = who == null ? null : (UUID) who.get("student_id");
+            AuditContextHolder.with(new AuditContext(NOBODY, "ict", "student number checked on the sign-in page", null, from), () -> tx.execute(st ->
+                    jdbc.sql("SELECT helpdesk.sign_in_lookup_record(:s, :n, :f, :u)").param("s", from).param("n", n).param("f", holds)
+                            .param("u", student, java.sql.Types.OTHER).query(Integer.class).single()));
+        }
         if (who == null) {
-            return Map.of("applies", true, "found", studentHolds(n));
+            return Map.of("applies", true, "found", holds);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("applies", true);
@@ -162,9 +186,10 @@ class SignInHelpController {
                     .param("d", JSON.writeValueAsString(details))
                     .param("desc", body.description() == null || body.description().isBlank() ? null : body.description(), java.sql.Types.VARCHAR)
                     .query(UUID.class).single();
-            // V596: a student's record that holds no e-mail or phone takes the one given, unconfirmed (V575)
+            // V596: a student's record that holds no e-mail or phone takes the one given, unconfirmed (V575); V599: marked as this
+            // request's, and reaching no notice until the student or the desk confirms it
             if (studentPortal(details.get("account_type"))) {
-                saved[0] = jdbc.sql("SELECT people.contact_from_sign_in(helpdesk.ticket_student('PUBLIC', :t, :u, :d::jsonb), :e, :p)")
+                saved[0] = jdbc.sql("SELECT people.contact_from_sign_in(helpdesk.ticket_student('PUBLIC', :t, :u, :d::jsonb), :e, :p, :t)")
                         .param("t", id).param("u", details.get("username"), java.sql.Types.VARCHAR).param("d", JSON.writeValueAsString(details))
                         .param("e", body.email()).param("p", body.phone(), java.sql.Types.VARCHAR).query(String.class).single();
             }

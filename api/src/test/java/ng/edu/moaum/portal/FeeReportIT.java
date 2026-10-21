@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -74,7 +73,7 @@ class FeeReportIT {
 
     @Test
     void eachLineCountsWhoPaidAndWhoOwesAndTheGrandTotalAddsUp() {
-        int year = 3300 + new Random().nextInt(80);
+        int year = it.freeYear(3300, 3380);
         session = year + "/" + (year + 1);
         it.session(session, year);
         it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 100000, NULL, 'C00023')")

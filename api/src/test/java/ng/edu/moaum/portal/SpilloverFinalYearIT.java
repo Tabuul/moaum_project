@@ -58,7 +58,7 @@ class SpilloverFinalYearIT {
 
     @Test
     void spilloverIsCountedFromTheFinalYearTheRegisterShows() {
-        int y = 3400 + new Random().nextInt(400);
+        int y = it.freeYear(3400, 3800, 5, 0);
         for (int x = y - 5; x <= y; x++) it.session(x + "/" + (x + 1), x);
         current = y + "/" + (y + 1);
         String entry = (y - 5) + "/" + (y - 4);

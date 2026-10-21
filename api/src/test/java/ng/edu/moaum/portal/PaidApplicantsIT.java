@@ -82,7 +82,7 @@ class PaidApplicantsIT {
 
     @Test
     void theSessionsPaidApplicantsAreListedFilteredScopedAndDownloadedOnTheRecord() {
-        int y = 2300 + random.nextInt(600);
+        int y = it.freeYear(2300, 2900);
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String tag = "ZZPAID" + (100000 + random.nextInt(900000));

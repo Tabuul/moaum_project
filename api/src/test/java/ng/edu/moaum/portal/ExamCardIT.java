@@ -77,7 +77,7 @@ class ExamCardIT {
 
     @Test
     void theExaminationCardCarriesEveryRegisteredCourseForEveryStudentWhoRegisteredAndPaid() {
-        int y = 4000 + new Random().nextInt(500);
+        int y = it.freeYear(4000, 4500);
         session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);

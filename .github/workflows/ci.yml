@@ -216,11 +216,41 @@ jobs:
 
       # A red build names what failed where anyone can read it: the compiler's errors and the failing
       # tests become annotations on the run, so nobody needs the raw log to know which test broke.
+      # Oct 2026: each failing test first, with its own message read from the test reports — what it expected and what it was
+      # answered (the body an assertion printed), and the line — since the log's [ERROR] lines carry only the test's name; then
+      # the compiler's errors and the summary. At most ten annotations a step are shown: six tests, then the rest.
       - name: Name what failed
         if: failure()
         run: |
+          tests=0
+          if python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          shown = 0
+          for path in sorted(glob.glob('api/target/failsafe-reports/TEST-*.xml') + glob.glob('api/target/surefire-reports/TEST-*.xml')):
+              try:
+                  root = ET.parse(path).getroot()
+              except ET.ParseError:
+                  continue
+              for case in root.iter('testcase'):
+                  for el in case.findall('failure') + case.findall('error'):
+                      if shown >= 6:
+                          continue
+                      name = case.get('classname', '').split('.')[-1] + '.' + case.get('name', '')
+                      trace = (el.text or '').splitlines()
+                      message = el.get('message') or (trace[0] if trace else el.get('type', 'failed'))
+                      lines = [l.rstrip() for l in message.strip().splitlines() if l.strip()][:30]
+                      where = next((l.strip() for l in trace if 'ng.edu.moaum.portal.' in l and '.java:' in l), None)
+                      if where:
+                          lines.append(where)
+                      body = '\n'.join(lines)[:3500].replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+                      print(f'::error title={name}::{body}')
+                      shown += 1
+          sys.exit(0 if shown else 1)
+          PY
+          then tests=1; fi
+          [ "$tests" = 1 ] && n=4 || n=10
           grep -E '^\[ERROR\] .*(\.java:\[[0-9]+|Tests run:.*Fail|  [A-Za-z]+IT\.|  [A-Za-z]+Test\.|expected|Expect|but was|COMPILATION ERROR)' /tmp/api-build.log \
-            | head -40 | sed 's/^\[ERROR\] *//' | while IFS= read -r line; do echo "::error title=API build::${line:0:900}"; done || true
+            | head -"$n" | sed 's/^\[ERROR\] *//' | while IFS= read -r line; do echo "::error title=API build::${line:0:900}"; done || true
 
   # ── the frontend: type-checks and builds ──────────────────────────────
   frontend:

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 430
+\set EXPECTED 432
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21561,6 +21561,109 @@ BEGIN
         format('finals %s | Nursing at 400: levels %s next %s refusal %s | at 500: final %s next %s %s | four-year at 400: final %s next %s %s | found at 400 %s, at 300 %s',
                finals, o400->'levels', o400->>'nextLevel', o400->>'progressRefusal', o500->>'finalLevel', o500->>'nextLevel', left(o500->>'progressRefusal', 15),
                o4yr->>'finalLevel', o4yr->>'nextLevel', left(o4yr->>'progressRefusal', 15), at400.selected, at300.selected));
+END $$;
+
+-- ── V599. Contacts the sign-in help saved held until confirmed, and the numbers checked watched. An invented student with no contact
+--          is named by a request from the sign-in page; the e-mail and phone it gives are saved, marked as the request's, and reach
+--          no notice; the desk's list shows both with the request; the desk refuses the e-mail (emptied, kept as DESK_REFUSED with
+--          the request) and confirms the phone (notices reach it); a new sign-in e-mail written over by the student's own is no
+--          longer the sign-in help's. With the day's figure 2 and the alert figure 2, an invented connection's two different
+--          numbers (one a student's) are logged, the connection is refused after the second, an invented Head of the desk is told
+--          once, and another connection is not refused. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); hd uuid := gen_random_uuid(); t uuid; tno text;
+        saved text; marked text; held text; listed text; refused text; after_refuse text; refusal text; confirmed text; reach_phone text;
+        own text; logged text; capped int; other_capped int; by_source text; told int; told_again int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'CHECK V599', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/CHK/99/059901', 'MOAUM/ADM/99/599001', 'CHECKSIGNIN', 'No Contact', 'C00023', 'UTME', '2099/2100', 100, 100, 'ACTIVE', now());
+        t := helpdesk.submit_public('Checksignin Asker', 'checkv599@example.com', '08035990001',
+                                    jsonb_build_object('account_type', 'Student portal', 'username', 'MOAUM/CHK/99/059901'), NULL);
+        tno := (SELECT number FROM helpdesk.ticket WHERE id = t);
+        saved := people.contact_from_sign_in(a, 'CheckV599@Example.com', '+234 803 599 0001', t);
+        marked := (SELECT c.email_from_sign_in || ':' || (c.email_sign_in_ticket = t) || ':' || c.phone_from_sign_in || ':' || (c.phone_sign_in_ticket = t)
+                     FROM people.student_contact c WHERE c.student_id = a);
+        held := (SELECT coalesce(r.email, '-') || ':' || coalesce(r.phone, '-') FROM people.student_reach(a) r);
+        listed := (SELECT string_agg(x.field || ':' || x.value || ':' || (x.ticket_number = tno), ',' ORDER BY x.field) FROM helpdesk.sign_in_contacts(NULL, true) x WHERE x.student_id = a);
+        refused := people.contact_refuse_desk(a, 'EMAIL');
+        after_refuse := (SELECT coalesce(c.email, '-') || ':' || c.email_from_sign_in FROM people.student_contact c WHERE c.student_id = a);
+        refusal := (SELECT x.outcome || ':' || (x.sign_in_ticket = t) FROM people.contact_confirmation x WHERE x.student_id = a AND x.field = 'EMAIL' ORDER BY x.created_at DESC LIMIT 1);
+        confirmed := people.contact_confirm_desk(a, 'PHONE');
+        reach_phone := (SELECT r.phone FROM people.student_reach(a) r);
+        PERFORM people.contact_from_sign_in(a, 'second.v599@example.com', NULL, t);
+        UPDATE people.student_contact SET email = 'own.v599@example.com' WHERE student_id = a;
+        own := (SELECT c.email_pending || ':' || c.email_from_sign_in || ':' || r.email FROM people.student_contact c CROSS JOIN people.student_reach(a) r WHERE c.student_id = a);
+
+        -- the numbers checked: an invented Head of the desk, the figures 2 and 2, two different numbers from one connection
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (hd, 'CHK-V599-' || left(hd::text, 8), 'CHECKV599', 'Invented', 'checkv599.head@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), hd, 'helpdeskhead', 'platform', 'CHECK V599', who, current_date - 1);
+        UPDATE helpdesk.setting SET sign_in_lookups_daily = 2, sign_in_lookups_alert = 2 WHERE row_no;
+        told := helpdesk.sign_in_lookup_record('192.0.2.59', 'moaum/chk/99/ 059901', true, a);
+        told := told + helpdesk.sign_in_lookup_record('192.0.2.59', 'MOAU/NOT/A/NUMBER', false, NULL);
+        told_again := helpdesk.sign_in_lookup_record('192.0.2.59', 'MOAU/NOT/A/NUMBER/2', false, NULL);
+        logged := (SELECT string_agg(l.number || ':' || l.found, ',' ORDER BY l.number) FROM helpdesk.sign_in_lookup l WHERE l.source = '192.0.2.59');
+        capped := helpdesk.sign_in_lookup_refused('192.0.2.59');
+        other_capped := helpdesk.sign_in_lookup_refused('192.0.2.60');
+        by_source := (SELECT x.checks || ':' || x.numbers || ':' || x.found || ':' || x.told || ':' || x.refused
+                        FROM helpdesk.sign_in_lookups_by_source((now() AT TIME ZONE 'Africa/Lagos')::date) x WHERE x.source = '192.0.2.59');
+        RAISE EXCEPTION 'the V599 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V599 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V599: a contact the sign-in help saved reaches no notice until confirmed, the desk lists, refuses and confirms it, and the numbers a connection checks are logged, capped a day and told',
+        coalesce(saved = 'EMAIL,PHONE' AND marked = 'true:true:true:true' AND held = '-:-'
+                 AND listed = 'EMAIL:checkv599@example.com:true,PHONE:08035990001:true'
+                 AND refused = 'DESK_REFUSED' AND after_refuse = '-:false' AND refusal = 'DESK_REFUSED:true'
+                 AND confirmed = 'DESK' AND reach_phone = '08035990001' AND own = 'false:false:own.v599@example.com'
+                 AND told >= 1 AND told_again = 0
+                 AND logged = 'MOAU/NOT/A/NUMBER:false,MOAU/NOT/A/NUMBER/2:false,MOAUM/CHK/99/059901:true'
+                 AND capped = 2 AND other_capped IS NULL AND by_source = '3:3:1:true:true', false),
+        format('saved %s marked %s held %s | listed %s | refused %s after %s kept %s | confirmed %s reach %s | own %s | told %s/%s | logged %s capped %s/%s | by source %s',
+               saved, marked, held, listed, refused, after_refuse, refusal, confirmed, reach_phone, own, told, told_again, logged, capped, other_capped, by_source));
+END $$;
+
+-- ── V600. The probation unit ceiling flagged where an undergraduate level states none: with 100–400 Level given a ceiling and 500
+--          and 600 Level left without, the two are named, in words; a session set to start automatically in three days tells an
+--          invented Registrar so, as a line for attention, and its readiness is the same with or without it. The block undoes its
+--          writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); ses text := '2867/2868'; unset integer[]; words text; body text;
+        ready_with text; ready_without text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V600', true);
+        UPDATE policy.level_limit SET probation_max_units = CASE WHEN level BETWEEN 100 AND 400 THEN 12 END WHERE level BETWEEN 100 AND 600;
+        unset := policy.probation_ceiling_unset();
+        words := policy.levels_words(unset);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (reg, 'CHK-V600-' || left(reg::text, 8), 'CHECKV600', 'Invented', 'checkv600.registrar@example.com');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), reg, 'registrar', 'institution', 'CHECK V600', who, current_date - 1);
+        -- a plain insert: ON CONFLICT DO UPDATE would fire the session's UPDATE statement trigger, every position worked out again
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state, transition_mode, transitions_on)
+        VALUES (gen_random_uuid(), ses, DATE '2867-10-01', DATE '2868-08-31', 'PLANNED', 'AUTOMATIC', (now() AT TIME ZONE 'Africa/Lagos')::date + 3);
+        ready_with := (SELECT string_agg(r.code || ':' || r.ok, ',' ORDER BY r.code) FROM policy.transition_readiness(ses) r);
+        PERFORM policy.tell_session_start();
+        body := (SELECT n.body FROM platform.notice n WHERE n.recipient = 'checkv600.registrar@example.com' AND n.template_key = 'SESSION_START_READINESS' AND n.channel = 'EMAIL');
+        UPDATE policy.level_limit SET probation_max_units = 15 WHERE level BETWEEN 100 AND 600;
+        ready_without := (SELECT string_agg(r.code || ':' || r.ok, ',' ORDER BY r.code) FROM policy.transition_readiness(ses) r);
+        RAISE EXCEPTION 'the V600 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V600 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V600: the undergraduate levels with no probation ceiling are named, and the start warning says so for attention without holding the start',
+        coalesce(unset = ARRAY[500, 600] AND words = '500 and 600 Level'
+                 AND body LIKE '%For attention (this does not hold the start): no probation unit ceiling is set for 500 and 600 Level%'
+                 AND ready_with = ready_without, false),
+        format('unset %s words %s | body %s | readiness %s / %s', unset, words, left(body, 400), ready_with, ready_without));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

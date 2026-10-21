@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -77,7 +76,7 @@ class LegacyWalletIT {
 
     @Test
     void aBalanceIsComputedVerifiedByOneOfficerPostedByAnotherAndAppliedToFeesOnce() {
-        int year = 3380 + new Random().nextInt(15);
+        int year = it.freeYear(3380, 3395);
         session = year + "/" + (year + 1);
         it.session(session, year);
         it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 180000, NULL, 'C00023')").param("s", session).update());

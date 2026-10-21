@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -32,8 +31,8 @@ class RegistrationHistoryUploadIT {
 
     /** the run's own session, never another test's fixed one: the upload enrols its student in the session it records, so a fixed
      *  session (2097/2098, CalendarIT's own) carried a student into the next run, where CalendarIT expects its session empty */
-    final int year = 2300 + new java.util.Random().nextInt(600);
-    final String session = year + "/" + (year + 1);
+    int year;
+    String session;
 
     @Value("${local.server.port}")
     int port;
@@ -48,6 +47,9 @@ class RegistrationHistoryUploadIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+        // and one no other test has opened either (ItSupport.freeYear)
+        year = it.freeYear(2300, 2900);
+        session = year + "/" + (year + 1);
         it.session(session, year);
     }
 

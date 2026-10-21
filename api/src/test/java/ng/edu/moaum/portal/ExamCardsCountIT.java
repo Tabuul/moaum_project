@@ -49,7 +49,7 @@ class ExamCardsCountIT {
 
     @Test
     void theCardsCountedAtOnceAgreeWithEachStudentsOwnClearance() {
-        int y = 6400 + new Random().nextInt(300);
+        int y = it.freeYear(6400, 6700);
         session = y + "/" + (y + 1);
         it.session(session, y);
         UUID paid = it.student(it.freeSurname("ZZCARDSPAID"), "C00061", it.freeNumber("MOAUM/ADM/64/", 6), it.freeNumber("MOAUM/CRD/64/", 6), 100);

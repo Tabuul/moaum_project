@@ -87,7 +87,7 @@ class LegacyFeesResetIT {
     void theResetReversesTheLedgerKeepsWhatItDeletedNeverTouchesAPortalPaymentAndAReloadPostsOnce() {
         Random random = new Random();
         String tag = String.format("%04d", random.nextInt(10_000));
-        int year = 2600 + random.nextInt(300);
+        int year = it.freeYear(2600, 2900);
         ses = year + "/" + (year + 1);
         String yy = String.format("%02d", year % 100);
         it.session(ses, year);

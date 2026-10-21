@@ -189,7 +189,10 @@ class StudentSupportController {
         out.put("portal", me);
         out.put("contact", jdbc.sql("""
                 SELECT c.phone, c.email, c.address, r.email AS reach_email, r.phone AS reach_phone,
-                       coalesce(c.email_pending, false) AS email_pending, coalesce(c.phone_pending, false) AS phone_pending   -- V575
+                       coalesce(c.email_pending, false) AS email_pending, coalesce(c.phone_pending, false) AS phone_pending,   -- V575
+                       coalesce(c.email_from_sign_in, false) AS email_from_sign_in, coalesce(c.phone_from_sign_in, false) AS phone_from_sign_in,   -- V599
+                       (SELECT t.number FROM helpdesk.ticket t WHERE t.id = c.email_sign_in_ticket) AS email_sign_in_ticket,
+                       (SELECT t.number FROM helpdesk.ticket t WHERE t.id = c.phone_sign_in_ticket) AS phone_sign_in_ticket
                   FROM people.student_reach(:s) r LEFT JOIN people.student_contact c ON c.student_id = :s
                 """).param("s", id).query().listOfRows().stream().findFirst().orElse(Map.of()));
         Map<String, Object> position = jdbc.sql("SELECT * FROM people.academic_position WHERE student_id = :s").param("s", id).query().listOfRows().stream().findFirst().orElse(null);
@@ -357,12 +360,37 @@ class StudentSupportController {
         can(a, "EDIT_CONTACT");
         String value = jdbc.sql("SELECT value FROM people.contact_pending_value(:s, :f)").param("s", id).param("f", body.field())
                 .query(String.class).optional().orElse(null);
+        // V599: a contact the sign-in help saved is confirmed the same way; the history says where it came from
+        boolean signIn = jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student_contact c WHERE c.student_id = :s"
+                        + " AND CASE WHEN :f = 'EMAIL' THEN c.email_from_sign_in ELSE c.phone_from_sign_in END)")
+                .param("s", id).param("f", body.field()).query(Boolean.class).single();
         jdbc.sql("SELECT people.contact_confirm_desk(:s, :f)").param("s", id).param("f", body.field()).query(String.class).single();
         UUID ticket = support.ticketFor(a, body.ticket(), id, false);
         String label = "EMAIL".equals(body.field()) ? "e-mail address" : "phone number";
         support.act(id, ticket, "CONTACT_EDITED", "EMAIL".equals(body.field()) ? "personal_email" : "mobile", value, value, body.reason().trim(), null, null,
-                Map.of("summary", "The " + label + " from a department's upload confirmed with the student"));
+                Map.of("summary", "The " + label + (signIn ? " saved from the sign-in page" : " from a department's upload") + " confirmed with the student"));
         return Map.of("field", body.field(), "confirmed", true);
+    }
+
+    /** V599: an unconfirmed e-mail or phone — saved from the sign-in page or uploaded by a department — that is not the student's,
+     *  refused at the desk (EDIT_CONTACT): the field emptied, the outcome kept, an uploading department told; on the history */
+    @PostMapping("/students/{id}/contact/refuse")
+    @PreAuthorize(AGENTS)
+    @Transactional
+    Map<String, Object> refuseContact(Authentication auth, @PathVariable UUID id, @Valid @RequestBody ContactConfirm body) {
+        SupportAccess.Access a = support.on(auth, id);
+        can(a, "EDIT_CONTACT");
+        String value = jdbc.sql("SELECT value FROM people.contact_pending_value(:s, :f)").param("s", id).param("f", body.field())
+                .query(String.class).optional().orElse(null);
+        boolean signIn = jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student_contact c WHERE c.student_id = :s"
+                        + " AND CASE WHEN :f = 'EMAIL' THEN c.email_from_sign_in ELSE c.phone_from_sign_in END)")
+                .param("s", id).param("f", body.field()).query(Boolean.class).single();
+        jdbc.sql("SELECT people.contact_refuse_desk(:s, :f)").param("s", id).param("f", body.field()).query(String.class).single();
+        UUID ticket = support.ticketFor(a, body.ticket(), id, false);
+        String label = "EMAIL".equals(body.field()) ? "e-mail address" : "phone number";
+        support.act(id, ticket, "CONTACT_EDITED", "EMAIL".equals(body.field()) ? "personal_email" : "mobile", value, null, body.reason().trim(), null, null,
+                Map.of("summary", "The " + label + (signIn ? " saved from the sign-in page" : " from a department's upload") + " refused: not the student's"));
+        return Map.of("field", body.field(), "refused", true);
     }
 
     /* ── the photograph ── */

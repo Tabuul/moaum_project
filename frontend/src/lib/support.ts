@@ -54,7 +54,9 @@ export interface SupportProfile {
   portal: Record<string, unknown>;
   contact: { phone: string | null; email: string | null; address: string | null; reach_email: string | null; reach_phone: string | null;
     /** V575: from a department's upload and not confirmed by the student */
-    email_pending?: boolean; phone_pending?: boolean };
+    email_pending?: boolean; phone_pending?: boolean;
+    /** V599: saved from a request on the sign-in page (with its number); while unconfirmed it reaches no notice */
+    email_from_sign_in?: boolean; phone_from_sign_in?: boolean; email_sign_in_ticket?: string | null; phone_sign_in_ticket?: string | null };
   position: Record<string, unknown> | null;
   capabilities: string[];
   scope: string;

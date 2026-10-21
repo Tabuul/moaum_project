@@ -150,7 +150,7 @@ class RegistrationMinimumLoadIT {
 
     @Test
     void theMinimumOfEachCurriculumBindsEverySubmissionAndTheDirectorateChangesItWithoutCode() {
-        int y = 2400 + new Random().nextInt(500);
+        int y = it.freeYear(2400, 2900, 0, 1);
         session = y + "/" + (y + 1);
         next = (y + 1) + "/" + (y + 2);
         it.session(session, y);

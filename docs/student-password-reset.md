@@ -187,4 +187,5 @@ A contact a department uploaded is held unconfirmed until the student confirms i
 Notices still reach it.
 
 V596: an e-mail or phone a student gives on the sign-in help form, saved to a record that held none, is held unconfirmed in the
-same way (docs/ticket-password-reset.md, *The sign-in help form*).
+same way (docs/ticket-password-reset.md, *The sign-in help form*). V599: unlike an uploaded one, no notice reaches it either until it
+is confirmed, and the desk removes it when it is not the student's (*Sign-in help contacts and number checks*).

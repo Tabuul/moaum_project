@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { CalendarData, LevelLimitRow, SemesterRow, SessionRow } from "@/lib/calendar";
 import { SEMESTER_NAMES, d, daysBetween, semesterLabel, semesterName, span, withThousands, within } from "@/lib/calendar";
+import { levelsWords, probationUnset } from "@/lib/probation-ceiling";
 import { SessionState, statePill } from "./SessionState";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -386,6 +387,15 @@ export function SessionSetup({
             ])}
           />
         )}
+        {/* V600: FR-REG-07's probation ceiling, the University's value, flagged while an undergraduate level states none */}
+        {probationUnset(limits).length ? (
+          <PBody>
+            <Note kind="info" title={`No probation ceiling is set for ${levelsWords(probationUnset(limits))}`}>
+              A student on probation there registers up to the level&apos;s maximum, like everyone else. Set the most units a student on probation
+              may register with Edit on each level; the warning sent to the Registrar and the Bursar before a session starts on its own says the same.
+            </Note>
+          </PBody>
+        ) : null}
         {canEdit ? (
           <div className="rfbar">
             <Btn kind="primary" onClick={() => setOpen({ kind: "level", row: null })}>

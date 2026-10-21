@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -62,7 +61,7 @@ class StudentsAccountOfficerIT {
     void theStudentsAccountOfficerReadsReportsStatesSchoolFeesWorksTheHangingDeskAndHoldsNoneOfTheBursarsOtherPowers() {
         assertThat(jdbc.sql("SELECT label FROM ref.office WHERE code = 'studentaccounts'").query(String.class).optional()).isPresent();
         String sao = ItSupport.token("studentaccounts");
-        int y = 6000 + new Random().nextInt(300);
+        int y = it.freeYear(6000, 6300);
         session = y + "/" + (y + 1);
         it.session(session, y);
         String path = "/api/v1/finance/sessions/" + y + "/" + (y + 1);

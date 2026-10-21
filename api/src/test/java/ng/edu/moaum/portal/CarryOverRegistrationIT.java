@@ -99,7 +99,7 @@ class CarryOverRegistrationIT {
 
     @Test
     void aCarryOverAloneOrGstAloneIsSubmittedBelowTheMinimumWhileACurrentCourseBelowItIsRefused() {
-        int y = 3900 + new Random().nextInt(90);
+        int y = it.freeYear(3900, 3990, 1, 0);
         before = (y - 1) + "/" + y;
         session = y + "/" + (y + 1);
         it.session(before, y - 1);

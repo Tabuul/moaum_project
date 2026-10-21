@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -40,9 +39,10 @@ class GstCarryOverIT {
 
     ItSupport it;
     final String bursar = ItSupport.token("bursar");
-    final int year = 2300 + new Random().nextInt(600);
-    final String before = (year - 1) + "/" + year;
-    final String session = year + "/" + (year + 1);
+    /** the run's own two sessions, which no test has opened (ItSupport.freeYear) */
+    int year;
+    String before;
+    String session;
     UUID s;
     String student;
     String gstCode;
@@ -52,6 +52,9 @@ class GstCarryOverIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+        year = it.freeYear(2300, 2900, 1, 0);
+        before = (year - 1) + "/" + year;
+        session = year + "/" + (year + 1);
         it.session(before, year - 1);
         it.session(session, year);
         int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/12/" + String.format("%06d", k), "MOAUM/GCO/12/" + k, "ZZGSTCO" + k));

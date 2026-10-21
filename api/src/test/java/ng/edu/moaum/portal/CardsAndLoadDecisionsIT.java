@@ -78,7 +78,7 @@ class CardsAndLoadDecisionsIT {
 
     @Test
     void cardsWithheldAreListedAndToldAndRegistrationsBelowTheMinimumAreDecidedAndANewMinimumIsCountedAndTold() {
-        int y = 5000 + new Random().nextInt(400);
+        int y = it.freeYear(5000, 5400);
         session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);

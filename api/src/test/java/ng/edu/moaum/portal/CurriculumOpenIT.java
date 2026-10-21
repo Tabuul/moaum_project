@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
@@ -62,7 +61,7 @@ class CurriculumOpenIT {
 
     @Test
     void eachStudentListsEveryCurriculumsCoursesWhileTheyAreOpenAndTheirOwnWhenKeptApart() {
-        int y = 2600 + new Random().nextInt(250);
+        int y = it.freeYear(2600, 2850);
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);

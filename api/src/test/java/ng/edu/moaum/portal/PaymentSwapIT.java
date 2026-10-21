@@ -44,7 +44,7 @@ class PaymentSwapIT {
     @Test
     void aVerifiedSchoolFeesPaymentIsSwappedToItsOwnerUnderApprovalAndReversedTheSameWay() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
-        int y = 3100 + new java.util.Random().nextInt(700);
+        int y = it.freeYear(3100, 3800);
         String session = y + "/" + (y + 1);
         it.session(session, y);
         UUID a = it.student(it.freeSurname("ZZSWAPA"), "C00023", it.freeNumber("MOAUM/ADM/26/7", 5), it.freeNumber("MOAU/SC/CSC/26/7", 5), 100);

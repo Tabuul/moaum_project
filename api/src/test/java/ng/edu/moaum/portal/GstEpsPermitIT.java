@@ -162,7 +162,7 @@ class GstEpsPermitIT {
 
     @Test
     void aPermitCarriesOnlyTheGstAndEpsCoursesTheStudentRegisteredForTheSemester() {
-        int y = 3100 + new Random().nextInt(600);
+        int y = it.freeYear(3100, 3700);
         session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);

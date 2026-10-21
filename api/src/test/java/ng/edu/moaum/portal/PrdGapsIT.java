@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +54,7 @@ class PrdGapsIT {
 
     @Test
     void aStudentAsksForAnOverloadAndTheirOwnHeadOfDepartmentGrantsTheSemestersMaximum() {
-        int y = 5400 + new Random().nextInt(400);
+        int y = it.freeYear(5400, 5800);
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String yy = String.format("%02d", y % 100);

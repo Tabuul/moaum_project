@@ -297,9 +297,12 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
               <PBody><div className="stack" style={{ gap: 4 }}>
                 {([["Phone", data.contact.phone ?? data.contact.reach_phone], ["Email", data.contact.email ?? data.contact.reach_email], ["Address", data.contact.address]] as [string, unknown][]).map(([k, v]) => (
                   <div key={k} className="row row--between"><span className="sub2">{k}</span><span className="tnum" style={{ textAlign: "right" }}>{v == null || v === "" ? "—" : String(v)}
-                    {/* V575: from a department's upload and not confirmed by the student: no reset link goes to it */}
+                    {/* V575: from a department's upload and not confirmed by the student: no reset link goes to it; V599: or saved from the
+                        sign-in page, which reaches no notice either until it is confirmed */}
                     {(k === "Phone" && data.contact.phone_pending) || (k === "Email" && data.contact.email_pending)
-                      ? <UploadedContact id={id} field={k === "Phone" ? "PHONE" : "EMAIL"} may={caps.has("EDIT_CONTACT")} ticket={ticket?.id ?? null} /> : null}
+                      ? <UploadedContact id={id} field={k === "Phone" ? "PHONE" : "EMAIL"} may={caps.has("EDIT_CONTACT")} ticket={ticket?.id ?? null}
+                          source={(k === "Phone" ? data.contact.phone_from_sign_in : data.contact.email_from_sign_in) ? "SIGN_IN" : "UPLOAD"}
+                          request={(k === "Phone" ? data.contact.phone_sign_in_ticket : data.contact.email_sign_in_ticket) ?? null} /> : null}
                   </span></div>
                 ))}
                 {data.record.pendingChanges.length ? <div className="mt-2"><div className="eyebrow">Awaiting the Registry</div>{data.record.pendingChanges.map((c) => <div key={c.id} className="sub2">{c.label}: {c.fromValue ?? "—"} → <b>{c.toValue}</b> · {c.state.toLowerCase()}</div>)}</div> : null}

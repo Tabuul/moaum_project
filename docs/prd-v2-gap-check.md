@@ -16,7 +16,7 @@ each stands now, what else is still open from `docs/portal-gap-audit.md`, and wh
 | 2 | **FR-HR-04** an employment record cannot be created from the portal | **Closed by V510** (17 Oct): Human Resources → New Appointments makes the employment record from a form or an Excel upload, each row checked first, and sets the salary grades it names. | — | — |
 | 3 | **FR-IAM-06** single sign-on (Keycloak, MFA) coded, not deployed | **Still partial** | A deployment decision for the University (a Keycloak realm and its settings), not code. | — (University) |
 | 4 | **FR-PG-05** a PG supervisor cannot be ended or replaced, nor a panel member removed, from a screen | **Closed by V509** (17 Oct): the research desk ends or replaces a supervisor and removes a panel member, each on a date with a reason, the history kept. | — | — |
-| 5 | **FR-REG-07** overload approval and probation ceiling not configured; a registration created by an office has no screen | **Overload closed by V508**, the office-created registration by V516 (Late Registration). **The probation ceiling is still unset**: no level states `probation_max_units` on the live-shaped copy of 20 October 2026 (9 level limits, none with a ceiling). | A value for the University to set per level on Session & Semester Setup; nothing to build. | — (University) |
+| 5 | **FR-REG-07** overload approval and probation ceiling not configured; a registration created by an office has no screen | **Overload closed by V508**, the office-created registration by V516 (Late Registration). **The probation ceiling is still unset**: no level states `probation_max_units` on the live-shaped copy of 20 October 2026 (9 level limits, none with a ceiling). Since V600 Session & Semester Setup names the undergraduate levels without one, and the warning before a session's automatic start carries it as a line for attention (never holding the start). | A value for the University to set per level on Session & Semester Setup; nothing more to build. | — (University) |
 | 6 | **FR-GOV-04** cloud-residency and research-ethics screens are frameworks only | **Still planned** | `/cloud` and `/ethics` say so themselves; no live data behind them. | Low priority |
 
 ## B. Still open in the portal gap audit
@@ -60,7 +60,7 @@ Rows marked *(16 Oct)* were in the first check; the rest are changes made since 
 
 1. **PRD v2.1.** Bring section C into the document; it has grown from 11 rows to 22 since 16 October.
 2. **GAP-024.** The University's decision whether a document number alone should verify.
-3. **The probation ceiling (FR-REG-07).** The University sets a value per level on Session & Semester Setup; until then a student on probation registers up to the level's maximum.
+3. **The probation ceiling (FR-REG-07).** The University sets a value per level on Session & Semester Setup; until then a student on probation registers up to the level's maximum. V600 flags it there and in the start warning.
 4. **Single sign-on (FR-IAM-06).** A deployment decision: a Keycloak realm, its multi-factor settings and the cut-over date.
 5. **Cloud residency and research ethics (FR-GOV-04).** Wire the two framework screens to live data when the University wants them; low priority.
 
