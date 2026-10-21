@@ -55,11 +55,15 @@ export function minimumProblem(raw: string, ceiling: number | null): string | nu
  * CARRY_OVER where it carries carry-overs and deferred courses alone. The minimum (CCMAS 15, BMAS 18, or the level's) binds a
  * NORMAL registration only; the maximum binds every kind. The server decides at submission (registration.load_kind); this
  * reads the same from what the screen shows, so the meter says the right thing before the student presses SUBMIT.
+ * V615: SPILLOVER for a student past the programme's length (SP1, SP2, beyond the limit), whatever the registration holds: a
+ * spillover student registers what they still owe, at whatever units.
  */
-export type LoadKind = "NORMAL" | "CARRY_OVER" | "GST_EPS";
+export type LoadKind = "NORMAL" | "CARRY_OVER" | "GST_EPS" | "SPILLOVER";
 
-/** the kind from the current courses chosen (each with the category the screen already groups by) and the carry-over units */
-export function loadKind(current: { category: string }[], carryUnits: number): LoadKind {
+/** the kind from the current courses chosen (each with the category the screen already groups by), the carry-over units and the
+ *  student's spillover state as the cohort engine reads it */
+export function loadKind(current: { category: string }[], carryUnits: number, spilloverState?: string | null): LoadKind {
+  if (spilloverState && spilloverState.startsWith("SPILLOVER")) return "SPILLOVER";
   if (current.some((c) => c.category !== "GST" && c.category !== "CARRY_OVER")) return "NORMAL";
   if (current.some((c) => c.category === "GST")) return "GST_EPS";
   return carryUnits > 0 ? "CARRY_OVER" : "NORMAL";
@@ -70,6 +74,9 @@ export const minimumBinds = (kind: LoadKind): boolean => kind === "NORMAL";
 
 /** the words the meter shows for a registration below the minimum that the minimum does not bind */
 export function waivedWords(kind: LoadKind): { label: string; hint: string } | null {
+  if (kind === "SPILLOVER") {
+    return { label: "Spillover registration", hint: "Spillover registration permitted: past your programme's length you register the courses you still owe, whatever their units. The maximum still applies. Your examination card follows once it is submitted." };
+  }
   if (kind === "CARRY_OVER") {
     return { label: "Carry-over registration", hint: "Carry-over registration permitted: the minimum credit load applies to a registration with current courses of your programme, not to carry-overs alone. Your examination card and GST & EPS permit follow once it is submitted." };
   }

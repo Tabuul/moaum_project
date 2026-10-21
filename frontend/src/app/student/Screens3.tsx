@@ -155,7 +155,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       + chosenExtras.filter((e) => isCarry(e.entryType)).reduce((n, e) => n + e.units, 0);
   const currentUnits = total - carryUnits;
   const kind: LoadKind = locked && v.loadKind ? v.loadKind
-    : loadKind([...chosenMenu.map((m) => ({ category: menuCategory(m) })), ...chosenExtras.map((e) => ({ category: courseCategory(e) }))], carryUnits);
+    : loadKind([...chosenMenu.map((m) => ({ category: menuCategory(m) })), ...chosenExtras.map((e) => ({ category: courseCategory(e) }))], carryUnits, v.spilloverState);
   const waived = total < min && !minimumBinds(kind) ? waivedWords(kind) : null;
   const ok = (total >= min || !minimumBinds(kind)) && total <= max;
   const meter: { col: string; bg: string; fg: string; lab: string; hint: string } = total < min && waived ? { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: waived.label, hint: waived.hint }

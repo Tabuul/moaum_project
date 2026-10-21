@@ -99,6 +99,8 @@ export interface RegistrationView {
   closed?: { code: string; words: string; remedy: string } | null;
   /** V597: the kind of load the saved registration carries — the minimum binds NORMAL only (see lib/registration-load) */
   loadKind?: import("./registration-load").LoadKind | null;
+  /** V615: the cohort engine's spillover state (SPILLOVER_YEAR_1 …): a student in spillover is not held to the minimum */
+  spilloverState?: string | null;
   /** V491: how the semester's registration is approved, whether the student may reset it (and why not), what holds it for review */
   approval?: import("./registration-approval").ApprovalRule;
   reset?: import("./registration-approval").ResetState;

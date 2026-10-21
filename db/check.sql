@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 445
+\set EXPECTED 446
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22596,6 +22596,69 @@ BEGIN
                versions, portal->'lines'->0->>'status'));
 END $$;
 
+-- ── V615. A student in spillover is not held to the minimum credit load. On a made-up four-year programme, a 400 Level student in
+--          the fifth session (SP1: registered at 400 last session) registers one 1-unit current course of the final level: the
+--          kind reads SPILLOVER, the registration is submitted, the student still reads SP1, and is not on the below-minimum list; a student in the final year (within the length) with
+--          the same course is refused REG_UNITS_BELOW_MINIMUM as before and is listed. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2193; v_prog text; v_dept text; v_fac text; cur text; msg text;
+    sp uuid := gen_random_uuid(); fy uuid := gen_random_uuid(); r_sp uuid := gen_random_uuid(); r_fy uuid := gen_random_uuid();
+    o_one uuid := gen_random_uuid(); st_sp text; st_fy text; st_after text; k_sp text; k_fy text; sub_sp text; reg_sp text; e_fy text; listed text; lim record;
+BEGIN
+  BEGIN   -- the check's own session, programme, course and students, undone at the end
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V615', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2193/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V615', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZS 615', 'Check spillover one unit', 1, 1, 400, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_one, 'ZZS 615', cur, 1);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (sp, 'MOAUM/ADM/93/615001', 'MOAUM/ZZS/93/6151', 'CHECKV615', 'Spillover', v_prog, 'UTME', format('%s/%s', y - 4, y - 3), 100, 400, 'ACTIVE', now()),
+        (fy, 'MOAUM/ADM/93/615002', 'MOAUM/ZZS/93/6152', 'CHECKV615', 'Final year', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now());
+    -- the spillover student registered at 400 last session (the final year on the register, V595)
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at)
+    VALUES (gen_random_uuid(), sp, format('%s/%s', y - 1, y), 1, 400, 'APPROVED', now());
+    SELECT spillover_state INTO st_sp FROM people.academic_position WHERE student_id = sp;
+    SELECT spillover_state INTO st_fy FROM people.academic_position WHERE student_id = fy;
+    -- the school fees stated and paid in full by each, so only the load is in question
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (cur, 'School fees', 100000, 400, v_prog);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(x, cur, 100000, NULL), 'Bank transfer', 'CHECK V615') FROM unnest(ARRAY[sp, fy]) x;
+    SELECT * INTO lim FROM registration.unit_rule(fy, 400, cur, 1);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (r_sp, sp, cur, 1, 400, 'DRAFT'), (r_fy, fy, cur, 1, 400, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r_sp, o_one, 1, 'CURRENT', 'REGISTERED'), (r_fy, o_one, 1, 'CURRENT', 'REGISTERED');
+    k_sp := registration.load_kind(r_sp); k_fy := registration.load_kind(r_fy);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', sp::text, true);
+    sub_sp := registration.student_submit(r_sp);
+    SELECT status INTO reg_sp FROM registration.course_registration WHERE id = r_sp;
+    SELECT spillover_state INTO st_after FROM people.academic_position WHERE student_id = sp;
+    PERFORM set_config('moaum.actor_id', fy::text, true);
+    BEGIN PERFORM registration.student_submit(r_fy); e_fy := 'accepted';
+    EXCEPTION WHEN check_violation THEN e_fy := split_part(SQLERRM, ':', 1); END;
+    SELECT string_agg(b.matric_no, ',' ORDER BY b.matric_no) INTO listed FROM registration.below_minimum(cur, 1) b WHERE b.student_id IN (sp, fy);
+    RAISE EXCEPTION 'CHECK_V615_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V615_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V615: a student in spillover (SP1) submits one 1-unit course below the minimum and is not on the below-minimum list; a final-year student with the same course is refused as before',
+        coalesce(lim.min_units > 1 AND st_sp = 'SPILLOVER_YEAR_1' AND st_fy NOT LIKE 'SPILLOVER%' AND k_sp = 'SPILLOVER' AND k_fy = 'NORMAL'
+             AND sub_sp IN ('submitted', 'approved') AND reg_sp IN ('SUBMITTED', 'APPROVED') AND st_after = 'SPILLOVER_YEAR_1' AND e_fy = 'REG_UNITS_BELOW_MINIMUM'
+             AND listed = 'MOAUM/ZZS/93/6152', false),
+        format('minimum %s | positions %s %s | kinds %s %s | spillover %s %s, then %s | final year %s | listed %s', lim.min_units, st_sp, st_fy, k_sp, k_fy, sub_sp, reg_sp, st_after, e_fy, listed));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

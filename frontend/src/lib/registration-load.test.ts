@@ -32,6 +32,13 @@ test("the minimum binds a registration with a current course of the programme, n
   assert.equal(loadKind([], 0), "NORMAL");
   assert.equal(minimumBinds("NORMAL"), true);
   assert.equal(minimumBinds("CARRY_OVER"), false);
+  // V615: a student in spillover, whatever the registration holds; one within the programme's length as before
+  assert.equal(loadKind([{ category: "CORE" }], 0, "SPILLOVER_YEAR_1"), "SPILLOVER");
+  assert.equal(loadKind([], 0, "SPILLOVER_LIMIT_REACHED"), "SPILLOVER");
+  assert.equal(loadKind([{ category: "CORE" }], 0, "NORMAL"), "NORMAL");
+  assert.equal(loadKind([{ category: "CORE" }], 0, null), "NORMAL");
+  assert.equal(minimumBinds("SPILLOVER"), false);
+  assert.match(waivedWords("SPILLOVER")?.hint ?? "", /^Spillover registration permitted/);
   assert.equal(minimumBinds("GST_EPS"), false);
 });
 

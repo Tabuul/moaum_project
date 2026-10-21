@@ -194,5 +194,18 @@ class CarryOverRegistrationIT {
         assertThat(entries).hasSize(1);
         assertThat(entries.get(0)).containsEntry("entryType", "CARRYOVER").containsEntry("courseCode", carryCode);
         assertThat(named.getBody()).containsEntry("loadKind", "CARRY_OVER");
+
+        // V615: the same student read in spillover (SP1): one 3-unit current course beside the carry-over (6 of 15) is submitted —
+        // the minimum does not bind a spillover student. The position is set just before the submission (this database keeps no
+        // current session for the engine to count from, and a registration's change reads the position again)
+        reset(token);
+        assertThat(save(token, List.of(coreOffering)).getStatusCode().value()).isEqualTo(200);
+        jdbc.sql("UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_1', spillover_years = 1 WHERE student_id = :s").param("s", s).update();
+        assertThat(view(token)).containsEntry("loadKind", "SPILLOVER").containsEntry("spilloverState", "SPILLOVER_YEAR_1");
+        jdbc.sql("UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_1', spillover_years = 1 WHERE student_id = :s").param("s", s).update();
+        ResponseEntity<Map> spill = submit(token);
+        assertThat(spill.getStatusCode().value()).as(String.valueOf(spill.getBody())).isEqualTo(200);
+        assertThat(((Map<String, Object>) spill.getBody().get("registration"))).containsEntry("units", 6);
+        assertThat(String.valueOf(((Map<String, Object>) spill.getBody().get("registration")).get("status"))).isIn("SUBMITTED", "APPROVED");
     }
 }

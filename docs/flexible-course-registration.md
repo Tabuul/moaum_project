@@ -159,6 +159,26 @@ registration's kind (`loadKind`). Nothing is stored: the kind is read from the e
 published results and go on the draft at every level, SP1 and SP2 included — a carry-over never makes a student SP1 (that is the
 cohort engine's, §10 of student-cohorts.md). Tests: `CarryOverRegistrationIT`, check.sql's V597 block.
 
+### A student in spillover is not held to the minimum (V615)
+
+A 400 Level SP1 student who still owed one 1-unit course of the final level could not submit it. The course reads as a current
+course of the programme, so the registration was `NORMAL`, the minimum bound it and the screen showed "Minimum not met". A
+student past the programme's length registers what they still owe, whatever its units:
+
+| Kind | When | The minimum |
+|---|---|---|
+| `SPILLOVER` | the student is in spillover as the cohort engine reads it (`people.academic_position.spillover_state`: SP1, SP2, … or beyond the limit), whatever the registration holds | does not bind |
+
+- `registration.load_kind` reads `SPILLOVER` before anything else. `registration.submit_checks` and
+  `registration.below_minimum` are unchanged, and since they ask the minimum of `NORMAL` alone, a spillover student is neither
+  refused nor listed.
+- The maximum, the probation ceiling, the SIWES semester, the fees stated and cleared, and the GST fee gate still bind.
+- The registration screen receives the student's `spilloverState` and says "Spillover registration permitted" instead of "Minimum
+  not met", with SUBMIT open.
+- A student within the programme's length (the final year included) is held to the minimum as before.
+- Tests: check.sql's V615 block (an SP1 student's 1-unit course submitted, the final-year student's refused);
+  `CarryOverRegistrationIT` (6 of 15 submitted once the student reads SP1).
+
 ## The rule
 
 **Course Registration Options** (`/registration/options`) holds the rule. It is set by the Academic Office, the Registry,
