@@ -204,6 +204,8 @@ once allowed, left those students' entries off their register and lost on the ne
   unticks goes. The register lists a course registered under a binding since changed or removed beside the menu, "registered
   before your programme's structure changed; kept as registered", counted and sent on save; a course already on the
   registration is grouped and counted as registered, not as the menu reads its binding today.
+  A course dropped stays on the registration as dropped through a save that leaves it out, and is restored in place when
+  chosen again — the support desk's restore and the student's own tick (V621).
 - **Unbinding is never refused for registered students.** `catalogue.unbind_offer` and both doors (`DELETE /structure/bind`,
   which now goes through it, and `DELETE /courses/{code}/offers`) end the binding and keep it on `course_offer_history` with
   the registrations it carried (`ENDED`), or none (`REMOVED`).
@@ -213,4 +215,5 @@ once allowed, left those students' entries off their register and lost on the ne
   many keep theirs. The course's own units corrected still reach the registrations not yet examined (V465), and an examined
   class is corrected through the amendment chain as before.
 
-Tests: `check.sql` V620 (and the V464 property carries the change by the desk's act); `BindingKeptForRegisteredIT` through the API.
+Tests: `check.sql` V620 (the drop and restore since V621; the V464 property carries the change by the desk's act);
+`BindingKeptForRegisteredIT` and `SupportResolutionIT` through the API.

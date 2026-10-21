@@ -22804,7 +22804,7 @@ DO $$
 DECLARE
     S constant text := '9620/9621'; v_prog text; v_dept text; v_fac text; st uuid := gen_random_uuid(); off uuid := gen_random_uuid();
     reg uuid; u1 int; b1 text; t1 text; u2 int; u_carried int; b3 text; cat text; v_elec1 boolean; v_state text; n_hist bigint; carried bigint;
-    n_kept int; u3 int; b4 text; v_elec2 boolean; n_after int; msg text;
+    n_kept int; u3 int; b4 text; v_elec2 boolean; n_dropped_kept int; st_restored text; u4 int; b5 text; n_after int; msg text;
 BEGIN
   BEGIN
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
@@ -22846,20 +22846,27 @@ BEGIN
     SELECT count(*) INTO n_kept FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off AND e.status = 'REGISTERED';
     SELECT e.units, e.basis INTO u3, b4 FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
     v_elec2 := registration.is_elective_for(st, 'ZZB 620');
+    -- V621: dropped, the entry stays on the registration through a save that leaves it out; chosen again, it is restored in place
+    UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = reg AND offering_id = off;
+    PERFORM registration.student_choose(reg, '{}'::uuid[]);
+    SELECT count(*) FILTER (WHERE e.status = 'DROPPED') INTO n_dropped_kept FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
+    PERFORM registration.student_choose(reg, ARRAY[off]);
+    SELECT e.status, e.units, e.basis INTO st_restored, u4, b5 FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
     PERFORM registration.student_choose(reg, '{}'::uuid[]);
     SELECT count(*) INTO n_after FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
-    msg := format('chosen %s/%s/%s | units after the binding edit %s, carried by the desk %s | rebound core: basis %s category %s elective %s | unbind %s history %s carried %s | saved again kept %s units %s basis %s elective %s | unticked %s',
-                  u1, b1, t1, u2, u_carried, b3, cat, v_elec1, v_state, n_hist, carried, n_kept, u3, b4, v_elec2, n_after);
+    msg := format('chosen %s/%s/%s | units after the binding edit %s, carried by the desk %s | rebound core: basis %s category %s elective %s | unbind %s history %s carried %s | saved again kept %s units %s basis %s elective %s | dropped kept %s restored %s/%s/%s | unticked %s',
+                  u1, b1, t1, u2, u_carried, b3, cat, v_elec1, v_state, n_hist, carried, n_kept, u3, b4, v_elec2, n_dropped_kept, st_restored, u4, b5, n_after);
     RAISE EXCEPTION 'the V620 check undoes its writes';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
     IF msg <> 'the V620 check undoes its writes' THEN RAISE; END IF;
   END;
-  PERFORM pg_temp.assert('V620: a binding removed or edited never reaches a registered student — the entry keeps its units, its type and its basis through a units edit (the desk''s own act carries it), a rebinding and the removal, which is not refused and goes on the record with the registration carried; the choice saved again keeps the entry, unticked it goes',
+  PERFORM pg_temp.assert('V620: a binding removed or edited never reaches a registered student — the entry keeps its units, its type and its basis through a units edit (the desk''s own act carries it), a rebinding and the removal, which is not refused and goes on the record with the registration carried; the choice saved again keeps the entry, unticked it goes; dropped, it stays through a save and is restored in place when chosen again (V621)',
       coalesce(u1 = 2 AND b1 = 'Elective' AND t1 = 'ELECTIVE' AND u2 = 2 AND u_carried = 1
                AND b3 = 'Elective' AND cat = 'ELECTIVE' AND v_elec1
                AND v_state = 'ENDED' AND n_hist = 1 AND carried = 1
-               AND n_kept = 1 AND u3 = 1 AND b4 = 'Elective' AND v_elec2 AND n_after = 0, false),
+               AND n_kept = 1 AND u3 = 1 AND b4 = 'Elective' AND v_elec2
+               AND n_dropped_kept = 1 AND st_restored = 'REGISTERED' AND u4 = 1 AND b5 = 'Elective' AND n_after = 0, false),
       msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
