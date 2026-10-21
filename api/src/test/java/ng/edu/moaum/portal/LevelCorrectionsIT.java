@@ -119,6 +119,10 @@ class LevelCorrectionsIT {
         assertThat(((Number) at400.getBody().get("total")).intValue()).isEqualTo(2);
         assertThat(((Number) it.get(academic, "/api/v1/cohorts/levels?q=" + tag + "&spillover=SPILLOVER_YEAR_1").getBody().get("total")).intValue()).isEqualTo(1);
         assertThat(((Number) it.get(academic, "/api/v1/cohorts/levels?q=" + tag + "&spillover=NONE").getBody().get("total")).intValue()).isEqualTo(1);
+        // V598: by the level on record — the one at 200 (should be at 300), not the two at 100
+        assertThat(((Number) it.get(academic, "/api/v1/cohorts/levels?q=" + tag + "&current=200").getBody().get("total")).intValue()).isEqualTo(1);
+        assertThat(((Number) it.call(academic, HttpMethod.POST, "/api/v1/cohorts/levels/apply",
+                Map.of("q", tag, "fromLevel", 100, "bases", List.of("SPILLOVER", "REGISTRATION", "ARITHMETIC"))).getBody().get("selected")).intValue()).isEqualTo(2);
         Map<String, Object> all = it.get(academic, "/api/v1/cohorts/levels?q=" + tag).getBody();
         assertThat((List<Map<String, Object>>) all.get("byLevel")).extracting(x -> x.get("level") + ":" + x.get("n")).containsExactly("300:1", "400:2");
         assertThat((List<Map<String, Object>>) all.get("bySpillover")).extracting(x -> x.get("spillover") + ":" + x.get("n"))

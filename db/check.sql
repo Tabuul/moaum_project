@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 429
+\set EXPECTED 430
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21516,6 +21516,52 @@ BEGIN
                lim.min_units, k1, k2, k3, k4, sub1, st1, sub3, st3, e2, e4, listed));
 END $$;
 
+-- ── V598. Five-year programmes at final level 500. The six programmes end at 500 (finance.final_level reads it); a made-up
+--          Nursing student at 400 is offered 100 to 500 and progressed to 500, and at 500 is at the final level; a made-up student
+--          of a four-year programme at 400 is at the final level; a Nursing student in the fifth session at 400 is found by the
+--          level on record (400) and the level the engine computes (500), and not by another level on record. The block undoes
+--          its writes ──
+DO $$
+DECLARE
+    y int := 2394; finals text; o400 jsonb; o500 jsonb; o4yr jsonb; n1 uuid := gen_random_uuid(); n2 uuid := gen_random_uuid(); f4 uuid := gen_random_uuid();
+    at400 record; at300 record; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V598', true);
+    finals := (SELECT string_agg(code || ':' || finance.final_level(code), ',' ORDER BY code) FROM ref.programme
+                WHERE code IN ('C35147', 'C30468', 'C49411', 'C49412', 'C51900', 'C52395'));
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2394/01' WHERE name = format('%s/%s', y, y + 1);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (n1, 'MOAUM/ADM/94/598001', 'MOAUM/ZZN/94/5981', 'CHECKV598', 'Nursing Fifth', 'C35147', 'UTME', format('%s/%s', y - 4, y - 3), 100, 400, 'ACTIVE', now()),
+        (n2, 'MOAUM/ADM/94/598002', 'MOAUM/ZZN/94/5982', 'CHECKV598', 'Nursing Final', 'C35147', 'UTME', format('%s/%s', y - 4, y - 3), 100, 500, 'ACTIVE', now()),
+        (f4, 'MOAUM/ADM/94/598004', 'MOAUM/ZZN/94/5984', 'CHECKV598', 'Four Year', 'C00023', 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now());
+    o400 := people.level_options(n1);
+    o500 := people.level_options(n2);
+    o4yr := people.level_options(f4);
+    SELECT * INTO at400 FROM people.apply_level_corrections(NULL, ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, 'C35147', NULL, NULL, 500, true, 500, NULL, 'CHECKV598', 400);
+    SELECT * INTO at300 FROM people.apply_level_corrections(NULL, ARRAY['SPILLOVER', 'REGISTRATION', 'ARITHMETIC'], NULL, NULL, 'C35147', NULL, NULL, 500, true, 500, NULL, 'CHECKV598', 300);
+    RAISE EXCEPTION 'the V598 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V598 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V598: the five-year programmes end at 500 — a Nursing student progresses 400 to 500 and stops there, a four-year one stops at 400, and the level on record finds the correction',
+        coalesce(finals = 'C30468:500,C35147:500,C49411:500,C49412:500,C51900:500,C52395:500'
+                 AND o400->'levels' = '[100, 200, 300, 400, 500]'::jsonb AND (o400->>'nextLevel')::int = 500 AND o400->>'progressRefusal' IS NULL
+                 AND (o500->>'finalLevel')::int = 500 AND o500->>'nextLevel' IS NULL AND o500->>'progressRefusal' LIKE 'LEVEL_AT_FINAL%'
+                 AND (o4yr->>'finalLevel')::int = 400 AND o4yr->>'nextLevel' IS NULL AND o4yr->>'progressRefusal' LIKE 'LEVEL_AT_FINAL%'
+                 AND at400.selected = 1 AND at300.selected = 0, false),
+        format('finals %s | Nursing at 400: levels %s next %s refusal %s | at 500: final %s next %s %s | four-year at 400: final %s next %s %s | found at 400 %s, at 300 %s',
+               finals, o400->'levels', o400->>'nextLevel', o400->>'progressRefusal', o500->>'finalLevel', o500->>'nextLevel', left(o500->>'progressRefusal', 15),
+               o4yr->>'finalLevel', o4yr->>'nextLevel', left(o4yr->>'progressRefusal', 15), at400.selected, at300.selected));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

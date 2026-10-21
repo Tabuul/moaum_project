@@ -395,3 +395,32 @@ the migration in one set-based pass; the triggers keep them from there.
 
 - **Tests:** check.sql's V595 block (late final year SP1, enrolment-only SP2, no final-level record as before, final year now
   NORMAL, an early wrong level ignored, a deferment after the final year counted); `SpilloverFinalYearIT`.
+
+## 19. Five-year programmes at 500, and level corrections by the level on record (V598)
+
+Every level-dependent part of the portal already reads the programme's own final level (`ref.programme.final_level`):
+
+- the levels Level Management offers (100 up to the final level, never beyond) and the next level it progresses to;
+- the session rollover (`people.roll_over_session` stops at the final level);
+- the cohort engine's expected completion and SP1/SP2, which start only after the programme's whole length and never because
+  of a carry-over;
+- graduation candidates at the final level;
+- the fee classification (`finance.final_level`).
+
+At V331 the lengths were seeded from the rule then in force: four years unless Law, Pharmacy or Medicine. On the Academic
+Office's word (21 October 2026) six programmes the University runs over five years now end at 500: Nursing (C35147), Urban and
+Regional Planning (C30468), Radiography and Radiation Science (C49411), Medical Laboratory Science (C49412), Architecture
+(C51900) and Environmental Management and Toxicology (C52395). They are set in one statement, so every position is recomputed
+once.
+
+On the live-shaped copy, the engine then places 359 Nursing, 293 Environmental Management and Toxicology, 128 Radiography,
+79 URP and 31 Medical Laboratory Science students at 500, and many spillover students a year later (a 2020/2021 entrant on a
+five-year programme finished in 2024/2025 and is SP1 in 2025/2026). The records below the computed level are corrected on
+Level corrections, which now also filters by **Level on record** ("at 400, should be at 500").
+
+The Bursary states the 500-level fee lines these programmes lack; the run's "Fee lines missing at the corrected level" (§16)
+lists them.
+
+Other lengths are set on Policy & sessions → programme length (`ref.set_programme_length`) by the Registry.
+
+- **Tests:** check.sql's V598 block; `LevelCorrectionsIT` (by the level on record).

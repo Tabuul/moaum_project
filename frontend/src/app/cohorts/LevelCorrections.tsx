@@ -49,6 +49,7 @@ const fmt = (v: number) => Number(v).toLocaleString("en-GB");
 export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: { fac: string; dept: string; canApply: boolean; canStateFees?: boolean }) {
   const [basis, setBasis] = useState<"" | Basis>("");
   const [lvl, setLvl] = useState("");
+  const [cur, setCur] = useState("");   // V598: the level on record
   const [spill, setSpill] = useState<Spill>("");
   const [counted, setCounted] = useState<Counted | null>(null);
   const [q, setQ] = useState("");
@@ -69,11 +70,12 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
     if (basis) qs.set("basis", basis);
     if (search) qs.set("q", search);
     if (lvl) qs.set("level", lvl);
+    if (cur) qs.set("current", cur);
     if (spill) qs.set("spillover", spill);
     qs.set("page", String(p));
     qs.set("size", String(size));
     return `/api/bff/api/v1/cohorts/levels?${qs.toString()}`;
-  }, [fac, dept, basis, search, lvl, spill]);
+  }, [fac, dept, basis, search, lvl, spill, cur]);
 
   // the page is read after it paints, and again after a correction (tick)
   useEffect(() => {
@@ -95,12 +97,12 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
   const safe = count("SPILLOVER") + count("REGISTRATION");
   const pages = data ? Math.max(1, Math.ceil(data.total / data.size)) : 1;
   // V593: a filter beyond the faculty or department narrows "every one" to the ones found
-  const filtered = Boolean(lvl || spill || search || basis);
+  const filtered = Boolean(lvl || spill || search || basis || cur);
 
   /** V593: what "every one found" is — the filters on the screen, read again by the server when it applies */
   function foundBody(withCounted: boolean) {
     const bases = basis ? [basis] : withCounted ? ["SPILLOVER", "REGISTRATION", "ARITHMETIC"] : ["SPILLOVER", "REGISTRATION"];
-    return { bases, fac: fac || null, dept: dept || null, toLevel: lvl ? Number(lvl) : null, spillover: spill || null, q: search || null };
+    return { bases, fac: fac || null, dept: dept || null, toLevel: lvl ? Number(lvl) : null, spillover: spill || null, q: search || null, fromLevel: cur ? Number(cur) : null };
   }
   async function count2(withCounted: boolean) {
     setCounted(null);
@@ -155,7 +157,7 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
       rows.map((r) => [`${r.surname}, ${r.other_names}`, r.matric_no ?? "", r.programme, r.department, r.faculty, r.current_level, r.proposed_level, BASIS[r.basis][0],
         spilloverWord(r.spillover_state)?.long ?? "", r.effective_cohort ?? "", r.expected_completion ?? "",
         r.last_registration_session ? `${r.last_registration_session} at ${r.last_registration_level}` : ""]),
-      { sheetName: "Level corrections", serial: docSerial("LVL"), sub: [basis ? BASIS[basis][0] : "Every basis", lvl ? `should be at ${lvl} Level` : null, spill ? SPILL[spill] : null, search ? `"${search}"` : null].filter(Boolean).join(" · ") });
+      { sheetName: "Level corrections", serial: docSerial("LVL"), sub: [basis ? BASIS[basis][0] : "Every basis", cur ? `at ${cur} Level` : null, lvl ? `should be at ${lvl} Level` : null, spill ? SPILL[spill] : null, search ? `"${search}"` : null].filter(Boolean).join(" · ") });
     downloadBlob(blob, "level-corrections.xlsx");
   }
 
@@ -184,6 +186,12 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
               <select id="lv-basis" className="ctl" value={basis} onChange={(e) => { setBasis(e.target.value as "" | Basis); setPage(1); }}>
                 <option value="">Every basis</option>
                 {(Object.keys(BASIS) as Basis[]).map((b) => <option key={b} value={b}>{BASIS[b][0]}</option>)}
+              </select>
+            </Field>
+            <Field id="lv-cur" label="Level on record" style={{ flex: "1 1 160px" }}>
+              <select id="lv-cur" className="ctl" value={cur} onChange={(e) => { setCur(e.target.value); setPage(1); setChosen(new Set()); }}>
+                <option value="">Any level</option>
+                {[100, 200, 300, 400, 500].map((l) => <option key={l} value={String(l)}>{l} Level</option>)}
               </select>
             </Field>
             <Field id="lv-level" label="Should be at" style={{ flex: "1 1 160px" }}>
@@ -265,7 +273,7 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
           foot={<><Btn kind="ghost" disabled={busy} onClick={() => setApply(null)}>Cancel</Btn><Btn kind="primary" disabled={apply.mode === "found" && !counted?.selected} onClick={() => run()}>{busy ? progress ?? "Correcting…" : apply.mode === "found" && counted ? `Correct ${fmt(counted.selected)} levels` : "Correct the levels"}</Btn></>}>
           {apply.mode === "found" ? (
             <>
-              <Note kind="info" title={[lvl ? `Should be at ${lvl} Level` : null, spill ? SPILL[spill] : null, basis ? BASIS[basis][0] : null, search ? `"${search}"` : null, fac || dept ? "within the faculty or department chosen" : null].filter(Boolean).join(" · ") || "Every one found"}>
+              <Note kind="info" title={[cur ? `At ${cur} Level` : null, lvl ? `Should be at ${lvl} Level` : null, spill ? SPILL[spill] : null, basis ? BASIS[basis][0] : null, search ? `"${search}"` : null, fac || dept ? "within the faculty or department chosen" : null].filter(Boolean).join(" · ") || "Every one found"}>
                 {counted ? <>Found {fmt(counted.selected)}: {fmt(counted.spillover)} past the programme&rsquo;s length, {fmt(counted.registration)} by their own registration
                   {counted.arithmetic ? `, ${fmt(counted.arithmetic)} by the count of sessions alone` : ""}. {fmt(counted.selected)} will be corrected.</> : "Counting…"}
                 {" "}Each batch is read again from the cohort engine when it is applied: a record changed since, or no longer below its level, is left alone. No level is lowered.
