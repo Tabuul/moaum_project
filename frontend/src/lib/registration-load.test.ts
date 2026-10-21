@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changeWord, minimumProblem } from "./registration-load.ts";
+import { changeWord, loadKind, loadSummary, minimumBinds, minimumProblem, waivedWords } from "./registration-load.ts";
 
 test("a minimum is a whole number from 1 to the lowest maximum", () => {
   assert.equal(minimumProblem("15", 24), null);
@@ -19,4 +19,27 @@ test("a change in the log reads in words", () => {
   assert.equal(changeWord("COURSE_REGISTRATION_MIN_CREDIT_CHANGED"), "Changed");
   assert.equal(changeWord("COURSE_REGISTRATION_MIN_CREDIT_SET"), "Set");
   assert.equal(changeWord("COURSE_REGISTRATION_MIN_CREDIT_REMOVED"), "Removed");
+});
+
+
+test("the minimum binds a registration with a current course of the programme, not carry-overs or GST/EPS courses alone (V597)", () => {
+  assert.equal(loadKind([], 3), "CARRY_OVER");
+  assert.equal(loadKind([], 5), "CARRY_OVER");
+  assert.equal(loadKind([{ category: "GST" }], 0), "GST_EPS");
+  assert.equal(loadKind([{ category: "GST" }], 3), "GST_EPS");
+  assert.equal(loadKind([{ category: "CORE" }], 3), "NORMAL");
+  assert.equal(loadKind([{ category: "ELECTIVE" }, { category: "GST" }], 0), "NORMAL");
+  assert.equal(loadKind([], 0), "NORMAL");
+  assert.equal(minimumBinds("NORMAL"), true);
+  assert.equal(minimumBinds("CARRY_OVER"), false);
+  assert.equal(minimumBinds("GST_EPS"), false);
+});
+
+test("the meter names the waiver and the summary keeps current courses and carry-overs apart", () => {
+  assert.equal(waivedWords("NORMAL"), null);
+  assert.equal(waivedWords("CARRY_OVER")?.label, "Carry-over registration");
+  assert.match(waivedWords("CARRY_OVER")?.hint ?? "", /not to carry-overs alone/);
+  assert.equal(waivedWords("GST_EPS")?.label, "GST/EPS registration");
+  assert.equal(loadSummary(12, 3), "Current courses 12 CU · Carry-overs 3 CU");
+  assert.equal(loadSummary(18, 0), "Current courses 18 CU");
 });

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 428
+\set EXPECTED 429
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21438,6 +21438,82 @@ BEGIN
                  AND reach_a = '-:checkv596a@example.com' AND record_b = 'checkhelpb.own@example.com:false:08035960002', false),
         format('a %s | b %s leaked %s | description %s | saved %s / %s | record a %s reach %s | record b %s',
                shown_a, shown_b, leaked, descr, saved_a, saved_b, record_a, reach_a, record_b));
+END $$;
+
+-- ── V597. The minimum credit load binds a registration with a current course of the programme: one of a single 3-unit carry-over
+--          is submitted (and is not on the Academic Office's below-minimum list), one of a single GST course likewise, while one
+--          current core course of 3 units is refused REG_UNITS_BELOW_MINIMUM as before, and so is a carry-over beside a current
+--          course below the minimum; the kind of load is read from the entries. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2197; v_prog text; v_dept text; v_fac text; cur text; msg text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
+    r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); r3 uuid := gen_random_uuid(); r4 uuid := gen_random_uuid();
+    o_core uuid := gen_random_uuid(); o_carry uuid := gen_random_uuid(); o_gst uuid := gen_random_uuid();
+    k1 text; k2 text; k3 text; k4 text; sub1 text; sub3 text; e2 text; e4 text; st1 text; st3 text; listed text; lim record;
+BEGIN
+  BEGIN   -- the check's own session, programme, courses and students, undone at the end
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V597', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 4, y) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2197/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V597', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZQ 597', 'Check load core', 3, 1, 400, v_dept, 'Core', 'LIVE'), ('ZZQ 397', 'Check load carried', 3, 1, 300, v_dept, 'Core', 'LIVE'),
+        ('GST 597', 'Check load general studies', 2, 1, 100, v_dept, 'GST', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_core, 'ZZQ 597', cur, 1), (o_carry, 'ZZQ 397', cur, 1), (o_gst, 'GST 597', cur, 1);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/97/597001', 'MOAUM/ZZQ/97/5971', 'CHECKV597', 'Carry-over only', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/97/597002', 'MOAUM/ZZQ/97/5972', 'CHECKV597', 'One current', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/97/597003', 'MOAUM/ZZQ/97/5973', 'CHECKV597', 'GST only', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now()),
+        (s4, 'MOAUM/ADM/97/597004', 'MOAUM/ZZQ/97/5974', 'CHECKV597', 'Carry-over beside', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now());
+    -- the school fees stated and paid in full by each, so only the load is in question
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (cur, 'School fees', 100000, 400, v_prog);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(x, cur, 100000, NULL), 'Bank transfer', 'CHECK V597') FROM unnest(ARRAY[s1, s2, s3, s4]) x;
+    SELECT * INTO lim FROM registration.unit_rule(s1, 400, cur, 1);
+    -- s1: a 3-unit carry-over alone; s2: one 3-unit current core course; s3: one 2-unit GST course; s4: the carry-over beside a current course
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+        (r1, s1, cur, 1, 400, 'DRAFT'), (r2, s2, cur, 1, 400, 'DRAFT'), (r3, s3, cur, 1, 400, 'DRAFT'), (r4, s4, cur, 1, 400, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES
+        (r1, o_carry, 3, 'CARRYOVER', 'REGISTERED'), (r2, o_core, 3, 'CURRENT', 'REGISTERED'), (r3, o_gst, 2, 'CURRENT', 'REGISTERED'),
+        (r4, o_carry, 3, 'CARRYOVER', 'REGISTERED'), (r4, o_core, 3, 'CURRENT', 'REGISTERED');
+    k1 := registration.load_kind(r1); k2 := registration.load_kind(r2); k3 := registration.load_kind(r3); k4 := registration.load_kind(r4);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', s1::text, true);
+    sub1 := registration.student_submit(r1);
+    SELECT status INTO st1 FROM registration.course_registration WHERE id = r1;
+    PERFORM set_config('moaum.actor_id', s3::text, true);
+    sub3 := registration.student_submit(r3);
+    SELECT status INTO st3 FROM registration.course_registration WHERE id = r3;
+    PERFORM set_config('moaum.actor_id', s2::text, true);
+    BEGIN PERFORM registration.student_submit(r2); e2 := 'accepted';
+    EXCEPTION WHEN check_violation THEN e2 := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', s4::text, true);
+    BEGIN PERFORM registration.student_submit(r4); e4 := 'accepted';
+    EXCEPTION WHEN check_violation THEN e4 := split_part(SQLERRM, ':', 1); END;
+    SELECT string_agg(b.matric_no, ',' ORDER BY b.matric_no) INTO listed FROM registration.below_minimum(cur, 1) b WHERE b.student_id IN (s1, s2, s3, s4);
+    RAISE EXCEPTION 'CHECK_V597_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V597_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V597: a registration of a carry-over alone, or of a GST course alone, is submitted below the minimum and is not on the below-minimum list; one with a current course of the programme below the minimum is refused as before, a carry-over beside it or not',
+        coalesce(lim.min_units > 3 AND k1 = 'CARRY_OVER' AND k2 = 'NORMAL' AND k3 = 'GST_EPS' AND k4 = 'NORMAL'
+             AND sub1 IN ('submitted', 'approved') AND st1 IN ('SUBMITTED', 'APPROVED') AND sub3 IN ('submitted', 'approved') AND st3 IN ('SUBMITTED', 'APPROVED')
+             AND e2 = 'REG_UNITS_BELOW_MINIMUM' AND e4 = 'REG_UNITS_BELOW_MINIMUM'
+             AND listed = 'MOAUM/ZZQ/97/5972,MOAUM/ZZQ/97/5974', false),
+        format('minimum %s | kinds %s %s %s %s | carry-over only %s %s | GST only %s %s | one current %s | beside %s | listed %s',
+               lim.min_units, k1, k2, k3, k4, sub1, st1, sub3, st3, e2, e4, listed));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

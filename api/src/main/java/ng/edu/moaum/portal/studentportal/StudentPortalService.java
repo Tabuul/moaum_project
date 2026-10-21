@@ -517,6 +517,8 @@ public class StudentPortalService {
         out.put("specialisation", repo.specialisation(id));   // V483: a postgraduate student's specialisation, which decides some courses
         out.put("gst", repo.gstEntitlement(id, session));
         out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
+        // V597: what the minimum binds — a registration of carry-overs or of GST/EPS courses alone is submitted at whatever it carries
+        out.put("loadKind", repo.loadKind(id, session, semester));
         out.put("fees", fees(id, session));
         out.put("status", s.status());
         out.put("addDropOpen", repo.addDropOpen(id, session, semester));

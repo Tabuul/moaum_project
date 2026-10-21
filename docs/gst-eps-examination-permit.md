@@ -71,6 +71,11 @@ card), `GST_EPS_PERMIT_NOT_CLEARED` (no clearance scheme is asked) and `GST_EPS_
 or V491 card-on-approval rule is asked). The courses are listed for any submitted registration, so an unpaid student sees
 what the permit will carry.
 
+V597: the minimum credit load no longer keeps a registration of GST/EPS courses alone, or of carry-overs alone (a GST carry-over
+among them), from being submitted (`registration.load_kind`, flexible-course-registration.md), so the permit follows for such a
+student too — one GST course of 2 units, paid, is enough. The permit itself never asks a minimum; it reads the submitted
+registration's GST/EPS courses for the semester asked, first or second, and makes no empty permit.
+
 No payment rule was added. Finance remains the payment authority, and the course registration remains the registration
 authority.
 

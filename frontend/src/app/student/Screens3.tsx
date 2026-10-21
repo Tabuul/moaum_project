@@ -18,6 +18,7 @@ import { reasonWords } from "@/lib/registration-approval";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct } from "./common";
 import { CATEGORY_LABEL, addedAsLabel, categoryWords, courseCategory, gstOffice, inUniversityOrder, type Categorised } from "@/lib/course-order";
+import { loadKind, loadSummary, minimumBinds, waivedWords, type LoadKind } from "@/lib/registration-load";
 import { AddOtherCourse } from "./AddOtherCourse";
 import { OverloadRequest } from "./OverloadRequest";
 
@@ -98,8 +99,19 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
   // V495: the minimum is the student's curriculum's (CCMAS, BMAS), as the Directorate of ICT set it for the session and semester
   const curriculum = v.limit.basis === "CURRICULUM" ? v.limit.curriculum ?? null : null;
   const onProbation = !!v.probation && v.probation.standing === "PROBATION";
-  const ok = total >= min && total <= max;
-  const meter: { col: string; bg: string; fg: string; lab: string; hint: string } = total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Minimum not met", hint: `${curriculum ? `Your curriculum (${curriculum}) requires` : "You need"} at least ${min} credit units: ${min - total} CU remaining. Add courses to reach it.` }
+  // V597: current courses and carry-overs apart — the minimum binds a registration with a current course of the programme; one of
+  // carry-overs (and deferred courses) alone, or of GST/EPS courses alone, is submitted at whatever it carries (the server decides
+  // the same at submission, registration.load_kind)
+  const isCarry = (t: string | null | undefined) => t === "CARRYOVER" || t === "DEFERRED" || t === "REPEAT";
+  const carryUnits = locked ? registered.filter((e) => isCarry(e.entryType)).reduce((n, e) => n + e.units, 0)
+    : carry.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0) + deferredCourses.filter((m) => !heldCarry(m)).reduce((n, m) => n + m.units, 0);
+  const currentUnits = total - carryUnits;
+  const kind: LoadKind = locked && v.loadKind ? v.loadKind
+    : loadKind([...chosenMenu.map((m) => ({ category: menuCategory(m) })), ...chosenExtras.map((e) => ({ category: courseCategory(e) }))], carryUnits);
+  const waived = total < min && !minimumBinds(kind) ? waivedWords(kind) : null;
+  const ok = (total >= min || !minimumBinds(kind)) && total <= max;
+  const meter: { col: string; bg: string; fg: string; lab: string; hint: string } = total < min && waived ? { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: waived.label, hint: waived.hint }
+    : total < min ? { col: "var(--red-ink)", bg: "var(--red-bg)", fg: "var(--red-deep)", lab: "Minimum not met", hint: `${curriculum ? `Your curriculum (${curriculum}) requires` : "You need"} at least ${min} credit units: ${min - total} CU remaining. Add courses to reach it.` }
     : total > max ? { col: "var(--red)", bg: "var(--red-bg)", fg: "var(--red-ink)", lab: "Over limit", hint: onProbation && v.probation?.probation_max_units != null && max === v.probation.probation_max_units ? `On probation the maximum is ${max} units. Remove ${total - max}; the courses you owe stay.` : `Maximum is ${max} units. Remove ${total - max}, or request an overload from your HOD.` }
       : { col: "var(--green)", bg: "var(--green-bg)", fg: "var(--green-ink)", lab: "Minimum met", hint: `Minimum requirement met${curriculum ? ` for ${curriculum}` : ""}; within the permitted range for ${v.level} Level.` };
   // a registration submitted or approved, with add/drop closed, cannot be changed by the student: say what it holds, not what to add
@@ -341,6 +353,7 @@ export function Register({ s, v }: { s: Me; v: RegistrationView }) {
           </div>
           <div className="meter__bar"><div className="meter__fill" style={{ width: `${Math.min(100, Math.round((total / max) * 100))}%`, background: meter.col }} /></div>
           <div className="sub2">{meter.hint}</div>
+          <div className="sub2 tnum">{loadSummary(currentUnits, carryUnits)}</div>
         </div>
       </div></div>
       {/* V508: an overload asked of the Head of Department, and where it stands (not in the SIWES semester) */}

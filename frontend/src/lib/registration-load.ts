@@ -48,3 +48,39 @@ export function minimumProblem(raw: string, ceiling: number | null): string | nu
   if (ceiling != null && n > ceiling) return `Minimum credit units cannot exceed the maximum of ${ceiling} credit units.`;
   return null;
 }
+
+/**
+ * V597: what the minimum credit load binds. A registration is NORMAL where it carries a current course of the programme (core or
+ * elective — not a carry-over, a deferred course or a GST/EPS course); GST_EPS where its current courses are GST/EPS alone;
+ * CARRY_OVER where it carries carry-overs and deferred courses alone. The minimum (CCMAS 15, BMAS 18, or the level's) binds a
+ * NORMAL registration only; the maximum binds every kind. The server decides at submission (registration.load_kind); this
+ * reads the same from what the screen shows, so the meter says the right thing before the student presses SUBMIT.
+ */
+export type LoadKind = "NORMAL" | "CARRY_OVER" | "GST_EPS";
+
+/** the kind from the current courses chosen (each with the category the screen already groups by) and the carry-over units */
+export function loadKind(current: { category: string }[], carryUnits: number): LoadKind {
+  if (current.some((c) => c.category !== "GST" && c.category !== "CARRY_OVER")) return "NORMAL";
+  if (current.some((c) => c.category === "GST")) return "GST_EPS";
+  return carryUnits > 0 ? "CARRY_OVER" : "NORMAL";
+}
+
+/** whether the minimum binds this kind */
+export const minimumBinds = (kind: LoadKind): boolean => kind === "NORMAL";
+
+/** the words the meter shows for a registration below the minimum that the minimum does not bind */
+export function waivedWords(kind: LoadKind): { label: string; hint: string } | null {
+  if (kind === "CARRY_OVER") {
+    return { label: "Carry-over registration", hint: "Carry-over registration permitted: the minimum credit load applies to a registration with current courses of your programme, not to carry-overs alone. Your examination card and GST & EPS permit follow once it is submitted." };
+  }
+  if (kind === "GST_EPS") {
+    return { label: "GST/EPS registration", hint: "GST/EPS registration permitted: the minimum credit load applies to a registration with current courses of your programme, not to GST/EPS courses alone. Your GST & EPS permit follows once it is submitted." };
+  }
+  return null;
+}
+
+/** the summary line under the meter: current courses and carry-overs apart */
+export function loadSummary(currentUnits: number, carryUnits: number): string {
+  const cu = (n: number) => `${n} CU`;
+  return carryUnits > 0 ? `Current courses ${cu(currentUnits)} · Carry-overs ${cu(carryUnits)}` : `Current courses ${cu(currentUnits)}`;
+}

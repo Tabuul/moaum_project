@@ -135,6 +135,30 @@ held for review (`REG_COURSE_NOT_OFFERED`), never approved blindly. Where the He
 Each added entry records that the student added it (`registration.entry.student_added_at`) and what it was added as
 (`added_as`). The registration's audit trail records the change, as for every entry.
 
+## The minimum and the kind of load (V597)
+
+The minimum credit load (the curriculum's, CCMAS 15 or BMAS 18 — V495 — or the level's) bound every submission, so a student
+with one 3-unit carry-over and nothing else to register was refused `REG_UNITS_BELOW_MINIMUM`, and so was one with only GST/EPS
+courses to sit; with no submitted registration there was no examination card and no GST & EPS permit for them. The
+University's brief (20 October 2026): carry-over registration is a path of its own, exempt from the minimum; so is the GST & EPS
+permit. Now:
+
+| Kind (`registration.load_kind`) | When | The minimum |
+|---|---|---|
+| `NORMAL` | a live entry is a current course of the programme — not a carry-over, a deferred or a repeated course, not a GST/EPS course | binds, carry-overs counted in as before |
+| `GST_EPS` | no such course; a live entry is a current GST/EPS course | does not bind |
+| `CARRY_OVER` | carry-overs and deferred courses alone | does not bind |
+
+`registration.submit_checks` asks the minimum of a `NORMAL` registration only; the maximum, the probation ceiling, the SIWES
+semester, the fees and the GST fee bind every kind. A registration with a current course of the programme is judged exactly
+as before, so 3 units of current course beside a 3-unit carry-over (6 of 15) is still refused. The Academic Office's
+below-minimum list (`registration.below_minimum`, V505) leaves the waived kinds out: they are not below any minimum. The
+student's screen counts current courses and carry-overs apart, says "Carry-over registration permitted" (or "GST/EPS
+registration permitted") instead of "Minimum not met" where the minimum does not bind, and the API says the saved
+registration's kind (`loadKind`). Nothing is stored: the kind is read from the entries, and carry-overs still come only from
+published results and go on the draft at every level, SP1 and SP2 included — a carry-over never makes a student SP1 (that is the
+cohort engine's, §10 of student-cohorts.md). Tests: `CarryOverRegistrationIT`, check.sql's V597 block.
+
 ## The rule
 
 **Course Registration Options** (`/registration/options`) holds the rule. It is set by the Academic Office, the Registry,

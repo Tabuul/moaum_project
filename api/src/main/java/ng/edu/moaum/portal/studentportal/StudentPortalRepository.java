@@ -750,6 +750,13 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM registration.carryovers(:s)").param("s", student).query().listOfRows();
     }
 
+    /** V597: the kind of load the semester's registration carries — NORMAL (a current course of the programme, which the minimum binds),
+     *  CARRY_OVER (carry-overs and deferred courses alone) or GST_EPS (GST/EPS courses alone); null without a registration */
+    String loadKind(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT registration.load_kind(r.id) FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :n AND r.semester = :m")
+                .param("s", student).param("n", session).param("m", semester).query(String.class).optional().orElse(null);
+    }
+
     String classOf(BigDecimal cgpa) {
         if (cgpa == null) {
             return null;
