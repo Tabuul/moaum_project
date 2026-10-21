@@ -386,6 +386,8 @@ class AdmissionLifecycleIT {
         assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'MS') x WHERE x.student_id = :id").param("s", SESSION).param("id", sb).query(String.class).single()).contains("screening");
         // the applicant asks for a listed programme; a second acceptance fee is refused; the Office approves
         Map<String, Object> el = m(it.get(b.token(), "/api/v1/applicant/me/eligibility").getBody());
+        assertThat(el.get("available")).as(String.valueOf(el)).isEqualTo(true);   // 21 Oct 2026: the admitted applicant's — b accepted the offer
+        assertThat(el.get("canRequestChange")).isEqualTo(true);   // after an unsuccessful screening, until a change is approved
         assertThat(l(el.get("alternatives")).stream().map(x -> x.get("programme_code"))).contains(ACC);
         ResponseEntity<Map> asked = it.call(b.token(), HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ACC, "note", "Accounting after the screening"));
         assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);

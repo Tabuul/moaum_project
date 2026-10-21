@@ -305,7 +305,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Admission Progress: congratulations, official details, status, next step, tracker, acceptance entitlement (V269) | IMPLEMENTED | `applicant/Admission.tsx`, `admissions.admission_status`, `admission_tracker` | Steps dynamic to the path |
 | Online screening form on the University's paper forms: sections A–C, documents, declaration, draft/submit/return/resubmit (V269) | IMPLEMENTED | `applicant/Screening.tsx`, `ApplicantScreeningController`, `screening_*` functions | Opens on acceptance where the session's policy requires it; the O'Level as declared sits beside JAMB's — the engine still reads JAMB's |
 | Change of programme after an unsuccessful screening without a second acceptance fee (V269) | IMPLEMENTED | `request_programme_change`, `decide_programme_change`, `acceptance_entitlement` | The student on the register follows the programme |
-| Programme eligibility: verdict, reasons, check tables, eligible alternatives, Request Change, Recalculate (V266) | IMPLEMENTED | `applicant/Eligibility.tsx`, `AdmissionEligibilityController.java:292-335`, `admissions.evaluate_application` | Shown once submitted; a request only for a listed programme; nothing admits |
+| Programme eligibility: verdict, reasons, check tables, eligible alternatives, Request Change, Recalculate (V266) | IMPLEMENTED | `applicant/Eligibility.tsx`, `AdmissionEligibilityController.java:292-335`, `admissions.evaluate_application` | Shown once the offer is read (21 Oct 2026; nothing before, the API included); a request only for a listed programme; nothing admits |
 
 ### 3.12 Undergraduate admissions office (dossier B2)
 

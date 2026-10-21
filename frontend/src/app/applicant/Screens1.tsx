@@ -7,7 +7,7 @@
  * and name is the record's, and where the record has none, the screen says so.
  */
 import { useState } from "react";
-import { at, confirmedReference, dob, openReference, reportingTime, BODY, NEXT, STAGES, type Application, type FeeReference } from "@/lib/applicant";
+import { admitted, at, confirmedReference, dob, openReference, reportingTime, BODY, NEXT, STAGES, type Application, type FeeReference } from "@/lib/applicant";
 import { applicantReceiptTitle } from "@/lib/applicant-receipt";
 import { putmeOnDashboard } from "@/lib/applicant-score";
 import { ReceiptCheck } from "@/components/ReceiptCheck";
@@ -26,7 +26,7 @@ export function Dashboard({ a }: { a: Application }) {
   const open = openReference(a, "APPLICATION");
   const uploaded = a.documents.find((d) => d.kind === "PASSPORT");
   const photoSrc = uploaded ? `/api/bff/api/v1/applicant/me/documents/${uploaded.id}/content` : a.jambPassport ?? null;
-  /* the Post-UTME score: on the dashboard once the Academic Office releases the scores, awaited before then */
+  /* the Post-UTME score: the admitted sitter's, with the offer read (the API gives it to nobody else); awaited before the decision */
   const pu = putmeOnDashboard(a);
   return (
     <>
@@ -57,7 +57,8 @@ export function Dashboard({ a }: { a: Application }) {
         action={<LinkBtn href={nx[2]} kind={a.stage === 5 ? "urgent" : "primary"}>{nx[3]}</LinkBtn>}>
         {nx[1]}
       </Note>
-      {at(a, 2) && !at(a, 5) ? <Eligibility /> : null}
+      {/* programme eligibility (V266): the admitted applicant's alone since 21 October 2026 — the API answers nobody else */}
+      {admitted(a) ? <Eligibility /> : null}
       {/* the Admission Status section is always there (V295): checking closed, open and not paid for, paid for, the admission under way */}
       <AdmissionProgress />
       <TwoCol>

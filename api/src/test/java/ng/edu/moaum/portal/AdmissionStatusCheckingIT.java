@@ -147,6 +147,8 @@ class AdmissionStatusCheckingIT {
         Applicant pending = applicant(null, false, true, "F");            // 3 · no decision yet
         Applicant incomplete = applicant(null, false, false, "M");        // 4 · paid for, never submitted: no valid application
         Applicant late = applicant(null, false, true, "M");               // a reference taken while open, not paid before closing
+        // 21 Oct 2026: a released CBT score on the admitted and on the refused — read by the admitted alone, with the offer
+        it.db(() -> jdbc.sql("UPDATE admissions.application SET screening_score = 61, score_entered_at = now() WHERE id IN (:a, :r)").param("a", admitted.app()).param("r", refused.app()).update());
 
         // ── 5 · closed until the Director of ICT first opens it: nobody pays, nobody checks, nothing of the decision shows ──
         Map<String, Object> st = admission(admitted);
@@ -232,12 +234,15 @@ class AdmissionStatusCheckingIT {
         ResponseEntity<Map> no = checkStatus(refused);
         assertThat(no.getStatusCode().value()).isEqualTo(200);
         assertThat(no.getBody().get("status")).isEqualTo("NOT_ADMITTED");
+        assertThat(me(refused).get("result")).as("not offered a place: never the score").isNull();
+        assertThat(me(refused).get("scoreReleasedAt")).isNull();
         assertThat(no.getBody().get("label")).isEqualTo("Not admitted");
         assertThat(m(no.getBody().get("offer")).get("decision")).isEqualTo("NOT_OFFERED");
         assertThat(reference(refused, "ACCEPTANCE").getStatusCode().value()).isEqualTo(422);
         assertThat(notices(refused, "Congratulations%")).isZero();
 
         // ── 1 · admitted: pays, checks, is congratulated, and continues to the acceptance ──
+        assertThat(me(admitted).get("result")).as("the score waits for the offer to be read").isNull();
         pay(admitted);
         ResponseEntity<Map> yes = checkStatus(admitted);
         assertThat(yes.getStatusCode().value()).isEqualTo(200);
@@ -247,6 +252,8 @@ class AdmissionStatusCheckingIT {
         assertThat(m(yes.getBody().get("offer")).get("faculty")).isNotNull();
         assertThat(m(yes.getBody().get("checking")).get("past")).isEqualTo(true);
         assertThat(me(admitted).get("offerState")).isEqualTo("ADMITTED");
+        assertThat(m(me(admitted).get("result")).get("screeningSource")).isEqualTo("CBT");   // 21 Oct 2026: the score, with the offer read
+        assertThat(me(admitted).get("scoreReleasedAt")).isNotNull();
         assertThat(notices(admitted, "Congratulations! You have been offered admission")).isEqualTo(1);
         assertThat(checkStatus(admitted).getStatusCode().value()).isEqualTo(200);   // checked again: kept as a check, congratulated once
         assertThat(notices(admitted, "Congratulations! You have been offered admission")).isEqualTo(1);

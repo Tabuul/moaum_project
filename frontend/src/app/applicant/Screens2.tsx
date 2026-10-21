@@ -11,7 +11,6 @@ import { KvGrid, LinkBtn, Note, Panel, PBody, Tick, Tiles, Two } from "@/compone
 import { DTable } from "@/components/proto/DTable";
 import { Bar } from "@/components/proto/blocks";
 import { Rail, when } from "./common";
-import { Eligibility } from "./Eligibility";
 import { AdmissionStatusCheck } from "./Admission";
 import { scoreReleased, utmeMeetsCutoff } from "@/lib/applicant-score";
 
@@ -21,11 +20,14 @@ import { scoreReleased, utmeMeetsCutoff } from "@/lib/applicant-score";
 
 export function Score({ a }: { a: Application }) {
   const r = a.result;
-  /* released by the Academic Office: the API gives the result only then (a programme screened from the O'Level results has no batch) */
+  /* the admitted sitter's alone (21 October 2026): the API gives the result only with a released offer of admission the applicant may
+     read, and only for a score of the Post-UTME examination — a computed aggregate is never shown; nothing here says a score exists */
   if (!scoreReleased(a) || !r) {
     return (
       <>
-        <Note kind="info" title="Scores are released when every batch has been screened" />
+        <Note kind="info" title="Post-UTME scores are shown to admitted candidates who sat the examination">
+          The Academic Office releases the scores when every batch has been screened. A score of the Post-UTME examination is shown here with the Board&rsquo;s offer of admission, read through Admission Status Checking; a programme screened without the examination has no score to show.
+        </Note>
         <Rail a={a} />
       </>
     );
@@ -86,7 +88,6 @@ export function Status({ a }: { a: Application }) {
     return (
       <>
         <AdmissionStatusCheck />
-        {at(a, 2) && !at(a, 5) ? <Eligibility /> : null}
         <Rail a={a} />
         <Panel title="What your status can be" right="As the check returns it">
           <DTable cols={["Status", "What it means"]} rows={[
@@ -105,7 +106,6 @@ export function Status({ a }: { a: Application }) {
         <Note kind="info" title="Your application is with the Admissions Board">
           Your admission status appears here and by email when released; no list circulates before it. Once offered: accept and pay the acceptance fee, then complete the online screening.
         </Note>
-        {at(a, 2) ? <Eligibility /> : null}
         <Rail a={a} />
         <Panel title="What the Board can decide" right="Three outcomes">
           <DTable cols={["Outcome", "What it means"]} rows={[
@@ -124,7 +124,6 @@ export function Status({ a }: { a: Application }) {
         <Note kind={a.decision === "WAITING" ? "info" : "bad"} title={a.decision === "WAITING" ? "You are on the waiting list" : "You were not offered a place this session"}>
           {a.decision === "WAITING" ? "You are above the cut-off, but the approved quota is full. You are offered a place only if an offered candidate fails to accept in time; this page changes the moment that happens." : "You may be considered for a related programme in the same faculty if places remain, or reapply next session."}{a.decisionNote ? ` ${a.decisionNote}` : ""}
         </Note>
-        <Eligibility />
         <Rail a={a} />
       </>
     );

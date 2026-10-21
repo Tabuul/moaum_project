@@ -163,6 +163,13 @@ export function at(a: Application, n: number): boolean {
   return a.stage >= n;
 }
 
+/** an offer of admission the applicant may read (21 October 2026): the API gives the decision only when it is theirs to read —
+ *  Admission Status Checking paid and checked, or the admission under way — so this is the one test for what the admitted applicant
+ *  alone sees: the Post-UTME score and the programme eligibility */
+export function admitted(a: Pick<Application, "decision">): boolean {
+  return a.decision === "OFFERED";
+}
+
 /** the reference still open for a fee, if any */
 export function openReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"): FeeReference | null {
   const now = Date.now();

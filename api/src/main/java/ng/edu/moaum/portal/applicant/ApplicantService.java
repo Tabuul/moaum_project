@@ -441,10 +441,20 @@ public class ApplicantService {
             v.put("screeningSlip", null);
         }
 
-        boolean scoreVisible = a.get("score_released_at") != null || forOffice;
-        v.put("scoreReleasedAt", a.get("score_released_at"));
-        if (scoreVisible && (a.get("score_released_at") != null || a.get("screening_batch_id") != null)) {
-            Optional<Map<String, Object>> r = repo.screeningResult(applicationId);
+        /* the Post-UTME score is the admitted sitter's (21 October 2026): the applicant reads a score only once the released offer of
+           admission is theirs to read — decisionVisible: Admission Status Checking paid and checked, or the admission under way — and
+           only where the score is the Post-UTME examination's, the CBT or the written examination of an index programme; the aggregate
+           computed from the O'Level result for a programme screened without the examination is never shown to the applicant. An
+           applicant not offered a place never sees a score, nor that scores were released. The Academic Office reads everything,
+           released or not, as it always did. */
+        boolean admitted = decisionVisible && "OFFERED".equals(a.get("decision"));
+        boolean released = a.get("score_released_at") != null;
+        Optional<Map<String, Object>> r = (forOffice ? released || a.get("screening_batch_id") != null : admitted && released)
+                ? repo.screeningResult(applicationId) : Optional.empty();
+        boolean sat = r.map(x -> "CBT".equals(x.get("screening_source")) || "EXAM".equals(x.get("screening_source"))).orElse(false);
+        boolean scoreVisible = forOffice || sat;
+        v.put("scoreReleasedAt", scoreVisible ? a.get("score_released_at") : null);
+        if (scoreVisible) {
             v.put("result", r.map(x -> {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("utme", x.get("utme"));

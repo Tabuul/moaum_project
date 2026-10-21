@@ -3,7 +3,8 @@
 /** The applicant's programme eligibility (V266): the verdict on the programme applied for with every reason, the alternative
  *  programmes the engine found them eligible for on the current admission policy — each with its details and a request to
  *  change — and the state of a request made. Nothing here is an offer; the Admissions Office decides a change and the
- *  Board decides admission. */
+ *  Board decides admission. Since 21 October 2026 it is the admitted applicant's alone: the API answers available=false to
+ *  anyone else, and the screens mount it only with an offer the applicant has read, or after an unsuccessful online screening. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
@@ -85,7 +86,7 @@ export function Eligibility() {
               <span key="x" className="row row--inline row--tight" style={{ justifyContent: "flex-end" }}><Btn kind="ghost" size="sm" onClick={() => setViewing(a)}>View Details</Btn>{d.canRequestChange ? <Btn kind="primary" size="sm" disabled={busy} onClick={() => { setNote(""); setAsking(a); }}>Request Change</Btn> : null}</span>,
             ]; })} />
           ) : <PBody><div className="sub2">No eligible alternative programme found.</div></PBody>}
-          {!d.canRequestChange && eligible.length ? <PBody><div className="sub2">{open ? "A change is already requested." : "The Board's decision on your application has been released; a change of programme is now a matter for the Admissions Office."}</div></PBody> : null}
+          {!d.canRequestChange && eligible.length ? <PBody><div className="sub2">{open ? "A change is already requested." : "A change of programme is now a matter for the Admissions Office."}</div></PBody> : null}
         </Panel>
       ) : null}
 

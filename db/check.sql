@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 439
+\set EXPECTED 440
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22188,6 +22188,39 @@ BEGIN
                chk.checked_parts, chk.totals, left(short_reject, 22), left(own_decision, 27), a1.state, a1.remaining, after_one,
                a2.state, a2.remaining, after_all, a2.result, code_now, st_rej, st_wd));
 END $$;
+-- ── V608: the notice on the release of the Post-UTME scores says the score is shown with an offer of admission, never before ──
+DO $$
+DECLARE S constant text := '9608/9609'; cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        n int; v_released boolean; v_subject text; v_body text; v_sms text; v_mails int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V608', true);
+        -- a scored applicant of a session with nothing released: the Academic Office releases the session's scores
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (cand, S, '96089609AA', 'CHECKV608', 'Score Release', (SELECT name FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, S, cand, '96089609AA', 'check.v608@example.com', '08030000000', '$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, screening_score, score_entered_at)
+        VALUES (app, acct, cand, S, 'APP/08/000001', now(), now(), 61, now());
+        n := admissions.release_scores(S);
+        SELECT score_released_at IS NOT NULL INTO v_released FROM admissions.application WHERE id = app;
+        SELECT count(*) INTO v_mails FROM platform.notice WHERE about_kind = 'application' AND about_id = app AND channel = 'EMAIL';
+        SELECT subject, body INTO v_subject, v_body FROM platform.notice WHERE about_kind = 'application' AND about_id = app AND channel = 'EMAIL' LIMIT 1;
+        SELECT body INTO v_sms FROM platform.notice WHERE about_kind = 'application' AND about_id = app AND channel = 'SMS' LIMIT 1;
+        RAISE EXCEPTION 'the V608 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V608: the release notice — one scored application released and told once; the e-mail and the SMS say the score is shown with an offer of admission and no longer invite the applicant to sign in and see it',
+        coalesce(n = 1 AND v_released AND v_mails = 1
+                 AND v_subject = 'Post-UTME screening results released'
+                 AND v_body LIKE '%' || S || '%' AND v_body LIKE '%with an offer of admission%' AND v_body NOT LIKE '%Sign in to see your score%'
+                 AND v_sms LIKE '%with an offer of admission%' AND v_sms NOT LIKE '%Sign in to see it%', false),
+        format('released %s (n=%s, mails=%s) subject %L body %L sms %L', v_released, n, v_mails, v_subject, v_body, v_sms));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

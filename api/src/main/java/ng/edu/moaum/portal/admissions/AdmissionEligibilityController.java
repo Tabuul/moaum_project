@@ -322,7 +322,25 @@ class AdmissionEligibilityController {
                 .orElseThrow(() -> new AccessDeniedException("No application for this account."));
     }
 
-    /** the applicant's verdict on the programme they applied for and the alternatives they qualify for — never another's */
+    /** the eligibility, like the Post-UTME score, is the admitted applicant's (21 October 2026): read once the released offer of
+     *  admission is theirs to read — Admission Status Checking paid and checked, or the admission under way — as ApplicantService.view
+     *  reads the decision; an applicant whose offer is not yet read, or who is not offered a place, sees no verdict and no alternative */
+    private boolean admitted(UUID app) {
+        return Boolean.TRUE.equals(jdbc.sql("""
+                SELECT a.decision = 'OFFERED' AND a.decision_released_at IS NOT NULL AND s.decision_visible
+                  FROM admissions.application a CROSS JOIN LATERAL admissions.status_checking(a.id) s WHERE a.id = :a
+                """).param("a", app).query(Boolean.class).optional().orElse(false));
+    }
+
+    private void requireAdmitted(UUID app) {
+        if (!admitted(app)) {
+            throw new DomainRuleViolation("ELIG_NOT_ADMITTED", "Programme eligibility is read once you are offered admission.",
+                    new DomainRuleViolation.Remedy("Check your admission status when the University releases the decision.", "You"));
+        }
+    }
+
+    /** the applicant's verdict on the programme they applied for and the alternatives they qualify for — never another's, and
+     *  only once admitted: before the offer is read the answer is available=false and nothing of the verdict */
     @GetMapping("/api/v1/applicant/me/eligibility")
     @PreAuthorize(APPLICANT)
     @Transactional
@@ -330,15 +348,28 @@ class AdmissionEligibilityController {
         UUID app = myApplication(a);
         Map<String, Object> out = new LinkedHashMap<>();
         boolean submitted = jdbc.sql("SELECT submitted_at IS NOT NULL FROM admissions.application WHERE id = :a").param("a", app).query(Boolean.class).single();
-        out.put("available", submitted);
+        boolean admitted = submitted && admitted(app);
+        out.put("available", admitted);
         if (!submitted) {
             out.put("note", "Your eligibility is read once you submit the application form.");
             return out;
         }
+        if (!admitted) {
+            out.put("note", "Programme eligibility is shown once you are offered admission.");
+            return out;
+        }
         UUID run = jdbc.sql("SELECT admissions.eligibility_current(:a, NULL)").param("a", app).query(UUID.class).single();
         out.putAll(detail(app, run, false));
-        out.put("canRequestChange", jdbc.sql("SELECT decision_released_at IS NULL FROM admissions.application WHERE id = :a").param("a", app).query(Boolean.class).single()
-                && jdbc.sql("SELECT count(*) FROM admissions.programme_change_request WHERE application_id = :a AND state = 'REQUESTED'").param("a", app).query(Long.class).single() == 0);
+        // a change may be asked for while the Board has not decided, or after an unsuccessful online screening until one is approved
+        // (the rule of admissions.request_programme_change), one open request at a time — for the admitted applicant reading this, the latter
+        out.put("canRequestChange", jdbc.sql("""
+                SELECT (a.decision_released_at IS NULL
+                        OR (EXISTS (SELECT 1 FROM admissions.screening_form f WHERE f.application_id = a.id AND f.state = 'UNSUCCESSFUL')
+                            AND NOT EXISTS (SELECT 1 FROM admissions.screening_form f JOIN admissions.programme_change_request q ON q.application_id = f.application_id
+                                             WHERE f.application_id = a.id AND f.state = 'UNSUCCESSFUL' AND q.state = 'APPROVED' AND q.decided_at >= f.decided_at)))
+                   AND NOT EXISTS (SELECT 1 FROM admissions.programme_change_request q WHERE q.application_id = a.id AND q.state = 'REQUESTED')
+                  FROM admissions.application a WHERE a.id = :a
+                """).param("a", app).query(Boolean.class).single());
         return out;
     }
 
@@ -347,6 +378,7 @@ class AdmissionEligibilityController {
     @Transactional
     Map<String, Object> myRecalculate(Authentication a) {
         UUID app = myApplication(a);
+        requireAdmitted(app);
         jdbc.sql("SELECT admissions.evaluate_application(:a, 'APPLICANT', NULL)").param("a", app).query(UUID.class).single();
         return mine(a);
     }
@@ -356,6 +388,7 @@ class AdmissionEligibilityController {
     @Transactional
     Map<String, Object> myChange(Authentication a, @Valid @RequestBody ChangeIn body) {
         UUID app = myApplication(a);
+        requireAdmitted(app);
         String code = body.programmeCode().trim().toUpperCase();
         // the applicant may ask only for a programme the current run found them eligible for
         UUID run = jdbc.sql("SELECT admissions.eligibility_current(:a, NULL)").param("a", app).query(UUID.class).single();

@@ -200,6 +200,19 @@ class AdmissionEligibilityIT {
         return TestTokens.token(a.account(), List.of("applicant"));
     }
 
+    /** the applicant offered a place and the offer read (21 Oct 2026): the Board's released decision, read through Admission Status
+     *  Checking — as the check's own act leaves the record (status_checked_at) — so the applicant's own doors open */
+    void admit(Applicant a) {
+        it.db(() -> {
+            jdbc.sql("UPDATE admissions.application SET decision = 'OFFERED', decision_basis = 'NM', decided_at = now(), decision_released_at = now(), status_checked_at = now() WHERE id = :a")
+                    .param("a", a.app()).update();
+            // ADMITTED is a state of a candidate on JAMB's list (ck_candidate_needs_caps): the fixture's CAPS row, as registering would have linked it
+            jdbc.sql("UPDATE admissions.candidate c SET offer_state = 'ADMITTED', admitted_from = coalesce(c.admitted_from, "
+                    + "(SELECT r.id FROM admissions.caps_row r WHERE r.session = c.session AND r.jamb_reg_no = c.jamb_reg_no ORDER BY r.id LIMIT 1)) WHERE c.id = :c").param("c", a.candidate()).update();
+            return null;
+        });
+    }
+
     /* ── 1–4 · eligible, not eligible with alternatives, explained, and none ── */
     @Test
     @Order(1)
@@ -375,45 +388,47 @@ class AdmissionEligibilityIT {
         assertThat(recommendable.stream().map(r -> r.get("programme_code"))).contains(ACC, BUS);
     }
 
-    /* ── 8 · the applicant: their own verdict, a request for a suggested programme only, the Office's decision ── */
+    /* ── 8 · the applicant: nothing before an offer of admission; the Office's request for them decided; their own verdict once admitted ── */
     @Test
     @Order(5)
     @SuppressWarnings("unchecked")
-    void theApplicantMayAskOnlyForASuggestedProgrammeAndTheOfficeDecides() {
+    void theApplicantReadsTheirEligibilityOnceAdmittedAndTheOfficeDecidesAChange() {
         Applicant b = applicant(TAX, 195, UTME_COMMERCIAL, COMMERCIAL);
         String me = applicantToken(b);
 
+        // 21 Oct 2026: before an offer of admission is read the applicant has no verdict, no alternative and no request — the API included
         ResponseEntity<Map> mine = it.get(me, "/api/v1/applicant/me/eligibility");
         assertThat(mine.getStatusCode().value()).as(String.valueOf(mine.getBody())).isEqualTo(200);
-        assertThat(mine.getBody().get("available")).isEqualTo(true);
-        assertThat(run((Map<String, Object>) mine.getBody()).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
-        assertThat(mine.getBody().get("canRequestChange")).isEqualTo(true);
-        assertThat(((Map<String, Object>) mine.getBody().get("application")).get("application_no")).isEqualTo(
-                jdbc.sql("SELECT application_no FROM admissions.application WHERE id = :a").param("a", b.app()).query(String.class).single());
-        // the applicant sees the programmes they qualify for, never the ones they do not
-        assertThat(alternatives((Map<String, Object>) mine.getBody())).isNotEmpty().allMatch(a -> List.of("ELIGIBLE", "ELIGIBLE_SCREENING").contains(String.valueOf(a.get("result"))));
+        assertThat(mine.getBody().get("available")).isEqualTo(false);
+        assertThat(String.valueOf(mine.getBody().get("note"))).contains("offered admission");
+        assertThat(mine.getBody()).doesNotContainKeys("run", "applied", "alternatives", "application", "canRequestChange");
+        ResponseEntity<Map> early = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", BUS, "note", "I would like Business Management"));
+        assertThat(early.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(early.getBody())).contains("ELIG_NOT_ADMITTED");
+        ResponseEntity<Map> earlyRun = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/recalculate", Map.of());
+        assertThat(earlyRun.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(earlyRun.getBody())).contains("ELIG_NOT_ADMITTED");
+        assertThat(jdbc.sql("SELECT count(*) FROM admissions.programme_change_request WHERE application_id = :a").param("a", b.app()).query(Long.class).single()).isZero();
+        // nor a score, released or not: the view says nothing of one
+        it.db(() -> jdbc.sql("UPDATE admissions.application SET score_released_at = now() WHERE id = :a").param("a", b.app()).update());
+        Map<String, Object> view = (Map<String, Object>) it.get(me, "/api/v1/applicant/me").getBody();
+        assertThat(view.get("decision")).isNull();
+        assertThat(view.get("result")).isNull();
+        assertThat(view.get("scoreReleasedAt")).isNull();
 
-        // a programme not among the suggestions is refused
-        ResponseEntity<Map> refused = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", MBBS, "note", "please"));
-        assertThat(refused.getStatusCode().value()).isEqualTo(422);
-        assertThat(String.valueOf(refused.getBody())).contains("ELIG_NOT_SUGGESTED");
-
-        // V397: nor is an eligible programme of another faculty — never suggested, so never asked for
-        ResponseEntity<Map> otherFaculty = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ECO, "note", "Economics"));
-        assertThat(otherFaculty.getStatusCode().value()).isEqualTo(422);
-        assertThat(String.valueOf(otherFaculty.getBody())).contains("ELIG_NOT_SUGGESTED");
-
-        // a suggested one is requested — and nothing changes yet
-        ResponseEntity<Map> asked = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", BUS, "note", "I would like Business Management"));
+        // the Office reads the verdict and asks for a change on the applicant's behalf — a programme the run found them eligible for,
+        // in the same faculty (V397), on a configured reason; nothing changes yet
+        Map<String, Object> d = detail(academic, b.app());
+        assertThat(run(d).get("applied_result")).isEqualTo("NOT_ELIGIBLE");
+        assertThat(alternatives(d).stream().filter(x -> Boolean.TRUE.equals(x.get("suggested"))).map(x -> x.get("programme_code"))).contains(BUS).doesNotContain(ECO, MBBS);
+        ResponseEntity<Map> asked = it.call(academic, HttpMethod.POST, PATH + "/eligibility/" + b.app() + "/change",
+                Map.of("programmeCode", BUS, "reasonCode", "OLEVEL_NOT_MET", "note", "No Further Mathematics credit; Business Management on the applicant's request at the desk"));
         assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
-        assertThat(asked.getBody().get("canRequestChange")).isEqualTo(false);
         List<Map<String, Object>> changes = (List<Map<String, Object>>) asked.getBody().get("changes");
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).get("state")).isEqualTo("REQUESTED");
         String reqId = String.valueOf(changes.get(0).get("id"));
         assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :c").param("c", b.candidate()).query(String.class).single()).isEqualTo("B.Sc. TAXATION");
-        // a second open request is refused
-        assertThat(it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ACC)).getStatusCode().value()).isIn(409, 422);
 
         // the Office sees it on the queue and a rejection needs a reason
         List<Map<String, Object>> queue = it.getList(academic, PATH + "/eligibility/changes?state=REQUESTED").getBody();
@@ -429,12 +444,31 @@ class AdmissionEligibilityIT {
         assertThat(run(after).get("applied_programme_code")).isEqualTo(BUS);
         assertThat(run(after).get("trigger_kind")).isEqualTo("PROGRAMME_CHANGE");
         assertThat(((List<Map<String, Object>>) after.get("changes")).get(0).get("state")).isEqualTo("APPROVED");
-        assertThat(((List<Map<String, Object>>) after.get("events")).stream().map(e -> e.get("action"))).contains("PROGRAMME_CHANGE_REQUESTED", "PROGRAMME_CHANGE_APPROVED");
-        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject LIKE '%programme%'").param("a", b.app()).query(Long.class).single()).isGreaterThanOrEqualTo(2);
-        // the applicant's own view agrees, and no admission was granted by it
-        assertThat(run((Map<String, Object>) it.get(me, "/api/v1/applicant/me/eligibility").getBody()).get("applied_result")).isEqualTo("ELIGIBLE");
+        assertThat(((List<Map<String, Object>>) after.get("events")).stream().map(e -> e.get("action"))).contains("PROGRAMME_CHANGE_RECOMMENDED", "PROGRAMME_CHANGE_APPROVED");
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject LIKE '%programme%'").param("a", b.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
+        // no admission was granted by it, and the applicant still reads nothing
         assertThat(jdbc.sql("SELECT offer_state FROM admissions.candidate WHERE id = :c").param("c", b.candidate()).query(String.class).single()).isEqualTo("PROPOSED");
         assertThat(jdbc.sql("SELECT decision FROM admissions.application WHERE id = :a").param("a", b.app()).query().singleRow().get("decision")).isNull();
+        assertThat(it.get(me, "/api/v1/applicant/me/eligibility").getBody().get("available")).isEqualTo(false);
+
+        // offered a place and the offer read: the applicant's own view agrees — the verdict, the reasons, the request decided — and no
+        // change may be asked now that the Board has decided; a released score is still nothing to one screened without the examination
+        admit(b);
+        Map<String, Object> own = (Map<String, Object>) it.get(me, "/api/v1/applicant/me/eligibility").getBody();
+        assertThat(own.get("available")).as(String.valueOf(own)).isEqualTo(true);
+        assertThat(run(own).get("applied_result")).isEqualTo("ELIGIBLE");
+        assertThat(run(own).get("applied_programme_code")).isEqualTo(BUS);
+        assertThat(own.get("canRequestChange")).isEqualTo(false);
+        assertThat(((Map<String, Object>) own.get("application")).get("application_no")).isEqualTo(
+                jdbc.sql("SELECT application_no FROM admissions.application WHERE id = :a").param("a", b.app()).query(String.class).single());
+        assertThat(((List<Map<String, Object>>) own.get("changes")).get(0).get("state")).isEqualTo("APPROVED");
+        ResponseEntity<Map> late = it.call(me, HttpMethod.POST, "/api/v1/applicant/me/eligibility/change", Map.of("programmeCode", ACC, "note", "Accounting instead"));
+        assertThat(late.getStatusCode().value()).isIn(409, 422);
+        assertThat(String.valueOf(late.getBody())).doesNotContain("ELIG_NOT_ADMITTED");
+        Map<String, Object> admittedView = (Map<String, Object>) it.get(me, "/api/v1/applicant/me").getBody();
+        assertThat(admittedView.get("decision")).isEqualTo("OFFERED");
+        assertThat(admittedView.get("result")).as("an aggregate computed from the O'Level result is never the applicant's to see").isNull();
+        assertThat(admittedView.get("scoreReleasedAt")).isNull();
     }
 
     /* ── 9 · a change to the record marks the reading stale; it is re-read on the next open ── */
@@ -525,7 +559,9 @@ class AdmissionEligibilityIT {
         // a reader that may not act
         assertThat(it.get(ItSupport.token("bursar"), PATH + "/eligibility").getStatusCode().value()).isEqualTo(200);
         assertThat(it.call(ItSupport.token("bursar"), HttpMethod.POST, PATH + "/eligibility/" + a.app() + "/recalculate", Map.of()).getStatusCode().value()).isEqualTo(403);
-        // each applicant reads only their own application
+        // each applicant reads only their own application — once admitted (21 Oct 2026); before the offer is read, nothing at all
+        assertThat(it.get(applicantToken(other), "/api/v1/applicant/me/eligibility").getBody().get("available")).isEqualTo(false);
+        admit(other);
         assertThat(((Map<?, ?>) it.get(applicantToken(other), "/api/v1/applicant/me/eligibility").getBody().get("application")).get("id")).isEqualTo(other.app().toString());
         assertThat(it.get(applicantToken(other), "/api/v1/applicant/me/eligibility").getBody().toString()).doesNotContain(a.app().toString());
         // nobody at all
