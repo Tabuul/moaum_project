@@ -120,7 +120,7 @@ export function OldFeesMislabelled({ may, tick: changed = 0, onChanged }: { may:
                 {may && doable > 0 ? <Btn kind="primary" disabled={!!busy} onClick={() => setAsking(true)}>{`Put ${doable.toLocaleString()} right`}</Btn> : null}
               </div>
             </PBody>
-            <DTable pageSize={0} cols={["Student", "Session|mid", "Day paid|mid", "Amount|num", "Recorded as", "What it is", ""]}
+            <DTable cols={["Student", "Session|mid", "Day paid|mid", "Amount|num", "Recorded as", "What it is", ""]}
               rows={data.rows.map((m) => [
                 <Two key="s" a={m.name} b={m.number} />,
                 <span key="se" className="tnum sub2">{m.session}</span>,

@@ -310,7 +310,7 @@ function ProgressionTab({ d, name, file }: { d: Progression; name: string; file:
 
 /* ── course registration ── */
 
-function RegistrationsTab({ d, name, file }: { d: Data; name: string; file: string }) {
+export function RegistrationsTab({ d, name, file }: { d: Data; name: string; file: string }) {
   const t = sectionTables("registrations", d);
   const regs = (d.registrations ?? []) as Row[], resets = (d.resets ?? []) as Row[];
   return (
@@ -381,7 +381,7 @@ function ResultsTab({ d, name, file }: { d: Data; name: string; file: string }) 
 
 /* ── fees and payments ── */
 
-function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name: string; file: string; swaps: PaymentCorrection[] | null; onReceipt: (ref: string) => void }) {
+export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name: string; file: string; swaps: PaymentCorrection[] | null; onReceipt: (ref: string) => void }) {
   const t = sectionTables("finance", d);
   const payments = (d.payments ?? []) as unknown as Payment[];
   const sum = (d.summary ?? {}) as Row;
@@ -483,7 +483,7 @@ function printPdf(href: string) {
 
 /** the official receipt for one confirmed payment, in a window: the student's own receipt (the same screen and PDF), with the QR
  *  to the public verification page */
-function ReceiptWindow({ studentId, reference, onClose }: { studentId: string; reference: string; onClose: () => void }) {
+export function ReceiptWindow({ studentId, reference, onClose }: { studentId: string; reference: string; onClose: () => void }) {
   const [got, setGot] = useState<{ receipt: Receipt; qr: string | null; verifyUrl: string | null; token: string | null } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   useEffect(() => {

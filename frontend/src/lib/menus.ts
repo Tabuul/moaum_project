@@ -782,6 +782,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Reports",
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
+          { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
         ]
@@ -811,7 +812,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/finanalytics", "icon": "chart", "label": "Payment Reports & Statistics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
-          { "id": "t/payments", "icon": "card", "label": "Payments Query" }
+          { "id": "t/payments", "icon": "card", "label": "Payments Query" },
+          { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" }
         ]
       },
       {

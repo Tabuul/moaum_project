@@ -138,7 +138,9 @@ class FinanceController {
     }
 
     /** old students' school-fees history from the old portal — each row settles a past session (or semester)
-     *  by amount paid, or in full against the fee schedule when the amount is left blank. */
+     *  by amount paid, or in full against the fee schedule when the amount is left blank.
+     *  V609: the page loads through /legacy-fees/loads (the file named, each part kept on the upload history); a part sent here is
+     *  still logged, gathered into one upload while the parts keep coming. */
     @PostMapping("/legacy-fees")
     @PreAuthorize(BURSARY)   // V607: the Students Account Officer's upload waits for the Bursar's approval
     @Transactional
@@ -147,8 +149,8 @@ class FinanceController {
             throw new DomainRuleViolation("FEE_ROWS", "The file has no rows to read.",
                     new DomainRuleViolation.Remedy("Upload the old-portal fees export.", "Bursary"));
         }
-        return jdbc.sql("SELECT * FROM finance.import_legacy_payments(:j::jsonb)")
-                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+        return effect(jdbc.sql("SELECT finance.legacy_load_part(NULL, NULL, :j::jsonb)::text")
+                .param("j", json.writeValueAsString(body.rows())).query(String.class).single());
     }
 
     /** what the old-portal fees import has loaded (all sessions, or one) — shown before a reset */

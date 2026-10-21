@@ -99,7 +99,7 @@ export function OldFeesDoubleCharges({ may, tick = 0, onChanged }: { may: boolea
                 ["Withdrawal waiting", data.waiting.toLocaleString(), data.waiting ? "var(--amber-ink)" : null, "For another Bursary officer to approve, below"],
               ]} cls="grid--3" />
             </PBody>
-            <DTable pageSize={0} cols={["S/N|num", "Student", "Item", "Paid on|mid", "Amount|num", "Records and payment numbers", "Bank check", ""]}
+            <DTable cols={["S/N|num", "Student", "Item", "Paid on|mid", "Amount|num", "Records and payment numbers", "Bank check", ""]}
               rows={data.rows.map((g, i) => [
                 <span key="n" className="tnum sub2">{i + 1}</span>,
                 <Two key="s" a={g.name} b={g.number} />,

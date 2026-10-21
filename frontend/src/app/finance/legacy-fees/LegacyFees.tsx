@@ -10,7 +10,9 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
  *  export names it (its item, semester and day), and what it recorded that nothing matches is listed. V506: the overpaid,
  *  carried into the next session or refunded, and the ledger posted from here. V561: possible bank double charges checked with the
  *  bank before an excess is decided, and a payment the bank never received withdrawn by two Bursary officers. V607: the Students
- *  Account Officer's file (with its item codes) is sent to the Bursar and loaded only when the Bursar approves it. */
+ *  Account Officer's file (with its item codes) is sent to the Bursar and loaded only when the Bursar approves it. V609: the Bursary's
+ *  file is loaded as an upload (its name and what it states, then each part with its first row), and the Upload history queries
+ *  every upload — the Bursary's, the officer's for approval, each start over. */
 import { useRef, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
@@ -19,6 +21,7 @@ import { Btn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type ItemCode, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
+import { fileTally } from "@/lib/old-fees-history";
 import { OldFeesDoubleCharges } from "./OldFeesDoubleCharges";
 import { OldFeesDoubles } from "./OldFeesDoubles";
 import { OldFeesLedger } from "./OldFeesLedger";
@@ -28,6 +31,7 @@ import { OldFeesOverpaid } from "./OldFeesOverpaid";
 import { OldFeesPaymentHistoryLeft } from "./OldFeesPaymentHistoryLeft";
 import { OldFeesReconciliation } from "./OldFeesReconciliation";
 import { OldFeesUploads } from "./OldFeesUploads";
+import { OldFeesUploadHistory } from "./OldFeesUploadHistory";
 /** the Bursary: what needs the bank's word or moves money, the ledger and the go-live reset */
 const BURSARY = ["bursar", "super", "admin"];
 /** V591: the import's own acts — the file loaded, item codes, records put right, doubles withdrawn — the Students Account Officer's too */
@@ -52,7 +56,9 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   const [loaded, setLoaded] = useState<{ payments: number; students: number; total: number; sessions: string; session: string } | null>(null);
   const [resetDone, setResetDone] = useState<string | null>(null);
   const [resumeAt, setResumeAt] = useState<number | null>(null);
-  const jobRef = useRef<{ rows: Row[]; at: number; totals: Record<string, number>; sample: string[] } | null>(null);
+  // V609: the upload the load is kept under (opened once a file, kept when a stopped load resumes)
+  const jobRef = useRef<{ rows: Row[]; at: number; totals: Record<string, number>; sample: string[]; load?: { id: string; ref: string }; file: string | null } | null>(null);
+  const [loadRef, setLoadRef] = useState<string | null>(null);
   // V498: the old portal's payment-item codes read from the export's payment_type sheet, and how many rows they named
   const [codesRead, setCodesRead] = useState<{ codes: number; named: number; kept: boolean } | null>(null);
   const [codesTick, setCodesTick] = useState(0);
@@ -131,15 +137,16 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     URL.revokeObjectURL(a.href);
   }
 
-  async function sendBatch(batch: Row[], from: number, total: number) {
+  async function sendBatch(batch: Row[], from: number, total: number, loadId: string) {
     const waits = [2000, 5000, 15000];
     let last: Problem = { status: 0, title: "The batch was not sent" };
     for (let attempt = 0; attempt <= waits.length; attempt++) {
       try {
-        const r = await fetch("/api/bff/api/v1/finance/legacy-fees", {
+        // V609: a part of the upload, named by its first row — sent again after a lost answer, it is the same part
+        const r = await fetch(`/api/bff/api/v1/finance/legacy-fees/loads/${loadId}/rows`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old students' school-fees history imported: rows ${from + 1}–${from + batch.length} of ${total}`) },
-          body: JSON.stringify({ rows: batch }),
+          body: JSON.stringify({ from, rows: batch }),
         });
         const j = await r.json().catch(() => null);
         if (r.ok) return { ok: true as const, counts: (j ?? {}) as Record<string, number> & { duplicate_sample?: string } };
@@ -166,10 +173,27 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
     setResumeAt(null);
     const CHUNK = 500;   // a whole file of tens of thousands of rows in one body is refused ("Failed to read request")
     try {
+      // V609: the upload opened once, with the file's name and what it states; the parts are kept under it
+      if (!job.load) {
+        const t = fileTally(job.rows);
+        const r = await fetch("/api/bff/api/v1/finance/legacy-fees/loads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old students' school-fees history: ${job.file ?? "a file"} loaded (${t.rows} rows)`) },
+          body: JSON.stringify({ fileName: job.file, rows: t.rows, students: t.students, sessions: t.sessions, amount: t.amount }),
+        }).catch(() => null);
+        const j = r ? await r.json().catch(() => null) : null;
+        if (!r || !r.ok) {
+          const p = (j ?? { status: r?.status ?? 0, title: r?.statusText || "The upload could not be opened" }) as Problem;
+          setProblem(p); notifyProblem(p);
+          return;
+        }
+        job.load = { id: String(j.id), ref: String(j.ref) };
+        setLoadRef(job.load.ref);
+      }
       while (job.at < job.rows.length) {
         const batch = job.rows.slice(job.at, job.at + CHUNK);
         setProgress(`Loading ${Math.min(job.at + batch.length, job.rows.length).toLocaleString()} of ${job.rows.length.toLocaleString()} rows…`);
-        const res = await sendBatch(batch, job.at, job.rows.length);
+        const res = await sendBatch(batch, job.at, job.rows.length, job.load.id);
         if (!res.ok) {
           const where = `Rows ${(job.at + 1).toLocaleString()} to ${(job.at + batch.length).toLocaleString()} of ${job.rows.length.toLocaleString()}`;
           const base = res.problem;
@@ -272,7 +296,8 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
   function upload() {
     if (!preview) return;
     if (held) { void sendForApproval(); return; }
-    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0, matched: 0, separate: 0, taken_over: 0 }, sample: [] };
+    jobRef.current = { rows: preview, at: 0, totals: { rows: 0, cleared: 0, no_student: 0, no_due: 0, duplicates: 0, corrected: 0, undated: 0, matched: 0, separate: 0, taken_over: 0 }, sample: [], file: fileName };
+    setLoadRef(null);
     void run();
   }
 
@@ -346,7 +371,7 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
               {result.duplicates} row{result.duplicates === 1 ? "" : "s"} already recorded (the same payment number, or the same payment again); nothing changed. First: {duplicateSample.slice(0, 20).join(", ")}{duplicateSample.length > 20 ? ", …" : ""}. <button type="button" className="btn btn--ghost" onClick={downloadDuplicates}>Download all {duplicateSample.length.toLocaleString()} as CSV</button>
             </Note>
           ) : null}
-          <Note kind="ok" title="Fees history imported">{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded.{(result.taken_over ?? 0) > 0 ? ` ${result.taken_over} recorded by Payment History Upload taken over, each once, with its item and semester; its ledger posting is made again under that item.` : ""}{(result.no_student ?? 0) > 0 ? " Rows with an unknown number: migrate those students first, then re-upload." : ""}</Note>
+          <Note kind="ok" title={loadRef ? `Fees history imported — upload ${loadRef}` : "Fees history imported"}>{loadRef ? `Kept as ${loadRef} in the Upload history below. ` : ""}{result.cleared ?? 0} past-session payment{(result.cleared ?? 0) === 1 ? "" : "s"} recorded.{(result.taken_over ?? 0) > 0 ? ` ${result.taken_over} recorded by Payment History Upload taken over, each once, with its item and semester; its ledger posting is made again under that item.` : ""}{(result.no_student ?? 0) > 0 ? " Rows with an unknown number: migrate those students first, then re-upload." : ""}</Note>
         </>
       ) : null}
 
@@ -374,6 +399,9 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
 
       {/* V607: the Students Account Officer's uploads, held for the Bursar's approval */}
       <OldFeesUploads office={actingOffice} tick={changed} onChanged={bump} />
+
+      {/* V609: every upload — the Bursary's own, the officer's for approval, each start over — queried */}
+      <OldFeesUploadHistory tick={changed} />
 
       <OldFeesReconciliation tick={changed} />
 

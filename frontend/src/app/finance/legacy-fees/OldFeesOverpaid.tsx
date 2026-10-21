@@ -158,7 +158,7 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
               ) : null}
               {!next ? <Note kind="info" title="No next session">No session follows {data.session} on the academic calendar, so an excess cannot be carried yet; refunds can be raised.</Note> : null}
             </PBody>
-            <DTable pageSize={0} cols={["Student", "Due|num", "Paid|num", "Excess|num", "Decided", ""]}
+            <DTable cols={["Student", "Due|num", "Paid|num", "Excess|num", "Decided", ""]}
               rows={data.rows.map((o) => [
                 <span key="s"><Two a={o.name} b={o.number} />{o.old_portal ? <span className="sub2">Old-portal payment among them</span> : null}
                   {o.double_charge === "CHECK_WITH_BANK" ? <div><Pil kind="warn">Check with the bank</Pil></div> : null}</span>,

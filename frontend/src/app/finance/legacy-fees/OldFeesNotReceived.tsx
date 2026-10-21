@@ -95,7 +95,7 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
         </div>
       </PBody>
       {data && data.rows.length ? (
-        <DTable pageSize={0} cols={["Withdrawal", "Student", "Payment", "Amount|num", "Evidence and reason", "State", ""]} rows={data.rows.map((w) => [
+        <DTable cols={["Withdrawal", "Student", "Payment", "Amount|num", "Evidence and reason", "State", ""]} rows={data.rows.map((w) => [
           <span key="r" className="tnum">{w.request_ref}<div className="sub2">{w.from_check ? "From a bank check" : "Raised on its own"}</div></span>,
           <Two key="s" a={w.name} b={w.number} />,
           <span key="p" className="sub2 tnum">{w.reference}<div>{w.purpose} · {w.paid_on ?? "—"}{w.payref ? ` · ${w.payref}` : ""}</div>

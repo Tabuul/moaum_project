@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 440
+\set EXPECTED 441
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22219,6 +22219,103 @@ BEGIN
                  AND v_body LIKE '%' || S || '%' AND v_body LIKE '%with an offer of admission%' AND v_body NOT LIKE '%Sign in to see your score%'
                  AND v_sms LIKE '%with an offer of admission%' AND v_sms NOT LIKE '%Sign in to see it%', false),
         format('released %s (n=%s, mails=%s) subject %L body %L sms %L', v_released, n, v_mails, v_subject, v_body, v_sms));
+END $$;
+-- ── V609. Old Fees History's upload history. A made-up student: the Students Account Officer opens no load of the Bursary's and an
+--          upload states its rows; the Bursary's upload is opened with its file and loaded in parts (a part sent again adds only what
+--          it newly records; another officer does not load its parts), LOADED with what it read, recorded and skipped, and its
+--          payments read back by the moments of its parts; the old door's parts are gathered into one upload; a start over is logged
+--          with what it deleted; the officer's upload for approval is listed once sent; the history is never deleted. The block undoes
+--          its writes ──
+DO $$
+DECLARE
+    ses text := '9867/9868'; pa text; s1 uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); bur2 uuid := gen_random_uuid(); sao uuid := gen_random_uuid();
+    ld record; a jsonb; b jsonb; c jsonb; d1 jsonb; d2 jsonb; l finance.legacy_fee_load; h record; door record; rs record; up record;
+    pays_before int; pays_after int; reset_pays int; part1 record; drafts int; pending text;
+    sao_open text; no_rows text; other_part text; kept text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V609', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9867-10-01', date '9868-08-31') ON CONFLICT (name) DO NOTHING;
+    SELECT code INTO pa FROM ref.programme WHERE NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' ORDER BY code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+      (s1, 'MOAUM/ADM/67/609001', 'MOAUM/CHK/67/6091', 'ZZCHKV609A', 'Invented', pa, 'UTME', ses, 100, 100, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees', 250000, NULL, pa);
+
+    -- the officer's upload waits for approval: no load of the Bursary's; an upload states its rows
+    PERFORM set_config('moaum.actor_id', sao::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    BEGIN PERFORM finance.legacy_load_open('x.xlsx', 3, 1, ses, 100);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS sao_open = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.legacy_load_open('x.xlsx', NULL, NULL, NULL, NULL);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS no_rows = MESSAGE_TEXT; END;
+
+    -- the Bursary's file: opened, a part, the same part again, another officer refused, the last part
+    SELECT * INTO ld FROM finance.legacy_load_open('old-portal-export.xlsx', 3, 2, ses, 125000);
+    a := finance.legacy_load_part(ld.id, 0, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'semester', 'First', 'amount', '100,000', 'purpose', 'SCHOOL FEES', 'paidOn', '9867-11-02', 'payref', 'PRV6090001'),
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6099', 'session', ses, 'semester', 'First', 'amount', '5000', 'purpose', 'SCHOOL FEES', 'paidOn', '9867-11-03', 'payref', 'PRV6090002')));
+    b := finance.legacy_load_part(ld.id, 0, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'semester', 'First', 'amount', '100,000', 'purpose', 'SCHOOL FEES', 'paidOn', '9867-11-02', 'payref', 'PRV6090001'),
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6099', 'session', ses, 'semester', 'First', 'amount', '5000', 'purpose', 'SCHOOL FEES', 'paidOn', '9867-11-03', 'payref', 'PRV6090002')));
+    PERFORM set_config('moaum.actor_id', bur2::text, true);
+    BEGIN PERFORM finance.legacy_load_part(ld.id, 2, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'amount', '1')));
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS other_part = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    c := finance.legacy_load_part(ld.id, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'semester', 'Second', 'amount', '20000', 'purpose', 'SCHOOL FEES', 'paidOn', '9868-01-15', 'payref', 'PRV6090003')));
+    SELECT * INTO h FROM finance.legacy_upload_history WHERE id = ld.id;
+    SELECT * INTO part1 FROM finance.legacy_fee_load_part WHERE load_id = ld.id AND seq = 1;
+    SELECT count(*) INTO pays_before FROM finance.legacy_load_payments(ld.id);
+
+    -- the old door: two parts, one upload with no file named
+    d1 := finance.legacy_load_part(NULL, NULL, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'semester', 'First', 'amount', '500', 'purpose', 'SCHOOL FEES', 'paidOn', '9868-03-01', 'payref', 'PRV6090004')));
+    d2 := finance.legacy_load_part(NULL, NULL, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'semester', 'First', 'amount', '600', 'purpose', 'SCHOOL FEES', 'paidOn', '9868-03-02', 'payref', 'PRV6090005')));
+    SELECT count(DISTINCT f.id) AS uploads, max(f.parts) AS parts, max(f.recorded) AS recorded INTO door
+      FROM finance.legacy_fee_load f WHERE f.by_person = bur AND f.file_rows IS NULL;
+
+    -- a start over of the session, logged with what it deleted
+    PERFORM * FROM finance.reset_legacy_payments(ses, 'RESET');
+    SELECT * INTO rs FROM finance.legacy_upload_history WHERE kind = 'RESET' AND by_person = bur;
+    SELECT count(*) INTO reset_pays FROM finance.legacy_load_payments(rs.id);
+    SELECT count(*) INTO pays_after FROM finance.legacy_load_payments(ld.id);
+
+    -- the officer's upload for approval: listed once sent, not while being sent
+    PERFORM set_config('moaum.actor_id', sao::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    SELECT * INTO up FROM finance.legacy_upload_open('officer.xlsx', NULL, NULL);
+    PERFORM finance.legacy_upload_add(up.id, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/CHK/67/6091', 'session', ses, 'amount', '1')));
+    SELECT count(*) INTO drafts FROM finance.legacy_upload_history WHERE id = up.id;
+    PERFORM finance.legacy_upload_submit(up.id);
+    SELECT kind || ':' || state INTO pending FROM finance.legacy_upload_history WHERE id = up.id;
+
+    -- the history is kept
+    BEGIN DELETE FROM finance.legacy_fee_load WHERE id = ld.id;
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS kept = MESSAGE_TEXT; END;
+    RAISE EXCEPTION 'the V609 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V609 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V609: every Old Fees History upload is logged — the Bursary''s file in parts, the old door, a start over, the officer''s upload for approval — and kept',
+        coalesce(sao_open LIKE 'LEGACY_LOAD_OFFICE%' AND no_rows LIKE 'LEGACY_LOAD_ROWS%' AND other_part LIKE 'LEGACY_LOAD_OWN%'
+                 AND (a->>'cleared')::int = 1 AND (a->>'no_student')::int = 1 AND (b->>'resent')::boolean AND (b->>'cleared')::int = 0
+                 AND (c->>'rows_loaded')::int = 3
+                 AND h.kind = 'DIRECT' AND h.state = 'LOADED' AND h.file_name = 'old-portal-export.xlsx' AND h.parts = 2 AND h.file_rows = 3
+                 AND h.rows_read = 3 AND h.recorded = 2 AND h.no_student = 1 AND h.students = 1 AND h.sessions = ses AND h.amount = 120000
+                 AND h.file_amount = 125000 AND h.office = 'bursar' AND part1.resent = 1 AND part1.recorded = 1 AND pays_before = 2
+                 AND door.uploads = 1 AND door.parts = 2 AND door.recorded = 2
+                 AND rs.state = 'DONE' AND rs.deleted = 4 AND rs.students = 1 AND reset_pays = 4 AND pays_after = 0
+                 AND drafts = 0 AND pending = 'FOR_APPROVAL:PENDING' AND kept LIKE 'LEGACY_LOAD_KEPT%', false),
+        format('officer opens %s | no rows %s | other officer %s | part %s | again %s | last %s | history %s/%s/%s parts %s rows %s/%s recorded %s no student %s students %s sessions %s amount %s/%s office %s | part 1 resent %s recorded %s | payments %s | door %s | reset %s deleted %s students %s payments %s, the upload''s after %s | draft listed %s, sent %s | kept %s',
+               left(sao_open, 20), left(no_rows, 18), left(other_part, 18), a, b, c->>'rows_loaded', h.kind, h.state, h.file_name, h.parts, h.rows_read, h.file_rows,
+               h.recorded, h.no_student, h.students, h.sessions, h.amount, h.file_amount, h.office, part1.resent, part1.recorded, pays_before,
+               door, rs.state, rs.deleted, rs.students, reset_pays, pays_after, drafts, pending, left(kept, 18)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

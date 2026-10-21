@@ -110,7 +110,7 @@ export function OldFeesDoubles({ may, tick: changed = 0, onChanged }: { may: boo
                 {may && free > 0 ? <Btn kind="primary" disabled={!!busy} onClick={() => setAsking(true)}>{`Withdraw ${free.toLocaleString()} recorded twice`}</Btn> : null}
               </div>
             </PBody>
-            <DTable pageSize={0} cols={["Student", "Session|mid", "Day paid|mid", "Amount|num", "Recorded twice as", "Kept", ""]}
+            <DTable cols={["Student", "Session|mid", "Day paid|mid", "Amount|num", "Recorded twice as", "Kept", ""]}
               rows={data.rows.map((d) => [
                 <Two key="s" a={d.name} b={d.number} />,
                 <span key="se" className="tnum sub2">{d.session}</span>,

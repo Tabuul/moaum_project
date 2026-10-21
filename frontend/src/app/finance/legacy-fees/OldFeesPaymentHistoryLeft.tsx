@@ -76,7 +76,7 @@ export function OldFeesPaymentHistoryLeft({ tick = 0 }: { tick?: number }) {
                 {loading ? <span className="sub2" role="status">Looking…</span> : null}
               </div>
             </PBody>
-            <DTable pageSize={0} cols={["Student", "Session|mid", "Day on record|mid", "Amount|num", "Recorded as", "Counts as"]}
+            <DTable cols={["Student", "Session|mid", "Day on record|mid", "Amount|num", "Recorded as", "Counts as"]}
               rows={data.rows.map((l) => [
                 <Two key="s" a={l.name} b={l.number} />,
                 <span key="se" className="tnum sub2">{l.session}</span>,

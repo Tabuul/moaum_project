@@ -160,7 +160,7 @@ export function OldFeesUploads({ office, tick: changed = 0, onChanged }: { offic
           </div>
         </PBody>
         {list.rows.length ? (
-          <DTable pageSize={0} cols={["Upload", "Sent by", "Rows|num", "Sessions", "Amount stated|num", "State", "|num"]} rows={list.rows.map((u) => [
+          <DTable cols={["Upload", "Sent by", "Rows|num", "Sessions", "Amount stated|num", "State", "|num"]} rows={list.rows.map((u) => [
             <span key="u"><b className="tnum">{u.ref}</b><div className="sub2">{u.file_name ?? "—"}</div></span>,
             <span key="b">{u.uploaded_by_name ?? "—"}<div className="sub2">{when(u.submitted_at ?? u.uploaded_at)}</div></span>,
             <span key="r" className="tnum">{u.row_count.toLocaleString()}{u.students != null ? <div className="sub2">{u.students} student{u.students === 1 ? "" : "s"}</div> : null}</span>,

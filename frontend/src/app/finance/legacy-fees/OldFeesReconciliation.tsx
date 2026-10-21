@@ -2,7 +2,9 @@
 
 /** V498: the old-portal school-fees payments of a session reconciled against the fee setup — for every student with an
  *  old payment, what the setup says is due, what is paid (the old portal by semester, the retired Payment History Upload, the
- *  portal), the difference and the state; those under or over first, with the Excel list for the Bursary. */
+ *  portal), the difference and the state; those under or over first, with the Excel list for the Bursary.
+ *  Oct 2026: ten students a page by default (the rows a page chosen: 10, 25, 50, 100 or all), and each figure's View all lists every
+ *  student of its state. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { notifyProblem } from "@/components/proto/Toast";
@@ -16,7 +18,9 @@ import { RECON_HEADERS, RECON_STATE, reconRow, type ReconRow, type ReconState } 
 interface Summary { state: ReconState; students: number; due: number; paid: number; difference: number }
 interface Recon { session: string; sessions: string[]; summary: Summary[]; total: number; rows: ReconRow[]; page: number; size: number }
 
-const SIZE = 50;
+/** the students a page: the default, and the choices (0 = every student the filters find, on one page) */
+const SIZES = [10, 25, 50, 100, 0];
+const ALL = 100_000;
 
 /** tick: a change made elsewhere on the page (an upload, a withdrawal, records put right): the list reads again */
 export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
@@ -25,6 +29,7 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
   const [q, setQ] = useState("");
   const [typed, setTyped] = useState("");
   const [page, setPage] = useState(1);
+  const [size, setSize] = useState(SIZES[0]);
   const [data, setData] = useState<Recon | null>(null);
   const [answered, setAnswered] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -37,7 +42,7 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
     if (q.trim()) p.set("q", q.trim());
     return `/api/bff/api/v1/finance/legacy-fees/reconciliation?${p.toString()}`;
   };
-  const listUrl = url(SIZE, page);
+  const listUrl = url(size || ALL, size ? page : 1);
   // what is asked — the filters, the page, a change made on the page — and whether it is answered yet (no session chosen asks
   // for the current one, which the answer names)
   const asked = `${listUrl}#${tick}`;
@@ -88,7 +93,9 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
     return [RECON_STATE[s][0], (x?.students ?? 0).toLocaleString(), x?.students ? colour : null,
       x ? `${s === "MATCHED" ? "Paid" : s === "NO_FEE_STATED" ? "Paid" : "Difference"} ${money(Number(s === "MATCHED" || s === "NO_FEE_STATED" ? x.paid : x.difference))}` : "None"];
   };
-  const pages = data ? Math.max(1, Math.ceil(data.total / SIZE)) : 1;
+  const pages = data && size ? Math.max(1, Math.ceil(data.total / size)) : 1;
+  /** a figure's View all: every student of its state, on one page */
+  const viewAll = (s: ReconState) => { setPage(1); setState(s); setSize(0); };
 
   return (
     <Panel title="Reconciled with the fee setup" right="Every student with an old-portal school-fees payment in the session: due by the fee setup, paid, the difference">
@@ -117,13 +124,13 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
       {data ? (
         <>
           <PBody>
-            <Tiles items={[
-              tile("UNDER", "var(--red-ink)"),
-              tile("OVER", "var(--red-ink)"),
-              tile("OVER_SETTLED", null),
-              tile("NO_FEE_STATED", "var(--red-ink)"),
-              tile("MATCHED", "var(--green-ink)"),
-            ]} />
+            <Tiles items={([["UNDER", "var(--red-ink)"], ["OVER", "var(--red-ink)"], ["OVER_SETTLED", null], ["NO_FEE_STATED", "var(--red-ink)"], ["MATCHED", "var(--green-ink)"]] as [ReconState, string | null][])
+              .map(([s, colour]) => {
+                const [label, value, c, sub] = tile(s, colour);
+                const open = state === s && size === 0;
+                return [label, value, c, <span key="v">{sub}<span className="blk mt-1"><Btn kind={open ? "primary" : "ghost"} size="sm" disabled={loading || !by(s)?.students}
+                  onClick={() => (open ? ask(() => { setState(""); setSize(SIZES[0]); }) : viewAll(s))}>{open ? "Back to ten a page" : "View all"}</Btn></span></span>];
+              })} />
             {by("NO_FEE_STATED")?.students ? (
               <Note kind="info" title="No fee stated">
                 The fee setup charges these students nothing for {data.session}: their programme, level or faculty has no fee line for the session.
@@ -151,12 +158,19 @@ export function OldFeesReconciliation({ tick = 0 }: { tick?: number }) {
                 <span key="st"><Pil kind={RECON_STATE[r.state][1]}>{RECON_STATE[r.state][0]}</Pil>{Number(r.settled) ? <div className="sub2 tnum">{money(Number(r.settled))} {r.decision === "CARRY" ? "carried" : r.decision === "REFUND" ? "to be refunded" : "settled"}</div> : null}</span>,
               ])} />
           ) : <PBody><div className="sub2">No student {state ? `in "${RECON_STATE[state][0]}" ` : ""}has an old-portal school-fees payment in {data.session}{q.trim() ? " matching that" : ""}.</div></PBody>}
-          {data.total > SIZE ? (
+          {data.total > SIZES[0] ? (
             <PBody>
-              <div className="row" style={{ alignItems: "center" }}>
-                <Btn kind="ghost" disabled={loading || page <= 1} onClick={() => setPage(page - 1)}>Previous</Btn>
-                <span className="sub2">Page {page} of {pages} · {data.total.toLocaleString()} students</span>
-                <Btn kind="ghost" disabled={loading || page >= pages} onClick={() => setPage(page + 1)}>Next</Btn>
+              <div className="row" style={{ alignItems: "center", flexWrap: "wrap", gap: "var(--s-3)" }}>
+                {size ? <Btn kind="ghost" disabled={loading || page <= 1} onClick={() => setPage(page - 1)}>Previous</Btn> : null}
+                <span className="sub2">{size ? `Page ${page} of ${pages} · ` : "Every student · "}{data.total.toLocaleString()} students</span>
+                {size ? <Btn kind="ghost" disabled={loading || page >= pages} onClick={() => setPage(page + 1)}>Next</Btn> : null}
+                <label className="row row--tight sub2" style={{ marginLeft: "auto" }}>
+                  Rows
+                  <select className="ctl" style={{ width: "auto" }} value={size} disabled={loading} aria-label="Students a page"
+                    onChange={(e) => { const v = Number(e.target.value); ask(() => setSize(v)); }}>
+                    {SIZES.map((n) => <option key={n} value={n}>{n || "All"}</option>)}
+                  </select>
+                </label>
               </div>
             </PBody>
           ) : null}

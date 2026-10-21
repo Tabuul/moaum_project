@@ -194,6 +194,7 @@ export const TITLES: Record<string, string> = {
   "t/ledger": "Transactions & accounts",
   "t/payments": "Payments query",
   "t/paymenthistory": "Payment history",
+  "t/studentpaymenthistory": "Payment history",
   "t/clearance": "Student clearance",
   "t/clearancemanage": "Clearance management",
   "t/clearanceunits": "Clearance by unit",
