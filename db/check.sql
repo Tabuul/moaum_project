@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 433
+\set EXPECTED 434
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2263,9 +2263,10 @@ BEGIN
     SELECT count(*) INTO v_notices FROM platform.notice WHERE about_kind = 'student' AND about_id = st;
     SELECT * INTO g FROM records.student_graduation(st);
     PERFORM pg_temp.assert('Senate''s approval of the list changes the status on the minute, tells the graduand, and the student sees the class and the units still holding',
-        -- four notices: Senate's approval by email and SMS, and the change of status on the register by email and SMS;
+        -- seven notices (V602): the award confirmed on the STUDENT_GRADUATED template by email, SMS and the portal, the change of
+        -- status on the register by email and SMS, and final clearance started by email and SMS (graduate_one starts it);
         -- seven units holding: final clearance (V415) is not held by a hostel the graduand never had
-        n >= 1 AND v_status = 'GRADUATED' AND v_notices = 4 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
+        n >= 1 AND v_status = 'GRADUATED' AND v_notices = 7 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
         AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 7 AND g.certificate_no IS NULL
         AND EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED' AND instrument = 'CHECK SEN/9999/7'),
         format('approved=%s status=%s notices=%s state=%s class=%s cleared=%s holding=%s', n, v_status, v_notices, g.senate_state, g.class_of_degree, g.cleared, g.units_holding));
@@ -21699,6 +21700,126 @@ BEGIN
     PERFORM pg_temp.assert('V603: the College''s own student area is for the programmes it runs (MBBS) from 200 Level; every other student lands on the University''s portal, and the College''s registration refuses them',
         coalesce(runs = 'true:false:false' AND landing = 'COLLEGE:UNIVERSITY:UNIVERSITY' AND refused = 'COLLEGE_NOT_MBBS' AND moved = 'COLLEGE', false),
         format('runs %s | landing %s | refused %s | moved %s', runs, landing, refused, moved));
+END $$;
+-- ── V602: graduated students reconciled in batches, the graduated record closed to new fees and registration ──
+-- Three students of a four-year programme in the first session on the calendar: one with every course passed and published, one
+-- owing a carry-over, one deferred. The verdicts read ELIGIBLE, CARRY_OVER and DEFERRED; a batch is opened on a Senate minute and
+-- the eligible student graduated by the one act — the list entry approved with the batch and the spillover state, the status
+-- GRADUATED with its history, final clearance started, the student told on the template; the carry-over student is refused; a
+-- later session's fee line charges the graduate nothing, a school-fee reference for it is refused, a registration draft is refused,
+-- graduating again returns ALREADY_GRADUATED, a plain status change is refused (GRAD_PERMANENT), and the Registrar's correction puts
+-- the status back on the evidence with the impact recorded and the list entry awaiting a fresh audit; the session's whole-list approval (V029) still graduates by the same
+-- act. The block undoes its writes.
+DO $$
+DECLARE ug text; v_ses text; v_later text; dept text; st uuid := gen_random_uuid(); co uuid := gen_random_uuid(); df uuid := gen_random_uuid();
+        o uuid := gen_random_uuid(); reg1 uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid(); sh uuid := gen_random_uuid();
+        actor uuid := '00000000-0000-0000-0000-000000000000'; v_ref text; r jsonb; r2 jsonb; msg text;
+        verd1 text; verd2 text; verd3 text; conf1 text; charges_before int; charges_after int; ref_err text; draft_err text; perm_err text;
+        st_status text; g_state text; g_batch text; g_spill text; g_minute text; n_notice int; n_clear int; co_err text; again text;
+        corr jsonb; st_after text; g_after text; n_corr int; approved int; co_graduated text; tally record; told int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', actor::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V602', true);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        v_later := (SELECT name FROM policy.academic_session WHERE name > v_ses ORDER BY name LIMIT 1);
+        SELECT p.code, p.dept_code INTO ug, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND p.final_level = 400 AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        -- the course, offered in the session; the three students at 400 Level, admitted in the session
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, state) VALUES ('ZZQ 602', 'Check final-year course', 3, 1, 400, dept, 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZQ 602', ug, 400, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'ZZQ 602', v_ses, 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/60/960201', 'MOAUM/ZZQ/60/96021', 'CHECKV602', 'Eligible', ug, 'UTME', v_ses, 100, 400, 'ACTIVE', now()),
+               (co, 'MOAUM/ADM/60/960202', 'MOAUM/ZZQ/60/96022', 'CHECKV602', 'Owing', ug, 'UTME', v_ses, 100, 400, 'ACTIVE', now()),
+               (df, 'MOAUM/ADM/60/960203', 'MOAUM/ZZQ/60/96023', 'CHECKV602', 'Deferred', ug, 'UTME', v_ses, 100, 400, 'DEFERRED', now());
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, v_ses, 400), (gen_random_uuid(), co, v_ses, 400);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+        VALUES (reg1, st, v_ses, 1, 400, 'APPROVED', now(), now()), (reg2, co, v_ses, 1, 400, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg1, o, 3, 'APPROVED'), (reg2, o, 3, 'APPROVED');
+        INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (sh, o, 'PUBLISHED', 'SEN/CHK/602', now(), now());
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (sh, st, 30, 45, 'GRADED'), (sh, co, 10, 15, 'GRADED');
+        -- the list entries the degree audit would write (the API's GraduationService records them): the first with nothing unmet
+        INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet)
+        VALUES (gen_random_uuid(), st, v_ses, 4.50, 'B.Sc.', NULL), (gen_random_uuid(), co, v_ses, 3.20, 'B.Sc.', NULL);
+        -- a fee line of the later session at 400 Level: charged before graduation
+        INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (v_later, 'School fees', 100000, 400);
+        charges_before := (SELECT count(*) FROM finance.charges(st, v_later));
+
+        -- the verdicts, nothing written
+        SELECT v.verdict, v.confidence INTO verd1, conf1 FROM records.graduation_verdict(st, v_ses) v;
+        SELECT v.verdict INTO verd2 FROM records.graduation_verdict(co, v_ses) v;
+        SELECT v.verdict INTO verd3 FROM records.graduation_verdict(df, v_ses) v;
+
+        -- the batch, and the eligible student graduated by the one act
+        v_ref := records.open_graduation_batch(v_ses, 'SEN/CHK/602', 'Check V602: the ' || v_ses || ' graduands confirmed', '{"level": "400"}'::jsonb, actor, 'academic');
+        INSERT INTO records.graduation_batch_row (batch_id, student_id, verdict, confidence)
+        SELECT b.id, x.id, x.v, 'HIGH' FROM records.graduation_batch b, (VALUES (st, 'ELIGIBLE'), (co, 'CARRY_OVER'), (df, 'DEFERRED')) x(id, v) WHERE b.batch_ref = v_ref;
+        r := records.graduate_one(st, v_ses, 'SEN/CHK/602', v_ref, 'Graduation batch ' || v_ref, actor, 'academic');
+        SELECT s.status INTO st_status FROM people.student s WHERE s.id = st;
+        SELECT g.senate_state, g.batch_ref, coalesce(g.spillover_state, 'NORMAL'), g.senate_minute INTO g_state, g_batch, g_spill, g_minute FROM records.graduand g WHERE g.student_id = st;
+        n_notice := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'STUDENT_GRADUATED');
+        n_clear := (SELECT count(*) FROM clearance.process q WHERE q.workflow = 'FINAL' AND q.student_id = st AND q.cancelled_at IS NULL);
+        UPDATE records.graduation_batch_row SET outcome = 'GRADUATED', graduated_at = now() WHERE student_id = st;
+        -- the carry-over student is refused, whatever the row says
+        BEGIN
+            PERFORM records.graduate_one(co, v_ses, 'SEN/CHK/602', v_ref, 'Graduation batch ' || v_ref, actor, 'academic');
+            co_err := 'NOT REFUSED';
+        EXCEPTION WHEN OTHERS THEN co_err := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM records.graduation_batch_tally(v_ref);
+        SELECT b.selected, b.eligible, b.graduated, b.rejected INTO tally FROM records.graduation_batch b WHERE b.batch_ref = v_ref;
+        told := records.tell_graduation_clearance(v_ref);
+
+        -- the lock: no charge for the later session, no reference, no draft; graduating again changes nothing
+        charges_after := (SELECT count(*) FROM finance.charges(st, v_later));
+        BEGIN
+            PERFORM finance.new_reference(st, v_later, 100000, NULL);
+            ref_err := 'NOT REFUSED';
+        EXCEPTION WHEN OTHERS THEN ref_err := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM registration.student_draft(st, v_later, 1);
+            draft_err := 'NOT REFUSED';
+        EXCEPTION WHEN OTHERS THEN draft_err := split_part(SQLERRM, ':', 1);
+        END;
+        again := records.graduate_one(st, v_ses, 'SEN/CHK/602', v_ref, NULL, actor, 'academic')->>'outcome';
+        BEGIN
+            UPDATE people.student SET status = 'ACTIVE' WHERE id = st;
+            perm_err := 'NOT REFUSED';
+        EXCEPTION WHEN OTHERS THEN perm_err := split_part(SQLERRM, ':', 1);
+        END;
+        -- the Registrar's correction, on a reason and the evidence
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        corr := records.correct_graduation(st, 'Check V602: graduated in error — the result belongs to another student', 'Registrar''s memo REG/CHK/602', actor, 'registrar');
+        SELECT s.status INTO st_after FROM people.student s WHERE s.id = st;
+        SELECT g.senate_state INTO g_after FROM records.graduand g WHERE g.student_id = st;
+        n_corr := (SELECT count(*) FROM records.graduation_correction c WHERE c.student_id = st);
+        -- the session's whole-list approval (V029) graduates by the same act: the corrected student is referred, so it is the owing one's
+        -- list entry (audited with nothing unmet by the degree audit's words here) that the minute confirms — once its carry-over is passed
+        UPDATE assessment.score SET ca = 30, exam = 45 WHERE sheet_id = sh AND student_id = co;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        approved := records.approve_awards(v_ses, 'SEN/CHK/602B');
+        SELECT s.status INTO co_graduated FROM people.student s WHERE s.id = co;
+        RAISE EXCEPTION 'the V602 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V602 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V602: verdicts ELIGIBLE / CARRY_OVER / DEFERRED, nothing written; a batch on the Senate minute graduates the eligible student by the one act (list entry approved with the batch, status GRADUATED, final clearance started, the student told) and refuses the owing one; a later session charges the graduate nothing, a school-fee reference and a registration draft are refused, graduating again returns ALREADY_GRADUATED, a plain status change is refused, the Registrar''s correction puts the status back with the impact; the whole-list approval graduates by the same act',
+        verd1 = 'ELIGIBLE' AND verd2 = 'CARRY_OVER' AND verd3 = 'DEFERRED'
+        AND v_ref ~ '^GRAD/[0-9]{4}/[0-9]{6}$' AND r->>'outcome' = 'GRADUATED' AND st_status = 'GRADUATED'
+        AND g_state = 'APPROVED' AND g_batch = v_ref AND g_minute = 'SEN/CHK/602' AND n_notice = 1 AND n_clear = 1
+        AND co_err = 'GRAD_CARRY_OVER' AND tally.selected = 3 AND tally.eligible = 1 AND tally.graduated = 1 AND tally.rejected = 2
+        AND charges_before >= 1 AND charges_after = 0 AND ref_err = 'SCHOOL_FEES_CLOSED_GRADUATED' AND draft_err = 'REG_STUDENT_NOT_ELIGIBLE'
+        AND again = 'ALREADY_GRADUATED' AND perm_err = 'GRAD_PERMANENT'
+        AND st_after = 'ACTIVE' AND g_after = 'AWAITING' AND n_corr = 1 AND (corr->>'graduation_session') = v_ses
+        AND approved = 1 AND co_graduated = 'GRADUATED',
+        format('verdicts %s %s %s conf %s | ref %s outcome %s status %s list %s/%s/%s/%s notice %s clearance %s | owing %s tally %s/%s/%s/%s told %s | charges %s->%s ref %s draft %s again %s plain %s | corrected %s list %s rows %s session %s | approval %s owing now %s',
+               verd1, verd2, verd3, conf1, v_ref, r->>'outcome', st_status, g_state, g_batch, g_spill, g_minute, n_notice, n_clear,
+               co_err, tally.selected, tally.eligible, tally.graduated, tally.rejected, told, charges_before, charges_after, ref_err, draft_err, again, perm_err,
+               st_after, g_after, n_corr, corr->>'graduation_session', approved, co_graduated));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

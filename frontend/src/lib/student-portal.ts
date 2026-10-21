@@ -95,6 +95,8 @@ export interface GstView {
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number; curriculum?: string | null; basis?: "CURRICULUM" | "LEVEL" | "CCE" | "SIWES" }; probation?: Probation | null;
   menu: MenuItem[]; registration: Registration | null; fees: Fees; status: string; addDropOpen?: boolean;
+  /** V602: a graduated record's register view — why it is closed; the menu and the carry-overs are then empty */
+  closed?: { code: string; words: string; remedy: string } | null;
   /** V597: the kind of load the saved registration carries — the minimum binds NORMAL only (see lib/registration-load) */
   loadKind?: import("./registration-load").LoadKind | null;
   /** V491: how the semester's registration is approved, whether the student may reset it (and why not), what holds it for review */

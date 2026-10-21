@@ -13,6 +13,7 @@ import type { Me, RegistrationView } from "@/lib/student-portal";
 import { semesterName, semesterText } from "@/lib/student-portal";
 import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
 import { Gate, Gates, Modal, Passport, Row } from "@/components/proto/blocks";
+import { DTable } from "@/components/proto/DTable";
 import { notify } from "@/components/proto/Toast";
 import { reasonWords } from "@/lib/registration-approval";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -50,6 +51,33 @@ function byOrder<T extends Categorised>(rows: T[]): T[] {
 }
 
 export function Register({ s, v }: { s: Me; v: RegistrationView }) {
+  // V602: a graduated record registers nothing — the server sends no menu and says why; the registration of the semester, if any, is history
+  if (v.closed) {
+    return <RegisterClosed v={v} />;
+  }
+  return <RegisterForm s={s} v={v} />;
+}
+
+function RegisterClosed({ v }: { v: RegistrationView }) {
+  const reg = v.registration;
+  return (
+    <>
+      <Note kind="info" title={v.closed!.code === "REG_STUDENT_GRADUATED" ? "You have graduated" : "Course registration is closed"}
+        action={<div className="row"><LinkBtn kind="ghost" href="/student/graduation">Graduation & clearance</LinkBtn><LinkBtn kind="ghost" href="/student/registration-history">Registration history</LinkBtn></div>}>
+        {v.closed!.words} {v.closed!.remedy}
+      </Note>
+      {reg ? (
+        <Panel title={`Your registration for ${v.session}, ${v.semester === 1 ? "first" : v.semester === 2 ? "second" : "third"} semester`} right={`${reg.status} · ${reg.units} CU`}>
+          <DTable cols={["Course code", "Course title", "Units|num", "Type"]} rows={(reg.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => [
+            <b key="c">{e.courseCode}</b>, <span key="t">{e.title}</span>, <span key="u" className="tnum">{e.units}</span>, <span key="k">{e.entryType}</span>,
+          ])} />
+        </Panel>
+      ) : null}
+    </>
+  );
+}
+
+function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
   // V491: where the Head's approval is suspended, a registration that passes the rules is approved on submission

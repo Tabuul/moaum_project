@@ -11,6 +11,8 @@ export interface QueryFilters {
   entryYear: string; matricYear: string; jambYear: string;
   /** V593: the cohort engine's level, whether the record is below it, the programme's length, the lifecycle reconciliation's reading */
   expectedLevel: string; levelBehind: string; programmeLength: string; recommendation: string; completion: string;
+  /** V602: the graduation session (the approved list entry's) and the graduation batch that confirmed the award */
+  graduationSession: string; graduationBatch: string;
   q: string;
 }
 
@@ -18,7 +20,7 @@ export const QUERY_KEYS: (keyof QueryFilters)[] = [
   "type", "route", "centre", "studyMode", "fac", "dept", "prog", "pgAward", "session", "semester", "admissionSession", "level",
   "status", "sex", "matriculated", "finalYear", "spillover", "graduation", "registration", "fees", "classification",
   "jupebCombination", "jupebSubject", "prelimRoute", "entryYear", "matricYear", "jambYear",
-  "expectedLevel", "levelBehind", "programmeLength", "recommendation", "completion", "q",
+  "expectedLevel", "levelBehind", "programmeLength", "recommendation", "completion", "graduationSession", "graduationBatch", "q",
 ];
 
 export const EMPTY_QUERY: QueryFilters = Object.fromEntries(QUERY_KEYS.map((k) => [k, ""])) as unknown as QueryFilters;
@@ -55,7 +57,8 @@ export function readQueryFilters(p: Record<string, string | string[] | undefined
     const allowed = ONE_OF[k];
     if (allowed) ok = allowed.includes(raw);
     else if (k === "fac" || k === "dept" || k === "prog") ok = UNIT.test(raw);
-    else if (k === "session" || k === "admissionSession") ok = SESSION.test(raw);
+    else if (k === "session" || k === "admissionSession" || k === "graduationSession") ok = SESSION.test(raw);
+    else if (k === "graduationBatch") ok = /^GRAD\/\d{4}\/\d{6}$/.test(raw);
     else if (k === "semester") ok = /^[123]$/.test(raw);
     else if (k === "level") ok = /^\d{1,3}$/.test(raw);
     else if (k === "expectedLevel") ok = /^[1-9]00$/.test(raw);
@@ -227,6 +230,8 @@ export function activeFilters(f: QueryFilters, o: QueryOptions | null): { key: k
   push("finalYear", "Final year", f.finalYear === "YES" ? "Final year only" : "Not final year");
   push("spillover", "Spillover", SPILLOVER_WORD[f.spillover] ?? f.spillover);
   push("graduation", "Graduation", f.graduation === "GRADUATED" ? "Graduated" : "Not graduated");
+  push("graduationSession", "Graduation session", f.graduationSession);
+  push("graduationBatch", "Graduation batch", f.graduationBatch);
   push("registration", "Course registration", f.registration === "REGISTERED" ? "Registered" : "Not registered");
   push("fees", "School fees", f.fees === "OUTSTANDING" ? "Outstanding" : "Completed");
   push("classification", "Classification", f.classification === "REQUIRES_CLASSIFICATION" ? "Requires classification" : "Classified");

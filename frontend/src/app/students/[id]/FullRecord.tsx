@@ -193,7 +193,7 @@ function OverviewTab({ o, body }: { o: Overview; body: ReactNode }) {
               ["Programme length", pos?.duration_years ? `${pos.duration_years} years · final level ${dash(pos.final_level)}` : "—"],
               ["Expected completion", dash(pos?.expected_completion)], ["Spillover", spill ? `${spill} · ${words(pos?.spillover_state)}` : "None"],
               ["Classification", words(pos?.classification) || "—"], ["Registered this session", pos?.registered_current ? "Yes" : "No"],
-              ["Graduation", g ? `${dash(g.session)} · ${words(g.senate_state)}${g.award ? ` · ${g.award}` : ""}` : words(pos?.graduation_state) || "Not on a graduation list"],
+              ["Graduation", g ? `${dash(g.session)} · ${words(g.senate_state)}${g.award ? ` · ${g.award}` : ""}${g.batch_ref ? ` · batch ${g.batch_ref}` : ""}${g.final_level ? ` · final level ${g.final_level}${g.duration_years ? ` (${g.duration_years} years)` : ""}` : ""}${g.spillover_state && String(g.spillover_state).startsWith("SPILLOVER") ? ` · graduated from ${String(g.spillover_state).replace("SPILLOVER_YEAR_", "SP")}` : ""}` : words(pos?.graduation_state) || "Not on a graduation list"],
               ["Recommendation", lc ? `${words(lc.recommendation)} · ${words(lc.confidence)} confidence · ${words(lc.review_state)}` : "—"],
             ]} />
             {lc?.explanation ? <div className="sub2 mt-2">{s(lc.explanation)}</div> : null}

@@ -24,6 +24,7 @@ public record StudentQueryRequest(String type, String route, String centre, Stri
                                   String jupebCombination, String jupebSubject, String prelimRoute,
                                   Integer entryYear, Integer matricYear, Integer jambYear,
                                   Integer expectedLevel, String levelBehind, Integer programmeLength, String recommendation, String completion,
+                                  String graduationSession, String graduationBatch,
                                   String q) {
 
     /** V593: the lifecycle reconciliation's recommendations and completion states (V558) */
@@ -52,6 +53,7 @@ public record StudentQueryRequest(String type, String route, String centre, Stri
                 expectedLevel != null && expectedLevel >= 100 && expectedLevel <= 900 && expectedLevel % 100 == 0 ? expectedLevel : null,
                 yesNo(levelBehind), programmeLength != null && programmeLength >= 1 && programmeLength <= 10 ? programmeLength : null,
                 oneOf(recommendation, RECOMMENDATIONS), oneOf(completion, COMPLETIONS),
+                session(graduationSession), batch(graduationBatch),
                 q == null || q.isBlank() ? null : q.trim().length() > 80 ? q.trim().substring(0, 80) : q.trim());
     }
 
@@ -112,6 +114,12 @@ public record StudentQueryRequest(String type, String route, String centre, Stri
     private static String unit(String v) {
         String t = trim(v);
         return t == null || t.isEmpty() || !UNIT.matcher(t).matches() ? null : t;
+    }
+
+    /** V602: a graduation batch reference, GRAD/YYYY/NNNNNN */
+    private static String batch(String v) {
+        String t = trim(v);
+        return t != null && t.matches("GRAD/\\d{4}/\\d{6}") ? t : null;
     }
 
     private static String session(String v) {

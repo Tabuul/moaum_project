@@ -93,6 +93,12 @@ public class GraduationService {
         return new Placed(repo.graduandId(student, session), !existed, unmet);
     }
 
+    /** V602: the degree audit's judgement of a student, nothing written — the requirement {@link #placeOnList} would record as unmet, or null */
+    public String judge(UUID student) {
+        GraduationRepository.Programme p = repo.programmeOf(student);
+        return unmet(student, p.postgraduate(), repo.standing(student));
+    }
+
     @Transactional(readOnly = true)
     public View view(String session, String fac, String dept, String prog) {
         List<GraduationRepository.Graduand> all = repo.graduands(session, fac, dept, prog);

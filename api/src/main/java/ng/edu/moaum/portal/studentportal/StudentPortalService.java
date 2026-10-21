@@ -475,6 +475,25 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("semester", semester);
         out.put("level", s.currentLevel());
+        // V602: a graduated record registers nothing — no menu, no carry-over to add, the registration of the semester (if any) read as history
+        if ("GRADUATED".equals(s.status())) {
+            out.put("closed", Map.of("code", "REG_STUDENT_GRADUATED",
+                    "words", "Course registration is unavailable because this academic record has been graduated.",
+                    "remedy", "Your registrations, results and payments stay on your record; transcripts, the certificate and clearance are on Documents and Graduation."));
+            out.put("limit", Map.of("min_units", 0, "max_units", 0, "basis", "CLOSED"));
+            out.put("probation", Map.of());
+            out.put("siwes", false);
+            out.put("menu", List.of());
+            out.put("outstanding", List.of());
+            out.put("registration", repo.registration(id, session, semester).map(StudentPortalService::withEntries).orElse(null));
+            out.put("loadKind", repo.loadKind(id, session, semester));
+            out.put("fees", fees(id, session));
+            out.put("status", s.status());
+            out.put("addDropOpen", false);
+            out.put("clears", false);
+            out.put("openSemester", semester);
+            return out;
+        }
         // the SIWES / industrial-training semester carries exactly the SIWES units, not the 18-24 range
         Integer siwes = repo.siwesUnits(id, s.currentLevel(), semester);
         // on probation, the form's ceiling is the level's probation ceiling where the Registry has set one
@@ -616,7 +635,12 @@ public class StudentPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> searchCourses(UUID id, String session, int semester, String q, Integer level, String dept, String faculty,
                                              String category, int page) {
-        student(id);
+        StudentPortalRepository.Student s = student(id);
+        // V602: a graduated record adds no course and no carry-over: the search is closed with the registration
+        if ("GRADUATED".equals(s.status())) {
+            throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "Course registration is unavailable because this academic record has been graduated.",
+                    new DomainRuleViolation.Remedy("Your registrations and results stay on your record; transcripts and the certificate are on Documents.", "Academic Office"));
+        }
         String term = q == null ? null : q.trim().replaceAll("\\s+", " ");
         if (term != null && term.isEmpty()) term = null;
         if (term != null && term.length() > 60) term = term.substring(0, 60);

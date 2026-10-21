@@ -172,7 +172,9 @@ public class StudentQueryService {
                 .param("xlevel", r.expectedLevel(), Types.INTEGER)
                 .param("plen", r.programmeLength(), Types.INTEGER)
                 .param("rec", r.recommendation(), Types.VARCHAR)
-                .param("compl", r.completion(), Types.VARCHAR);
+                .param("compl", r.completion(), Types.VARCHAR)
+                .param("gsession", r.graduationSession(), Types.VARCHAR)
+                .param("gbatch", r.graduationBatch(), Types.VARCHAR);
     }
 
     private JdbcClient.StatementSpec withFees(JdbcClient.StatementSpec s, StudentQueryRequest r) {
@@ -354,7 +356,7 @@ public class StudentQueryService {
         StudentQueryRequest r = raw.normalized();
         Scope sc = scope();
         StudentQueryRequest only = new StudentQueryRequest(r.type(), null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         List<Map<String, Object>> sets = bind(jdbc.sql("""
                 SELECT grouping(l.admission_route) AS g_route, grouping(l.centre_code) AS g_centre, grouping(l.study_mode) AS g_mode,
                        grouping(l.status) AS g_status, grouping(l.level) AS g_level, grouping(l.admission_session) AS g_asession,

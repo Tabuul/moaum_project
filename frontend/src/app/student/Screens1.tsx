@@ -200,7 +200,12 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
           Your CGPA stood at <strong className="tnum">{prob.cgpa != null ? Number(prob.cgpa).toFixed(2) : "—"}</strong> after the {prob.pronounced_session} {semWord(prob.pronounced_semester)} semester at {prob.pronounced_level} level, below the University&rsquo;s minimum requirement of {Number(prob.threshold ?? 1).toFixed(2)}. {prob.probation_max_units != null ? <>Course registration is limited to <strong>{prob.probation_max_units} units</strong> until the next results; your outstanding courses stay on the form.</> : <>Your outstanding courses stay on your registration form.</>}
         </Note>
       ) : null}
-      {noScheme ? (
+      {s.status === "GRADUATED" ? (
+        /* V602: a graduated record — no school fees to pay, no courses to register; the history, documents and clearance stay open */
+        <Note kind="ok" title="You have graduated" action={<div className="row"><LinkBtn kind="go" href="/student/graduation">Graduation & clearance</LinkBtn><LinkBtn kind="ghost" href="/student/documents">Documents</LinkBtn></div>}>
+          Your award is confirmed on the University register. School fees and course registration are closed on this record; your registrations, results, payments and receipts stay here, and transcripts and the certificate are requested from Documents.
+        </Note>
+      ) : noScheme ? (
         <Note kind="info" title="Payment scheme not yet stated">
           {f.schemeProblem} Registration opens when the Bursar states the scheme.
         </Note>

@@ -147,7 +147,7 @@ class StudentFullRecordController {
                         SELECT lr.recommendation, lr.candidate_basis, lr.confidence, lr.confidence_reasons, lr.explanation, lr.completion, lr.review_state, lr.batch_ref
                           FROM people.lifecycle_recommendation lr WHERE lr.student_id = :s) x),
                     'graduand', (SELECT row_to_json(x) FROM (
-                        SELECT g.session, g.cgpa, g.award, g.unmet, g.senate_state, g.senate_minute FROM records.graduand g WHERE g.student_id = :s
+                        SELECT g.session, g.cgpa, g.award, g.unmet, g.senate_state, g.senate_minute, g.batch_ref, g.graduated_at, g.final_level, g.duration_years, g.spillover_state FROM records.graduand g WHERE g.student_id = :s
                          ORDER BY (g.senate_state = 'APPROVED') DESC, g.session DESC LIMIT 1) x),
                     'registrations', (SELECT count(*) FROM registration.course_registration r WHERE r.student_id = :s),
                     'clearances', (SELECT coalesce(json_agg(x ORDER BY x.started_at DESC), '[]'::json) FROM (
