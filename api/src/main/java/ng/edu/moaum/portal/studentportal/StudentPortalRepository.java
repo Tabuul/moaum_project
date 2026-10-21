@@ -422,6 +422,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT unnest(finance.fee_unstated_semesters(:s, :ses))").param("s", student).param("ses", session).query(Integer.class).list();
     }
 
+    /** V616: whether the student is in spillover on the Bursary's basis — charged a semester's fees only when they register a course in it */
+    boolean isSpillover(UUID student) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.is_spillover(:s)").param("s", student).query(Boolean.class).single());
+    }
+
     boolean semesterCleared(UUID student, String session, int semester) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.semester_cleared(:s, :ses, :sem)")
                 .param("s", student).param("ses", session).param("sem", semester).query(Boolean.class).single());

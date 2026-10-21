@@ -98,6 +98,12 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           What is shown covers what the Bursary has stated so far; nothing here pays for the {unstatedWords} semester. The Bursary is told when a student&rsquo;s fees are missing, and the charge appears here once it is stated. If it is still not here in a few days, <Link href={askBursary(`${semesterName(unstated[0])} semester school fees for ${fees.session} not stated`)}>ask the Bursary</Link>.
         </Note>
       ) : null}
+      {/* V616: a spillover student is charged a semester's fees only when they register a course in it */}
+      {fees.spilloverBySemester && !noCharge ? (
+        <Note kind="info" title="In spillover, you pay for the semesters you register">
+          A semester&rsquo;s school fees are charged to you when you register a course in that semester, and the whole-session items the first time you register. {fees.due > 0 ? "What is shown is for the semesters you have registered so far." : "Nothing is charged until you register a course; the charge then appears here, and the registration is submitted once it is paid."}
+        </Note>
+      ) : null}
       {noCharge ? (
         <Note kind="info" title={`Your school fees for ${fees.session} are not yet stated`}>The Bursary has not yet stated the school fees for your programme, level and entry mode, so there is nothing to pay yet; the Bursary is told when a student&rsquo;s fees are missing. Your charge appears here once it is stated, and course registration opens once it is paid. If it is still not here in a few days, <Link href={askBursary(`School fees for ${fees.session} not stated`)}>ask the Bursary</Link>.{fees.sessions.filter((x) => x !== fees.session).length ? <span className="blk">A charge is stated for {fees.sessions.filter((x) => x !== fees.session).map((x, i) => <span key={x}>{i ? ", " : ""}<Link href={`/student/fees?session=${encodeURIComponent(x)}`}>{x}</Link></span>)} &mdash; open it to pay.</span> : null}</Note>
       ) : fees.schemeProblem ? (

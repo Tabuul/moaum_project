@@ -40,9 +40,22 @@ preview all carry the year.
 The schedule shows "400 Level (SP1) · First semester" and a pill "Spillover SP1"; the copy preview and the upload preview say the
 same; the gap report's level column reads "400 Level (SP2)" for a spillover group with no line for its year.
 
-## 5. Tests
+## 5. Paying for the semesters registered (V616)
+
+A spillover student pays a semester's lines only when they register a course in that semester: `finance.reg_semesters` lists the
+semesters of the session with a registration of theirs holding a course (any state short of dropped — a draft counts, the choice
+is the charge), and `finance.spill_line_applies` reads a semester's line against it, a whole-session line against any semester
+registered. `charges_of_as` and `due_for_semester` apply it; `charges_of_as(…, true)` gives the lines that could apply, which
+`fee_stated` and `fee_unstated_semesters` read, so the register opens before the first course is chosen and nothing reads unstated.
+`finance.fee_profiles(session)` carries a spillover student's registered semesters in the profile and its key, so `fee_sums`,
+`session_positions`, `session_charges`, `fee_positions_of` and `registrations_without_fees` agree with the student's own position.
+`registration.student_add` no longer holds a spillover student's course for the Bursary's clearance; the submission still waits for
+the semester's fees. The student's fees page says so. See `docs/spillover-fees-by-registered-semester.md`.
+
+## 6. Tests
 
 `FeeLinesIT`: the sheet states the four lines once; a student at 500 Level on a four-year programme (SP1 by the level) is charged
 the SP1 line and the any-year line, one at 600 the SP2 line, one at 400 the level's own line; the form's spillover levy, its
 duplicate and a bad year; the copy carries the year; the gap report names the year and the final level. `check.sql` V613 does the
-same in the database alone. `lib/fee-copy` and `lib/fee-matrix` tests cover the words and the bands.
+same in the database alone; since V616 both register a course for the spillover students in each semester first, as a spillover
+student owes a semester's line only once they do. `lib/fee-copy` and `lib/fee-matrix` tests cover the words and the bands.

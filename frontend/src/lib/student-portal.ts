@@ -38,6 +38,8 @@ export interface Fees {
   paidInFull: boolean;
   hasArrears: boolean;
   clearsRegistration: boolean | null;
+  /** V616: in spillover — charged a semester's school fees only when a course is registered in it */
+  spilloverBySemester?: boolean;
   schemeProblem: string | null;
   references: PaymentRef[];
   sessions: string[];

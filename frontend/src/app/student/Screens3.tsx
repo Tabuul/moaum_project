@@ -169,6 +169,8 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   // gate on THIS semester's fees, not only the open one — a full-session payment clears an
   // earlier semester the student never registered, so they can go back and register it now
   const cleared = v.clears ?? (fees.clearsRegistration === true);
+  /* V616: a spillover student's choice of courses is what makes the semester's fee due; the submission waits for it */
+  const spillPays = fees.spilloverBySemester === true;
 
   // the student may register any semester up to the open one; an earlier semester never
   // registered can still be registered (its fees are covered by a full-session payment)
@@ -284,6 +286,11 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
     <>
       {lateNote}
       {switcher}
+      {spillPays ? (
+        <Note kind="info" title="In spillover, you pay for the semesters you register">
+          Choosing a course here makes this semester&rsquo;s school fees due{cleared ? "; they are paid, so the registration can be submitted." : "; the registration is submitted once they are paid."}
+        </Note>
+      ) : null}
       {v.siwes ? (
         <Note kind="info" title="Industrial training (SIWES) semester">
           Register only the SIWES / industrial training course ({max} units) this semester — no other course and no carryover.

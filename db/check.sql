@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 446
+\set EXPECTED 447
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2870,7 +2870,8 @@ BEGIN
         jsonb_build_object('programme', v_other, 'level', '100', 'indigene', 'Indigene', 'amount', '112000', 'feeGroup', 'UG', 'item', 'School Fees'),
         jsonb_build_object('faculty', 'SC', 'amount', '5000', 'kind', 'Late payment')));
     SELECT coalesce(sum(amount), 0) INTO v_norm FROM finance.charges_of_as(s_ind, '9993/9994', ARRAY['FEE'], NULL);
-    SELECT coalesce(sum(amount), 0) INTO v_sp FROM finance.charges_of_as(s_spill, '9993/9994', ARRAY['FEE'], NULL);
+    -- V616: the lines that could apply to the spillover student (none is owed until they register a course in the session)
+    SELECT coalesce(sum(amount), 0) INTO v_sp FROM finance.charges_of_as(s_spill, '9993/9994', ARRAY['FEE'], NULL, true);
     SELECT coalesce(sum(amount), 0) INTO v_prog FROM finance.charges_of_as(s_ind, '9993/9994', ARRAY['FEE'], v_other);
     PERFORM pg_temp.assert('The approved fees import keeps a spillover line for spillover students alone, a programme''s line for that programme alone, its fee group and its kind',
         coalesce(r.lines = 4 AND r.spillover = 1 AND r.programmes = 1 AND r.no_programme = 0 AND r.no_group = 0
@@ -22476,6 +22477,7 @@ DECLARE
     s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
     added1 int; added2 int; d1 numeric; d2 numeric; d3 numeric; c1 text; c2 text; c3 text; v_same boolean; v_diff boolean;
     n_copy1 int; n_copy2 int; n_copy_any int; g2 record; v_stated boolean; msg text;
+    off1 uuid := gen_random_uuid(); off2 uuid := gen_random_uuid();
 BEGIN
   BEGIN   -- the check's own sessions, programme, students and lines, undone at the end
     PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
@@ -22503,6 +22505,15 @@ BEGIN
         jsonb_build_object('programmeCode', v_prog, 'level', '400', 'entryMode', 'UTME', 'semester', '1', 'amount', '150000'))) x;
     SELECT x.added INTO added2 FROM finance.add_fee_lines(S, jsonb_build_array(
         jsonb_build_object('programmeCode', v_prog, 'level', '400', 'spillover', 'SP1', 'semester', '1', 'amount', '70000'))) x;
+    -- V616: a spillover student owes a semester's line once a registration of theirs holds a course in it — both register both semesters
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZV 613', 'Check V613', 3, 1, 400, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off1, 'ZZV 613', S, 1), (off2, 'ZZV 613', S, 2);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+        (gen_random_uuid(), s1, S, 1, 500, 'DRAFT'), (gen_random_uuid(), s1, S, 2, 500, 'DRAFT'),
+        (gen_random_uuid(), s2, S, 1, 600, 'DRAFT'), (gen_random_uuid(), s2, S, 2, 600, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    SELECT cr.id, CASE cr.semester WHEN 1 THEN off1 ELSE off2 END, 3, 'CURRENT', 'REGISTERED'
+      FROM registration.course_registration cr WHERE cr.session = S AND cr.student_id IN (s1, s2);
     d1 := finance.due_for_semester(s1, S, 1); d2 := finance.due_for_semester(s2, S, 1); d3 := finance.due_for_semester(s3, S, 1);
     SELECT string_agg(c.item || '=' || c.amount, '; ' ORDER BY c.ord, c.item) INTO c1 FROM finance.charges_of_as(s1, S, ARRAY['FEE'], NULL) c;
     SELECT string_agg(c.item || '=' || c.amount, '; ' ORDER BY c.ord, c.item) INTO c2 FROM finance.charges_of_as(s2, S, ARRAY['FEE'], NULL) c;
@@ -22659,6 +22670,73 @@ BEGIN
              AND listed = 'MOAUM/ZZS/93/6152', false),
         format('minimum %s | positions %s %s | kinds %s %s | spillover %s %s, then %s | final year %s | listed %s', lim.min_units, st_sp, st_fy, k_sp, k_fy, sub_sp, reg_sp, st_after, e_fy, listed));
 END $$;
+-- ── V616. A spillover student pays a semester's school fees only when they register a course in it: a student at 500 Level on a
+--          four-year programme (SP1 by the level) with 400 Level (SP1) lines for both semesters and a whole-session spillover line
+--          owes nothing until a course is on a registration; a course registered in the second semester alone makes that
+--          semester's line and the whole-session line due, never the first's; the fee is still stated and no semester reads unstated;
+--          the profile readers agree with the student's own position; a student not in spillover is charged as before. The block
+--          undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9616/9617'; v_prog text; v_dept text; v_fac text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
+    reg2 uuid := gen_random_uuid(); off2 uuid := gen_random_uuid(); d0 numeric; d1 numeric; d2 numeric; d2s1 numeric; d_norm numeric; c1 text;
+    v_stated0 boolean; v_stated1 boolean; v_unstated0 int[]; v_unstated1 int[]; v_full0 boolean; v_cleared2_0 boolean; v_cleared2_1 boolean;
+    p_profile numeric; p_pos numeric; p_sems int[]; p_norm_sems int[]; p_cl2 numeric; msg text;
+BEGIN
+  BEGIN   -- the check's own session, programme, students, lines and registration, undone at the end
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V616', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), S, date '9616-10-01', date '9617-09-30', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN'), (gen_random_uuid(), S, 2, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V616', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/16/616001', 'MOAUM/ZZS/16/6161', 'CHECKV616', 'Spillover', v_prog, 'UTME', S, 100, 500, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/16/616002', 'MOAUM/ZZS/16/6162', 'CHECKV616', 'Final year', v_prog, 'UTME', S, 100, 400, 'ACTIVE', now());
+    PERFORM finance.add_fee_lines(S, jsonb_build_array(
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'spillover', 'SP1', 'semester', '1', 'amount', '70000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'spillover', 'SP1', 'semester', '2', 'amount', '60000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '', 'spillover', 'Yes', 'semester', '', 'amount', '5000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'entryMode', 'UTME', 'semester', '1', 'amount', '150000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'entryMode', 'UTME', 'semester', '2', 'amount', '120000')));
+    -- before any course is chosen: nothing due, the fee stated, no semester unstated, the second semester cleared (nothing to pay)
+    SELECT due, paid_in_full INTO d0, v_full0 FROM finance.position(s1, S);
+    v_stated0 := finance.fee_stated(s1, S); v_unstated0 := finance.fee_unstated_semesters(s1, S); v_cleared2_0 := finance.semester_cleared(s1, S, 2);
+    -- a course registered in the second semester alone (a draft holding one entry — the choice is the charge)
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZV 616', 'Check V616', 3, 2, 500, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off2, 'ZZV 616', S, 2);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg2, s1, S, 2, 500, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (reg2, off2, 3, 'CURRENT', 'REGISTERED');
+    SELECT due INTO d1 FROM finance.position(s1, S);
+    d2 := finance.due_for_semester(s1, S, 2); d2s1 := finance.due_for_semester(s1, S, 1);
+    SELECT string_agg(c.item || '=' || c.amount, '; ' ORDER BY c.ord, c.item) INTO c1 FROM finance.charges_of_as(s1, S, ARRAY['FEE'], NULL) c;
+    v_stated1 := finance.fee_stated(s1, S); v_unstated1 := finance.fee_unstated_semesters(s1, S); v_cleared2_1 := finance.semester_cleared(s1, S, 2);
+    -- the readers built on profiles agree, and a student not in spillover is charged as before
+    SELECT fp.reg_sems INTO p_sems FROM finance.fee_profiles(S) fp WHERE fp.student_id = s1;
+    SELECT fp.reg_sems INTO p_norm_sems FROM finance.fee_profiles(S) fp WHERE fp.student_id = s2;
+    SELECT due INTO p_pos FROM finance.fee_positions_of(S, ARRAY[s1]);
+    SELECT sp.payable INTO p_cl2 FROM finance.session_positions(S, 2) sp WHERE sp.student_id = s1;
+    SELECT sc.fee INTO p_profile FROM finance.session_charges(S) sc WHERE sc.student_id = s1;
+    SELECT due INTO d_norm FROM finance.position(s2, S);
+    msg := format('before: due %s full %s stated %s unstated %s cleared2 %s | after: due %s sem2 %s sem1 %s [%s] stated %s unstated %s cleared2 %s | profiles: sems %s normal-sems %s positions_of %s session_positions(2) %s session_charges %s | normal student due %s',
+                  d0, v_full0, v_stated0, v_unstated0, v_cleared2_0, d1, d2, d2s1, c1, v_stated1, v_unstated1, v_cleared2_1, p_sems, p_norm_sems, p_pos, p_cl2, p_profile, d_norm);
+    RAISE EXCEPTION 'the V616 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    NULL;
+  END;
+  PERFORM pg_temp.assert('V616: a spillover student pays a semester''s fees only when they register a course in it — nothing due before a course is chosen (stated, nothing unstated, cleared), a second-semester course makes that semester''s line and the whole-session line due and never the first''s, the profile readers agree, a student not in spillover is charged as before',
+      coalesce(d0 = 0 AND v_full0 AND v_stated0 AND v_unstated0 = '{}'::int[] AND v_cleared2_0
+               AND d1 = 65000 AND d2 = 65000 AND d2s1 = 5000 AND c1 LIKE '%(spillover SP1) (Second Semester)=60000%' AND c1 LIKE '%School fees (spillover)=5000%' AND c1 NOT LIKE '%First Semester%'
+               AND v_stated1 AND v_unstated1 = '{}'::int[] AND NOT v_cleared2_1
+               AND p_sems = ARRAY[2] AND p_norm_sems IS NULL AND p_pos = 65000 AND p_cl2 = 60000 AND p_profile = 65000
+               AND d_norm = 270000, false),
+      msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

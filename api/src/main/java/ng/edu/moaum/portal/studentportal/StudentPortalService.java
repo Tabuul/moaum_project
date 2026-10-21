@@ -376,6 +376,8 @@ public class StudentPortalService {
         out.put("stated", repo.feeStated(id, session));
         // V451: an open semester with no line stated for the student, while another semester's is — not "settled"
         out.put("unstatedSemesters", repo.unstatedSemesters(id, session));
+        // V616: a spillover student is charged a semester's school fees only when they register a course in it — the page says so
+        out.put("spilloverBySemester", repo.isSpillover(id));
         out.put("due", pos.get("due"));
         out.put("paid", pos.get("paid"));
         out.put("balance", pos.get("balance"));

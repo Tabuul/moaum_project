@@ -120,6 +120,23 @@ class FeeLinesIT {
             Map<String, Object> added = ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + SES + "/fee-lines", Map.of("rows", rows)));
             assertThat(n(added, "added")).isEqualTo(4);
             assertThat(n(ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + SES + "/fee-lines", Map.of("rows", rows))), "added")).isEqualTo(0);
+            // V616: a spillover student is charged a semester's line once they register a course in it — both register both semesters here
+            it.db(() -> {
+                String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", prog4).query(String.class).single();
+                jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) SELECT 'ZZF 516', 'Fee Lines Spillover', 6, 1, 500, :d, 'Core', 'LIVE' WHERE NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'ZZF 516')").param("d", dept).update();
+                for (int sem : List.of(1, 2)) {
+                    UUID off = jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZF 516', :s, :sem) ON CONFLICT DO NOTHING RETURNING id")
+                            .param("s", SES).param("sem", sem).query(UUID.class).optional()
+                            .orElseGet(() -> jdbc.sql("SELECT id FROM catalogue.offering WHERE course_code = 'ZZF 516' AND session = :s AND semester = :sem").param("s", SES).param("sem", sem).query(UUID.class).single());
+                    for (UUID st : List.of(sp1, sp2)) {
+                        UUID reg = UUID.randomUUID();
+                        jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (:id, :st, :s, :sem, (SELECT current_level FROM people.student WHERE id = :st), 'DRAFT')")
+                                .param("id", reg).param("st", st).param("s", SES).param("sem", sem).update();
+                        jdbc.sql("INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (:r, :o, 6, 'CURRENT', 'REGISTERED')").param("r", reg).param("o", off).update();
+                    }
+                }
+                return null;
+            });
             // the schedule lists the year; the matchers charge each student the lines of their year and level
             List<Map<String, Object>> items = (List<Map<String, Object>>) ok(it.get(bursar, "/api/v1/finance/sessions/" + SES + "/schedule")).get("items");
             assertThat(items.stream().filter(i -> prog4.equals(i.get("programme_code"))).map(i -> String.valueOf(i.get("spillover")) + "/" + i.get("spill_year") + "/" + i.get("level")))
