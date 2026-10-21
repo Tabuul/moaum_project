@@ -258,18 +258,22 @@ function RegisterAttendance({ t }: { t: Timetable }) {
 export function IdCard({ c, s }: { c: Card; s: Me }) {
   const { act, busy, problem } = useAct();
   const [now] = useState(() => Date.now());
-  const live = c.cards.find((x) => x.state === "ISSUED") ?? null;
+  const live = c.cards.find((x) => x.state === "ISSUED" || x.state === "PRINTED") ?? null;   // V605: printed and awaiting collection, or in force
   /* the student sees the card's status, never the card: it is printed and issued by the University's card desk and handed over in
      person, so a picture or a printable copy of it is never offered here (portal gap audit: ID cards are the office's to produce) */
   const expired = live ? new Date(live.valid_to).getTime() < now : false;
   return (
     <>
       {live ? (
+        live.state === "PRINTED" ? (
+        <Note kind="info" title={`Card ${live.card_no} is printed — collect it from the Security Unit`}>Bring a fee receipt and come in person; the card is handed over against the photograph on your record.</Note>
+      ) : (
         <Note kind={expired ? "bad" : "ok"} title={`Card ${live.card_no} · issued ${onDay(live.issued_at)} · ${expired ? "expired" : "valid to"} ${onDay(live.valid_to)}`}>{expired ? "Ask the card desk for a renewal." : "Collected in person from the card desk."}</Note>
+      )
       ) : !c.matricNo ? (
         <Note kind="info" title="A card is made after matriculation">It is keyed on the matriculation number, which you do not have yet.</Note>
       ) : c.clearsIdCard === false ? (
-        <Note kind="bad" title="Your card waits on the Bursary's clearance" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
+        <Note kind="bad" title="Your card waits on the school-fee condition" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
       ) : (
         <Note kind="info" title="Your card has not been issued yet">The card desk prints it and hands it over in person against the photograph on your record; bring your fee receipt.</Note>
       )}
@@ -291,7 +295,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       <Panel title="Cards" right="Every card ever issued to you">
         <DTable cols={["Card", "Issued|mid", "Valid to|mid", "State|num"]} rows={c.cards.map((x) => [
           <span className="tnum" key="n">{x.card_no}</span>, <span className="sub2 tnum" key="i">{onDay(x.issued_at)}</span>, <span className="sub2 tnum" key="v">{onDay(x.valid_to)}</span>,
-          x.state === "ISSUED" ? <Pil kind="ok" key="s">Live</Pil> : <Pil kind="grey" key="s">{x.state.charAt(0) + x.state.slice(1).toLowerCase()}{x.ended_reason ? ` · ${x.ended_reason}` : ""}</Pil>,
+          x.state === "ISSUED" ? <Pil kind="ok" key="s">Live</Pil> : x.state === "PRINTED" ? <Pil kind="warn" key="s">Printed — collect</Pil> : <Pil kind="grey" key="s">{x.state.charAt(0) + x.state.slice(1).toLowerCase()}{x.ended_reason ? ` · ${x.ended_reason}` : ""}</Pil>,
         ])} />
         {!c.cards.length ? <PBody><div className="sub2">None yet.</div></PBody> : null}
       </Panel>

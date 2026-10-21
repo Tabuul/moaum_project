@@ -23,7 +23,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const throttled = !r.ok && r.problem.status === 429;
   const ended = !ok && !!v.state;
   const endedWord = v.state === "LOST" ? `reported lost${v.ended_at ? ` on ${day(v.ended_at)}` : ""}` : v.state === "REPLACED" ? `replaced by a new card${v.ended_at ? ` on ${day(v.ended_at)}` : ""}`
-    : v.state === "EXPIRED" ? `valid only to ${day(v.valid_to)}` : `no longer in force (${(v.state ?? "").toLowerCase()})`;
+    : v.state === "EXPIRED" ? `valid only to ${day(v.valid_to)}` : v.state === "PRINTED" ? "printed but not yet collected from the Security Unit" : `no longer in force (${(v.state ?? "").toLowerCase()})`;
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-5) var(--s-3)" }}>
       <div className="card" style={{ width: "100%", maxWidth: 600, overflow: "hidden" }}>

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 436
+\set EXPECTED 437
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2215,6 +2215,8 @@ BEGIN
     SELECT * INTO rate FROM registration.attendance_rate(st, '9999/0000', 1) WHERE course_code = 'CHK 101';
     -- the card: refused before a scheme releases ID_CARD? the scheme of 101 is in force today and releases it at instalment 1, which is paid
     PERFORM set_config('moaum.actor_office', 'library', true);
+    -- V605: a card asks an official photograph of the student; the check's student is given one
+    INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_at, reason) VALUES (st, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check');
     card := credentials.issue_identity_card(st, NULL);
     ok := false;
     BEGIN
@@ -21930,6 +21932,112 @@ BEGIN
                run1.corrected, run1.remaining, run2.corrected, run2.remaining, lvl6, lvl5, dec1,
                ospill->>'spilloverState', left(ospill->>'progressRefusal', 16), ospill->>'nextLevel', left(ospill->>'correctRefusal', 16), left(prog_refused, 16),
                left(ofour->>'progressRefusal', 15)));
+END $$;
+-- ── V605: the Security Unit's student identity card desk ──
+-- A matriculated student with a photograph and the first session on the calendar paid in full: eligible with no clearance started
+-- (clearance is never read); one without a photograph, one without a matriculation number, and one whose earlier session is unpaid
+-- read their reason in words. The card is printed (PRINTED, a number drawn, counted on a second print), handed over (ISSUED, by whom
+-- and when), replaced on a reason from the list — the old card ended and linked, version 2 — and a replacement on no listed reason
+-- is refused; a second live card cannot exist; the old door (issue) still makes and hands over a card in one act; the events are on
+-- the credentials trail. The block undoes its writes.
+DO $$
+DECLARE ug text; v_ses text; v_cur text; v_who uuid; dept text; st uuid := gen_random_uuid(); np uuid := gen_random_uuid(); nm uuid := gen_random_uuid(); ow uuid := gen_random_uuid();
+        actor uuid := gen_random_uuid(); e1 jsonb; e2 jsonb; e3 jsonb; e4 jsonb; r1 jsonb; r2 jsonb; r3 jsonb; r4 jsonb; c1 jsonb; bad text; dup text; msg text;
+        v_ref text; n_clear int; old_state text; old_reason text; prev_no text; n_cards int; n_events int; issued_no text; issued_state text; v_live int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', actor::text, true);
+        PERFORM set_config('moaum.actor_office', 'security', true);
+        PERFORM set_config('moaum.reason', 'check V605', true);
+        -- no session is current here: the reading is of the sessions on the record, each paid in full
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        SELECT p.code, p.dept_code INTO ug, dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/60/960501', 'MOAUM/ZZQ/60/96051', 'CHECKV605', 'Eligible', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now()),
+               (np, 'MOAUM/ADM/60/960502', 'MOAUM/ZZQ/60/96052', 'CHECKV605', 'Nophoto', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now()),
+               (nm, 'MOAUM/ADM/60/960503', NULL, 'CHECKV605', 'Nomatric', ug, 'UTME', v_ses, 100, 100, 'ADMITTED', NULL),
+               (ow, 'MOAUM/ADM/60/960504', 'MOAUM/ZZQ/60/96054', 'CHECKV605', 'Owing', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now());
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, v_ses, 100), (gen_random_uuid(), np, v_ses, 100), (gen_random_uuid(), ow, v_ses, 100);
+        INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_at, reason)
+        VALUES (st, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check'), (ow, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check');
+        INSERT INTO finance.fee_schedule (session, item, amount, level) SELECT v_ses, 'School fees', 50000, 100
+         WHERE NOT EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = v_ses AND f.item = 'School fees' AND f.level = 100 AND f.ended_at IS NULL);
+        v_ref := finance.new_purpose_reference(st, v_ses, (SELECT coalesce(sum(c.amount), 50000) FROM finance.charges(st, v_ses) c), 'School fees ' || v_ses);
+        PERFORM finance.confirm_payment(v_ref, 'BANK_BRANCH', 'check V605');
+        v_ref := finance.new_purpose_reference(ow, v_ses, 20000, 'School fees ' || v_ses);
+        PERFORM finance.confirm_payment(v_ref, 'BANK_BRANCH', 'check V605 part');
+        -- the scheme in force releases the card at the first instalment (made here where none is in force), and the current
+        -- session, where one stands apart from the first, is stated and paid for the three with a number
+        INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+        SELECT gen_random_uuid(), 'clearance', 'UNIVERSITY',
+               daterange(current_date, (SELECT min(lower(validity)) FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date)),
+               'CHK/V605', 'bursar'
+         WHERE policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL;
+        INSERT INTO policy.clearance_scheme SELECT id, true FROM policy.version WHERE instrument = 'CHK/V605' ON CONFLICT DO NOTHING;
+        INSERT INTO policy.clearance_rule SELECT v.id, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END
+          FROM policy.version v, ref.clearance_purpose p WHERE v.instrument = 'CHK/V605' ON CONFLICT DO NOTHING;
+        v_cur := policy.university_current_session();
+        IF v_cur IS NOT NULL AND v_cur <> v_ses THEN
+            INSERT INTO finance.fee_schedule (session, item, amount, level) SELECT v_cur, 'School fees', 50000, 100
+             WHERE NOT EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = v_cur AND f.item = 'School fees' AND f.level = 100 AND f.ended_at IS NULL);
+            FOREACH v_who IN ARRAY ARRAY[st, np, ow] LOOP
+                v_ref := finance.new_purpose_reference(v_who, v_cur, (SELECT coalesce(sum(c.amount), 50000) FROM finance.charges(v_who, v_cur) c), 'School fees ' || v_cur);
+                PERFORM finance.confirm_payment(v_ref, 'BANK_BRANCH', 'check V605 current');
+            END LOOP;
+        END IF;
+        n_clear := (SELECT count(*) FROM clearance.process WHERE student_id = st);
+        e1 := credentials.id_card_eligibility(st);
+        e2 := credentials.id_card_eligibility(np);
+        e3 := credentials.id_card_eligibility(nm);
+        e4 := credentials.id_card_eligibility(ow);
+        -- printed, printed again, handed over
+        r1 := credentials.print_identity_card(st, NULL, NULL);
+        r2 := credentials.print_identity_card(st, NULL, 'printer jam');
+        c1 := credentials.collect_identity_card(st, 'collected in person');
+        -- a second live card cannot be made behind the function's back
+        BEGIN
+            INSERT INTO credentials.identity_card (student_id, card_no, issued_by, valid_to, state) VALUES (st, 'MOAUM/ID/99/99605', actor, current_date + 1, 'PRINTED');
+            dup := 'NOT REFUSED';
+        EXCEPTION WHEN unique_violation THEN dup := 'unique';
+        END;
+        -- a replacement on no listed reason is refused; on a listed one the old card is ended and linked
+        BEGIN
+            PERFORM credentials.print_identity_card(st, 'WHIM', NULL);
+            bad := 'NOT REFUSED';
+        EXCEPTION WHEN OTHERS THEN bad := split_part(SQLERRM, ':', 1);
+        END;
+        r3 := credentials.print_identity_card(st, 'LOST', 'left in a taxi');
+        SELECT c.state, c.ended_reason INTO old_state, old_reason FROM credentials.identity_card c WHERE c.card_no = r1->>'card_no';
+        SELECT prev.card_no INTO prev_no FROM credentials.identity_card c JOIN credentials.identity_card prev ON prev.id = c.previous_card_id WHERE c.card_no = r3->>'card_no';
+        -- the no-photograph student is refused at the print; the old door makes and hands over a card in one act for the owing one once paid
+        BEGIN
+            PERFORM credentials.print_identity_card(np, NULL, NULL);
+            r4 := '{"outcome": "NOT REFUSED"}'::jsonb;
+        EXCEPTION WHEN OTHERS THEN r4 := jsonb_build_object('code', split_part(SQLERRM, ':', 1));
+        END;
+        v_ref := finance.new_purpose_reference(ow, v_ses, (SELECT coalesce(sum(c.amount), 50000) - 20000 FROM finance.charges(ow, v_ses) c), 'School fees ' || v_ses);
+        PERFORM finance.confirm_payment(v_ref, 'BANK_BRANCH', 'check V605 rest');
+        issued_no := credentials.issue_identity_card(ow, NULL);
+        SELECT c.state INTO issued_state FROM credentials.identity_card c WHERE c.card_no = issued_no;
+        n_cards := (SELECT count(*) FROM credentials.identity_card WHERE student_id = st);
+        v_live := (SELECT count(*) FROM credentials.identity_card WHERE student_id = st AND state IN ('PRINTED', 'ISSUED'));
+        n_events := (SELECT count(*) FROM credentials.event WHERE student_id = st AND action LIKE 'ID_CARD_%');
+        RAISE EXCEPTION 'the V605 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V605 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V605: a matriculated student with a photograph and the fees paid is eligible with no clearance started (clearance never read), the missing photograph, matriculation number and unpaid fees each a reason in words; the card printed (counted on a second print) and handed over, a second live card impossible, a replacement refused without a listed reason and made on one with the old card ended and linked (version 2), the old door making and handing over in one act, every act an event',
+        n_clear = 0 AND (e1->>'eligible')::boolean AND NOT (e2->>'eligible')::boolean AND NOT (e3->>'eligible')::boolean AND NOT (e4->>'eligible')::boolean
+        AND e2->'reasons' ? 'Student photograph is missing' AND e3->'reasons' ? 'Matriculation number not yet issued'
+        AND (e4->'reasons'->>0) LIKE 'Required school-fee condition not satisfied%' AND position('clearance' in lower(e1::text || e2::text || e3::text || e4::text)) = 0
+        AND r1->>'state' = 'PRINTED' AND (r1->>'card_no') ~ '^MOAUM/ID/[0-9]{2}/[0-9]{5}$' AND (r2->>'print_count')::int = 2 AND r2->>'card_no' = r1->>'card_no'
+        AND c1->>'state' = 'ISSUED' AND dup = 'unique' AND bad = 'ID_CARD_REASON'
+        AND (r3->>'version')::int = 2 AND (r3->>'replaced')::boolean AND old_state = 'LOST' AND old_reason LIKE 'lost%' AND prev_no = r1->>'card_no'
+        AND r4->>'code' = 'ID_CARD_NOT_ELIGIBLE' AND issued_state = 'ISSUED' AND n_cards = 2 AND v_live = 1 AND n_events >= 5,
+        format('clear %s | e1 %s e2 %s e3 %s e4 %s | r1 %s/%s r2 count %s | collected %s dup %s bad %s | r3 v%s replaced %s old %s/%s prev %s | nophoto %s | issued %s/%s | cards %s live %s events %s',
+               n_clear, e1->>'eligible', e2->'reasons', e3->'reasons', e4->'reasons'->>0, r1->>'card_no', r1->>'state', r2->>'print_count', c1->>'state', dup, bad,
+               r3->>'version', r3->>'replaced', old_state, old_reason, prev_no, r4->>'code', issued_no, issued_state, n_cards, v_live, n_events));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

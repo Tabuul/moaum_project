@@ -429,7 +429,7 @@ class StudentFullRecordController {
                         SELECT t.ref, t.kind, t.destination_name, t.mode, t.copies, t.requested_at, t.paid_at, t.stage, t.released_at, t.delivered_at,
                                t.completed_at, t.closed_at FROM credentials.transcript_request t WHERE t.student_id = :s) x),
                     'cards', (SELECT coalesce(json_agg(x ORDER BY x.issued_at DESC), '[]'::json) FROM (
-                        SELECT c.card_no, c.issued_at, c.valid_to, c.state, c.ended_at, c.ended_reason FROM credentials.identity_card c WHERE c.student_id = :s) x)
+                        SELECT c.card_no, c.issued_at, c.valid_to, c.state, c.ended_at, c.ended_reason, c.version, c.printed_at, c.collected_at, c.replacement_reason FROM credentials.identity_card c WHERE c.student_id = :s ORDER BY c.issued_at DESC) x)
                 )::text
                 """, id);
     }

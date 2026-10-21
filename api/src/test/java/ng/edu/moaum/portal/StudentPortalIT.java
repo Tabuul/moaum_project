@@ -243,7 +243,10 @@ class StudentPortalIT {
         Map<String, Object> docket = it.get(token, "/api/v1/me/docket").getBody();
         assertThat(docket.get("clearsExamination")).isEqualTo(true);
 
-        // the identity card: the Security Unit issues it on the matriculation number, released at instalment 1 (GAP-005: not the Library)
+        // the identity card: the Security Unit issues it on the matriculation number, released at instalment 1 (GAP-005: not the Library);
+        // V605: on an official photograph, which the test student is given here
+        it.db(() -> jdbc.sql("INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_at, reason) VALUES (:s, :c, 'image/jpeg', 4, now(), 'integration test') ON CONFLICT (student_id) DO NOTHING")
+                .param("s", student).param("c", new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xD9}).update());
         assertThat(it.call(ItSupport.token("library"), HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of())
                 .getStatusCode().value()).isEqualTo(403);
         String security = ItSupport.token("security");

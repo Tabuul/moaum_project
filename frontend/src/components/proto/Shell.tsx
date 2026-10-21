@@ -180,6 +180,7 @@ export const ROUTES: Record<string, string> = {
   "a/password": "/account/password",
   /* the student's side (proto/part3, part4, part29) */
   "s/dashboard": "/student",
+  "s/college": "/college/student",
   "s/register": "/student/register",
   "s/form": "/student/form",
   "s/results": "/student/results",
@@ -345,6 +346,7 @@ export const ROUTES: Record<string, string> = {
   "t/senate": "/results/senate",
   "t/publish": "/results/publish",
   "t/idcards": "/credentials/idcards",
+  "t/idcardreport": "/credentials/idcards/report",
   "t/queries": "/results/queries",
   /* the applicant's journey (proto/part13.html) */
   "a/dashboard": "/applicant",
@@ -436,6 +438,7 @@ export const ROUTES: Record<string, string> = {
 /* the portal's own titles for the routes the prototype did not draw, or drew under another name */
 const OVERRIDES: Record<string, string> = {
   "s/dashboard": "Dashboard",
+  "s/college": "College (MBBS)",
   "s/fees": "Fees & payments",
   "s/gst": "GST & EPS",
   "r/gst": "GST Office dashboard",
@@ -638,6 +641,8 @@ export interface Me {
   waiting?: Record<string, string> | null;
   /** a menu other than the office's own — a postgraduate signs in as a student but reads the School's sidebar */
   menu?: string | null;
+  /** V606: what the person is, for the menu items that say when they show (an MBBS student: "college") */
+  flags?: string[] | null;
   /** V430: "how do we reach you" — ASK while the portal holds no usable e-mail or phone for the person (iam/me) */
   contactPrompt?: ContactPromptData | null;
   /** V575: a student's contact a department uploaded and the student has not confirmed (iam/me) */
@@ -705,7 +710,9 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
   const [navg, setNavg] = useState<Record<string, boolean>>({});
   const [said, setSaid] = useState<string | null>(null);
   const office = me?.activeOffice ?? null;
-  const menu = (me?.menu && MENUS[me.menu]) || (office && MENUS[office]) || FALLBACK;
+  const whole = (me?.menu && MENUS[me.menu]) || (office && MENUS[office]) || FALLBACK;
+  // V606: an item that says when it shows is shown only to the person it is for
+  const menu = { ...whole, groups: whole.groups.map((g) => ({ ...g, items: g.items.filter((it) => !it.when || (me?.flags ?? []).includes(it.when)) })) };
   const waiting = me?.waiting ?? {};
   const current = route === "r/academic" ? menu.home : route;
   const t0def = TITLES[current] ?? TITLES[route] ?? "";

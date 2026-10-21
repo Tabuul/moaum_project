@@ -57,10 +57,10 @@ export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staf
         ["Waiting for a card", String(desk.waiting.length), desk.waiting.length ? "var(--red-ink)" : null, "On the matriculation register, no live card"],
         ["Live cards", String(live.length), "var(--green-ink)", "One per student"],
         ["Lost or replaced", String(desk.cards.length - live.length), null, "Ended on the record"],
-        ["Issued today", String(desk.cards.filter((c) => c.issued_at.slice(0, 10) === new Date().toISOString().slice(0, 10)).length), null, "By the Library"],
+        ["Issued today", String(desk.cards.filter((c) => c.issued_at.slice(0, 10) === new Date().toISOString().slice(0, 10)).length), null, "By the Security Unit"],
       ]} />
       <Note kind="info" title="A card is keyed on the matriculation number and released by the scheme">
-        Printed once the first instalment is paid; Security hands it over against the photograph on file. A lost card is ended here and replaced.
+        Printed by the Security Unit once the school-fee condition, the matriculation number and the photograph are met (the desk above reads them); handed over against the photograph on file. A lost card is ended here and replaced. Clearance is never a condition.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Waiting for a card" right={<form onSubmit={(e) => { e.preventDefault(); queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`); }} className="row row--inline row--tight"><input className="ws__in" value={search} placeholder="Matriculation number or surname" onChange={(e) => setSearch(e.target.value)} aria-label="Find a student" /><Btn kind="ghost" onClick={() => queryNav(`/credentials/idcards?q=${encodeURIComponent(search)}`)}>Find</Btn></form>}>

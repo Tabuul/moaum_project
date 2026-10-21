@@ -579,8 +579,10 @@ function DocumentsTab({ d, name, file }: { d: Data; name: string; file: string }
       ) : null}
       {cards.length ? (
         <Panel title="Identity cards">
-          <DTable pageSize={0} cols={["Card", "Issued", "Valid to", "State", "Ended"]}
-            rows={cards.map((c) => [s(c.card_no), day(c.issued_at), day(c.valid_to) || "—", words(c.state), c.ended_at ? `${day(c.ended_at)} · ${s(c.ended_reason)}` : "—"])} />
+          {/* V605: printed and issued (handed over) apart, the version and the reason a replacement was made */}
+          <DTable pageSize={0} cols={["Card", "Version|num", "Printed", "Issued", "Valid to", "State", "Ended"]}
+            rows={cards.map((c) => [s(c.card_no), s(c.version) || "1", day(c.printed_at) || day(c.issued_at), day(c.collected_at) || "—", day(c.valid_to) || "—",
+              `${words(c.state)}${c.replacement_reason ? ` · replacement: ${words(c.replacement_reason)}` : ""}`, c.ended_at ? `${day(c.ended_at)} · ${s(c.ended_reason)}` : "—"])} />
         </Panel>
       ) : null}
       <Panel title="Admission documents" right={<ExcelBtn table={t[0]} name={name} file={file} />}>
