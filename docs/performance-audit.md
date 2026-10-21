@@ -672,3 +672,21 @@ staff sign-ins), local PostgreSQL 18, cold then warm:
   thirty days. The screen says so when a filter is on. The window is taken in time order from the three sources and stops at the
   200th match.
 - Today's tiles still read today's entries. On a day of 400,000 audited writes that is about 2 s cold.
+
+### The follow-ups (21 October 2026, V626)
+
+- **Security posture** (`/governance/security`: the `/security` screen and the home dashboards of the Security Unit, Internal Audit
+  and Deputy Audit) counted every audit entry, as `/audit` did before V623. It now reads `audit.entry_count()`. `max(occurred_at)`
+  now comes from the end of V623's index.
+- **"Today" starts at midnight in Lagos.** The tiles counted from the database's midnight, which is UTC (01:00 in Lagos), so an
+  entry between 00:00 and 01:00 Lagos time was left out. They now count from `(now() AT TIME ZONE 'Africa/Lagos')::date` at
+  midnight in Lagos (V539's rule), and the comparison still reads from the end of the indexes.
+- **One kind of record, newest first** (the session policy's history, the biodata gate's, a session's fee schedule changes, the
+  College's trails). Until now these were served by `ix_entries_subject (subject_type, subject_id, occurred_at)`, which reads every
+  entry of the type and sorts them, or by V623's time index, which walks back through every type until it has enough. On the copy
+  of §W, with a made-up type of 200,000 entries whose latest is two weeks behind the end of the trail, the planner took V623's index:
+  665–740 ms for the newest 100. With `audit.ix_entries_type_recent (subject_type, occurred_at DESC)` on every partition (V626,
+  built `CONCURRENTLY`), it takes 0.6–1.4 ms. A type of a million entries went from 15 ms to 2 ms, and types of a few thousand were
+  already fast. Each audited write keeps one more index entry.
+- The times above are execution times. Planning a query over the 24 monthly partitions took about 450 ms more on the local
+  PostgreSQL 18 (Windows), whose backends are slower than production's; it is the same with or without the index.

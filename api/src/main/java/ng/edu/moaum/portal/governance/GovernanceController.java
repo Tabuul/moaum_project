@@ -131,7 +131,7 @@ class GovernanceController {
     @Transactional(readOnly = true)
     Map<String, Object> security() {
         Map<String, Object> audit = jdbc.sql("""
-                SELECT (SELECT count(*) FROM audit.entries) AS entries,
+                SELECT audit.entry_count() AS entries,  -- V623: counted from the chain, never row by row
                        (SELECT count(*) FROM audit.chain_head) AS shards,
                        (SELECT count(*) FROM audit.unattached()) AS unattached_tables,
                        (SELECT max(occurred_at) FROM audit.entries) AS last_entry,

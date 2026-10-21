@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 453
+\set EXPECTED 454
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23130,6 +23130,21 @@ BEGIN
                AND applied IS NOT NULL AND pos.paid = 30000 AND bal2 = 0
                AND lw.status = 'COMPUTED' AND v_ver = 1 AND r_lwself = 'LEGACY_WALLET_SAME_OFFICER' AND lw2.status = 'RETURNED' AND lw2.verified_by IS NULL AND v_ver2 = 1 AND lw3.status = 'VERIFIED', false),
       msg);
+END $$;
+-- ── V626. The audit history of one kind of record reads from the end of an index: every monthly partition of audit.entries carries
+--          (subject_type, occurred_at DESC), attached to the parent's index, which is therefore valid and passed to a partition made
+--          later. Reads only ──
+DO $$
+DECLARE parts int; indexed int; parent_valid boolean; cols text;
+BEGIN
+    parts := (SELECT count(*) FROM pg_inherits WHERE inhparent = 'audit.entries'::regclass);
+    indexed := (SELECT count(*) FROM pg_inherits i JOIN pg_index x ON x.indexrelid = i.inhrelid
+                 WHERE i.inhparent = 'audit.ix_entries_type_recent'::regclass AND x.indisvalid);
+    parent_valid := (SELECT indisvalid FROM pg_index WHERE indexrelid = 'audit.ix_entries_type_recent'::regclass);
+    cols := pg_get_indexdef('audit.ix_entries_type_recent'::regclass);
+    PERFORM pg_temp.assert('V626: the audit trail is indexed by kind of record and time on every partition',
+        coalesce(parts >= 24 AND indexed = parts AND parent_valid AND cols LIKE '%(subject_type, occurred_at DESC)%', false),
+        format('partitions %s, indexed %s, parent valid %s, %s', parts, indexed, parent_valid, cols));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -4,6 +4,13 @@
 `/legacy/results/preview`; `assessment.legacy_semester_load`, V472). Results held for students not yet on the register (V204) post
 through the same load, so the same rules apply to them.
 
+**Who (21 October 2026):** the Directorate of ICT alone (and the super administrator). Past results go onto the record as final with
+no approval chain, because they were approved on the old portal, so the University keeps the upload to one office.
+`/legacy/results`, its check `/legacy/results/preview` and `/legacy/pg-results` answer 403 to any other office, and the migration
+screen shows them neither tab. The other migration steps (students, registration, JAMB numbers, photos, clearance) stay with the
+offices that had them. So does posting results already uploaded and held for a student not yet loaded (`/legacy/reconcile-results`,
+run after every student upload): it brings in no new result.
+
 ## The mark
 
 The upload used to refuse any mark whose CA was over 40 or exam over 60 ("No mark, or a mark out of range"). The old portal's export

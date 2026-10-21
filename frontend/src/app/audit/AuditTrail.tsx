@@ -47,19 +47,20 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
         ["Refusals today", String(d.tiles.refusalsToday), d.tiles.refusalsToday ? "var(--chrome)" : null, "Changes the rules refused"],
       ]} />
 
-      <div className="card"><div className="card__body row row--end">
-        <div style={{ minWidth: 180 }}><Field id="au-action" label="Domain">
+      {/* the filters side by side: .card__body lays its children in a column, so the row is its own element */}
+      <div className="card"><div className="card__body"><div className="row row--end">
+        <div style={{ minWidth: 220 }}><Field id="au-action" label="Domain">
           <select id="au-action" className="ctl" value={action} onChange={(e) => go({ action: e.target.value })}>
             <option value="">All actions</option>
             {facets.actions.map((a) => <option key={a.domain} value={a.domain}>{a.domain} ({a.n})</option>)}
           </select></Field></div>
-        <div style={{ minWidth: 180 }}><Field id="au-office" label="Acting office">
+        <div style={{ minWidth: 220 }}><Field id="au-office" label="Acting office">
           <select id="au-office" className="ctl" value={office} onChange={(e) => go({ office: e.target.value })}>
             <option value="">All offices</option>
             {facets.offices.map((o) => <option key={o.actor_office} value={o.actor_office}>{officeLabel(o.actor_office)} ({o.n})</option>)}
           </select></Field></div>
         {action || office ? <Btn kind="ghost" onClick={() => router.push("/audit")}>Clear</Btn> : null}
-      </div></div>
+      </div></div></div>
 
       <Panel title="Audit trail" right={`Most recent ${d.entries.length}${action || office ? ` · filtered within the latest ${(d.filterWindow ?? 50000).toLocaleString()} entries` : ""}`}>
         {d.entries.length ? (

@@ -22,7 +22,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * The course registration history upload (V472): the file is checked against the record first and the check writes nothing;
  * the upload adds only what is missing, at the programme's units; a re-upload never rewrites a course on record — its units
  * and a dropped status stay — and every row not loaded or left as it was comes back with its reason. A past result for a
- * dropped course approves it, as before. Needs DATABASE_URL.
+ * dropped course approves it, as before; past results are the Directorate of ICT's alone to upload (21 Oct 2026). Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -54,7 +54,11 @@ class RegistrationHistoryUploadIT {
     }
 
     private Map<String, Object> post(String path, List<Map<String, String>> rows) {
-        ResponseEntity<Map> r = it.call(records, HttpMethod.POST, path, Map.of("session", session, "semester", 1, "rows", rows));
+        return post(records, path, rows);
+    }
+
+    private Map<String, Object> post(String token, String path, List<Map<String, String>> rows) {
+        ResponseEntity<Map> r = it.call(token, HttpMethod.POST, path, Map.of("session", session, "semester", 1, "rows", rows));
         assertThat(r.getStatusCode().value()).as(path + " → " + r.getBody()).isEqualTo(200);
         return r.getBody();
     }
@@ -117,12 +121,18 @@ class RegistrationHistoryUploadIT {
         assertThat(entries(student).get(0).get("status")).isEqualTo("DROPPED");
         assertThat(entries(student).get(1).get("units")).isEqualTo(units2 + 1);
 
-        // a past result for the dropped course: checked first (nothing changes), then posted, which approves it
+        // a past result for the dropped course: the Directorate of ICT's alone to upload (21 Oct 2026) — Records is refused the check,
+        // the upload and the postgraduate upload; ICT checks it first (nothing changes), then posts it, which approves it
         List<Map<String, String>> result = List.of(Map.of("line", "2", "matric", matric, "course", c1, "total", "70"));
-        Map<String, Object> rcheck = post("/api/v1/results/legacy/results/preview", result);
+        for (String path : List.of("/api/v1/results/legacy/results/preview", "/api/v1/results/legacy/results", "/api/v1/results/legacy/pg-results")) {
+            assertThat(it.call(records, HttpMethod.POST, path, Map.of("session", session, "semester", 1, "rows", result)).getStatusCode().value())
+                    .as(path).isEqualTo(403);
+        }
+        String ict = ItSupport.token("ict");
+        Map<String, Object> rcheck = post(ict, "/api/v1/results/legacy/results/preview", result);
         assertThat(statusByLine(rcheck)).containsEntry("2", "RESULT_POSTED");
         assertThat(entries(student).get(0).get("status")).isEqualTo("DROPPED");
-        Map<String, Object> posted = post("/api/v1/results/legacy/results", result);
+        Map<String, Object> posted = post(ict, "/api/v1/results/legacy/results", result);
         assertThat(((Number) posted.get("results")).intValue()).isEqualTo(1);
         assertThat(entries(student).get(0).get("status")).isEqualTo("APPROVED");
         assertThat(entries(student).get(1).get("units")).isEqualTo(units2 + 1);

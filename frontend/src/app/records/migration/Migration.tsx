@@ -16,6 +16,10 @@ import { semesterText } from "@/lib/student-portal";
 
 type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "pgregistration" | "pgresults" | "pgresearch" | "jamb" | "passports" | "clearance";
 const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
+/** past results go onto the record as final with no approval chain (approved on the old portal), so only the Directorate of ICT
+ *  uploads them — the University's word of 21 October 2026; the API holds the same rule */
+const PAST_RESULTS = ["ict", "super"];
+const PAST_RESULT_TABS: Tab[] = ["results", "pgresults"];
 /* any institutional matriculation number: a 2–6 letter prefix (MOAU / MOAUM / BSU …) then 2–8 slash
    segments. Postgraduate numbers spell out faculty/department/programme (e.g. MOAU/AM/BSM/PGDM/MSC/25/0021),
    so the shape is kept permissive rather than tied to the undergraduate MOAUM/DEPT/YY/NNNN form. */
@@ -80,6 +84,7 @@ const plainDetail = (d: string | null | undefined) => (d ?? "").replace(/^[A-Z][
 
 export function Migration({ actingOffice }: { actingOffice: string | null }) {
   const may = MIGRATE.includes(actingOffice ?? "");
+  const mayResults = PAST_RESULTS.includes(actingOffice ?? "");
   const [tab, setTab] = useState<Tab>("biodata");
   const [session, setSession] = useState("");
   const [semester, setSemester] = useState("1");
@@ -689,10 +694,11 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         then the past results. Matched on matriculation number and course code; past results import as final under a legacy minute.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
+      {may && !mayResults ? <Note kind="info" title="Past results are uploaded by the Directorate of ICT">They go onto the record as final, with no approval, because they were approved on the old portal.</Note> : null}
 
       <div className="card"><PBody>
         <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); setPreview(null); setLpreview(null); }}
-          items={([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).map(([k, l]) => ({ id: k, label: l }))} />
+          items={([["biodata", "1 · Student biography (full)"], ["students", "1 · Students (core only)"], ["pgstudents", "1 · Postgraduate students"], ["registration", "2 · Course registration"], ["results", "3 · Past results"], ["pgregistration", "PG · registration"], ["pgresults", "PG · results"], ["pgresearch", "PG · research"], ["jamb", "4 · JAMB numbers"], ["passports", "5 · Passport photos"], ["clearance", "6 · Clearance"]] as [Tab, string][]).filter(([k]) => mayResults || !PAST_RESULT_TABS.includes(k)).map(([k, l]) => ({ id: k, label: l }))} />
       </PBody></div>
 
       {problem ? <ProblemNotice problem={problem} /> : null}

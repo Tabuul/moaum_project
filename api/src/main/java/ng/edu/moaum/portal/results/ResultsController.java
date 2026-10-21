@@ -51,6 +51,13 @@ class ResultsController {
             "hasAnyAuthority('OFFICE_ict','OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_records',"
             + "'OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
+    /**
+     * Past results go onto the record as final, with no approval chain — they were approved on the old portal — so only the
+     * Directorate of ICT uploads them (the University's word of 21 October 2026). The other migration steps stay with MIGRATE, and
+     * so does posting results already uploaded and held for a student not yet loaded: that brings in no new result.
+     */
+    private static final String PAST_RESULTS = "hasAnyAuthority('OFFICE_ict','OFFICE_super')";
+
     /** the students exported from the old portal — the first migration step, so results and registration can match */
     @PostMapping("/legacy/students")
     @PreAuthorize(MIGRATE)
@@ -116,14 +123,14 @@ class ResultsController {
 
     /** V472: what a past results upload would do, row by row, before it does it — nothing is written */
     @PostMapping("/legacy/results/preview")
-    @PreAuthorize(MIGRATE)
+    @PreAuthorize(PAST_RESULTS)
     Map<String, Object> previewResults(@Valid @RequestBody ResultsService.MigrationIn body) {
         return service.previewLegacy(body.session(), body.semester(), body.rows(), true);
     }
 
     /** the past results of a semester, imported as final under a legacy minute */
     @PostMapping("/legacy/results")
-    @PreAuthorize(MIGRATE)
+    @PreAuthorize(PAST_RESULTS)
     Map<String, Object> importResults(@Valid @RequestBody ResultsService.MigrationIn body) {
         return service.importResults(body.session(), body.semester(), body.rows());
     }
@@ -137,7 +144,7 @@ class ResultsController {
 
     /** the postgraduate past results of a session/semester, graded on the postgraduate scale (V214) */
     @PostMapping("/legacy/pg-results")
-    @PreAuthorize(MIGRATE)
+    @PreAuthorize(PAST_RESULTS)
     Map<String, Object> importPgResults(@Valid @RequestBody ResultsService.MigrationIn body) {
         return service.importPgResults(body.session(), body.semester(), body.rows());
     }

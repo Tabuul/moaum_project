@@ -49,6 +49,9 @@ class AuditLogController {
      */
     static final int FILTER_WINDOW = 50_000;
 
+    /** midnight in Lagos as a timestamptz: "today" on the tiles starts there, not at the database's UTC midnight (V539's rule) */
+    static final String LAGOS_MIDNIGHT = "((now() AT TIME ZONE 'Africa/Lagos')::date::timestamp AT TIME ZONE 'Africa/Lagos')";
+
     /** the latest entries of the trail (attributed writes, staff sign-ins, student sign-ins), each source read from the end of its index */
     private static String recent(String limit) {
         return """
@@ -96,25 +99,25 @@ class AuditLogController {
                 .param("window", FILTER_WINDOW)
                 .param("lim", lim).query().listOfRows();
 
-        // the tiles: the total from the chain (V623 audit.entry_count), today's from the end of the indexes
+        // the tiles: the total from the chain (V623 audit.entry_count), today's (since midnight in Lagos) from the end of the indexes
         Map<String, Object> tiles = new LinkedHashMap<>();
         tiles.put("total", jdbc.sql("SELECT audit.entry_count() + (SELECT count(*) FROM iam.sign_in_event) + (SELECT count(*) FROM iam.student_event)").query(Long.class).single());
         tiles.put("today", jdbc.sql("""
-                SELECT (SELECT count(*) FROM audit.entries WHERE occurred_at >= current_date)
-                     + (SELECT count(*) FROM iam.sign_in_event WHERE at >= current_date)
-                     + (SELECT count(*) FROM iam.student_event WHERE at >= current_date)
-                """).query(Long.class).single());
+                SELECT (SELECT count(*) FROM audit.entries WHERE occurred_at >= %1$s)
+                     + (SELECT count(*) FROM iam.sign_in_event WHERE at >= %1$s)
+                     + (SELECT count(*) FROM iam.student_event WHERE at >= %1$s)
+                """.formatted(LAGOS_MIDNIGHT)).query(Long.class).single());
         tiles.put("actorsToday", jdbc.sql("""
                 SELECT count(DISTINCT a) FROM (
-                    SELECT actor_id a FROM audit.entries WHERE occurred_at >= current_date AND actor_id IS NOT NULL
-                    UNION SELECT person_id FROM iam.sign_in_event WHERE at >= current_date AND person_id IS NOT NULL
-                    UNION SELECT student_id FROM iam.student_event WHERE at >= current_date AND student_id IS NOT NULL) z
-                """).query(Long.class).single());
+                    SELECT actor_id a FROM audit.entries WHERE occurred_at >= %1$s AND actor_id IS NOT NULL
+                    UNION SELECT person_id FROM iam.sign_in_event WHERE at >= %1$s AND person_id IS NOT NULL
+                    UNION SELECT student_id FROM iam.student_event WHERE at >= %1$s AND student_id IS NOT NULL) z
+                """.formatted(LAGOS_MIDNIGHT)).query(Long.class).single());
         tiles.put("refusalsToday", jdbc.sql("""
-                SELECT (SELECT count(*) FROM audit.entries WHERE occurred_at >= current_date AND action ILIKE '%REFUS%')
-                     + (SELECT count(*) FROM iam.sign_in_event WHERE at >= current_date AND outcome IN ('BAD_PASSWORD','UNKNOWN','LOCKED'))
-                     + (SELECT count(*) FROM iam.student_event WHERE at >= current_date AND outcome IN ('BAD_PASSWORD','UNKNOWN','LOCKED','NO_ACCOUNT'))
-                """).query(Long.class).single());
+                SELECT (SELECT count(*) FROM audit.entries WHERE occurred_at >= %1$s AND action ILIKE '%%REFUS%%')
+                     + (SELECT count(*) FROM iam.sign_in_event WHERE at >= %1$s AND outcome IN ('BAD_PASSWORD','UNKNOWN','LOCKED'))
+                     + (SELECT count(*) FROM iam.student_event WHERE at >= %1$s AND outcome IN ('BAD_PASSWORD','UNKNOWN','LOCKED','NO_ACCOUNT'))
+                """.formatted(LAGOS_MIDNIGHT)).query(Long.class).single());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("tiles", tiles);

@@ -21,6 +21,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * Directorate of ICT and a made-up student sign-in refused now are among the latest entries; the total equals the entries, staff
  * sign-ins and student sign-ins counted one by one; a filter by office or by domain returns only what it names, from the latest
  * entries (the window is stated), and the filters' counts name the domains and offices present; the Bursary may not read the trail.
+ * "Today" on the tiles starts at midnight in Lagos, not at the database's UTC midnight: a made-up student sign-in a minute after
+ * Lagos midnight is counted. The security posture's count of entries is the chain's, equal to the entries counted one by one.
  * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -95,5 +97,38 @@ class AuditTrailIT {
 
         // the Bursary does not read the trail
         assertThat(it.get(ItSupport.token("bursary"), base + "/entries").getStatusCode().value()).isEqualTo(403);
+    }
+
+    private static final String LAGOS_MIDNIGHT = "((now() AT TIME ZONE 'Africa/Lagos')::date::timestamp AT TIME ZONE 'Africa/Lagos')";
+
+    private long countedToday() {
+        return jdbc.sql("""
+                SELECT (SELECT count(*) FROM audit.entries WHERE occurred_at >= %1$s)
+                     + (SELECT count(*) FROM iam.sign_in_event WHERE at >= %1$s)
+                     + (SELECT count(*) FROM iam.student_event WHERE at >= %1$s)
+                """.formatted(LAGOS_MIDNIGHT)).query(Long.class).single();
+    }
+
+    @Test
+    void todayStartsAtMidnightInLagosAndTheSecurityPostureCountsFromTheChain() {
+        String auditor = ItSupport.token("audit");
+        // a made-up student sign-in a minute after midnight in Lagos (23:01 UTC the day before): today in Lagos
+        String identifier = "ZZ/ATL/LAGOS/" + it.freeSurname("ZZ").substring(2);
+        jdbc.sql("INSERT INTO iam.student_event (student_id, identifier, outcome, ip, at) VALUES (NULL, :i, 'NO_ACCOUNT', '10.9.9.8', "
+                + "least(now(), " + LAGOS_MIDNIGHT + " + interval '1 minute'))").param("i", identifier).update();
+        long before = countedToday();
+        ResponseEntity<Map> latest = it.get(auditor, "/api/v1/audit/entries?limit=1");
+        long after = countedToday();
+        assertThat(latest.getStatusCode().value()).as(String.valueOf(latest.getBody())).isEqualTo(200);
+        long today = ((Number) ((Map<String, Object>) latest.getBody().get("tiles")).get("today")).longValue();
+        assertThat(today).isBetween(before, after);
+
+        // the security posture: the entries counted from the chain
+        long rowsBefore = jdbc.sql("SELECT count(*) FROM audit.entries").query(Long.class).single();
+        ResponseEntity<Map> posture = it.get(auditor, "/api/v1/governance/security");
+        long rowsAfter = jdbc.sql("SELECT count(*) FROM audit.entries").query(Long.class).single();
+        assertThat(posture.getStatusCode().value()).as(String.valueOf(posture.getBody())).isEqualTo(200);
+        long entries = ((Number) ((Map<String, Object>) posture.getBody().get("audit")).get("entries")).longValue();
+        assertThat(entries).isBetween(rowsBefore, rowsAfter);
     }
 }
