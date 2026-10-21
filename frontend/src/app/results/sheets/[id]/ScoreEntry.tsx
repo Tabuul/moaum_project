@@ -18,6 +18,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { Unsaved } from "@/components/Unsaved";
 import { semesterName } from "@/lib/student-portal";
 import { csvRows, xlsxRows } from "@/lib/xlsx";
+import { uploadedOutcome } from "@/lib/score-outcome";
 
 interface Draft { ca: string; exam: string; outcome: string; reason: string }
 
@@ -143,7 +144,7 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
 
   function template() {
     download(`${s.courseCode.replace(/[^A-Za-z0-9]+/g, "-")}-score-sheet.xlsx`, csv([
-      ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
+      ["S/N", "Matriculation number", "Name", "Programme", "Level", `CA (0-${CA_MAX})`, `Exam (0-${EXAM_MAX})`, "Outcome (blank = GRADED, or ABSENT — ABS as the old portal writes it — / WITHHELD / INCOMPLETE / MALPRACTICE / EXEMPTED)"],
       ...roll.map((r, i) => [i + 1, r.number, `${r.surname}, ${r.otherNames}`, r.programmeName, r.level, r.ca ?? "", r.exam ?? "", r.outcome && r.outcome !== "GRADED" ? r.outcome : ""]),
     ], [
       ["Department", s.deptName],
@@ -187,12 +188,15 @@ export function ScoreEntry({ detail, roll, actingOffice }: { detail: SheetDetail
       if (!r) {
         const num = (row[off] ?? "").toUpperCase();
         if (!num) { problems.push(`Line ${i + 1}: no matriculation number`); continue; }
-        aside.push({ line: i + 1, number: num, ca: (row[off + 4] ?? "").trim(), exam: (row[off + 5] ?? "").trim(), outcome: (row[off + 6] ?? "").trim().toUpperCase() || "GRADED", note: "" });
+        // V619: the old portal's ABS (in the Outcome column or in place of the mark) is an absence
+        const asideOutcome = uploadedOutcome(row[off + 6], row[off + 4], row[off + 5]);
+        aside.push({ line: i + 1, number: num, ca: asideOutcome === "GRADED" ? (row[off + 4] ?? "").trim() : "", exam: asideOutcome === "GRADED" ? (row[off + 5] ?? "").trim() : "", outcome: asideOutcome, note: "" });
         continue;
       }
       const ca = (row[off + 4] ?? "").trim();
       const exam = (row[off + 5] ?? "").trim();
-      const outcome = (row[off + 6] ?? "").trim().toUpperCase() || "GRADED";
+      // V619: the old portal's ABS (in the Outcome column or in place of the mark) is an absence, as ABSENT is
+      const outcome = uploadedOutcome(row[off + 6], ca, exam);
       if (!OUTCOMES.includes(outcome as (typeof OUTCOMES)[number])) { problems.push(`Line ${i + 1}: outcome ${outcome} is not one the register knows`); continue; }
       if (locked(r)) {
         const same = outcome === (r.outcome ?? "GRADED") && (outcome !== "GRADED" || (Number(ca) === r.ca && Number(exam) === r.exam));

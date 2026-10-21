@@ -13,6 +13,7 @@ import { csvRows, xlsxRows } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { uploadedOutcome } from "@/lib/score-outcome";
 
 /** the closing date has passed (a day's grace for time zones) */
 const hasClosed = (iso: string | null) => !!iso && new Date(iso).getTime() < Date.now() - 86400000;
@@ -90,7 +91,7 @@ export function HeldScripts({ sheetId, courseCode, courseTitle, caMax, items, ow
       if (row.every((c) => c === "")) continue;
       const number = (row[off] ?? "").toUpperCase();
       if (!number) continue;   // a numbered but unfilled template line
-      rows.push({ line: i + 1, number, ca: row[off + 1] ?? "", exam: row[off + 2] ?? "", outcome: (row[off + 3] ?? "").toUpperCase() || "GRADED", note: row[off + 4] ?? "" });
+      rows.push({ line: i + 1, number, ca: row[off + 1] ?? "", exam: row[off + 2] ?? "", outcome: uploadedOutcome(row[off + 3], row[off + 1], row[off + 2]), note: row[off + 4] ?? "" });   // V619: ABS is an absence
     }
     if (!rows.length) { setFileNote({ kind: "bad", title: `${f.name} has no candidate on it`, lines: ["Fill the matriculation number and the marks on each line below the header."] }); return; }
     setBusy(true);

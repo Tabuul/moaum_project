@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 447
+\set EXPECTED 448
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22735,6 +22735,56 @@ BEGIN
                AND p_sems = ARRAY[2] AND p_norm_sems IS NULL AND p_pos = 65000 AND p_cl2 = 60000 AND p_profile = 65000
                AND d_norm = 270000, false),
       msg);
+END $$;
+-- ── V619. The past results upload reads the old portal's absence. A made-up student: "ABS" in the Exam column, "ABS" as the
+--          Outcome, "AB" as the Total and "Abs (F)" as the Outcome each post the candidate ABSENT (F, counted), said so and counted;
+--          an "AB" in the CA column beside an exam score is no absence (the exam is the mark); a row with no mark at all is still
+--          "No mark". The same upload again posts nothing new. The block undoes its writes ──
+DO $$
+DECLARE
+    v_prog text; v_dept text; st uuid := gen_random_uuid(); v_ses text := '9919/9920'; msg text;
+    rows1 jsonb; pv jsonb; up jsonb; again jsonb; statuses text; again_statuses text; outcomes text; detail2 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM set_config('moaum.reason', 'CHECK V619', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+    SELECT c, 'Check V619 ' || c, 2, 1, 100, v_dept, 'Core', 'LIVE' FROM unnest(ARRAY['ZAB 191', 'ZAB 192', 'ZAB 193', 'ZAB 194', 'ZAB 195', 'ZAB 196']) c;
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level)
+    SELECT c, v_prog, 100 FROM unnest(ARRAY['ZAB 191', 'ZAB 192', 'ZAB 193', 'ZAB 194', 'ZAB 195', 'ZAB 196']) c;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/19/619001', 'MOAUM/ZAB/19/6191', 'CHECKV619', 'Absent', v_prog, 'UTME', v_ses, 100, 100, 'ACTIVE', now());
+    rows1 := jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 191', 'exam', 'ABS'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 192', 'outcome', 'ABS'),
+        jsonb_build_object('line', '4', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 193', 'total', 'AB'),
+        jsonb_build_object('line', '5', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 194', 'outcome', 'Abs (F)'),
+        jsonb_build_object('line', '6', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 195', 'ca', 'AB', 'exam', '45'),
+        jsonb_build_object('line', '7', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 196'));
+    pv := assessment.legacy_semester_load(v_ses, 1, rows1, true, true);
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO statuses FROM jsonb_array_elements(pv->'lines') l;
+    SELECT l->>'detail' INTO detail2 FROM jsonb_array_elements(pv->'lines') l WHERE l->>'line' = '2';
+    up := assessment.legacy_semester_load(v_ses, 1, rows1, true, false);
+    SELECT string_agg(course_code || '=' || coalesce(outcome, '-') || '/' || coalesce(grade, '-') || '/' || coalesce(total::text, '-'), ',' ORDER BY course_code) INTO outcomes
+      FROM assessment.student_results(st) WHERE session = v_ses AND semester = 1;
+    again := assessment.legacy_semester_load(v_ses, 1, rows1, true, false);
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO again_statuses FROM jsonb_array_elements(again->'lines') l;
+    RAISE EXCEPTION 'the V619 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V619 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V619: the old portal''s ABS (Exam "ABS", Outcome "ABS", Total "AB", Outcome "Abs (F)") posts the candidate ABSENT (F), said so and counted; an AB beside an exam score is no absence; no mark is still No mark; the same upload again posts nothing new',
+        coalesce(statuses = '2:RESULT_POSTED,3:RESULT_POSTED,4:RESULT_POSTED,5:RESULT_POSTED,6:RESULT_AS_TOTAL,7:NO_MARK'
+                 AND detail2 LIKE '%"ABS" in the Exam column read as absent (F)%'
+                 AND (up->>'results')::int = 5 AND (up->>'absent_from_abs')::int = 4 AND (up->>'no_mark')::int = 1
+                 AND outcomes LIKE 'ZAB 191=ABSENT/F/-,ZAB 192=ABSENT/F/-,ZAB 193=ABSENT/F/-,ZAB 194=ABSENT/F/-,ZAB 195=GRADED/%/45,ZAB 196=-/-/-'
+                 AND again_statuses = '2:RESULT_ALREADY_ON_RECORD,3:RESULT_ALREADY_ON_RECORD,4:RESULT_ALREADY_ON_RECORD,5:RESULT_ALREADY_ON_RECORD,6:RESULT_ALREADY_ON_RECORD,7:NO_MARK'
+                 AND (again->>'results')::int = 0 AND (again->>'absent_from_abs')::int = 0, false),
+        format('check %s | detail %s | posted %s absent %s no mark %s | results %s | again %s', statuses, detail2, up->>'results', up->>'absent_from_abs',
+               up->>'no_mark', outcomes, again_statuses));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

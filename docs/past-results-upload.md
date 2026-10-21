@@ -21,6 +21,20 @@ The mark is now taken as the old portal states it, and the 40/60 split never ref
 | A CA alone | the whole mark (as before) |
 | A mark over 100 | refused: "The mark is over 100" |
 
+### Absent: the old portal's ABS (V619)
+
+The old portal marks a candidate who did not sit **ABS** (or AB, ABSENT, ABS (F)), in the Outcome, Remark or Grade column or in place
+of the mark itself. Until V619 the upload knew only the word ABSENT: any other outcome was read as graded and a mark cell's letters were
+stripped, so the row had "No mark", was not posted, and the broadsheet showed the candidate **NR** (no result) where the old portal says
+ABS (21 October 2026, Environmental Management and Toxicology, 100 Level). Now such a row posts the candidate **ABSENT** — F, counted
+and owed, as a recorded absence always is (V422) — with "ABS … read as absent (F)" in its detail and the count `absent_from_abs`
+("ABS read as absent (F)" on the screen). A mark cell reads as the absence only when no mark cell of the row carries a number: an AB
+in the CA column beside an exam score is no absence from the examination. Uploading the same file again posts the absences it once
+left out; nothing else is posted twice.
+
+The score sheet upload (a course's Score Entry, and Held scripts) reads ABS the same way (`lib/score-outcome`): an Outcome cell of
+ABS, or ABS in place of the CA and exam, is ABSENT; it no longer refuses the file ("outcome ABS is not one the register knows").
+
 A row read as the whole mark is posted with the status **Result posted — the whole mark, of 100**, and the reading is in its detail
 ("the exam column read as the whole mark: 65 of 100 (the CA of 25 already in it)"). The check before the upload lists these rows,
 so the office sees how each was read before anything goes up.
@@ -53,3 +67,7 @@ check.sql V614 covers:
 - a portal result kept.
 
 It was also checked in the browser on a copy of live data: a first upload, then the same file checked again.
+
+check.sql V619 covers Exam "ABS", Outcome "ABS", Total "AB" and Outcome "Abs (F)" posted ABSENT/F and counted, an AB beside an exam
+score graded, an empty row still "No mark", and the same upload again posting nothing new; `lib/score-outcome.test.ts` the score
+sheet upload's reading.
