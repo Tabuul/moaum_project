@@ -91,7 +91,13 @@ class FlexibleRegistrationIT {
 
     @Test
     void aStudentAddsAValidCourseBesideTheListAndIsApprovedWithItInOrder() {
+        // a session no test has opened: seven other tests draw theirs from 2300–2899 as well, and a session one of them opened first
+        // carries that test's fees, rules and windows
         int y = 2300 + new Random().nextInt(600);
+        for (int tries = 0; tries < 600 && jdbc.sql("SELECT count(*) FROM policy.academic_session WHERE name = :n")
+                .param("n", y + "/" + (y + 1)).query(Long.class).single() > 0; tries++) {
+            y = 2300 + (y - 2300 + 1) % 600;
+        }
         session = y + "/" + (y + 1);
         it.session(session, y);
         int n = 1000 + new Random().nextInt(8999);
@@ -173,8 +179,8 @@ class FlexibleRegistrationIT {
         String o101 = String.valueOf(row(found, "ITF 101").get("offering_id"));
         String o301 = String.valueOf(row(found, "ITF 301").get("offering_id"));
         String o201 = String.valueOf(row(found, "ITF 201").get("offering_id"));
-        assertThat(it.call(token, HttpMethod.POST, "/api/v1/me/registration/courses", Map.of("session", session, "semester", 1, "offering", o301)).getBody())
-                .containsEntry("code", "REG_HIGHER_LEVEL");
+        ResponseEntity<Map> higher = it.call(token, HttpMethod.POST, "/api/v1/me/registration/courses", Map.of("session", session, "semester", 1, "offering", o301));
+        assertThat(higher.getBody()).as(higher.getStatusCode().value() + " " + higher.getBody()).containsEntry("code", "REG_HIGHER_LEVEL");
         ResponseEntity<Map> added = it.call(token, HttpMethod.POST, "/api/v1/me/registration/courses", Map.of("session", session, "semester", 1, "offering", o101));
         assertThat(added.getStatusCode().value()).as(String.valueOf(added.getBody())).isEqualTo(200);
         assertThat((Map<String, Object>) added.getBody().get("added")).containsEntry("courseCode", "ITF 101").containsEntry("addedAs", "PROGRAMME_OTHER_LEVEL");
