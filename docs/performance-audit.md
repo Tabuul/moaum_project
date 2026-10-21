@@ -643,3 +643,32 @@ three), and checked to return the same rows.
   100–100, 200–300, 100–900 and 500–600.
 - Not for a test: deleting clearance items is slow. The self-reference `superseded_by` has no index, so each deleted item scans
   the table. The portal never deletes decisions.
+
+## W. The audit trail screen on a large trail (21 October 2026, V623)
+
+The University reported `/audit` failing with "This page couldn't load". Every visit read the whole trail. `audit.entries` had no
+index on `occurred_at` and `iam.student_event` none on `at`, so finding the latest 200 sorted every entry and student sign-in.
+"Entries on the record" counted every row, and the filters' counts grouped thirty days of entries. The Internal Audit home
+dashboard's feed (`/audit/entries?limit=12`) paid the same. Production's audit log was already 4 GB on 2 October (see the introduction).
+
+Measured on a scratch copy with made-up volumes (4 million entries, 400,000 of them today; 2 million student sign-ins; 200,000
+staff sign-ins), local PostgreSQL 18, cold then warm:
+
+| Read | Before | After (cold / warm) |
+|---|---|---|
+| Latest 200 entries | 13.0 s | 0.40 / 0.30 s |
+| Latest 12 (Internal Audit home) | as above | 3 / 4 ms |
+| "Entries on the record" | 4.7 s | 1.36 / 0.20 s |
+| Today's three tiles | 4.7 s | 2.1 / 0.67 s |
+| Filter counts (domains, offices) | 14.2 s | 0.21 / 0.07 s |
+| A filter that matches nothing | (the whole trail) | 0.32 / 0.02 s |
+
+- `audit.ix_entries_recent (occurred_at DESC)` is on every monthly partition, built `CONCURRENTLY` so no write waits (as V306
+  built the sealer's index). A partition made later inherits it. `iam.ix_student_event_recent (at DESC)` covers student sign-ins.
+- The total is `audit.entry_count()`: `chain_head.last_seq` is the number of entries sealed in each (period, shard), so their sum
+  plus the unsealed entries (the sealer's partial index) is every entry, read in one snapshot. check.sql V623 holds it equal to
+  `count(*)` before and after sealing.
+- The filters and the counts beside them read the latest 50,000 entries of the trail (`AuditLogController.FILTER_WINDOW`), not
+  thirty days. The screen says so when a filter is on. The window is taken in time order from the three sources and stops at the
+  200th match.
+- Today's tiles still read today's entries. On a day of 400,000 audited writes that is about 2 s cold.

@@ -13,8 +13,9 @@ export interface Entry {
   occurred_at: string; actor_id: string; actor_office: string; action: string; subject_type: string;
   subject_id: string; reason: string | null; correlation_id: string | null; actor_name: string | null;
 }
-export interface AuditView { tiles: { total: number; today: number; actorsToday: number; refusalsToday: number }; entries: Entry[] }
-export interface Facets { actions: { domain: string; n: number }[]; offices: { actor_office: string; n: number }[] }
+export interface AuditView { tiles: { total: number; today: number; actorsToday: number; refusalsToday: number }; entries: Entry[]; filterWindow?: number }
+/** V623: the filters and their counts read the latest `window` entries of the trail */
+export interface Facets { actions: { domain: string; n: number }[]; offices: { actor_office: string; n: number }[]; window?: number }
 
 function when(iso: string): string {
   const d = new Date(iso);
@@ -60,7 +61,7 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
         {action || office ? <Btn kind="ghost" onClick={() => router.push("/audit")}>Clear</Btn> : null}
       </div></div>
 
-      <Panel title="Audit trail" right={`Most recent ${d.entries.length}${action || office ? " · filtered" : ""}`}>
+      <Panel title="Audit trail" right={`Most recent ${d.entries.length}${action || office ? ` · filtered within the latest ${(d.filterWindow ?? 50000).toLocaleString()} entries` : ""}`}>
         {d.entries.length ? (
           <DTable cols={["When|mid", "Actor", "Action", "Subject", "Reason"]} rows={d.entries.map((e, i) => [
             <span className="tnum sub2" key={"w" + i}>{when(e.occurred_at)}</span>,
@@ -69,7 +70,7 @@ export function AuditTrail({ d, facets, action, office }: { d: AuditView; facets
             <Two key={"s" + i} a={e.subject_type} b={e.subject_id ? e.subject_id.slice(0, 8) : ""} />,
             <span className="sub2" key={"r" + i}>{e.reason ?? "—"}</span>,
           ])} texts={d.entries.map((e) => `${e.actor_name ?? ""} ${e.action} ${e.subject_type}`)} />
-        ) : <PBody><div className="sub2">No entry matches this filter.</div></PBody>}
+        ) : <PBody><div className="sub2">{action || office ? `No entry among the latest ${(d.filterWindow ?? 50000).toLocaleString()} matches this filter.` : "No entry on the trail yet."}</div></PBody>}
       </Panel>
 
       <Note kind="info" title="A refusal is as much a record as a success">

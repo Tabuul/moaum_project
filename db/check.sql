@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 450
+\set EXPECTED 451
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22925,6 +22925,43 @@ BEGIN
         format('readings %s | security %s | named %s %s v%s | uploaded %s %s v%s | removed %s | registrar %s | student %s (biodata %s), from health %s, staff %s %s | bad %s',
                readings, left(sec_refused, 22), s1.name, s1.signature_type, s1.version, s2.name, s2.signature_type, s2.version, s3.signature_type,
                left(reg_refused, 18), g1, bio, g2, g3, staff_g, left(bad_refused, 16)));
+END $$;
+-- ── V623. The audit trail screen reads the end of the trail, never the whole of it: every monthly partition of audit.entries carries
+--          the occurred_at index (attached to the parent's, which is therefore valid and passed to a partition made later), the
+--          student sign-ins are indexed by time, and audit.entry_count() — the chain heads plus the entries not yet sealed — equals
+--          the entries counted one by one, before and after the chain is sealed. The block undoes its writes ──
+DO $$
+DECLARE
+    parts int; indexed int; parent_valid boolean; student_ix boolean; before_seal bigint; rows_before bigint; after_seal bigint;
+    rows_after bigint; msg text;
+BEGIN
+  BEGIN
+    parts := (SELECT count(*) FROM pg_inherits WHERE inhparent = 'audit.entries'::regclass);
+    indexed := (SELECT count(*) FROM pg_inherits i JOIN pg_index x ON x.indexrelid = i.inhrelid
+                 WHERE i.inhparent = 'audit.ix_entries_recent'::regclass AND x.indisvalid);
+    parent_valid := (SELECT indisvalid FROM pg_index WHERE indexrelid = 'audit.ix_entries_recent'::regclass);
+    student_ix := EXISTS (SELECT 1 FROM pg_index x WHERE x.indexrelid = to_regclass('iam.ix_student_event_recent') AND x.indisvalid
+                           AND x.indrelid = 'iam.student_event'::regclass);
+    -- an entry written now and not yet sealed is counted; sealed, it is counted once
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.reason', 'CHECK V623', true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (gen_random_uuid(), 'ZZ-CHK-V623', 'ZZCHKV623', 'Invented');
+    before_seal := audit.entry_count();
+    rows_before := (SELECT count(*) FROM audit.entries);
+    PERFORM audit.seal_chain(100000);
+    after_seal := audit.entry_count();
+    rows_after := (SELECT count(*) FROM audit.entries);
+    RAISE EXCEPTION 'the V623 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V623 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V623: the audit trail is indexed by time on every partition and counted from the chain',
+        coalesce(parts >= 24 AND indexed = parts AND parent_valid AND student_ix
+                 AND before_seal = rows_before AND after_seal = rows_after AND rows_after = rows_before AND rows_before > 0, false),
+        format('partitions %s, indexed %s, parent valid %s, student sign-ins indexed %s | counted %s of %s before sealing, %s of %s after',
+               parts, indexed, parent_valid, student_ix, before_seal, rows_before, after_seal, rows_after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
