@@ -57,14 +57,15 @@ class CohortIT {
     }
 
     /** V612: the Registry pins the student's expected completion and spillover is counted from it; the pin removed, the count returns;
-     *  a reason, a session on the calendar; the readers refused the act. The test makes the calendar's latest session CURRENT (an IT
+     *  a reason, a session on the calendar; the readers refused the act. The test uses two consecutive sessions of its own (the
+     *  calendar's latest two need not be a year apart: on CI they were 3,431 years apart), makes the later one CURRENT (an IT
      *  database has none) and puts it back. */
     @Test
     @SuppressWarnings("unchecked")
     void theRegistryPinsTheExpectedCompletionAndSpilloverIsCountedFromIt() {
-        List<String> last = jdbc.sql("SELECT name FROM policy.academic_session WHERE state <> 'CANCELLED' ORDER BY starts_on DESC LIMIT 2").query(String.class).list();
-        assertThat(last).hasSize(2);
-        String latest = last.get(0), before = last.get(1);
+        String before = "2950/2951", latest = "2951/2952";
+        it.session(before, 2950);
+        it.session(latest, 2951);
         String latestState = jdbc.sql("SELECT state FROM policy.academic_session WHERE name = :n").param("n", latest).query(String.class).single();
         String previousCurrent = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY starts_on DESC LIMIT 1").query(String.class).optional().orElse(null);
         String door = "/api/v1/cohorts/students/" + student + "/completion";
