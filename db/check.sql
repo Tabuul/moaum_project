@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 444
+\set EXPECTED 445
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22534,6 +22534,66 @@ BEGIN
                AND n_copy1 = 1 AND n_copy2 = 1 AND n_copy_any = 1
                AND g2.spill_year = 2 AND g2.final_level = 400 AND g2.level = 600 AND g2.stated AND g2.missing = ARRAY[1], false),
       msg);
+END $$;
+-- ── V614. Past results uploaded as the old portal states them, and never posted twice. A made-up student: CA and exam as the
+--          record splits them stay so; an exam over 60 beside a CA, an exam alone, a Total and a CA over 40 are the whole mark of
+--          100 (posted, said so); over 100 is refused. The same upload again posts nothing; a changed mark replaces an earlier
+--          upload's, said so; a result entered on the portal is never loaded over. The block undoes its writes ──
+DO $$
+DECLARE
+    v_prog text; v_dept text; st uuid := gen_random_uuid(); v_ses text := '9963/9964'; msg text;
+    rows1 jsonb; pv jsonb; up jsonb; again jsonb; portal jsonb; statuses text; again_statuses text; totals text; versions int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM set_config('moaum.reason', 'CHECK V614', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+    SELECT c, 'Check V614 ' || c, 2, 1, 100, v_dept, 'Core', 'LIVE' FROM unnest(ARRAY['ZZR 101', 'ZZR 102', 'ZZR 103', 'ZZR 104', 'ZZR 105', 'ZZR 106']) c;
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level)
+    SELECT c, v_prog, 100 FROM unnest(ARRAY['ZZR 101', 'ZZR 102', 'ZZR 103', 'ZZR 104', 'ZZR 105', 'ZZR 106']) c;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/63/614001', 'MOAUM/ZZR/63/6141', 'CHECKV614', 'Marks', v_prog, 'UTME', v_ses, 100, 100, 'ACTIVE', now());
+    rows1 := jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 101', 'ca', '20', 'exam', '45'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 102', 'ca', '25', 'exam', '65'),
+        jsonb_build_object('line', '4', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 103', 'exam', '70'),
+        jsonb_build_object('line', '5', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 104', 'ca', '45', 'exam', '30'),
+        jsonb_build_object('line', '6', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 105', 'ca', '10', 'exam', '50', 'total', '82'),
+        jsonb_build_object('line', '7', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 106', 'ca', '50', 'exam', '60'));
+    -- the check before the upload says each row; the upload posts five
+    pv := assessment.legacy_semester_load(v_ses, 1, rows1, true, true);
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO statuses FROM jsonb_array_elements(pv->'lines') l;
+    up := assessment.legacy_semester_load(v_ses, 1, rows1, true, false);
+    SELECT string_agg(course_code || '=' || coalesce(total::text, '-'), ',' ORDER BY course_code) INTO totals
+      FROM assessment.student_results(st) WHERE session = v_ses AND semester = 1;
+    -- the same rows again (ZZR 103 now 72): two the same, one replaced
+    again := assessment.legacy_semester_load(v_ses, 1, jsonb_build_array(rows1->0, rows1->1,
+                 jsonb_build_object('line', '4', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 103', 'exam', '72')), true, false);
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO again_statuses FROM jsonb_array_elements(again->'lines') l;
+    SELECT count(*) INTO versions FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id JOIN catalogue.offering o ON o.id = sh.offering_id
+     WHERE sc.student_id = st AND o.course_code = 'ZZR 101' AND o.session = v_ses;
+    -- ZZR 101 as if entered on the portal: the old portal's mark is never loaded over it
+    UPDATE assessment.score sc SET imported = false FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+     WHERE sc.sheet_id = sh.id AND sc.student_id = st AND o.course_code = 'ZZR 101' AND o.session = v_ses;
+    portal := assessment.legacy_semester_load(v_ses, 1, jsonb_build_array(
+                  jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 101', 'ca', '30', 'exam', '45')), true, false);
+    RAISE EXCEPTION 'the V614 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V614 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V614: a past result loads as the old portal states it (an exam over 60, an exam alone, a Total, a CA over 40 the whole mark of 100; over 100 refused) and is never posted twice (the same left, a changed one replaced, a portal one kept)',
+        coalesce(statuses = '2:RESULT_POSTED,3:RESULT_AS_TOTAL,4:RESULT_AS_TOTAL,5:RESULT_AS_TOTAL,6:RESULT_AS_TOTAL,7:NO_MARK'
+                 AND (up->>'results')::int = 5 AND (up->>'marks_as_total')::int = 4 AND (up->>'no_mark')::int = 1
+                 AND totals = 'ZZR 101=65,ZZR 102=65,ZZR 103=70,ZZR 104=75,ZZR 105=82,ZZR 106=-'
+                 AND again_statuses = '2:RESULT_ALREADY_ON_RECORD,3:RESULT_ALREADY_ON_RECORD,4:RESULT_REPLACED'
+                 AND (again->>'results_same')::int = 2 AND (again->>'results_replaced')::int = 1 AND (again->>'results')::int = 1 AND versions = 1
+                 AND (portal->'lines'->0->>'status') = 'RESULT_ON_PORTAL' AND (portal->>'results_on_portal')::int = 1 AND (portal->>'results')::int = 0, false),
+        format('check %s | posted %s as total %s no mark %s | totals %s | again %s (same %s replaced %s) versions %s | portal %s',
+               statuses, up->>'results', up->>'marks_as_total', up->>'no_mark', totals, again_statuses, again->>'results_same', again->>'results_replaced',
+               versions, portal->'lines'->0->>'status'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

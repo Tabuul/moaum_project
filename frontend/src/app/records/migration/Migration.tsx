@@ -60,9 +60,19 @@ const LINE_WORD: Record<string, [string, string]> = {
   REFUSED: ["Refused", "Will be refused"],
   RESULT_POSTED: ["Result posted", "Result will be posted"],
   HELD: ["Held — student not loaded yet", "Will be held — student not loaded yet"],
-  NO_MARK: ["No mark, or a mark out of range", "No mark, or a mark out of range"],
+  NO_MARK: ["No mark, or a mark over 100", "No mark, or a mark over 100"],
+  // V614: the mark read as the whole (an exam over 60 or alone, a Total, a CA over 40), and a result already on record
+  RESULT_AS_TOTAL: ["Result posted — the whole mark, of 100", "Result will be posted — the whole mark, of 100"],
+  RESULT_REPLACED: ["Result posted over an earlier upload's", "Result will replace an earlier upload's"],
+  RESULT_ALREADY_ON_RECORD: ["Same result already on record — not posted again", "Same result already on record — not posted again"],
+  RESULT_ON_PORTAL: ["A result entered on the portal is on record — kept", "A result entered on the portal is on record — kept"],
 };
 const lineWord = (status: string, preview: boolean) => (LINE_WORD[status] ?? [status, status])[preview ? 1 : 0];
+/** a row's status as a pill: what will load (or is left as it is) and needs a look, or what will not load */
+const lineTone = (status: string): "info" | "warn" | "bad" =>
+  status === "RESULT_AS_TOTAL" || status === "RESULT_ALREADY_ON_RECORD" ? "info"
+    : status === "UNITS_DIFFER" || status === "DROPPED_ON_RECORD" || status === "ADDED_TO_OPEN_REGISTRATION" || status === "HELD"
+      || status === "RESULT_REPLACED" || status === "RESULT_ON_PORTAL" ? "warn" : "bad";
 /** the rows the check lists for the office to read: everything but a plain addition, a posted result or a course already on record */
 const QUIET = new Set(["ADDED", "RESULT_POSTED", "ALREADY_ON_RECORD"]);
 /** a refusal in words, without the portal's code in front of it ("REGISTRATION_ONCE_A_SESSION: …") */
@@ -526,7 +536,9 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
     pgstudents: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["contacts", "Contacts set"], ["biography", "Biography values"], ["accounts", "Sign-in accounts"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     students: [["rows", "Rows read"], ["created", "New students"], ["updated", "Updated"], ["no_programme", "Programme not found"], ["bad_number", "Bad matric format"], ["skipped", "Skipped (error)"]],
     registration: [["rows", "Rows read"], ["entries", "Courses added"], ["registrations", "New registrations"], ["already", "Already on record"], ["units_differ", "Units differ — left as they are"], ["dropped_kept", "Dropped on record — left as they are"], ["added_to_open", "Added to an open registration"], ["no_student", "No such student"], ["no_course", "No such course"], ["duplicate", "Repeated in the file"], ["refused", "Refused"]],
-    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["entries", "Courses added"], ["registrations", "Registrations made"], ["already", "Course already on record"], ["held", "Held (student not loaded yet)"], ["no_course", "No such course"], ["no_mark", "No / invalid mark"], ["duplicate", "Repeated in the file"], ["refused", "Refused"]],
+    results: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["marks_as_total", "Read as the whole mark (of 100)"], ["results_same", "Same result already on record"],
+      ["results_replaced", "Earlier upload's result replaced"], ["results_on_portal", "Portal result kept"], ["entries", "Courses added"], ["registrations", "Registrations made"],
+      ["already", "Course already on record"], ["held", "Held (student not loaded yet)"], ["no_course", "No such course"], ["no_mark", "No mark, or over 100"], ["duplicate", "Repeated in the file"], ["refused", "Refused"]],
     pgregistration: [["rows", "Rows read"], ["students", "Students"], ["courses", "New courses"], ["registrations", "Registrations made"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
     pgresults: [["rows", "Rows read"], ["students", "Students"], ["results", "Results posted"], ["courses", "New courses"], ["held", "Held (student not loaded yet)"], ["no_mark", "No / invalid mark"], ["skipped", "Skipped (error)"]],
     pgresearch: [["rows", "Rows read"], ["matched", "Records set"], ["created", "New records"], ["updated", "Updated"], ["supervisors", "Supervisors set"], ["no_student", "Not a PG student"], ["skipped", "Skipped (error)"]],
@@ -739,7 +751,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "pgregistration" ? "Columns read: matriculation number, course code, course title, units, kind (CORE/ELECTIVE/DEFICIENCY/RESEARCH), mode (full/part-time), session (YYYY/YYYY) and semester (First/Second or 1/2 — postgraduate study has two semesters). The student must be a postgraduate already on the register (upload the postgraduate students first). A course not yet in the postgraduate catalogue is created for the student's programme from the title/units/kind; an endorsed registration and its entries are created for each session/semester."
               : tab === "pgresults" ? "Columns read: matriculation number, course code, course title, units, kind, session, semester, and the mark. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). The result is graded on the postgraduate scale (A 70+, B 60–69, C 50–59, F below 50 — no D/E, Policy 16), so it counts on the postgraduate register's CGPA. A row whose student is not on the register yet is HELD and posts automatically once that student is uploaded (in either order)."
               : tab === "pgresearch" ? "Columns read: matriculation number, topic, stage, supervisor(s), viva score/grade/outcome, plagiarism %, and the milestone dates (proposal approved, seminar, title registered, viva held, final submitted, cleared, award). The student must be a postgraduate on the register. The research record is created if absent (its degree kind — Project/Dissertation/Thesis — derived from the programme) and set from the row; the stage is taken as stated, else inferred from the furthest milestone present (an award date ⇒ AWARDED). Supervisors named on the row replace the record's current ones, so a re-upload updates rather than duplicates."
-              : "Columns read: matriculation number, course code, level, session, semester, and the mark. The unit is taken from the course record, not the file — any “Units” column in the export (a 1/2/3 status code) is ignored. Fill CA and Exam where the old record splits them (they add to the total); otherwise leave those blank and fill Total (0–100). Session and semester are read per row; outcome is read when present. A row whose student is not on the register yet is HELD, not lost — it posts automatically once that student is uploaded (in either order)."}
+              : "Columns read: matriculation number, course code, level, session, semester, and the mark. The unit is taken from the course record, not the file — any “Units” column in the export (a 1/2/3 status code) is ignored. The mark is taken as the old portal states it: CA and Exam where the record splits them (CA 0–40, Exam 0–60, added together); otherwise the whole mark out of 100 — a Total column, or an Exam over 60 or on its own (the CA already added in), or a CA over 40 added to the Exam. Only a mark over 100 is refused. A result already on record is never posted twice: the same one is left as it is, a different one an earlier upload posted is replaced (and listed), one entered on the portal is kept. Session and semester are read per row; outcome is read when present. A row whose student is not on the register yet is HELD, not lost — it posts automatically once that student is uploaded (in either order)."}
           </div>
           <div className="row">
             <Btn kind="ghost" onClick={() => downloadTemplate(tab)}>Download template</Btn>
@@ -837,11 +849,15 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
                 </Note>
               ) : (
                 <>
-                  <Tiles items={isResults ? [
-                    ["Results to post", num("results").toLocaleString(), num("results") ? "var(--green-ink)" : null, `${num("entries").toLocaleString()} course${num("entries") === 1 ? "" : "s"} to be registered with them`],
+                  <Tiles cls={isResults ? "grid--5" : undefined} items={isResults ? [
+                    ["Results to post", num("results").toLocaleString(), num("results") ? "var(--green-ink)" : null,
+                      `${num("entries").toLocaleString()} course${num("entries") === 1 ? "" : "s"} to be registered with them${num("marks_as_total") ? `; ${num("marks_as_total").toLocaleString()} read as the whole mark, of 100` : ""}`],
+                    ["Uploaded before", (num("results_same") + num("results_replaced") + num("results_on_portal")).toLocaleString(),
+                      num("results_replaced") + num("results_on_portal") ? "var(--amber-ink)" : null,
+                      `${num("results_same").toLocaleString()} the same — not posted again; ${num("results_replaced").toLocaleString()} different — replaced; ${num("results_on_portal").toLocaleString()} entered on the portal — kept`],
                     ["Held", num("held").toLocaleString(), null, "student not loaded yet — posts once they are"],
                     ["Course already on record", num("already").toLocaleString(), null, "the result is posted; the registration is not touched"],
-                    ["Will not load", notLoaded.toLocaleString(), notLoaded ? "var(--red-ink)" : null, "no student or course, a bad mark, repeated, or refused"],
+                    ["Will not load", notLoaded.toLocaleString(), notLoaded ? "var(--red-ink)" : null, "no student or course, no mark or one over 100, repeated, or refused"],
                   ] : [
                     ["Courses to add", num("entries").toLocaleString(), num("entries") ? "var(--green-ink)" : null, `${num("registrations").toLocaleString()} new registration${num("registrations") === 1 ? "" : "s"} for a semester`],
                     ["Already on record", num("already").toLocaleString(), null, "nothing changes"],
@@ -864,7 +880,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
                 texts={issues.map((l) => `${l.matric} ${l.course} ${lineWord(l.status, true)} ${plainDetail(l.detail)}`)}
                 rows={issues.map((l, i) => [<span key={`r${i}`} className="tnum sub2">{l.line ?? "—"}</span>, <span key={`m${i}`} className="tnum">{l.matric}</span>, <span key={`c${i}`} className="tnum">{l.course}</span>,
                   <span key={`s${i}`} className="tnum">{l.session}</span>, <span key={`e${i}`}>{semesterText(Number(l.semester))}</span>,
-                  <Pil key={`p${i}`} kind={l.status === "UNITS_DIFFER" || l.status === "DROPPED_ON_RECORD" || l.status === "ADDED_TO_OPEN_REGISTRATION" || l.status === "HELD" ? "warn" : "bad"}>{lineWord(l.status, true)}</Pil>,
+                  <Pil key={`p${i}`} kind={lineTone(l.status)}>{lineWord(l.status, true)}</Pil>,
                   <span key={`d${i}`} className="sub2">{plainDetail(l.detail)}</span>])} />
             ) : null}
             <PBody>
@@ -922,7 +938,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
               : tab === "pgregistration" ? `${result.counts.registrations ?? 0} postgraduate registrations for ${result.counts.students ?? 0} students${(result.counts.courses ?? 0) > 0 ? `; ${result.counts.courses} new courses added to the postgraduate catalogue` : ""}.`
               : tab === "pgresearch" ? `${result.counts.matched ?? 0} research records set (${result.counts.created ?? 0} new, ${result.counts.updated ?? 0} updated); ${result.counts.supervisors ?? 0} supervisors recorded.`
               : tab === "pgresults" ? `${result.counts.results ?? 0} postgraduate results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}. These count on the postgraduate register's CGPA.`
-              : `${result.counts.results ?? 0} results posted${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}.`}
+              : `${result.counts.results ?? 0} results posted${(result.counts.marks_as_total ?? 0) > 0 ? ` (${result.counts.marks_as_total} read as the whole mark, of 100)` : ""}${(result.counts.held ?? 0) > 0 ? `; ${result.counts.held} held for students not loaded yet (they post automatically once those students are uploaded)` : ""}${(result.counts.results_same ?? 0) > 0 ? `; ${result.counts.results_same} already on record the same — not posted again` : ""}${(result.counts.results_replaced ?? 0) > 0 ? `; ${result.counts.results_replaced} replaced an earlier upload's` : ""}${(result.counts.results_on_portal ?? 0) > 0 ? `; ${result.counts.results_on_portal} left as entered on the portal` : ""}.`}
             {" "}Fix unmatched rows at source and re-upload.
             {(result.counts.no_student ?? 0) > 0 ? <> <b>Import the students first</b> if a number was not found.</> : null}
             {(result.counts.skipped ?? 0) > 0 && !result.lines?.length ? <> <b>{result.counts.skipped} row{result.counts.skipped === 1 ? "" : "s"} were skipped by an error</b> and are not on the register; the first was — <span className="tnum">{result.firstError ?? "no detail"}</span>. Fix those rows and re-upload.</> : null}
