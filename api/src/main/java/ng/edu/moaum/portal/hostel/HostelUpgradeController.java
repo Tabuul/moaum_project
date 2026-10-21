@@ -46,8 +46,8 @@ class HostelUpgradeController {
     /** the Dean of Student Affairs runs the hostels; the housing desk and Student Services keep their hands; the Registrar and the platform's administrators may act */
     static final String DEAN = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     /** the Bursar states the hostel fees and reads the money; the College's Finance Controller reads too */
-    static final String FINANCE = "hasAnyAuthority('OFFICE_bursar','OFFICE_financecontroller','OFFICE_super')";
-    static final String READERS = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_dvc')";
+    static final String FINANCE = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
+    static final String READERS = "hasAnyAuthority('OFFICE_dsa','OFFICE_services','OFFICE_housing','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_dvc')";
     static final String STUDENT = "hasAuthority('OFFICE_student')";
 
     private final JdbcClient jdbc;

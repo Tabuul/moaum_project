@@ -60,10 +60,11 @@ export default async function DashboardPage() {
   /* V379: the Centre for Continuing Education's home is its desk */
   if (office === "cce") redirect("/cce");
   if (office === "student") {
-    /* a College of Health Sciences student (a programme under the College) from 200 level up lands in
-       the College's own student area; every other student keeps the standard student portal */
-    const sme = await api<{ collegeCode: string | null; level: number }>("/api/v1/me");
-    if (sme.ok && sme.data.collegeCode === "CHS" && (sme.data.level ?? 0) >= 200) redirect("/college/student");
+    /* V603: the student's dashboard as the API resolves it from the programme on the record — the College's own student area
+       for a programme the College runs (MBBS) from 200 Level; every other student, College of Health Sciences or not, keeps
+       the University's student portal */
+    const sme = await api<{ dashboard?: string }>("/api/v1/me");
+    if (sme.ok && sme.data.dashboard === "COLLEGE") redirect("/college/student");
     redirect("/student");
   }
   /* the administrator's home is the whole institution at one desk (proto part18) */

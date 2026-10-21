@@ -56,13 +56,13 @@ class CbtInvigilationController {
 
     private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_exams','OFFICE_facultyexams','OFFICE_records','OFFICE_super','OFFICE_jupeb')";
     /** the offices that read examinations (CbtExamController's readers) and so may look at a sitting's board without invigilating it */
-    private static final Set<String> READ_OFFICES = Set.of("gst", "eps", "bursar", "financecontroller", "registrar", "dregistrar", "dvc", "vc", "academic", "records",
+    private static final Set<String> READ_OFFICES = Set.of("gst", "eps", "bursar", "registrar", "dregistrar", "dvc", "vc", "academic", "records",
             "ict", "admin", "super", "exams", "facultyexams", "hod", "dean", "jupeb");
     /** a candidate's own token is never an invigilator's */
     private static final Set<String> CANDIDATES = Set.of("student", "applicant", "jupebstudent");
 
     private static final String READERS =
-            "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar',"
+            "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_dvc','OFFICE_vc','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super',"
             + "'OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_jupeb')";
 

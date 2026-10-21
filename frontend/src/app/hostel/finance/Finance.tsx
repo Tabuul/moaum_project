@@ -17,7 +17,7 @@ export interface FinanceData { session: string; summary: string; rows: Accountab
 export interface FeesData { session: string; baseFee: number | null; rules: FeeRule[]; categories: RoomCategory[]; halls: { code: string; name: string }[]; roomTypes: { code: string; label: string; beds: number }[] }
 interface Summary { totals: { charges: number; paid: number; outstanding: number; transactions: number; transactions_amount: number; paid_occupants: number; unpaid_occupants: number; exempt_allocations: number; refunds: number }; byHall: { hall: string; charges: number; paid: number; outstanding: number; exempt: number; occupants: number }[]; byCategory: { category: string; label: string; charges: number; paid: number; outstanding: number; exempt: number; occupants: number }[]; byStatus: { status: string; occupants: number; amount: number }[] }
 
-const FINANCE = ["bursar", "financecontroller", "super"];
+const FINANCE = ["bursar", "super"];
 
 export function HostelFinance({ data, fees, session: s, sessions, office }: { data: FinanceData; fees: FeesData; session: string; sessions: string[]; office: string | null }) {
   const router = useRouter();

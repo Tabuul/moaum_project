@@ -196,6 +196,27 @@ public class OfficeScope {
         fac = blank(fac);
         dept = blank(dept);
         prog = blank(prog);
+        // V603: a College office is held to the College's faculties — a faculty, department or programme of another refused, and
+        // with none named, the College's one faculty (a College of several asks which)
+        if (actingCollegeOffice()) {
+            java.util.List<String> own = actingCollegeFaculties();
+            if (fac != null && own.stream().noneMatch(fac::equalsIgnoreCase)) throw outside("faculty", "college");
+            if (dept != null) {
+                String df = facultyOfDept(dept);
+                if (df == null || own.stream().noneMatch(df::equalsIgnoreCase)) throw outside("department", "college");
+            }
+            if (prog != null) {
+                String pd = deptOfProgramme(prog);
+                String pf = pd == null ? null : facultyOfDept(pd);
+                if (pf == null || own.stream().noneMatch(pf::equalsIgnoreCase)) throw outside("programme", "college");
+            }
+            String f = fac != null ? fac : own.isEmpty() ? "__none__" : own.size() == 1 ? own.get(0) : null;
+            if (f == null) {
+                throw new DomainRuleViolation("SCOPE_COLLEGE_FACULTY", "Choose one of the College's faculties.",
+                        new DomainRuleViolation.Remedy("Your office is held to the College; pick its faculty in the bar.", "You"));
+            }
+            return new Bound(f, dept, prog);
+        }
         if (actingDepartmentOffice()) {
             String own = actingDept();
             if (own == null) own = "__none__";
@@ -257,6 +278,34 @@ public class OfficeScope {
         } catch (DomainRuleViolation outside) {
             return false;
         }
+    }
+
+    /** V603: the offices held to a college on the record and finance desks: the College of Health Sciences' Finance Controller
+     *  (V227), the Bursar within the College — never the University's records or money */
+    private static final java.util.Set<String> COLLEGE_OFFICES = java.util.Set.of("financecontroller");
+
+    /** true when the acting office is held to a college */
+    public boolean actingCollegeOffice() {
+        return AuditContextHolder.current().map(c -> COLLEGE_OFFICES.contains(c.actorOffice())).orElse(false);
+    }
+
+    /**
+     * V603: the faculties of the college the acting College office is held to — the college its live grant names (scope kind
+     * college), else the College of Health Sciences, the University's one college; read on the server from the grant, never
+     * from the request. Empty when not acting as a College office.
+     */
+    public java.util.List<String> actingCollegeFaculties() {
+        return AuditContextHolder.current().filter(c -> COLLEGE_OFFICES.contains(c.actorOffice()))
+                .map(c -> jdbc.sql("""
+                        SELECT f.code FROM ref.faculty f
+                         WHERE f.college_code = coalesce((SELECT upper(btrim(a.scope_id)) FROM iam.office_assignment a
+                                                           WHERE a.person_id = :p AND a.office_code = :office AND a.scope_kind = 'college'
+                                                             AND nullif(btrim(a.scope_id), '') IS NOT NULL
+                                                             AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                                                           ORDER BY a.valid_from DESC LIMIT 1), 'CHS')
+                         ORDER BY f.code
+                        """).param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).list())
+                .orElse(java.util.List.of());
     }
 
     /** true when the acting office is bound to one faculty (Dean or Faculty Officer) */

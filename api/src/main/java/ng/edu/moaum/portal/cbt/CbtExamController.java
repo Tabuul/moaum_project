@@ -48,7 +48,7 @@ import org.springframework.web.bind.annotation.RestController;
 class CbtExamController {
 
     private static final String READERS =
-            "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar',"
+            "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_dvc','OFFICE_vc','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super',"
             + "'OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_jupeb')";
     /** V385: the Directorate of ICT manages the Post-UTME examinations (office POST_UTME) */

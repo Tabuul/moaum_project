@@ -49,7 +49,7 @@ import ng.edu.moaum.portal.shared.GstEpsExplain;
 class GstController {
 
     private static final String READERS =
-            "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_financecontroller','OFFICE_registrar','OFFICE_dregistrar',"
+            "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_dvc','OFFICE_vc','OFFICE_academic','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     /** the one office that states the fee and the rule */
     private static final String BURSAR = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";

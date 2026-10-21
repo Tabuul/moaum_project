@@ -4,8 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import type { ExamSummary } from "../examinations/Examinations";
-import { PaymentReport, type PayReport } from "../payments/PaymentReport";
-import { paymentFilters, paymentQuery } from "../payments/filters";
+import { FinanceHome, type PaySummary } from "./FinanceHome";
 import { StatsPanel } from "@/components/stats/StatsPanel";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 
@@ -38,18 +37,19 @@ const KIND: Record<Waiting["kind"], [string, "ok" | "bad" | "info" | "warn" | "g
 };
 const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
-export default async function CollegeDashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const [me, dash] = await Promise.all([api<Me>("/api/v1/iam/me"), api<Dashboard>("/api/v1/college/dashboard")]);
-  /* the Finance Controller's home is the Student Payment Report (V256): the College's fees position, by session or semester */
+export default async function CollegeDashboardPage() {
+  const me = await api<Me>("/api/v1/iam/me");
+  /* V603: the Finance Controller's home is the College's fees position and its analytics (FinanceHome); the Student Payment Report
+     (V256) with every student is a click away. The College's academic dashboard is not read for it. */
   if (me.ok && me.data.activeOffice === "financecontroller") {
-    const filters = paymentFilters(await searchParams);
-    const report = await api<PayReport>(`/api/v1/college/payments?${paymentQuery(filters)}`);
+    const pay = await api<PaySummary>("/api/v1/college/payments?summary=true");
     return (
       <Shell route="r/college" me={me.data}>
-        {report.ok ? <PaymentReport report={report.data} filters={{ ...filters, session: report.data.session }} basePath="/college/dashboard" role="Finance Controller" /> : <ProblemNotice problem={report.problem} />}
+        {pay.ok ? <FinanceHome name={me.data.name ?? null} pay={pay.data} /> : <ProblemNotice problem={pay.problem} />}
       </Shell>
     );
   }
+  const dash = await api<Dashboard>("/api/v1/college/dashboard");
   const summary = dash.ok ? await api<ExamSummary[]>(`/api/v1/college/exams/summary?session=${encodeURIComponent(dash.data.session)}`) : null;
   const levels = summary && summary.ok ? summary.data : [];
   const office = me.ok ? me.data.activeOffice : null;

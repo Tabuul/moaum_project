@@ -757,6 +757,11 @@ class StudentPortalRepository {
                 .param("s", student).param("n", session).param("m", semester).query(String.class).optional().orElse(null);
     }
 
+    /** V603: the dashboard the student lands on — COLLEGE for a programme the College runs (MBBS) from 200 Level, else UNIVERSITY */
+    String dashboard(UUID student) {
+        return jdbc.sql("SELECT people.student_dashboard(:s)").param("s", student).query(String.class).optional().orElse("UNIVERSITY");
+    }
+
     String classOf(BigDecimal cgpa) {
         if (cgpa == null) {
             return null;

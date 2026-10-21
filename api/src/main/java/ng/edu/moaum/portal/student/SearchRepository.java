@@ -22,7 +22,8 @@ class SearchRepository {
         this.jdbc = jdbc;
     }
 
-    List<SearchHit> students(String like) {
+    /** the students a term finds; V603: within the faculties given (a College office's), or the University's when null */
+    List<SearchHit> students(String like, String faculties) {
         return jdbc.sql("""
                 SELECT 'students' AS kind,
                        coalesce(s.matric_no, s.admission_no, '—') AS identifier,
@@ -33,14 +34,15 @@ class SearchRepository {
                        s.status, s.id::text AS id
                   FROM people.student s
                   JOIN ref.programme p ON p.code = s.programme_code
-                 WHERE s.matric_no ILIKE :like OR s.admission_no ILIKE :like
+                 WHERE (s.matric_no ILIKE :like OR s.admission_no ILIKE :like
                     OR s.surname ILIKE :like OR s.other_names ILIKE :like
                     OR (s.surname || ' ' || s.other_names) ILIKE :like
                     OR s.jamb_reg_no ILIKE :like
-                    OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE :like)
+                    OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE :like))
+                   AND (CAST(:facs AS text) IS NULL OR p.faculty_code = ANY (string_to_array(:facs, ',')))
                  ORDER BY s.surname, s.other_names
                  LIMIT 200
-                """).param("like", like).query(SearchHit.class).list();
+                """).param("like", like).param("facs", faculties, java.sql.Types.VARCHAR).query(SearchHit.class).list();
     }
 
     List<SearchHit> staff(String like) {

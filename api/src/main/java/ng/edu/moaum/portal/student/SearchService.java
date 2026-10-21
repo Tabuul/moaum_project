@@ -22,9 +22,11 @@ class SearchService {
     static final Set<String> KINDS = Set.of("all", "students", "staff", "courses", "credentials");
 
     private final SearchRepository search;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    SearchService(SearchRepository search) {
+    SearchService(SearchRepository search, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.search = search;
+        this.scope = scope;
     }
 
     @Transactional
@@ -37,7 +39,8 @@ class SearchService {
         String like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
         List<SearchHit> hits = new ArrayList<>();
         if (want.equals("all") || want.equals("students")) {
-            hits.addAll(search.students(like));
+            // V603: a College office (the Finance Controller) finds the College's students alone; every other office the University's
+            hits.addAll(search.students(like, scope.actingCollegeOffice() ? String.join(",", scope.actingCollegeFaculties()) : null));
         }
         if (want.equals("all") || want.equals("staff")) {
             hits.addAll(search.staff(like));

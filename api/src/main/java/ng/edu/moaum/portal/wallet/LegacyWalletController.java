@@ -33,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/finance/legacy-wallet")
 class LegacyWalletController {
 
-    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_financecontroller','OFFICE_audit','OFFICE_deputyaudit',"
+    private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_audit','OFFICE_deputyaudit',"
             + "'OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String VERIFIERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
     private static final String POSTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";

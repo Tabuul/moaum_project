@@ -74,7 +74,7 @@ to fees posts Dr 2100 / Cr fee income — no new cash, as for every wallet appli
 |---|---|
 | Students Account Officer, Bursar | run the reconciliation, enter a statement, verify |
 | Bursar | post (never what they verified themselves), reject, freeze, reopen |
-| Finance Controller, Audit, Registry, ICT, admin, super | read |
+| Audit, Registry, ICT, admin, super | read (V603: no longer the College's Finance Controller, whose office is held to the College) |
 
 Every student named is held to the office's bound; the database holds every rule (`LEGACY_WALLET_OFFICE`, the two-officer check
 constraint, the unique credit).

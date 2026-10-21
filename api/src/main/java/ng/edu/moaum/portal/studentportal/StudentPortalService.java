@@ -252,6 +252,9 @@ public class StudentPortalService {
         v.put("programme", s.programme());
         v.put("faculty", s.facultyName());
         v.put("collegeCode", s.collegeCode());
+        // V603: the dashboard the student lands on, from the programme and level on the record — the College's own student area
+        // for a programme the College runs (MBBS), the University's for every other student, College of Health Sciences or not
+        v.put("dashboard", repo.dashboard(id));
         v.put("department", s.deptName());
         v.put("entryMode", s.entryMode());
         v.put("entrySession", s.entrySession());

@@ -30,6 +30,16 @@ public class StudentReach {
      * other office that reads the record reads the University's.
      */
     public void check(UUID id) {
+        // V603: a College office (the Finance Controller) reads the College's students alone — active, graduated or otherwise
+        if (scope.actingCollegeOffice()) {
+            String f = jdbc.sql("SELECT p.faculty_code FROM people.student st JOIN ref.programme p ON p.code = st.programme_code WHERE st.id = :id")
+                    .param("id", id).query(String.class).optional().orElse(null);
+            if (f == null) return;   // an unknown student is answered as not found, not as out of scope
+            if (scope.actingCollegeFaculties().stream().noneMatch(f::equalsIgnoreCase)) {
+                throw new org.springframework.security.access.AccessDeniedException("This student is outside the College; this office reads the College's students alone.");
+            }
+            return;
+        }
         boolean dept = scope.actingDepartmentOffice();
         boolean fac = scope.actingFacultyOffice();
         if (!dept && !fac) return;

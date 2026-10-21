@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Ico, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
@@ -17,6 +18,8 @@ export const dynamic = "force-dynamic";
  * University's courses and GPA sheet; the College's own 100 Level rule (every C-group course at 50, no resit) decides
  * promotion to 200, read from those results. From 200 Level the Professional examinations decide: the rule applies
  * provisionally, the College Academic Board confirms.
+ * V603: for the programmes the College runs itself (MBBS) — the API refuses every other student (COLLEGE_NOT_MBBS), who is sent
+ * to the University's student dashboard.
  */
 interface Exam { id: string; code: string; name: string; level: number; papers: string[]; resit_allowed: boolean; resit_window_months: number; no_resit_if_all_failed: boolean; appeal_to_senate: boolean; min_attendance_pct: number | null; on_failure: string }
 interface Enrolment { id: string; level: number; session: string; attempt_no: number; kind: string; state: string; registered_at: string | null; registered_items: number | null; first_cleared: boolean; second_cleared: boolean; resit_names: string | null; semesters: string; year_ends_on: string | null; year_reached_final: boolean }
@@ -59,6 +62,8 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
     api<CaRow[]>("/api/v1/college/my-assessments"),
     api<{ id: string; session: string; state: string; starts_on: string | null; ends_on: string | null; posting: string; posting_name: string; tier: string; duration_weeks: number | null; block_code: string; block: string; group_label: string | null; supervisor: string | null; requirements: number; requirements_met: number }[]>("/api/v1/college/my-postings"),
   ]);
+  // V603: the College's own student area is for MBBS; any other student opening it is sent to the University's dashboard
+  if (!rec.ok && rec.problem.code === "COLLEGE_NOT_MBBS") redirect("/student");
   if (!rec.ok) {
     return <Shell route="s/dashboard" me={loaded.me}><ProblemNotice problem={rec.problem} /></Shell>;
   }

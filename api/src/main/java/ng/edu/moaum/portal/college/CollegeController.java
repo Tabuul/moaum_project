@@ -254,12 +254,28 @@ class CollegeController {
         return Map.of("id", id, "withdrawn", true);
     }
 
+    /**
+     * V603: the College's own student area is for the programmes the College runs on its own machinery (college.programme_rule:
+     * MBBS), not every College of Health Sciences student — Nursing, Medical Laboratory Science and the rest use the University's
+     * student portal. Every student door of the College asks it on the server, whatever the browser opened.
+     */
+    private UUID collegeStudent(Authentication auth) {
+        UUID me = UUID.fromString(auth.getName());
+        boolean runs = jdbc.sql("SELECT college.runs_programme(st.programme_code) FROM people.student st WHERE st.id = :me")
+                .param("me", me).query(Boolean.class).optional().orElse(false);
+        if (!runs) {
+            throw new DomainRuleViolation("COLLEGE_NOT_MBBS", "The College's own student area is for MBBS students; your programme is on the University's student portal.",
+                    new DomainRuleViolation.Remedy("Open your dashboard on the student portal.", "You"));
+        }
+        return me;
+    }
+
     /** the signed-in student's own logbooks: for each posting allocated, what it asks and what stands verified */
     @GetMapping("/my-logbooks")
     @PreAuthorize(STUDENT)
     @Transactional(readOnly = true)
     List<Map<String, Object>> myLogbooks(Authentication auth) {
-        UUID me = UUID.fromString(auth.getName());
+        UUID me = collegeStudent(auth);
         return jdbc.sql("""
                 SELECT a.id AS allocation_id, a.session, po.code AS posting, po.name AS posting_name, po.min_cases, a.state,
                        l.requirement, l.min_count, l.mode, l.done, l.met,
@@ -277,7 +293,7 @@ class CollegeController {
     @PreAuthorize(STUDENT)
     @Transactional(readOnly = true)
     List<Map<String, Object>> myAssessments(Authentication auth) {
-        UUID me = UUID.fromString(auth.getName());
+        UUID me = collegeStudent(auth);
         return jdbc.sql("""
                 SELECT sc.attempt_no, sc.score, sc.scored_on, i.name AS item, i.item_type, i.max_score, s.name AS subject, x.code AS exam, x.level
                   FROM college.assessment_score sc JOIN college.assessment_item i ON i.id = sc.item_id
@@ -291,7 +307,7 @@ class CollegeController {
     @PreAuthorize("hasAuthority('OFFICE_student')")
     @Transactional(readOnly = true)
     List<Map<String, Object>> myPostings(Authentication auth) {
-        UUID me = UUID.fromString(auth.getName());
+        UUID me = collegeStudent(auth);
         return jdbc.sql("""
                 SELECT a.id, a.session, a.state, a.starts_on, a.ends_on, po.code AS posting, po.name AS posting_name, po.tier, po.duration_weeks,
                        b.code AS block_code, b.name AS block, g.label AS group_label,
@@ -1029,6 +1045,8 @@ class CollegeController {
      * amount payable, amount paid, amount outstanding, payment status, the last payment — with the totals and the same
      * figures by programme. Read from the fee schedule and the confirmed payment references; nothing is typed beside them.
      * Names A–Z within programme; the filters and the search narrow the set, and the totals are of the set shown.
+     * V603: summary=true answers the totals and the figures by programme without the students (the Finance Controller's dashboard:
+     * 8,193 rows and 3.8 MB on the live-shaped copy, to show twenty).
      */
     @GetMapping("/payments")
     @PreAuthorize(PAYMENT_READERS)
@@ -1036,7 +1054,7 @@ class CollegeController {
     Map<String, Object> payments(@RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
                                  @RequestParam(required = false) String programme, @RequestParam(required = false) String dept,
                                  @RequestParam(required = false) Integer level, @RequestParam(required = false) String status,
-                                 @RequestParam(required = false) String q) {
+                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "false") boolean summary) {
         String s = session == null || !session.matches("\\d{4}/\\d{4}") ? currentSession() : session;
         Integer sem = semester == null || semester < 1 || semester > 3 ? null : semester;
         String st = status == null || status.isBlank() ? null : status.trim().toUpperCase();
@@ -1097,6 +1115,14 @@ class CollegeController {
             t.put("department", g.getValue().get(0).get("department"));
             t.putAll(tally.apply(g.getValue()));
             byProgramme.add(t);
+        }
+        if (summary) {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("session", s);
+            out.put("semester", sem);
+            out.put("summary", tally.apply(rows));
+            out.put("byProgramme", byProgramme);
+            return out;
         }
         Map<String, Object> options = new java.util.LinkedHashMap<>();
         options.put("programmes", jdbc.sql("""
@@ -1369,7 +1395,7 @@ class CollegeController {
     @PreAuthorize(STUDENT)
     @Transactional(readOnly = true)
     Map<String, Object> myRecord(Authentication auth) {
-        UUID me = UUID.fromString(auth.getName());
+        UUID me = collegeStudent(auth);
         Map<String, Object> st = jdbc.sql("""
                 SELECT st.id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.programme_code, p.name AS programme,
                        st.entry_mode, st.entry_session, st.entry_level, st.current_level, st.status, f.college_code
@@ -1457,7 +1483,7 @@ class CollegeController {
     @PreAuthorize(STUDENT)
     @Transactional
     Map<String, Object> register(Authentication auth, @RequestBody(required = false) RegisterIn body) {
-        UUID me = UUID.fromString(auth.getName());
+        UUID me = collegeStudent(auth);
         // the session the year opens in is the College's (college.level_session) unless the student names one; a year already open registers its next semester
         String session = body != null && body.session() != null && !body.session().isBlank() ? body.session().trim() : null;
         String r = jdbc.sql("SELECT college.register_level(:me, :s)").param("me", me).param("s", session, Types.VARCHAR).query(String.class).single();

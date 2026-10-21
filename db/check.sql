@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 432
+\set EXPECTED 433
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21664,6 +21664,41 @@ BEGIN
                  AND body LIKE '%For attention (this does not hold the start): no probation unit ceiling is set for 500 and 600 Level%'
                  AND ready_with = ready_without, false),
         format('unset %s words %s | body %s | readiness %s / %s', unset, words, left(body, 400), ready_with, ready_without));
+END $$;
+
+-- ── V603. The College student dashboard for the College's own programmes. The College runs MBBS on its own machinery and not
+--          Nursing; an invented MBBS student at 300 Level lands in the College's area, one at 100 Level and an invented Nursing
+--          student at 300 Level on the University's portal; the Nursing student's year is refused by the College's registration
+--          (COLLEGE_NOT_MBBS); moved to MBBS, the same student lands in the College's area. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); m uuid := gen_random_uuid(); f uuid := gen_random_uuid(); n uuid := gen_random_uuid();
+        runs text; landing text; refused text; moved text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V603', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (m, 'MOAUM/CHK/03/060301', 'MOAUM/ADM/03/603001', 'CHECKV603M', 'Invented', 'C00061', 'UTME', '2093/2094', 100, 300, 'ACTIVE', now()),
+            (f, 'MOAUM/CHK/03/060302', 'MOAUM/ADM/03/603002', 'CHECKV603F', 'Invented', 'C00061', 'UTME', '2095/2096', 100, 100, 'ACTIVE', now()),
+            (n, 'MOAUM/CHK/03/060303', 'MOAUM/ADM/03/603003', 'CHECKV603N', 'Invented', 'C35147', 'UTME', '2093/2094', 100, 300, 'ACTIVE', now());
+        runs := college.runs_programme('C00061') || ':' || college.runs_programme('C35147') || ':' || college.runs_programme('C00023');
+        landing := people.student_dashboard(m) || ':' || people.student_dashboard(f) || ':' || people.student_dashboard(n);
+        BEGIN
+            PERFORM college.register_level(n, NULL);
+            refused := 'REGISTERED';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1);
+        END;
+        UPDATE people.student SET programme_code = 'C00061' WHERE id = n;
+        moved := people.student_dashboard(n);
+        RAISE EXCEPTION 'the V603 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V603 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V603: the College''s own student area is for the programmes it runs (MBBS) from 200 Level; every other student lands on the University''s portal, and the College''s registration refuses them',
+        coalesce(runs = 'true:false:false' AND landing = 'COLLEGE:UNIVERSITY:UNIVERSITY' AND refused = 'COLLEGE_NOT_MBBS' AND moved = 'COLLEGE', false),
+        format('runs %s | landing %s | refused %s | moved %s', runs, landing, refused, moved));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
