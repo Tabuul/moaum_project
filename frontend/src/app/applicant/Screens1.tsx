@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { admitted, at, confirmedReference, dob, openReference, reportingTime, BODY, NEXT, STAGES, type Application, type FeeReference } from "@/lib/applicant";
 import { applicantReceiptTitle } from "@/lib/applicant-receipt";
-import { putmeOnDashboard, screeningResultOpen } from "@/lib/applicant-score";
+import { putmeOnDashboard } from "@/lib/applicant-score";
 import { ReceiptCheck } from "@/components/ReceiptCheck";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -26,7 +26,8 @@ export function Dashboard({ a }: { a: Application }) {
   const open = openReference(a, "APPLICATION");
   const uploaded = a.documents.find((d) => d.kind === "PASSPORT");
   const photoSrc = uploaded ? `/api/bff/api/v1/applicant/me/documents/${uploaded.id}/content` : a.jambPassport ?? null;
-  /* the Post-UTME score: the sitter's, once the Academic Office releases the scores (the API gives a computed aggregate to nobody); awaited before then */
+  /* the Post-UTME score: held until the admission is decided (V617) — the sitter's, released, with a decision they may read; the API
+     gives a computed aggregate to nobody, and nothing is said of a score before the decision */
   const pu = putmeOnDashboard(a);
   return (
     <>
@@ -43,14 +44,12 @@ export function Dashboard({ a }: { a: Application }) {
         ["Application number", a.applicationNo.split("/").slice(-1)[0], null, a.applicationNo],
         ["Programme applied for", a.programme ?? "—", null, `${a.faculty ? `Faculty of ${a.faculty} · ` : ""}as JAMB recorded it`],
         [a.entryMode === "UTME" ? "UTME score" : "Entry", a.entryMode === "UTME" ? String(a.biodata.utme ?? "—") : "Direct Entry", null, `JAMB ${a.jambKey}`],
-        ...(pu ? [pu.kind === "RELEASED"
-          ? ["Post-UTME score", pu.score == null ? "—" : String(pu.score), null, `${pu.of}${pu.aggregate != null ? ` · aggregate ${pu.aggregate}` : ""}`] as [string, string, null, string]
-          : ["Post-UTME score", "Not released", "var(--chrome)", pu.words] as [string, string, string, string]] : []),
+        ...(pu ? [["Post-UTME score", pu.score == null ? "—" : String(pu.score), null, `${pu.of}${pu.aggregate != null ? ` · aggregate ${pu.aggregate}` : ""}`] as [string, string, null, string]] : []),
         ["Stage", `${a.stage + 1} of 10`, a.stage >= 9 ? "var(--green-ink)" : "var(--chrome)", STAGES[Math.min(a.stage, 9)][0]],
       ]} />
-      {pu?.kind === "RELEASED" ? (
-        <Note kind="info" title="Your Post-UTME score has been released" action={screeningResultOpen(a) ? <LinkBtn href="/applicant/score">See your full result</LinkBtn> : undefined}>
-          {`Post-UTME ${pu.score ?? "—"} (${pu.of}); aggregate ${pu.aggregate ?? "—"} (${pu.weights}). A place is not decided by the score alone: the admission decision follows.`}
+      {pu ? (
+        <Note kind="info" title="Your screening result" action={<LinkBtn href="/applicant/score">See your full result</LinkBtn>}>
+          {`Post-UTME ${pu.score ?? "—"} (${pu.of}); aggregate ${pu.aggregate ?? "—"} (${pu.weights}). Your admission decision is under Admission Status.`}
         </Note>
       ) : null}
       <Note kind={a.stage >= 8 ? "ok" : a.stage === 5 ? "bad" : "info"} title={nx[0]}

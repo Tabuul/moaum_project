@@ -1,4 +1,4 @@
-# The Post-UTME score is the sitter's; the programme eligibility is the admitted applicant's; the Screening result waits for the decision (21 October 2026, V608 and V610)
+# The Post-UTME score and the Screening result wait for the admission decision; the programme eligibility is the admitted applicant's (21 October 2026, V608, V610 and V617)
 
 Two requests on the same day. First: hide **Programme eligibility** and the dashboard's **Your Post-UTME score has been released**
 note (the score, the aggregate, *See your full result*) until the applicant is admitted, and only for those who sat the Post-UTME
@@ -7,17 +7,16 @@ result, and that aggregate is never shown (V608). Then, seeing the result: the s
 programme on the release, whatever the Board then decides; only the non-index programmes show nothing (V610). The eligibility
 panel stays the admitted applicant's alone.
 
-A third request the same afternoon: hide the **Screening result** screen (the aggregate as calculated, the UTME cut-off and whether
-the applicant meets it, "Where you stand" on the merit list) from every applicant until their admission is decided. The Post-UTME
-score and aggregate stay on the Overview from the release, as V610 made them; the screen and its facts wait for the decision. No
-migration: the rule is in `ApplicantService.view` and the screens.
+Two more the same afternoon. First, hide the **Screening result** screen (the aggregate as calculated, the UTME cut-off and whether
+the applicant meets it, "Where you stand" on the merit list) from every applicant until their admission is decided (a6ad9bec, no
+migration). Then, "hide the Post-UTME score on the overview too" (**V617**): the score and the aggregate wait for the decision as well.
+The applicant now reads nothing of a Post-UTME score until a decision is theirs to read; a computed aggregate never.
 
 ## 1. The rules, enforced in the API
 
 | What | Rule |
 |---|---|
-| `GET /api/v1/applicant/me` → `result`, `scoreReleasedAt` | given when the Academic Office has released the scores **and** the result's source is the Post-UTME examination's (`screening_source` CBT or EXAM, as `admissions.screening_component` reads the record). Otherwise both are `null`: a computed aggregate (OLEVEL) or none is never shown, and nothing says scores were released. The decision plays no part |
-| `GET /api/v1/applicant/me` → `result.cutoff`, `result.meritPosition`, `result.applied`, `result.places` | given only once the admission is **decided** — a decision the applicant may read (`decisionVisible` and a decision: OFFERED, WAITING or NOT_OFFERED). Before that they are `null` (left out of the JSON), whatever the release; the score, the aggregate and the weights stay as above |
+| `GET /api/v1/applicant/me` → `result` (score, aggregate, weights, cut-off, merit position), `scoreReleasedAt` | given when the Academic Office has released the scores, the result's source is the Post-UTME examination's (`screening_source` CBT or EXAM, as `admissions.screening_component` reads the record) **and** the admission is decided — a decision the applicant may read (`decisionVisible` and a decision: OFFERED, WAITING or NOT_OFFERED; V617). Otherwise both are `null` (left out of the JSON): before the decision, for a computed aggregate (OLEVEL) or none, and nothing says scores were released |
 | `GET /api/v1/applicant/me/eligibility` | `available` only when **admitted** — the released decision is `OFFERED` *and* it is the applicant's to read (`decisionVisible`: Admission Status Checking paid and checked, or the admission under way, as `admissions.status_checking` says); before that `available=false` with the note "Programme eligibility is shown once you are offered admission" and nothing of the verdict, the reasons, the alternatives or the application |
 | `POST …/me/eligibility/recalculate`, `POST …/me/eligibility/change` | refused with `ELIG_NOT_ADMITTED` (422) unless admitted |
 | `canRequestChange` | the rule of `admissions.request_programme_change` as it stands: the decision not released, or an unsuccessful online screening with no change approved since — one open request at a time. For the admitted applicant, who alone reads it, that is the unsuccessful-screening case |
@@ -28,21 +27,24 @@ admitted on the same test.
 
 The database changes are the words of one notice. **V608** restated `admissions.release_scores` to say the score is shown with an
 offer of admission; **V610** restates it again with the words V059 gave it — "Sign in to see your score and where you stand" — since
-the sitter reads the score from the release. The release, the count and who is told (every seated or scored application, which a
-computed one never is) are as they were.
+the sitter reads the score from the release; **V617** restates it once more: "The post-UTME screening results for … have been released
+to the Admissions Board. Your score and where you stand are shown on the portal with your admission decision, read through Admission
+Status Checking" (subject "Post-UTME screening results released"; the SMS the same in short), inviting nobody to sign in and see a
+score. The release, the count and who is told (every seated or scored application, which a computed one never is) are as they were.
 
 ## 2. The screens
 
-- **Applicant → Overview**: the Post-UTME tile and the released-score note appear when the API gives a result (released, an
-  examination score). Before the release the tile says "Not released — Shown here once the Academic Office releases the scores" (or
-  "After your screening"); once a decision is read with no result — a programme screened without the examination, or none released —
-  the tile is gone and nothing is said of a score. **Programme eligibility** is mounted only when the offer is read (`admitted(a)`:
+- **Applicant → Overview**: the Post-UTME tile and the note "Your screening result" (the score, the aggregate, *See your full result*)
+  appear only when the API gives a result — released, an examination score, with the decision read (`putmeOnDashboard`). Before the
+  decision there is no tile and nothing is said of a score; once a decision is read with no result — a programme screened without the
+  examination, or none released — nothing either. The progress rail's "Screening score released" now reads "To the Admissions Board;
+  shown to you with the admission decision". **Programme eligibility** is mounted only when the offer is read (`admitted(a)`:
   `decision === "OFFERED"`, which the API gives only when visible).
 - **Applicant → Screening result** (`/applicant/score`): held until the admission is decided (`screeningResultOpen(a)` in
   `lib/applicant-score`: the API gives the decision only when it is the applicant's to read). Until then the menu item is not shown
   (`"when": "decided"` in `lib/menus.ts`, the flag set by `app/applicant/load.ts`) and the page, reached by its address, says "Your
-  screening result is shown once your admission is decided" — the score is on the Overview — with a link to Admission Status. The
-  Overview's "See your full result" and the Screening Slip's "See your screening result" appear only then. Once decided:
+  screening result is shown once your admission is decided" with a link to Admission Status. The Screening Slip's "See your screening
+  result" appears only then, and its note says the score and the result are shown with the decision. Once decided:
   "Scores are released when every batch has been screened" until the result is given, with the words that a programme screened
   without the examination has no score to show; the full result as before.
 - **Applicant → Admission Status**: the eligibility panel is no longer mounted there (every branch of that page is before the offer, or
@@ -66,15 +68,15 @@ computed one never is) are as they were.
 
 ## 4. Tests
 
-- `ApplicantIT`: after the release the applicant's view has the CBT score and the release date with no decision yet, but no cut-off
-  and no merit position, and the notice invites them to sign in; with the offer read the score stays and the cut-off and the merit
-  position are given as `admissions.screening_result` has them.
-- `AdmissionStatusCheckingIT`: a released CBT score on an admitted and a refused applicant — both read it from the release, before and
-  after the check.
+- `ApplicantIT`: after the release, with no decision yet, the applicant's view has no result and no release date, and the notice
+  says the score comes with the decision (no "Sign in to see"); with the offer read the CBT score is there, with the cut-off and the
+  merit position as `admissions.screening_result` has them.
+- `AdmissionStatusCheckingIT`: a released CBT score on an admitted and a refused applicant — neither reads it before the check; each
+  reads it with the decision checked.
 - `AdmissionEligibilityIT`: before the offer `available=false` and nothing of the verdict, the change and recalculate doors refused
   `ELIG_NOT_ADMITTED`, a released score nothing for a programme screened without the examination; the Office's request on the
   applicant's behalf decided; admitted, the applicant's own view agrees, no change after the decision, and the computed aggregate still
   never shown; the doors test reads another's application only once admitted.
 - `AdmissionLifecycleIT`: the accepted applicant whose screening was unsuccessful reads the panel and may ask for the change.
-- `lib/applicant-score.test.ts`: the dashboard words, and the Screening result open only with a decision (offered, waiting list or not
-  offered); `check.sql` V608/V610: the release notice.
+- `lib/applicant-score.test.ts`: the Overview's score only with a decision (offered, waiting list or not offered), nothing before it;
+  `check.sql` V608/V610/V617: the release notice's words (no new block; EXPECTED unchanged).

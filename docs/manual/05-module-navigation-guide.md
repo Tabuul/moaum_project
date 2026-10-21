@@ -3798,7 +3798,7 @@ Admissions/Academic → Post-UTME CBT Schedule → /admissions/putme
 ```text
 My application → Overview → /applicant
 ```
-**URL** `/applicant` · **Purpose** Stage rail and everything at a glance. · **Who** applicant. · **Layout** Passport card; tiles Application number / Programme applied for / UTME score / Entry / Stage n of 10; "what next" note with a button; the ten-step "Your application" rail; "Dates that matter"; "Notices sent to you". · **Actions** Links; PayByCard when a reference is open. 
+**URL** `/applicant` · **Purpose** Stage rail and everything at a glance. · **Who** applicant. · **Layout** Passport card; tiles Application number / Programme applied for / UTME score / Entry / Stage n of 10, and **Post-UTME score** with the note "Your screening result" (*See your full result*) only once the admission is decided and a score of the examination is released (V617: nothing of a score before the decision); "what next" note with a button; the ten-step "Your application" rail; "Dates that matter"; "Notices sent to you". · **Actions** Links; PayByCard when a reference is open. 
 
 > **Screenshot Required:** Applicant Overview — `/applicant` — the stage rail.
 
@@ -3841,7 +3841,7 @@ Screening → Screening Slip → /applicant/screening
 ```text
 Screening → Screening Result → /applicant/score
 ```
-**URL** `/applicant/score` · **Purpose** UTME, Post-UTME and aggregate against the cut-off. · **Who** applicant. · **Layout** Held until the admission is decided (21 Oct 2026): the menu item appears only with a decision the applicant may read, and the page says "Your screening result is shown once your admission is decided" (the score is on the Overview) with Admission status; the API gives the cut-off and the merit position only then. Once decided: before release — and always, for a programme screened without the examination (V610) — "Scores are released when every batch has been screened"; after: tiles UTME (of 400, scaled), Post-UTME screening (source CBT / EXAM / OLEVEL / NONE), Aggregate, Departmental cut-off; "How your aggregate was calculated"; "Where you stand"; "If you think this score is wrong". · **Actions** None.
+**URL** `/applicant/score` · **Purpose** UTME, Post-UTME and aggregate against the cut-off. · **Who** applicant. · **Layout** Held until the admission is decided (21 Oct 2026): the menu item appears only with a decision the applicant may read, and the page says "Your screening result is shown once your admission is decided" with Admission status (the Overview shows no score before then either, V617); the API gives the cut-off and the merit position only then. Once decided: before release — and always, for a programme screened without the examination (V610) — "Scores are released when every batch has been screened"; after: tiles UTME (of 400, scaled), Post-UTME screening (source CBT / EXAM / OLEVEL / NONE), Aggregate, Departmental cut-off; "How your aggregate was calculated"; "Where you stand"; "If you think this score is wrong". · **Actions** None.
 
 > **Screenshot Required:** Screening Result — `/applicant/score` — the four tiles and the calculation panel.
 
@@ -5816,7 +5816,7 @@ Every notice is a `platform.notice` row queued by `platform.queue_notice` and di
 | CBT seating moved (published batch) | `putme_move` | candidate | Email + SMS | "Your Post-UTME schedule has changed" | Admissions (CBT) |
 | CBT seating withdrawn | `putme_unschedule` | candidate | Email + SMS | "Your Post-UTME seating has been withdrawn" | Admissions (CBT) |
 | CBT batch postponed / cancelled | `putme_batch_state` | every candidate of a published batch | Email + SMS | "Your Post-UTME batch has been postponed/cancelled" | Admissions (CBT) |
-| Screening scores released | `release_scores` | applicant | Email + SMS | "Your screening result is released" (V610; the sitter reads the score from the release) | Admissions |
+| Screening scores released | `release_scores` | applicant | Email + SMS | "Post-UTME screening results released" (V617; the score is shown with the admission decision) | Admissions |
 | Decision released | `release_decisions` | applicant | Email + SMS | "You have been offered provisional admission" / "You are on the waiting list" / "The admission decision on your application" | Admissions |
 | Acceptance settled | `settle_acceptance` | applicant | Email + SMS | "Your place is held" | Applicant portal |
 | Clearance query | `clear_document` (QUERY) | applicant | Email + SMS | "A query on your clearance documents" | Admissions |

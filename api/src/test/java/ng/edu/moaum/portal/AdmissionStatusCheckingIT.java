@@ -147,7 +147,8 @@ class AdmissionStatusCheckingIT {
         Applicant pending = applicant(null, false, true, "F");            // 3 · no decision yet
         Applicant incomplete = applicant(null, false, false, "M");        // 4 · paid for, never submitted: no valid application
         Applicant late = applicant(null, false, true, "M");               // a reference taken while open, not paid before closing
-        // 21 Oct 2026 (V610): a released CBT score on the admitted and on the refused — a sitter's score, read by both from the release
+        // 21 Oct 2026 (V617, after V610): a released CBT score on the admitted and on the refused — a sitter's score, read by each only with
+        // the decision, once checked
         it.db(() -> jdbc.sql("UPDATE admissions.application SET screening_score = 61, score_entered_at = now() WHERE id IN (:a, :r)").param("a", admitted.app()).param("r", refused.app()).update());
 
         // ── 5 · closed until the Director of ICT first opens it: nobody pays, nobody checks, nothing of the decision shows ──
@@ -234,7 +235,7 @@ class AdmissionStatusCheckingIT {
         ResponseEntity<Map> no = checkStatus(refused);
         assertThat(no.getStatusCode().value()).isEqualTo(200);
         assertThat(no.getBody().get("status")).isEqualTo("NOT_ADMITTED");
-        assertThat(m(me(refused).get("result")).get("screeningSource")).as("a sitter's released score, whatever the decision").isEqualTo("CBT");
+        assertThat(m(me(refused).get("result")).get("screeningSource")).as("a sitter's released score, read with the decision, whatever it is").isEqualTo("CBT");
         assertThat(me(refused).get("scoreReleasedAt")).isNotNull();
         assertThat(no.getBody().get("label")).isEqualTo("Not admitted");
         assertThat(m(no.getBody().get("offer")).get("decision")).isEqualTo("NOT_OFFERED");
@@ -242,7 +243,8 @@ class AdmissionStatusCheckingIT {
         assertThat(notices(refused, "Congratulations%")).isZero();
 
         // ── 1 · admitted: pays, checks, is congratulated, and continues to the acceptance ──
-        assertThat(m(me(admitted).get("result")).get("screeningSource")).as("the released score is read before the check too (V610)").isEqualTo("CBT");
+        assertThat(me(admitted).get("result")).as("no score before the decision is read (V617)").isNull();
+        assertThat(me(admitted).get("scoreReleasedAt")).isNull();
         pay(admitted);
         ResponseEntity<Map> yes = checkStatus(admitted);
         assertThat(yes.getStatusCode().value()).isEqualTo(200);
@@ -252,7 +254,7 @@ class AdmissionStatusCheckingIT {
         assertThat(m(yes.getBody().get("offer")).get("faculty")).isNotNull();
         assertThat(m(yes.getBody().get("checking")).get("past")).isEqualTo(true);
         assertThat(me(admitted).get("offerState")).isEqualTo("ADMITTED");
-        assertThat(m(me(admitted).get("result")).get("screeningSource")).isEqualTo("CBT");   // and still with the offer read
+        assertThat(m(me(admitted).get("result")).get("screeningSource")).isEqualTo("CBT");   // with the offer read
         assertThat(me(admitted).get("scoreReleasedAt")).isNotNull();
         assertThat(notices(admitted, "Congratulations! You have been offered admission")).isEqualTo(1);
         assertThat(checkStatus(admitted).getStatusCode().value()).isEqualTo(200);   // checked again: kept as a check, congratulated once

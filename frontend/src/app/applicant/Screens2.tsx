@@ -20,20 +20,20 @@ import { scoreReleased, screeningResultOpen, utmeMeetsCutoff } from "@/lib/appli
 
 export function Score({ a }: { a: Application }) {
   const r = a.result;
-  /* held from every applicant until their admission is decided (21 October 2026): the aggregate, the cut-off and where they stand
-     come with the decision they may read — the API gives the cut-off and the merit position only then; the score is on the Overview */
+  /* held from every applicant until their admission is decided (21 October 2026, V617): the score, the aggregate, the cut-off and
+     where they stand come with the decision they may read — the API gives the result only then */
   if (!screeningResultOpen(a)) {
     return (
       <>
         <Note kind="info" title="Your screening result is shown once your admission is decided" action={<LinkBtn href="/applicant/status">Admission status</LinkBtn>}>
-          {scoreReleased(a) ? "Your Post-UTME score is on your Overview. " : ""}How your aggregate was calculated, the cut-off for your programme and where you stand on the merit list appear here with your admission decision.
+          Your Post-UTME score, how your aggregate was calculated, the cut-off for your programme and where you stand on the merit list appear here with your admission decision.
         </Note>
         <Rail a={a} />
       </>
     );
   }
-  /* the sitter's (21 October 2026, V608 then V610): the API gives the result once the Academic Office releases the scores, and only for
-     a score of the Post-UTME examination — a computed aggregate is never shown; nothing here says a score exists before then */
+  /* the sitter's (21 October 2026, V608, V610, V617): with the decision read, the API gives the result once the Academic Office has
+     released the scores, and only for a score of the Post-UTME examination — a computed aggregate is never shown */
   if (!scoreReleased(a) || !r) {
     return (
       <>

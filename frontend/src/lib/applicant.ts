@@ -118,7 +118,7 @@ export const STAGES: [string, string][] = [
   ["Application fee paid", "Confirmed by the bank to the University"],
   ["Application submitted", "Biodata, O’Level results and documents"],
   ["Screening slip issued", "Batch, venue and seat published"],
-  ["Screening score released", "Post-UTME result on the portal"],
+  ["Screening score released", "To the Admissions Board; shown to you with the admission decision"],
   ["Admission decision released", "From the JAMB admission list or the Board: offer, waiting list or not offered"],
   ["Offer accepted", "Acceptance fee paid within the deadline; acceptance letter issued"],
   ["Screening successful", "Online screening approved, or a change of programme approved"],

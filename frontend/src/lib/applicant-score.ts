@@ -1,16 +1,13 @@
-/** The Post-UTME score on the applicant's dashboard: the sitter's (21 October 2026, V608 then V610). The API gives the result once
- *  the Academic Office releases the scores, and only where the score is the Post-UTME examination's — the CBT or the written
- *  examination of an index programme — whatever the Board then decides: the aggregate computed from the O'Level result for a
- *  programme screened without the examination is never shown, nor that scores were released. Before the release the score is awaited
- *  after a published screening slip, and not spoken of for a candidate admitted from the JAMB list, who is not screened here. The
+/** The Post-UTME score on the applicant's dashboard, held until their admission is decided (21 October 2026, V617, after V608 and
+ *  V610). The API gives the result only once the Academic Office has released the scores and the decision is the applicant's to read
+ *  (offered, waiting list or not offered), and only where the score is the Post-UTME examination's — the CBT or the written
+ *  examination of an index programme: the aggregate computed from the O'Level result for a programme screened without the
+ *  examination is never shown. Before the decision nothing is said of a score, on the Overview or the Screening result. The
  *  programme's cut-off is a UTME cut-off (of 400, admissions.cutoff_for), so it is read against the UTME score, never against the
  *  aggregate (of 100). Node-tested. */
 import type { Application, ScreeningResult } from "./applicant.ts";
 
-export type PutmeOnDashboard =
-  | { kind: "RELEASED"; score: number | null; of: string; aggregate: number | null; weights: string }
-  | { kind: "AWAITED"; words: string }
-  | null;
+export type PutmeOnDashboard = { score: number | null; of: string; aggregate: number | null; weights: string } | null;
 
 /** what the screening score is out of, in words */
 export function scoreOf(source: string | null | undefined): string {
@@ -22,9 +19,8 @@ export function scoreOf(source: string | null | undefined): string {
   }
 }
 
-/** the Screening result screen (21 October 2026): held from every applicant until their admission is decided — a decision they may
- *  read, offered, waiting list or not offered (the API gives it only then, and the cut-off and the merit position with it). The
- *  score and the aggregate stay on the Overview from the release (V610). */
+/** the Post-UTME score and the Screening result screen (21 October 2026, V617): held from every applicant until their admission is
+ *  decided — a decision they may read, offered, waiting list or not offered (the API gives it, and the result with it, only then) */
 export function screeningResultOpen(a: Pick<Application, "decision">): boolean {
   return !!a.decision;
 }
@@ -35,19 +31,13 @@ export function scoreReleased(a: Pick<Application, "result" | "scoreReleasedAt">
   return !!a.scoreReleasedAt && !!a.result;
 }
 
-export function putmeOnDashboard(a: Pick<Application, "result" | "scoreReleasedAt" | "screeningSlip" | "decisionReleasedAt" | "decision">): PutmeOnDashboard {
+export function putmeOnDashboard(a: Pick<Application, "result" | "scoreReleasedAt" | "decision">): PutmeOnDashboard {
   const r = a.result;
-  if (scoreReleased(a) && r) {
-    return { kind: "RELEASED", score: r.screening == null ? null : Number(r.screening), of: scoreOf(r.screeningSource),
-      aggregate: r.aggregate == null ? null : Number(r.aggregate), weights: `UTME ${r.weightUtme}% · Post-UTME ${r.weightPutme}%` };
-  }
-  /* the decision read (the API gives it only then) and no result with it: a programme screened without the examination, or no score
-     released — nothing is said of a score */
-  if (a.decision) return null;
-  /* admitted from the JAMB list (V270): no slip and no score here */
-  if (a.decisionReleasedAt && !a.screeningSlip) return null;
-  if (a.screeningSlip?.published) return { kind: "AWAITED", words: "Shown here once the Academic Office releases the scores" };
-  return { kind: "AWAITED", words: "After your screening" };
+  /* held until the admission is decided (V617): with no decision to read, or no result given with it — a programme screened without
+     the examination, or no score released — nothing is said of a score */
+  if (!screeningResultOpen(a) || !scoreReleased(a) || !r) return null;
+  return { score: r.screening == null ? null : Number(r.screening), of: scoreOf(r.screeningSource),
+    aggregate: r.aggregate == null ? null : Number(r.aggregate), weights: `UTME ${r.weightUtme}% · Post-UTME ${r.weightPutme}%` };
 }
 
 /** the UTME score against the programme's UTME cut-off: null when either is not known */

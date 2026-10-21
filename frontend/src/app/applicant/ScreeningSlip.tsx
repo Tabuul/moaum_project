@@ -51,7 +51,7 @@ export function Screening({ a }: { a: Application }) {
       ) : (
         <Note kind={sat ? "ok" : "info"} title={sat ? `You sat the examination on ${onDay(slip.heldOn)}` : `Report at ${reportingTime(slip)} on ${onDay(slip.heldOn)} with this slip and a valid identification document`}
           action={<span className="row row--inline row--tight">{at(a, 4) && screeningResultOpen(a) ? <LinkBtn kind="primary" href="/applicant/score">See your screening result</LinkBtn> : null}<a href="/applicant/screening/slip" target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Download slip (PDF)</a></span>}>
-          {sat ? "This slip is kept for your records. Your score is on your Overview once it is released; the full screening result follows with your admission decision." : `You will not be admitted into the hall without both. Check-in closes when your batch begins at ${clock(slip.startsAt)}.`}
+          {sat ? "This slip is kept for your records. Your score and your screening result are shown with your admission decision." : `You will not be admitted into the hall without both. Check-in closes when your batch begins at ${clock(slip.startsAt)}.`}
         </Note>
       )}
       <Panel title={slip.examName ?? "Post-UTME examination slip"} right={a.applicationNo}>

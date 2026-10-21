@@ -22189,7 +22189,7 @@ BEGIN
                chk.checked_parts, chk.totals, left(short_reject, 22), left(own_decision, 27), a1.state, a1.remaining, after_one,
                a2.state, a2.remaining, after_all, a2.result, code_now, st_rej, st_wd));
 END $$;
--- ── V608, V610: the notice on the release of the Post-UTME scores invites the sitter to sign in and see the score (V610 restored the words V608 had changed) ──
+-- ── V608, V610, V617: the notice on the release of the Post-UTME scores says the score is shown with the admission decision (V610 restored V059's words; V617 holds the score until the decision) ──
 DO $$
 DECLARE S constant text := '9608/9609'; cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
         n int; v_released boolean; v_subject text; v_body text; v_sms text; v_mails int;
@@ -22214,11 +22214,11 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('V608/V610: the release notice — one scored application released and told once; the e-mail and the SMS invite the sitter to sign in and see the score',
+    PERFORM pg_temp.assert('V608/V610/V617: the release notice — one scored application released and told once; the e-mail and the SMS say the score is shown with the admission decision and invite nobody to see it before',
         coalesce(n = 1 AND v_released AND v_mails = 1
-                 AND v_subject = 'Your screening result is released'
-                 AND v_body LIKE '%' || S || '%' AND v_body LIKE '%Sign in to see your score and where you stand%'
-                 AND v_sms LIKE '%Sign in to see it%', false),
+                 AND v_subject = 'Post-UTME screening results released'
+                 AND v_body LIKE '%' || S || '%' AND v_body LIKE '%shown on the portal with your admission decision%' AND v_body NOT LIKE '%Sign in to see%'
+                 AND v_sms LIKE '%shown on the portal with your admission decision%' AND v_sms NOT LIKE '%Sign in to see%', false),
         format('released %s (n=%s, mails=%s) subject %L body %L sms %L', v_released, n, v_mails, v_subject, v_body, v_sms));
 END $$;
 -- ── V609. Old Fees History's upload history. A made-up student: the Students Account Officer opens no load of the Bursary's and an
