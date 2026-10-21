@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 443
+\set EXPECTED 444
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22463,6 +22463,76 @@ BEGIN
                AND b0.spillover_state = 'SPILLOVER_YEAR_1' AND b1.spillover_state = 'SPILLOVER_YEAR_2' AND b1.expected_completion = format('%s/%s', y - 2, y - 1)
                AND r_reason = 'COMPLETION_REASON' AND r_session = 'COMPLETION_SESSION' AND r_before = 'COMPLETION_BEFORE_COHORT' AND r_none = 'COMPLETION_NOT_PINNED'
                AND n_dec = 3, false),
+      msg);
+END $$;
+
+-- ── V613. School-fee lines by spillover year: on a four-year programme, by the level basis, a student at 500 Level (SP1) is charged
+--          the "400 Level (SP1)" line and the any-year spillover line, one at 600 (SP2) the SP2 line, one at 400 the level's own line;
+--          the sheet reads "SP1" and adds the same rows once; SP1 and SP2 are different scopes; a copy into another session carries
+--          the year; the gap report names the year and the final level. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9613/9614'; T constant text := '9614/9615'; v_prog text; v_dept text; v_fac text;
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
+    added1 int; added2 int; d1 numeric; d2 numeric; d3 numeric; c1 text; c2 text; c3 text; v_same boolean; v_diff boolean;
+    n_copy1 int; n_copy2 int; n_copy_any int; g2 record; v_stated boolean; msg text;
+BEGIN
+  BEGIN   -- the check's own sessions, programme, students and lines, undone at the end
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V613', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);   -- the level basis (V571): a level above the final one is spillover
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    VALUES (gen_random_uuid(), S, date '9613-10-01', date '9614-09-30', 'PLANNED'), (gen_random_uuid(), T, date '9614-10-01', date '9615-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    -- the session's two semesters open: the gap report reads the open semesters (V461)
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN'), (gen_random_uuid(), S, 2, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V613', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/13/613001', 'MOAUM/ZZS/13/6131', 'CHECKV613', 'Spillover one', v_prog, 'UTME', S, 100, 500, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/13/613002', 'MOAUM/ZZS/13/6132', 'CHECKV613', 'Spillover two', v_prog, 'UTME', S, 100, 600, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/13/613003', 'MOAUM/ZZS/13/6133', 'CHECKV613', 'Final year', v_prog, 'UTME', S, 100, 400, 'ACTIVE', now());
+    -- the sheet: 400 Level (SP1) first semester, 400 Level (SP2) first semester, Spillover (any year) second semester, 400 Level first semester
+    SELECT x.added INTO added1 FROM finance.add_fee_lines(S, jsonb_build_array(
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'spillover', 'SP1', 'semester', '1', 'amount', '70000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'spillover', 'SP2', 'semester', '1', 'amount', '90000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '', 'spillover', 'Yes', 'semester', '2', 'amount', '10000'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'entryMode', 'UTME', 'semester', '1', 'amount', '150000'))) x;
+    SELECT x.added INTO added2 FROM finance.add_fee_lines(S, jsonb_build_array(
+        jsonb_build_object('programmeCode', v_prog, 'level', '400', 'spillover', 'SP1', 'semester', '1', 'amount', '70000'))) x;
+    d1 := finance.due_for_semester(s1, S, 1); d2 := finance.due_for_semester(s2, S, 1); d3 := finance.due_for_semester(s3, S, 1);
+    SELECT string_agg(c.item || '=' || c.amount, '; ' ORDER BY c.ord, c.item) INTO c1 FROM finance.charges_of_as(s1, S, ARRAY['FEE'], NULL) c;
+    SELECT string_agg(c.item || '=' || c.amount, '; ' ORDER BY c.ord, c.item) INTO c2 FROM finance.charges_of_as(s2, S, ARRAY['FEE'], NULL) c;
+    SELECT string_agg(c.item || '=' || c.amount, '; ' ORDER BY c.ord, c.item) INTO c3 FROM finance.charges_of_as(s3, S, ARRAY['FEE'], NULL) c;
+    v_stated := finance.fee_stated(s1, S);
+    SELECT finance.fee_line_same_scope(a, b), finance.fee_line_same_scope(a, a) INTO v_diff, v_same
+      FROM finance.fee_schedule a, finance.fee_schedule b
+     WHERE a.session = S AND b.session = S AND a.spill_year = 1 AND b.spill_year = 2;
+    -- the copy into the next session carries the year
+    PERFORM finance.copy_session_fees(S, T, true);
+    SELECT count(*) FILTER (WHERE spill_year = 1), count(*) FILTER (WHERE spill_year = 2), count(*) FILTER (WHERE spillover AND spill_year IS NULL)
+      INTO n_copy1, n_copy2, n_copy_any FROM finance.fee_schedule WHERE session = T AND ended_at IS NULL;
+    -- the SP2 line ended: the gap report names the group by its year and the final level
+    UPDATE finance.fee_schedule SET ended_at = now() WHERE session = S AND spill_year = 2;
+    SELECT g.spill_year, g.final_level, g.level, g.stated, g.missing INTO g2 FROM finance.fee_gaps(S) g WHERE g.programme_code = v_prog AND g.spillover AND g.spill_year = 2;
+    msg := format('added %s then %s | due %s/%s/%s | s1 [%s] s2 [%s] s3 [%s] | stated %s | same %s diff %s | copy %s/%s/%s | gap SP2: year %s final %s level %s stated %s missing %s',
+                  added1, added2, d1, d2, d3, c1, c2, c3, v_stated, v_same, v_diff, n_copy1, n_copy2, n_copy_any, g2.spill_year, g2.final_level, g2.level, g2.stated, g2.missing);
+    RAISE EXCEPTION 'the V613 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    NULL;
+  END;
+  PERFORM pg_temp.assert('V613: fee lines by spillover year — SP1 charged the 400 Level (SP1) line and the any-year line, SP2 the SP2 line, the final-year student the level''s own line; the sheet reads SP1 and adds nothing twice; SP1 and SP2 are different scopes; the copy carries the year; the gap report names the year and the final level',
+      coalesce(added1 = 4 AND added2 = 0
+               AND d1 = 70000 AND d2 = 90000 AND d3 = 150000
+               AND c1 LIKE '%(spillover SP1)%=70000%' AND c1 LIKE '%(spillover) (Second Semester)=10000%' AND c1 NOT LIKE '%SP2%' AND c1 NOT LIKE '%=150000%'
+               AND c2 LIKE '%(spillover SP2)%=90000%' AND c2 NOT LIKE '%SP1%'
+               AND c3 LIKE '%=150000%' AND c3 NOT LIKE '%spillover%'
+               AND v_stated AND v_same AND NOT v_diff
+               AND n_copy1 = 1 AND n_copy2 = 1 AND n_copy_any = 1
+               AND g2.spill_year = 2 AND g2.final_level = 400 AND g2.level = 600 AND g2.stated AND g2.missing = ARRAY[1], false),
       msg);
 END $$;
 

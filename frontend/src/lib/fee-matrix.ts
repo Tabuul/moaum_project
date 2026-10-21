@@ -13,7 +13,9 @@
  * Entry modes are stated on every line, as the 2025/2026 structure states them, so no line reaches a student twice: a
  * "100L/200DE" band is level 100 for UTME and Transfer and level 200 for Direct Entry; a 200L band is UTME and Transfer
  * when the block has a Direct Entry band (else all three); a band from 300 up is all three; "/SP" also gives the
- * spillover line (no level, no entry mode). A CCE structure is entry mode CCE throughout.
+ * spillover line (no level, no entry mode). A CCE structure is entry mode CCE throughout. V613: a band naming a spillover year —
+ * "400L/SP1", "400 Level (SP1)" — is that year's spillover line alone, at the programme's final level the band names; the
+ * Spillover column of the row layout likewise reads "SP1", "SP2", "SP3".
  */
 export type Cell = string | number | null | undefined;
 export type Grid = Cell[][];
@@ -32,34 +34,42 @@ export type Indigene = "INDIGENE" | "NON_INDIGENE";
 export interface StructureRow {
   faculty?: string; programmeCode?: string; level?: string; entryMode?: string; semester?: string; indigene?: string;
   spillover?: string; amount: string; item?: string; kind?: string; feeGroup?: string; ord?: string;
+  /** V613: the spillover year a spillover row is for (1–3) */
+  spillYear?: string;
 }
 
 /** a level band of a block or a cross-tab header: "100L/200DE" → level 100 and Direct Entry at 200; "600L/SP" → spillover too */
-export interface Band { col: number; head: string; level: number | null; de: number | null; spill: boolean }
+export interface Band { col: number; head: string; level: number | null; de: number | null; spill: boolean; spillYear: number | null }
 
 export function readBand(head: string, col: number): Band | null {
   const h = norm(head).toUpperCase();
   if (!h || (/^[\d.,\s₦]+$/.test(h) && !/^\d{3}$/.test(h))) return null; // an amount, not a level
   const nums = h.match(/(?<!\d)\d{3}(?!\d)/g) ?? [];
-  const spill = /SPILL|(^|[/\s])SP\b/.test(h);
+  /* V613: "SP1", "SP 2", "(SP3)" — the spillover year; "SP" or "SPILLOVER" alone is any year */
+  const year = h.match(/(?:^|[/\s(])SP\s*([1-3])\b/);
+  const spill = year !== null || /SPILL|(^|[/\s(])SP\b/.test(h);
   if (!nums.length && !spill) return null;
   const level = nums.length ? Number(nums[0]) : null;
   if (level !== null && (level < 100 || level > 900 || level % 100 !== 0)) return null;
   const de = /DE\b|DIRECT/.test(h) && nums[1] ? Number(nums[1]) : null;
-  return { col, head: norm(head), level, de, spill };
+  return { col, head: norm(head), level, de, spill, spillYear: year ? Number(year[1]) : null };
 }
 
 /** the (level, entry mode) pairs a band's amount is stated for */
-export function bandLines(b: Band, blockHasDe: boolean, cce = false): { level: number | null; entryMode: string | null; spillover: boolean }[] {
-  const out: { level: number | null; entryMode: string | null; spillover: boolean }[] = [];
+export type BandLine = { level: number | null; entryMode: string | null; spillover: boolean; spillYear: number | null };
+
+export function bandLines(b: Band, blockHasDe: boolean, cce = false): BandLine[] {
+  const out: BandLine[] = [];
+  /* V613: a band naming a spillover year is that year's spillover line alone, at the programme's final level the band names */
+  if (b.spillYear) return [{ level: b.level, entryMode: cce ? "CCE" : null, spillover: true, spillYear: b.spillYear }];
   if (b.level !== null) {
-    if (cce) out.push({ level: b.level, entryMode: "CCE", spillover: false });
-    else if (b.de !== null) out.push({ level: b.level, entryMode: "UTME", spillover: false }, { level: b.level, entryMode: "TRANSFER", spillover: false },
-      { level: b.de, entryMode: "DIRECT_ENTRY", spillover: false });
-    else if (b.level === 100 || (b.level === 200 && blockHasDe)) out.push({ level: b.level, entryMode: "UTME", spillover: false }, { level: b.level, entryMode: "TRANSFER", spillover: false });
-    else for (const m of ["UTME", "TRANSFER", "DIRECT_ENTRY"]) out.push({ level: b.level, entryMode: m, spillover: false });
+    if (cce) out.push({ level: b.level, entryMode: "CCE", spillover: false, spillYear: null });
+    else if (b.de !== null) out.push({ level: b.level, entryMode: "UTME", spillover: false, spillYear: null }, { level: b.level, entryMode: "TRANSFER", spillover: false, spillYear: null },
+      { level: b.de, entryMode: "DIRECT_ENTRY", spillover: false, spillYear: null });
+    else if (b.level === 100 || (b.level === 200 && blockHasDe)) out.push({ level: b.level, entryMode: "UTME", spillover: false, spillYear: null }, { level: b.level, entryMode: "TRANSFER", spillover: false, spillYear: null });
+    else for (const m of ["UTME", "TRANSFER", "DIRECT_ENTRY"]) out.push({ level: b.level, entryMode: m, spillover: false, spillYear: null });
   }
-  if (b.spill) out.push({ level: null, entryMode: cce ? "CCE" : null, spillover: true });
+  if (b.spill) out.push({ level: null, entryMode: cce ? "CCE" : null, spillover: true, spillYear: null });
   return out;
 }
 
@@ -88,7 +98,7 @@ function settle(first: number | null, second: number | null, total: number | nul
 }
 
 /** one block of the block layout, its lines read but not yet charged to a programme or faculty */
-export interface BlockLine { level: number | null; entryMode: string | null; semester: number | null; indigene: Indigene; amount: number; spillover: boolean }
+export interface BlockLine { level: number | null; entryMode: string | null; semester: number | null; indigene: Indigene; amount: number; spillover: boolean; spillYear: number | null }
 export interface FeeBlock { label: string; row: number; bands: Band[]; lines: BlockLine[] }
 
 const NOT_A_BLOCK = /^(semester|faculty|programme|level|indigene|non|₦|n$|total|prepared|authori[sz]ed|approved|signed)/i;
@@ -163,7 +173,7 @@ export function blockRows(block: FeeBlock, target: { programmeCode?: string; fac
     if (l.level !== null) row.level = String(l.level);
     if (l.entryMode) row.entryMode = l.entryMode;
     if (l.semester !== null) row.semester = String(l.semester);
-    if (l.spillover) row.spillover = "true";
+    if (l.spillover) { row.spillover = "true"; if (l.spillYear) row.spillYear = String(l.spillYear); }
     return row;
   });
 }
@@ -252,7 +262,10 @@ export function parseFeeFlat(grid: Grid, cce = false): StructureRow[] {
     if (cell(col.semester)) row.semester = cell(col.semester);
     if (cell(col.indigene)) row.indigene = cell(col.indigene);
     if (cell(col.item)) row.item = cell(col.item);
-    if (/^(y|t|1|true|yes|spill)/i.test(cell(col.spill))) row.spillover = "true";
+    /* V613: "SP1", "SP2", "SP3" name the spillover year; Yes, true, spillover: any year */
+    const spillCell = cell(col.spill), spillYear = spillCell.match(/\bSP\s*([1-3])\b/i);
+    if (spillYear) { row.spillover = "true"; row.spillYear = spillYear[1]; }
+    else if (/^(y|t|1|true|yes|spill)/i.test(spillCell)) row.spillover = "true";
     if (cell(col.kind)) row.kind = cell(col.kind);
     if (cell(col.group)) row.feeGroup = cell(col.group);
     if (cell(col.ord)) row.ord = cell(col.ord);
@@ -302,7 +315,7 @@ export function parseFeeMatrix(grid: Grid, cce = false): StructureRow[] {
           const row: StructureRow = { faculty: fac, semester: String(sem), indigene, amount: kobo(n).toFixed(2) };
           if (l.level !== null) row.level = String(l.level);
           if (l.entryMode) row.entryMode = l.entryMode;
-          if (l.spillover) row.spillover = "true";
+          if (l.spillover) { row.spillover = "true"; if (l.spillYear) row.spillYear = String(l.spillYear); }
           rows.push(row);
         }
       }

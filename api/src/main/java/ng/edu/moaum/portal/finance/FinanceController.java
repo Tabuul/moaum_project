@@ -51,6 +51,8 @@ class FinanceController {
     public record Item(@NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount, Integer level,
                        @Size(max = 20) String entryMode, @Size(max = 12) String facultyCode, @Size(max = 12) String programmeCode,
                        @Size(max = 12) String feeGroup, Integer semester, Integer ord,
+                       /** V613: a spillover line (its level then the programme's final level) and the spillover year it is for — 1, 2 or 3; null for any */
+                       Boolean spillover, Integer spillYear,
                        /** V288: FEE, or LATE_PAYMENT / LATE_REGISTRATION charged only in the window's late period */
                        @Pattern(regexp = "FEE|LATE_PAYMENT|LATE_REGISTRATION") String kind) {
     }
@@ -382,7 +384,7 @@ class FinanceController {
         String s = session + "/" + year;
         List<Map<String, Object>> items = jdbc.sql("""
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
-                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.indigene, f.ord, f.spillover, f.kind
+                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.indigene, f.ord, f.spillover, f.spill_year, f.kind
                   FROM finance.fee_schedule f
                   LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
                   LEFT JOIN ref.programme p ON p.code = f.programme_code
@@ -433,7 +435,7 @@ class FinanceController {
     Map<String, Object> feeGaps(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT faculty_code, faculty, programme_code, programme, level, entry_mode, indigene, spillover, students, charged_as, stated,
+                SELECT faculty_code, faculty, programme_code, programme, level, entry_mode, indigene, spillover, spill_year, final_level, students, charged_as, stated,
                        array_to_string(missing, ',') AS missing
                   FROM finance.fee_gaps(:s)
                 """).param("s", s).query().listOfRows();
@@ -549,6 +551,18 @@ class FinanceController {
     /** V520: an active line of the session that already states this item for the same scope (the scope finance.fee_line_same_scope
      *  compares: item, kind, level, entry mode, faculty, programme, group, semester; a line set by hand has no indigeneship and is not a
      *  spill-over line) — the line added or edited by hand would charge it twice */
+    /** V613: a spillover line's year — 1, 2 or 3 — and whether the line is a spillover line at all (a year makes it one) */
+    private static Integer spillYearOf(Item body) {
+        if (body.spillYear() != null && (body.spillYear() < 1 || body.spillYear() > 3)) {
+            throw new DomainRuleViolation("FEE_SPILL_YEAR", "A spillover year is 1 (SP1), 2 (SP2) or 3 (SP3 and beyond).", new DomainRuleViolation.Remedy("Leave it blank for every spillover year.", "Bursary"));
+        }
+        return body.spillYear();
+    }
+
+    private static boolean spilloverOf(Item body) {
+        return Boolean.TRUE.equals(body.spillover()) || body.spillYear() != null;
+    }
+
     private void refuseDuplicateLine(String session, Item body, UUID except) {
         String kind = body.kind() == null || body.kind().isBlank() ? "FEE" : body.kind();
         java.util.Optional<Map<String, Object>> dup = jdbc.sql("""
@@ -558,15 +572,16 @@ class FinanceController {
                    AND x.level IS NOT DISTINCT FROM CAST(:l AS integer) AND x.entry_mode IS NOT DISTINCT FROM CAST(:m AS text)
                    AND x.faculty_code IS NOT DISTINCT FROM CAST(:f AS text) AND x.programme_code IS NOT DISTINCT FROM CAST(:p AS text)
                    AND x.fee_group IS NOT DISTINCT FROM CAST(:g AS text) AND x.semester IS NOT DISTINCT FROM CAST(:sem AS integer)
-                   AND x.indigene IS NULL AND NOT x.spillover
+                   AND x.indigene IS NULL AND x.spillover = :sp AND x.spill_year IS NOT DISTINCT FROM CAST(:sy AS integer)
                  LIMIT 1
                 """).param("s", session).param("id", except, Types.OTHER).param("i", body.item().trim()).param("k", kind)
+                .param("sp", spilloverOf(body)).param("sy", spillYearOf(body), Types.INTEGER)
                 .param("l", body.level(), Types.INTEGER).param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR).param("sem", body.semester(), Types.INTEGER)
                 .query().listOfRows().stream().findFirst();
         if (dup.isPresent()) {
             throw new DomainRuleViolation("FEE_LINE_DUPLICATE", "The schedule already states " + dup.get().get("item") + " (" + dup.get().get("amount")
-                    + ") for the same session, level, entry mode, faculty, programme, group and semester; a second active line would charge it twice.",
+                    + ") for the same session, level, entry mode, faculty, programme, group, semester and spillover year; a second active line would charge it twice.",
                     new DomainRuleViolation.Remedy("Edit that line, or end it first.", "Bursary"));
         }
     }
@@ -609,9 +624,10 @@ class FinanceController {
         }
         refuseDuplicateLine(s, body, null);
         jdbc.sql("""
-                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind)
-                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o, :k)
+                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind, spillover, spill_year)
+                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o, :k, :sp, :sy)
                 """).param("s", s).param("k", body.kind() == null || body.kind().isBlank() ? "FEE" : body.kind()).param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
+                .param("sp", spilloverOf(body)).param("sy", spillYearOf(body), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
                 .param("sem", body.semester(), Types.INTEGER)
@@ -723,9 +739,10 @@ class FinanceController {
         refuseDuplicateLine(session + "/" + year, body, id);
         int n = jdbc.sql("""
                 UPDATE finance.fee_schedule SET item = :i, amount = :a, level = :l, entry_mode = :m, faculty_code = :f,
-                       programme_code = :p, fee_group = :g, semester = :sem, ord = :o, kind = coalesce(:k, kind)
+                       programme_code = :p, fee_group = :g, semester = :sem, ord = :o, kind = coalesce(:k, kind), spillover = :sp, spill_year = :sy
                  WHERE id = :id AND session = :s AND ended_at IS NULL
                 """).param("id", id).param("k", body.kind() == null || body.kind().isBlank() ? null : body.kind(), Types.VARCHAR).param("s", session + "/" + year)
+                .param("sp", spilloverOf(body)).param("sy", spillYearOf(body), Types.INTEGER)
                 .param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)

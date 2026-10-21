@@ -26,6 +26,7 @@ import { FeeCopy } from "./FeeCopy";
 import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
 import { SpillBasis } from "./SpillBasis";
+import { levelWords } from "@/lib/fee-copy";
 import { LevelFeeEffectRun } from "@/app/cohorts/LevelFeeEffectRun";
 import { FeeUploadPreview, type UploadRead } from "./FeeUploadPreview";
 import { FeeClearPreview } from "./FeeClearPreview";
@@ -35,7 +36,7 @@ import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { printDocument } from "@/lib/document/html";
 import { logExport } from "@/lib/export-log";
 import { FEE_SHEET_HEADERS, feeGroups as reportSections, feeSetupBodyHtml, feeSheetRows } from "@/lib/fee-setup-report";
-export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
+export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; /** V613: the spillover year the line is for, null for any */ spill_year: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
 export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string }
@@ -84,7 +85,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const val = (k: string, d = "") => edits[k] ?? d;
 
   const indigeneText = (i: ScheduleItem) => i.indigene === "INDIGENE" ? "Indigene" : i.indigene === "NON_INDIGENE" ? "Non-indigene" : null;
-  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.spillover ? "Spillover" : i.level ? `${i.level} Level` : null, i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
+  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, levelWords(i.level, i.spillover, i.spill_year), i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
 
   const filteredItems = schedule.items.filter((i) =>
     (!filterFac || i.faculty_code === filterFac || (filterFac === "__none__" && !i.faculty_code)) &&
@@ -136,6 +137,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       item: known ? i.item : "__other__", itemOther: known ? "" : i.item, amount: String(i.amount),
       addSession: session, semester: i.semester ? String(i.semester) : "", group: i.fee_group ?? "", kind: i.kind ?? "FEE",
       level: i.level ? String(i.level) : "", mode: i.entry_mode ?? "", faculty: i.faculty_code ?? "", progs: i.programme_code ?? "",
+      spill: i.spillover ? (i.spill_year ? String(i.spill_year) : "any") : "",
     });
   }
   const [af, setAf] = useState({
@@ -362,7 +364,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line with no entry mode is the full-time students&rsquo;; CCE students are charged only CCE lines; postgraduate students only lines naming a postgraduate level (700, 800, 900), the Postgraduate entry mode or group, or their programme.</div>
         </PBody>
         <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={pageItems.map((i) => [
-          <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">Spillover</Pil> : null}</strong>,
+          <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">{i.spill_year ? `Spillover SP${i.spill_year}` : "Spillover"}</Pil> : null}</strong>,
           <span className="sub2" key="a">{appliesTo(i)}</span>,
           <span className="tnum" key="m">{naira(i.amount)}</span>,
           <span key="x" className="row row--tight row--right">
@@ -432,7 +434,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         return (
         <Modal title={editingId ? "Edit the charge item" : "An item of the charge"} sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => { setAdding(false); setEditingId(null); }}
           foot={<><Btn kind="ghost" onClick={() => { setAdding(false); setEditingId(null); }}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
-            const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null, kind: val("kind") || "FEE" };
+            const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null, kind: val("kind") || "FEE",
+              /* V613: a spillover line and its year — the level is then the programme's final level */
+              spillover: !!val("spill"), spillYear: val("spill") && val("spill") !== "any" ? Number(val("spill")) : null };
             let ok = true;
             if (editingId) {
               // edit the one line in place
@@ -477,9 +481,19 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             </select>
           </Field>
           <div className="grid grid--2">
-            <Field id="fl" label="Level" hint="Blank for every level; 700–900 are postgraduate"><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{[100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => <option key={l} value={l}>{l === 700 ? "700 · PGD" : l === 800 ? "800 · Master’s" : l === 900 ? "900 · Doctoral" : l}</option>)}</select></Field>
+            <Field id="fl" label="Level" hint={val("spill") ? "The programme's final level (400 on a four-year programme, 500 on a five-year one); blank for every programme" : "Blank for every level; 700–900 are postgraduate"}><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{[100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => <option key={l} value={l}>{l === 700 ? "700 · PGD" : l === 800 ? "800 · Master’s" : l === 900 ? "900 · Doctoral" : l}</option>)}</select></Field>
             <Field id="fm" label="Entry mode" hint="Blank for every full-time mode; a CCE student is charged only CCE lines"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every full-time mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option><option>POSTGRADUATE</option><option value="CCE">CCE — Centre for Continuing Education (part-time)</option></select></Field>
           </div>
+          {/* V613: a spillover line, for any spillover year or for SP1, SP2 or SP3 alone — "400 Level (SP1) First semester" */}
+          <Field id="fsp" label="Spillover" hint="A spillover line is charged to students past the programme's final year on the basis the Bursary set below; the level above then names the programme's final level">
+            <select id="fsp" className="ctl" value={val("spill")} onChange={(e) => setEdits({ ...edits, spill: e.target.value })}>
+              <option value="">No — the students of the level</option>
+              <option value="any">Spillover — any spillover year</option>
+              <option value="1">Spillover SP1 — the first spillover year</option>
+              <option value="2">Spillover SP2 — the second spillover year</option>
+              <option value="3">Spillover SP3 — the third spillover year and beyond</option>
+            </select>
+          </Field>
           <Field id="ff" label="Faculty" hint="Choose a faculty to list its programmes"><select id="ff" className="ctl" value={val("faculty")} onChange={(e) => setEdits({ ...edits, faculty: e.target.value, progs: "" })}><option value="">Every faculty</option>{faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select></Field>
           <Field id="fp" label="Programmes" hint={facultyPick ? `Tick a single programme, two or more, or none for all programmes in ${facultyName ?? "the faculty"}` : "Choose a faculty above to target specific programmes; otherwise the charge applies to every programme"}>
             {facultyPick ? (

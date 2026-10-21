@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockRows, parseFeeFlat, parseFeeMatrix, readBand, readFeeBlocks, readFeeWorkbook, suggestTargets, type Grid, type Target } from "./fee-matrix.ts";
+import { bandLines, blockRows, parseFeeFlat, parseFeeMatrix, readBand, readFeeBlocks, readFeeWorkbook, suggestTargets, type Grid, type Target } from "./fee-matrix.ts";
 
 /** the College of Health Sciences' PAGE 1 as the .xlsx reader gives it: strings, blank cells "", empty rows left out */
 const head = ["", "", "", "", "", "", "", "", "", "", "", "", ""];
@@ -34,8 +34,15 @@ const breakdown: Grid = [
 ];
 
 test("a band head: the level, Direct Entry's level and spillover; an amount or a session is not a band", () => {
-  assert.deepEqual(readBand(" 100L/200DE", 1), { col: 1, head: "100L/200DE", level: 100, de: 200, spill: false });
-  assert.deepEqual(readBand("600L/SP", 11), { col: 11, head: "600L/SP", level: 600, de: null, spill: true });
+  assert.deepEqual(readBand(" 100L/200DE", 1), { col: 1, head: "100L/200DE", level: 100, de: 200, spill: false, spillYear: null });
+  assert.deepEqual(readBand("600L/SP", 11), { col: 11, head: "600L/SP", level: 600, de: null, spill: true, spillYear: null });
+  // V613: a band naming the spillover year is that year's line alone, at the programme's final level
+  assert.deepEqual(readBand("400L/SP1", 5), { col: 5, head: "400L/SP1", level: 400, de: null, spill: true, spillYear: 1 });
+  assert.equal(readBand("400 Level (SP2)", 6)?.spillYear, 2);
+  assert.equal(readBand("500 LEVEL SP1", 7)?.level, 500);
+  assert.deepEqual(bandLines(readBand("400L/SP1", 5)!, false), [{ level: 400, entryMode: null, spillover: true, spillYear: 1 }]);
+  assert.equal(bandLines(readBand("600L/SP", 11)!, false).filter((l) => l.spillover).length, 1);
+  assert.equal(bandLines(readBand("600L/SP", 11)!, false).filter((l) => !l.spillover).length, 3);
   assert.equal(readBand("200L", 3)?.level, 200);
   assert.equal(readBand("Spillover", 3)?.spill, true);
   assert.equal(readBand(" 2025/2026 sesssion", 2), null);

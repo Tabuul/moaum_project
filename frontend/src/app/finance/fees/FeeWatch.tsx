@@ -13,12 +13,13 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { semesterName } from "@/lib/student-portal";
+import { levelWords } from "@/lib/fee-copy";
 import { buildXlsx, xlsxRowsAsync } from "@/lib/xlsx";
 import { FeeUploadPreview } from "./FeeUploadPreview";
 
 interface Gap {
   faculty_code: string; faculty: string | null; programme_code: string; programme: string; level: number | null; entry_mode: string | null;
-  indigene: boolean | null; spillover: boolean; students: number; charged_as: string | null; stated: boolean; missing: string | null;
+  indigene: boolean | null; spillover: boolean; spill_year?: number | null; final_level?: number | null; students: number; charged_as: string | null; stated: boolean; missing: string | null;
 }
 interface Gaps {
   session: string; students: number; groups: number; openSemesters: number[]; scheduleLines: number;
@@ -104,14 +105,16 @@ export function FeeWatch({ session, faculties, programmes = [], sessions, may }:
       for (const sem of g.stated ? (g.missing ?? "").split(",").filter(Boolean).map(Number) : all) {
         const fac = g.charged_as ?? g.faculty_code;
         const prog = g.charged_as ? "" : g.programme_code;
-        const level = g.spillover ? "" : g.level ?? "";
+        // V613: a spillover group's level on the sheet is the programme's final level, and its Spillover cell the year (SP1, SP2, SP3)
+        const level = g.spillover ? (g.spill_year ? g.final_level ?? "" : "") : g.level ?? "";
+        const spill = g.spillover ? (g.spill_year ? `SP${g.spill_year}` : "Yes") : "No";
         const ind = g.indigene === null ? "" : g.indigene ? "Indigene" : "Non-indigene";
-        const key = [fac, prog, level, g.entry_mode ?? "", sem, ind, g.spillover].join("|");
+        const key = [fac, prog, level, g.entry_mode ?? "", sem, ind, spill].join("|");
         const had = byKey.get(key);
         if (had) { had[9] = Number(had[9]) + Number(g.students); continue; }
         byKey.set(key, [named(g.charged_as ? facultyName(g.charged_as) : g.faculty ?? g.faculty_code), fac, prog,
           g.charged_as ? `Every programme of ${facultyName(g.charged_as)} (${named(g.faculty ?? g.faculty_code)} is charged as it)` : g.programme,
-          level, g.entry_mode ?? "", sem, ind, g.spillover ? "Yes" : "No", Number(g.students), ""]);
+          level, g.entry_mode ?? "", sem, ind, spill, Number(g.students), ""]);
       }
     }
     const rows = [...byKey.values()];
@@ -231,7 +234,7 @@ export function FeeWatch({ session, faculties, programmes = [], sessions, may }:
               rows={gaps.rows.map((g) => [
                 <span key="f">{named(g.faculty ?? g.faculty_code)}{g.charged_as ? <div className="sub2">Charged as {facultyName(g.charged_as)}</div> : null}</span>,
                 <span key="p"><b className="tnum">{g.programme_code}</b> {g.programme}</span>,
-                <span key="l" className="tnum">{g.spillover ? "Spillover" : g.level ?? "—"}</span>,
+                <span key="l" className="tnum">{g.spillover ? levelWords(g.spill_year ? g.final_level ?? null : null, true, g.spill_year) : g.level ?? "—"}</span>,
                 <span key="e">{ENTRY[g.entry_mode ?? ""] ?? g.entry_mode ?? "—"}</span>,
                 <span key="i">{g.indigene === null ? "—" : g.indigene ? "Indigene" : "Non-indigene"}</span>,
                 <b key="n" className="tnum">{count(g.students)}</b>,

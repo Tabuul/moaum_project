@@ -16,6 +16,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { semesterName } from "@/lib/student-portal";
+import { levelWords } from "@/lib/fee-copy";
 import { blockRows, suggestTargets, type ReadWorkbook, type StructureRow, type Target } from "@/lib/fee-matrix";
 
 export type UploadRead = ReadWorkbook | { layout: "LINES"; rows: Record<string, string>[] };
@@ -24,9 +25,9 @@ interface Effect {
   linesBefore: number; linesAfter: number;
   totals: { new: number; changed: number; same: number; ended: number };
   groups: { faculty: string; facultyCode: string | null; programme: string | null; programmeCode: string | null; new: number; changed: number; same: number; ended: number; losesAll: boolean }[];
-  changes: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; semester: number | null; indigene: string | null; spillover: boolean; item: string; old: number; new: number }[];
+  changes: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; semester: number | null; indigene: string | null; spillover: boolean; spillYear?: number | null; item: string; old: number; new: number }[];
   gaps: { before: { students: number; groups: number }; after: { students: number; groups: number };
-    rows: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; spillover: boolean; students: number }[] };
+    rows: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; spillover: boolean; spillYear?: number | null; finalLevel?: number | null; students: number }[] };
 }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -34,7 +35,7 @@ const count = (n: number) => Number(n).toLocaleString("en-NG");
 const named = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase()).replace(/ (And|Of|For|In|The) /g, (m) => m.toLowerCase());
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich", CCE: "CCE", POSTGRADUATE: "Postgraduate" };
-const levelText = (level: number | null, spill: boolean) => (spill ? "Spillover" : level ? `${level}` : "Every level");
+const levelText = (level: number | null, spill: boolean, spillYear?: number | null) => (spill ? levelWords(level, true, spillYear) ?? "Spillover" : level ? `${level}` : "Every level");
 const semText = (s: number | null) => (s ? semesterName(s) : "Whole session");
 
 export function FeeUploadPreview({ session, action, fileName, read, cce = false, programmes, faculties, onClose, onApplied }: {
@@ -203,7 +204,7 @@ export function FeeUploadPreview({ session, action, fileName, read, cce = false,
             <DTable title="Amounts that change" pageSize={10} cols={["Faculty / programme", "Level", "Entry mode", "Semester", "Indigene", "Now|num", "After|num"]}
               rows={effect.changes.map((c) => [
                 <span key="f">{c.programme ?? named(c.faculty)}</span>,
-                <span key="l" className="tnum">{levelText(c.level, c.spillover)}</span>,
+                <span key="l" className="tnum">{levelText(c.level, c.spillover, c.spillYear)}</span>,
                 <span key="m">{MODE[c.entryMode ?? ""] ?? c.entryMode ?? "Every entry mode"}</span>,
                 <span key="s">{semText(c.semester)}</span>,
                 <span key="i">{c.indigene === "INDIGENE" ? "Indigene" : c.indigene === "NON_INDIGENE" ? "Non-indigene" : "Both"}</span>,
@@ -221,7 +222,7 @@ export function FeeUploadPreview({ session, action, fileName, read, cce = false,
               rows={effect.gaps.rows.map((g) => [
                 <span key="f">{named(g.faculty)}</span>,
                 <span key="p">{g.programme}</span>,
-                <span key="l" className="tnum">{levelText(g.level, g.spillover)}</span>,
+                <span key="l" className="tnum">{levelText(g.spillover && g.spillYear ? g.finalLevel ?? null : g.level, g.spillover, g.spillYear)}</span>,
                 <span key="m">{MODE[g.entryMode ?? ""] ?? g.entryMode ?? "—"}</span>,
                 <b key="n" className="tnum">{count(g.students)}</b>,
               ])} />
