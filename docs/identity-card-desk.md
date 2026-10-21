@@ -113,3 +113,42 @@ Every refusal carries its code (`ID_CARD_NOT_ELIGIBLE` with the reasons, `ID_CAR
 
 - The fee scheme in force decides what "school fees paid" means for the current session (the instalment the card is released
   at); the Bursary sets it on the scheme. Nothing else needs configuring.
+
+## 8. The printed cards redesigned, the Chief Security Officer's signature and the blood group (V622)
+
+The University reviewed the printed cards (21 October 2026).
+
+**The design** (`lib/idcard-pdf.ts`, both cards)
+- The University's name is set larger and bolder, with the card's title under it: **STUDENT IDENTITY CARD** or **STAFF IDENTITY
+  CARD**. The red tag under the photograph is gone.
+- The cards are told apart by colour: the student card in the University's blue, the staff card in its green (the header, the
+  back's strip and the card's faint pattern).
+- Less empty space: the photograph is larger, the name, number and fields are set larger, and the fields are spread down to the
+  photograph's foot (the staff card's down to its foot).
+- The back's write-ups are centred: the strip, the barcode and its number, the conditions line by line, and (on the staff card)
+  the QR with the serial and the address under it.
+- The back is signed for the University by the **Chief Security Officer**, not the Registrar. The signature prints above the line
+  with the paper's white dropped, so only the ink shows; the officer's name, when set, sits between the line and the title.
+
+**The signature** (`credentials.card_signatory`, `CardSignatoryController`)
+- Uploaded by the Directorate of ICT under **Institution Profile → Identity card signature**: the officer's name and a PNG or JPEG
+  scan of the signature (at most 1 MB), replaced or removed there. The database lets only ICT (and super) set it.
+- Kept as uploaded and as a JPEG on white for the PDF engine, in the file store when one is configured and in the row otherwise.
+- Never public, unlike the logo: only ICT, the Security Unit and super read it. The card's print reads it with the printing
+  office's sign-in; without one, the card prints the line and the title alone.
+
+**The blood group**
+- A student's is the record's own: the biodata field `blood_group`, which the biodata form already asks, or the health profile's
+  where the biodata holds none.
+- A member of staff's is held for the card in `credentials.staff_card_detail`.
+- The card desk adds or corrects either: on the student's panel (**Add / Correct the blood group**, then **SAVE BLOOD GROUP**) and
+  on the staff cards' list (**Add / Change**). It is one of A+, A-, B+, B-, AB+, AB-, O+, O-; the database reads the common
+  spellings ("O positive", "o+ve", "0+") as one of these and refuses anything else (`CARD_BLOOD_GROUP`).
+- Only the Security Unit (and super) set it (`credentials.set_blood_group`). Both cards print it.
+
+**API**
+- `GET/PUT /api/v1/credentials/identity-cards/signatory`; `GET /signatory/signature?format=jpeg`; `DELETE /signatory/signature`.
+- `PUT /students/{id}/blood-group`, `PUT /staff/{personId}/blood-group` (`{bloodGroup}`).
+- `blood_group` on the desk's student view, on both printable cards and on the staff cards' list.
+
+**Tests:** check.sql's V622 block; `CardSignatoryIT`; `lib/idcard-desk` tests.

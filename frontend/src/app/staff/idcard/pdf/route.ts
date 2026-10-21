@@ -7,6 +7,7 @@ import { crestImage } from "@/lib/pdf-crest";
 import { C, CARD_PX, clean, drawBack, drawFrontPortrait, type CardFace } from "@/lib/idcard-pdf";
 
 import { loadInstitution } from "@/lib/document/institution-server";
+import { cardSignatory } from "@/lib/idcard-signatory-server";
 import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ const rankCase = (r: string | null) => (r ? r.toLowerCase().replace(/\b[a-z]/g, 
 interface Face {
   staff_number: string | null; surname: string; given_names: string; rank: string | null; department: string | null; faculty: string | null;
   category: string | null; date_first_appointment: string | null; appointment_date: string | null; has_photo: boolean;
+  /** V622: the blood group set at the card desk */
+  blood_group?: string | null;
 }
 interface LiveCard { card_no: string; valid_to: string; verify_path: string; face: Face; offices: { office_code: string; office: string }[] }
 
@@ -63,16 +66,18 @@ export async function GET(req: Request) {
   const staffNo = s.staff_number;
   const serial = card.card_no;
   const face: CardFace = {
-    name: `${s.surname}, ${s.given_names}`, number: staffNo, tag: "Staff",
+    kind: "staff", name: `${s.surname}, ${s.given_names}`, number: staffNo,
     fields: [
       ["Rank", rankCase(s.rank) || office || "—"], ["Category", academic ? "Academic" : s.category ? "Non-teaching" : "Staff"],
       [s.faculty ? "Department" : "Unit", s.department ?? office ?? "—"], ["Faculty", s.faculty ?? "—"],
-      ["Appointed", day(s.date_first_appointment ?? s.appointment_date)], ["Office", office || "—"],
+      ["Appointed", day(s.date_first_appointment ?? s.appointment_date)], ["Blood group", s.blood_group ?? "—"],
+      ["Office", office || "—"],
     ],
     foot: [["Valid to ", false], [day(card.valid_to), true]],
     serial,
   };
 
+  const signatory = await cardSignatory();
   const p = new Page();
   const crest = crestImage();
   const W = 230, H = Math.round(CARD_PX.w * (W / CARD_PX.h));   // ID-1, portrait
@@ -84,8 +89,8 @@ export async function GET(req: Request) {
   drawFrontPortrait(p, x1, top - H, W, face, photo, crest);
   p.textCenter(x1 + W / 2, top - H - 18, "FRONT", 7, true, C.foot);
   drawBack(p, x2, top - H, W, H, {
-    barcode: staffNo.replace(/[^A-Za-z0-9]/g, ""), serial, qr: `${new URL(req.url).origin}${card.verify_path}`,
-    aside: ["If found, return to the Security post", "Km 1 Gboko Road, Makurdi"],
+    kind: "staff", barcode: staffNo.replace(/[^A-Za-z0-9]/g, ""), serial, qr: `${new URL(req.url).origin}${card.verify_path}`,
+    aside: ["If found, return to the Security post", "Km 1 Gboko Road, Makurdi"], signatory,
   }, crest);
   p.textCenter(x2 + W / 2, top - H - 18, "BACK", 7, true, C.foot);
   p.text(x1, 46, `${clean(face.name)} · ${staffNo} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);

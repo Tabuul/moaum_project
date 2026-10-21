@@ -14,6 +14,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { BLOOD_GROUPS } from "@/lib/idcard-desk";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -23,7 +24,7 @@ export interface CardDesk {
 }
 /** V439: the staff cards in the register */
 export interface StaffDesk {
-  cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_reason: string | null; person_id: string; staff_number: string | null; surname: string; given_names: string; department: string | null; verify_path: string }[];
+  cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_reason: string | null; person_id: string; staff_number: string | null; surname: string; given_names: string; department: string | null; verify_path: string; blood_group?: string | null }[];
 }
 
 export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staff: StaffDesk | null; q: string; actingOffice: string | null }) {
@@ -35,6 +36,27 @@ export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staf
   const [problem, setProblem] = useState<Problem | null>(null);
   const [search, setSearch] = useState(q);
   const [staffNo, setStaffNo] = useState("");
+  // V622: a staff card's blood group, added or corrected here (the person, the group chosen)
+  const [blood, setBlood] = useState<{ person: string; group: string } | null>(null);
+
+  async function saveBlood() {
+    if (!blood || !blood.group) return;
+    setBusy(`blood-${blood.person}`);
+    setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/credentials/identity-cards/staff/${encodeURIComponent(blood.person)}/blood-group`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Blood group ${blood.group} recorded at the card desk`) },
+        body: JSON.stringify({ bloodGroup: blood.group }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = (j ?? { status: r.status, title: r.statusText }) as Problem; setProblem(p); notifyProblem(p); return; }
+      notify(`Blood group ${blood.group} recorded; the staff card prints it`);
+      setBlood(null);
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function act(key: string, path: string, body: unknown, reason: string) {
     setBusy(key);
@@ -82,9 +104,23 @@ export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staf
       </Panel>
       {staff ? (
         <Panel title="Staff identity cards" right={may ? <form onSubmit={(e) => { e.preventDefault(); if (staffNo.trim()) void act("staff-issue", "/staff/issue", { staffNumber: staffNo.trim() }, `Staff identity card issued to ${staffNo.trim()}`); }} className="row row--inline row--tight"><input className="ws__in" value={staffNo} placeholder="Staff number" onChange={(e) => setStaffNo(e.target.value)} aria-label="Staff number to issue a card to" /><Btn kind="primary" disabled={busy !== null || !staffNo.trim()} onClick={() => { if (staffNo.trim()) void act("staff-issue", "/staff/issue", { staffNumber: staffNo.trim() }, `Staff identity card issued to ${staffNo.trim()}`); }}>Issue card</Btn></form> : `${staff.cards.length}`}>
-          <DTable cols={["Card", "Member of staff", "Issued|mid", "Valid to|mid", "State|mid", "|num"]} rows={staff.cards.map((c) => [
+          <DTable cols={["Card", "Member of staff", "Blood group|mid", "Issued|mid", "Valid to|mid", "State|mid", "|num"]} rows={staff.cards.map((c) => [
             <span key="n"><span className="tnum">{c.card_no}</span>{c.state === "ISSUED" ? <div className="sub2"><a href={c.verify_path} target="_blank" rel="noopener" title="The address the card's QR carries">Check address</a></div> : null}</span>,
             <Two key="s" a={`${c.surname}, ${c.given_names}`} b={`${c.staff_number ?? ""}${c.department ? ` · ${c.department}` : ""}`} />,
+            /* V622: the blood group the staff card prints, added or corrected at the desk */
+            blood?.person === c.person_id ? (
+              <span key="b" className="row row--inline row--tight">
+                <select className="ctl" aria-label={`Blood group of ${c.surname}, ${c.given_names}`} value={blood.group} onChange={(ev) => setBlood({ person: c.person_id, group: ev.target.value })} disabled={busy !== null}>
+                  <option value="">Choose…</option>
+                  {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+                <Btn kind="secondary" size="sm" disabled={busy !== null || !blood.group} onClick={() => void saveBlood()}>Save</Btn>
+                <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => setBlood(null)}>Cancel</Btn>
+              </span>
+            ) : (
+              <span key="b" className="row row--inline row--tight"><b className="tnum">{c.blood_group ?? "—"}</b>
+                {may ? <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => setBlood({ person: c.person_id, group: c.blood_group ?? "" })}>{c.blood_group ? "Change" : "Add"}</Btn> : null}</span>
+            ),
             <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{new Date(c.valid_to).toLocaleDateString("en-GB")}</span>,
             c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
             c.state === "ISSUED" ? <span key="l" className="row row--tight">{may ? <a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(c.person_id)}`} target="_blank" rel="noopener">Print</a> : null}{may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`slost-${c.id}`, `/staff/${c.person_id}/lost`, { reason }, `Staff identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : null}</span> : <span key="l" />,

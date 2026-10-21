@@ -40,6 +40,30 @@ class IdentityCardController {
     public record Issue(@Size(max = 200) String reason) {
     }
 
+    /** V622: the blood group the card prints — one of A+, A-, B+, B-, AB+, AB-, O+, O- (the database reads the common spellings) */
+    public record BloodGroup(@NotBlank @Size(max = 20) String bloodGroup) {
+    }
+
+    /** V622: a student's blood group added or corrected at the card desk — the record's own (the biodata), printed on the card */
+    @org.springframework.web.bind.annotation.PutMapping("/students/{studentId}/blood-group")
+    @PreAuthorize(ISSUERS)
+    @Transactional
+    Map<String, Object> studentBloodGroup(@PathVariable UUID studentId, @Valid @RequestBody BloodGroup body) {
+        String g = jdbc.sql("SELECT credentials.set_blood_group('STUDENT', :s, :g)").param("s", studentId).param("g", body.bloodGroup().trim())
+                .query(String.class).single();
+        return Map.of("bloodGroup", g);
+    }
+
+    /** V622: a member of staff's blood group added or corrected at the card desk, printed on the staff card */
+    @org.springframework.web.bind.annotation.PutMapping("/staff/{personId}/blood-group")
+    @PreAuthorize(ISSUERS)
+    @Transactional
+    Map<String, Object> staffBloodGroup(@PathVariable UUID personId, @Valid @RequestBody BloodGroup body) {
+        String g = jdbc.sql("SELECT credentials.set_blood_group('STAFF', :p, :g)").param("p", personId).param("g", body.bloodGroup().trim())
+                .query(String.class).single();
+        return Map.of("bloodGroup", g);
+    }
+
     private final JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.CheckCodes codes;
     private final ng.edu.moaum.portal.shared.FileObjects files;
@@ -174,7 +198,8 @@ class IdentityCardController {
                 SELECT s.id AS student_id, s.surname || ', ' || s.other_names AS name, s.surname, s.other_names, s.matric_no, s.jamb_reg_no, s.admission_no, s.sex,
                        f.name AS faculty, d.name AS department, p.name AS programme, s.programme_code, s.current_level AS level, s.entry_session, s.entry_mode,
                        s.status, s.matriculated_at, policy.university_current_session() AS current_session,
-                       (SELECT r.phone FROM people.student_reach(s.id) r) AS reach_phone
+                       (SELECT r.phone FROM people.student_reach(s.id) r) AS reach_phone,
+                       credentials.student_blood_group(s.id) AS blood_group   -- V622
                   FROM people.student s
                   LEFT JOIN ref.programme p ON p.code = s.programme_code
                   LEFT JOIN ref.department d ON d.code = p.dept_code
@@ -389,7 +414,7 @@ class IdentityCardController {
         Map<String, Object> row = jdbc.sql("""
                 SELECT c.card_no, c.issued_at, c.valid_to, c.state, c.version, c.print_count, s.surname || ', ' || s.other_names AS name, s.matric_no, p.name AS programme,
                        f.name AS faculty, s.current_level AS level, s.entry_session, policy.university_current_session() AS session,
-                       (SELECT r.phone FROM people.student_reach(s.id) r) AS reach_phone
+                       (SELECT r.phone FROM people.student_reach(s.id) r) AS reach_phone, credentials.student_blood_group(s.id) AS blood_group
                   FROM credentials.identity_card c JOIN people.student s ON s.id = c.student_id
                   LEFT JOIN ref.programme p ON p.code = s.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE c.student_id = :s AND c.state IN ('PRINTED', 'ISSUED')   -- V605: printed and awaiting collection, or in force
@@ -429,7 +454,7 @@ class IdentityCardController {
 
     private static final String STAFF_CARD_ROWS = """
             SELECT c.id, c.card_no, c.issued_at, c.valid_to, c.state, c.ended_at, c.ended_reason, c.issued_office,
-                   p.id AS person_id, p.staff_number, p.surname, p.given_names, d.name AS department
+                   p.id AS person_id, p.staff_number, p.surname, p.given_names, d.name AS department, credentials.staff_blood_group(p.id) AS blood_group
               FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
               LEFT JOIN hrm.staff_record r ON r.person_id = p.id LEFT JOIN ref.department d ON d.code = r.home_department
             """;
@@ -463,7 +488,8 @@ class IdentityCardController {
         // what the card shows, and nothing more of the HR record: the desk prints from the register
         m.put("face", jdbc.sql("""
                 SELECT pe.staff_number, pe.surname, pe.given_names, sr.present_rank AS rank, dp.name AS department, f.name AS faculty, e.category,
-                       sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo
+                       sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo,
+                       credentials.staff_blood_group(pe.id) AS blood_group
                   FROM iam.person pe LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
                   LEFT JOIN hrm.employment e ON e.person_id = pe.id AND e.status <> 'ENDED'
                   LEFT JOIN ref.department dp ON dp.code = sr.home_department LEFT JOIN ref.faculty f ON f.code = dp.faculty_code

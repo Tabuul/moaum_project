@@ -6,6 +6,7 @@ import { A4, Page, jpegSize, type Image } from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { C, CARD_PX, clean, drawBack, drawFrontLandscape, type CardFace } from "@/lib/idcard-pdf";
 import { loadInstitution } from "@/lib/document/institution-server";
+import { cardSignatory } from "@/lib/idcard-signatory-server";
 import { finishPdf } from "@/lib/document/pdf";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,8 @@ const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDat
 interface LiveCard {
   card_no: string; valid_to: string; verify_path: string; name: string; matric_no: string; programme: string | null; faculty: string | null;
   level: number | null; entry_session: string | null; session: string | null; reach_phone: string | null; has_photo: boolean;
+  /** V622: the blood group on the record (set at the card desk or by the student's biodata) */
+  blood_group?: string | null;
 }
 
 export async function GET(req: Request) {
@@ -45,16 +48,17 @@ export async function GET(req: Request) {
 
   const matric = s.matric_no;
   const face: CardFace = {
-    name: s.name, number: matric, tag: "Student",
+    kind: "student", name: s.name, number: matric,
     fields: [
       ["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"],
-      ["Programme", s.programme ?? "—"], ["Blood group", "—"],
+      ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"],
       ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"], ["Graduates", "—"],
     ],
     foot: [["Session ", false], [s.session ?? "—", true], [" · valid to ", false], [day(s.valid_to), true]],
     serial: s.card_no,
   };
 
+  const signatory = await cardSignatory();
   const p = new Page();
   const crest = crestImage();
   const W = 360, H = Math.round(CARD_PX.h * (W / CARD_PX.w));
@@ -66,8 +70,8 @@ export async function GET(req: Request) {
   p.textCenter(A4.w / 2, frontTop - H - 18, "FRONT", 7, true, C.foot);
   const backTop = frontTop - H - 44;
   drawBack(p, x0, backTop - H, W, H, {
-    barcode: matric.replace(/[^A-Za-z0-9]/g, ""), serial: s.card_no, qr: `${new URL(req.url).origin}${s.verify_path}`,
-    aside: ["In an emergency", s.reach_phone ? clean(s.reach_phone) : "—"],
+    kind: "student", barcode: matric.replace(/[^A-Za-z0-9]/g, ""), serial: s.card_no, qr: `${new URL(req.url).origin}${s.verify_path}`,
+    aside: ["In an emergency", s.reach_phone ? clean(s.reach_phone) : "—"], signatory,
   }, crest);
   p.textCenter(A4.w / 2, backTop - H - 18, "BACK", 7, true, C.foot);
   p.text(x0, 46, `${clean(s.name)} · ${matric} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);

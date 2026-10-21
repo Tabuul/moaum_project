@@ -3,6 +3,7 @@
 /** tInstitution — the official identity every document carries (V320): the name, the short name, the motto, the address and
  *  contacts, the logo, and the document defaults. What is saved here heads every PDF, print and workbook the portal issues
  *  from then on; documents already issued keep the identity they were issued under. */
+import { CardSignatory } from "./CardSignatory";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -182,6 +183,8 @@ export function InstitutionProfile({ initial, actingOffice, actorName }: { initi
           </div>
         </PBody>
       </Panel>
+      {/* V622: the Chief Security Officer's signature on the identity cards — the Directorate of ICT's */}
+      <CardSignatory actingOffice={actingOffice} />
     </>
   );
 }

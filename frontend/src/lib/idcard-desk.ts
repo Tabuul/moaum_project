@@ -30,9 +30,14 @@ export interface DeskStudent {
     student_id: string; name: string; matric_no: string | null; jamb_reg_no: string | null; admission_no: string | null; sex: string | null; faculty: string | null;
     department: string | null; programme: string | null; programme_code: string | null; level: number | null; entry_session: string | null; entry_mode: string | null;
     status: string; matriculated_at: string | null; current_session: string | null; reach_phone: string | null;
+    /** V622: the blood group the card prints (the biodata's, else the health profile's) */
+    blood_group?: string | null;
   };
   photo: boolean; eligibility: Eligibility; card: CardRow | null; cards: CardRow[]; events: CardEvent[];
 }
+
+/** V622: the blood groups a card prints; the server reads the common spellings ("O positive") as one of these */
+export const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
 
 /** the card's state in words: the lifecycle the brief names — not printed, printed, issued, then the ways a card ends */
 export const CARD_STATE: Record<string, [string, Kind]> = {

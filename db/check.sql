@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 449
+\set EXPECTED 450
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22868,6 +22868,63 @@ BEGIN
                AND n_kept = 1 AND u3 = 1 AND b4 = 'Elective' AND v_elec2
                AND n_dropped_kept = 1 AND st_restored = 'REGISTERED' AND u4 = 1 AND b5 = 'Elective' AND n_after = 0, false),
       msg);
+END $$;
+-- ── V622. Identity cards: the Chief Security Officer's signature and the blood group. The blood group reads the common spellings as
+--          one of the eight; the Security Unit may not set the signature, the Directorate of ICT names the officer and uploads it (the
+--          version rising) and removes it; the Registrar may not set a blood group, the card desk sets a made-up student's on the
+--          biodata ("o positive" read as O+) and a made-up member of staff's; a student with none on the biodata reads the health
+--          profile's; a value that is no blood group is refused. The block undoes its writes ──
+DO $$
+DECLARE
+    st1 uuid := gen_random_uuid(); st2 uuid := gen_random_uuid(); pe uuid := gen_random_uuid(); prog text;
+    readings text; sec_refused text; reg_refused text; bad_refused text; s1 credentials.card_signatory; s2 credentials.card_signatory;
+    s3 credentials.card_signatory; g1 text; g2 text; g3 text; bio text; staff_g text; msg text;
+BEGIN
+  BEGIN
+    readings := (SELECT string_agg(coalesce(credentials.blood_group_of(v), 'NULL'), ' ' ORDER BY o)
+                   FROM unnest(ARRAY['O+', 'o positive', 'O+ve', '0+', 'AB NEG', 'a-ve', 'B', 'xyz']) WITH ORDINALITY x(v, o));
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.reason', 'CHECK V622', true);
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    BEGIN PERFORM credentials.set_card_signatory('Not the desk''s', NULL, NULL, NULL, NULL, NULL, false);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS sec_refused = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    s1 := credentials.set_card_signatory('Terver A. Iorkyaa', NULL, NULL, NULL, NULL, NULL, false);
+    s2 := credentials.set_card_signatory(NULL, '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, false);
+    s3 := credentials.set_card_signatory(NULL, NULL, NULL, NULL, NULL, NULL, true);
+    -- the blood group: made-up holders
+    SELECT code INTO prog FROM ref.programme WHERE NOT coalesce(archived, false) AND coalesce(category, '') <> 'POST GRADUATE' ORDER BY code LIMIT 1;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+      (st1, 'MOAUM/ADM/72/618001', 'MOAUM/CHK/72/6181', 'ZZCHKV622A', 'Invented', prog, 'UTME', '2072/2073', 100, 100, 'ACTIVE', now()),
+      (st2, 'MOAUM/ADM/72/618002', 'MOAUM/CHK/72/6182', 'ZZCHKV622B', 'Invented', prog, 'UTME', '2072/2073', 100, 100, 'ACTIVE', now());
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (pe, 'ZZ-CHK-V622', 'ZZCHKV622', 'Invented');
+    INSERT INTO health.profile (student_id, blood_group, consented_at) VALUES (st2, 'B-', now());
+    BEGIN PERFORM credentials.set_blood_group('STUDENT', st1, 'O+');
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS reg_refused = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    g1 := credentials.set_blood_group('STUDENT', st1, 'o positive');
+    g3 := credentials.set_blood_group('STAFF', pe, 'ab neg');
+    BEGIN PERFORM credentials.set_blood_group('STUDENT', st1, 'X');
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS bad_refused = MESSAGE_TEXT; END;
+    bio := (SELECT value FROM people.biodata WHERE student_id = st1 AND field = 'blood_group');
+    g2 := credentials.student_blood_group(st2);
+    staff_g := credentials.staff_blood_group(pe);
+    RAISE EXCEPTION 'the V622 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V622 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V622: the identity cards'' signature is the Directorate of ICT''s to set, and the blood group the card desk''s, read in the common spellings',
+        coalesce(readings = 'O+ O+ O+ O+ AB- A- NULL NULL'
+                 AND sec_refused LIKE 'CARD_SIGNATORY_OFFICE%' AND s1.name = 'Terver A. Iorkyaa' AND s1.signature_type IS NULL
+                 AND s2.name = 'Terver A. Iorkyaa' AND s2.signature_type = 'image/png' AND s2.signature IS NOT NULL AND s2.version = s1.version + 1
+                 AND s3.signature IS NULL AND s3.signature_jpeg IS NULL AND s3.signature_type IS NULL AND s3.name = 'Terver A. Iorkyaa'
+                 AND reg_refused LIKE 'CARD_BLOOD_OFFICE%' AND g1 = 'O+' AND bio = 'O+' AND g2 = 'B-' AND g3 = 'AB-' AND staff_g = 'AB-'
+                 AND bad_refused LIKE 'CARD_BLOOD_GROUP%', false),
+        format('readings %s | security %s | named %s %s v%s | uploaded %s %s v%s | removed %s | registrar %s | student %s (biodata %s), from health %s, staff %s %s | bad %s',
+               readings, left(sec_refused, 22), s1.name, s1.signature_type, s1.version, s2.name, s2.signature_type, s2.version, s3.signature_type,
+               left(reg_refused, 18), g1, bio, g2, g3, staff_g, left(bad_refused, 16)));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

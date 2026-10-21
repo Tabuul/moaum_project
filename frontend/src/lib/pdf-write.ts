@@ -206,6 +206,20 @@ export class Page {
     this.ops.push(`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm /${name} Do Q`);
     return this;
   }
+
+  /** V622: a JPEG of ink on white (a scanned signature) multiplied onto what is beneath, so its white paper vanishes and only the
+   *  ink shows — the card's pattern stays visible around the strokes; placed as jpeg() places it */
+  inkJpeg(x: number, y: number, w: number, h: number, img: Image): this {
+    const name = `Im${this.images.length + 1}`;
+    this.images.push({ name, img });
+    const scale = Math.min(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    const dx = x + (w - dw) / 2;
+    const dy = y + (h - dh) / 2;
+    this.ops.push(`q /GSM gs ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm /${name} Do Q`);
+    return this;
+  }
 }
 
 /* Helvetica and Helvetica-Bold advance widths (Adobe's AFM, thousandths of the size) for the printable ASCII
@@ -320,7 +334,7 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   obj(7, "<< /Type /Font /Subtype /Type1 /BaseFont /Times-BoldItalic /Encoding /WinAnsiEncoding >>");
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
-    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
+    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> /GSM << /BM /Multiply >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
     const stream = enc.encode(b.page.ops.join("\n"));
     obj(b.content, [enc.encode(`<< /Length ${stream.length} >>\nstream\n`), stream, enc.encode("\nendstream")]);
     for (const im of b.images) {

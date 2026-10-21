@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord } from "./idcard-desk.ts";
+import { actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord, BLOOD_GROUPS } from "./idcard-desk.ts";
 
 test("the card's states and the replacement reasons read in words (V605)", () => {
   assert.deepEqual(cardStateWord(null), ["Not printed", "grey"]);
@@ -24,4 +24,8 @@ test("the eligibility reading never names clearance, and the actions follow the 
   assert.deepEqual(actionsFor({ eligible: true, reasons: [] }, { state: "PRINTED" }, true), { print: true, collect: true, replace: true, end: true });
   assert.deepEqual(actionsFor({ eligible: false, reasons: ["x"] }, { state: "ISSUED" }, true), { print: false, collect: false, replace: false, end: true });
   assert.deepEqual(actionsFor({ eligible: true, reasons: [] }, { state: "ISSUED" }, false), { print: false, collect: false, replace: false, end: false });
+});
+
+test("the blood groups the card prints (V622)", () => {
+  assert.deepEqual([...BLOOD_GROUPS], ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
 });

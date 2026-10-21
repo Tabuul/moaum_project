@@ -14,7 +14,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/u
 import { DTable } from "@/components/proto/DTable";
 import { Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { ACTION_WORDS, END_STATES, REPLACE_REASONS, actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord,
+import { ACTION_WORDS, BLOOD_GROUPS, END_STATES, REPLACE_REASONS, actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord,
   type CardRow, type DeskStudent, type SearchRow } from "@/lib/idcard-desk";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
@@ -35,6 +35,8 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
   const [ending, setEnding] = useState<{ state: string; reason: string } | null>(null);
   const [showCard, setShowCard] = useState(false);
   const [loadedInitial, setLoadedInitial] = useState(false);
+  // V622: the blood group the card prints, added or corrected here
+  const [blood, setBlood] = useState("");
 
   async function get<T>(path: string): Promise<T | null> {
     const r = await fetch(`/api/bff/api/v1/credentials/identity-cards${path}`, { cache: "no-store" });
@@ -67,7 +69,7 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
     setOpening(id); setProblem(null); setReplace(null); setEnding(null);
     try {
       const j = await get<DeskStudent>(`/students/${encodeURIComponent(id)}`);
-      if (j) { setSel(j); setShowCard(false); }
+      if (j) { setSel(j); setShowCard(false); setBlood(j.student.blood_group ?? ""); }
     } finally {
       setOpening(null);
     }
@@ -92,6 +94,21 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
     } finally {
       setBusy(null);
     }
+  }
+
+  async function saveBlood() {
+    if (!sel || !blood) return;
+    setBusy("blood"); setProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/credentials/identity-cards/students/${encodeURIComponent(sel.student.student_id)}/blood-group`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Blood group ${blood} recorded at the card desk`) },
+        body: JSON.stringify({ bloodGroup: blood }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = j ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
+      notify(`Blood group ${String((j as { bloodGroup?: string }).bloodGroup ?? blood)} recorded; the card prints it`);
+      await open(sel.student.student_id);
+    } finally { setBusy(null); }
   }
 
   const s = sel?.student;
@@ -152,7 +169,8 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
                   {([["Matriculation number", s.matric_no ?? "Not yet issued"], ["JAMB number", s.jamb_reg_no ?? "—"], ["Admission number", s.admission_no ?? "—"],
                     ["Faculty", s.faculty ?? "—"], ["Department", s.department ?? "—"], ["Programme", s.programme ?? "—"],
                     ["Level", s.level ? `${s.level} Level` : "—"], ["Admission session", s.entry_session ?? "—"], ["Current session", s.current_session ?? "—"],
-                    ["Student status", s.status], ["Academic enrolment", `${s.entry_mode ?? "—"} · ${s.programme_code ?? ""}`], ["Photograph", sel.photo ? "Official photograph on record" : "Missing"]] as [string, string][]).map(([k, v]) => (
+                    ["Student status", s.status], ["Academic enrolment", `${s.entry_mode ?? "—"} · ${s.programme_code ?? ""}`], ["Photograph", sel.photo ? "Official photograph on record" : "Missing"],
+                    ["Blood group", s.blood_group ?? "Not on record"]] as [string, string][]).map(([k, v]) => (
                     <div key={k}><div className="sub2">{k}</div><div className={k.includes("number") ? "tnum" : ""}>{v}</div></div>
                   ))}
                 </div>
@@ -161,6 +179,18 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
             <Note kind={words.kind} title={words.title} action={!sel.photo && may ? <LinkBtn kind="ghost" href={`/students/${s.student_id}?tab=biodata`}>Photograph on the record</LinkBtn> : undefined}>
               {words.lines.map((l) => <div key={l}>{words.kind === "ok" ? "✓ " : "— "}{l}</div>)}
             </Note>
+            {may ? (
+              <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
+                <Field id="idc-blood" label={s.blood_group ? "Correct the blood group" : "Add the blood group"}>
+                  <select id="idc-blood" className="ctl" value={blood} onChange={(ev) => setBlood(ev.target.value)} disabled={busy !== null}>
+                    <option value="">Choose…</option>
+                    {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </Field>
+                <Btn kind="secondary" disabled={busy !== null || !blood || blood === (s.blood_group ?? "")} busy={busy === "blood"} busyLabel="Saving…" onClick={() => void saveBlood()}>SAVE BLOOD GROUP</Btn>
+                <span className="sub2">Printed on the card; kept on the student&rsquo;s record.</span>
+              </div>
+            ) : null}
             <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
               <Btn kind="ghost" onClick={() => setShowCard((v) => !v)}>{showCard ? "HIDE ID CARD" : "VIEW ID CARD"}</Btn>
               {can.print ? <Btn kind="primary" disabled={busy !== null} onClick={() => void act(sel.card ? "reprint" : "print", `/students/${s.student_id}/print`, {}, sel.card ? `Identity card ${sel.card.card_no} printed again` : "Identity card printed", "ID CARD PRINTED SUCCESSFULLY")}>{busy === "print" || busy === "reprint" ? ACTION_WORDS.print[1] : sel.card ? ACTION_WORDS.reprint[0] : ACTION_WORDS.print[0]}</Btn> : null}
@@ -220,14 +250,17 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
  *  verification; a card not yet printed is marked a preview, its number assigned when printed */
 function CardPreview({ s, card, photo }: { s: DeskStudent["student"]; card: CardRow | null; photo: boolean }) {
   const number = s.matric_no ?? "—";
-  const fields: [string, string][] = [["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"], ["Programme", s.programme ?? "—"], ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"]];
+  const fields: [string, string][] = [["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"], ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"], ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"]];
   const face: React.CSSProperties = { width: 360, height: 227, borderRadius: 12, border: "1px solid var(--line)", boxShadow: "0 4px 14px rgba(0,0,0,.12)", background: "var(--paper, #fff)", padding: 14, position: "relative", overflow: "hidden" };
   return (
     <PBody>
       <div className="row row--top" style={{ gap: "var(--s-4)", flexWrap: "wrap" }}>
         <div style={face} aria-label="Front of the card">
-          <div style={{ fontSize: 9, letterSpacing: 1, fontWeight: 700, color: "var(--chrome)" }}>REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI</div>
-          <div style={{ fontSize: 8, color: "var(--ink-soft, #666)" }}>STUDENT IDENTITY CARD</div>
+          {/* V622: the University's name bold, the card's title under it, in the student card's blue */}
+          <div style={{ margin: "-14px -14px 0", padding: "8px 14px", background: "#0E3F55", color: "#fff" }}>
+            <div style={{ fontSize: 10.5, letterSpacing: 0.4, fontWeight: 800, fontFamily: "Georgia, serif" }}>REV. FR. MOSES ORSHIO ADASU UNIVERSITY</div>
+            <div style={{ fontSize: 8, letterSpacing: 1.6, fontWeight: 700, color: "#BFDCEB" }}>STUDENT IDENTITY CARD</div>
+          </div>
           <div className="row row--top" style={{ gap: 12, marginTop: 8 }}>
             <Passport w={78} h={97} radius={4} src={photo && s.matric_no ? `/api/bff/api/v1/credentials/identity-cards/students/${encodeURIComponent(s.student_id)}/photo?v=${encodeURIComponent(s.matric_no)}` : null} />
             <div className="grow">
@@ -244,8 +277,10 @@ function CardPreview({ s, card, photo }: { s: DeskStudent["student"]; card: Card
           </div>
         </div>
         <div style={face} aria-label="Back of the card">
-          <div style={{ fontSize: 8.5 }}>This card is the property of the University and identifies the holder as a student. If found, return it to the Security Unit.</div>
-          <div style={{ fontSize: 8.5, marginTop: 6 }}>A guard scans the code; the University&rsquo;s record answers whether the card stands.</div>
+          <div style={{ margin: "-14px -14px 0", padding: "5px 14px", background: "#0E3F55", color: "#fff", fontSize: 8, fontWeight: 700, letterSpacing: 1, textAlign: "center" }}>PROPERTY OF THE UNIVERSITY · NOT TRANSFERABLE</div>
+          <div style={{ fontSize: 8.5, marginTop: 8, textAlign: "center" }}>This ID card must always be in the owner&rsquo;s possession for identification at the gates, examination or wherever identification is necessary.</div>
+          <div style={{ fontSize: 8.5, marginTop: 4, textAlign: "center" }}>Any alteration or erasure renders this card invalid. Loss must be reported immediately to the Chief Security Officer of the University.</div>
+          <div style={{ position: "absolute", right: 14, bottom: 10, width: 120, textAlign: "center", fontSize: 7.5, fontWeight: 700, letterSpacing: 0.5, borderTop: "1px solid #7D8B96", paddingTop: 2 }}>CHIEF SECURITY OFFICER</div>
           <div style={{ position: "absolute", right: 14, bottom: 10, width: 64, height: 64, border: "1px dashed var(--line)", display: "grid", placeItems: "center", fontSize: 7, textAlign: "center" }}>{card ? "Signed QR on the print" : "QR when printed"}</div>
           <div style={{ position: "absolute", left: 14, bottom: 10, fontSize: 8 }}><span className="sub2">In an emergency: </span><b>{s.reach_phone ?? "—"}</b></div>
         </div>
