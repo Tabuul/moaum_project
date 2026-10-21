@@ -11,6 +11,9 @@ export function paymentFilters(p: Record<string, string | string[] | undefined>)
     level: /^\d{3}$/.test(s("level")) ? s("level") : "",
     status: ["FULLY_PAID", "PART_PAYMENT", "NOT_PAID", "NO_CHARGE"].includes(s("status")) ? s("status") : "",
     q: s("q").slice(0, 80),
+    /* V606: current students (empty), graduated or both; and the page of students */
+    students: ["GRADUATED", "ALL"].includes(s("students")) ? s("students") : "",
+    page: /^\d{1,4}$/.test(s("page")) && Number(s("page")) > 1 ? s("page") : "",
   };
 }
 

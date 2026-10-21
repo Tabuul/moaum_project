@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 interface Waiting { kind: "board" | "results" | "registration" | "calendar" | "appeal" | "coordinator"; level?: number; session?: string; exam?: string; count?: number; text: string; href: string }
 interface Dashboard {
   session: string;
-  totals: { students: number; open_years: number; provisional: number; allocations: number };
+  totals: { students: number; college_students?: number; open_years: number; provisional: number; allocations: number };
   waiting: Waiting[];
   fees: { level: number; students: number; first_cleared: number; second_cleared: number; registered: number }[];
   recent: { number: string; surname: string; other_names: string; level: number; session: string; outcome: string; honours: boolean | null; confirmed_on: string | null; minute: string | null }[];
@@ -81,7 +81,7 @@ export default async function CollegeDashboardPage() {
       <StatsPanel session={d.session} title="College student statistics" />
       <FinancePanel />
       <Tiles items={[
-        ["Students", String(t.students), null, "On the register, Pre-Medical to 600 Level"],
+        ["MBBS students", String(t.students), null, `Pre-Medical to 600 Level${t.college_students != null ? ` · of ${t.college_students.toLocaleString("en-NG")} College students` : ""}`],
         ["Years open", String(t.open_years), null, "College years running or at a resit"],
         ["Awaiting the Board", String(t.provisional), t.provisional ? "var(--red-ink)" : null, "Provisional decisions to confirm"],
         ["Postings this session", String(t.allocations), null, d.session],
@@ -113,7 +113,7 @@ export default async function CollegeDashboardPage() {
       ) : null}
 
       {!finance && postings.length ? (
-        <Panel title={`The rotation this session · ${d.session}`} right="The clinical levels: who is on a posting, and how the postings stand">
+        <Panel title={`The rotation this session · ${d.session}`} right="MBBS at the clinical levels: who is on a posting, and how the postings stand">
           <DTable cols={["Level|mid", "Students|mid", "On a posting|mid", "Allocations|mid", "In progress|mid", "Completed|mid", "Incomplete|mid", "Without a supervisor|mid", ""]} rows={postings.map((x) => [
             <strong className="tnum" key="l">{x.level}</strong>,
             <span className="tnum" key="s">{n(x.students)}</span>,
@@ -129,7 +129,7 @@ export default async function CollegeDashboardPage() {
       ) : null}
 
       {finance || d.fees.length ? (
-        <Panel title={`Fees this session · ${d.session}`} right="The University's one ledger; each College year registers on its semester's fees">
+        <Panel title={`MBBS fees this session · ${d.session}`} right="The University's one ledger; each College year registers on its semester's fees">
           {d.fees.length === 0 ? <PBody><div className="sub2">No College student at 200 Level or above is on the register.</div></PBody> : (
             <DTable cols={["Level|mid", "Students|mid", "First semester cleared|mid", "Second semester cleared|mid", "Year registered|mid"]} rows={d.fees.map((f) => [
               <strong className="tnum" key="l">{f.level}</strong>,

@@ -762,6 +762,12 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT people.student_dashboard(:s)").param("s", student).query(String.class).optional().orElse("UNIVERSITY");
     }
 
+    /** V606: whether the student's programme is one the College runs on its own machinery (MBBS) — the College's student area is theirs */
+    boolean collegeArea(UUID student) {
+        return jdbc.sql("SELECT college.runs_programme(st.programme_code) FROM people.student st WHERE st.id = :s").param("s", student)
+                .query(Boolean.class).optional().orElse(false);
+    }
+
     String classOf(BigDecimal cgpa) {
         if (cgpa == null) {
             return null;

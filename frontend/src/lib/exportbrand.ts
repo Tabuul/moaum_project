@@ -91,7 +91,9 @@ export function brandedPrint(
   headers: string[],
   rows: Cell[][],
   serial: string = docSerial("DOC"),
-  opts: { profile?: DocumentProfileId; meta?: [string, string][]; generatedBy?: string | null; footnote?: string | null; orientation?: "portrait" | "landscape" } = {},
+  opts: { profile?: DocumentProfileId; meta?: [string, string][]; generatedBy?: string | null; footnote?: string | null; orientation?: "portrait" | "landscape";
+          /** V606: a window the page opened at the click, before reading its rows, to print into */
+          window?: Window | null } = {},
 ): void {
   const numbered = !leadsWithSerial(headers);
   logExport({ report: title, format: "PRINT", rows: rows.length, meta: opts.meta, sub: subtitle, serial });   // V523
@@ -106,5 +108,5 @@ export function brandedPrint(
     footnote: opts.footnote ?? null,
     serial: numbered,
     orientation: opts.orientation ?? "landscape",
-  });
+  }, opts.window);
 }

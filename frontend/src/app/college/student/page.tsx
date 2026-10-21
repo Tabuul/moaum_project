@@ -52,7 +52,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   const view = typeof p.view === "string" && VIEWS.some((v) => v[0] === p.view) ? p.view : "overview";
   const loaded = await loadStudent();
   if (!loaded.student) {
-    return <Shell route="s/dashboard" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
+    return <Shell route="s/college" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   }
   const s = loaded.student;
   const level = Number(s.level);
@@ -65,7 +65,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   // V603: the College's own student area is for MBBS; any other student opening it is sent to the University's dashboard
   if (!rec.ok && rec.problem.code === "COLLEGE_NOT_MBBS") redirect("/student");
   if (!rec.ok) {
-    return <Shell route="s/dashboard" me={loaded.me}><ProblemNotice problem={rec.problem} /></Shell>;
+    return <Shell route="s/college" me={loaded.me}><ProblemNotice problem={rec.problem} /></Shell>;
   }
   const r = rec.data;
   const myPostings = mine.ok ? mine.data : [];
@@ -130,7 +130,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
   const history = sessionsSeen.map((k) => { const [L, ses] = k.split("|"); return { level: Number(L), session: ses }; }).sort((a, b) => a.session.localeCompare(b.session) || a.level - b.level).reverse();
 
   return (
-    <Shell route="s/dashboard" me={loaded.me}>
+    <Shell route="s/college" me={loaded.me}>
       <Note kind={active ? "info" : "bad"} title={`${s.name} · ${r.student.number} · ${MBBS.degree}`}>
         {level} Level, <b>{phase?.name ?? "—"}</b> phase · {cur ? `${cur.kind === "REPEAT" ? `Repeat year, attempt ${cur.attempt_no}` : cur.kind === "APPEAL" ? "Senate-approved final attempt" : "First attempt"}` : "First attempt"} · {stageLabel}.
         {!active ? <> Your record stands <b>{word(status)}</b>; the College Secretary&rsquo;s office holds the decision.</> : null}

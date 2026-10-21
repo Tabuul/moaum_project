@@ -120,8 +120,7 @@ class CollegeController {
                                   WHERE a.student_id = st.id AND a.session = :s), '[]'::jsonb)::text AS allocations
                   FROM people.student st
                   JOIN ref.programme p ON p.code = st.programme_code
-                  JOIN ref.faculty f ON f.code = p.faculty_code
-                 WHERE f.college_code = 'CHS' AND st.current_level = :l
+                 WHERE college.runs_programme(st.programme_code) AND st.current_level = :l   -- V606: the College's own programmes' students
                    AND st.status NOT IN ('WITHDRAWN','EXPELLED','TRANSFERRED_OUT','DECEASED','GRADUATED')
                  ORDER BY coalesce(st.matric_no, st.admission_no), st.surname
                 """).param("s", session).param("l", level).query().listOfRows();
@@ -1047,6 +1046,9 @@ class CollegeController {
      * Names A–Z within programme; the filters and the search narrow the set, and the totals are of the set shown.
      * V603: summary=true answers the totals and the figures by programme without the students (the Finance Controller's dashboard:
      * 8,193 rows and 3.8 MB on the live-shaped copy, to show twenty).
+     * V606: the students a page at a time (page, size — at most 200), with how many the filters find; export=true answers every
+     * one for the Excel and the PDF. students=CURRENT (active, on probation, admitted — the default), GRADUATED or ALL: a graduated
+     * student's fees of a session stay on the report. The totals and the figures by programme are always of the whole set.
      */
     @GetMapping("/payments")
     @PreAuthorize(PAYMENT_READERS)
@@ -1054,8 +1056,15 @@ class CollegeController {
     Map<String, Object> payments(@RequestParam(required = false) String session, @RequestParam(required = false) Integer semester,
                                  @RequestParam(required = false) String programme, @RequestParam(required = false) String dept,
                                  @RequestParam(required = false) Integer level, @RequestParam(required = false) String status,
-                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "false") boolean summary) {
+                                 @RequestParam(required = false) String q, @RequestParam(defaultValue = "false") boolean summary,
+                                 @RequestParam(defaultValue = "CURRENT") String students, @RequestParam(defaultValue = "1") int page,
+                                 @RequestParam(defaultValue = "50") int size, @RequestParam(defaultValue = "false") boolean export) {
         String s = session == null || !session.matches("\\d{4}/\\d{4}") ? currentSession() : session;
+        String who = switch (students == null ? "" : students.trim().toUpperCase()) {
+            case "GRADUATED" -> "GRADUATED";
+            case "ALL" -> "ALL";
+            default -> "CURRENT";
+        };
         Integer sem = semester == null || semester < 1 || semester > 3 ? null : semester;
         String st = status == null || status.isBlank() ? null : status.trim().toUpperCase();
         String needle = q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase() + "%";
@@ -1070,7 +1079,8 @@ class CollegeController {
                   -- V537: every student's position read in one pass (finance.payment_position, for each of the College's 8,193
                   -- students in turn, took about 30 s on the live-shaped copy)
                   JOIN finance.session_positions(:s, :sem) pos ON pos.student_id = st.id
-                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')
+                 WHERE f.college_code = 'CHS'
+                   AND (:who = 'ALL' OR (:who = 'GRADUATED' AND st.status = 'GRADUATED') OR (:who = 'CURRENT' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')))
                    AND (:prog::text IS NULL OR p.code = :prog)
                    AND (:dept::text IS NULL OR d.code = :dept)
                    AND (:level::int IS NULL OR st.current_level = :level)
@@ -1079,7 +1089,7 @@ class CollegeController {
                         OR lower(coalesce(st.admission_no, '')) LIKE :q OR lower(coalesce(pos.last_reference, '')) LIKE :q
                         OR EXISTS (SELECT 1 FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL AND lower(r.reference) LIKE :q))
                  ORDER BY p.name, st.surname, st.other_names
-                """).param("s", s).param("sem", sem, java.sql.Types.INTEGER)
+                """).param("s", s).param("sem", sem, java.sql.Types.INTEGER).param("who", who)
                 .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), java.sql.Types.VARCHAR)
                 .param("dept", dept == null || dept.isBlank() ? null : dept.trim(), java.sql.Types.VARCHAR)
                 .param("level", level, java.sql.Types.INTEGER).param("status", st, java.sql.Types.VARCHAR).param("q", needle, java.sql.Types.VARCHAR)
@@ -1135,12 +1145,20 @@ class CollegeController {
                  WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') ORDER BY 1
                 """).query(Integer.class).list());
         options.put("sessions", jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC").query(String.class).list());
+        // V606: a page of the students, or every one for a download
+        int sz = Math.max(1, Math.min(size, 200));
+        int pg = Math.max(1, page);
+        int from = Math.min(rows.size(), (pg - 1) * sz);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", s);
         out.put("semester", sem);
+        out.put("students", who);
         out.put("summary", tally.apply(rows));
         out.put("byProgramme", byProgramme);
-        out.put("rows", rows);
+        out.put("total", rows.size());
+        out.put("page", export ? 1 : pg);
+        out.put("size", export ? rows.size() : sz);
+        out.put("rows", export ? rows : rows.subList(from, Math.min(rows.size(), from + sz)));
         out.put("options", options);
         return out;
     }
@@ -1160,8 +1178,11 @@ class CollegeController {
                 .orElseGet(() -> jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC LIMIT 1").query(String.class).single());
         List<Map<String, Object>> levels = jdbc.sql("""
                 SELECT l.level, l.phase, l.enrolment,
+                       -- V606: the College's levels are its MBBS years — its own programmes' students counted, the rest of the College beside
+                       (SELECT count(*) FROM people.student st
+                         WHERE college.runs_programme(st.programme_code) AND st.current_level = l.level AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
                        (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
-                         WHERE f.college_code = 'CHS' AND st.current_level = l.level AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                         WHERE f.college_code = 'CHS' AND st.current_level = l.level AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS college_students,
                        (SELECT count(*) FROM college.enrolment e WHERE e.level = l.level AND e.state IN ('OPEN','RESIT')) AS open_years,
                        (SELECT string_agg(DISTINCT e.session, ', ' ORDER BY e.session) FROM college.enrolment e WHERE e.level = l.level AND e.state IN ('OPEN','RESIT')) AS cohorts,
                        x.code AS exam_code, x.name AS exam_name,
@@ -1172,8 +1193,10 @@ class CollegeController {
                  ORDER BY l.level
                 """).param("s", session).query().listOfRows();
         Map<String, Object> totals = jdbc.sql("""
-                SELECT (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
-                         WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                SELECT (SELECT count(*) FROM people.student st
+                         WHERE college.runs_programme(st.programme_code) AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                       (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                         WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS college_students,
                        (SELECT count(*) FROM college.enrolment e WHERE e.state IN ('OPEN','RESIT')) AS open_years,
                        (SELECT count(*) FROM college.progression_decision d WHERE d.state = 'PROVISIONAL') AS provisional,
                        (SELECT count(*) FROM college.posting_allocation a WHERE a.session = :s) AS allocations,
@@ -1259,15 +1282,15 @@ class CollegeController {
                 """).query().listOfRows()) {
             waiting.add(Map.of("kind", "coordinator", "level", r.get("level"), "text", r.get("level") + " Level has no MBBS Coordinator appointed", "href", "/people"));
         }
+        // V606: the fees position of the College's own years — its own programmes' (MBBS) students from 200 Level, each student's
+        // semesters cleared read for them alone (two passes over every student of the University took six seconds on the live copy)
         List<Map<String, Object>> fees = jdbc.sql("""
                 SELECT st.current_level AS level, count(*) AS students,
-                       count(*) FILTER (WHERE s1.cleared_upto) AS first_cleared,
-                       count(*) FILTER (WHERE s2.cleared_upto) AS second_cleared,
+                       count(*) FILTER (WHERE finance.semester_cleared(st.id, :s, 1)) AS first_cleared,
+                       count(*) FILTER (WHERE finance.semester_cleared(st.id, :s, 2)) AS second_cleared,
                        count(*) FILTER (WHERE EXISTS (SELECT 1 FROM college.enrolment e WHERE e.student_id = st.id AND e.state IN ('OPEN','RESIT') AND e.registered_at IS NOT NULL)) AS registered
-                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
-                  JOIN finance.session_positions(:s, 1) s1 ON s1.student_id = st.id
-                  JOIN finance.session_positions(:s, 2) s2 ON s2.student_id = st.id
-                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level >= 200
+                  FROM people.student st
+                 WHERE college.runs_programme(st.programme_code) AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level BETWEEN 200 AND 600
                  GROUP BY st.current_level ORDER BY st.current_level
                 """).param("s", session).query().listOfRows();
         List<Map<String, Object>> recent = jdbc.sql("""
@@ -1276,8 +1299,10 @@ class CollegeController {
                  WHERE d.state = 'CONFIRMED' ORDER BY d.confirmed_on DESC NULLS LAST, d.decided_on DESC LIMIT 12
                 """).query().listOfRows();
         Map<String, Object> totals = jdbc.sql("""
-                SELECT (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
-                         WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                SELECT (SELECT count(*) FROM people.student st
+                         WHERE college.runs_programme(st.programme_code) AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS students,
+                       (SELECT count(*) FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                         WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED')) AS college_students,
                        (SELECT count(*) FROM college.enrolment e WHERE e.state IN ('OPEN','RESIT')) AS open_years,
                        (SELECT count(*) FROM college.progression_decision d WHERE d.state = 'PROVISIONAL') AS provisional,
                        (SELECT count(*) FROM college.posting_allocation a WHERE a.session = :s) AS allocations
@@ -1291,9 +1316,9 @@ class CollegeController {
                        count(a.id) FILTER (WHERE a.state = 'COMPLETED') AS completed,
                        count(a.id) FILTER (WHERE a.state = 'INCOMPLETE') AS incomplete,
                        count(a.id) FILTER (WHERE a.supervisor_id IS NULL) AS unsupervised
-                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                  FROM people.student st
                   LEFT JOIN college.posting_allocation a ON a.student_id = st.id AND a.session = :s
-                 WHERE f.college_code = 'CHS' AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level >= 400
+                 WHERE college.runs_programme(st.programme_code) AND st.status IN ('ACTIVE','PROBATION','ADMITTED') AND st.current_level BETWEEN 400 AND 600
                  GROUP BY st.current_level ORDER BY st.current_level
                 """).param("s", session).query().listOfRows();
         // who holds each level's coordination
@@ -1606,9 +1631,9 @@ class CollegeController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT st.id, st.surname, st.other_names, coalesce(st.matric_no, st.admission_no) AS number, st.status, st.current_level, d.outcome, d.failed, d.carried, d.published, d.registered,
                        (SELECT pd.minute FROM college.progression_decision pd WHERE pd.student_id = st.id AND pd.from_level = 100 AND pd.session = st.entry_session) AS minute
-                  FROM people.student st JOIN ref.programme p ON p.code = st.programme_code JOIN ref.faculty f ON f.code = p.faculty_code
+                  FROM people.student st
                   CROSS JOIN LATERAL college.decide_100(st.id) d
-                 WHERE f.college_code = 'CHS' AND st.entry_session = :s AND st.entry_level = 100 AND (st.current_level = 100 OR EXISTS (SELECT 1 FROM college.progression_decision pd WHERE pd.student_id = st.id AND pd.from_level = 100))
+                 WHERE college.runs_programme(st.programme_code) AND st.entry_session = :s   -- V606: the College's rule binds its own programmes' entrants AND st.entry_level = 100 AND (st.current_level = 100 OR EXISTS (SELECT 1 FROM college.progression_decision pd WHERE pd.student_id = st.id AND pd.from_level = 100))
                  ORDER BY st.surname, st.other_names
                 """).param("s", session).query().listOfRows();
         return Map.of("session", session, "rows", rows);

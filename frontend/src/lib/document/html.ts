@@ -124,17 +124,20 @@ ${spec.watermark ? `<div class="wm">${esc(spec.watermark)}</div>` : ""}
 }
 
 /** open the document in a window of its own and print it (the browser's Save as PDF does the rest) */
-function openAndPrint(html: string): void {
-  const w = window.open("", "_blank");
+/* V606: a window already opened at the click (a page that fetches its rows first) is written into, so the browser's pop-up rule,
+   which allows a window only just after the click, is met */
+function openAndPrint(html: string, opened?: Window | null): void {
+  const w = opened ?? window.open("", "_blank");
   if (!w) return;
+  if (opened) w.document.open();   // what the page wrote while it read its rows ("Preparing…") gives way to the document
   w.document.write(html + `<script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>`);
   w.document.close();
 }
 
 /** print a table document under the official header */
-export async function printDocument(profileId: DocumentProfileId | string, spec: PrintSpec): Promise<void> {
+export async function printDocument(profileId: DocumentProfileId | string, spec: PrintSpec, opened?: Window | null): Promise<void> {
   const inst = typeof window === "undefined" ? DEFAULT_INSTITUTION : await getInstitution();
-  openAndPrint(documentHtml(inst, profileId, spec, institutionLogoAbsoluteUrl(inst)));
+  openAndPrint(documentHtml(inst, profileId, spec, institutionLogoAbsoluteUrl(inst)), opened);
 }
 
 /** the document as a page to look at before printing: the same HTML, without the print call */

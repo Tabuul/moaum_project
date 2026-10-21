@@ -176,6 +176,8 @@ export interface Me {
   id: string; name: string; surname: string; otherNames: string; matricNo: string | null; admissionNo: string | null;
   programmeCode: string; programme: string; faculty: string; department: string; entryMode: string; entrySession: string;
   entryLevel: number; level: number; status: string; curriculumVersion: string | null; session: string;
+  /** V603: the dashboard the student lands on (COLLEGE or UNIVERSITY); V606: whether the College's own student area is theirs (MBBS) */
+  dashboard?: string; collegeArea?: boolean;
   /** where the student stands (V331): the cohort that carries them, the expected completion, the spillover — the entry session stays history */
   jambYear?: number | null; effectiveCohort?: string | null; cohortSource?: "ENTRY" | "MERGED" | "OVERRIDE" | string | null; durationYears?: number | null;
   expectedCompletion?: string | null; spilloverState?: string | null; spilloverYears?: number | null; classification?: string | null;

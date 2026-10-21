@@ -13,8 +13,8 @@ import { COMMON_RULES, MBBS, PHASES, PROGRESSION, TO_CONFIRM } from "@/lib/mbbs"
  */
 export interface OverviewData {
   session: string;
-  levels: { level: number; phase: string; enrolment: string; students: number; open_years: number; cohorts: string | null; exam_code: string | null; exam_name: string | null; provisional: number; confirmed: number; dated: number }[];
-  totals: { students: number; open_years: number; provisional: number; allocations: number; blocks: number; postings: number; coordinators: number };
+  levels: { level: number; phase: string; enrolment: string; students: number; college_students?: number; open_years: number; cohorts: string | null; exam_code: string | null; exam_name: string | null; provisional: number; confirmed: number; dated: number }[];
+  totals: { students: number; college_students?: number; open_years: number; provisional: number; allocations: number; blocks: number; postings: number; coordinators: number };
   blocks: { code: string; name: string; total_weeks: number | null; ordinal: number; postings: number; posting_codes: string | null; allocated: number }[];
 }
 const PHASE: Record<string, string> = { PREMEDICAL: "Pre-Medical", PRECLINICAL: "Pre-clinical", CLINICAL: "Clinical" };
@@ -37,17 +37,17 @@ export function Overview({ data, problem, office }: { data: OverviewData | null;
         </>}
       />
       <Tiles items={[
-        ["Students", String(t.students), null, "On the register, 200 to 600 Level and Pre-Medical"],
+        ["MBBS students", String(t.students), null, `On the register, Pre-Medical to 600 Level${t.college_students != null ? ` · of ${t.college_students.toLocaleString("en-NG")} College students` : ""}`],
         ["Years open", String(t.open_years), null, "College years running or at a resit"],
         ["Awaiting the Board", String(t.provisional), t.provisional ? "var(--red-ink)" : null, "Provisional decisions to confirm"],
         ["Postings this session", String(t.allocations), null, `${data.session} · ${t.postings} postings in ${t.blocks} blocks`],
       ]} />
 
       <Panel title="The levels" right={`${data.session} · ${t.coordinators} MBBS coordinator${t.coordinators === 1 ? "" : "s"} appointed`}>
-        <DTable cols={["Level|mid", "Phase", "Students|mid", "Years open|mid", "Cohorts", "Examination", "Decisions|mid", "Calendar|mid", ""]} rows={data.levels.map((l) => [
+        <DTable cols={["Level|mid", "Phase", "MBBS students|mid", "Years open|mid", "Cohorts", "Examination", "Decisions|mid", "Calendar|mid", ""]} rows={data.levels.map((l) => [
           <strong className="tnum" key="l">{l.level}</strong>,
           <span key="p">{PHASE[l.phase] ?? l.phase}<div className="sub2">{l.enrolment}</div></span>,
-          <span className="tnum" key="s">{l.students}</span>,
+          <span key="s"><span className="tnum">{l.students}</span>{l.college_students != null ? <div className="sub2 tnum">of {l.college_students.toLocaleString("en-NG")} in the College</div> : null}</span>,
           <span className="tnum" key="y">{l.level >= 200 ? l.open_years : "—"}</span>,
           <span className="sub2 tnum" key="c">{l.level >= 200 ? (l.cohorts ?? "None open") : "The University's session"}</span>,
           <span key="e">{l.exam_code ? <><strong className="tnum">{l.exam_code}</strong> <span className="sub2">{l.exam_name}</span></> : <span className="sub2">Sessional examinations, GPA</span>}</span>,

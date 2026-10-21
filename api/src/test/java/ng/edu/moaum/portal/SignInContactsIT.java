@@ -99,6 +99,9 @@ class SignInContactsIT {
         Map<String, Object> e = rowOf(rows, s, "EMAIL");
         assertThat(e).isNotNull().containsEntry("value", email).containsEntry("ticket_number", made.get("number")).containsEntry("asked_by", "Zzsic Asker");
         assertThat(rowOf(rows, s, "PHONE")).isNotNull().containsEntry("value", "08035550199");
+        // V606: Students We Cannot Reach counts them as no contact while nobody has confirmed them
+        Map<String, Object> neither = it.get(head, "/api/v1/helpdesk/support/reach?kind=NEITHER&q=" + matric).getBody();
+        assertThat((List<Map<String, Object>>) neither.get("rows")).extracting(r -> String.valueOf(r.get("id"))).containsExactly(s.toString());
         Map<String, Object> contact = (Map<String, Object>) it.get(head, "/api/v1/helpdesk/support/students/" + s).getBody().get("contact");
         assertThat(contact).containsEntry("email_from_sign_in", true).containsEntry("email_sign_in_ticket", made.get("number")).containsEntry("email_pending", true);
 
@@ -118,6 +121,10 @@ class SignInContactsIT {
                 Map.of("field", "PHONE", "reason", "Called the number with the student at the desk"));
         assertThat(confirmed.getStatusCode().value()).as(String.valueOf(confirmed.getBody())).isEqualTo(200);
         assertThat(jdbc.sql("SELECT phone FROM people.student_reach(:s)").param("s", s).query(String.class).single()).isEqualTo("08035550199");
+        // V606: the confirmed phone is a contact on Students We Cannot Reach; the e-mail, refused, is still missing
+        assertThat((List<?>) it.get(head, "/api/v1/helpdesk/support/reach?kind=NEITHER&q=" + matric).getBody().get("rows")).isEmpty();
+        assertThat((List<Map<String, Object>>) it.get(head, "/api/v1/helpdesk/support/reach?kind=NO_EMAIL&q=" + matric).getBody().get("rows"))
+                .extracting(r -> String.valueOf(r.get("id"))).containsExactly(s.toString());
         assertThat(jdbc.sql("SELECT outcome || ':' || (sign_in_ticket = :t) FROM people.contact_confirmation WHERE student_id = :s AND field = 'PHONE' ORDER BY created_at DESC LIMIT 1")
                 .param("s", s).param("t", ticket).query(String.class).single()).isEqualTo("DESK:true");
         rows = (List<Map<String, Object>>) it.get(head, BASE).getBody().get("rows");

@@ -63,6 +63,10 @@ class CollegeStudentDashboardIT {
         assertThat(dashboard(it, tFirst)).isEqualTo("UNIVERSITY");
         assertThat(dashboard(it, tNursing)).isEqualTo("UNIVERSITY");
         assertThat(dashboard(it, tMls)).isEqualTo("UNIVERSITY");
+        // V606: the College's area is an MBBS student's at every level (the menu's link), never a Nursing student's
+        assertThat(it.get(tFirst, "/api/v1/me").getBody()).containsEntry("collegeArea", true);
+        assertThat(it.get(tMbbs, "/api/v1/me").getBody()).containsEntry("collegeArea", true);
+        assertThat(it.get(tNursing, "/api/v1/me").getBody()).containsEntry("collegeArea", false);
 
         // the College's student doors: open to MBBS (100 Level reads its record too), refused to anyone else on the server
         ResponseEntity<Map> record = it.get(tMbbs, "/api/v1/college/my-record");

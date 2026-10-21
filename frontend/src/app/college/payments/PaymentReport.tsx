@@ -3,7 +3,10 @@
 /** The Student Payment Report of the College of Health Sciences (V256): every College student's fees position for
  *  a session or for one semester of it — amount payable, paid, outstanding, status, last payment — with the totals
  *  at the top, the same by programme, the filters and search the Finance Controller asked for, and the report as a
- *  branded Excel workbook or PDF with S/N first and names A–Z. Everything is read from the register as it stands. */
+ *  branded Excel workbook or PDF with S/N first and names A–Z. Everything is read from the register as it stands.
+ *  V606: the students come a page at a time from the server (the whole College was 8,193 rows and 3.8 MB on the live-shaped
+ *  copy), a programme's Students narrows the report to it, the downloads read every student of the filters when asked, and the
+ *  students shown are the current ones, the graduated or both. */
 import { useState } from "react";
 import Link from "next/link";
 import { useQueryNav } from "@/lib/query-nav";
@@ -11,6 +14,7 @@ import { Btn, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/compon
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
+import { notifyProblem } from "@/components/proto/Toast";
 
 export interface PayRow {
   id: string; surname: string; other_names: string; number: string; level: number; faculty: string; department: string; dept_code: string;
@@ -22,9 +26,14 @@ export interface PayReport {
   session: string; semester: number | null; summary: PayTotals;
   byProgramme: (PayTotals & { programme_code: string; programme: string; department: string })[];
   rows: PayRow[];
+  /** V606: the students the filters find, this page of them, and which students: CURRENT, GRADUATED or ALL */
+  total: number; page: number; size: number; students: string;
   options: { programmes: { code: string; name: string; dept_code: string; department: string }[]; levels: number[]; sessions: string[] };
 }
-export interface PayFilters { session: string; semester: string; programme: string; dept: string; level: string; status: string; q: string }
+export interface PayFilters { session: string; semester: string; programme: string; dept: string; level: string; status: string; q: string; students: string; page: string }
+
+/** V606: which students the report reads */
+export const WHO: Record<string, string> = { "": "Current students", GRADUATED: "Graduated students", ALL: "Current and graduated" };
 
 const STATUS: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = {
   FULLY_PAID: ["Fully Paid", "ok"], PART_PAYMENT: ["Part Payment", "warn"], NOT_PAID: ["Outstanding", "bad"], NO_CHARGE: ["No charge", "grey"],
@@ -36,7 +45,7 @@ const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("e
 export function PaymentReport({ report, filters, basePath, role }: { report: PayReport; filters: PayFilters; basePath: string; role: string }) {
   const queryNav = useQueryNav();
   const [q, setQ] = useState(filters.q);
-  const [openProg, setOpenProg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const t = report.summary;
   const period = PERIOD[filters.semester] ?? "Whole session";
   const progs = report.options.programmes.filter((p) => !filters.dept || p.dept_code === filters.dept);
@@ -47,12 +56,15 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
     filters.programme ? report.options.programmes.find((p) => p.code === filters.programme)?.name : null,
     filters.level ? `${filters.level} Level` : null,
     filters.status ? STATUS[filters.status]?.[0] : null,
+    filters.students ? WHO[filters.students] : null,
     filters.q ? `search “${filters.q}”` : null,
   ].filter(Boolean).join(" · ");
-  const shown = openProg ? report.rows.filter((r) => r.programme_code === openProg) : report.rows;
+  const shown = report.rows;
+  const pages = Math.max(1, Math.ceil(report.total / (report.size || 50)));
+  const first = (report.page - 1) * (report.size || 50);
 
   function go(next: Partial<PayFilters>) {
-    const f = { ...filters, ...next };
+    const f = { ...filters, page: "", ...next };
     if (next.dept !== undefined) f.programme = "";
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(f)) if (v) qs.set(k, v);
@@ -60,6 +72,17 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
   }
 
   const HEAD = ["S/N", "Student Name", "Matriculation / Registration Number", "Level", "Faculty / College", "Department", "Programme of Study", "Academic Session", "Period", "Amount Payable", "Amount Paid", "Amount Outstanding", "Payment Status", "Date of Last Payment", "Payment Reference"];
+  /** V606: every student of the filters, read for a download */
+  async function everyStudent(): Promise<PayRow[] | null> {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) if (v && k !== "page") qs.set(k, v);
+    qs.set("session", report.session);
+    qs.set("export", "true");
+    const r = await fetch(`/api/bff/api/v1/college/payments?${qs.toString()}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j) { notifyProblem(j ?? { status: r.status, title: "The report could not be read just now." }); return null; }
+    return (j as PayReport).rows;
+  }
   const body = (rows: PayRow[]) => rows.map((r, i) => [
     i + 1, `${r.surname}, ${r.other_names}`, r.number, r.level, r.faculty, r.department, r.programme, report.session, period,
     Number(r.payable), Number(r.paid), Number(r.outstanding), STATUS[r.status]?.[0] ?? r.status, r.last_paid_at ? dayOf(r.last_paid_at) : "", r.last_reference ?? "",
@@ -74,16 +97,31 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
   const progRows = () => report.byProgramme.map((p, i) => [i + 1, p.programme, p.department, p.students, Number(p.payable), Number(p.paid), Number(p.outstanding), p.fullyPaid, p.partPayment, p.withBalance]);
 
   async function toExcel() {
-    const serial = docSerial("CHSPAY");
-    const blob = await brandedXlsx("Student Payment Report — College of Health Sciences", HEAD, body(shown), { sheetName: "Payment report", serial, sub: scope });
-    downloadBlob(blob, `chs-student-payment-report-${report.session.replace("/", "-")}${filters.semester ? `-sem${filters.semester}` : ""}.xlsx`);
+    setBusy(true);
+    try {
+      const all = await everyStudent();
+      if (!all) return;
+      const serial = docSerial("CHSPAY");
+      const blob = await brandedXlsx("Student Payment Report — College of Health Sciences", HEAD, body(all), { sheetName: "Payment report", serial, sub: scope });
+      downloadBlob(blob, `chs-student-payment-report-${report.session.replace("/", "-")}${filters.semester ? `-sem${filters.semester}` : ""}.xlsx`);
+    } finally { setBusy(false); }
   }
   async function summaryExcel() {
     const serial = docSerial("CHSPAY");
     const blob = await brandedXlsx("Student Payment Summary — College of Health Sciences", PROG_HEAD, [...progRows()], { sheetName: "By programme", serial, sub: scope });
     downloadBlob(blob, `chs-payment-summary-${report.session.replace("/", "-")}.xlsx`);
   }
-  function toPdf() { brandedPrint("Student Payment Report — College of Health Sciences", scope, HEAD, body(shown), docSerial("CHSPAY")); }
+  async function toPdf() {
+    // the window is opened at the click, while the browser allows it, and the report is written into it once its rows are read
+    const win = window.open("", "_blank");
+    win?.document.write('<p style="font-family:sans-serif;padding:24px">Preparing the Student Payment Report…</p>');
+    setBusy(true);
+    try {
+      const all = await everyStudent();
+      if (all) brandedPrint("Student Payment Report — College of Health Sciences", scope, HEAD, body(all), docSerial("CHSPAY"), { window: win });
+      else win?.close();
+    } finally { setBusy(false); }
+  }
   /** the seven-line summary the letter asks for at the top of the report, as its own page */
   function summaryPdf() { brandedPrint("Student Payment Summary — College of Health Sciences", scope, SUMMARY_HEAD, summaryRows(), docSerial("CHSPAY")); }
   function progPdf() { brandedPrint("Student Payments by Programme — College of Health Sciences", scope, PROG_HEAD, progRows(), docSerial("CHSPAY")); }
@@ -91,7 +129,7 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
   return (
     <>
       <PageHead title="Student payment report" description={`${role}, College of Health Sciences · ${report.session} · ${period}`}
-        actions={<><Btn kind="primary" onClick={() => void toExcel()}>Download Excel</Btn><Btn kind="secondary" onClick={toPdf}>Download PDF</Btn><Btn kind="ghost" onClick={summaryPdf}>Summary PDF</Btn><LinkBtn href="/finance/fees">Fee Setup and Schedule</LinkBtn></>} />
+        actions={<><Btn kind="primary" disabled={busy || !report.total} onClick={() => void toExcel()}>Download Excel</Btn><Btn kind="secondary" disabled={busy || !report.total} onClick={() => void toPdf()}>Download PDF</Btn><Btn kind="ghost" onClick={summaryPdf}>Summary PDF</Btn><LinkBtn href="/finance/fees">Fee Setup and Schedule</LinkBtn></>} />
 
       <div className="scope">
         <div className="scope__f"><Field id="pr-session" label="Academic session">
@@ -117,6 +155,11 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
         <div className="scope__f"><Field id="pr-level" label="Level">
           <select id="pr-level" className="ctl" value={filters.level} onChange={(e) => go({ level: e.target.value })}>
             <option value="">All levels</option>{report.options.levels.map((l) => <option key={l} value={String(l)}>{l} Level</option>)}
+          </select>
+        </Field></div>
+        <div className="scope__f"><Field id="pr-who" label="Students">
+          <select id="pr-who" className="ctl" value={filters.students} onChange={(e) => go({ students: e.target.value })}>
+            {Object.entries(WHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Field></div>
         <div className="scope__f"><Field id="pr-status" label="Payment status">
@@ -157,18 +200,19 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
               <span key="d" className="tnum">{p.fullyPaid}</span>,
               <span key="e" className="tnum">{p.partPayment}</span>,
               <span key="f" className="tnum">{p.withBalance}</span>,
-              <Btn key="o" kind={openProg === p.programme_code ? "primary" : "ghost"} size="sm" onClick={() => setOpenProg(openProg === p.programme_code ? null : p.programme_code)}>{openProg === p.programme_code ? "All Students" : "Students"}</Btn>,
+              <Btn key="o" kind={filters.programme === p.programme_code ? "primary" : "ghost"} size="sm" onClick={() => go({ programme: filters.programme === p.programme_code ? "" : p.programme_code })}>{filters.programme === p.programme_code ? "All Students" : "Students"}</Btn>,
             ])} />
         ) : <PBody><div className="sub2">No College student matches these filters.</div></PBody>}
       </Panel>
 
-      <Panel title={openProg ? `Students · ${report.byProgramme.find((p) => p.programme_code === openProg)?.programme ?? ""}` : "Students"} right={`${shown.length} of ${report.rows.length} · names A–Z within programme`}>
+      <Panel title={filters.programme ? `Students · ${report.byProgramme.find((p) => p.programme_code === filters.programme)?.programme ?? ""}` : "Students"}
+        right={`${report.total ? `${first + 1}–${first + shown.length} of ${report.total.toLocaleString("en-NG")}` : "None"} · names A–Z within programme`}>
         {shown.length ? (
-          <DTable cols={["S/N|num", "Student", "Level|mid", "Programme", "Payable|num", "Paid|num", "Outstanding|num", "Status|mid", "Last payment", "|num"]}
+          <DTable pageSize={0} cols={["S/N|num", "Student", "Level|mid", "Programme", "Payable|num", "Paid|num", "Outstanding|num", "Status|mid", "Last payment", "|num"]}
             rows={shown.map((r, i) => {
               const [word, kind] = STATUS[r.status] ?? [r.status, "grey"];
               return [
-                <span key="sn" className="tnum sub2">{i + 1}</span>,
+                <span key="sn" className="tnum sub2">{first + i + 1}</span>,
                 <span key="s"><strong>{r.surname}, {r.other_names}</strong><div className="sub2 tnum">{r.number}</div></span>,
                 <span key="l" className="tnum">{r.level}</span>,
                 <span key="p">{r.programme}<div className="sub2">{r.department}</div></span>,
@@ -182,6 +226,15 @@ export function PaymentReport({ report, filters, basePath, role }: { report: Pay
             })}
             texts={shown.map((r) => `${r.surname} ${r.other_names} ${r.number} ${r.programme} ${STATUS[r.status]?.[0] ?? ""} ${r.last_reference ?? ""}`)} />
         ) : <PBody><div className="sub2">No College student matches these filters.</div></PBody>}
+        {pages > 1 ? (
+          <PBody>
+            <div className="row row--inline" style={{ gap: 6 }}>
+              <Btn kind="ghost" size="sm" disabled={report.page <= 1} onClick={() => go({ page: String(report.page - 1) })}>Previous</Btn>
+              <span className="sub2 tnum">Page {report.page} of {pages}</span>
+              <Btn kind="ghost" size="sm" disabled={report.page >= pages} onClick={() => go({ page: String(report.page + 1) })}>Next</Btn>
+            </div>
+          </PBody>
+        ) : null}
         <PBody><div className="sub2">In a semester view, session payments cover the first semester before the second. <Link className="lnk" href="/finance/payments">Every confirmed payment</Link> is on the Bursary&rsquo;s payments query.</div></PBody>
       </Panel>
 

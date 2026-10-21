@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 437
+\set EXPECTED 438
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22038,6 +22038,54 @@ BEGIN
         format('clear %s | e1 %s e2 %s e3 %s e4 %s | r1 %s/%s r2 count %s | collected %s dup %s bad %s | r3 v%s replaced %s old %s/%s prev %s | nophoto %s | issued %s/%s | cards %s live %s events %s',
                n_clear, e1->>'eligible', e2->'reasons', e3->'reasons', e4->'reasons'->>0, r1->>'card_no', r1->>'state', r2->>'print_count', c1->>'state', dup, bad,
                r3->>'version', r3->>'replaced', old_state, old_reason, prev_no, r4->>'code', issued_no, issued_state, n_cards, v_live, n_events));
+END $$;
+
+-- ── V606. The College's MBBS machinery held to its own programmes; sign-in contacts counted unreachable. An invented MBBS entrant
+--          and an invented Nursing entrant of one 100 Level session: the Board's 100 Level act considers the MBBS entrant alone (the
+--          Nursing entrant is neither moved nor withdrawn nor decided on); a College year is not opened for the Nursing student
+--          (COLLEGE_NOT_MBBS). An invented student whose e-mail the sign-in help saved, unconfirmed, is counted with no e-mail on
+--          Students We Cannot Reach, and with one once it is confirmed. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); m uuid := gen_random_uuid(); n uuid := gen_random_uuid(); r uuid := gen_random_uuid(); t uuid;
+        acted int; nursing text; opened text; fac text; before_n bigint; held_n bigint; confirmed_n bigint; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM set_config('moaum.reason', 'CHECK V606', true);
+        INSERT INTO people.student (id, matric_no, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (m, 'MOAUM/CHK/06/060601', 'MOAUM/ADM/06/606001', 'CHECKV606M', 'Invented', 'C00061', 'UTME', '2091/2092', 100, 100, 'ACTIVE', now()),
+            (n, 'MOAUM/CHK/06/060602', 'MOAUM/ADM/06/606002', 'CHECKV606N', 'Invented', 'C35147', 'UTME', '2091/2092', 100, 100, 'ACTIVE', now()),
+            (r, 'MOAUM/CHK/06/060603', 'MOAUM/ADM/06/606003', 'CHECKV606R', 'Invented', 'C00023', 'UTME', '2091/2092', 100, 200, 'ACTIVE', now());
+        SELECT x.promoted + x.withdrawn + x.waiting INTO acted FROM college.confirm_100('2091/2092', 'CHECK/V606/1') x;
+        nursing := (SELECT st.current_level || ':' || st.status || ':' || (SELECT count(*) FROM college.progression_decision d WHERE d.student_id = n)
+                      FROM people.student st WHERE st.id = n);
+        UPDATE people.student SET current_level = 200 WHERE id = n;
+        BEGIN
+            PERFORM college.open_enrolment(n, 200, '2092/2093', NULL);
+            opened := 'OPENED';
+        EXCEPTION WHEN check_violation THEN opened := split_part(SQLERRM, ':', 1);
+        END;
+
+        -- Students We Cannot Reach: the sign-in help's unconfirmed e-mail is no e-mail; confirmed, it is one
+        fac := (SELECT p.faculty_code FROM ref.programme p WHERE p.code = 'C00023');
+        INSERT INTO people.student_contact (student_id, phone) VALUES (r, '08036060003');
+        before_n := (SELECT g.no_email FROM helpdesk.reach_gaps(NULL, true) g WHERE g.faculty_code = fac);
+        t := helpdesk.submit_public('Checksix Asker', 'checkv606@example.com', NULL,
+                                    jsonb_build_object('account_type', 'Student portal', 'username', 'MOAUM/CHK/06/060603'), NULL);
+        PERFORM people.contact_from_sign_in(r, 'checkv606@example.com', NULL, t);
+        held_n := (SELECT g.no_email FROM helpdesk.reach_gaps(NULL, true) g WHERE g.faculty_code = fac);
+        PERFORM people.contact_confirm_desk(r, 'EMAIL');
+        confirmed_n := (SELECT g.no_email FROM helpdesk.reach_gaps(NULL, true) g WHERE g.faculty_code = fac);
+        RAISE EXCEPTION 'the V606 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V606 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V606: the College''s 100 Level act and its years are the MBBS students'' alone, and a sign-in contact nobody confirmed is counted as no contact',
+        coalesce(acted = 1 AND nursing = '100:ACTIVE:0' AND opened = 'COLLEGE_NOT_MBBS'
+                 AND before_n IS NOT NULL AND held_n = before_n AND confirmed_n = before_n - 1, false),
+        format('acted %s | nursing %s | opened %s | no e-mail before %s, held %s, confirmed %s', acted, nursing, opened, before_n, held_n, confirmed_n));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

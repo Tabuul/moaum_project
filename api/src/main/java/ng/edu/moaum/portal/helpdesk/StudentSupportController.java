@@ -882,7 +882,9 @@ class StudentSupportController {
                 r AS (
                     SELECT s.id, upper(btrim(s.surname)) || coalesce(', ' || nullif(btrim(s.other_names), ''), '') AS name, coalesce(s.matric_no, s.admission_no) AS number,
                            s.jamb_reg_no, f.name AS faculty, d.name AS department, p.name AS programme, s.current_level AS level, s.status,
-                           nullif(btrim(coalesce(c.email, aa.email, '')), '') IS NOT NULL AS has_email, nullif(btrim(coalesce(c.phone, aa.phone, '')), '') IS NOT NULL AS has_phone,
+                           -- V606: a contact the sign-in help saved and nobody has confirmed reaches no notice (V599): not counted as one
+                           nullif(btrim(coalesce(CASE WHEN c.email_pending AND c.email_from_sign_in THEN NULL ELSE c.email END, aa.email, '')), '') IS NOT NULL AS has_email,
+                           nullif(btrim(coalesce(CASE WHEN c.phone_pending AND c.phone_from_sign_in THEN NULL ELSE c.phone END, aa.phone, '')), '') IS NOT NULL AS has_phone,
                            (SELECT t.number FROM helpdesk.ticket t WHERE t.requester_kind = 'STUDENT' AND t.requester_id = s.id AND t.status NOT IN ('RESOLVED', 'CLOSED')
                              ORDER BY t.created_at DESC LIMIT 1) AS open_ticket
                       FROM people.student s

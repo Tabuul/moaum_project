@@ -60,6 +60,35 @@ The office is `financecontroller` (V227), the Bursar within the College.
 
   The Bursar and the Students Account Officer keep them as before.
 
+## V606: the report, the College's own figures, the menu link, unconfirmed sign-in contacts
+
+- **The Student Payment Report a page at a time.** `/college/payments` answers the students a page at a time (`page`, `size` up
+  to 200), with `total`, the number the filters find. The totals and the figures by programme are always of the whole filtered
+  set. `export=true` answers every student, and the Excel and the PDF read it when asked. The live-shaped copy has 8,193 College
+  students; the whole list was 3.8 MB on every visit.
+  - A programme's **Students** button now filters the report on the server.
+  - **Students** chooses the current students (active, on probation, admitted: the default), the graduated, or both, so a
+    graduated student's fees for a session stay on the report.
+- **MBBS counted apart from the College.** The College's levels, examinations, years, postings and 100 Level rule are MBBS
+  machinery. The overview and the dashboard count MBBS students (`college.runs_programme`), with the whole College beside them
+  (`college_students`). The dashboard's fees by level and its clinical rotation count MBBS alone, as do the posting allocation
+  list and the 100 Level list.
+  - The fees by level read each MBBS student's cleared semesters (`finance.semester_cleared`) instead of two passes over every
+    student of the University; the dashboard took 6 s for that on the live-shaped copy.
+  - Three College functions are now held to the programmes the College runs:
+    - `college.open_enrolment`;
+    - `college.confirm_100`, the Board's 100 Level act. It would have promoted, or marked advised to withdraw, every College
+      entrant at 100 Level by the MBBS rule.
+    - `college.confirm_decisions`.
+
+    No College year or decision was recorded yet on the live-shaped copy.
+- **The MBBS student's menu.** A menu item may say when it shows (`MenuItem.when`), and the Shell shows it only to a person whose
+  `flags` carry it. The student menu's **College (MBBS)** item (`s/college` → `/college/student`) carries `when: "college"`. An
+  MBBS student's loader sets that flag from `collegeArea` on `GET /api/v1/me`, which is true for an MBBS student at every level.
+- **Students We Cannot Reach.** A contact the sign-in help saved and nobody has confirmed reaches no notice (V599), so the list
+  and its faculty figures (`helpdesk.reach_gaps`) count it as no contact until it is confirmed.
+
 ## Tests
 
-`CollegeStudentDashboardIT`, `FinanceControllerScopeIT`, and check.sql's V603 block.
+`CollegeStudentDashboardIT`, `FinanceControllerScopeIT`, `CollegeMbbsCountsIT`, `SignInContactsIT` (the reach list), and
+check.sql's V603 and V606 blocks.
