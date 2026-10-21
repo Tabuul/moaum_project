@@ -17,10 +17,12 @@ export default async function BroadsheetPage({ searchParams }: { searchParams: P
   const sheet = ready
     ? await api<Broadsheet>(`/api/v1/results/broadsheet?prog=${encodeURIComponent(scope.prog)}&level=${scope.level}&session=${encodeURIComponent(scope.session)}&sem=${scope.sem || "1"}&stream=${stream}`)
     : null;
+  /* V624: the offices that take a course off a broadsheet (ResultsController.OMITTERS) — the API answers for the scope */
+  const mayOmit = me.ok && ["hod", "exams", "facultyexams", "academic", "registrar", "dregistrar", "super"].includes(me.data.activeOffice ?? "");
   return (
     <Shell route="t/broadsheet" me={me.ok ? me.data : null}>
       {sheet && !sheet.ok ? <ProblemNotice problem={sheet.problem} /> : null}
-      <BroadsheetScreen scope={scope} structure={structure} sessions={sessions} sheet={sheet && sheet.ok ? sheet.data : null} stream={stream} />
+      <BroadsheetScreen scope={scope} structure={structure} sessions={sessions} sheet={sheet && sheet.ok ? sheet.data : null} stream={stream} mayOmit={mayOmit} />
     </Shell>
   );
 }

@@ -221,5 +221,36 @@ class ResultPipelineIT {
         assertThat(col.get("missing")).isEqualTo(0);
         assertThat(col.get("stage")).isEqualTo("VERIFICATION");
         assertThat(l(broadsheet.getBody().get("rows"))).allSatisfy(r -> assertThat(r.get("missing")).isEqualTo(0));
+
+        // V624: the department takes a course off its broadsheet with a reason — not a column, not counted, listed with who carries it;
+        // put back, it is a column again. A reason is needed, a course must be on the sheet, and a lecturer may not do it
+        String bs = "/api/v1/results/broadsheet";
+        Map<String, Object> key = Map.of("prog", PROGRAMME, "level", 300, "session", SESSION, "sem", 1, "course", COURSE);
+        it.db(() -> jdbc.sql("DELETE FROM assessment.broadsheet_omission WHERE programme_code = :p AND session = :s AND course_code = :c")
+                .param("p", PROGRAMME).param("s", SESSION).param("c", COURSE).update());   // an earlier run on this database
+        ResponseEntity<Map> noWhy = it.call(hod, HttpMethod.POST, bs + "/omissions", key);
+        assertThat(noWhy.getStatusCode().value()).as(String.valueOf(noWhy.getBody())).isEqualTo(422);
+        assertThat(String.valueOf(noWhy.getBody())).contains("BROADSHEET_OMIT_REASON");
+        Map<String, Object> elsewhere = new java.util.HashMap<>(key);
+        elsewhere.put("course", "ZZQ 999");
+        elsewhere.put("reason", "Not ours");
+        assertThat(String.valueOf(it.call(hod, HttpMethod.POST, bs + "/omissions", elsewhere).getBody())).contains("BROADSHEET_COURSE_NOT_ON_SHEET");
+        Map<String, Object> withWhy = new java.util.HashMap<>(key);
+        withWhy.put("reason", "Not offered by the department; registered in error");
+        assertThat(it.call(ItSupport.token("lecturer"), HttpMethod.POST, bs + "/omissions", withWhy).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> off = it.call(hod, HttpMethod.POST, bs + "/omissions", withWhy);
+        assertThat(off.getStatusCode().value()).as(String.valueOf(off.getBody())).isEqualTo(200);
+        Map<String, Object> without = it.get(hod, bs + "?prog=" + PROGRAMME + "&level=300&session=" + SESSION + "&sem=1").getBody();
+        assertThat(l(without.get("courses"))).noneMatch(c -> COURSE.equals(c.get("courseCode")));
+        Map<String, Object> listed = l(without.get("outside")).stream().filter(x -> COURSE.equals(x.get("courseCode"))).findFirst().orElseThrow();
+        assertThat(((List<?>) listed.get("students"))).hasSize(2);
+        assertThat(String.valueOf(listed.get("reason"))).contains("registered in error");
+        assertThat(l(without.get("rows"))).allSatisfy(r -> assertThat(l(r.get("marks"))).noneMatch(mk -> COURSE.equals(mk.get("courseCode"))));
+        ResponseEntity<Map> back = it.call(hod, HttpMethod.POST, bs + "/omissions/restore", key);
+        assertThat(back.getStatusCode().value()).as(String.valueOf(back.getBody())).isEqualTo(200);
+        Map<String, Object> again = it.get(hod, bs + "?prog=" + PROGRAMME + "&level=300&session=" + SESSION + "&sem=1").getBody();
+        assertThat(l(again.get("courses"))).anyMatch(c -> COURSE.equals(c.get("courseCode")));
+        assertThat(l(again.get("outside"))).isEmpty();
+        assertThat(String.valueOf(it.call(hod, HttpMethod.POST, bs + "/omissions/restore", key).getBody())).contains("BROADSHEET_COURSE_NOT_OMITTED");
     }
 }

@@ -12,6 +12,7 @@ import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { StreamTabs } from "@/components/results/StreamTabs";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { BroadsheetOmissions } from "@/components/results/BroadsheetOmissions";
 
 /** the stages a mark counts at — past the Faculty Board (ResultsService.COUNTED) */
 const COUNTED = ["RECORDS", "SENATE", "PUBLISHED"];
@@ -19,7 +20,7 @@ const COLOUR = (points: number | null | undefined) => (points == null ? "var(--m
 const UNI = () => currentInstitution().name;
 const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
-export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "REGULAR" }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null; stream?: Stream }) {
+export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "REGULAR", mayOmit = false }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null; stream?: Stream; mayOmit?: boolean }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
   const semester = (scope.sem || "1") === "1" ? "First" : "Second";
   /** the downloaded file's name, the Excel's and the PDF's alike: "Result B.Sc. POLITICAL SCIENCE 200 Level First Semester 2024-2025" */
@@ -285,6 +286,8 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
             ["Passed every course", String(sheet.passed), "var(--green-ink)", sheet.rows.length ? `${Math.round((100 * sheet.passed) / sheet.rows.length)}% of the level` : "—"],
             ["Carrying over", String(sheet.carrying), sheet.carrying ? "var(--red-ink)" : null, sheet.pendingSets ? `${sheet.pendingSets} set${sheet.pendingSets === 1 ? "" : "s"} still in the chain` : "One or more F grades"],
           ]} />
+          {/* V624: courses the department takes off this sheet, and courses outside the programme flagged for it */}
+          <BroadsheetOmissions sheet={sheet} prog={scope.prog} level={scope.level} session={scope.session} sem={scope.sem || "1"} stream={stream} mayOmit={mayOmit} />
           {sheet.coverage ? (() => {
             /* V318: the live coverage — the sheet fills as the course sheets are entered; every cell a registration expects is
                counted, by course column and by candidate, so what is still out is named before the Board sits */

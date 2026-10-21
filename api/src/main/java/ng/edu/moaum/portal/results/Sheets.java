@@ -191,7 +191,13 @@ public final class Sheets {
     /** one candidate, one course, on the broadsheet */
     public record BroadsheetCell(UUID studentId, String number, String surname, String otherNames, String courseCode,
                                  String title, int units, String kind, String stage, Integer total, String grade, BigDecimal points, String outcome,
-                                 String entryMode, int courseLevel, UUID sheetId) {
+                                 String entryMode, int courseLevel, UUID sheetId, boolean inProgramme) {
+    }
+
+    /** V624: a course the department took off this broadsheet — not a column of it, nor counted in it — listed under it with the
+     *  students who carry it ("number — name"), the reason, who took it off and when; the record is put right elsewhere */
+    public record BroadsheetOutside(String courseCode, String title, int units, List<String> students, String reason, String omittedBy,
+                                    OffsetDateTime omittedAt) {
     }
 
     /** V318: how far one course column of the broadsheet is — its roll in this class, the marks in, the marks still out */
@@ -208,7 +214,9 @@ public final class Sheets {
     public record BroadsheetMissing(UUID studentId, String number, String name, List<String> courses) {
     }
 
-    public record BroadsheetCourse(String courseCode, String title, int units, String kind, int level) {
+    /** inProgramme (V624): registered under the programme's basis, bound to the programme, or a general course — false flags a
+     *  course outside the programme the department may take off the sheet */
+    public record BroadsheetCourse(String courseCode, String title, int units, String kind, int level, boolean inProgramme) {
     }
 
     public record BroadsheetMark(String courseCode, String stage, Integer total, String grade, BigDecimal points, String outcome, boolean counted) {
@@ -226,7 +234,8 @@ public final class Sheets {
 
     public record Broadsheet(String programme, int level, String session, int semester, List<BroadsheetCourse> courses,
                              List<BroadsheetRow> rows, BigDecimal meanGpa, long passed, long carrying, long pendingSets,
-                             List<GradeBand> bands, List<ClassBand> classes, String gradingInstrument, BroadsheetCoverage coverage) {
+                             List<GradeBand> bands, List<ClassBand> classes, String gradingInstrument, BroadsheetCoverage coverage,
+                             List<BroadsheetOutside> outside) {
     }
 
     public record SenateFaculty(String facultyCode, String facultyName, long sets, long atSenate, long published,

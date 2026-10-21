@@ -399,6 +399,27 @@ class ResultsController {
         return service.broadsheet(prog, level, session, sem, stream);   // V381: the full-time students' unless the Centre's is asked for
     }
 
+    /** V624: who takes a course off a programme's broadsheet and puts it back — the department and the offices that keep the sheet,
+     *  each within the programmes of their own bound */
+    private static final String OMITTERS =
+            "hasAnyAuthority('OFFICE_hod','OFFICE_exams','OFFICE_facultyexams','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+
+    /** V624: a course taken off this broadsheet, with its reason; the registrations and results are untouched */
+    @PostMapping("/broadsheet/omissions")
+    @PreAuthorize(OMITTERS)
+    Map<String, Object> omitFromBroadsheet(@Valid @RequestBody ResultsService.OmissionIn body) {
+        scope.bound(null, null, body.prog());
+        return service.omitFromBroadsheet(body);
+    }
+
+    /** V624: the course put back on this broadsheet */
+    @PostMapping("/broadsheet/omissions/restore")
+    @PreAuthorize(OMITTERS)
+    Map<String, Object> restoreToBroadsheet(@Valid @RequestBody ResultsService.OmissionIn body) {
+        scope.bound(null, null, body.prog());
+        return service.restoreToBroadsheet(body);
+    }
+
     @GetMapping("/senate")
     @PreAuthorize(READERS)
     Sheets.Senate senate(@RequestParam String session, @RequestParam int sem,

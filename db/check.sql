@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 451
+\set EXPECTED 452
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -22963,6 +22963,45 @@ BEGIN
         format('partitions %s, indexed %s, parent valid %s, student sign-ins indexed %s | counted %s of %s before sealing, %s of %s after',
                parts, indexed, parent_valid, student_ix, before_seal, rows_before, after_seal, rows_after));
 END $$;
+-- ── V624. A course taken off a programme's broadsheet by the department: one row for a sheet and a course (the same again is
+--          refused), a reason of at least three letters, a stream the portal knows, and the row on the audit spine. The block undoes
+--          its writes ──
+DO $$
+DECLARE dup text := 'kept'; blank text := 'kept'; bad_stream text := 'kept'; triggers int; rows_in int; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    PERFORM set_config('moaum.reason', 'CHECK V624', true);
+    INSERT INTO assessment.broadsheet_omission (programme_code, level, session, semester, course_code, reason)
+    VALUES ('C00023', 100, '9924/9925', 1, 'ZZO 101', 'Registered in error');
+    BEGIN
+        INSERT INTO assessment.broadsheet_omission (programme_code, level, session, semester, course_code, reason)
+        VALUES ('C00023', 100, '9924/9925', 1, 'ZZO 101', 'Again');
+    EXCEPTION WHEN unique_violation THEN dup := 'refused';
+    END;
+    BEGIN
+        INSERT INTO assessment.broadsheet_omission (programme_code, level, session, semester, course_code, reason)
+        VALUES ('C00023', 100, '9924/9925', 1, 'ZZO 102', '  ');
+    EXCEPTION WHEN check_violation THEN blank := 'refused';
+    END;
+    BEGIN
+        INSERT INTO assessment.broadsheet_omission (programme_code, level, session, semester, stream, course_code, reason)
+        VALUES ('C00023', 100, '9924/9925', 1, 'NIGHT', 'ZZO 103', 'Not ours');
+    EXCEPTION WHEN check_violation THEN bad_stream := 'refused';
+    END;
+    SELECT count(*) INTO rows_in FROM assessment.broadsheet_omission WHERE session = '9924/9925';
+    SELECT count(*) INTO triggers FROM pg_trigger WHERE tgrelid = 'assessment.broadsheet_omission'::regclass AND NOT tgisinternal;
+    RAISE EXCEPTION 'the V624 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V624 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V624: a course taken off a broadsheet is one row for the sheet and the course, with a reason and a known stream, on the audit spine',
+        coalesce(rows_in = 1 AND dup = 'refused' AND blank = 'refused' AND bad_stream = 'refused' AND triggers >= 1, false),
+        format('rows %s duplicate %s blank reason %s stream %s triggers %s', rows_in, dup, blank, bad_stream, triggers));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

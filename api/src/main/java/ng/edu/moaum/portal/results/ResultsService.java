@@ -867,8 +867,62 @@ public class ResultsService {
     private static final List<String> HELD = List.of("WITHHELD", "INCOMPLETE", "MALPRACTICE");
 
     @Transactional(readOnly = true)
+    public record OmissionIn(@NotBlank String prog, @NotNull Integer level, @NotBlank String session, @NotNull @Min(1) @Max(3) Integer sem,
+                             String stream, @NotBlank String course, String reason) {
+    }
+
+    /** V624: the department takes a course off this broadsheet, with its reason — a course on the sheet (some student of the class
+     *  has it on an approved registration); the registrations and results are untouched */
+    @Transactional
+    public Map<String, Object> omitFromBroadsheet(OmissionIn in) {
+        String stream = in.stream() == null || in.stream().isBlank() ? "REGULAR" : in.stream();
+        String reason = in.reason() == null ? "" : in.reason().trim();
+        if (reason.length() < 3) {
+            throw new DomainRuleViolation("BROADSHEET_OMIT_REASON", "Say why the course is taken off this broadsheet.",
+                    new DomainRuleViolation.Remedy("Give the reason (for example: registered in error, a student of another programme).", "The department"));
+        }
+        String course = in.course().trim().toUpperCase();
+        boolean onSheet = repo.broadsheet(in.prog(), in.level(), in.session(), in.sem(), stream).stream().anyMatch(c -> c.courseCode().equals(course));
+        if (!onSheet) {
+            throw new DomainRuleViolation("BROADSHEET_COURSE_NOT_ON_SHEET", course + " is not on this broadsheet: no student of the class has it on an approved registration.",
+                    new DomainRuleViolation.Remedy("Choose a course that is a column of this broadsheet.", "The department"));
+        }
+        UUID by = AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
+        String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse(null);
+        repo.omitFromBroadsheet(in.prog(), in.level(), in.session(), in.sem(), stream, course, reason, by, office);
+        return Map.of("course", course, "omitted", true);
+    }
+
+    /** V624: the course put back on this broadsheet */
+    @Transactional
+    public Map<String, Object> restoreToBroadsheet(OmissionIn in) {
+        String stream = in.stream() == null || in.stream().isBlank() ? "REGULAR" : in.stream();
+        String course = in.course().trim().toUpperCase();
+        if (repo.restoreToBroadsheet(in.prog(), in.level(), in.session(), in.sem(), stream, course) == 0) {
+            throw new DomainRuleViolation("BROADSHEET_COURSE_NOT_OMITTED", course + " was not taken off this broadsheet.",
+                    new DomainRuleViolation.Remedy("Nothing to put back.", "The department"));
+        }
+        return Map.of("course", course, "omitted", false);
+    }
+
     public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem, String stream) {
-        List<Sheets.BroadsheetCell> cells = repo.broadsheet(prog, level, session, sem, stream);
+        List<Sheets.BroadsheetCell> all = repo.broadsheet(prog, level, session, sem, stream);
+        /* V624: the broadsheet is the programme's. A course the department took off it (a Linguistics and a Political Science load on
+           the Environmental Management and Toxicology sheet: a registration made in error, or a student placed in the wrong programme)
+           is left out before anything is counted — its column, the semester figures, the remark, the coverage — and listed under it
+           with the students who carry it, the reason, who and when, for the record to be put right (Programme Swap, or the course
+           dropped). No rule takes a course off by itself: a course a few of the class rightly take (an Education student's teaching
+           subject, a borrowed elective) looks the same. The student's own record is unchanged. */
+        List<ResultsRepository.Omission> omissions = repo.broadsheetOmissions(prog, level, session, sem, stream);
+        java.util.Set<String> stray = omissions.stream().map(ResultsRepository.Omission::courseCode).collect(java.util.stream.Collectors.toSet());
+        List<Sheets.BroadsheetOutside> outside = omissions.stream().map(o -> new Sheets.BroadsheetOutside(o.courseCode(), o.title(), o.units(),
+                all.stream().filter(c -> c.courseCode().equals(o.courseCode())).map(c -> c.number() + " — " + c.surname() + ", " + c.otherNames())
+                        .distinct().sorted(String.CASE_INSENSITIVE_ORDER).toList(),
+                o.reason(), o.omittedBy(), o.omittedAt())).toList();
+        List<Sheets.BroadsheetCell> cells = stray.isEmpty() ? all : all.stream().filter(c -> !stray.contains(c.courseCode())).toList();
+        // V624: a course in the programme when any registration of it is — the flag the sheet shows for a course the department may take off
+        java.util.Set<String> inProgramme = cells.stream().filter(Sheets.BroadsheetCell::inProgramme).map(Sheets.BroadsheetCell::courseCode)
+                .collect(java.util.stream.Collectors.toSet());
         Map<String, Integer> courses = new LinkedHashMap<>();
         Map<String, String> courseKind = new LinkedHashMap<>();
         Map<String, Integer> courseLevel = new LinkedHashMap<>();
@@ -1053,7 +1107,8 @@ public class ResultsService {
         }
         rows.sort(java.util.Comparator.comparing(Sheets.BroadsheetRow::name, String.CASE_INSENSITIVE_ORDER));
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
-        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()), courseLevel.getOrDefault(x.getKey(), level))).toList();
+        List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()), courseLevel.getOrDefault(x.getKey(), level),
+                inProgramme.contains(x.getKey()))).toList();
         long cellsAll = cells.size();
         long cellsIn = cells.stream().filter(c -> c.outcome() != null).count();
         List<Sheets.BroadsheetCourseCoverage> courseCoverage = courseCov.entrySet().stream()
@@ -1067,7 +1122,7 @@ public class ResultsService {
                 courseCoverage.stream().filter(x -> "PUBLISHED".equals(x.stage())).count(), courseCoverage, missingCandidates);
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
                 repo.gradeBands("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), classes,
-                repo.gradingInstrument("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), coverage);   // V389: the School's scale on its broadsheet
+                repo.gradingInstrument("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), coverage, outside);   // V389: the School's scale on its broadsheet
     }
 
     /* ── Senate: the schedule, and the minute that publishes (proto/part26 tSenate, tPublish) ── */

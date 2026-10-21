@@ -648,7 +648,16 @@ class ResultsRepository {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode,
                        o.course_code, coalesce(o.title, c.title) AS title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
-                       cf.sheet_id
+                       cf.sheet_id,
+                       -- 21 Oct 2026: the course is the programme's — registered under the programme's basis (V620: the binding as it
+                       -- stood when the student registered, so a binding removed later never takes it off), or bound to it now at any
+                       -- level (a carry-over; its BSU-/MOAU- twin counts), or a general course (GST, EPS) every programme takes
+                       (e.basis IS NOT NULL OR c.kind = 'GST' OR regexp_replace(o.course_code, '^(BSU|MOAU)-', '') ~ '^(GST|EPS) '
+                        OR EXISTS (SELECT 1 FROM catalogue.course_offer co
+                                    WHERE co.programme_code = :prog
+                                      AND co.course_code IN (o.course_code, regexp_replace(o.course_code, '^(BSU|MOAU)-', ''),
+                                                             'BSU-' || regexp_replace(o.course_code, '^(BSU|MOAU)-', ''),
+                                                             'MOAU-' || regexp_replace(o.course_code, '^(BSU|MOAU)-', '')))) AS in_programme
                   FROM registration.course_registration r
                   JOIN people.student st ON st.id = r.student_id
                   JOIN registration.entry e ON e.registration_id = r.id AND e.status = 'APPROVED'
@@ -660,6 +669,43 @@ class ResultsRepository {
                  ORDER BY st.surname, st.other_names, o.course_code
                 """).param("prog", prog).param("level", level).param("session", session).param("sem", sem).param("stream", stream)
                 .query(Sheets.BroadsheetCell.class).list();
+    }
+
+    /** V624: a course the department took off a broadsheet */
+    record Omission(String courseCode, String title, int units, String reason, String omittedBy, java.time.OffsetDateTime omittedAt) {
+    }
+
+    List<Omission> broadsheetOmissions(String prog, int level, String session, int sem, String stream) {
+        return jdbc.sql("""
+                SELECT bo.course_code, coalesce(c.title, bo.course_code) AS title, coalesce(c.units, 0) AS units, bo.reason,
+                       coalesce(p.surname || ', ' || p.given_names, bo.omitted_office) AS omitted_by, bo.omitted_at
+                  FROM assessment.broadsheet_omission bo
+                  LEFT JOIN catalogue.course c ON c.code = bo.course_code
+                  LEFT JOIN iam.person p ON p.id = bo.omitted_by
+                 WHERE bo.programme_code = :prog AND bo.level = :level AND bo.session = :session AND bo.semester = :sem AND bo.stream = :stream
+                 ORDER BY bo.course_code
+                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem).param("stream", stream)
+                .query(Omission.class).list();
+    }
+
+    /** V624: take a course off a broadsheet with its reason (taken off again, the reason is the latest) */
+    void omitFromBroadsheet(String prog, int level, String session, int sem, String stream, String course, String reason, UUID by, String office) {
+        jdbc.sql("""
+                INSERT INTO assessment.broadsheet_omission (programme_code, level, session, semester, stream, course_code, reason, omitted_by, omitted_office)
+                VALUES (:prog, :level, :session, :sem, :stream, :course, :reason, :by, :office)
+                ON CONFLICT (programme_code, level, session, semester, stream, course_code)
+                DO UPDATE SET reason = EXCLUDED.reason, omitted_by = EXCLUDED.omitted_by, omitted_office = EXCLUDED.omitted_office, omitted_at = now()
+                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem).param("stream", stream)
+                .param("course", course).param("reason", reason).param("by", by).param("office", office).update();
+    }
+
+    /** V624: put a course back on a broadsheet; the number of rows removed (0 when it was not off) */
+    int restoreToBroadsheet(String prog, int level, String session, int sem, String stream, String course) {
+        return jdbc.sql("""
+                DELETE FROM assessment.broadsheet_omission
+                 WHERE programme_code = :prog AND level = :level AND session = :session AND semester = :sem AND stream = :stream AND course_code = :course
+                """).param("prog", prog).param("level", level).param("session", session).param("sem", sem).param("stream", stream)
+                .param("course", course).update();
     }
 
     /** a student in the class — registered at this level this session in another semester, or at this level now in the

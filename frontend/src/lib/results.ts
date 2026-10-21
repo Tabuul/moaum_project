@@ -320,9 +320,11 @@ export interface BroadsheetCoverage {
   setsPublished: number; courses: BroadsheetCourseCoverage[]; candidates: { studentId: string; number: string; name: string; courses: string[] }[];
 }
 export interface Broadsheet {
-  programme: string; level: number; session: string; semester: number; courses: { courseCode: string; title: string; units: number; kind: string; level: number }[]; rows: BroadsheetRow[];
+  programme: string; level: number; session: string; semester: number; courses: { courseCode: string; title: string; units: number; kind: string; level: number; inProgramme?: boolean }[]; rows: BroadsheetRow[];
   meanGpa: number | null; passed: number; carrying: number; pendingSets: number; bands: GradeBand[]; classes: ClassBand[]; gradingInstrument: string | null;
   coverage?: BroadsheetCoverage;
+  /** V624: courses the department took off this sheet — with who carries them, the reason, who and when */
+  outside?: { courseCode: string; title: string; units: number; students: string[]; reason: string; omittedBy: string | null; omittedAt: string | null }[];
 }
 export interface SenateFaculty { facultyCode: string; facultyName: string; sets: number; atSenate: number; published: number; outstanding: number; candidates: number }
 export interface SenateMinute { minute: string; firstPublishedAt: string; lastPublishedAt: string; sets: number; candidates: number }
