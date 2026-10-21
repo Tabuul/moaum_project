@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 434
+\set EXPECTED 435
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21820,6 +21820,39 @@ BEGIN
                verd1, verd2, verd3, conf1, v_ref, r->>'outcome', st_status, g_state, g_batch, g_spill, g_minute, n_notice, n_clear,
                co_err, tally.selected, tally.eligible, tally.graduated, tally.rejected, told, charges_before, charges_after, ref_err, draft_err, again, perm_err,
                st_after, g_after, n_corr, corr->>'graduation_session', approved, co_graduated));
+END $$;
+-- ── V604: the registration draft refused to a graduated record only ──
+-- A deferred student's draft for a semester is still made in the database (the deferment engine's academic effect makes it; the
+-- student's own doors judge a deferred status in the API), while a graduated record's draft is refused on every path. The block
+-- undoes its writes.
+DO $$
+DECLARE ug text; v_ses text; df uuid := gen_random_uuid(); gr uuid := gen_random_uuid(); v_draft uuid; gr_err text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V604', true);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        ug := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (df, 'MOAUM/ADM/60/960401', 'MOAUM/ZZQ/60/96041', 'CHECKV604', 'Deferred', ug, 'UTME', v_ses, 100, 200, 'DEFERRED', now()),
+               (gr, 'MOAUM/ADM/60/960402', 'MOAUM/ZZQ/60/96042', 'CHECKV604', 'Graduated', ug, 'UTME', v_ses, 100, 400, 'ACTIVE', now());
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM people.change_status(gr, 'GRADUATED', 'SEN/CHK/604', (now() AT TIME ZONE 'Africa/Lagos')::date, 'check V604');
+        v_draft := registration.student_draft(df, v_ses, 2);
+        BEGIN
+            PERFORM registration.student_draft(gr, v_ses, 1);
+            gr_err := 'NOT REFUSED';
+        EXCEPTION WHEN OTHERS THEN gr_err := split_part(SQLERRM, ':', 1);
+        END;
+        RAISE EXCEPTION 'the V604 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V604 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V604: a deferred student''s registration draft is still made in the database (the deferment engine''s academic effect makes it; the API judges the status at the student''s doors), while a graduated record''s draft is refused on every path',
+        v_draft IS NOT NULL AND gr_err = 'REG_STUDENT_NOT_ELIGIBLE',
+        format('deferred draft %s | graduated %s', v_draft IS NOT NULL, gr_err));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

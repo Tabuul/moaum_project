@@ -98,8 +98,10 @@ audited graduand by this same act, so both doors behave alike.
   `SCHOOL_FEES_CLOSED_GRADUATED: This academic record has been marked as graduated. New school-fee payments are not available
   for this academic enrollment.` — before any reference or gateway call. Sessions up to graduation keep their history and may
   still be settled; transcript, certificate and every other purpose payment (`finance.new_purpose_reference`) is untouched.
-- `registration.student_draft` refuses a student not in study (`REG_STUDENT_NOT_ELIGIBLE: Course registration is unavailable because
-  this academic record has been graduated.`), so no path — the student's save, add, add-other, submit, ICT Support's add — makes a
+- `registration.student_draft` refuses a graduated record (`REG_STUDENT_NOT_ELIGIBLE: Course registration is unavailable because
+  this academic record has been graduated.`; V604 — V602 had refused every status outside study, which broke the deferment
+  engine's own draft for the semester a deferment leaves open; a deferred, suspended or dormant student is judged at the
+  student's doors in the API as before), so no path — the student's save, add, add-other, submit, ICT Support's add — makes a
   registration or a carry-over entry for a graduated record. The API's register view for a graduated student says `closed` with
   the words, sends no menu and no carry-over (`outstanding` empty), and reads the semester's registration, if any, as history; the
   course search is refused the same way. The student's screens read "You have graduated" with the history, Documents and
