@@ -9,6 +9,7 @@ import { Bar } from "@/components/proto/blocks";
 import { money } from "@/lib/format";
 import { when } from "@/lib/bursary";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
+import { BursaryAudit } from "./BursaryAudit";
 
 /** the CCE applicant fees as the Bursary's dashboard reads them (V414): the CCE session's fees and whether CCE is in use */
 interface CceFeesRead {
@@ -89,6 +90,8 @@ export async function BursarDashboard({ session }: { session: string }) {
           <DTable cols={["When", "Payer", "Purpose", "Channel", "Amount|num", "Receipt|num"]} rows={v.data.recent.map((r) => [<span className="tnum sub2" key="w">{when(r.confirmed_at)}</span>, <Two key="p" a={r.payer} b={r.number} />, <span className="sub2" key="u">{r.purpose}</span>, <span className="sub2" key="c">{r.channel}</span>, <b className="tnum" key="a">{money(Number(r.amount))}</b>, <span className="tnum sub2" key="r">{r.receipt_no ?? r.reference}</span>])} />
         ) : <PBody><div className="sub2">Nothing confirmed in the last seven days. <Link href="/finance/ledger">The full ledger</Link>.</div></PBody>}
       </Panel>
+      {/* the users with the Bursar's role and the Bursary's audit trail */}
+      <BursaryAudit />
     </>
   );
 }
