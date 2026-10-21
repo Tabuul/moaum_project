@@ -443,7 +443,7 @@ class StudentSupportController {
                 """).param("s", id).param("ses", session).param("sem", semester).query().listOfRows().stream().findFirst().orElse(null);
         out.put("registration", reg);
         out.put("courses", reg == null ? List.of() : jdbc.sql("""
-                SELECT e.offering_id, o.course_code, c.title, e.units, e.entry_type, c.kind, coalesce(co.basis, c.kind) AS basis, c.level, o.semester, o.session,
+                SELECT e.offering_id, o.course_code, c.title, e.units, e.entry_type, c.kind, coalesce(e.basis, c.kind) AS basis, c.level, o.semester, o.session,
                        e.status, coalesce(r.approved_at, r.submitted_at) AS registered_at, e.support_override_at, e.support_override_reason,
                        EXISTS (SELECT 1 FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id WHERE sc.student_id = r.student_id AND sh.offering_id = e.offering_id) AS marked
                   FROM registration.entry e
@@ -451,7 +451,6 @@ class StudentSupportController {
                   JOIN catalogue.offering o ON o.id = e.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN people.student s ON s.id = r.student_id
-                  LEFT JOIN catalogue.course_offer co ON co.course_code = c.code AND co.programme_code = s.programme_code AND co.level = r.level
                  WHERE e.registration_id = :r
                  ORDER BY (e.status = 'DROPPED'), o.course_code
                 """).param("r", reg.get("id")).query().listOfRows());

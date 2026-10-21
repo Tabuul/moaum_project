@@ -472,7 +472,8 @@ class CatalogueController {
         return Map.of("programme", p, "course", c, "level", body.level(), "basis", basis, "track", track == null ? "" : track, "units", units);
     }
 
-    /** unbind a course from a programme at a level — refused while a student of that programme and level is registered on it this session */
+    /** unbind a course from a programme at a level — never refused for the students registered on it (V620): each keeps the
+     *  registration as it was made; the binding goes on the record with the registrations it carried */
     @DeleteMapping("/structure/bind")
     @PreAuthorize(STRUCTURE)
     @Transactional
@@ -483,25 +484,14 @@ class CatalogueController {
         assertHodOwns(programmeDept(p));
         access.assertProgramme(p);                          // V471
         java.util.UUID on = access.ticket(ticket);
-        long live = jdbc.sql("""
-                SELECT count(*) FROM registration.entry e
-                  JOIN registration.course_registration r ON r.id = e.registration_id
-                  JOIN catalogue.offering o ON o.id = e.offering_id
-                  JOIN people.student st ON st.id = r.student_id
-                 WHERE o.course_code = :c AND st.programme_code = :p AND r.level = :l
-                   AND e.status IN ('REGISTERED','APPROVED') AND r.status <> 'RETURNED'
-                   AND r.session = (SELECT name FROM policy.academic_session WHERE state = 'CURRENT' LIMIT 1)
-                """).param("c", c).param("p", p).param("l", level).query(Long.class).single();
-        if (live > 0) {
-            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_BOUND_IN_USE",
-                    live + " student" + (live == 1 ? "" : "s") + " of " + p + " at " + level + " level " + (live == 1 ? "is" : "are") + " registered on " + c + " this session; the binding stays while they are.",
-                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Unbind it after the session, or have the registrations amended first.", "Head of Department"));
-        }
-        int n = jdbc.sql("DELETE FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :p AND level = :l")
-                .param("c", c).param("p", p).param("l", level).update();
-        if (n == 0) throw new ng.edu.moaum.portal.shared.NotFound("binding", c + " → " + p + " at " + level);
-        access.note(on, "Removed " + c + " from " + p + " at " + level + " level (the course itself kept)");
-        return Map.of("programme", p, "course", c, "level", level, "removed", n);
+        boolean bound = jdbc.sql("SELECT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = :c AND programme_code = :p AND level = :l)")
+                .param("c", c).param("p", p).param("l", level).query(Boolean.class).single();
+        if (!bound) throw new ng.edu.moaum.portal.shared.NotFound("binding", c + " → " + p + " at " + level);
+        // V620: never refused for the students registered on it — each keeps the registration as it was made (its units, its type,
+        // the programme's basis for the course at the time); the binding goes on the record with the registrations it carried
+        String outcome = jdbc.sql("SELECT catalogue.unbind_offer(:c, :p, :l, NULL)").param("c", c).param("p", p).param("l", level).query(String.class).single();
+        access.note(on, "Removed " + c + " from " + p + " at " + level + " level (" + outcome + "; the course itself kept, and every student registered on it keeps the registration as made)");
+        return Map.of("programme", p, "course", c, "level", level, "removed", 1, "outcome", outcome);
     }
 
     /** V464: what setting a programme's units for a course at a level would reach — the units now and after, how many
@@ -572,11 +562,14 @@ class CatalogueController {
     }
 
     public record UnitsIn(@NotBlank @Size(max = 12) String programme, @NotBlank @Size(max = 24) String course,
-                          @NotNull @Min(100) @Max(900) Integer level, @NotNull @Min(0) @Max(12) Integer units) {
+                          @NotNull @Min(100) @Max(900) Integer level, @NotNull @Min(0) @Max(12) Integer units,
+                          /** V620: the desk's own choice to carry the change into the registrations not yet examined; off, none is reached */
+                          Boolean applyToRegistrations) {
     }
 
     /** V464: set the units a programme takes a course at, at a level — the binding's basis and track untouched, the course's own
-     *  number taking the course's units again; the registrations not yet examined follow, and the answer says how many */
+     *  number taking the course's units again. V620: the registrations already made keep their units unless the desk says the
+     *  ones not yet examined follow (applyToRegistrations); the answer says how many followed and how many keep theirs */
     @PostMapping("/structure/units")
     @PreAuthorize(STRUCTURE)
     @Transactional
@@ -592,8 +585,14 @@ class CatalogueController {
                  WHERE co.course_code = :c AND co.programme_code = :p AND co.level = :l
                 """).param("u", body.units()).param("c", c).param("p", p).param("l", body.level()).update();
         int units = jdbc.sql("SELECT catalogue.units_for(:c, :p, :l)").param("c", c).param("p", p).param("l", body.level()).query(Integer.class).single();
-        access.note(on, p + " takes " + c + " at " + body.level() + " level at " + units + " units");
-        return Map.of("programme", p, "course", c, "level", body.level(), "units", units, "followed", impact.get("follow"), "kept", impact.get("kept"));
+        // V620: the binding's units reach no registration by themselves; the desk carries them into the registrations not yet
+        // examined (catalogue.reflect_units: a session not closed, a class not examined) only as its own choice
+        boolean apply = Boolean.TRUE.equals(body.applyToRegistrations());
+        int followed = apply ? jdbc.sql("SELECT catalogue.reflect_units(:c, :p, NULL)").param("c", c).param("p", p).query(Integer.class).single() : 0;
+        int kept = ((Number) impact.get("follow")).intValue() + ((Number) impact.get("kept")).intValue() - followed;
+        access.note(on, p + " takes " + c + " at " + body.level() + " level at " + units + " units"
+                + (followed > 0 ? "; " + followed + " registration" + (followed == 1 ? "" : "s") + " not yet examined followed" : "; the registrations already made keep their units"));
+        return Map.of("programme", p, "course", c, "level", body.level(), "units", units, "followed", followed, "kept", kept, "applied", apply);
     }
 
     /** a course anywhere in the University, by code or title, for the structure's picker */

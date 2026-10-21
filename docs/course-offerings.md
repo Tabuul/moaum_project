@@ -185,3 +185,32 @@ the aliases.
 **Tests.** check.sql — the V386 property (both semesters opened and registered once, resolution, the guard, the upload, the
 twins listed, the dry run, the merge, the alias, the family refusal; 228); the V333 property makes its deliberate twin with
 the guard off, as the old data was. `CourseMergeIT` through the API.
+
+## 11. A binding removed or edited never reaches a registered student (V620)
+
+The University's word of 21 October 2026: removing a binding, or editing it, never affects the students registered on the
+course. Until V620 a registered entry's category (core, elective, GST) was read from the live binding each time it was shown, so
+a basis edited or a binding removed changed what a student had registered; a binding's units edited rewrote the units of every
+registration not yet examined (V464); an unbinding was refused while students were registered on it (`CAT_BOUND_IN_USE`) and,
+once allowed, left those students' entries off their register and lost on the next save.
+
+- **The entry carries what it was registered as.** `registration.entry.basis` holds the programme's basis for the course as
+  the student registered it — the binding at the registration's level at the time — filled by `trg_entry_basis_snapshot` on
+  every new entry and, once, for every entry already made from the binding as it stood (what the readers read until then,
+  frozen). The student's register and history, ICT Support's view, the class roll and the carry-over rule
+  (`registration.is_elective_for`: the student's own registration first) read the entry, never today's binding.
+- **The choice saved again keeps it.** `registration.student_choose` keeps an entry already on the registration and still
+  chosen as it was registered — its units, its type, its basis — whatever its binding has become; only an entry the student
+  unticks goes. The register lists a course registered under a binding since changed or removed beside the menu, "registered
+  before your programme's structure changed; kept as registered", counted and sent on save; a course already on the
+  registration is grouped and counted as registered, not as the menu reads its binding today.
+- **Unbinding is never refused for registered students.** `catalogue.unbind_offer` and both doors (`DELETE /structure/bind`,
+  which now goes through it, and `DELETE /courses/{code}/offers`) end the binding and keep it on `course_offer_history` with
+  the registrations it carried (`ENDED`), or none (`REMOVED`).
+- **A binding's units reach no registration by themselves.** The trigger that carried them into the registrations not yet
+  examined is dropped. The Change modal's tick "Also change the N registrations not yet examined" (`applyToRegistrations` on
+  `POST /structure/units`) is the desk's own act, calling `catalogue.reflect_units`; the answer says how many followed and how
+  many keep theirs. The course's own units corrected still reach the registrations not yet examined (V465), and an examined
+  class is corrected through the amendment chain as before.
+
+Tests: `check.sql` V620 (and the V464 property carries the change by the desk's act); `BindingKeptForRegisteredIT` through the API.

@@ -414,7 +414,8 @@ class CourseOfferingController {
         return out;
     }
 
-    /** end a binding — the programme's department (or its Dean, or a central office) decides what its programme offers */
+    /** end a binding — the programme's department (or its Dean, or a central office) decides what its programme offers; never
+     *  refused for the students registered on it (V620): each keeps the registration as it was made */
     @DeleteMapping("/courses/{code}/offers")
     @PreAuthorize(KEEPERS)
     @Transactional
@@ -432,7 +433,7 @@ class CourseOfferingController {
         }
         String outcome = jdbc.sql("SELECT catalogue.unbind_offer(:c, :p, :l, :r)").param("c", c).param("p", prog).param("l", level)
                 .param("r", blank(reason), Types.VARCHAR).query(String.class).single();
-        access.note(on, "Removed " + c + " from " + prog + " at " + level + " level (" + outcome + "; the course itself kept)");
+        access.note(on, "Removed " + c + " from " + prog + " at " + level + " level (" + outcome + "; the course itself kept, and every student registered on it keeps the registration as made)");
         return Map.of("course", c, "programme", prog, "level", level, "outcome", outcome);
     }
 

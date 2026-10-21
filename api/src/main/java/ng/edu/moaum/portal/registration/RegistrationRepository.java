@@ -215,15 +215,13 @@ class RegistrationRepository {
         return jdbc.sql("""
                 SELECT s.id AS student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname, s.other_names,
                        s.programme_code, p.name AS programme_name, p.dept_code, r.level,
-                       coalesce(cof.basis, 'Borrowed') AS basis,
+                       coalesce(e.basis, 'Borrowed') AS basis,
                        clearance.is_clear(s.id, 'EXAMINATION') AS cleared
                   FROM registration.entry e
                   JOIN registration.course_registration r ON r.id = e.registration_id
                   JOIN people.student s ON s.id = r.student_id
                   JOIN ref.programme p ON p.code = s.programme_code
                   JOIN catalogue.offering o ON o.id = e.offering_id
-                  LEFT JOIN catalogue.course_offer cof ON cof.course_code = o.course_code
-                                                       AND cof.programme_code = s.programme_code AND cof.level = r.level
                  WHERE e.offering_id = :o AND e.status = 'APPROVED' AND r.status IN ('APPROVED','LOCKED')
                  ORDER BY s.surname, s.other_names
                 """).param("o", offeringId).query(ClassList.Row.class).list();

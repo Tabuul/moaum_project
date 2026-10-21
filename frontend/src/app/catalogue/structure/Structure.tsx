@@ -190,7 +190,7 @@ export function Structure({ programmes, prog, data, problem, may, canCreate = fa
 
   function unbind(r: StructureRow) {
     if (!data) return;
-    if (!window.confirm(`Remove ${r.code} from ${data.programme.code} at ${r.level} level? Students of the programme at that level will no longer see it at registration. The course itself stays in the University's course list, and every registration and result that carries it stays as it is.`)) return;
+    if (!window.confirm(`Remove ${r.code} from ${data.programme.code} at ${r.level} level? Students of the programme at that level will no longer see it at registration. The course itself stays in the University's course list; a student already registered on it keeps the registration as it was made, and every result that carries it stays.`)) return;
     void call("DELETE", `/structure/bind?programme=${encodeURIComponent(data.programme.code)}&course=${encodeURIComponent(r.code)}&level=${r.level}`, null,
       `${r.code} removed from ${data.programme.code} at ${r.level} level`);
   }

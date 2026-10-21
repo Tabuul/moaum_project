@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 448
+\set EXPECTED 449
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -13148,7 +13148,7 @@ DECLARE who uuid := gen_random_uuid(); v_dept text; p1 text; p2 text; p4 text; v
         v_off3 uuid := gen_random_uuid();
         s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
         r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); r3 uuid := gen_random_uuid(); r4 uuid := gen_random_uuid();
-        u_p1 int; u_p2 int; e1_a int; e2_a int; e3_a int; menu_p2 int; e1_b int; e2_b int; e4_b int; pinned int; msg text;
+        u_p1 int; u_p2 int; held2 int; e1_a int; e2_a int; e3_a int; menu_p2 int; e1_b int; e2_b int; e4_b int; pinned int; msg text;
 BEGIN
     BEGIN
         PERFORM set_config('moaum.actor_id', who::text, true);
@@ -13178,6 +13178,9 @@ BEGIN
         INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (v_sheet, s3, 20, 40);
         -- the second department's programme takes the course at 2 units
         UPDATE catalogue.course_offer SET units = 2 WHERE course_code = 'ZZU 101' AND programme_code = p2 AND level = 100;
+        -- V620: the binding's change reaches no registration by itself; the desk's own act carries it into those not examined
+        SELECT units INTO held2 FROM registration.entry WHERE registration_id = r2;
+        PERFORM catalogue.reflect_units('ZZU 101', p2, NULL);
         u_p1 := catalogue.units_for('ZZU 101', p1, 100);
         u_p2 := catalogue.units_for('ZZU 101', p2, 100);
         SELECT units INTO e1_a FROM registration.entry WHERE registration_id = r1;
@@ -13195,11 +13198,11 @@ BEGIN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
         IF msg <> 'the V460 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V460: a course''s units are per programme and a change is the department''s that sees it — a programme''s own units reach only its unscored students; the course''s own change only its department''s programmes, another department''s kept and pinned; a scored student keeps the units examined',
-        coalesce(u_p1 = 3 AND u_p2 = 2 AND e1_a = 3 AND e2_a = 2 AND e3_a = 3 AND (menu_p2 IS NULL OR menu_p2 = 2)
+    PERFORM pg_temp.assert('V460, V620: a course''s units are per programme and a change is the department''s that sees it — a programme''s own units reach only its unscored students, and only when the desk carries them; the course''s own change only its department''s programmes, another department''s kept and pinned; a scored student keeps the units examined',
+        coalesce(u_p1 = 3 AND u_p2 = 2 AND held2 = 3 AND e1_a = 3 AND e2_a = 2 AND e3_a = 3 AND (menu_p2 IS NULL OR menu_p2 = 2)
                  AND e1_b = 4 AND e2_b = 2 AND e4_b = 3 AND pinned = 3, false),
-        format('units_for %s/%s | programme change: own dept %s, other %s, scored %s, menu %s | course change: own dept %s, own units %s, third dept %s pinned %s',
-               u_p1, u_p2, e1_a, e2_a, e3_a, menu_p2, e1_b, e2_b, e4_b, pinned));
+        format('units_for %s/%s | programme change: held %s, own dept %s, other %s, scored %s, menu %s | course change: own dept %s, own units %s, third dept %s pinned %s',
+               u_p1, u_p2, held2, e1_a, e2_a, e3_a, menu_p2, e1_b, e2_b, e4_b, pinned));
 END $$;
 
 -- ── V457: students with no fee stated, the Bursary told by SMS as well ──
@@ -13430,7 +13433,7 @@ DECLARE who uuid := gen_random_uuid(); v_dept text; p1 text; p2 text; v_s1 text 
         o_a uuid := gen_random_uuid(); o_b uuid := gen_random_uuid(); o_d uuid := gen_random_uuid(); sh_a uuid := gen_random_uuid(); sh_b uuid := gen_random_uuid();
         st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
         rg uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
-        before record; again record; back record; after_units text; back_units text; msg text;
+        before record; again record; back record; held_units text; after_units text; back_units text; msg text;
 BEGIN
     BEGIN
         PERFORM set_config('moaum.actor_id', who::text, true);
@@ -13459,21 +13462,25 @@ BEGIN
         INSERT INTO assessment.score_sheet (id, offering_id, stage) VALUES (sh_b, o_b, 'VERIFICATION');
         SELECT * INTO before FROM catalogue.units_change_impact('ZZV 101', p1, 100, 2);
         UPDATE catalogue.course_offer SET units = 2 WHERE course_code = 'ZZV 101' AND programme_code = p1 AND level = 100;
+        -- V620: the binding's change reaches no registration by itself; the desk's own act carries it into those not examined
+        held_units := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 6) i JOIN registration.entry e ON e.registration_id = rg[i]);
+        PERFORM catalogue.reflect_units('ZZV 101', p1, NULL);
         after_units := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 6) i JOIN registration.entry e ON e.registration_id = rg[i]);
         SELECT * INTO again FROM catalogue.units_change_impact('ZZV 101', p1, 100, 2);
         SELECT * INTO back FROM catalogue.units_change_impact('ZZV 101', p1, 100, 3);
         UPDATE catalogue.course_offer SET units = NULL WHERE course_code = 'ZZV 101' AND programme_code = p1 AND level = 100;
+        PERFORM catalogue.reflect_units('ZZV 101', p1, NULL);
         back_units := (SELECT string_agg(e.units::text, ',' ORDER BY i) FROM generate_series(1, 6) i JOIN registration.entry e ON e.registration_id = rg[i]);
         RAISE EXCEPTION 'the V464 check undoes its writes';
     EXCEPTION WHEN raise_exception THEN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
         IF msg <> 'the V464 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V464: a class whose results are worked on keeps its units, a programme''s change reaches its carry-overs, and the impact says beforehand what follows and what keeps',
+    PERFORM pg_temp.assert('V464, V620: a class whose results are worked on keeps its units, a programme''s change reaches no registration by itself and, carried by the desk''s own act, reaches its carry-overs, and the impact says beforehand what follows and what keeps',
         coalesce(before.now_units = 3 AND before.new_units = 2 AND before.follow = 2 AND before.kept = 3
-                 AND after_units = '3,3,3,2,2,3' AND again.follow = 0 AND again.kept = 3
+                 AND held_units = '3,3,3,3,3,3' AND after_units = '3,3,3,2,2,3' AND again.follow = 0 AND again.kept = 3
                  AND back.new_units = 3 AND back.follow = 2 AND back.kept = 0 AND back_units = '3,3,3,3,3,3', false),
-        format('before %s | after %s | again %s | back %s -> %s', to_jsonb(before), after_units, to_jsonb(again), to_jsonb(back), back_units));
+        format('before %s | held %s | after %s | again %s | back %s -> %s', to_jsonb(before), held_units, after_units, to_jsonb(again), to_jsonb(back), back_units));
 END $$;
 
 -- ── V466: the school-fees payment closure message, the Directorate of ICT's to write ──
@@ -22787,6 +22794,74 @@ BEGIN
                up->>'no_mark', outcomes, again_statuses));
 END $$;
 
+-- ── V620. A binding removed or edited never reaches a registered student: on a made-up programme a course is bound as an elective
+--          at the programme's own 2 units and a student chooses it from the menu (the entry carries 2 units, the type ELECTIVE and
+--          the basis Elective); the binding's units edited leave the entry at 2 until the desk's own act carries them; the binding
+--          rebound as core leaves the entry the elective it was registered as (the carry-over rule reads it so); the binding removed
+--          while the student is registered on it is not refused, goes on the record with the one registration carried, and the
+--          entry stays — the choice saved again keeps it as registered, unticked it goes. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9620/9621'; v_prog text; v_dept text; v_fac text; st uuid := gen_random_uuid(); off uuid := gen_random_uuid();
+    reg uuid; u1 int; b1 text; t1 text; u2 int; u_carried int; b3 text; cat text; v_elec1 boolean; v_state text; n_hist bigint; carried bigint;
+    n_kept int; u3 int; b4 text; v_elec2 boolean; n_after int; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'CHECK V620', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    VALUES (gen_random_uuid(), S, date '9620-10-01', date '9621-09-30', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN') ON CONFLICT DO NOTHING;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V620', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/20/620001', 'MOAUM/ZZB/20/6201', 'CHECKV620', 'Registered', v_prog, 'UTME', S, 100, 200, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZB 620', 'Check V620', 3, 1, 200, v_dept, 'Core', 'LIVE');
+    -- bound as an elective of the programme at 200 Level, at the programme's own 2 units; the class of the session
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis, units) VALUES ('ZZB 620', v_prog, 200, 'Elective', 2);
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'ZZB 620', S, 1);
+    -- the student chooses it from the menu: the entry carries the programme's units, the type and the basis of the binding
+    reg := registration.student_draft(st, S, 1);
+    PERFORM registration.student_choose(reg, ARRAY[off]);
+    SELECT e.units, e.basis, e.entry_type INTO u1, b1, t1 FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
+    -- the binding's units edited: the entry keeps its 2; the desk's own act carries the change into the registrations not examined
+    UPDATE catalogue.course_offer SET units = 1 WHERE course_code = 'ZZB 620' AND programme_code = v_prog AND level = 200;
+    SELECT e.units INTO u2 FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
+    PERFORM catalogue.reflect_units('ZZB 620', v_prog, NULL);
+    SELECT e.units INTO u_carried FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
+    -- the binding rebound as core: the entry is still the elective it was registered as, and so not owed as a carry-over
+    PERFORM catalogue.bind_offer('ZZB 620', v_prog, 200, 'Core', NULL, 'COURSE');
+    SELECT e.basis, registration.entry_category(e.entry_type, c.kind, e.basis) INTO b3, cat
+      FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+     WHERE e.registration_id = reg AND e.offering_id = off;
+    v_elec1 := registration.is_elective_for(st, 'ZZB 620');
+    -- the binding removed while the student is registered on it: not refused, on the record with the registration carried
+    v_state := catalogue.unbind_offer('ZZB 620', v_prog, 200, 'Dropped from the structure');
+    SELECT count(*), max(h.registrations_carried) INTO n_hist, carried FROM catalogue.course_offer_history h WHERE h.course_code = 'ZZB 620' AND h.programme_code = v_prog;
+    -- the student's choice saved again keeps the entry as registered, though the course is on no menu now; unticked, it goes
+    PERFORM registration.student_choose(reg, ARRAY[off]);
+    SELECT count(*) INTO n_kept FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off AND e.status = 'REGISTERED';
+    SELECT e.units, e.basis INTO u3, b4 FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
+    v_elec2 := registration.is_elective_for(st, 'ZZB 620');
+    PERFORM registration.student_choose(reg, '{}'::uuid[]);
+    SELECT count(*) INTO n_after FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off;
+    msg := format('chosen %s/%s/%s | units after the binding edit %s, carried by the desk %s | rebound core: basis %s category %s elective %s | unbind %s history %s carried %s | saved again kept %s units %s basis %s elective %s | unticked %s',
+                  u1, b1, t1, u2, u_carried, b3, cat, v_elec1, v_state, n_hist, carried, n_kept, u3, b4, v_elec2, n_after);
+    RAISE EXCEPTION 'the V620 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V620 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V620: a binding removed or edited never reaches a registered student — the entry keeps its units, its type and its basis through a units edit (the desk''s own act carries it), a rebinding and the removal, which is not refused and goes on the record with the registration carried; the choice saved again keeps the entry, unticked it goes',
+      coalesce(u1 = 2 AND b1 = 'Elective' AND t1 = 'ELECTIVE' AND u2 = 2 AND u_carried = 1
+               AND b3 = 'Elective' AND cat = 'ELECTIVE' AND v_elec1
+               AND v_state = 'ENDED' AND n_hist = 1 AND carried = 1
+               AND n_kept = 1 AND u3 = 1 AND b4 = 'Elective' AND v_elec2 AND n_after = 0, false),
+      msg);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

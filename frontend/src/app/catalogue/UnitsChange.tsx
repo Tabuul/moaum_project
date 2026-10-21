@@ -1,9 +1,11 @@
 "use client";
 
 /** V464, V465: a change of units counted before it is saved, wherever units are changed — the units a programme takes a course
- *  at (from the review's report or the programme's structure), or the course's own (on its page). Registrations not yet
- *  examined follow; a closed session, or a class whose results are being worked on, keeps its units — each such class listed,
- *  with the sheet whose desk of entry raises a units correction through the amendment chain. */
+ *  at (from the review's report or the programme's structure), or the course's own (on its page). V620: a programme's units
+ *  changed reach no registration by themselves — the registrations already made keep their units unless the desk ticks to
+ *  carry the change into those not yet examined; a closed session, or a class whose results are being worked on, keeps its
+ *  units either way — each such class listed, with the sheet whose desk of entry raises a units correction through the
+ *  amendment chain. The course's own units corrected still reach the registrations not yet examined (V465). */
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { reasonHeader } from "@/lib/reason";
@@ -44,6 +46,8 @@ export function UnitsChangeModal({ target, onClose, onSaved, ticket = "" }: { ta
   const [units, setUnits] = useState(String(target.units));
   const [impact, setImpact] = useState<UnitsImpact | null>(null);
   const [busy, setBusy] = useState(false);
+  // V620: the desk's own choice to carry the change into the registrations not yet examined; off, none is reached
+  const [apply, setApply] = useState(false);
   const value = unitsValue(units);
 
   // what the change would reach, counted as the number is typed
@@ -68,12 +72,13 @@ export function UnitsChangeModal({ target, onClose, onSaved, ticket = "" }: { ta
     try {
       const r = await fetch(`/api/bff/api/v1/catalogue/structure/units${ticket ? `?ticket=${encodeURIComponent(ticket)}` : ""}`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${ticket ? `Ticket ${ticket.toUpperCase()}: ` : ""}${target.course} units for ${target.programme} at ${target.level} level set to ${value}`) },
-        body: JSON.stringify({ programme: target.programme, course: target.course, level: target.level, units: value }),
+        body: JSON.stringify({ programme: target.programme, course: target.course, level: target.level, units: value, applyToRegistrations: apply }),
       });
       const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
       if (!r.ok) { notifyProblem(j ? (j as unknown as Parameters<typeof notifyProblem>[0]) : { status: r.status, title: r.statusText }); return; }
       const followed = Number(j?.followed ?? 0);
-      notify(`${target.course} for ${target.programme}: ${plural(Number(j?.units ?? value), "unit")} · ${plural(followed, "registration")} followed`);
+      const keep = Number(j?.kept ?? 0);
+      notify(`${target.course} for ${target.programme}: ${plural(Number(j?.units ?? value), "unit")} · ${followed ? `${plural(followed, "registration")} followed` : keep ? `${plural(keep, "registration")} already made keep their units` : "no registration to reach"}`);
       onSaved();
     } finally {
       setBusy(false);
@@ -92,8 +97,14 @@ export function UnitsChangeModal({ target, onClose, onSaved, ticket = "" }: { ta
         {value == null ? "Give a number from 0 to 12."
           : !impact ? "Counting what this reaches…"
           : nothing ? `${target.programme} takes it at ${value} already; nothing would change.`
-          : <>{target.programme} takes it at <b className="tnum">{impact.nowUnits}</b> now, <b className="tnum">{impact.newUnits}</b> after. <b className="tnum">{impact.follow.toLocaleString()}</b> {impact.follow === 1 ? "registration" : "registrations"} not yet examined will follow.</>}
+          : <>{target.programme} takes it at <b className="tnum">{impact.nowUnits}</b> now, <b className="tnum">{impact.newUnits}</b> after. <b className="tnum">{impact.follow.toLocaleString()}</b> {impact.follow === 1 ? "registration" : "registrations"} not yet examined {apply ? "will follow." : impact.follow === 1 ? "keeps the units it was registered at." : "keep the units they were registered at."}</>}
       </div>
+      {impact && !nothing && impact.follow > 0 ? (
+        <label className="row row--inline row--tight mt-2" style={{ alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={apply} onChange={(e) => setApply(e.target.checked)} />
+          <span>Also change the {plural(impact.follow, "registration")} not yet examined to {value} {value === 1 ? "unit" : "units"} — your own act; a change of the structure alone reaches no student</span>
+        </label>
+      ) : null}
       {impact && !nothing ? <HeldClasses held={impact.held ?? []} kept={impact.kept} /> : null}
     </Modal>
   );
