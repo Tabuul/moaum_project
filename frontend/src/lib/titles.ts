@@ -251,6 +251,7 @@ export const TITLES: Record<string, string> = {
   "t/refunds": "Refunds & credits",
   "t/paymentswaps": "School fees payment swaps",
   "t/feereport": "School fees report",
+  "t/spillover": "Spillover students",
   "t/payroll": "Payroll",
   "t/budget": "Budget",
   "t/staff": "Staff records",

@@ -193,6 +193,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/dean", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
@@ -426,6 +427,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/prepayment", "icon": "check", "label": "Payment Vouchers", "badge": "7" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -483,6 +485,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/prepayment", "icon": "check", "label": "Payment Vouchers", "badge": "7" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -728,6 +731,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -813,6 +817,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/finanalytics", "icon": "chart", "label": "Payment Reports & Statistics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
           { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" }
         ]
@@ -986,6 +991,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/resultdesk", "icon": "check", "label": "Result Desk", "badge": "9" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
         ]
@@ -1110,6 +1116,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1195,6 +1202,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/mgmt", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
@@ -1250,6 +1258,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1374,6 +1383,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -1489,6 +1499,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -1508,6 +1519,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
+          { "id": "t/graduationmanage", "icon": "cap", "label": "Graduation Management" },
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
@@ -1679,6 +1691,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/readiness", "icon": "chart", "label": "Go-Live Readiness" },
           { "id": "t/overview", "icon": "chart", "label": "Institutional Overview" },
           { "id": "t/search", "icon": "user", "label": "Search" }
@@ -1804,6 +1817,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2556,6 +2570,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/studentpaymenthistory", "icon": "doc", "label": "Payment History" },
         ]
       },

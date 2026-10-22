@@ -4,6 +4,7 @@
  * student except the contact details and the choice of courses.
  */
 
+import type { SpilloverPanel } from "./spillover";
 import type { StudentOverpayment } from "@/lib/overpayment";
 import type { GstEpsEligibility } from "@/lib/gst";
 
@@ -40,6 +41,8 @@ export interface Fees {
   clearsRegistration: boolean | null;
   /** V616: in spillover — charged a semester's school fees only when a course is registered in it */
   spilloverBySemester?: boolean;
+  /** V637: the SP year, each semester's spillover fee and whether a course is registered in it, the carry-overs by semester */
+  spillover?: SpilloverPanel | null;
   schemeProblem: string | null;
   references: PaymentRef[];
   sessions: string[];

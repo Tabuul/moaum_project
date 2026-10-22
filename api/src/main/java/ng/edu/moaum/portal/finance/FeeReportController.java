@@ -56,6 +56,8 @@ class FeeReportController {
         jdbc.sql("SELECT set_config('plan_cache_mode', 'force_generic_plan', true)").query().singleRow();
         String text = jdbc.sql("""
                 WITH pos AS MATERIALIZED (SELECT * FROM finance.session_positions(:s, NULL)),
+                -- V637: who is charged the spillover lines (SP1/SP2 at the final level, or above it), so spillover fees are shown apart
+                sp AS MATERIALIZED (SELECT x.student_id, x.is_spill FROM finance.fee_profiles(:s) x WHERE x.is_spill),
                 st AS MATERIALIZED (
                     SELECT s.id, p.faculty_code, f.name AS faculty, p.dept_code, d.name AS department, s.current_level AS level, s.status, s.entry_session
                       FROM people.student s
@@ -65,8 +67,9 @@ class FeeReportController {
                      WHERE (:fac::text IS NULL OR f.code = :fac) AND (:dept::text IS NULL OR d.code = :dept)),
                 -- on the register, the session's new intake, and anyone who paid school fees in the session
                 j AS MATERIALIZED (
-                    SELECT st.*, pos.payable, pos.paid, pos.outstanding, pos.status AS fee_status
+                    SELECT st.*, pos.payable, pos.paid, pos.outstanding, pos.status AS fee_status, (sp.student_id IS NOT NULL) AS is_spill
                       FROM st JOIN pos ON pos.student_id = st.id
+                      LEFT JOIN sp ON sp.student_id = st.id
                      WHERE st.status IN ('ACTIVE', 'PROBATION') OR (st.status = 'ADMITTED' AND st.entry_session = :s) OR pos.paid > 0),
                 g AS (
                     SELECT j.faculty_code, j.faculty, j.dept_code, j.department, j.level,
@@ -75,7 +78,10 @@ class FeeReportController {
                            count(*) FILTER (WHERE j.fee_status IN ('PART_PAYMENT', 'NOT_PAID')) AS owing_students,
                            count(*) FILTER (WHERE j.fee_status = 'PART_PAYMENT') AS part_paid,
                            count(*) FILTER (WHERE j.fee_status = 'NO_CHARGE' AND j.paid = 0) AS no_fee,
-                           coalesce(sum(j.payable), 0) AS amount_due, coalesce(sum(j.paid), 0) AS amount_paid, coalesce(sum(j.outstanding), 0) AS amount_owing
+                           coalesce(sum(j.payable), 0) AS amount_due, coalesce(sum(j.paid), 0) AS amount_paid, coalesce(sum(j.outstanding), 0) AS amount_owing,
+                           count(*) FILTER (WHERE j.is_spill) AS spill_students,
+                           coalesce(sum(j.payable) FILTER (WHERE j.is_spill), 0) AS spill_due, coalesce(sum(j.paid) FILTER (WHERE j.is_spill), 0) AS spill_paid,
+                           coalesce(sum(j.outstanding) FILTER (WHERE j.is_spill), 0) AS spill_owing
                       FROM j GROUP BY j.faculty_code, j.faculty, j.dept_code, j.department, j.level)
                 SELECT json_build_object(
                     'session', :s::text,
@@ -86,7 +92,9 @@ class FeeReportController {
                     'total', (SELECT json_build_object('students', coalesce(sum(students), 0), 'paid_students', coalesce(sum(paid_students), 0),
                                                        'owing_students', coalesce(sum(owing_students), 0), 'part_paid', coalesce(sum(part_paid), 0),
                                                        'no_fee', coalesce(sum(no_fee), 0), 'amount_due', coalesce(sum(amount_due), 0),
-                                                       'amount_paid', coalesce(sum(amount_paid), 0), 'amount_owing', coalesce(sum(amount_owing), 0)) FROM g),
+                                                       'amount_paid', coalesce(sum(amount_paid), 0), 'amount_owing', coalesce(sum(amount_owing), 0),
+                                                       'spill_students', coalesce(sum(spill_students), 0), 'spill_due', coalesce(sum(spill_due), 0),
+                                                       'spill_paid', coalesce(sum(spill_paid), 0), 'spill_owing', coalesce(sum(spill_owing), 0)) FROM g),
                     'generatedAt', now()
                 )::text
                 """).param("s", ses).param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR).query(String.class).single();

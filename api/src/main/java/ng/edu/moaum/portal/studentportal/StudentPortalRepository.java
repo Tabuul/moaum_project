@@ -423,6 +423,14 @@ class StudentPortalRepository {
     }
 
     /** V616: whether the student is in spillover on the Bursary's basis — charged a semester's fees only when they register a course in it */
+    private static final tools.jackson.databind.ObjectMapper PANEL_JSON = new tools.jackson.databind.ObjectMapper();
+
+    /** V637: a spillover student's position for a session as the Fees page and dashboard show it (finance.spillover_panel); null when not in spillover */
+    Map<String, Object> spilloverPanel(UUID student, String session) {
+        String text = jdbc.sql("SELECT finance.spillover_panel(:s, :ses)::text").param("s", student).param("ses", session).query(String.class).optional().orElse(null);
+        return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
     boolean isSpillover(UUID student) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.is_spillover(:s)").param("s", student).query(Boolean.class).single());
     }

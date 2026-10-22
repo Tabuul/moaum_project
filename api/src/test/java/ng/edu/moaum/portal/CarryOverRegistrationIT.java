@@ -198,6 +198,10 @@ class CarryOverRegistrationIT {
         // V615: the same student read in spillover (SP1): one 3-unit current course beside the carry-over (6 of 15) is submitted —
         // the minimum does not bind a spillover student. The position is set just before the submission (this database keeps no
         // current session for the engine to count from, and a registration's change reads the position again)
+        // V637: SP1 at the programme's final level (400) is charged the spillover line, which the Bursary states for the session; the
+        // session's fees the student paid already cover it
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + session + "/schedule",
+                Map.of("item", "School fees (spillover)", "amount", 50000, "spillover", true)).getStatusCode().value()).isEqualTo(200);
         reset(token);
         assertThat(save(token, List.of(coreOffering)).getStatusCode().value()).isEqualTo(200);
         jdbc.sql("UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_1', spillover_years = 1 WHERE student_id = :s").param("s", s).update();

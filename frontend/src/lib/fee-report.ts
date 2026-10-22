@@ -5,10 +5,13 @@ export interface FeeReportLine {
   faculty_code: string; faculty: string; dept_code: string; department: string; level: number | null;
   students: number; paid_students: number; owing_students: number; part_paid: number; no_fee: number;
   amount_due: number | string; amount_paid: number | string; amount_owing: number | string;
+  /** V637: of those, the students charged the spillover lines (SP1/SP2), what they owe and paid — spillover fees shown apart */
+  spill_students?: number; spill_due?: number | string; spill_paid?: number | string; spill_owing?: number | string;
 }
 export interface FeeReportTotal {
   students: number; paid_students: number; owing_students: number; part_paid: number; no_fee: number;
   amount_due: number | string; amount_paid: number | string; amount_owing: number | string;
+  spill_students?: number; spill_due?: number | string; spill_paid?: number | string; spill_owing?: number | string;
 }
 export interface FeeReport {
   session: string; sessions: string[]; faculty?: string | null; department?: string | null;
@@ -16,7 +19,8 @@ export interface FeeReport {
 }
 
 /** the columns as the Bursary asked for them; S/N first, as every download */
-export const FEE_REPORT_HEADERS = ["S/N", "Session", "Faculty", "Department", "Level", "Students paid", "Students owing", "Amount paid (₦)", "Amount owing (₦)"];
+export const FEE_REPORT_HEADERS = ["S/N", "Session", "Faculty", "Department", "Level", "Students paid", "Students owing", "Amount paid (₦)", "Amount owing (₦)",
+  "Spillover students", "Spillover paid (₦)", "Spillover owing (₦)"];
 
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
 /** naira to the kobo, as a number a spreadsheet can add */
@@ -25,8 +29,9 @@ export const naira = (v: number | string | null | undefined) => Math.round(num(v
 /** the report as rows for the downloads: numbered lines, then the grand total (no number) */
 export function feeReportRows(r: Pick<FeeReport, "session" | "rows" | "total">): (string | number)[][] {
   const lines = r.rows.map((x, i) => [i + 1, r.session, x.faculty, x.department, x.level ?? "", num(x.paid_students), num(x.owing_students),
-    naira(x.amount_paid), naira(x.amount_owing)]);
-  return [...lines, ["", "", "Grand total", "", "", num(r.total.paid_students), num(r.total.owing_students), naira(r.total.amount_paid), naira(r.total.amount_owing)]];
+    naira(x.amount_paid), naira(x.amount_owing), num(x.spill_students), naira(x.spill_paid), naira(x.spill_owing)]);
+  return [...lines, ["", "", "Grand total", "", "", num(r.total.paid_students), num(r.total.owing_students), naira(r.total.amount_paid), naira(r.total.amount_owing),
+    num(r.total.spill_students), naira(r.total.spill_paid), naira(r.total.spill_owing)]];
 }
 
 /** the totals of the lines shown, so the grand total always adds up to what is on the page */

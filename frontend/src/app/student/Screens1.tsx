@@ -16,6 +16,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Passport, Step } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct, when } from "./common";
+import { SpilloverCard } from "./SpilloverCard";
 import { PasswordInput } from "@/components/PasswordInput";
 
 /** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
@@ -159,6 +160,8 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
           ]} /></PBody>
         </Panel>
       ) : null}
+      {/* V637: a spillover student's fees by semester — never a full session for being in spillover — with Pay and Add carry-over */}
+      {f.spillover ? <SpilloverCard sp={f.spillover} compact /> : null}
       {/* V366: the card is shown only when a GST or EPS course requires the fee of the student (or they hold a payment): never because they are a student, never a ₦0 fee */}
       {gst && (gst.entitlement.state === "PAID" || (gst.entitlement.required && ["NOT_PAID", "PENDING", "NOT_STATED"].includes(gst.entitlement.state))) ? (() => {
         const e = gst.entitlement;

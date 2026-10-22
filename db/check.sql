@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 463
+\set EXPECTED 465
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -19793,8 +19793,9 @@ BEGIN
 END $$;
 -- ── V571. Who is charged the spillover fee lines, by the Bursary's basis. Three invented students of one programme: A at the final
 -- level whom the cohort engine reads in a spillover year, B a level above the final level whom it reads within the length, G
--- graduated. By level (the default) B is charged the spillover lines and A is not, and the two move between the bases; by the
--- cohort (read for a transaction, nothing changed) A is and B is not, and never a graduate — in fee_profiles as in the one test.
+-- graduated. By level (the default) B is charged the spillover lines and so is A — at the final level in a spillover year (V637) —
+-- so only B moves between the bases; by the cohort (read for a transaction, nothing changed) A is and B is not, and never a graduate
+-- — in fee_profiles as in the one test.
 -- The Bursary's choice needs LEVEL or COHORT and a reason of ten characters, and keeps who and why. The block undoes its writes.
 DO $$
 DECLARE who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); g uuid := gen_random_uuid();
@@ -19844,7 +19845,7 @@ BEGIN
         IF msg <> 'the V571 check undoes its writes' THEN RAISE; END IF;
     END;
     PERFORM pg_temp.assert('V571: the spillover lines are charged by the level (the default) or, when the Bursary chooses it with a reason, by the cohort engine''s spillover — never to a graduate; the preview reads the other basis without changing it',
-        coalesce(dflt = 'LEVEL' AND NOT lv_a AND lv_b AND prof_lv = 'CHECKV571A:false,CHECKV571B:true' AND moves = 'A:false/true,B:true/false'
+        coalesce(dflt = 'LEVEL' AND lv_a AND lv_b AND prof_lv = 'CHECKV571A:true,CHECKV571B:true' AND moves = 'B:true/false'
                  AND co_a AND NOT co_b AND NOT co_g AND prof_co = 'CHECKV571A:true,CHECKV571B:false'
                  AND e_basis = 'FEE_SPILL_BASIS' AND e_reason = 'FEE_SPILL_REASON' AND set_to = 'COHORT'
                  AND kept = 'COHORT:true:Bursary decision: charged by the cohort' AND after_a, false),
@@ -22640,7 +22641,8 @@ END $$;
 -- ── V615. A student in spillover is not held to the minimum credit load. On a made-up four-year programme, a 400 Level student in
 --          the fifth session (SP1: registered at 400 last session) registers one 1-unit current course of the final level: the
 --          kind reads SPILLOVER, the registration is submitted, the student still reads SP1, and is not on the below-minimum list; a student in the final year (within the length) with
---          the same course is refused REG_UNITS_BELOW_MINIMUM as before and is listed. The block undoes its writes ──
+--          the same course is refused REG_UNITS_BELOW_MINIMUM as before and is listed. Since V637 the SP1 student at 400 is charged the
+--          spillover line, owed once the course is registered (V616), and pays it then. The block undoes its writes ──
 DO $$
 DECLARE
     y int := 2193; v_prog text; v_dept text; v_fac text; cur text; msg text;
@@ -22673,12 +22675,15 @@ BEGIN
     SELECT spillover_state INTO st_sp FROM people.academic_position WHERE student_id = sp;
     SELECT spillover_state INTO st_fy FROM people.academic_position WHERE student_id = fy;
     -- the school fees stated and paid in full by each, so only the load is in question
-    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (cur, 'School fees', 100000, 400, v_prog);
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, spillover) VALUES
+        (cur, 'School fees', 100000, 400, v_prog, false), (cur, 'School fees (spillover)', 100000, NULL, v_prog, true);
     PERFORM set_config('moaum.actor_office', 'bursar', true);
-    PERFORM finance.confirm_payment(finance.new_reference(x, cur, 100000, NULL), 'Bank transfer', 'CHECK V615') FROM unnest(ARRAY[sp, fy]) x;
+    PERFORM finance.confirm_payment(finance.new_reference(fy, cur, 100000, NULL), 'Bank transfer', 'CHECK V615');
     SELECT * INTO lim FROM registration.unit_rule(fy, 400, cur, 1);
     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (r_sp, sp, cur, 1, 400, 'DRAFT'), (r_fy, fy, cur, 1, 400, 'DRAFT');
     INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r_sp, o_one, 1, 'CURRENT', 'REGISTERED'), (r_fy, o_one, 1, 'CURRENT', 'REGISTERED');
+    -- V637: the spillover line, owed now a course is registered, paid
+    PERFORM finance.confirm_payment(finance.new_reference(sp, cur, 100000, NULL), 'Bank transfer', 'CHECK V615');
     k_sp := registration.load_kind(r_sp); k_fy := registration.load_kind(r_fy);
     PERFORM set_config('moaum.actor_office', 'student', true);
     PERFORM set_config('moaum.actor_id', sp::text, true);
@@ -23669,6 +23674,218 @@ BEGIN
                wet.followed, wet.admitted_left, c1_after = nb, c2_after = na, req.state, req.reason_code, req.to_programme_code = pb, req.kind,
                again.followed, again.admitted_left, n1, n2, st2, n3, st3, n4, st4, grades_after, sittings_after));
 END $$;
+-- ── V637. SP1/SP2 at the final level billed as spillover: under the LEVEL basis a made-up student at a four-year programme's final level
+--          (400) is not in spillover while the cohort engine reads them normal, and is — SP1, then SP2 — once it places them in
+--          spillover; one at 300 is never, one at 500 always. In spillover with nothing registered they owe nothing, and the panel shows each
+--          semester's spillover fee (70,000 and 60,000) apart, never the 400 Level session (270,000) the student at 400 in their normal
+--          year owes; the Bursary's list names the SP1 student, not registered. The block undoes its writes ──
+DO $$
+DECLARE ses text := '9637/9638'; v_prog text; v_entry text; s4 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s5 uuid := gen_random_uuid(); sn uuid := gen_random_uuid();
+        normal_spill boolean; sp1 boolean; y1 int; y2 int; below boolean; above boolean; above_y int; prof_spill boolean; prof_year int;
+        due_sp numeric; due_normal numeric; panel jsonb; listed text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V637', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    SELECT p.code INTO v_prog FROM ref.programme p
+     WHERE NOT coalesce(p.archived, false) AND coalesce(p.category, '') <> 'POST GRADUATE' AND finance.final_level(p.code) = 400
+       AND p.faculty_code NOT IN (SELECT faculty_code FROM finance.faculty_fee_source UNION SELECT source_faculty_code FROM finance.faculty_fee_source)
+     ORDER BY p.code LIMIT 1;
+    SELECT name INTO v_entry FROM policy.academic_session ORDER BY starts_on DESC LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s4, 'MOAUM/ADM/99/637001', 'MOAUM/ZZS/99/6371', 'CHECKV637', 'Final level', v_prog, 'UTME', v_entry, 100, 400, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/99/637002', 'MOAUM/ZZS/99/6372', 'CHECKV637', 'Below final', v_prog, 'UTME', v_entry, 100, 300, 'ACTIVE', now()),
+        (s5, 'MOAUM/ADM/99/637003', 'MOAUM/ZZS/99/6373', 'CHECKV637', 'Above final', v_prog, 'UTME', v_entry, 100, 500, 'ACTIVE', now()),
+        (sn, 'MOAUM/ADM/99/637004', 'MOAUM/ZZS/99/6374', 'CHECKV637', 'Normal year', v_prog, 'UTME', v_entry, 100, 400, 'ACTIVE', now());
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, make_date(9637, 10, 1), make_date(9638, 9, 30), 'CLOSED')
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), ses, 1, 'OPEN'), (gen_random_uuid(), ses, 2, 'OPEN')
+    ON CONFLICT (session, number) DO UPDATE SET state = excluded.state;
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester, spillover, spill_year) VALUES
+        (ses, 'School fees (spillover) (semester 1)', 70000, NULL, v_prog, 1, true, NULL),
+        (ses, 'School fees (spillover) (semester 2)', 60000, NULL, v_prog, 2, true, NULL),
+        (ses, 'School fees (semester 1)', 150000, 400, v_prog, 1, false, NULL),
+        (ses, 'School fees (semester 2)', 120000, 400, v_prog, 2, false, NULL);
+    -- the cohort engine's reading, as the level desk leaves it: normal, then SP1, then SP2
+    UPDATE people.academic_position SET spillover_state = 'NORMAL', spillover_years = 0 WHERE student_id IN (s4, sn);
+    normal_spill := finance.is_spillover(s4);
+    UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_1', spillover_years = 1 WHERE student_id IN (s4, s3);
+    sp1 := finance.is_spillover(s4);
+    y1 := finance.spill_year(s4, 400, v_prog, 'ACTIVE');
+    below := finance.is_spillover(s3);
+    above := finance.is_spillover(s5);
+    above_y := finance.spill_year(s5, 500, v_prog, 'ACTIVE');
+    SELECT f.is_spill, f.spill_year INTO prof_spill, prof_year FROM finance.fee_profiles(ses) f WHERE f.student_id = s4;
+    SELECT p.due INTO due_sp FROM finance.position(s4, ses) p;
+    SELECT p.due INTO due_normal FROM finance.position(sn, ses) p;
+    panel := finance.spillover_panel(s4, ses);
+    SELECT string_agg(l.state || ':' || coalesce(l.spill_year::text, '-'), ',') INTO listed FROM finance.spillover_students(ses, NULL, NULL, v_prog, NULL, NULL, 'CHECKV637', 50) l WHERE l.student_id = s4;
+    UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_2', spillover_years = 2 WHERE student_id = s4;
+    y2 := finance.spill_year(s4, 400, v_prog, 'ACTIVE');
+    msg := format('normal year %s | SP1 %s (year %s, profile %s/%s) | SP2 year %s | at 300 %s | at 500 %s (year %s) | due in spillover %s, normal %s | panel %s | listed %s',
+                  normal_spill, sp1, y1, prof_spill, prof_year, y2, below, above, above_y, due_sp, due_normal, panel->'semesters', listed);
+    RAISE EXCEPTION 'the V637 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V637 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V637: SP1/SP2 at the final level is billed as spillover by semester, never the full session; below it never, above it always',
+      coalesce(NOT normal_spill AND sp1 AND y1 = 1 AND prof_spill AND prof_year = 1 AND y2 = 2 AND NOT below AND above AND above_y = 1
+               AND due_sp = 0 AND due_normal = 270000
+               AND (panel->>'label') = 'SP1' AND (panel->'semesters'->0->>'fee')::numeric = 70000 AND (panel->'semesters'->1->>'fee')::numeric = 60000
+               AND (panel->'semesters'->0->>'registered')::boolean = false
+               AND listed = 'NOT_REGISTERED:1', false),
+      msg);
+END $$;
+-- ── V638. Students outside the maximum academic period graduated by status reconciliation. A four-year programme of the check's own
+--          on a calendar whose current session is y: a student admitted in y−7 (expected completion y−4, SP1 y−3, SP2 y−2, maximum
+--          y−2) with a final-year registration on record reads HIGH; one with no registration on record reads MEDIUM; one with a
+--          deferment in force reads LOW (requires review); one registered at the final level for the current session (the engine
+--          reads them on course), one admitted in y−3 and one withdrawn are no candidates. A batch of
+--          three chosen, MEDIUM included, graduates the first two by the one act — the status GRADUATED with its history, the
+--          calculation on the reconciliation row, the graduation session the last permitted one, the lock on the current session
+--          and not on the last permitted one, a registration draft refused, the engine reading the record validated, the student
+--          told — leaves the LOW one for review, is executed by its officer only, and done twice graduates nobody again. The
+--          official date is confirmed afterwards; automatic reconciliation is refused while off and, once ICT switches it on, takes
+--          HIGH confidence alone (a second HIGH student graduated, the LOW one for review); the Registrar's correction marks the
+--          reconciliation corrected. The block undoes its writes ──
+DO $$
+DECLARE y int := 2740; v_prog text; v_dept text; v_fac text; cur text; v_max int;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); g uuid := gen_random_uuid();
+        actor uuid := '00000000-0000-0000-0000-00000000c637'; other uuid := '00000000-0000-0000-0000-00000000d637';
+        ca record; cb record; cc record; n_other int; fig jsonb; v_ref text; own_err text; run1 jsonb; run2 jsonb; st_a text; st_b text; st_c text;
+        gr record; row_c record; hist int; n_notice int; gs text; closed_now boolean; closed_max boolean; draft_err text; pos record;
+        rep record; confirm jsonb; auto_err text; v_auto boolean; auto_ref text; ab record; auto_run jsonb; st_f text; corr jsonb; st_after text;
+        corrected boolean; n_corr int; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V638', true);
+    -- the calendar: y−8 .. y, with y current; the configured maximum two years, automatic reconciliation off
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 8, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2740/01' WHERE name = format('%s/%s', y, y + 1);
+    cur := format('%s/%s', y, y + 1);
+    UPDATE policy.progression_setting SET max_spillover_years = 2, auto_graduation = false WHERE row_no;
+    v_max := (SELECT max_spillover_years FROM policy.progression_setting WHERE row_no);
+    -- a four-year programme of the check's own
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+    VALUES (v_prog, 'B.Sc. CHECK V638', v_dept, v_fac, 'UNDER GRADUATE', 0, 400, 4);
+    -- the students (the matriculation numbers carry the full year, so the number's year is no signal against a far-future calendar)
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/37/963701', 'MOAUM/CHK/ZPX/' || (y - 7) || '/96371', 'CHECKV638', 'Outside', v_prog, 'UTME', format('%s/%s', y - 7, y - 6), 100, 400, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/37/963702', 'MOAUM/CHK/ZPX/' || (y - 7) || '/96372', 'CHECKV638', 'Migrated', v_prog, 'UTME', format('%s/%s', y - 7, y - 6), 100, 100, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/37/963703', 'MOAUM/CHK/ZPX/' || (y - 7) || '/96373', 'CHECKV638', 'Deferring', v_prog, 'UTME', format('%s/%s', y - 7, y - 6), 100, 400, 'ACTIVE', now()),
+        (g, 'MOAUM/ADM/37/963707', 'MOAUM/CHK/ZPX/' || (y - 7) || '/96377', 'CHECKV638', 'Current', v_prog, 'UTME', format('%s/%s', y - 7, y - 6), 100, 400, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/37/963704', 'MOAUM/CHK/ZPX/' || (y - 3) || '/96374', 'CHECKV638', 'Within', v_prog, 'UTME', format('%s/%s', y - 3, y - 2), 100, 400, 'ACTIVE', now()),
+        (e, 'MOAUM/ADM/37/963705', 'MOAUM/CHK/ZPX/' || (y - 7) || '/96375', 'CHECKV638', 'Withdrawn', v_prog, 'UTME', format('%s/%s', y - 7, y - 6), 100, 400, 'WITHDRAWN', now()),
+        (f, 'MOAUM/ADM/37/963706', 'MOAUM/CHK/ZPX/' || (y - 7) || '/96376', 'CHECKV638', 'Nightly', v_prog, 'UTME', format('%s/%s', y - 7, y - 6), 100, 400, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (gen_random_uuid(), a, format('%s/%s', y - 5, y - 4), 1, 400, 'APPROVED', now(), now()),
+        (gen_random_uuid(), f, format('%s/%s', y - 5, y - 4), 1, 400, 'APPROVED', now(), now()),
+        (gen_random_uuid(), c, format('%s/%s', y - 5, y - 4), 1, 400, 'APPROVED', now(), now()),
+        (gen_random_uuid(), g, cur, 1, 400, 'APPROVED', now(), now());
+    INSERT INTO people.deferment (reference, student_id, kind, session, reason_code, explanation, state, activated_at)
+    VALUES ('DEF-2740-96373', c, 'SESSION', cur, (SELECT r.code FROM people.deferment_reason r ORDER BY r.code LIMIT 1), 'Check V638', 'ACTIVE', now());
+    PERFORM people.refresh_academic_positions(ARRAY[a, b, c, d, e, f, g]);
+    PERFORM people.refresh_lifecycle_completion(ARRAY[a, b, c, d, e, f, g]);
+
+    -- the candidates and their confidence
+    SELECT * INTO ca FROM people.graduation_candidates(NULL, NULL, NULL, NULL, NULL, ARRAY[a], 1);
+    SELECT * INTO cb FROM people.graduation_candidates(NULL, NULL, NULL, NULL, NULL, ARRAY[b], 1);
+    SELECT * INTO cc FROM people.graduation_candidates(NULL, NULL, NULL, NULL, NULL, ARRAY[c], 1);
+    n_other := (SELECT count(*) FROM people.graduation_candidates(NULL, NULL, NULL, NULL, NULL, ARRAY[d, e, g], 10));
+    fig := people.graduation_reconciliation_figures(NULL, NULL, v_prog);
+
+    -- the batch of three chosen, MEDIUM included; executed by its officer only
+    v_ref := people.graduation_reconciliation_open('Check V638: three chosen outside the maximum period', 'MANUAL', true, ARRAY[a, b, c], NULL, NULL, NULL, NULL);
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    BEGIN
+        run1 := people.graduation_reconciliation_run(v_ref, NULL, 200);
+        own_err := 'NOT REFUSED';
+    EXCEPTION WHEN insufficient_privilege THEN own_err := split_part(SQLERRM, ':', 1);
+    END;
+    PERFORM set_config('moaum.actor_id', actor::text, true);
+    run1 := people.graduation_reconciliation_run(v_ref, 'Check V638: exceeded the maximum academic period', 200);
+    SELECT s.status INTO st_a FROM people.student s WHERE s.id = a;
+    SELECT s.status INTO st_b FROM people.student s WHERE s.id = b;
+    SELECT s.status INTO st_c FROM people.student s WHERE s.id = c;
+    SELECT * INTO gr FROM people.graduation_reconciliation WHERE student_id = a;
+    SELECT * INTO row_c FROM people.graduation_reconciliation_row WHERE batch_ref = v_ref AND student_id = c;
+    hist := (SELECT count(*) FROM people.status_change x WHERE x.student_id = a AND x.from_status = 'ACTIVE' AND x.to_status = 'GRADUATED' AND x.instrument LIKE 'Graduation reconciliation GRAD-RECON/%');
+    n_notice := (SELECT count(*) FROM platform.notice n WHERE n.about_id = a AND n.template_key = 'STUDENT_GRADUATED_RECONCILED');
+    gs := records.graduation_session(a);
+    closed_now := finance.closed_for_fees(a, cur);
+    closed_max := finance.closed_for_fees(a, gr.maximum_session);
+    BEGIN
+        PERFORM registration.student_draft(a, cur, 1);
+        draft_err := 'NOT REFUSED';
+    EXCEPTION WHEN OTHERS THEN draft_err := split_part(SQLERRM, ':', 1);
+    END;
+    SELECT ap.classification, ap.rule, ap.confidence, ap.issues INTO pos FROM people.academic_position ap WHERE ap.student_id = a;
+    run2 := people.graduation_reconciliation_run(v_ref, NULL, 200);
+    SELECT * INTO rep FROM people.graduation_reconciliation_report('programme', NULL, NULL, v_prog);
+    -- the official date confirmed by the Academic Office
+    confirm := people.confirm_graduation_date(a, make_date(y - 2, 11, 15), NULL, 'Check V638: the convocation');
+    -- automatic reconciliation: refused while off; on, the portal's own batch takes HIGH confidence alone
+    BEGIN
+        auto_ref := people.graduation_reconciliation_open('nightly', 'AUTOMATIC', true, NULL, NULL, NULL, v_prog, NULL);
+        auto_err := 'NOT REFUSED';
+    EXCEPTION WHEN check_violation THEN auto_err := split_part(SQLERRM, ':', 1);
+    END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM policy.set_auto_graduation(true);
+    v_auto := (SELECT auto_graduation FROM policy.progression_setting WHERE row_no);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    auto_ref := people.graduation_reconciliation_open('nightly', 'AUTOMATIC', true, NULL, NULL, NULL, v_prog, NULL);
+    SELECT bt.mode, bt.min_confidence, bt.selected, bt.eligible, bt.review INTO ab FROM people.graduation_reconciliation_batch bt WHERE bt.batch_ref = auto_ref;
+    auto_run := people.graduation_reconciliation_run(auto_ref, NULL, 200);
+    SELECT s.status INTO st_f FROM people.student s WHERE s.id = f;
+    -- the Registrar's correction marks the reconciliation corrected
+    corr := records.correct_graduation(a, 'Check V638: the student is still in study on the department''s evidence', 'Registrar''s memo REG/CHK/637', actor, 'registrar');
+    SELECT s.status INTO st_after FROM people.student s WHERE s.id = a;
+    corrected := (SELECT x.corrected_at IS NOT NULL AND x.corrected_by = actor FROM people.graduation_reconciliation x WHERE x.id = gr.id);
+    n_corr := (SELECT bt.corrected FROM people.graduation_reconciliation_batch bt WHERE bt.batch_ref = v_ref);
+    RAISE EXCEPTION 'the V638 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V638 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V638: a student outside the maximum academic period (length plus the configured spillover) is found by the engine with a confidence for the rule, graduated by status reconciliation on a GRAD-RECON batch with the calculation kept, the record closed to new fees and registration from the session after the last permitted one, the LOW record left for review, the official date confirmed, the nightly run refused while off and HIGH-only when on, and the Registrar''s correction recorded',
+      coalesce(v_max = 2
+               AND ca.confidence = 'HIGH' AND ca.spillover_years = 4 AND ca.expected_completion = format('%s/%s', y - 4, y - 3) AND ca.sp1_session = format('%s/%s', y - 3, y - 2)
+               AND ca.maximum_session = format('%s/%s', y - 2, y - 1) AND ca.recommendation = 'GRADUATED' AND ca.duration_years = 4 AND ca.current_session = cur
+               AND cb.confidence = 'MEDIUM' AND cb.confidence_reasons LIKE '%no course registration%' AND cc.confidence = 'LOW' AND cc.recommendation = 'REQUIRES_REVIEW'
+               AND cc.confidence_reasons LIKE '%deferment is in force%' AND n_other = 0
+               AND (fig->>'outsideMaximum')::int = 4 AND (fig->>'eligibleHigh')::int = 2 AND (fig->>'eligibleMedium')::int = 1 AND (fig->>'requiresReview')::int = 1 AND (fig->>'active')::int = 6
+               AND v_ref ~ '^GRAD-RECON/[0-9]{4}/[0-9]{6}$' AND own_err = 'GRADRECON_BATCH_OWNER'
+               AND (run1->>'graduated')::int = 2 AND (run1->>'remaining')::int = 0 AND (run1->>'done')::boolean
+               AND st_a = 'GRADUATED' AND st_b = 'GRADUATED' AND st_c = 'ACTIVE' AND row_c.verdict = 'REVIEW' AND row_c.outcome IS NULL
+               AND gr.previous_status = 'ACTIVE' AND gr.confidence = 'HIGH' AND gr.maximum_session = format('%s/%s', y - 2, y - 1) AND gr.graduation_session = gr.maximum_session
+               AND NOT gr.date_confirmed AND gr.max_spillover_years = 2 AND gr.spillover_years = 4 AND gr.decision_id IS NOT NULL AND gr.clearance IS NOT NULL
+               AND hist = 1 AND n_notice = 1 AND gs = gr.maximum_session AND closed_now AND NOT closed_max AND draft_err = 'REG_STUDENT_NOT_ELIGIBLE'
+               AND pos.rule = 'R1' AND pos.classification = 'GRADUATED' AND pos.confidence = 'VALIDATED' AND NOT ('GRADUATED_WITHOUT_APPROVAL' = ANY (pos.issues))
+               AND (run2->>'graduated')::int = 0 AND (run2->>'done')::boolean
+               AND rep.graduated = 2 AND rep.high = 1 AND rep.medium = 1
+               AND (confirm->>'graduationDate') = (make_date(y - 2, 11, 15))::text
+               AND auto_err = 'GRADRECON_AUTO_OFF' AND v_auto AND ab.mode = 'AUTOMATIC' AND ab.min_confidence = 'HIGH' AND ab.selected = 2 AND ab.eligible = 1 AND ab.review = 1
+               AND (auto_run->>'graduated')::int = 1 AND st_f = 'GRADUATED'
+               AND st_after = 'ACTIVE' AND corrected AND n_corr = 1, false),
+      format('max %s | a %s %s exp %s sp1 %s maxs %s rec %s | b %s (%s) | c %s %s (%s) | others %s | figures %s | ref %s owner %s | run1 %s | status %s/%s/%s row_c %s/%s | gr prev %s conf %s max %s gs %s date_confirmed %s clearance %s | hist %s notice %s gs %s closed %s/%s draft %s | pos %s %s %s %s | run2 %s | report %s/%s/%s | confirm %s | auto off %s on %s batch %s/%s/%s/%s/%s run %s f %s | corrected %s %s %s',
+             v_max, ca.confidence, ca.spillover_years, ca.expected_completion, ca.sp1_session, ca.maximum_session, ca.recommendation, cb.confidence, left(cb.confidence_reasons, 60),
+             cc.confidence, cc.recommendation, left(cc.confidence_reasons, 60), n_other, fig, v_ref, own_err, run1, st_a, st_b, st_c, row_c.verdict, row_c.outcome,
+             gr.previous_status, gr.confidence, gr.maximum_session, gr.graduation_session, gr.date_confirmed, left(gr.clearance, 40), hist, n_notice, gs, closed_now, closed_max, draft_err,
+             pos.rule, pos.classification, pos.confidence, pos.issues, run2, rep.graduated, rep.high, rep.medium, confirm, auto_err, v_auto, ab.mode, ab.min_confidence, ab.selected, ab.eligible, ab.review, auto_run, st_f,
+             st_after, corrected, n_corr));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

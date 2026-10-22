@@ -42,7 +42,8 @@ interface Preview {
 
 const count = (n: number) => Number(n).toLocaleString("en-NG");
 const naira = (n: number) => `₦${Number(n).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
-const WORD = { LEVEL: "By level — a level above the programme's final level", COHORT: "By cohort — the sessions past the programme's length (SP1, SP2 …)" };
+// V637: by level also takes SP1/SP2 at the final level, as the level desk sets them (the cohort engine's spillover at the final level)
+const WORD = { LEVEL: "By level — a level above the programme's final level, or SP1/SP2 at it", COHORT: "By cohort — the sessions past the programme's length (SP1, SP2 …)" };
 
 export function SpillBasis({ session, may, mayFees }: { session: string; may: boolean; mayFees: boolean }) {
   const router = useRouter();
@@ -185,8 +186,8 @@ export function SpillBasis({ session, may, mayFees }: { session: string; may: bo
             <Note kind="info" title={`${count(moving)} current student${moving === 1 ? "" : "s"} would be charged differently ${other === "COHORT" ? "by the cohort" : "by the level"}`}
               action={<Btn kind="secondary" busy={busy === "preview"} onClick={async () => { setBusy("preview"); setPreview(await load()); setBusy(null); }}>Preview the change</Btn>}>
               {other === "COHORT"
-                ? "The cohort engine reads these students as spillover by the sessions past their programme's length, but their record's level is not above the final level, so the spillover lines are not charged to them."
-                : "These students are charged the spillover lines by the cohort, but their level is not above the programme's final level."}
+                ? "The cohort engine reads these students as spillover by the sessions past their programme's length, but their record's level is below the final level, so the spillover lines are not charged to them by level."
+                : "These students are charged the spillover lines by the cohort, but their level is below the programme's final level."}
             </Note>
           ) : (
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>

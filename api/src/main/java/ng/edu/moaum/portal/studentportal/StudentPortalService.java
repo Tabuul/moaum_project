@@ -377,7 +377,10 @@ public class StudentPortalService {
         // V451: an open semester with no line stated for the student, while another semester's is — not "settled"
         out.put("unstatedSemesters", repo.unstatedSemesters(id, session));
         // V616: a spillover student is charged a semester's school fees only when they register a course in it — the page says so
-        out.put("spilloverBySemester", repo.isSpillover(id));
+        boolean spill = repo.isSpillover(id);
+        out.put("spilloverBySemester", spill);
+        // V637: the SP year, each semester's spillover fee and whether a course is registered in it, the carry-overs by semester
+        out.put("spillover", spill ? repo.spilloverPanel(id, session) : null);
         out.put("due", pos.get("due"));
         out.put("paid", pos.get("paid"));
         out.put("balance", pos.get("balance"));
@@ -447,7 +450,7 @@ public class StudentPortalService {
         Map<String, Object> pos = repo.position(id, ses);
         BigDecimal balance = (BigDecimal) pos.get("balance");
         BigDecimal amt = amount == null ? balance : amount;
-        String reference = repo.newReference(id, ses, amt, "School fees " + ses);
+        String reference = repo.newReference(id, ses, amt, schoolFeesPurpose(id, ses, amt, pos));
         Map<String, Object> out = new LinkedHashMap<>(fees(id, ses));
         out.put("reference", reference);
         return out;
@@ -458,6 +461,25 @@ public class StudentPortalService {
     @Transactional
     public Map<String, Object> renewReference(UUID id, String reference) {
         return repo.renewReference(id, reference);
+    }
+
+    /** V637: what a school-fees reference pays for, in words — for a spillover student "School fees 2025/2026 · spillover (SP1) · first
+     *  semester" (or second, or both semesters, by the amount against what each semester still owes), so the reference, the receipt and
+     *  the ledger's semester say so; every reader still reads it as school fees (LIKE 'School fees%') */
+    private String schoolFeesPurpose(UUID id, String session, BigDecimal amount, Map<String, Object> pos) {
+        String purpose = "School fees " + session;
+        if (!repo.isSpillover(id)) return purpose;
+        Map<String, Object> panel = repo.spilloverPanel(id, session);
+        Object year = panel == null ? null : panel.get("year");
+        BigDecimal paid = pos.get("paid") == null ? BigDecimal.ZERO : (BigDecimal) pos.get("paid");
+        BigDecimal balance = pos.get("balance") == null ? BigDecimal.ZERO : (BigDecimal) pos.get("balance");
+        BigDecimal first = repo.dueForSemester(id, session, 1).subtract(paid).max(BigDecimal.ZERO);
+        if (first.compareTo(BigDecimal.ONE) < 0) first = BigDecimal.ZERO;
+        BigDecimal second = balance.subtract(first).max(BigDecimal.ZERO);
+        String which = first.signum() > 0
+                ? (amount != null && amount.compareTo(first) > 0 && second.signum() > 0 ? "both semesters" : "first semester")
+                : "second semester";
+        return purpose + " · spillover" + (year == null ? "" : " (SP" + year + ")") + " · " + which;
     }
 
     @Transactional(readOnly = true)

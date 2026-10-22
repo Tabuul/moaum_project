@@ -83,10 +83,12 @@ export function FeeReport({ data, structure, fac, dept, generatedBy }: { data: R
             ["Students owing", fmt(t.owing_students), t.owing_students ? "var(--red-ink)" : null, `${fmt(t.part_paid)} of them part-paid`],
             ["Amount paid", money(Number(t.amount_paid)), null, "School-fees payments confirmed for the session"],
             ["Amount owing", money(Number(t.amount_owing)), Number(t.amount_owing) ? "var(--red-ink)" : null, `Of ${money(Number(t.amount_due))} due by the fee setup`],
+            // V637: spillover fees apart — SP1/SP2 students pay a semester's spillover fee for each semester they register
+            ["Spillover (SP1/SP2)", fmt(t.spill_students ?? 0), null, `${money(Number(t.spill_paid ?? 0))} paid · ${money(Number(t.spill_owing ?? 0))} owing`],
           ]} />
         </PBody>
         {data.rows.length ? (
-          <DTable pageSize={0} cols={["S/N|num", "Session", "Faculty", "Department", "Level|mid", "Students paid|num", "Students owing|num", "Amount paid|num", "Amount owing|num"]}
+          <DTable pageSize={0} cols={["S/N|num", "Session", "Faculty", "Department", "Level|mid", "Students paid|num", "Students owing|num", "Amount paid|num", "Amount owing|num", "Spillover|num"]}
             rows={data.rows.map((x, i) => [
               <span key="n" className="tnum sub2">{i + 1}</span>,
               <span key="s" className="tnum">{data.session}</span>,
@@ -97,10 +99,12 @@ export function FeeReport({ data, structure, fac, dept, generatedBy }: { data: R
               <span key="o" className={`tnum${x.owing_students ? " ink-red" : ""}`}>{fmt(x.owing_students)}{x.part_paid ? <div className="sub2">{fmt(x.part_paid)} part-paid</div> : null}</span>,
               <span key="a" className="tnum">{money(Number(x.amount_paid))}</span>,
               <span key="w" className={`tnum${Number(x.amount_owing) ? " ink-red" : ""}`}>{money(Number(x.amount_owing))}</span>,
+              <span key="sp" className="tnum sub2">{x.spill_students ? <>{fmt(x.spill_students)} · {money(Number(x.spill_paid))} paid<div>{money(Number(x.spill_owing))} owing</div></> : "—"}</span>,
             ])}
             foot={[<span key="n" />, <span key="s" />, <b key="f">Grand total</b>, <span key="d" />, <span key="l" />,
               <b key="p" className="tnum">{fmt(t.paid_students)}</b>, <b key="o" className="tnum">{fmt(t.owing_students)}</b>,
-              <b key="a" className="tnum">{money(Number(t.amount_paid))}</b>, <b key="w" className="tnum">{money(Number(t.amount_owing))}</b>]} />
+              <b key="a" className="tnum">{money(Number(t.amount_paid))}</b>, <b key="w" className="tnum">{money(Number(t.amount_owing))}</b>,
+              <b key="sp" className="tnum">{fmt(t.spill_students ?? 0)}</b>]} />
         ) : <PBody><div className="sub2">No student is counted for {data.session}{fac || dept ? " in this faculty or department" : ""}.</div></PBody>}
         <PBody>
           <Note kind="info" title="How the figures are read">
@@ -108,6 +112,8 @@ export function FeeReport({ data, structure, fac, dept, generatedBy }: { data: R
             the session&rsquo;s confirmed school-fees payments (gateway, bank, old portal and carried-over credit). &ldquo;Paid&rdquo; is paid in full (short by under ₦1
             counts as paid); &ldquo;owing&rdquo; includes part payments. Counted: students on the register (active or on probation), the session&rsquo;s new intake not yet
             matriculated, and anyone else who paid school fees in the session.
+            {" "}<b>Spillover</b> counts the students charged the spillover lines (SP1/SP2), already within the figures beside it: they pay a semester&rsquo;s
+            spillover fee only for a semester they register a course in. The Bursary&rsquo;s Spillover students list names them.
             {t.no_fee ? ` ${fmt(t.no_fee)} counted student${t.no_fee === 1 ? " has" : "s have"} no fee stated for the session and appear${t.no_fee === 1 ? "s" : ""} in neither column.` : ""}
           </Note>
         </PBody>

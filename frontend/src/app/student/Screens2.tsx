@@ -17,6 +17,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/u
 import { Modal, Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { PayByCard, RenewReference, naira, onDay, useAct, when } from "./common";
+import { SpilloverCard } from "./SpilloverCard";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 /** V528: the student gives the bank account a refund of overpaid fees is paid into — while it awaits approval (and may change it
@@ -113,8 +114,10 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           What is shown covers what the Bursary has stated so far; nothing here pays for the {unstatedWords} semester. The Bursary is told when a student&rsquo;s fees are missing, and the charge appears here once it is stated. If it is still not here in a few days, <Link href={askBursary(`${semesterName(unstated[0])} semester school fees for ${fees.session} not stated`)}>ask the Bursary</Link>.
         </Note>
       ) : null}
+      {/* V637: a spillover student's fees by semester — the SP year, each semester's fee, the carry-overs, what is owed and paid */}
+      {fees.spillover ? <SpilloverCard sp={fees.spillover} /> : null}
       {/* V616: a spillover student is charged a semester's fees only when they register a course in it */}
-      {fees.spilloverBySemester && !noCharge ? (
+      {fees.spilloverBySemester && !fees.spillover && !noCharge ? (
         <Note kind="info" title="In spillover, you pay for the semesters you register">
           A semester&rsquo;s school fees are charged to you when you register a course in that semester, and the whole-session items the first time you register. {fees.due > 0 ? "What is shown is for the semesters you have registered so far." : "Nothing is charged until you register a course; the charge then appears here, and the registration is submitted once it is paid."}
         </Note>
@@ -145,6 +148,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           [<strong key="t">Total</strong>, <strong className="tnum t-md" key="a">{naira(fees.due)}</strong>],
         ]} />
       </Panel>
+      <div id="pay" />
       {!noCharge && fees.balance > 0 ? (
         <Panel title="Pay" right="Against a reference this portal generates">
           <PBody>
