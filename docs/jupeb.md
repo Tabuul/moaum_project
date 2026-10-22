@@ -379,7 +379,13 @@ copies of them.
 
 ## API
 
-- **Public:** `/api/v1/jupeb/options`, `/apply`, `/sign-in`, `/forgot`, `/reset`.
+- **Public:** `/api/v1/jupeb/options`, `/apply`, `/sign-in`, `/forgot`, `/reset`. A public door reads no token (Oct 2026):
+  the portal's browser side forwards whatever session cookie the browser holds to every call, and a token whose session the
+  server had ended (idle, or signed out elsewhere) or that was past its time was refused with 401 before the door was
+  reached, so the application form failed on submission with "The request failed" for a candidate whose earlier session had
+  lapsed or on a computer another person had signed in on. Every public door of the API (`SecurityConfig.PUBLIC_DOORS`) now
+  answers from its own rules whatever the request carries; the candidate's doors still refuse an ended session
+  (`SESSION_ENDED`, `SESSION_EXPIRED_IDLE`).
 - **Candidate** (`OFFICE_applicant`, scoped to the token's application): `/api/v1/jupeb/me`, plus `/biodata`,
   `/choice` (programme and combination), `/olevel`, `/documents/{kind}?sitting=` (with `/content`),
   `/fee-reference?kind=`, `/submit`, `/register-subjects`, `/attendance`, `/papers`, `/requests` (with `/{id}/cancel`),
@@ -417,6 +423,8 @@ copies of them.
 
 ## Tests
 
+- `PublicDoorsIT` (Oct 2026): the public doors — JUPEB options, apply and sign-in among them — answer from their own rules
+  with an ended session's token or a token that is not one, while a door that needs a session still refuses the ended one.
 - `JupebIT` runs the journey: windows, applying, signing in, the guided steps, two sittings with their own documents,
   the passport as JPEG, choosing an offered combination (and refusing one disabled or of the other programme), the
   office disabling and reactivating subjects and combinations, status checking (masked, closed, ₦1,000 once), acceptance

@@ -185,6 +185,16 @@ class JupebIT {
         // the reference carries the session's year: the count restarts each session and must not collide (V342)
         assertThat(String.valueOf(applied.get("reference"))).startsWith("MOAUM-JUPEBAPP-" + session.substring(0, 4) + "-");
         assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/apply", form(email, comb)))).isEqualTo("JUPEB_APP_EXISTS");
+        // Oct 2026: the browser forwards whatever session cookie it holds — one whose session has ended must not close a public
+        // door (the application form failed on submission with it); where a session is needed, the ended one is still refused
+        String stale = String.valueOf(ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", email, "password", "Jupeb2026!x"))).get("token"));
+        ok(it.call(stale, HttpMethod.POST, "/api/v1/jupeb/sign-out", null));
+        ResponseEntity<Map> ended = it.get(stale, "/api/v1/jupeb/me");
+        assertThat(status(ended)).isEqualTo(401);
+        assertThat(ended.getBody().get("code")).isEqualTo("SESSION_ENDED");
+        assertThat(status(it.get(stale, "/api/v1/jupeb/options"))).as("a public door with an ended session's token").isEqualTo(200);
+        assertThat(code(it.call(stale, HttpMethod.POST, "/api/v1/jupeb/apply", form(email, comb)))).as("the door's own answer, not the session's").isEqualTo("JUPEB_APP_EXISTS");
+        assertThat(status(it.get("not.a.token", "/api/v1/jupeb/options"))).as("a public door with a token that is not one").isEqualTo(200);
 
         // ── signed in on the application number; the token reaches this candidate's record only ──
         Map<String, Object> signed = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", number, "password", "Jupeb2026!x")));

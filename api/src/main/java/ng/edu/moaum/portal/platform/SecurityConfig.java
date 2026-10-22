@@ -1,6 +1,7 @@
 package ng.edu.moaum.portal.platform;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -20,8 +21,12 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -40,42 +45,67 @@ class SecurityConfig {
 
     static final String OFFICE_AUTHORITY_PREFIX = "OFFICE_";
 
+    /**
+     * The public doors: reached by people who are not signed in (the application forms, the sign-ins, the forgotten-password
+     * pages, the verification pages, the public figures) and by the gateways and providers with credentials of their own.
+     * None of them reads the token a request may carry, and none is answered from it (see {@link #publicDoorsReadNoToken()}).
+     */
+    static final String[] PUBLIC_DOORS = {"/actuator/health", "/actuator/health/**", "/api/v1/platform/status",
+            "/api/v1/auth/sign-in", "/api/v1/auth/bootstrap", "/api/v1/auth/offices",
+            "/api/v1/auth/forgot", "/api/v1/auth/reset",
+            "/api/v1/auth/sso", "/api/v1/auth/sso/start", "/api/v1/auth/sso/callback",
+            "/api/v1/applicant/lookup", "/api/v1/applicant/register", "/api/v1/applicant/sign-in",
+            "/api/v1/applicant/cce/lookup", "/api/v1/applicant/cce/register",
+            // V446: the Preliminary Science application is started online, with no list to look up
+            "/api/v1/applicant/preliminary/register",
+            "/api/v1/applicant/forgot", "/api/v1/applicant/reset",
+            "/api/v1/payments/webhook/paystack", "/api/v1/payments/webhook/flutterwave",
+            "/api/v1/payments/webhook/quickteller", "/api/v1/payments/quickteller/start", "/api/v1/payments/quickteller/return",
+            "/api/v1/payments/paydirect/validate", "/api/v1/payments/paydirect/notify", "/api/v1/payments/paydirect/interswitch",
+            // Oct 2026: the same doors with a key in the address (the key is the credential; see PaymentsController)
+            "/api/v1/payments/paydirect/validate/*", "/api/v1/payments/paydirect/notify/*", "/api/v1/payments/paydirect/interswitch/*",
+            "/api/v1/student-auth/sign-in",
+            "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status",
+            "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
+            "/api/v1/jupeb/options", "/api/v1/jupeb/apply", "/api/v1/jupeb/sign-in", "/api/v1/jupeb/forgot", "/api/v1/jupeb/reset",
+            "/api/v1/verify/**", "/api/v1/helpdesk/track", "/api/v1/helpdesk/sign-in-help", "/api/v1/helpdesk/sign-in-help/check", "/api/v1/public/**",
+            "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate",
+            // V385: the Post-UTME CBT door and result checking — public, verified by JAMB number and a second factor, throttled
+            "/api/v1/putme/cbt/public", "/api/v1/putme/cbt/verify", "/api/v1/putme/results/check",
+            // V438: the providers' delivery reports, behind the token the Directorate of ICT generated
+            "/api/v1/notices/receipts/*",
+            // V511: the integration door; the API key is the credential, checked by the database on every call
+            "/api/integration/v1/**"};
+
     @Bean
     SecurityFilterChain api(HttpSecurity http, SessionGuard sessions) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(publicCors()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers("/actuator/health", "/actuator/health/**", "/api/v1/platform/status",
-                                "/api/v1/auth/sign-in", "/api/v1/auth/bootstrap", "/api/v1/auth/offices",
-                                "/api/v1/auth/forgot", "/api/v1/auth/reset",
-                                "/api/v1/auth/sso", "/api/v1/auth/sso/start", "/api/v1/auth/sso/callback",
-                                "/api/v1/applicant/lookup", "/api/v1/applicant/register", "/api/v1/applicant/sign-in",
-                                "/api/v1/applicant/cce/lookup", "/api/v1/applicant/cce/register",
-                                // V446: the Preliminary Science application is started online, with no list to look up
-                                "/api/v1/applicant/preliminary/register",
-                                "/api/v1/applicant/forgot", "/api/v1/applicant/reset",
-                                "/api/v1/payments/webhook/paystack", "/api/v1/payments/webhook/flutterwave",
-                                "/api/v1/payments/webhook/quickteller", "/api/v1/payments/quickteller/start", "/api/v1/payments/quickteller/return",
-                                "/api/v1/payments/paydirect/validate", "/api/v1/payments/paydirect/notify", "/api/v1/payments/paydirect/interswitch",
-                                // Oct 2026: the same doors with a key in the address (the key is the credential; see PaymentsController)
-                                "/api/v1/payments/paydirect/validate/*", "/api/v1/payments/paydirect/notify/*", "/api/v1/payments/paydirect/interswitch/*",
-                                "/api/v1/student-auth/sign-in",
-                                "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status",
-                                "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
-                                "/api/v1/jupeb/options", "/api/v1/jupeb/apply", "/api/v1/jupeb/sign-in", "/api/v1/jupeb/forgot", "/api/v1/jupeb/reset",
-                                "/api/v1/verify/**", "/api/v1/helpdesk/track", "/api/v1/helpdesk/sign-in-help", "/api/v1/helpdesk/sign-in-help/check", "/api/v1/public/**",
-                                "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate",
-                                // V385: the Post-UTME CBT door and result checking — public, verified by JAMB number and a second factor, throttled
-                                "/api/v1/putme/cbt/public", "/api/v1/putme/cbt/verify", "/api/v1/putme/results/check",
-                                // V438: the providers' delivery reports, behind the token the Directorate of ICT generated
-                                "/api/v1/notices/receipts/*",
-                                // V511: the integration door; the API key is the credential, checked by the database on every call
-                                "/api/integration/v1/**").permitAll()
+                        .requestMatchers(PUBLIC_DOORS).permitAll()
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
+                .oauth2ResourceServer(oauth2 -> oauth2.bearerTokenResolver(publicDoorsReadNoToken())
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(authenticationConverter())))
                 .addFilterAfter(new AuditContextFilter(sessions), BearerTokenAuthenticationFilter.class);
         return http.build();
+    }
+
+    /**
+     * A public door reads no token (Oct 2026). The portal's browser side forwards whatever session cookie the browser
+     * holds to every call it makes for a page, the public doors included, and a token that no longer opens anything — its
+     * session ended by the server for idleness or signed out elsewhere, or past its time — was refused here before the
+     * door was reached: the bearer filter answered 401 for a token it could not accept, and {@link AuditContextFilter}
+     * for a session that had ended. So a JUPEB candidate whose earlier session had lapsed, or anyone on a computer another
+     * person had signed in on, found the application form refused on submission with "The request failed". A door that
+     * {@link #PUBLIC_DOORS permits anyone} is answered as it answers anyone: the token is not read there, and the door's
+     * own rules (its validation, the window, the credentials it asks for) decide. Every other path reads the token as
+     * before, and an ended session is still refused there.
+     */
+    static BearerTokenResolver publicDoorsReadNoToken() {
+        DefaultBearerTokenResolver bearer = new DefaultBearerTokenResolver();
+        List<RequestMatcher> doors = Arrays.stream(PUBLIC_DOORS).map(PathPatternRequestMatcher::pathPattern).map(RequestMatcher.class::cast).toList();
+        return request -> doors.stream().anyMatch(door -> door.matches(request)) ? null : bearer.resolve(request);
     }
 
     /**
