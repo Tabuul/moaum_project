@@ -1520,6 +1520,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/graduationmanage", "icon": "cap", "label": "Graduation Management" },
+          { "id": "t/graduationmanage", "icon": "cap", "label": "Graduation Management" },
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },

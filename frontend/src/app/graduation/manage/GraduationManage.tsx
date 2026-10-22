@@ -2,7 +2,7 @@
 
 /** V602: Graduation Management — the figures the existing engines give, graduation batches on the Senate's minute (preview, confirm,
  *  execute, history), the graduated by session, and the reports. Every verdict and every act is the server's. */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
@@ -22,8 +22,10 @@ const STATUSES: [string, string][] = [["", "Active or on probation (in study)"],
 
 type Step = "filter" | "preview" | "running" | "done";
 
-export function GraduationManage({ scope, structure, sessions, view, actingOffice }: {
+export function GraduationManage({ scope, structure, sessions, view, actingOffice, children }: {
   scope: Scope; structure: ScopeStructure; sessions: string[]; view: Management; actingOffice: string | null;
+  /** V638: the students outside the maximum academic period, below the figures */
+  children?: ReactNode;
 }) {
   const router = useRouter();
   const f = view.figures;
@@ -178,6 +180,8 @@ export function GraduationManage({ scope, structure, sessions, view, actingOffic
           <LinkBtn kind="ghost" href={`/clearance?wf=FINAL&session=${encodeURIComponent(scope.session)}`}>Final clearance desk</LinkBtn>
         </div>
       </PBody>
+
+      {children}
 
       {office ? (
         <Panel title="Graduation batch" right={step === "filter" ? "Choose the students, preview, then confirm on the Senate's minute" : step === "preview" ? `${t.selected} chosen · ${t.eligible} eligible` : progress.ref}>

@@ -169,3 +169,10 @@ preview in 1.0 s, and a reconciliation step of 200 in 6.5 s (well inside the 30-
   matriculation number moved; history and batches; corrections put the status, level and list entry back, once.
 * `check.sql` V558 — the same properties in the database alone, undone at the end.
 * `lib/lifecycle.test.ts` — the words, the confirmation sentence, the steps, the batch reference, the cross-tabs.
+
+## 10. Beyond the maximum (V638)
+
+At the maximum the lifecycle batch keeps the student ACTIVE and flagged, or makes them DORMANT or WITHDRAWN. A student past the
+maximum academic period who is still kept in study is now graduated by status reconciliation on Graduation Management, with the
+confidence of this desk as one of its inputs (DATA_INCOMPLETE and REQUIRES_REVIEW read LOW there). See
+[graduation-status-reconciliation.md](graduation-status-reconciliation.md).

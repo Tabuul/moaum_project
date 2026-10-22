@@ -161,3 +161,10 @@ record only; the second is ACTIVE and its portal, fees and registration are unto
 - A graduation-eligibility service of its own: the degree audit and the lifecycle completion check are the eligibility engine; the
   verdict reads them.
 - Office clearance workspaces: every unit's desk exists on the clearance engine.
+
+## 11. Students outside the maximum academic period (V638)
+
+A student still kept in study after the programme's length plus the permitted spillover is graduated by status reconciliation,
+not by a batch on the Senate's minute: GRAD-RECON/YYYY/NNNNNN batches on the same screen, the graduation session the last session
+permitted, the same lock on fees and registration from the session after it, and the same correction by the Registrar. See
+[graduation-status-reconciliation.md](graduation-status-reconciliation.md).

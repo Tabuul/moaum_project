@@ -30,6 +30,8 @@ import {
 type Row = Record<string, unknown>;
 type Data = Record<string, unknown>;
 export interface Overview extends Data { sections: string[]; identity: Row; contact: Row | null; position: Row | null; lifecycle: Row | null; graduand: Row | null;
+  /** V638: graduated by status reconciliation, outside the maximum academic period */
+  reconciliation?: Row | null;
   standing: Row | null; fees?: Row | null; session: string | null; semester: number | null; registrations: number; hostel: Row | null }
 
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -157,7 +159,7 @@ export function FullRecord({ studentId, name, number, overview, overviewBody, bi
 /* ── overview ── */
 
 function OverviewTab({ o, body }: { o: Overview; body: ReactNode }) {
-  const id = o.identity, pos = o.position, lc = o.lifecycle, fees = o.fees, st = o.standing, g = o.graduand;
+  const id = o.identity, pos = o.position, lc = o.lifecycle, fees = o.fees, st = o.standing, g = o.graduand, rc = o.reconciliation ?? null;
   const spill = pos && Number(pos.spillover_years ?? 0) > 0 ? `${pos.spillover_years} spillover year${Number(pos.spillover_years) === 1 ? "" : "s"}` : null;
   const tiles: [ReactNode, ReactNode, string | null, ReactNode?][] = [
     ["Current level", id.current_level ? `${id.current_level} Level` : "—", null, spill ?? (pos?.final_level ? `Final level ${pos.final_level}` : "")],
@@ -195,6 +197,10 @@ function OverviewTab({ o, body }: { o: Overview; body: ReactNode }) {
               ["Classification", words(pos?.classification) || "—"], ["Registered this session", pos?.registered_current ? "Yes" : "No"],
               ["Graduation", g ? `${dash(g.session)} · ${words(g.senate_state)}${g.award ? ` · ${g.award}` : ""}${g.batch_ref ? ` · batch ${g.batch_ref}` : ""}${g.final_level ? ` · final level ${g.final_level}${g.duration_years ? ` (${g.duration_years} years)` : ""}` : ""}${g.spillover_state && String(g.spillover_state).startsWith("SPILLOVER") ? ` · graduated from ${String(g.spillover_state).replace("SPILLOVER_YEAR_", "SP")}` : ""}` : words(pos?.graduation_state) || "Not on a graduation list"],
               ["Recommendation", lc ? `${words(lc.recommendation)} · ${words(lc.confidence)} confidence · ${words(lc.review_state)}` : "—"],
+              ...(rc ? [["Status reconciliation", `Graduated ${day(rc.reconciled_at)} by ${s(rc.mode) === "AUTOMATIC" ? "the nightly reconciliation" : "the Academic Office"} (${dash(rc.batch_ref)}): `
+                + `outside the maximum academic period, ${dash(rc.spillover_years)} sessions beyond the expected completion with ${dash(rc.max_spillover_years)} allowed · `
+                + `graduation session ${dash(rc.graduation_session)} · official date ${rc.date_confirmed && rc.graduation_date ? day(rc.graduation_date) : "awaiting the Academic Office"} · `
+                + `${words(rc.confidence)} confidence · status before ${words(rc.previous_status)}`]] as [string, string][] : []),
             ]} />
             {lc?.explanation ? <div className="sub2 mt-2">{s(lc.explanation)}</div> : null}
           </PBody>

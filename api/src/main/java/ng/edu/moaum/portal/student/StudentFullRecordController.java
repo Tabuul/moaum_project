@@ -149,6 +149,12 @@ class StudentFullRecordController {
                     'graduand', (SELECT row_to_json(x) FROM (
                         SELECT g.session, g.cgpa, g.award, g.unmet, g.senate_state, g.senate_minute, g.batch_ref, g.graduated_at, g.final_level, g.duration_years, g.spillover_state FROM records.graduand g WHERE g.student_id = :s
                          ORDER BY (g.senate_state = 'APPROVED') DESC, g.session DESC LIMIT 1) x),
+                    -- V638: graduated by status reconciliation (outside the maximum academic period), the standing one
+                    'reconciliation', (SELECT row_to_json(x) FROM (
+                        SELECT r.batch_ref, b.mode, r.previous_status, r.maximum_session, r.graduation_session, r.graduation_date, r.date_confirmed, r.confidence,
+                               r.spillover_years, r.max_spillover_years, r.reconciled_at
+                          FROM people.graduation_reconciliation r JOIN people.graduation_reconciliation_batch b ON b.batch_ref = r.batch_ref
+                         WHERE r.student_id = :s AND r.corrected_at IS NULL) x),
                     'registrations', (SELECT count(*) FROM registration.course_registration r WHERE r.student_id = :s),
                     'clearances', (SELECT coalesce(json_agg(x ORDER BY x.started_at DESC), '[]'::json) FROM (
                         SELECT q.workflow, q.reference, q.started_at, q.completed_at, q.cancelled_at FROM clearance.process q WHERE q.student_id = :s) x),
