@@ -200,6 +200,16 @@ public class CapsIntakeService {
         return out;
     }
 
+    /**
+     * V636: before a list is committed, the candidates of its session whose course JAMB changed follow it where no offer stands —
+     * in a transaction of their own, so they stay followed when the commit is then refused for another finding. A list loaded
+     * before V636 carried the changes without the follow, and its commit was refused for them.
+     */
+    @Transactional
+    public Map<String, Object> followBeforeCommit(UUID id) {
+        return followCapsCourse(get(id).session(), false);
+    }
+
     /** V629: the subject columns of either layout (and JAMB's course name), compared as the file wrote them */
     private static final Set<String> SUBJECT_KEYS = Set.of("coname", "subject1", "rgsub1score", "subject2", "rgsub2score", "subject3",
             "rgsub3score", "engscore", "sub1", "sub1score", "sub2", "sub2score", "sub3", "sub3score", "sub4score");

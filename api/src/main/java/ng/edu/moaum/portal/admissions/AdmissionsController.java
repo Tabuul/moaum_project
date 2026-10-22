@@ -178,8 +178,15 @@ class AdmissionsController {
     @PostMapping("/caps-batches/{id}/commit")
     @PreAuthorize(LOADERS)
     Map<String, Object> commit(@PathVariable UUID id) {
+        // V636: the candidates JAMB moved follow its course first, committed on their own, so the list is not refused for them
+        Map<String, Object> followed = intake.followBeforeCommit(id);
         String outcome = intake.commit(id);
-        return Map.of("batchId", id, "outcome", outcome);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("batchId", id);
+        out.put("outcome", outcome);
+        out.put("followed", followed.get("followed"));
+        out.put("admittedLeft", followed.get("admittedLeft"));
+        return out;
     }
 
     record Withdrawal(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {

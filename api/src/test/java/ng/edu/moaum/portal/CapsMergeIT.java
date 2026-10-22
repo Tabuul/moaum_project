@@ -25,7 +25,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * changed, it is recorded beside the first and counted as a replacement.
  * V636: the follow of JAMB's course changes answers the loading offices (a dry run names and writes nothing; the Bursary is refused);
  * an O'Level awaiting result (A/R) on record is replaced by the grades uploaded under the same exam number, and an uploaded A/R over
- * the grades changes nothing. Needs DATABASE_URL.
+ * the grades changes nothing. Commit follows JAMB's course first: a candidate here carrying the old course is moved to the listed one
+ * whatever the commit then says. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -158,6 +159,34 @@ class CapsMergeIT {
         assertThat(dry.getStatusCode().value()).as(String.valueOf(dry.getBody())).isEqualTo(200);
         assertThat(dry.getBody()).containsEntry("dryRun", true).containsKeys("followed", "admittedLeft", "named");
         assertThat(it.call(ItSupport.token("bursary"), HttpMethod.POST, path, Map.of()).getStatusCode().value()).isEqualTo(403);
+    }
+
+    @Test
+    void theCommitFollowsJambsCourseFirstAndTheFollowStandsWhateverTheCommitSays() {
+        String academic = ItSupport.token("academic");
+        String listed = jdbc.sql("SELECT name FROM ref.programme WHERE code = 'C00061'").query(String.class).single();
+        String old = jdbc.sql("SELECT name FROM ref.programme WHERE category = 'UNDER GRADUATE' AND code <> 'C00061' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1")
+                .query(String.class).single();
+        String reg = freeReg();
+        ResponseEntity<Map> loaded = load(academic, "CAPS-DE commit follows.xlsx", List.of(row(reg, "C00061", "ZZCOMMITF")));
+        assertThat(loaded.getStatusCode().value()).as(String.valueOf(loaded.getBody())).isEqualTo(201);
+        String batch = String.valueOf(((Map<String, Object>) loaded.getBody().get("batch")).get("id"));
+        // a candidate record here carrying another course, as one who registered before JAMB changed it, with no offer
+        java.util.UUID candidate = java.util.UUID.randomUUID();
+        it.db(() -> jdbc.sql("""
+                INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+                VALUES (:id, :s, :r, 'ZZCOMMITF', 'Invented Merge', :p, 'DIRECT_ENTRY', 200, 'PROPOSED')
+                """).param("id", candidate).param("s", SESSION).param("r", reg).param("p", old).update());
+
+        ResponseEntity<Map> commit = it.call(academic, HttpMethod.POST, "/api/v1/admissions/caps-batches/" + batch + "/commit", Map.of());
+        // the shared session may hold other findings that refuse the commit; the candidate follows JAMB's course either way
+        assertThat(commit.getStatusCode().value()).as(String.valueOf(commit.getBody())).isIn(200, 422);
+        if (commit.getStatusCode().value() == 200) {
+            assertThat(((Number) commit.getBody().get("followed")).intValue()).isGreaterThanOrEqualTo(1);
+            assertThat(commit.getBody()).containsKey("admittedLeft");
+        }
+        assertThat(jdbc.sql("SELECT programme FROM admissions.candidate WHERE id = :id").param("id", candidate).query(String.class).single())
+                .isEqualTo(listed);
     }
 
     @Test

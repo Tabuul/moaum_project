@@ -377,12 +377,14 @@ export function CapsIntake({
       const r = await post(`/api/v1/admissions/caps-batches/${id}/commit`, "CAPS list committed through the portal");
       if (r.ok) {
         const outcome = String((r.body as { outcome?: string })?.outcome ?? "committed");
+        const moved = Number((r.body as { followed?: number })?.followed ?? 0);
         setCommitted({ ...committed, [id]: outcome });
         if (fromScreen && done) setLoaded({ ...loaded, [kind]: { ...done, outcome } });
-        notify(`CAPS list ${outcome}`);
+        notify(`CAPS list ${outcome}${moved ? ` · ${moved.toLocaleString()} candidate${moved === 1 ? "" : "s"} followed JAMB's course first` : ""}`);
         router.refresh();
       } else {
         setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
+        router.refresh();   // V636: those JAMB moved were followed before the refusal; the reconciliation reads again
       }
     } finally {
       setCommitting(null);
@@ -816,7 +818,7 @@ export function CapsIntake({
           <Note kind="info" title={`${undecided.n.toLocaleString()} candidate${undecided.n === 1 ? "" : "s"} on the portal whose course JAMB changed, with no offer standing`}
             action={mayLoad ? <Btn kind="primary" busy={following} busyLabel="Applying…" onClick={() => void followCaps()}>Apply JAMB&rsquo;s course changes</Btn> : undefined}>
             Each follows JAMB&rsquo;s course: the programme becomes JAMB&rsquo;s, a programme change is written on the register, the applicant is told, and eligibility is read again.
-            Candidates with a released offer are left as offered: correct those on Programme Changes. New uploads do this by themselves.
+            Candidates with a released offer are left as offered: correct those on Programme Changes. New uploads and Commit do this by themselves.
           </Note>
         ) : null}
         {followed && followed.named.length ? (

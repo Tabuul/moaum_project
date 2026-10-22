@@ -28,7 +28,9 @@ Each candidate in a chunk is read against the session's live list first (`CapsIn
   released offer stands: the candidate's programme becomes JAMB's, a programme change (reason *Course changed by JAMB on the CAPS
   list*) is written on the register approved as made, the applicant is told, and the eligibility engine reads the candidate again.
   The loader does this after every upload that changed a course (`admissions.follow_caps_course`), and the reconciliation panel
-  offers **Apply JAMB's course changes** for candidates changed before V636. A candidate with a released offer is left as offered
+  offers **Apply JAMB's course changes** for candidates changed before V636. **Commit** does the same first, in a transaction of
+  its own, so a list loaded before V636 commits without the button and those followed stay followed even when the commit is then
+  refused for another finding. A candidate with a released offer is left as offered
   and counted apart ("Matched, programme differs from CAPS — admitted"): the admission is corrected on Programme Changes, or the
   row withdrawn. Only that finding still blocks the commit.
 - **Batch counts.** Each batch keeps `rows_updated` and `rows_unchanged`; `rows_added` is the rows it put on the list. The upload
