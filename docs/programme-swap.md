@@ -1,6 +1,6 @@
-# Programme swap (V578)
+# Programme swap (V578, V633)
 
-*20 Oct 2026.* Students who changed programme before or during the migration from the old portal arrived under the programme
+*20 Oct 2026; one officer since 22 Oct 2026 (V633).* Students who changed programme before or during the migration from the old portal arrived under the programme
 they had left, so the register, the statistics, the fee lines and the class lists still read them in the old department. The
 programme swap is the office's correction of a student's **current** placement — faculty, department, programme and level —
 with the old placement kept. **Academic Office → Programme Swap** and **Director of ICT → Programme Swap** (`/programme-swap`);
@@ -33,19 +33,22 @@ record move (a postgraduate record off an undergraduate programme — V548), and
    jump of more than a year; a change of faculty; the CCE route. Also shown: the session's fee lines under each programme (nothing
    charged), and the session's registered courses the new programme does not offer and its core courses not registered.
 
-3. **Prepare.** `people.prepare_programme_swap` — the Academic Office, the Registry, the Director of ICT or super, with the kind
-   (legacy migration correction, programme correction, academic transfer recorded) and a reason of ten characters or more. The
-   check must pass. The swap gets a reference `PSW/YYYY/NNNNNN` and status `PENDING_APPROVAL`; nothing on the student changes.
-   One swap at a time per student. Evidence (PDF, JPEG, PNG up to 5 MB) is kept with the swap, in the file store where there is
-   one. **Bulk:** many students onto one programme and level, each checked and prepared on its own; those refused are listed
-   with the reason; the batch is decided at once or swap by swap.
+3. **Make the swap.** `people.prepare_programme_swap` — the Academic Office, the Registry, the Director of ICT or super, with the
+   kind (legacy migration correction, programme correction, academic transfer recorded) and a reason of ten characters or more.
+   The check must pass. The swap gets a reference `PSW/YYYY/NNNNNN` and is decided at once by the same officer (V633, the
+   University's word of 22 October 2026: no second level of approval — the officer who initiates the swap moves the student):
+   the check runs again on the record as it stands, the programme and level are set, the student row before and after and the
+   registration impact are kept on the swap, the finding reads *swapped*, and the student is told (`PROGRAMME_SWAP_COMPLETED`:
+   the new placement and whom to ask, no migration detail). The swap is `COMPLETED` when the call returns, with the officer as
+   its preparer and its decider. Evidence (PDF, JPEG, PNG up to 5 MB) is kept with the swap, before or after it is made, in the
+   file store where there is one. **Bulk:** many students onto one programme and level, each checked and made on its own, at
+   once; those refused are listed with the reason.
 
-4. **Decide.** `people.decide_programme_swap` — approved and executed at once, or rejected with a note — by **another officer**
-   of the Academic Office or the Registry (super too). The Director of ICT decides a legacy migration correction (the technical
-   case) and no other. The check runs again on the record as it stands: a record that changed since fails the swap
-   (`FAILED`, nothing written; prepare again). Then the programme and level are set, the student row before and after and the
-   registration impact are kept on the swap, and the student is told (`PROGRAMME_SWAP_COMPLETED`: the new placement and whom to
-   ask, no migration detail). The officer who prepared a swap, or the Academic Office or the Registry, cancels it while pending.
+4. **A swap left pending from before V633.** `people.decide_programme_swap` — approved and executed at once, or rejected with a
+   note — by any officer who may make a swap, the one who prepared it included (the two-officer rule and the constraint
+   `ck_programme_swap_other_officer` are gone; the Director of ICT decides any kind). The check runs again on the record as it
+   stands: a record that changed since fails the swap (`FAILED`, nothing written; make it again). The officer who prepared it,
+   the Academic Office or the Registry cancels it while pending. A batch of such swaps is decided at once or swap by swap.
 
 ## What stays
 
@@ -74,4 +77,4 @@ office's bound (`StudentReach`); a Head of Department or Dean elsewhere, and a s
 
 ## Tests
 
-`ProgrammeSwapIT`; `lib/programme-swap.test.ts`; check.sql V578.
+`ProgrammeSwapIT`, `TransferBatchIT`; `lib/programme-swap.test.ts`; check.sql V578 and V587 (as V633 has them), V633.

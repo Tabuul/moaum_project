@@ -3,8 +3,8 @@
 /** V587: bulk inter-departmental transfer. The department's students come out as a template (their current placement filled in,
  *  the new one for the office to fill); the file comes back and every row is checked against the student's current record and the
  *  target — never put right silently — and previewed, with an error report to correct and upload again; the valid rows are
- *  prepared as one batch of programme swaps (IDT/YYYY/NNNNNN) that another officer decides on this screen. Nothing on a student
- *  changes until that decision. */
+ *  made as one batch of programme swaps (IDT/YYYY/NNNNNN) by the officer who uploads the file, and the students move at once (V633).
+ *  A batch left pending from before is decided on this screen by any officer who may make a swap. */
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,8 +19,6 @@ import { COLUMNS, STATUS, errorReportRows, readTransferSheet, rowWords, template
 
 const BASE = "/api/bff/api/v1/transfers/bulk";
 const PREPARERS = ["academic", "ict", "registrar", "dregistrar", "super"];
-/** the Director of ICT decides a legacy migration correction only — not a transfer */
-const DECIDERS = ["academic", "registrar", "dregistrar", "super"];
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
 export interface Structure { faculties: { code: string; name: string; departments: { code: string; name: string; programmes: { code: string; name: string; levels: number[] }[] }[] }[] }
@@ -37,10 +35,11 @@ const BATCH: Record<string, [string, "ok" | "info" | "warn" | "bad" | "grey"]> =
   COMPLETED_WITH_EXCEPTIONS: ["Completed with exceptions", "warn"], REJECTED: ["Rejected", "bad"], FAILED: ["Failed", "bad"], NOTHING_PREPARED: ["Nothing prepared", "grey"],
 };
 
-export function TransferBulk({ structure, batches, office, me }: { structure: Structure; batches: Batch[]; office: string | null; me: string | null }) {
+export function TransferBulk({ structure, batches, office }: { structure: Structure; batches: Batch[]; office: string | null; me: string | null }) {
   const router = useRouter();
   const mayPrepare = PREPARERS.includes(office ?? "");
-  const mayDecide = DECIDERS.includes(office ?? "");
+  /** V633: who may make a swap decides a batch left pending from before, the officer who uploaded it included */
+  const mayDecide = mayPrepare;
   const [tab, setTab] = useState<"upload" | "batches">("upload");
   // the template
   const [fac, setFac] = useState("");
@@ -105,7 +104,7 @@ export function TransferBulk({ structure, batches, office, me }: { structure: St
     const j = await r.json().catch(() => null);
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
     setMade(j as BatchDetail);
-    notify(`${(j as BatchDetail).ref}: ${(j as BatchDetail).prepared} transfer${(j as BatchDetail).prepared === 1 ? "" : "s"} prepared; another officer decides them`);
+    notify(`${(j as BatchDetail).ref}: ${(j as BatchDetail).completed} student${(j as BatchDetail).completed === 1 ? "" : "s"} transferred`);
     router.refresh();
   }
 
@@ -134,9 +133,9 @@ export function TransferBulk({ structure, batches, office, me }: { structure: St
     <>
       <Note kind="info" title="Students who moved department, recorded from a spreadsheet">
         Each row must name the student&rsquo;s current faculty, department, programme and level exactly as the record holds them; a row that does not is
-        refused (SOURCE PROGRAMME MISMATCH), never put right. The valid rows become programme swaps under one batch, decided by another officer of the Academic
-        Office or the Registry. Registrations, results, payments and the matriculation number stay as they are; a matriculation number that must follow is
-        corrected separately under Matriculation Correction.
+        refused (SOURCE PROGRAMME MISMATCH), never put right. The valid rows become programme swaps under one batch, made at once by the officer who uploads
+        the file: each student is on the new programme when the upload is done. Registrations, results, payments and the matriculation number stay as they are;
+        a matriculation number that must follow is corrected separately under Matriculation Correction.
       </Note>
       <Tabs label="Bulk transfer" value={tab} onChange={setTab} items={[{ id: "upload", label: "New upload" }, { id: "batches", label: "Batches", count: batches.length }]} />
       {tab === "upload" ? (
@@ -214,12 +213,12 @@ export function TransferBulk({ structure, batches, office, me }: { structure: St
             ) : null}
           </Panel>
           {check && mayPrepare ? (
-            <Panel title="3 · Prepare the transfers">
+            <Panel title="3 · Transfer the students">
               <PBody>
                 {made ? (
-                  <Note kind="ok" title={`${made.ref}: ${made.prepared} transfer${made.prepared === 1 ? "" : "s"} prepared`}
+                  <Note kind="ok" title={`${made.ref}: ${made.completed} student${made.completed === 1 ? "" : "s"} transferred`}
                     action={<Btn kind="ghost" size="sm" onClick={() => { setTab("batches"); void openBatch(made.id); }}>Open the batch</Btn>}>
-                    {made.skipped ? `${made.skipped} row${made.skipped === 1 ? "" : "s"} left out with the reason. ` : ""}Another officer of the Academic Office or the Registry decides the batch; nothing on a student changes until then.
+                    {made.skipped ? `${made.skipped} row${made.skipped === 1 ? "" : "s"} left out with the reason. ` : ""}Each student transferred is on the new programme now; the batch keeps every row with its result.
                   </Note>
                 ) : (
                   <>
@@ -234,13 +233,13 @@ export function TransferBulk({ structure, batches, office, me }: { structure: St
                     {check.invalid ? (
                       <label className="row row--tight mt-1" style={{ alignItems: "center", gap: 8 }}>
                         <input type="checkbox" className="chk" checked={validOnly} onChange={(e) => setValidOnly(e.target.checked)} />
-                        <span>Prepare the {check.valid + check.warnings} valid rows alone; the {check.invalid} invalid rows are left out and kept with the reason</span>
+                        <span>Transfer the {check.valid + check.warnings} valid rows alone; the {check.invalid} invalid rows are left out and kept with the reason</span>
                       </label>
                     ) : null}
                     <div className="row row--tight mt-2" style={{ gap: 8, alignItems: "center" }}>
-                      <Btn kind="primary" disabled={reason.trim().length < 10 || (check.invalid > 0 && !validOnly) || check.valid + check.warnings === 0} busyLabel="Preparing…"
-                        onClick={() => prepare()}>{`Prepare ${check.valid + check.warnings} transfer${check.valid + check.warnings === 1 ? "" : "s"}`}</Btn>
-                      <span className="sub2">{check.invalid && !validOnly ? "Correct the invalid rows, or choose to prepare the valid rows alone." : "Each row is checked again as it is prepared."}</span>
+                      <Btn kind="primary" disabled={reason.trim().length < 10 || (check.invalid > 0 && !validOnly) || check.valid + check.warnings === 0} busyLabel="Transferring…"
+                        onClick={() => prepare()}>{`Transfer ${check.valid + check.warnings} student${check.valid + check.warnings === 1 ? "" : "s"}`}</Btn>
+                      <span className="sub2">{check.invalid && !validOnly ? "Correct the invalid rows, or choose to transfer the valid rows alone." : "Each row is checked again as its student is transferred."}</span>
                     </div>
                   </>
                 )}
@@ -272,7 +271,7 @@ export function TransferBulk({ structure, batches, office, me }: { structure: St
           onClose={() => setOpen(null)}
           foot={<>
             {open.pending && mayDecide ? (
-              me && open.prepared_by === me ? <span className="sub2 grow">You prepared this batch: another officer decides it.</span> : <>
+              <>
                 <Btn kind="ghost" disabled={note.trim().length < 10} busyLabel="Rejecting…" onClick={() => decide(false)}>Reject the waiting transfers</Btn>
                 <Btn kind="primary" busyLabel="Approving…" onClick={() => decide(true)}>{`Approve ${open.pending} transfer${open.pending === 1 ? "" : "s"}`}</Btn>
               </>
@@ -281,7 +280,7 @@ export function TransferBulk({ structure, batches, office, me }: { structure: St
           </>}>
           <KvGrid cls="grid--4" pairs={[["Rows", open.total], ["Prepared", open.prepared], ["Left out", open.skipped], ["Waiting", open.pending], ["Completed", open.completed], ["Rejected", open.rejected],
             ["Reason", open.reason], ["Approval reference", open.approval_ref ?? "—"]]} />
-          {open.pending && mayDecide && !(me && open.prepared_by === me) ? (
+          {open.pending && mayDecide ? (
             <Field id="tb-note" label="Note on the decision" hint="Required to reject (ten characters or more)">
               <input id="tb-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
             </Field>

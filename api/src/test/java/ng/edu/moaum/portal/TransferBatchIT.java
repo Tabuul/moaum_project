@@ -19,11 +19,11 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
- * V587: bulk inter-departmental transfer over the API. The Academic Office takes its department's students as a template, uploads
- * three rows — one right, one naming another department as the student's old one (SOURCE PROGRAMME MISMATCH), one naming a
- * programme that does not exist — sees each checked, is refused while a row is invalid, prepares the valid row alone as a batch
- * (IDT/…) of programme swaps; nothing changes on the students; the officer who prepared it cannot approve it; the Registry approves,
- * and the student is in the new department with the same matriculation number. The Bursary has none of it. Needs DATABASE_URL.
+ * V587, V633: bulk inter-departmental transfer over the API. The Academic Office takes its department's students as a template,
+ * uploads three rows — one right, one naming another department as the student's old one (SOURCE PROGRAMME MISMATCH), one naming
+ * a programme that does not exist — sees each checked, is refused while a row is invalid, makes the valid row alone as a batch
+ * (IDT/…) of programme swaps; the student is in the new department at once with the same matriculation number, by the officer
+ * who uploaded the file, and nothing is left for anyone to decide. The Bursary has none of it. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -48,7 +48,7 @@ class TransferBatchIT {
     }
 
     @Test
-    void aDepartmentsTransfersAreUploadedCheckedPreparedAndDecidedByAnotherOfficer() {
+    void aDepartmentsTransfersAreUploadedCheckedAndMadeAtOnceByTheOfficerWhoUploadsThem() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
         int n = 10000 + new Random().nextInt(89999);
         Map<String, Object> from = jdbc.sql("SELECT code, dept_code, faculty_code FROM ref.programme WHERE code = 'C00023'").query().singleRow();
@@ -97,18 +97,18 @@ class TransferBatchIT {
         assertThat(made.getStatusCode().value()).as(String.valueOf(made.getBody())).isEqualTo(200);
         String batch = String.valueOf(made.getBody().get("id"));
         assertThat(String.valueOf(made.getBody().get("ref"))).matches("IDT/\\d{4}/\\d{6}");
-        assertThat(made.getBody()).containsEntry("prepared", 1).containsEntry("status", "PENDING_APPROVAL");
-        assertThat(jdbc.sql("SELECT programme_code FROM people.student WHERE id = :s").param("s", s1).query(String.class).single()).isEqualTo("C00023");
-
-        // the officer who prepared it does not approve it; the Registry does
-        Map<String, Object> own = it.call(preparer, HttpMethod.POST, "/api/v1/programme-swaps/batches/" + batch + "/decide", Map.of("approve", true)).getBody();
-        assertThat((List<?>) own.get("decided")).isEmpty();
-        assertThat((List<?>) own.get("skipped")).hasSize(1);
-        Map<String, Object> decided = it.call(registrar, HttpMethod.POST, "/api/v1/programme-swaps/batches/" + batch + "/decide",
-                Map.of("approve", true, "note", "Checked against the Senate minutes")).getBody();
-        assertThat((List<?>) decided.get("decided")).hasSize(1);
+        // V633: the valid row's student moved at once by the officer who uploaded the file; the batch is complete on return
+        assertThat(made.getBody()).containsEntry("prepared", 1).containsEntry("completed", 1).containsEntry("status", "COMPLETED_WITH_EXCEPTIONS");
         assertThat(jdbc.sql("SELECT programme_code || '|' || current_level || '|' || matric_no FROM people.student WHERE id = :s").param("s", s1).query(String.class).single())
                 .isEqualTo(to.get("code") + "|200|" + m1);
+
+        // nothing is left for a decision, the uploader's or the Registry's
+        Map<String, Object> own = it.call(preparer, HttpMethod.POST, "/api/v1/programme-swaps/batches/" + batch + "/decide", Map.of("approve", true)).getBody();
+        assertThat((List<?>) own.get("decided")).isEmpty();
+        assertThat((List<?>) own.get("skipped")).isEmpty();
+        Map<String, Object> decided = it.call(registrar, HttpMethod.POST, "/api/v1/programme-swaps/batches/" + batch + "/decide",
+                Map.of("approve", true, "note", "Checked against the Senate minutes")).getBody();
+        assertThat((List<?>) decided.get("decided")).isEmpty();
 
         // the batch as it stands, every row kept with its result
         Map<String, Object> view = it.get(registrar, BASE + "/" + batch).getBody();

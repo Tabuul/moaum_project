@@ -38,9 +38,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Programme swap (V578): a migrated student's current programme, department, faculty and level corrected by an office, the old
  * placement kept. The desk reads the records whose placement looks wrong (people.programme_mismatches, through the figure cache:
- * the detector reads the whole register in a few seconds), an officer prepares a swap after the check (people.programme_swap_check)
- * and another officer decides it — approved and executed at once, or rejected — with the student's own scope rule (StudentReach)
- * on every student named. Nothing here writes to the student but people.decide_programme_swap.
+ * the detector reads the whole register in a few seconds), and an officer makes a swap after the check (people.programme_swap_check):
+ * since V633 the officer who initiates it decides it — people.prepare_programme_swap decides the swap at once, and the student is on
+ * the new programme when the call returns. A swap left pending from before V633 is decided (/{id}/decide, /batches/{batch}/decide)
+ * by any officer who may make one. The student's own scope rule (StudentReach) holds on every student named. Nothing here writes
+ * to the student but people.decide_programme_swap.
  */
 @RestController
 @RequestMapping("/api/v1/programme-swaps")
@@ -49,7 +51,7 @@ class ProgrammeSwapController {
     private static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records',"
             + "'OFFICE_super','OFFICE_admin','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_dvc')";
     private static final String PREPARERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
-    /** the Director of ICT decides a legacy migration correction and no other: people.programme_swap_office_decides holds the rule */
+    /** V633: who may make a swap decides one left pending — people.programme_swap_office_decides holds the rule */
     private static final String DECIDERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     static final Set<String> EVIDENCE_TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
     static final Set<String> KINDS = Set.of("LEGACY_MIGRATION_CORRECTION", "PROGRAMME_CORRECTION", "ACADEMIC_TRANSFER");
@@ -139,8 +141,7 @@ class ProgrammeSwapController {
         out.put("asOf", a.at());
         out.put("refreshing", a.refreshing());
         out.put("prepares", jdbc.sql("SELECT people.programme_swap_office_prepares(:o)").param("o", office()).query(Boolean.class).single());
-        out.put("decides", jdbc.sql("SELECT people.programme_swap_office_decides(:o, 'PROGRAMME_CORRECTION') OR people.programme_swap_office_decides(:o, 'LEGACY_MIGRATION_CORRECTION')")
-                .param("o", office()).query(Boolean.class).single());
+        out.put("decides", jdbc.sql("SELECT people.programme_swap_office_decides(:o, 'PROGRAMME_CORRECTION')").param("o", office()).query(Boolean.class).single());
         return out;
     }
 
@@ -291,7 +292,7 @@ class ProgrammeSwapController {
         return detail(id);
     }
 
-    /** many students onto one programme and level, each checked and prepared on its own (a refusal skips that student alone) */
+    /** many students onto one programme and level, each checked and made on its own, at once (a refusal skips that student alone) */
     @PostMapping("/bulk")
     @PreAuthorize(PREPARERS)
     @Transactional
@@ -316,7 +317,7 @@ class ProgrammeSwapController {
                             .param("ses", body.session(), Types.VARCHAR).param("k", body.kind(), Types.VARCHAR).param("r", body.reason(), Types.VARCHAR)
                             .param("b", batch).query(UUID.class).single();
                     st.releaseSavepoint(sp);
-                    Map<String, Object> row = jdbc.sql("SELECT id, swap_ref, student_id, from_programme, from_level, to_programme, to_level, review FROM people.programme_swap WHERE id = :id")
+                    Map<String, Object> row = jdbc.sql("SELECT id, swap_ref, student_id, from_programme, from_level, to_programme, to_level, review, status, failure FROM people.programme_swap WHERE id = :id")
                             .param("id", id).query().singleRow();
                     done.add(unwrapped(row));
                 } catch (DataAccessException | DomainRuleViolation | AccessDeniedException e) {
@@ -387,9 +388,8 @@ class ProgrammeSwapController {
                     .param("s", student).param("p", row.get("to_programme")).param("l", row.get("to_level")).param("ses", row.get("effective_session")).param("id", id)
                     .query(String.class).single()));
         }
-        String office = office();
-        out.put("mayDecide", jdbc.sql("SELECT people.programme_swap_office_decides(:o, :k)").param("o", office).param("k", String.valueOf(row.get("kind"))).query(Boolean.class).single()
-                && !AuditContextHolder.current().map(c -> c.actorId()).map(me -> me.equals(jdbc.sql("SELECT prepared_by FROM people.programme_swap WHERE id = :id").param("id", id).query(UUID.class).single())).orElse(false));
+        // V633: who may make a swap decides one left pending, the officer who prepared it included
+        out.put("mayDecide", jdbc.sql("SELECT people.programme_swap_office_decides(:o, :k)").param("o", office()).param("k", String.valueOf(row.get("kind"))).query(Boolean.class).single());
         return out;
     }
 
@@ -399,8 +399,10 @@ class ProgrammeSwapController {
     Map<String, Object> evidence(@PathVariable UUID id, @RequestBody Evidence body) {
         String status = jdbc.sql("SELECT status FROM people.programme_swap WHERE id = :id").param("id", id).query(String.class).optional()
                 .orElseThrow(() -> new NotFound("programme swap", id));
-        if (!"PENDING_APPROVAL".equals(status)) {
-            throw new DomainRuleViolation("PSW_DECIDED", "Evidence is added while the swap awaits a decision.", new DomainRuleViolation.Remedy("Prepare a new swap if more is needed.", "You"));
+        // V633: a swap is made at once, so its evidence (the letter, the approval) is added to the completed swap as well
+        if (!"PENDING_APPROVAL".equals(status) && !"COMPLETED".equals(status)) {
+            throw new DomainRuleViolation("PSW_DECIDED", "Evidence is added to a swap that was made or awaits a decision; this one is " + status.toLowerCase() + ".",
+                    new DomainRuleViolation.Remedy("Make a new swap if more is needed.", "You"));
         }
         if (body.filename() == null || body.filename().isBlank() || body.dataUrl() == null) {
             throw new DomainRuleViolation("PSW_EVIDENCE_FILE", "Choose a file.", new DomainRuleViolation.Remedy("Choose the file again.", "You"));
@@ -448,7 +450,7 @@ class ProgrammeSwapController {
                 .body(bytes);
     }
 
-    /** decided by another officer: rejected, or approved and executed at once */
+    /** a swap left pending from before V633, decided by any officer who may make one: rejected, or approved and executed at once */
     @PostMapping("/{id}/decide")
     @PreAuthorize(DECIDERS)
     @Transactional
@@ -471,7 +473,7 @@ class ProgrammeSwapController {
         return detail(id);
     }
 
-    /** a batch decided swap by swap: each on its own savepoint, so one refused (a record changed since) leaves the rest decided */
+    /** a batch's swaps left pending from before V633, decided swap by swap: each on its own savepoint, so one refused (a record changed since) leaves the rest decided */
     @PostMapping("/batches/{batch}/decide")
     @PreAuthorize(DECIDERS)
     @Transactional

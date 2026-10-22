@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 459
+\set EXPECTED 460
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -20348,11 +20348,11 @@ BEGIN
                left(bursary, 28), left(ict, 28), done->>'state', now_a, former, resolved, found, left(gen_taken, 40), left(upload_refused, 60), signin, unchanged, written, series_same,
                back_points, alias_live, left(rej_short, 24), rej->>'state', canc->>'state', hist));
 END $$;
--- ── V578. Programme swap: a swap prepared by one officer and decided by another moves the student's programme and level and nothing
+-- ── V578 (as V633 has it). Programme swap: a swap made by one officer moves the student's programme and level at once and nothing
 --          else (the matriculation number, the registration, the payment stay), the old placement is in the programme history with the
---          admission, the officer who prepared it cannot decide it, the Director of ICT decides a legacy migration correction and no
---          other, the same placement again is refused, and a record numbered in another department's series and registered on its
---          courses is a confirmed mismatch. The block undoes its writes ──
+--          admission, a completed swap is not decided again, the Director of ICT makes a legacy migration correction alone, the same
+--          placement again is refused, and a record numbered in another department's series and registered on its courses is a
+--          confirmed mismatch. The block undoes its writes ──
 DO $$
 DECLARE prog text; dept text; tprog text; tdept text; seg text; own text; ses text := '2396/2397';
         a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); f uuid := gen_random_uuid(); o uuid := gen_random_uuid(); r uuid := gen_random_uuid();
@@ -20395,23 +20395,18 @@ BEGIN
     INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
     VALUES (a, ses, 'MOAUM-CHK578-' || ses, 'School fees ' || ses, 50000, now(), now(), p1, 'INTERSWITCH', 'RCT-CHK578', 'check V578');
 
-    -- prepared by one officer: the check passes, nothing on the student yet
+    -- made by one officer: the check passes and the swap is decided at once by the same officer (V633); the placement moves, nothing else
     chk := people.programme_swap_check(a, tprog, 200, ses, NULL);
     sw := people.prepare_programme_swap(a, tprog, 200, ses, 'PROGRAMME_CORRECTION', 'Check V578: the legacy record kept the old programme', NULL);
-    -- the same officer does not decide it; the Director of ICT does not decide a programme correction
-    BEGIN
-        dec := people.decide_programme_swap(sw, true, NULL);
-    EXCEPTION WHEN insufficient_privilege THEN same_officer := SQLERRM LIKE 'PSW_SAME_OFFICER:%';
-    END;
+    SELECT jsonb_build_object('status', w.status), w.decided_by = w.prepared_by AND w.decided_by = p1 INTO dec, same_officer FROM people.programme_swap w WHERE w.id = sw;
+    -- a completed swap is not decided again, by anyone
     PERFORM set_config('moaum.actor_id', p2::text, true);
     PERFORM set_config('moaum.actor_office', 'ict', true);
     BEGIN
-        dec := people.decide_programme_swap(sw, true, NULL);
-    EXCEPTION WHEN insufficient_privilege THEN ict_refused := SQLERRM LIKE 'PSW_OFFICE:%';
+        PERFORM people.decide_programme_swap(sw, true, NULL);
+    EXCEPTION WHEN check_violation THEN ict_refused := SQLERRM LIKE 'PSW_DECIDED:%';
     END;
-    -- another Academic Office officer approves: the placement moves, nothing else
     PERFORM set_config('moaum.actor_office', 'academic', true);
-    dec := people.decide_programme_swap(sw, true, 'Check V578: approved');
     SELECT programme_code, current_level, matric_no INTO after_prog, after_level, after_matric FROM people.student WHERE id = a;
     SELECT count(*) INTO regs FROM registration.entry e JOIN registration.course_registration cr ON cr.id = e.registration_id WHERE cr.student_id = a;
     SELECT count(*) INTO pays FROM finance.payment_reference WHERE student_id = a;
@@ -20424,11 +20419,10 @@ BEGIN
         sw2 := people.prepare_programme_swap(a, tprog, 200, ses, 'PROGRAMME_CORRECTION', 'Check V578: the same placement again', NULL);
     EXCEPTION WHEN check_violation THEN same_again := SQLERRM LIKE 'PSW_SAME:%';
     END;
-    -- a legacy migration correction: the Director of ICT prepares it and another ICT officer decides it
+    -- a legacy migration correction: the Director of ICT makes it alone (V633)
     PERFORM set_config('moaum.actor_office', 'ict', true);
     sw2 := people.prepare_programme_swap(b, tprog, 100, ses, 'LEGACY_MIGRATION_CORRECTION', 'Check V578: mapped to the wrong programme at migration', NULL);
-    PERFORM set_config('moaum.actor_id', p2::text, true);
-    dec2 := people.decide_programme_swap(sw2, true, NULL);
+    SELECT jsonb_build_object('status', w.status) INTO dec2 FROM people.programme_swap w WHERE w.id = sw2;
     -- the detector: the flagged record's number is in the target's series and its registration is the target department's
     SELECT m.classification, m.suggested_dept INTO found, sugg FROM people.programme_mismatches(NULL, NULL, prog) m WHERE m.student_id = f;
     RAISE EXCEPTION 'CHECK_V578_UNDONE' USING ERRCODE = 'P0001';
@@ -20436,12 +20430,12 @@ BEGIN
     IF SQLERRM <> 'CHECK_V578_UNDONE' THEN RAISE; END IF;
   END;
 
-    PERFORM pg_temp.assert('V578: a programme swap prepared by one officer and decided by another moves the programme and level only, keeps the old placement in the history, refuses the same officer, the Director of ICT (but for a legacy correction) and the same placement again, and the detector flags a record numbered and registered in another department',
+    PERFORM pg_temp.assert('V578 (V633): a programme swap made by one officer moves the programme and level at once and only those, keeps the old placement in the history, is not decided again, is the Director of ICT''s to make for a legacy correction, refuses the same placement again, and the detector flags a record numbered and registered in another department',
         coalesce((chk->>'ok')::boolean AND dec->>'status' = 'COMPLETED' AND after_prog = tprog AND after_level = 200 AND after_matric = 'MOAUM/CHK/' || own || '/96/9781'
                  AND regs = 1 AND pays = 1 AND hist >= 2 AND hist_admission = prog AND hist_current = tprog AND swapped = 'SWAPPED'
                  AND same_officer AND ict_refused AND same_again AND dec2->>'status' = 'COMPLETED'
                  AND found = 'CONFIRMED' AND sugg = tdept, false),
-        format('check ok %s, decided %s, after %s at %s (matric %s), registration entries %s, payments %s, history %s (admission %s, current %s), review %s, same officer refused %s, ICT refused %s, same again refused %s, legacy by ICT %s, flagged %s suggested %s',
+        format('check ok %s, decided %s, after %s at %s (matric %s), registration entries %s, payments %s, history %s (admission %s, current %s), review %s, decided by the same officer %s, decided again refused %s, same again refused %s, legacy by ICT %s, flagged %s suggested %s',
                chk->>'ok', dec->>'status', after_prog, after_level, after_matric, regs, pays, hist, hist_admission, hist_current, swapped, same_officer, ict_refused, same_again, dec2->>'status', found, sugg));
 END $$;
 -- ── V580. The fee effect of the waiting level corrections. In an invented session the programme states 300,000 at 100 Level and
@@ -20667,8 +20661,8 @@ END $$;
 --          MISMATCH); one whose NEW programme is named under the wrong department; a number no student holds; one student twice
 --          (both rows refused); a lower level without a reason (refused) and with one (a review point). Prepared with an invalid
 --          row: refused unless the valid rows alone are asked for; then a batch IDT/YYYY/NNNNNN of programme swaps (ACADEMIC_TRANSFER)
---          under the batch, every row kept with its result, nothing on any student changed until another officer approves a swap.
---          The template lists the department's students. The block undoes its writes ──
+--          under the batch, every row kept with its result, the valid row's student moved at once by the uploading officer (V633),
+--          the completed swap not decided again. The template lists the department's students. The block undoes its writes ──
 DO $$
 DECLARE p_from text; p_to text; fac_to text; dept_to text; fac_from text; dept_from text; wrong_dept text;
         a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
@@ -20711,26 +20705,29 @@ BEGIN
         EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1); END;
         started := people.prepare_transfer_batch(v_rows, NULL, 'The Senate approved these transfers at its meeting', 'SEN/87/1', 'transfers.xlsx', true);
         batch_rows := (SELECT string_agg(r.row_no || ':' || r.status, ',' ORDER BY r.row_no) FROM people.transfer_batch_row r WHERE r.batch_id = (started->>'id')::uuid);
-        swaps := (SELECT count(*) FROM people.programme_swap w WHERE w.batch_id = (started->>'id')::uuid AND w.kind = 'ACADEMIC_TRANSFER' AND w.status = 'PENDING_APPROVAL');
-        unchanged := (SELECT bool_and(s.programme_code = p_from) FROM people.student s WHERE s.id IN (a, b, c, d));
+        swaps := (SELECT count(*) FROM people.programme_swap w WHERE w.batch_id = (started->>'id')::uuid AND w.kind = 'ACADEMIC_TRANSFER' AND w.status = 'COMPLETED' AND w.decided_by = off1);
+        unchanged := (SELECT bool_and(s.programme_code = p_from) FROM people.student s WHERE s.id IN (b, c, d));
         batch_status := (SELECT x.status FROM people.transfer_batches(50) x WHERE x.id = (started->>'id')::uuid);
-        -- another officer approves the student's swap: the move is made
+        -- the valid row's student moved at once (V633); the completed swap is not decided again, by another officer either
+        moved := (SELECT s.programme_code || ':' || s.current_level FROM people.student s WHERE s.id = a);
         PERFORM set_config('moaum.actor_id', off2::text, true);
         PERFORM set_config('moaum.actor_office', 'registrar', true);
-        decided := people.decide_programme_swap((SELECT w.id FROM people.programme_swap w WHERE w.batch_id = (started->>'id')::uuid AND w.student_id = a), true, 'Checked against the Senate minutes');
-        moved := (SELECT s.programme_code || ':' || s.current_level FROM people.student s WHERE s.id = a);
+        BEGIN
+            decided := people.decide_programme_swap((SELECT w.id FROM people.programme_swap w WHERE w.batch_id = (started->>'id')::uuid AND w.student_id = a), true, 'Checked against the Senate minutes');
+        EXCEPTION WHEN check_violation THEN decided := jsonb_build_object('status', split_part(SQLERRM, ':', 1));
+        END;
         batch_status := batch_status || '>' || (SELECT x.status FROM people.transfer_batches(50) x WHERE x.id = (started->>'id')::uuid);
         RAISE EXCEPTION 'the V587 check undoes its writes';
     EXCEPTION WHEN raise_exception THEN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
         IF msg <> 'the V587 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V587: a bulk inter-departmental transfer checks each row against the student''s current record and its target, and prepares programme swaps under one batch for another officer to decide',
+    PERFORM pg_temp.assert('V587 (V633): a bulk inter-departmental transfer checks each row against the student''s current record and its target, and makes programme swaps under one batch that move the students at once',
         coalesce(codes ~ '^1:(VALID|WARNING):,2:INVALID:SOURCE_PROGRAMME_MISMATCH,3:INVALID:TARGET_DEPARTMENT,4:INVALID:STUDENT_NOT_FOUND,5:INVALID:DUPLICATE_ROW\+LEVEL_REDUCED,6:INVALID:DUPLICATE_ROW$'
                  AND template = 4 AND refused = 'TRANSFER_BATCH_INVALID'
                  AND started->>'ref' ~ '^IDT/\d{4}/\d{6}$' AND (started->>'prepared')::int = 1 AND (started->>'invalid')::int = 5
                  AND batch_rows = '1:PREPARED,2:INVALID,3:INVALID,4:INVALID,5:INVALID,6:INVALID' AND swaps = 1 AND unchanged
-                 AND decided->>'status' = 'COMPLETED' AND moved = p_to || ':200' AND batch_status = 'PENDING_APPROVAL>COMPLETED_WITH_EXCEPTIONS', false),
+                 AND decided->>'status' = 'PSW_DECIDED' AND moved = p_to || ':200' AND batch_status = 'COMPLETED_WITH_EXCEPTIONS>COMPLETED_WITH_EXCEPTIONS', false),
         format('from %s to %s | codes %s | template %s | refused %s | started %s | rows %s swaps %s unchanged %s | decided %s moved %s | batch %s',
                p_from, p_to, codes, template, refused, started, batch_rows, swaps, unchanged, decided->>'status', moved, batch_status));
 END $$;
@@ -23447,6 +23444,69 @@ BEGIN
                  AND s2 LIKE '%shown on the portal with your admission decision%', false),
         format('released %s of 2 (n=%s), mails %s/%s | index: %L / %L | other: %L / %L', rel, n, m1, m2, b1, s1, b2, s2));
 END $$;
+-- ── V633. The programme swap is made by the officer who initiates it: a swap is COMPLETED on return with the same officer as its
+--          preparer and decider, the Director of ICT makes a programme correction, a swap left pending from before V633 is decided
+--          by the officer who prepared it, who may prepare decides, and a bulk transfer batch is completed at once by its uploader.
+--          The block undoes its writes ──
+DO $$
+DECLARE prog text; tprog text; ses text := '2633/2634'; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+        p1 uuid := '00000000-0000-0000-0000-00000000a633'; sw uuid; one jsonb; two jsonb; old uuid; dec jsonb; offices text; batch jsonb;
+        batch_state text; moved text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', p1::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM set_config('moaum.reason', 'CHECK V633', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2633-10-01', DATE '2634-08-31');
+        prog := 'C00023';
+        SELECT p.code INTO tprog FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND p.dept_code <> (SELECT x.dept_code FROM ref.programme x WHERE x.code = prog) AND 200 = ANY (people.programme_levels(p.code))
+         ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/63/963301', 'MOAUM/CHK/ZPW/63/9631', 'CHECKV633', 'Alpha', prog, 'UTME', ses, 100, 200, 'ACTIVE', now()),
+            (b, 'MOAUM/ADM/63/963302', 'MOAUM/CHK/ZPW/63/9632', 'CHECKV633', 'Bravo', prog, 'UTME', ses, 100, 200, 'ACTIVE', now()),
+            (c, 'MOAUM/ADM/63/963303', 'MOAUM/CHK/ZPW/63/9633', 'CHECKV633', 'Charlie', prog, 'UTME', ses, 100, 200, 'ACTIVE', now());
+        -- the Director of ICT makes a programme correction, alone, at once
+        sw := people.prepare_programme_swap(a, tprog, 200, ses, 'PROGRAMME_CORRECTION', 'Check V633: made by the officer who initiates it', NULL);
+        SELECT jsonb_build_object('status', w.status, 'same', w.decided_by = w.prepared_by, 'office', w.decided_office, 'executed', w.executed_at IS NOT NULL,
+                                  'student', (SELECT s.programme_code || ':' || s.current_level FROM people.student s WHERE s.id = w.student_id),
+                                  'review', (SELECT r.status FROM people.programme_mismatch_review r WHERE r.student_id = w.student_id))
+          INTO one FROM people.programme_swap w WHERE w.id = sw;
+        -- a swap left pending from before V633 is decided by the officer who prepared it
+        INSERT INTO people.programme_swap (swap_ref, student_id, kind, change, from_programme, from_level, to_programme, to_level, effective_session, reason, prepared_by, prepared_office)
+        VALUES ('PSW/2633/999633', b, 'PROGRAMME_CORRECTION', 'PROGRAMME', prog, 200, tprog, 200, ses, 'Check V633: pending from before', p1, 'ict')
+        RETURNING id INTO old;
+        dec := people.decide_programme_swap(old, true, 'Check V633: the preparer decides it');
+        SELECT jsonb_build_object('status', w.status, 'same', w.decided_by = w.prepared_by, 'student', (SELECT s.programme_code FROM people.student s WHERE s.id = b))
+          INTO two FROM people.programme_swap w WHERE w.id = old;
+        -- who may prepare decides, whatever the kind
+        offices := (SELECT string_agg(o || ':' || people.programme_swap_office_decides(o, 'PROGRAMME_CORRECTION')::text, ',' ORDER BY o)
+                      FROM unnest(ARRAY['academic', 'registrar', 'dregistrar', 'ict', 'super', 'bursar', 'records']) o);
+        -- a bulk transfer batch is completed at once by the officer who uploads it
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        batch := people.prepare_transfer_batch(jsonb_build_array(jsonb_build_object('matric_no', 'MOAUM/CHK/ZPW/63/9633',
+                    'old_faculty', (SELECT x.faculty_code FROM ref.programme x WHERE x.code = prog), 'old_dept', (SELECT x.dept_code FROM ref.programme x WHERE x.code = prog),
+                    'old_programme', prog, 'old_level', '200',
+                    'new_faculty', (SELECT x.faculty_code FROM ref.programme x WHERE x.code = tprog), 'new_dept', (SELECT x.dept_code FROM ref.programme x WHERE x.code = tprog),
+                    'new_programme', tprog, 'new_level', '200')),
+                 ses, 'Check V633: the Senate approved this transfer', 'SEN/63/1', 'transfers.xlsx', false);
+        batch_state := (SELECT x.status || ':' || x.completed || ':' || x.pending FROM people.transfer_batches(50) x WHERE x.id = (batch->>'id')::uuid);
+        moved := (SELECT s.programme_code || ':' || s.current_level FROM people.student s WHERE s.id = c);
+        RAISE EXCEPTION 'the V633 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V633 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V633: a programme swap is made by the officer who initiates it — completed at once, the same officer its preparer and decider, the Director of ICT making a programme correction, a swap left pending decided by its preparer, who prepares decides, and a bulk transfer batch completed at once by its uploader',
+        coalesce(one->>'status' = 'COMPLETED' AND (one->>'same')::boolean AND one->>'office' = 'ict' AND (one->>'executed')::boolean
+                 AND one->>'student' = tprog || ':200' AND one->>'review' = 'SWAPPED'
+                 AND two->>'status' = 'COMPLETED' AND (two->>'same')::boolean AND two->>'student' = tprog AND dec->>'status' = 'COMPLETED'
+                 AND offices = 'academic:true,bursar:false,dregistrar:true,ict:true,records:false,registrar:true,super:true'
+                 AND (batch->>'prepared')::int = 1 AND batch_state = 'COMPLETED:1:0' AND moved = tprog || ':200', false),
+        format('one %s | two %s decided %s | offices %s | batch %s state %s moved %s', one, two, dec->>'status', offices, batch, batch_state, moved));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

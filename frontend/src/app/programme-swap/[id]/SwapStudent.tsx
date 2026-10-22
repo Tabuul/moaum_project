@@ -4,7 +4,7 @@
  * One student's programme swap (V578): the record as it stands (FROM), the placement to move to (TO — faculty, department,
  * programme, level, cascading and searchable), the kind and the reason; VALIDATE asks the server what the swap would do and what
  * stands in its way; the preview shows it all — what changes, what stays, the fee lines under each programme, the registration
- * impact — and CONFIRM prepares the swap for another officer's decision. Nothing on the record changes here.
+ * impact — and CONFIRM makes the swap: the officer who initiates it decides it, and the placement moves at once (V633).
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -64,10 +64,10 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
     setBusy("confirm");
     try {
       const r = await swapPost<{ id: string; swap_ref: string }>("", { studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: session || null, kind, reason },
-        `Programme swap prepared for ${s.matric_no ?? s.id}: ${target.programme} at ${target.level}`);
+        `Programme swap made for ${s.matric_no ?? s.id}: ${target.programme} at ${target.level}`);
       if (!r.ok) { notifyProblem(r.problem); return; }
       setDone(r.data);
-      notify(`Programme swap ${r.data.swap_ref} prepared: another officer decides it`);
+      notify(`Programme swap ${r.data.swap_ref} completed: the student is on ${target.programme} at ${target.level} Level`);
       router.refresh();
     } finally { setBusy(null); }
   }
@@ -92,9 +92,9 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
 
       {view.openTransfer ? <Note kind="bad" title="An inter-departmental transfer is under way">To {view.openTransfer.to_programme_code}, {words(view.openTransfer.state)} since {day(view.openTransfer.applied_at)}. It is effected or withdrawn there before a swap.</Note> : null}
       {view.pendingSwap ? <Note kind="info" title={`Swap ${view.pendingSwap.swap_ref} awaits a decision`} action={<LinkBtn kind="primary" size="sm" href={`/programme-swap?tab=swaps&status=PENDING_APPROVAL&q=${encodeURIComponent(view.pendingSwap.swap_ref)}`}>Open it</LinkBtn>}>
-        To {view.pendingSwap.to_programme} at {view.pendingSwap.to_level} Level, prepared {day(view.pendingSwap.prepared_at)}. Another officer decides it on the Swaps tab.</Note> : null}
-      {done ? <Note kind="ok" title={`Programme swap ${done.swap_ref} prepared`} action={<LinkBtn kind="primary" size="sm" href={`/programme-swap?tab=swaps&status=PENDING_APPROVAL&q=${encodeURIComponent(done.swap_ref)}`}>See the pending swaps</LinkBtn>}>
-        Nothing on the record has changed yet: an officer of the Academic Office or the Registry other than you{kind === "LEGACY_MIGRATION_CORRECTION" ? ", or the Director of ICT," : ""} approves it, and the placement moves then.</Note> : null}
+        To {view.pendingSwap.to_programme} at {view.pendingSwap.to_level} Level, prepared {day(view.pendingSwap.prepared_at)}. It is decided on the Swaps tab.</Note> : null}
+      {done ? <Note kind="ok" title={`Programme swap ${done.swap_ref} completed`} action={<LinkBtn kind="primary" size="sm" href={`/programme-swap?tab=swaps&status=COMPLETED&q=${encodeURIComponent(done.swap_ref)}`}>See the swap</LinkBtn>}>
+        The placement has moved: the record reads the new programme and level, the old placement stays in the programme history below, and the student is told.</Note> : null}
 
       <div className="grid grid--2">
         <Panel title="Current record" right="FROM">
@@ -133,7 +133,7 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
                   {check ? <span className="sub2">Then confirm below.</span> : null}
                 </div>
               </>
-            ) : <div className="sub2">{!prepares ? "A swap is prepared by the Academic Office, the Registry or the Director of ICT." : "No swap can be prepared while a transfer or a swap is under way."}</div>}
+            ) : <div className="sub2">{!prepares ? "A swap is made by the Academic Office, the Registry or the Director of ICT." : "No swap can be made while a transfer or a swap is under way."}</div>}
           </PBody>
         </Panel>
       </div>

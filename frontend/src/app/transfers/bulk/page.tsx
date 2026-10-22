@@ -6,8 +6,8 @@ import { TransferBulk, type Batch, type Structure } from "./TransferBulk";
 export const dynamic = "force-dynamic";
 
 /** t/transferbulk — V587: bulk inter-departmental transfer — a department's students in a template, the filled file checked row by
- *  row against each student's current record and the target, previewed, and prepared as a batch of programme swaps (IDT/…) for
- *  another officer to decide. */
+ *  row against each student's current record and the target, previewed, and made as a batch of programme swaps (IDT/…) that move
+ *  the students at once (V633). */
 export default async function TransferBulkPage() {
   const [me, structure, batches] = await Promise.all([
     api<Me>("/api/v1/iam/me"),

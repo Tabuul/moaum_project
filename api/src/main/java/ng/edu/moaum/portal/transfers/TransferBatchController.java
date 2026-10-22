@@ -27,8 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
  * V587: bulk inter-departmental transfer, on the programme swap. A department's students come out as a template; the filled file
  * is checked row by row against each student's current record and the target (people.transfer_upload_check: SOURCE PROGRAMME
  * MISMATCH, the new programme in its department and faculty, the level, the student twice, every check of the programme swap) and
- * previewed; prepared, it becomes a batch IDT/YYYY/NNNNNN of programme swaps (ACADEMIC_TRANSFER) for another officer to decide on
- * the swap screens' batch decision. Nothing on a student changes here. The rules are the database's.
+ * previewed; made, it becomes a batch IDT/YYYY/NNNNNN of programme swaps (ACADEMIC_TRANSFER) that move the students at once, by the
+ * officer who uploads the file (V633). A batch left pending from before V633 is decided on the swap screens' batch decision. The
+ * rules are the database's.
  */
 @RestController
 @RequestMapping("/api/v1/transfers/bulk")
@@ -91,7 +92,7 @@ class TransferBatchController {
                           Boolean validRowsOnly) {
     }
 
-    /** the batch prepared: the rows checked again, a programme swap for each valid row, every row kept with its result */
+    /** the batch made: the rows checked again, a programme swap made at once for each valid row, every row kept with its result */
     @PostMapping
     @PreAuthorize(PREPARERS)
     @Transactional

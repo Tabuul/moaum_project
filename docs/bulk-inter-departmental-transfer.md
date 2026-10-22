@@ -5,8 +5,9 @@ from one department to another, from a spreadsheet. Such moves were approved by 
 portal.
 
 There is no second system. Each row becomes a **programme swap** (V578, kind `ACADEMIC_TRANSFER`), so a move from a file is
-checked, prepared, decided, kept in the programme history and told to the student exactly as a single swap is. The student's
-own application, with its committee, Senate and fee (V070, `/transfers`), stays as it is.
+checked, made, kept in the programme history and told to the student exactly as a single swap is — and, since V633, made at
+once by the officer who uploads the file, with no second level of approval. The student's own application, with its committee,
+Senate and fee (V070, `/transfers`), stays as it is.
 
 ## The steps
 
@@ -24,12 +25,14 @@ own application, with its committee, Senate and fee (V070, `/transfers`), stays 
 
    **Download error report** gives every row with its status and the reason. Correct the file and upload it again: nothing is
    corrected silently.
-3. **Prepare.** Give the reason (the Senate's approval) and the approval reference. The rows are checked again, and a batch is
-   made (`IDT/YYYY/NNNNNN`, `people.transfer_batch`) with a programme swap for each valid row. While any row is invalid, the
-   batch is refused unless the officer ticks *Prepare the valid rows alone*. The invalid rows are then kept with their reasons.
-4. **Decide.** Another officer of the Academic Office or the Registry approves or rejects the batch (**Batches → Open**). The
-   Director of ICT decides a legacy migration correction only, so not these. The swaps are decided one by one: one that its
-   record refuses (because the record changed since) leaves the others decided. **Nothing on any student changes before this.**
+3. **Transfer.** Give the reason (the Senate's approval) and the approval reference. The rows are checked again, and a batch is
+   made (`IDT/YYYY/NNNNNN`, `people.transfer_batch`) with a programme swap for each valid row — each made at once by the officer
+   who uploads the file (V633): the student is on the new programme when the call returns, and the batch reads `COMPLETED`, or
+   `COMPLETED_WITH_EXCEPTIONS` where rows were left out. While any row is invalid, the batch is refused unless the officer ticks
+   *Transfer the valid rows alone*. The invalid rows are then kept with their reasons.
+4. **A batch left pending from before V633** is decided on the batch (**Batches → Open**) by any officer who may make a swap, the
+   one who uploaded it included. The swaps are decided one by one: one that its record refuses (because the record changed
+   since) leaves the others decided.
 
 ## What a row must be
 
@@ -50,7 +53,7 @@ level, the CCE route, and the registered courses the new programme does not offe
 
 ## What changes, and what does not
 
-At the decision, a swap sets the student's programme and level and nothing else:
+A swap sets the student's programme and level and nothing else:
 
 - the department and faculty follow the programme;
 - the matriculation number, the account, the registrations, the results, the payments and receipts, and the documents all stay
@@ -64,10 +67,10 @@ A matriculation number that must follow the move is corrected separately, under 
 
 ## Who
 
-| | Reads | Prepares | Decides |
+| | Reads | Transfers | Decides a batch left pending from before V633 |
 |---|---|---|---|
-| Academic Office, Registrar, Deputy Registrar, Super Administrator | yes | yes | yes, but not a batch they prepared themselves |
-| Director of ICT | yes | yes | no |
+| Academic Office, Registrar, Deputy Registrar, Super Administrator | yes | yes | yes |
+| Director of ICT | yes | yes | yes |
 | Records | yes | no | no |
 
 ## API
@@ -78,7 +81,7 @@ A matriculation number that must follow the move is corrected separately, under 
 |---|---|
 | `GET /template?faculty=&department=&programme=&level=` | the template's rows |
 | `POST /validate {rows, session}` | check the rows |
-| `POST {rows, session, reason, approvalRef, filename, validRowsOnly}` | prepare the batch |
+| `POST {rows, session, reason, approvalRef, filename, validRowsOnly}` | make the batch: the students move at once |
 | `GET` and `GET /{id}` | the batches, and one with every row and its swap |
 
 The decision is the swap's own: `POST /api/v1/programme-swaps/batches/{id}/decide {approve, note}`. A file takes up to 1,000

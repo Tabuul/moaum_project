@@ -2,9 +2,9 @@
 
 /**
  * The programme swap desk (V578). Desk: what the detector found — the records whose placement looks wrong, why, the officer's
- * reading of each — with a swap opened for one student or prepared for many at once. Swaps: every swap prepared, awaiting a
- * decision or decided, the report (Excel, PDF), and the decision itself — approve or reject by another officer, cancel by the one
- * who prepared it. Nothing is changed from a finding: a swap is prepared, checked and decided, and the server holds every rule.
+ * reading of each — with a swap made for one student or for many at once by the officer who initiates it (V633). Swaps: every swap
+ * made, the report (Excel, PDF), and — for a swap left pending from before V633 — the decision, by any officer who may make one.
+ * Nothing is changed from a finding: a swap is checked and made, and the server holds every rule.
  */
 import { useState } from "react";
 import { useQueryNav } from "@/lib/query-nav";
@@ -56,7 +56,7 @@ export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, sw
       <Tiles items={[
         ["Students requiring swap", n(summary.requiring), summary.requiring ? "var(--amber-ink)" : null, `${n(summary.confirmed)} confirmed · ${n(summary.possible)} possible`, swapsHref("desk", scope)],
         ["Requires review", n(summary.requiresReview), summary.requiresReview ? "var(--amber-ink)" : null, "Signals disagree, or documentation asked for", swapsHref("desk", { ...scope, class: "REQUIRES_REVIEW" })],
-        ["Pending approval", n(summary.pending), summary.pending ? "var(--amber-ink)" : null, `${n(summary.swapRequired)} findings with a swap on its way`, swapsHref("swaps", { ...scope, status: "PENDING_APPROVAL" })],
+        ["Pending from before", n(summary.pending), summary.pending ? "var(--amber-ink)" : null, "Left pending before swaps were made at once; decided on the Swaps tab", swapsHref("swaps", { ...scope, status: "PENDING_APPROVAL" })],
         ["Completed", n(summary.completed), "var(--green-ink)", `${n(summary.recent)} in the last 7 days · ${n(summary.rejected)} rejected · ${n(summary.failed)} failed or cancelled`, swapsHref("swaps", { ...scope, status: "COMPLETED" })],
       ]} />
       <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-3)", alignItems: "center" }}>
@@ -147,7 +147,7 @@ export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, sw
           <PBody>
             <Note kind="info" title="How a record is flagged">
               Two signals agreeing on another department make a <b>confirmed</b> mismatch; one makes a <b>possible</b> one; two that disagree <b>require review</b>.
-              Nothing is changed by a finding: an officer records what they made of it, and a swap — prepared here, decided by another officer — is what moves the record.
+              Nothing is changed by a finding: an officer records what they made of it, and a swap — made here by the officer, after the server&rsquo;s check — is what moves the record.
             </Note>
           </PBody>
         </Panel>
@@ -157,7 +157,7 @@ export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, sw
 
       {review ? <ReviewModal m={review} onClose={() => setReview(null)} onDone={() => { setReview(null); go(swapsHref("desk", { ...filters })); }} /> : null}
       {bulk ? <BulkModal students={mismatches?.rows.filter((m) => chosen.has(m.student_id)) ?? []} faculties={faculties} onClose={() => setBulk(false)}
-        onDone={() => { setBulk(false); setChosen(new Set()); go(swapsHref("swaps", { ...scope, status: "PENDING_APPROVAL" })); }} /> : null}
+        onDone={() => { setBulk(false); setChosen(new Set()); go(swapsHref("swaps", { ...scope, status: "COMPLETED" })); }} /> : null}
       {open ? <SwapDetail id={open} actingOffice={actingOffice} onClose={() => setOpen(null)} onChanged={() => go(swapsHref("swaps", { ...filters }))} /> : null}
       {batch ? <BatchModal batch={batch} swaps={(swaps ?? []).filter((s) => s.batch_id === batch && s.status === "PENDING_APPROVAL")} onClose={() => setBatch(null)}
         onDone={() => { setBatch(null); go(swapsHref("swaps", { ...filters })); }} /> : null}
@@ -294,11 +294,12 @@ function BulkModal({ students, faculties, onClose, onDone }: { students: Mismatc
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ batchId: string; prepared: Record<string, unknown>[]; skipped: { student: string; matric_no: string; why: string }[] } | null>(null);
   const ready = target.programme && target.level && reason.trim().length >= 10;
+  const swapped = result ? result.prepared.filter((r) => r.status === "COMPLETED").length : 0;
   return (
-    <Modal wide title={`Swap ${students.length} selected student${students.length === 1 ? "" : "s"}`} sub="One programme and level for all; each is checked on its own" onClose={onClose}
-      foot={result ? <Btn kind="primary" onClick={onDone}>Go to the pending swaps</Btn> : <>
+    <Modal wide title={`Swap ${students.length} selected student${students.length === 1 ? "" : "s"}`} sub="One programme and level for all; each is checked on its own and moved at once" onClose={onClose}
+      foot={result ? <Btn kind="primary" onClick={onDone}>Go to the swaps</Btn> : <>
         <Btn kind="ghost" onClick={onClose}>Cancel</Btn>
-        <Btn kind="primary" disabled={!ready} busy={busy} busyLabel="Preparing the swaps…" onClick={async () => {
+        <Btn kind="primary" disabled={!ready} busy={busy} busyLabel="Swapping…" onClick={async () => {
           setBusy(true);
           try {
             const r = await swapPost<{ batchId: string; prepared: Record<string, unknown>[]; skipped: { student: string; matric_no: string; why: string }[] }>("/bulk",
@@ -306,12 +307,13 @@ function BulkModal({ students, faculties, onClose, onDone }: { students: Mismatc
               `Bulk programme swap to ${target.programme}`);
             if (!r.ok) { notifyProblem(r.problem); return; }
             setResult(r.data);
-            notify(`${r.data.prepared.length} swap${r.data.prepared.length === 1 ? "" : "s"} prepared for approval${r.data.skipped.length ? `, ${r.data.skipped.length} skipped` : ""}`);
+            const n = r.data.prepared.filter((x) => x.status === "COMPLETED").length;
+            notify(`${n} student${n === 1 ? "" : "s"} swapped${r.data.skipped.length ? `, ${r.data.skipped.length} skipped` : ""}`);
           } finally { setBusy(false); }
-        }}>Prepare the swaps</Btn></>}>
+        }}>Swap the students</Btn></>}>
       {result ? (
         <>
-          <Note kind={result.skipped.length ? "info" : "ok"} title={`${result.prepared.length} prepared, ${result.skipped.length} skipped`}>Batch {result.batchId.slice(0, 8)}: another officer approves the batch, or each swap, on the Swaps tab.</Note>
+          <Note kind={result.skipped.length ? "info" : "ok"} title={`${swapped} swapped, ${result.skipped.length} skipped`}>Each student swapped is on the new programme now; the swaps are on the Swaps tab under batch {result.batchId.slice(0, 8)}.</Note>
           {result.skipped.length ? <DTable pageSize={0} cols={["Student", "Number", "Why skipped"]} rows={result.skipped.map((s) => [s.student, <span key="m" className="tnum">{s.matric_no}</span>, s.why])} /> : null}
         </>
       ) : (
@@ -366,7 +368,7 @@ function BatchModal({ batch, swaps, onClose, onDone }: { batch: string; swaps: S
         </>
       ) : (
         <>
-          <Note kind="info" title="Each swap is checked again on the record as it stands">A record that changed since its swap was prepared fails that swap alone; the rest go through. The officer who prepared the batch cannot decide it.</Note>
+          <Note kind="info" title="Each swap is checked again on the record as it stands">A record that changed since its swap was prepared fails that swap alone; the rest go through.</Note>
           <DTable pageSize={0} cols={["Reference", "Student", "From", "To"]} rows={swaps.map((s) => [<span key="r" className="tnum">{s.swap_ref}</span>, s.student, `${s.from_programme_name ?? s.from_programme} · ${s.from_level ?? "—"}`, `${s.to_programme_name ?? s.to_programme} · ${s.to_level}`])} />
           <Field id="bt-note" label="Note" hint="Required to reject; kept on each swap" full><textarea id="bt-note" className="ctl" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         </>

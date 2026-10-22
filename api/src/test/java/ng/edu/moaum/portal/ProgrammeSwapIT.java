@@ -20,12 +20,13 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
- * Programme swap (V578) over the API: a swap prepared by one officer and decided by another moves the student's current programme
- * and level and nothing else (the matriculation number, the registrations and their courses, the payments stay), the old placement
- * stays in the programme history the full record reads, and the register finds the student under the new programme; the officer
- * who prepared it cannot decide it, the Director of ICT decides a legacy migration correction and no other, a transfer under way
- * blocks a swap, a bulk swap reports the student it skipped, a Head of Department elsewhere and a student are refused, and the
- * mismatch detector flags a record whose matriculation number and registration both name another department. Needs DATABASE_URL.
+ * Programme swap (V578, V633) over the API: a swap made by one officer moves the student's current programme and level at once and
+ * nothing else (the matriculation number, the registrations and their courses, the payments stay), the same officer its preparer
+ * and decider, the old placement stays in the programme history the full record reads, and the register finds the student under
+ * the new programme; a completed swap is not decided again, the Director of ICT makes a programme correction in bulk, a transfer
+ * under way blocks a swap, a bulk swap reports the student it skipped, a Head of Department elsewhere and a student are refused,
+ * and the mismatch detector flags a record whose matriculation number and registration both name another department. Needs
+ * DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"moaum.auth.hmac-secret=" + TestTokens.SECRET})
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -77,7 +78,7 @@ class ProgrammeSwapIT {
     }
 
     @Test
-    void aSwapPreparedByOneOfficerAndDecidedByAnotherMovesThePlacementAndNothingElse() {
+    void aSwapMadeByOneOfficerMovesThePlacementAtOnceAndNothingElse() {
         String surname = it.freeSurname("ZZPSWA");
         UUID student = it.student(surname, "C00023", null, it.freeNumber("MOAUM/PSA/86/", 6), 200);
         String matric = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", student).query(String.class).single();
@@ -98,7 +99,6 @@ class ProgrammeSwapIT {
 
         String one = officer("academic", "A1");
         String two = officer("academic", "A2");
-        String ict = officer("ict", "I1");
 
         // the check says what would change and what stays
         ResponseEntity<Map> chk = it.call(one, HttpMethod.POST, PATH + "/check", Map.of("studentId", student.toString(), "toProgramme", target, "toLevel", 200));
@@ -110,27 +110,24 @@ class ProgrammeSwapIT {
         assertThat(prepared.getStatusCode().value()).as(String.valueOf(prepared.getBody())).isEqualTo(200);
         String id = String.valueOf(prepared.getBody().get("id"));
         assertThat(String.valueOf(prepared.getBody().get("swap_ref"))).matches("PSW/[0-9]{4}/[0-9]{6}");
-        assertThat(prepared.getBody()).containsEntry("status", "PENDING_APPROVAL").containsEntry("from_programme", "C00023").containsEntry("to_programme", target);
-        // nothing on the student yet
-        assertThat(jdbc.sql("SELECT programme_code FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo("C00023");
+        // V633: made at once by the officer who initiates it — the same officer its preparer and decider, the student moved on return
+        assertThat(prepared.getBody()).containsEntry("status", "COMPLETED").containsEntry("from_programme", "C00023").containsEntry("to_programme", target);
+        assertThat(prepared.getBody().get("executed_at")).isNotNull();
+        assertThat(prepared.getBody().get("decided_by")).isNotNull().isEqualTo(prepared.getBody().get("prepared_by"));
+        assertThat(jdbc.sql("SELECT programme_code FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo(target);
 
-        // evidence kept with the swap
+        // evidence kept with the swap, after it is made as well
         ResponseEntity<Map> ev = it.call(one, HttpMethod.POST, PATH + "/" + id + "/evidence", Map.of("filename", "approval.png", "dataUrl", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="));
         assertThat(ev.getStatusCode().value()).as(String.valueOf(ev.getBody())).isEqualTo(200);
         assertThat((List<?>) ev.getBody().get("evidence")).hasSize(1);
 
-        // the officer who prepared it does not decide it; the Director of ICT does not decide a programme correction
-        ResponseEntity<Map> same = it.call(one, HttpMethod.POST, PATH + "/" + id + "/decide", Map.of("approve", true));
-        assertThat(same.getStatusCode().value()).isEqualTo(403);
-        assertThat(same.getBody()).containsEntry("code", "PSW_SAME_OFFICER");
-        ResponseEntity<Map> notIct = it.call(ict, HttpMethod.POST, PATH + "/" + id + "/decide", Map.of("approve", true));
-        assertThat(notIct.getStatusCode().value()).isEqualTo(403);
-        assertThat(notIct.getBody()).containsEntry("code", "PSW_OFFICE");
-
-        ResponseEntity<Map> done = it.call(two, HttpMethod.POST, PATH + "/" + id + "/decide", Map.of("approve", true, "note", "Approved on the department's letter"));
+        // a completed swap is not decided again, by anyone
+        ResponseEntity<Map> twice = it.call(two, HttpMethod.POST, PATH + "/" + id + "/decide", Map.of("approve", true, "note", "Approved on the department's letter"));
+        assertThat(twice.getStatusCode().value()).isEqualTo(422);
+        assertThat(twice.getBody()).containsEntry("code", "PSW_DECIDED");
+        ResponseEntity<Map> done = it.get(two, PATH + "/" + id);
         assertThat(done.getStatusCode().value()).as(String.valueOf(done.getBody())).isEqualTo(200);
         assertThat(done.getBody()).containsEntry("status", "COMPLETED");
-        assertThat(done.getBody().get("executed_at")).isNotNull();
 
         Map<String, Object> after = jdbc.sql("SELECT programme_code, current_level, matric_no FROM people.student WHERE id = :s").param("s", student).query().singleRow();
         assertThat(after).containsEntry("programme_code", target).containsEntry("current_level", 200).containsEntry("matric_no", matric);
@@ -181,25 +178,27 @@ class ProgrammeSwapIT {
         assertThat(refused.getStatusCode().value()).isEqualTo(422);
         assertThat(refused.getBody()).containsEntry("code", "PSW_TRANSFER_OPEN");
 
-        // the Director of ICT prepares a legacy migration correction in bulk; the blocked student is skipped and said
-        Map<String, Object> body = new HashMap<>(prepareBody(clear, target, 100, "LEGACY_MIGRATION_CORRECTION"));
+        // the Director of ICT makes a programme correction in bulk (any kind is theirs since V633); the blocked student is skipped and said
+        Map<String, Object> body = new HashMap<>(prepareBody(clear, target, 100, "PROGRAMME_CORRECTION"));
         body.remove("studentId");
         body.put("studentIds", List.of(clear.toString(), blocked.toString()));
         ResponseEntity<Map> bulk = it.call(ict, HttpMethod.POST, PATH + "/bulk", body);
         assertThat(bulk.getStatusCode().value()).as(String.valueOf(bulk.getBody())).isEqualTo(200);
-        assertThat((List<?>) bulk.getBody().get("prepared")).hasSize(1);
+        List<Map<String, Object>> swapped = (List<Map<String, Object>>) bulk.getBody().get("prepared");
+        assertThat(swapped).hasSize(1);
+        assertThat(swapped.get(0)).containsEntry("status", "COMPLETED");
         List<Map<String, Object>> skipped = (List<Map<String, Object>>) bulk.getBody().get("skipped");
         assertThat(skipped).hasSize(1);
         assertThat(String.valueOf(skipped.get(0).get("why"))).contains("transfer");
         String batch = String.valueOf(bulk.getBody().get("batchId"));
 
-        // another Director of ICT officer decides the batch: a legacy migration correction is theirs to decide
-        ResponseEntity<Map> decided = it.call(ict2, HttpMethod.POST, PATH + "/batches/" + batch + "/decide", Map.of("approve", true));
-        assertThat(decided.getStatusCode().value()).as(String.valueOf(decided.getBody())).isEqualTo(200);
-        assertThat((List<?>) decided.getBody().get("decided")).hasSize(1);
-        assertThat((List<?>) decided.getBody().get("skipped")).isEmpty();
+        // the student moved at once; the batch has nothing left for another officer to decide
         assertThat(jdbc.sql("SELECT programme_code FROM people.student WHERE id = :s").param("s", clear).query(String.class).single()).isEqualTo(target);
         assertThat(jdbc.sql("SELECT programme_code FROM people.student WHERE id = :s").param("s", blocked).query(String.class).single()).isEqualTo("C00023");
+        ResponseEntity<Map> decided = it.call(ict2, HttpMethod.POST, PATH + "/batches/" + batch + "/decide", Map.of("approve", true));
+        assertThat(decided.getStatusCode().value()).as(String.valueOf(decided.getBody())).isEqualTo(200);
+        assertThat((List<?>) decided.getBody().get("decided")).isEmpty();
+        assertThat((List<?>) decided.getBody().get("skipped")).isEmpty();
 
         // a Head of Department elsewhere reads none of it; a student none at all
         String other = jdbc.sql("SELECT code FROM ref.department WHERE code NOT IN (:a, :b) ORDER BY code LIMIT 1").param("a", dept).param("b", targetDept).query(String.class).single();

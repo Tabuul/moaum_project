@@ -123,7 +123,7 @@ export function SwapDetail({ id, actingOffice, onClose, onChanged }: { id: strin
           ) : null}
           <div className="row row--between" style={{ marginTop: "var(--s-3)" }}>
             <div className="eyebrow">Evidence</div>
-            {pending && prepares ? <label className="btn btn--ghost btn--sm">{busy === "evidence" ? "Adding…" : "Add a file"}<input type="file" accept="application/pdf,image/jpeg,image/png" hidden disabled={!!busy}
+            {(pending || d.status === "COMPLETED") && prepares ? <label className="btn btn--ghost btn--sm">{busy === "evidence" ? "Adding…" : "Add a file"}<input type="file" accept="application/pdf,image/jpeg,image/png" hidden disabled={!!busy}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) void addEvidence(f); e.target.value = ""; }} /></label> : null}
           </div>
           {d.evidence.length ? <DTable pageSize={0} cols={["File", "Size|num", "Added"]} rows={d.evidence.map((e) => [
@@ -135,7 +135,7 @@ export function SwapDetail({ id, actingOffice, onClose, onChanged }: { id: strin
               <textarea id="sd-note" className="ctl" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
             </Field>
           ) : null}
-          {pending && !d.mayDecide ? <div className="sub2">Decided by an officer of the Academic Office or the Registry other than the one who prepared it{d.kind === "LEGACY_MIGRATION_CORRECTION" ? ", or the Director of ICT" : ""}.</div> : null}
+          {pending && !d.mayDecide ? <div className="sub2">Decided by the Academic Office, the Registry or the Director of ICT.</div> : null}
           <div className="eyebrow" style={{ marginTop: "var(--s-4)" }}>Programme history</div>
           <ProgrammeHistory rows={d.history} />
         </>
