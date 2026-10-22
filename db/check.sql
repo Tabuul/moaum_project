@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 457
+\set EXPECTED 458
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23333,6 +23333,74 @@ BEGIN
     PERFORM pg_temp.assert('V629: a JAMB change to a listed candidate is kept field by field, each upload counts what it updated, one live row a candidate',
         coalesce(has_table AND has_counts AND one_live AND empty_refused, false),
         format('change table %s, counts %s, one live row %s, empty change refused %s', has_table, has_counts, one_live, empty_refused));
+END $$;
+-- ── V631. The old portal's OUTSTANDING FEES payments kept apart and credited to the wallet by two officers: a made-up student's
+--          OUTSTANDING FEES payment is listed (a school-fees one is not), verified by the Students Account Officer (once; the
+--          Registrar refused), not credited by the officer who verified it, credited by another Bursar officer (one
+--          LEGACY_OUTSTANDING credit of the payment's amount, drawn from suspense 3900), never twice; the credited payment cannot
+--          be deleted or rejected, and the old-fees reset keeps it while it removes one not credited. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9931/9932'; v_prog text; v_entry text; s1 uuid := gen_random_uuid(); a_off uuid := gen_random_uuid(); b_off uuid := gen_random_uuid();
+    p1 uuid; p2 uuid; listed int; listed_sf int; st0 text; v1 int; v2 int; r_office text := ''; c_self record; c_ok record; c_again record;
+    w_kind text; w_amount numeric; w_source text; bal numeric; r_delete text := ''; r_reject text := ''; gl text; rs record; kept boolean; gone boolean; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V631', true);
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    SELECT code INTO v_prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT name INTO v_entry FROM policy.academic_session ORDER BY starts_on DESC LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (s1, 'MOAUM/ADM/99/631001', 'MOAUM/ZZS/99/6311', 'CHECKV631', 'Outstanding fees', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (s1, ses, 'MOAUM-LEG-CHECKV631-9931-9932-S2-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 2', 6709, now(), now(), a_off, 'Legacy',
+            'LEG-CHECKV631-1', 'Imported from the old portal · Interswitch · old ref PR631000001'),
+           (s1, ses, 'MOAUM-LEG-CHECKV631-9931-9932-S1-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 1', 5000, now(), now(), a_off, 'Legacy',
+            'LEG-CHECKV631-2', 'Imported from the old portal · E-Wallet · old ref PR631000002'),
+           (s1, ses, 'MOAUM-LEG-CHECKV631-9931-9932-S2', 'School fees (legacy) · semester 2', 46780, now(), now(), a_off, 'Legacy',
+            'LEG-CHECKV631-3', 'Imported from the old portal · Interswitch · old ref PR631000003');
+    SELECT id INTO p1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHECKV631-9931-9932-S2-OUTSTANDINGFEES';
+    SELECT id INTO p2 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHECKV631-9931-9932-S1-OUTSTANDINGFEES';
+    SELECT count(*), min(r.status) INTO listed, st0 FROM finance.legacy_outstanding_payment_rows(NULL, ses, NULL, NULL, NULL, 50, s1) r;
+    SELECT count(*) INTO listed_sf FROM finance.legacy_outstanding_payment_rows(NULL, ses, NULL, NULL, NULL, 50, s1) r WHERE r.purpose LIKE 'School fees%';
+    -- the Registrar does not verify; the Students Account Officer does, once
+    BEGIN PERFORM finance.legacy_outstanding_payment_verify(ARRAY[p1], 'checked'); EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    v1 := finance.legacy_outstanding_payment_verify(ARRAY[p1], 'checked against the old portal statement');
+    v2 := finance.legacy_outstanding_payment_verify(ARRAY[p1], 'again');
+    -- the verifier, now acting as the Bursar, does not credit it; another Bursar officer does, once
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT * INTO c_self FROM finance.legacy_outstanding_payment_credit(ARRAY[p1], NULL);
+    PERFORM set_config('moaum.actor_id', b_off::text, true);
+    SELECT * INTO c_ok FROM finance.legacy_outstanding_payment_credit(ARRAY[p1], 'CHECK V631');
+    SELECT * INTO c_again FROM finance.legacy_outstanding_payment_credit(ARRAY[p1], NULL);
+    SELECT e.kind, e.amount, e.source_code INTO w_kind, w_amount, w_source FROM finance.wallet_entry e WHERE e.student_id = s1;
+    bal := finance.wallet_balance(s1);
+    gl := finance.gl_wallet_credit_account('LEGACY_OUTSTANDING', false);
+    -- the credited payment is neither deleted nor rejected
+    BEGIN DELETE FROM finance.payment_reference WHERE id = p1; EXCEPTION WHEN check_violation THEN r_delete := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.legacy_outstanding_payment_decide(p1, 'REJECT', 'not to be credited after all'); EXCEPTION WHEN check_violation THEN r_reject := split_part(SQLERRM, ':', 1); END;
+    -- the old-fees reset of the session keeps the credited payment and removes the others
+    SELECT * INTO rs FROM finance.reset_legacy_payments(ses, 'RESET', 100);
+    kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE id = p1);
+    gone := NOT EXISTS (SELECT 1 FROM finance.payment_reference WHERE id = p2);
+    msg := format('listed %s (%s, school fees %s) | refused %s | verified %s then %s | self %s/%s | credited %s %s %s, again %s/%s | wallet %s %s %s, balance %s, gl %s | delete %s, reject %s | reset deleted %s kept %s: p1 kept %s, p2 gone %s',
+                  listed, st0, listed_sf, r_office, v1, v2, c_self.credited, c_self.skipped_why->0->>'why', c_ok.credited, c_ok.amount, c_ok.batch_ref,
+                  c_again.credited, c_again.skipped, w_kind, w_amount, w_source, bal, gl, r_delete, r_reject, rs.deleted, rs.kept_in_use, kept, gone);
+    RAISE EXCEPTION 'the V631 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V631 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V631: an old-portal OUTSTANDING FEES payment is verified by one officer and credited to the wallet by another, once, and kept',
+      coalesce(listed = 2 AND st0 = 'WAITING' AND listed_sf = 0 AND r_office = 'LEGACY_OUTSTANDING_OFFICE' AND v1 = 1 AND v2 = 0
+               AND c_self.credited = 0 AND c_self.batch_ref IS NULL AND c_self.skipped_why->0->>'why' LIKE 'verified by you%'
+               AND c_ok.credited = 1 AND c_ok.amount = 6709 AND c_ok.batch_ref ~ '^LEGACY-OUTSTANDING/[0-9]{4}/[0-9]{6}$'
+               AND c_again.credited = 0 AND c_again.skipped = 1
+               AND w_kind = 'CREDIT' AND w_amount = 6709 AND w_source = 'LEGACY_OUTSTANDING' AND bal = 6709 AND gl = '3900'
+               AND r_delete = 'LEGACY_OUTSTANDING_CREDITED' AND r_reject = 'LEGACY_OUTSTANDING_CREDITED'
+               AND rs.deleted = 2 AND rs.kept_in_use = 1 AND kept AND gone, false),
+      msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

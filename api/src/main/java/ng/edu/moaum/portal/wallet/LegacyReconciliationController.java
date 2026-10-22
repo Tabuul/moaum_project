@@ -31,6 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
  * correction by a Bursar officer other than the initiator, the wallet credited once on approval. The database holds every rule
  * (finance.legacy_credit_*); the offices here only keep a reader from asking for a write. The e-wallet half is the legacy wallet
  * desk (LegacyWalletController, V583), whose figures this desk reads too.
+ *
+ * <p>V631: the old portal's OUTSTANDING FEES payments, kept apart from school fees — listed one a payment, verified by the Students
+ * Account Officer (or the Bursar), credited to the student's wallet by a Bursar officer other than the verifier (one credit a
+ * payment, source LEGACY_OUTSTANDING), or rejected, returned to the officer or reopened by the Bursar with a reason
+ * (finance.legacy_outstanding_payment_*).
  */
 @RestController
 @RequestMapping("/api/v1/finance/legacy-reconciliation")
@@ -58,6 +63,9 @@ class LegacyReconciliationController {
     record Request(UUID student, String session, BigDecimal amount, String reason, String evidence, String adjustmentReason, Boolean confirmed) { }
     record Decision(String action, String note) { }
     record Reason(String reason) { }
+    /** V631: the payments ticked, the officer's remarks and, for a verification, the explicit confirmation */
+    record Payments(List<UUID> ids, String note, Boolean confirmed) { }
+    record PaymentDecision(String action, String reason) { }
 
     private Map<String, Object> jsonOf(String text) {
         return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
@@ -77,7 +85,9 @@ class LegacyReconciliationController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> figures(@RequestParam(required = false) String session) {
-        return jsonOf(jdbc.sql("SELECT finance.legacy_reconciliation_figures(:s)::text").param("s", sessionOr(session)).query(String.class).single());
+        Map<String, Object> out = new LinkedHashMap<>(jsonOf(jdbc.sql("SELECT finance.legacy_reconciliation_figures(:s)::text").param("s", sessionOr(session)).query(String.class).single()));
+        out.put("outstandingPayments", jsonOf(jdbc.sql("SELECT finance.legacy_outstanding_payment_figures()::text").query(String.class).single()));
+        return out;
     }
 
     /** the sessions with old-portal school-fees payments on record, latest first */
@@ -223,6 +233,83 @@ class LegacyReconciliationController {
         reach.check(studentOf(id));
         jdbc.sql("SELECT finance.legacy_credit_decide(:id, :a, :n)").param("id", id).param("a", blank(body.action()), Types.VARCHAR).param("n", blank(body.note()), Types.VARCHAR).query().listOfRows();
         return request(id);
+    }
+
+    /* ── V631: the old portal's OUTSTANDING FEES payments ── */
+
+    /** one row a payment — WAITING, VERIFIED, RETURNED, CREDITED, REJECTED (TO_VERIFY = waiting or returned) — with the student's
+     *  school-fee position on that session */
+    @GetMapping("/outstanding-payments")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> outstandingPayments(@RequestParam(required = false) String status, @RequestParam(required = false) String session,
+                                                  @RequestParam(required = false) String q, @RequestParam(required = false) String fac,
+                                                  @RequestParam(required = false) String dept, @RequestParam(required = false) UUID student,
+                                                  @RequestParam(defaultValue = "500") int limit) {
+        if (student != null) reach.check(student);
+        OfficeScope.Bound b = scope.bound(blank(fac), blank(dept), null);
+        return jdbc.sql("SELECT * FROM finance.legacy_outstanding_payment_rows(:st, :s, :q, :fac, :dept, :limit, :student)")
+                .param("st", blank(status), Types.VARCHAR).param("s", blank(session), Types.VARCHAR).param("q", blank(q), Types.VARCHAR)
+                .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR)
+                .param("limit", Math.max(1, Math.min(limit, 5000))).param("student", student, Types.OTHER).query().listOfRows();
+    }
+
+    /** the officer verifies the ticked payments against the records: nothing is credited here; the Bursar is told */
+    @PostMapping("/outstanding-payments/verify")
+    @PreAuthorize(INITIATORS)
+    @Transactional
+    Map<String, Object> verifyOutstandingPayments(@RequestBody Payments body) {
+        List<UUID> ids = idsOf(body, "verify");
+        if (!Boolean.TRUE.equals(body.confirmed())) {
+            throw new DomainRuleViolation("LEGACY_OUTSTANDING_CONFIRM", "Confirm that each payment was checked against the available records.",
+                    new DomainRuleViolation.Remedy("Tick the confirmation before verifying.", "You"));
+        }
+        int n = jdbc.sql("SELECT finance.legacy_outstanding_payment_verify(CAST(:ids AS uuid[]), :n)")
+                .param("ids", ids.stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY).param("n", blank(body.note()), Types.VARCHAR)
+                .query(Integer.class).single();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("verified", n);
+        out.put("asked", ids.size());
+        return out;
+    }
+
+    /** a Bursar officer other than the verifier credits the verified payments to the wallets: one credit a payment, under a batch */
+    @PostMapping("/outstanding-payments/credit")
+    @PreAuthorize(DECIDERS)
+    @Transactional
+    Map<String, Object> creditOutstandingPayments(@RequestBody Payments body) {
+        List<UUID> ids = idsOf(body, "credit");
+        Map<String, Object> row = jdbc.sql("SELECT batch_ref, credited, amount, skipped, skipped_why::text AS skipped_why "
+                        + "FROM finance.legacy_outstanding_payment_credit(CAST(:ids AS uuid[]), :n)")
+                .param("ids", ids.stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY).param("n", blank(body.note()), Types.VARCHAR).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>(row);
+        out.put("skipped_why", json.readValue(String.valueOf(row.get("skipped_why")), Object.class));
+        return out;
+    }
+
+    /** the Bursar rejects a payment, returns a verified one to the officer or reopens a rejected one, with a reason */
+    @PostMapping("/outstanding-payments/{id}/decide")
+    @PreAuthorize(DECIDERS)
+    @Transactional
+    Map<String, Object> decideOutstandingPayment(@PathVariable UUID id, @RequestBody PaymentDecision body) {
+        UUID student = jdbc.sql("SELECT student_id FROM finance.payment_reference WHERE id = :id").param("id", id).query(UUID.class).optional()
+                .orElseThrow(() -> new NotFound("outstanding fees payment", id));
+        reach.check(student);
+        jdbc.sql("SELECT finance.legacy_outstanding_payment_decide(:id, :a, :r)").param("id", id).param("a", blank(body.action()), Types.VARCHAR)
+                .param("r", blank(body.reason()), Types.VARCHAR).query().listOfRows();
+        return jdbc.sql("SELECT * FROM finance.legacy_outstanding_payment_rows(NULL, NULL, NULL, NULL, NULL, 5000, :s) r WHERE r.payment_id = :id")
+                .param("s", student, Types.OTHER).param("id", id).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("outstanding fees payment", id));
+    }
+
+    private static List<UUID> idsOf(Payments body, String verb) {
+        if (body == null || body.ids() == null || body.ids().isEmpty()) {
+            throw new DomainRuleViolation("LEGACY_OUTSTANDING_NONE", "Tick the payments to " + verb + ".", new DomainRuleViolation.Remedy("Choose at least one.", "You"));
+        }
+        if (body.ids().size() > 2000) {
+            throw new DomainRuleViolation("LEGACY_OUTSTANDING_BATCH_SIZE", "Up to 2,000 payments at once.", new DomainRuleViolation.Remedy("Do the rest in another batch.", "You"));
+        }
+        return body.ids();
     }
 
     private UUID studentOf(UUID id) {

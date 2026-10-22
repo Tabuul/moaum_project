@@ -24,7 +24,8 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { num } from "@/lib/legacy-wallet";
 import { DECISION_WORDS, OUTSTANDING_HEADERS, REQUEST_HEADERS, REQUEST_WORDS, STATE_WORDS, TABS, naira, outstandingRows, reconHref, requestRows,
-  type CreditRequestRow, type OutstandingRow, type OutstandingState, type ReconFigures, type RequestStatus, type StudentPicture, type Tab } from "@/lib/legacy-reconciliation";
+  type CreditRequestRow, type OutstandingPaymentRow, type OutstandingRow, type OutstandingState, type ReconFigures, type RequestStatus, type StudentPicture, type Tab } from "@/lib/legacy-reconciliation";
+import { OutstandingPayments } from "./OutstandingPayments";
 
 const BASE = "/api/bff/api/v1/finance/legacy-reconciliation";
 const n = (v: unknown) => Number(v ?? 0).toLocaleString("en-GB");
@@ -37,9 +38,10 @@ async function post<T>(path: string, body: unknown, reason: string): Promise<T |
   return j as T;
 }
 
-export function LegacyReconciliation({ figures, sessions, filters, outstanding, outstandingProblem, requests, requestsProblem, structure, actingOffice, me }: {
+export function LegacyReconciliation({ figures, sessions, filters, outstanding, outstandingProblem, requests, requestsProblem, payments, paymentsProblem, structure, actingOffice, me }: {
   figures: ReconFigures; sessions: string[]; filters: Record<string, string>; outstanding: OutstandingRow[] | null; outstandingProblem: Problem | null;
-  requests: CreditRequestRow[] | null; requestsProblem: Problem | null; structure: Unit[]; actingOffice: string | null; me: string | null;
+  requests: CreditRequestRow[] | null; requestsProblem: Problem | null; payments: OutstandingPaymentRow[] | null; paymentsProblem: Problem | null;
+  structure: Unit[]; actingOffice: string | null; me: string | null;
 }) {
   const go = useQueryNav();
   const tab = (filters.tab || "overview") as Tab;
@@ -52,7 +54,7 @@ export function LegacyReconciliation({ figures, sessions, filters, outstanding, 
   const [busy, setBusy] = useState<string | null>(null);
   const faculties = Array.from(new Map(structure.map((u) => [u.faculty_code, u.faculty])).entries());
   const departments = structure.filter((u) => !filters.fac || u.faculty_code === filters.fac);
-  const o = figures.outstanding, q = figures.requests, w = figures.wallet;
+  const o = figures.outstanding, q = figures.requests, w = figures.wallet, op = figures.outstandingPayments;
   const scopeWords = [session, filters.state ? STATE_WORDS[filters.state as OutstandingState]?.[0] : "", filters.status ? REQUEST_WORDS[filters.status as RequestStatus]?.[0] : "",
     filters.fac ? faculties.find(([c]) => c === filters.fac)?.[1] ?? filters.fac : "", filters.dept ? departments.find((u) => u.dept_code === filters.dept)?.department ?? filters.dept : ""]
     .filter(Boolean).join(" · ");
@@ -99,6 +101,8 @@ export function LegacyReconciliation({ figures, sessions, filters, outstanding, 
             wallet money. A <b>credit</b> is what the student paid above the fees stated: the Students Account Officer confirms it against the records and sends a request,
             a Bursar officer other than the one who confirmed it approves, and only then is the student&rsquo;s wallet credited &mdash; once &mdash; on the wallet that exists.
             The old portal&rsquo;s <b>e-wallet top-ups</b> follow the same two-officer road on the Old E-Wallet Balances desk: only the unused balance, verified, is posted.
+            Payments the old portal filed as <b>OUTSTANDING FEES</b> are kept apart from school fees: the officer verifies each one and a different Bursar officer credits it
+            to the student&rsquo;s wallet, for the student to apply to fees.
           </Note>
           <div className="eyebrow">Student liabilities · {session}</div>
           <Tiles items={[
@@ -115,6 +119,13 @@ export function LegacyReconciliation({ figures, sessions, filters, outstanding, 
             ["Returned for correction", n(q.returned), q.returned ? "var(--red-ink)" : null, naira(q.returnedAmount), reconHref({ ...filters, tab: "requests", status: "RETURNED_FOR_CORRECTION" })],
             ["Credited to wallets", n(q.credited), "var(--green-ink)", `${naira(q.creditedAmount)} credited · ${naira(figures.overpaidCredited.applied)} applied to fees`, reconHref({ ...filters, tab: "history", status: "CREDITED" })],
             ["Rejected", n(q.rejected), null, `${naira(q.rejectedAmount)} · ${n(q.withdrawn)} withdrawn`, reconHref({ ...filters, tab: "history", status: "REJECTED" })],
+          ]} />
+          <div className="eyebrow">Outstanding fees payments (old portal) · every session</div>
+          <Tiles items={[
+            ["To verify", n(op.waiting + op.returned), op.waiting + op.returned ? "var(--amber-ink)" : null, `${naira(num(op.waitingAmount) + num(op.returnedAmount))} · ${n(op.payments)} payments by ${n(op.students)} students on file`, reconHref({ ...filters, tab: "payments", status: "TO_VERIFY", session: "" })],
+            ["Waiting for the Bursar", n(op.verified), op.verified ? "var(--amber-ink)" : null, `${naira(op.verifiedAmount)} verified, to credit to the wallet`, reconHref({ ...filters, tab: "payments", status: "VERIFIED", session: "" })],
+            ["Credited to wallets", n(op.credited), "var(--green-ink)", `${naira(op.creditedAmount)} · ${naira(op.applied)} applied to fees`, reconHref({ ...filters, tab: "payments", status: "CREDITED", session: "" })],
+            ["Rejected", n(op.rejected), null, naira(op.rejectedAmount), reconHref({ ...filters, tab: "payments", status: "REJECTED", session: "" })],
           ]} />
           <div className="eyebrow">Old e-wallet top-ups</div>
           <Tiles items={[
@@ -190,6 +201,11 @@ export function LegacyReconciliation({ figures, sessions, filters, outstanding, 
             </Note>
           </PBody>
         </Panel>
+      ) : null}
+
+      {tab === "payments" ? (
+        <OutstandingPayments figures={op} rows={payments} problem={paymentsProblem} filters={filters} nav={nav} refresh={() => go(reconHref(filters))}
+          faculties={faculties} departments={departments} verifies={initiates} credits={decides} me={me} />
       ) : null}
 
       {tab === "wallet" ? (

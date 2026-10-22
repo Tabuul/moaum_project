@@ -75,6 +75,19 @@ export async function StudentAccountsDashboard({ session }: { session: string })
             ["Pending Bursar approval", vz(rc.requests.pending + rc.wallet.verified), rc.requests.pending + rc.wallet.verified ? "var(--amber-ink)" : null, `${money(Number(rc.requests.pendingAmount) + Number(rc.wallet.verifiedAmount))} · ${vz(rc.requests.returned + rc.wallet.returned)} returned for correction`, "/finance/legacy-reconciliation?tab=requests"],
             ["Credited to wallets", vz(rc.requests.credited + rc.wallet.posted), "var(--green-ink)", `${money(Number(rc.requests.creditedAmount) + Number(rc.wallet.postedAmount))} · ${vz(rc.wallet.computed)} e-wallet balances to verify · ${vz(rc.wallet.review)} require review`, "/finance/legacy-reconciliation?tab=history"],
           ]} />
+          {rc.outstandingPayments ? (
+            <>
+              {/* V631: the old portal's OUTSTANDING FEES payments, kept apart from school fees, verified here and credited by the Bursar */}
+              <div className="eyebrow">Outstanding fees payments (old portal) · every session</div>
+              <Tiles items={[
+                ["To verify", vz(rc.outstandingPayments.waiting + rc.outstandingPayments.returned), rc.outstandingPayments.waiting + rc.outstandingPayments.returned ? "var(--amber-ink)" : null,
+                  `${money(Number(rc.outstandingPayments.waitingAmount) + Number(rc.outstandingPayments.returnedAmount))} · ${vz(rc.outstandingPayments.returned)} returned by the Bursar`, "/finance/legacy-reconciliation?tab=payments&status=TO_VERIFY"],
+                ["Waiting for the Bursar", vz(rc.outstandingPayments.verified), null, `${money(Number(rc.outstandingPayments.verifiedAmount))} verified`, "/finance/legacy-reconciliation?tab=payments&status=VERIFIED"],
+                ["Credited to wallets", vz(rc.outstandingPayments.credited), "var(--green-ink)", `${money(Number(rc.outstandingPayments.creditedAmount))} · ${money(Number(rc.outstandingPayments.applied))} applied to fees`, "/finance/legacy-reconciliation?tab=payments&status=CREDITED"],
+                ["On file", vz(rc.outstandingPayments.payments), null, `${money(Number(rc.outstandingPayments.amount))} by ${vz(rc.outstandingPayments.students)} students`, "/finance/legacy-reconciliation?tab=payments"],
+              ]} />
+            </>
+          ) : null}
         </>
       ) : null}
       <Panel title="Quick actions">

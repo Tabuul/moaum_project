@@ -47,6 +47,44 @@ export interface ReconFigures {
   wallet: { students: number; computed: number; computedAmount: number | string; verified: number; verifiedAmount: number | string; returned: number; returnedAmount: number | string;
     posted: number; postedAmount: number | string; review: number; rejected: number; frozen: number; noBalance: number; applied: number | string };
   overpaidCredited: { amount: number | string; applied: number | string };
+  outstandingPayments: OutstandingPaymentFigures;
+}
+
+/** V631: the old portal's OUTSTANDING FEES payments, kept apart from school fees: verified by the officer, credited by the Bursar */
+export type PaymentStatus = "WAITING" | "RETURNED" | "VERIFIED" | "CREDITED" | "REJECTED";
+export const PAYMENT_WORDS: Record<PaymentStatus, [string, "ok" | "bad" | "warn" | "grey" | "info", string]> = {
+  WAITING: ["To verify", "warn", "Nothing done yet: the Students Account Officer checks it against the records"],
+  RETURNED: ["Returned to the officer", "bad", "The Bursar sent it back to be checked and verified again"],
+  VERIFIED: ["Verified · waiting for the Bursar", "info", "A Bursar officer other than the verifier credits it to the wallet"],
+  CREDITED: ["Credited to the wallet", "ok", "On the student's wallet, to apply to fees"],
+  REJECTED: ["Rejected", "grey", "Not credited; the Bursar may reopen it"],
+};
+
+export interface OutstandingPaymentRow {
+  payment_id: string; reference: string; old_reference: string | null; student_id: string; student: string; matric_no: string | null; jamb_reg_no: string | null;
+  admission_no: string | null; programme_code: string | null; programme: string | null; dept_code: string | null; department: string | null; faculty_code: string | null;
+  faculty: string | null; current_level: number | null; student_status: string | null; merged: boolean; session: string; semester: number | null; purpose: string;
+  amount: number | string; paid_at: string | null; method: string | null; note: string | null; status: PaymentStatus; due: number | string | null; paid: number | string | null;
+  owed: number | string | null; verified_by: string | null; verified_office: string | null; verified_at: string | null; verify_note: string | null; decided_by: string | null;
+  decided_office: string | null; decided_at: string | null; decision_note: string | null; batch_ref: string | null; wallet_reference: string | null; credited_amount: number | string | null;
+}
+
+export interface OutstandingPaymentFigures {
+  payments: number; amount: number | string; students: number; waiting: number; waitingAmount: number | string; returned: number; returnedAmount: number | string;
+  verified: number; verifiedAmount: number | string; credited: number; creditedAmount: number | string; creditedStudents: number; rejected: number; rejectedAmount: number | string;
+  applied: number | string; refunded: number | string;
+  sessions: { session: string; payments: number; amount: number | string; credited: number; creditedAmount: number | string }[];
+  batches: { ref: string; credited_at: string; payments: number; amount: number | string; credited_by: string | null; office: string | null }[];
+}
+
+/** the outstanding fees payments report, S/N first */
+export const PAYMENT_HEADERS = ["S/N", "Student", "Matric No.", "Faculty", "Department", "Programme", "Session", "Semester", "Reference", "Old payment number", "Method",
+  "Paid on", "Amount", "Fees due (session)", "Paid as school fees (session)", "Owed on the session", "Status", "Verified by", "Verified on", "Bursar", "Decided on", "Note", "Batch"];
+export function paymentRows(rows: OutstandingPaymentRow[]): (string | number)[][] {
+  return rows.map((r, i) => [i + 1, r.student, r.matric_no ?? r.admission_no ?? "", r.faculty ?? r.faculty_code ?? "", r.department ?? r.dept_code ?? "", r.programme ?? r.programme_code ?? "",
+    r.session, r.semester ?? "", r.reference, r.old_reference ?? "", r.method ?? "", r.paid_at ? whenDay(r.paid_at) : "", num(r.amount), num(r.due), num(r.paid), num(r.owed),
+    PAYMENT_WORDS[r.status]?.[0] ?? r.status, r.verified_by ?? "", r.verified_at ? whenDay(r.verified_at) : "", r.decided_by ?? "", r.decided_at ? whenDay(r.decided_at) : "",
+    r.decision_note ?? r.verify_note ?? "", r.batch_ref ?? ""]);
 }
 
 /** one student's legacy picture, as /students/{id} returns it */
@@ -64,9 +102,9 @@ export interface StudentPicture {
 export const naira = (v: unknown) => `₦${num(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const whenDay = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
 
-export type Tab = "overview" | "outstanding" | "wallet" | "requests" | "history";
+export type Tab = "overview" | "outstanding" | "payments" | "wallet" | "requests" | "history";
 export const TABS: { id: Tab; label: string }[] = [
-  { id: "overview", label: "Overview" }, { id: "outstanding", label: "Outstanding fees" }, { id: "wallet", label: "E-wallet top-ups" },
+  { id: "overview", label: "Overview" }, { id: "outstanding", label: "Outstanding fees" }, { id: "payments", label: "Outstanding fees payments" }, { id: "wallet", label: "E-wallet top-ups" },
   { id: "requests", label: "Wallet credit requests" }, { id: "history", label: "History" },
 ];
 

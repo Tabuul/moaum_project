@@ -26,6 +26,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * and resubmits, another Bursar officer approves: the wallet is credited once, the overpayment is decided so it is never carried as
  * well, the student is told; a second approval is refused; the student applies the credit to the next session's fees through the
  * wallet that exists, and cannot apply more than it holds; the full record shows the request; the figures and the reports agree.
+ * V631: the old portal's OUTSTANDING FEES payments verified by the officer and credited to the wallet by another Bursar officer.
  * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -216,5 +217,72 @@ class LegacyReconciliationIT {
         // the student who owes still owes; nothing reached their wallet
         assertThat(walletBalance(owes)).isEqualByComparingTo("0");
         assertThat(rowOf(officer, owes)).containsEntry("state", "OWES");
+    }
+
+    /** V631: the old portal's OUTSTANDING FEES payments — kept apart from school fees, verified by the Students Account Officer, credited to
+     *  the wallet by a Bursar officer other than the verifier, once; the student applies the credit to the session's fees */
+    @SuppressWarnings("unchecked")
+    @Test
+    void anOldPortalOutstandingFeesPaymentReachesTheWalletByTheOfficersVerificationAndAnotherBursarsCredit() {
+        UUID owes = legacyStudent("C", "MOAUM/LRC/62/" + tag + "1", 80000);   // school fees 80,000 against 100,000
+        String matric = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :s").param("s", owes).query(String.class).single();
+        String ref = "MOAUM-LEG-" + matric.replaceAll("[^0-9A-Z]", "") + "-" + a.replace("/", "-") + "-S2-OUTSTANDINGFEES";
+        it.db(() -> jdbc.sql("""
+                INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                VALUES (:s, :ses, :r, 'OUTSTANDING FEES (legacy) · semester 2', 20000, now(), now() - interval '10 days', :by, 'Legacy', 'LEG-' || :r,
+                        'Imported from the old portal · Interswitch · old ref PR' || :t)
+                """).param("s", owes).param("ses", a).param("r", ref).param("by", UUID.randomUUID()).param("t", tag).update());
+        UUID paymentId = jdbc.sql("SELECT id FROM finance.payment_reference WHERE reference = :r").param("r", ref).query(UUID.class).single();
+        String student = TestTokens.token(owes, List.of("student"));
+        String base = "/api/v1/finance/legacy-reconciliation/outstanding-payments";
+
+        // listed apart, waiting; the school-fees payment is not on this list and the outstanding fees payment is not school fees
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) (List<?>) it.getList(officer, base + "?student=" + owes).getBody();
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0)).containsEntry("reference", ref).containsEntry("status", "WAITING").containsEntry("method", "Interswitch").containsEntry("semester", 2);
+        assertThat(((Number) rows.get(0).get("amount")).intValue()).isEqualTo(20000);
+        assertThat(((Number) rows.get(0).get("owed")).intValue()).isEqualTo(20000);
+        assertThat(jdbc.sql("SELECT paid FROM finance.position(:s, :a)").param("s", owes).param("a", a).query(BigDecimal.class).single()).isEqualByComparingTo("80000");
+        assertThat(it.get(student, base + "?student=" + owes).getStatusCode().value()).isEqualTo(403);
+
+        // the officer verifies: the confirmation is required; once only; the Bursar told; nothing credited yet
+        assertThat(it.call(officer, HttpMethod.POST, base + "/verify", Map.of("ids", List.of(paymentId), "confirmed", false)).getBody().get("code")).isEqualTo("LEGACY_OUTSTANDING_CONFIRM");
+        Map<String, Object> v = ok(it.call(officer, HttpMethod.POST, base + "/verify", Map.of("ids", List.of(paymentId), "note", "checked against the old portal's statement", "confirmed", true)));
+        assertThat(((Number) v.get("verified")).intValue()).isEqualTo(1);
+        assertThat(((Number) ok(it.call(officer, HttpMethod.POST, base + "/verify", Map.of("ids", List.of(paymentId), "confirmed", true))).get("verified")).intValue()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'person' AND about_id = :p AND template_key = 'LEGACY_OUTSTANDING_WAITING'").param("p", bursarId).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
+        assertThat(walletBalance(owes)).isEqualByComparingTo("0");
+
+        // the officer does not credit — not as the officer, not as the Bursar; a Bursar officer returns it (a reason required) and the officer is told
+        assertThat(it.call(officer, HttpMethod.POST, base + "/credit", Map.of("ids", List.of(paymentId))).getStatusCode().value()).isEqualTo(403);
+        Map<String, Object> self = ok(it.call(TestTokens.token(officerId, List.of("bursar")), HttpMethod.POST, base + "/credit", Map.of("ids", List.of(paymentId))));
+        assertThat(((Number) self.get("credited")).intValue()).isZero();
+        assertThat(String.valueOf(self.get("skipped_why"))).contains("verified by you");
+        assertThat(it.call(bursar, HttpMethod.POST, base + "/" + paymentId + "/decide", Map.of("action", "RETURN", "reason", "short")).getBody().get("code")).isEqualTo("LEGACY_OUTSTANDING_REASON");
+        Map<String, Object> returned = ok(it.call(bursar, HttpMethod.POST, base + "/" + paymentId + "/decide", Map.of("action", "RETURN", "reason", "check the old payment number against the bank")));
+        assertThat(returned).containsEntry("status", "RETURNED");
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'person' AND about_id = :p AND template_key = 'LEGACY_OUTSTANDING_DECIDED'").param("p", officerId).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
+        assertThat(((Number) ok(it.call(officer, HttpMethod.POST, base + "/verify", Map.of("ids", List.of(paymentId), "note", "the bank shows it", "confirmed", true))).get("verified")).intValue()).isEqualTo(1);
+
+        // another Bursar officer credits it: once, its own amount, source LEGACY_OUTSTANDING, under a batch; the student told
+        Map<String, Object> credited = ok(it.call(otherBursar, HttpMethod.POST, base + "/credit", Map.of("ids", List.of(paymentId), "note", "LegacyReconciliationIT")));
+        assertThat(((Number) credited.get("credited")).intValue()).isEqualTo(1);
+        assertThat(String.valueOf(credited.get("batch_ref"))).matches("LEGACY-OUTSTANDING/[0-9]{4}/[0-9]{6}");
+        assertThat(walletBalance(owes)).isEqualByComparingTo("20000");
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.wallet_entry WHERE student_id = :s AND kind = 'CREDIT' AND source_code = 'LEGACY_OUTSTANDING'").param("s", owes).query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = :s AND template_key = 'LEGACY_OUTSTANDING_CREDITED'").param("s", owes).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
+        assertThat(((Number) ok(it.call(bursar, HttpMethod.POST, base + "/credit", Map.of("ids", List.of(paymentId)))).get("credited")).intValue()).isZero();
+        ResponseEntity<Map> reject = it.call(bursar, HttpMethod.POST, base + "/" + paymentId + "/decide", Map.of("action", "REJECT", "reason", "not to be credited after all"));
+        assertThat(reject.getStatusCode().value()).isEqualTo(422);
+        assertThat(reject.getBody().get("code")).isEqualTo("LEGACY_OUTSTANDING_CREDITED");
+        rows = (List<Map<String, Object>>) (List<?>) it.getList(bursar, base + "?status=CREDITED&q=" + ref).getBody();
+        assertThat(rows).singleElement().satisfies(r -> assertThat(r).containsEntry("batch_ref", credited.get("batch_ref")));
+        Map<String, Object> fig = ok(it.get(bursar, "/api/v1/finance/legacy-reconciliation/figures"));
+        assertThat(((Number) ((Map<String, Object>) fig.get("outstandingPayments")).get("credited")).intValue()).isGreaterThanOrEqualTo(1);
+
+        // the student applies it to the session's school fees from the wallet: the session is paid in full
+        ok(it.call(student, HttpMethod.POST, "/api/v1/me/wallet/apply", Map.of("session", a)));
+        assertThat(jdbc.sql("SELECT balance FROM finance.position(:s, :a)").param("s", owes).param("a", a).query(BigDecimal.class).single()).isEqualByComparingTo("0");
+        assertThat(walletBalance(owes)).isEqualByComparingTo("0");
     }
 }

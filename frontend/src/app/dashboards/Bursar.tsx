@@ -25,6 +25,8 @@ export async function BursarDashboard({ session }: { session: string }) {
     api<CceFeesRead>("/api/v1/cce/fees"), api<ReconFigures>("/api/v1/finance/legacy-reconciliation/figures")]);
   // V625: the legacy wallet credit approvals waiting on the Bursar
   const recon = rcf.ok ? rcf.data : null;
+  // V631: the old portal's OUTSTANDING FEES payments the Bursar credits to the wallet
+  const op = recon?.outstandingPayments ?? null;
   if (!v.ok) {
     return <Note kind="bad" title="The Bursary's figures could not be read">{v.problem.detail ?? v.problem.title}</Note>;
   }
@@ -65,6 +67,19 @@ export async function BursarDashboard({ session }: { session: string }) {
         ["Exceptions open", String(exceptions), exceptions ? "var(--red-ink)" : null, `${t.hanging} hanging at a gateway`],
         ["Gateways live", `${on.length}`, on.length ? "var(--green-ink)" : "var(--red-ink)", on.length ? on.map((g) => `${g.gateway} (${g.mode.toLowerCase()})`).join(", ") : "None wired yet"],
       ]} />
+      {op ? (
+        <Panel title="Old-portal outstanding fees payments" right={<LinkBtn kind={op.verified ? "primary" : "ghost"} href="/finance/legacy-reconciliation?tab=payments&status=VERIFIED">{op.verified ? `Credit ${op.verified} to the wallets` : "Open the list"}</LinkBtn>}>
+          {/* V631: kept apart from school fees; the Students Account Officer verifies, a Bursar officer other than the verifier credits the wallet */}
+          <PBody>
+            <Tiles items={[
+              ["Waiting for you", op.verified.toLocaleString("en-GB"), op.verified ? "var(--amber-ink)" : null, `${money(Number(op.verifiedAmount))} verified, to credit to the students' wallets`, "/finance/legacy-reconciliation?tab=payments&status=VERIFIED"],
+              ["To verify", (op.waiting + op.returned).toLocaleString("en-GB"), null, `${money(Number(op.waitingAmount) + Number(op.returnedAmount))} with the Students Account Officer`, "/finance/legacy-reconciliation?tab=payments&status=TO_VERIFY"],
+              ["Credited to wallets", op.credited.toLocaleString("en-GB"), "var(--green-ink)", `${money(Number(op.creditedAmount))} · ${money(Number(op.applied))} applied to fees`, "/finance/legacy-reconciliation?tab=payments&status=CREDITED"],
+              ["On file", op.payments.toLocaleString("en-GB"), null, `${money(Number(op.amount))} by ${op.students.toLocaleString("en-GB")} students · ${op.rejected.toLocaleString("en-GB")} rejected`, "/finance/legacy-reconciliation?tab=payments"],
+            ]} />
+          </PBody>
+        </Panel>
+      ) : null}
       <div className="grid grid--2">
         <Panel title="Collection by faculty" right={`${v.data.session} · from the register`}>
           {v.data.byFaculty.length ? (
@@ -86,6 +101,9 @@ export async function BursarDashboard({ session }: { session: string }) {
             ...(recon ? [[<Two key="a" a="Legacy wallet credit approvals" b="Overpaid school fees and old e-wallet balances the Students Account Officer confirmed" />,
               <Link key="l" href="/finance/legacy-reconciliation?tab=requests">Legacy reconciliation</Link>,
               <Pil key="s" kind={recon.requests.pending + recon.wallet.verified ? "bad" : "ok"}>{recon.requests.pending + recon.wallet.verified} waiting</Pil>]] : []),
+            ...(op ? [[<Two key="a" a="Old-portal outstanding fees payments" b="Verified by the Students Account Officer, to credit to the students' wallets" />,
+              <Link key="l" href="/finance/legacy-reconciliation?tab=payments&status=VERIFIED">Outstanding fees payments</Link>,
+              <Pil key="s" kind={op.verified ? "bad" : "ok"}>{op.verified} waiting</Pil>]] : []),
             [<Two key="a" a="Held scripts" b="Students who sat a paper unregistered; the mark waits on their fees" />, <Link key="l" href="/finance/held-scripts">Who owes</Link>, <Pil kind="info" key="s">Open</Pil>],
           ]} />
         </Panel>
