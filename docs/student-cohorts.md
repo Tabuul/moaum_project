@@ -424,6 +424,10 @@ Regional Planning (C30468), Radiography and Radiation Science (C49411), Medical 
 (C51900) and Environmental Management and Toxicology (C52395). They are set in one statement, so every position is recomputed
 once.
 
+On the University's word of 22 October 2026 ("Industrial Chemistry is a 5 years course not 4 years") Industrial Chemistry
+(C22229) ends at 500 too (V634), set the same way. The Faculty of Science's 500-level fee lines already stood, so no fee gap
+opened.
+
 On the live-shaped copy, the engine then places 359 Nursing, 293 Environmental Management and Toxicology, 128 Radiography,
 79 URP and 31 Medical Laboratory Science students at 500, and many spillover students a year later (a 2020/2021 entrant on a
 five-year programme finished in 2024/2025 and is SP1 in 2025/2026). The records below the computed level are corrected on

@@ -182,7 +182,8 @@ The University asked for levels above 400 on Level Management: SP1 and SP2 for f
 Regional Planning, and 600 for MBBS.
 
 - **The levels.** The level list runs from 100 to the programme's own final level (`finance.final_level`). That is 500 for
-  Nursing (C35147) and Urban and Regional Planning (C30468) since V598, and 600 for MBBS (C00061). These were already offered.
+  Nursing (C35147) and Urban and Regional Planning (C30468) since V598, Industrial Chemistry (C22229) since V634, and 600 for
+  MBBS (C00061). These were already offered.
 - **The spillover years.** A spillover year is not a level. The record stays at the final level, and the cohort engine counts the
   sessions past the programme's length from the expected completion (V331, V595), which the Registry may pin (V612). The
   **Change/correct level** list now has a second group, *Spillover years (past the final level)*. Each choice pins a completion:

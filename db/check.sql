@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 461
+\set EXPECTED 462
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23549,6 +23549,39 @@ BEGIN
                AND a2.outcome = 'OPEN' AND a2.reference_out = 'MOAUM-FEE-CHK635-0001'
                AND r_other = 'REFERENCE_NOT_FOUND' AND r_paid = 'REFERENCE_PAID' AND r_closed = 'REFERENCE_ITEM_CLOSED' AND r_office = 'REFERENCE_NOT_RENEWABLE', false),
       msg);
+END $$;
+-- ── V634. Industrial Chemistry (C22229) ends at 500: finance.final_level reads it; a made-up Industrial Chemistry student at 400 is
+--          offered 100 to 500 and the next level is 500, and one at 500 is at the final level; a made-up B.Sc. Chemistry student at 400
+--          is still at the final level. The block undoes its writes ──
+DO $$
+DECLARE
+    v_final int; o400 jsonb; o500 jsonb; o_chm jsonb; i1 uuid := gen_random_uuid(); i2 uuid := gen_random_uuid(); c1 uuid := gen_random_uuid(); msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V634', true);
+    v_final := finance.final_level('C22229');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (i1, 'MOAUM/ADM/34/634001', 'MOAUM/ZZI/34/6341', 'CHECKV634', 'Industrial Fourth', 'C22229', 'UTME', '2034/2035', 100, 400, 'ACTIVE', now()),
+        (i2, 'MOAUM/ADM/34/634002', 'MOAUM/ZZI/34/6342', 'CHECKV634', 'Industrial Final', 'C22229', 'UTME', '2034/2035', 100, 500, 'ACTIVE', now()),
+        (c1, 'MOAUM/ADM/34/634003', 'MOAUM/ZZI/34/6343', 'CHECKV634', 'Chemistry Final', 'C00022', 'UTME', '2034/2035', 100, 400, 'ACTIVE', now());
+    o400 := people.level_options(i1);
+    o500 := people.level_options(i2);
+    o_chm := people.level_options(c1);
+    RAISE EXCEPTION 'the V634 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V634 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V634: Industrial Chemistry ends at 500 — its student progresses 400 to 500 and stops there; B.Sc. Chemistry still stops at 400',
+        coalesce(v_final = 500
+                 AND o400->'levels' = '[100, 200, 300, 400, 500]'::jsonb AND (o400->>'nextLevel')::int = 500 AND o400->>'progressRefusal' IS NULL
+                 AND (o500->>'finalLevel')::int = 500 AND o500->>'nextLevel' IS NULL AND o500->>'progressRefusal' LIKE 'LEVEL_AT_FINAL%'
+                 AND (o_chm->>'finalLevel')::int = 400 AND o_chm->>'progressRefusal' LIKE 'LEVEL_AT_FINAL%', false),
+        format('final %s | at 400: levels %s next %s refusal %s | at 500: final %s next %s %s | chemistry at 400: final %s %s',
+               v_final, o400->'levels', o400->>'nextLevel', o400->>'progressRefusal', o500->>'finalLevel', o500->>'nextLevel', left(o500->>'progressRefusal', 15),
+               o_chm->>'finalLevel', left(o_chm->>'progressRefusal', 15)));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
