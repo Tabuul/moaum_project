@@ -24,8 +24,13 @@ Each candidate in a chunk is read against the session's live list first (`CapsIn
   (`{"course": {"from": "C00061", "to": "C35147"}}`), the upload that carried it, who and when.
 - **Eligibility.** Updating the row's raw data or aggregate marks the candidate's eligibility run stale
   (`trg_eligibility_touched`), so screening re-reads it.
-- **Programme mismatches.** A course changed on a committed list shows on the reconciliation, as a programme that differs from
-  CAPS, until the candidate's programme follows (Programme Changes).
+- **The candidate follows JAMB (V636).** A candidate already on the portal whose course JAMB changed follows it, unless a
+  released offer stands: the candidate's programme becomes JAMB's, a programme change (reason *Course changed by JAMB on the CAPS
+  list*) is written on the register approved as made, the applicant is told, and the eligibility engine reads the candidate again.
+  The loader does this after every upload that changed a course (`admissions.follow_caps_course`), and the reconciliation panel
+  offers **Apply JAMB's course changes** for candidates changed before V636. A candidate with a released offer is left as offered
+  and counted apart ("Matched, programme differs from CAPS — admitted"): the admission is corrected on Programme Changes, or the
+  row withdrawn. Only that finding still blocks the commit.
 - **Batch counts.** Each batch keeps `rows_updated` and `rows_unchanged`; `rows_added` is the rows it put on the list. The upload
   history shows "N new · N updated · N unchanged".
 - **The badge.** "N candidates loaded" now adds up the candidates on the list, not each file's rows.
@@ -41,10 +46,10 @@ A file already held under the same name is compared with what is held:
 |---|---|---|---|
 | Date of birth | the date and the names read | skipped | recorded beside the first; the newest is read everywhere |
 | Passport | size and dimensions, and the image itself where both carry it | skipped | recorded beside the first; the newest is shown |
-| O'Level | the result (V298) | skipped | recorded beside it; each sitting is checked against the record — a second result for the same examination with other grades is **held** for the Academic Office to keep or use (the O'Level duplicates review) |
+| O'Level | the result (V298) | skipped | recorded beside it; each sitting is checked against the record — **an awaiting result (A/R) on record is replaced outright by the grades uploaded under the same exam number (V636)**; an uploaded A/R never replaces grades; a second set of real grades for the same examination is **held** for the Academic Office to keep or use (the O'Level duplicates review) |
 
-Grades are not replaced without the Office's decision. The upload's answer counts `replaced`, and the screen says how many
-changed since they were first recorded.
+Real grades are not replaced without the Office's decision; an awaiting result is (V636). The upload's answer counts `replaced`
+(and the O'Level answer `REPLACED` and `AWAITING`), and the screen says how many changed since they were first recorded.
 
 ## Tests
 

@@ -12,7 +12,10 @@ import java.util.Map;
  * a candidate on the other list (UTME or Direct Entry) named and left as it is.
  */
 public record CapsLoadResult(CapsBatch batch, int rowsLoaded, List<ExcludedRow> excluded,
-                             int rowsUpdated, int rowsUnchanged, List<UpdatedRow> updated, List<String> otherList) {
+                             int rowsUpdated, int rowsUnchanged, List<UpdatedRow> updated, List<String> otherList,
+                             /* V636: after a course changed, the candidates on the portal who followed JAMB's course and those
+                                left as admitted (an offer stands; corrected on Programme Changes) */
+                             int programmesFollowed, int programmesAdmittedLeft) {
 
     public record ExcludedRow(String jambRegNo, String surname, String otherNames, String jambCode, String programme,
                               Integer aggregate, int cutoff, String reason) {

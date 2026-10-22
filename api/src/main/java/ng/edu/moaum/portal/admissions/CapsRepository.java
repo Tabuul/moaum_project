@@ -110,6 +110,12 @@ class CapsRepository {
                 .param("by", by, Types.OTHER).param("office", office, Types.VARCHAR).update();
     }
 
+    /** V636: the candidates JAMB moved on the list follow the course where no offer stands; the counts, and up to 300 named */
+    Map<String, Object> followCapsCourse(String session, boolean dryRun) {
+        return jdbc.sql("SELECT followed, admitted_left, named::text AS named FROM admissions.follow_caps_course(:s, :dry)")
+                .param("s", session).param("dry", dryRun).query().singleRow();
+    }
+
     /** V629: the upload's own count of the candidates it updated and the ones it found the same */
     void countMerge(UUID batchId, int updated, int unchanged) {
         jdbc.sql("UPDATE admissions.caps_batch SET rows_updated = rows_updated + :u, rows_unchanged = rows_unchanged + :n WHERE id = :id")

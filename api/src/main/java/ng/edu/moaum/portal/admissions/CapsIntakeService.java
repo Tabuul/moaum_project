@@ -1,6 +1,7 @@
 package ng.edu.moaum.portal.admissions;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -124,6 +125,7 @@ public class CapsIntakeService {
      */
     private CapsLoadResult insertRows(UUID id, String session, String listKind, Integer loadCutoff, List<CapsRowIn> rows) {
         int loaded = 0, updatedCount = 0, unchanged = 0;
+        boolean courseChanged = false;
         List<CapsLoadResult.ExcludedRow> excluded = new ArrayList<>();
         List<CapsLoadResult.UpdatedRow> updated = new ArrayList<>();
         List<String> otherList = new ArrayList<>();
@@ -155,6 +157,7 @@ public class CapsIntakeService {
                 caps.updateRow(was.id(), row, rawJson);
                 caps.recordChange(was.id(), session, key, id, json.writeValueAsString(changes), actor.actorId(), actor.actorOffice());
                 updatedCount++;
+                courseChanged |= changes.containsKey("course");
                 if (updated.size() < CapsLoadResult.UPDATED_LISTED) {
                     updated.add(new CapsLoadResult.UpdatedRow(key, row.surname().trim(), row.otherNames(), changes));
                 }
@@ -170,7 +173,31 @@ public class CapsIntakeService {
             loaded++;
         }
         caps.countMerge(id, updatedCount, unchanged);
-        return new CapsLoadResult(caps.find(id).orElseThrow(), loaded, excluded, updatedCount, unchanged, updated, otherList);
+        // V636: a candidate on the portal whose course JAMB changed follows it unless an offer stands
+        int followed = 0, admittedLeft = 0;
+        if (courseChanged) {
+            Map<String, Object> f = caps.followCapsCourse(session, false);
+            followed = ((Number) f.get("followed")).intValue();
+            admittedLeft = ((Number) f.get("admitted_left")).intValue();
+        }
+        return new CapsLoadResult(caps.find(id).orElseThrow(), loaded, excluded, updatedCount, unchanged, updated, otherList, followed, admittedLeft);
+    }
+
+    /**
+     * V636: the candidates JAMB moved on the live list, followed where no released offer stands — the programme set to JAMB's, a
+     * programme change approved as made, the applicant told — and counted apart where one does; a dry run names them and writes
+     * nothing. By the offices that load the list.
+     */
+    @Transactional
+    public Map<String, Object> followCapsCourse(String session, boolean dryRun) {
+        requireUploadingOffice(AuditContextHolder.required());
+        Map<String, Object> r = caps.followCapsCourse(session, dryRun);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("dryRun", dryRun);
+        out.put("followed", r.get("followed"));
+        out.put("admittedLeft", r.get("admitted_left"));
+        out.put("named", json.readValue(String.valueOf(r.get("named")), List.class));
+        return out;
     }
 
     /** V629: the subject columns of either layout (and JAMB's course name), compared as the file wrote them */

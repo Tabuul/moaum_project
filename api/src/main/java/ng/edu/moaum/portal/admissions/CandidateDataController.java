@@ -238,8 +238,10 @@ class CandidateDataController {
         duplicates.put("SAME_RESULT", 0L);
         duplicates.put("SAME_SITTING", 0L);
         duplicates.put("NUMBER_ELSEWHERE", 0L);
+        duplicates.put("REPLACED", 0L);   // V636: an awaiting result (A/R) on record replaced by the grades the upload carried
+        duplicates.put("AWAITING", 0L);   // V636: an uploaded awaiting result where the record holds the grades: nothing changed
         if (!olevels.isEmpty()) {
-            for (Map<String, Object> r : jdbc.sql("SELECT kind, count(*) AS n FROM admissions.olevel_duplicate WHERE attachment_id::text = ANY(:ids) GROUP BY kind")
+            for (Map<String, Object> r : jdbc.sql("SELECT CASE WHEN state = 'REPLACED' THEN 'REPLACED' ELSE kind END AS kind, count(*) AS n FROM admissions.olevel_duplicate WHERE attachment_id::text = ANY(:ids) GROUP BY 1")
                     .param("ids", olevels.toArray(String[]::new)).query().listOfRows()) {
                 duplicates.put(String.valueOf(r.get("kind")), ((Number) r.get("n")).longValue());
             }

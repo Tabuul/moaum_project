@@ -22,7 +22,10 @@ import org.springframework.transaction.PlatformTransactionManager;
  * V629: the JAMB list upload merges with the list already held. A made-up Direct Entry list is loaded; the next week's download
  * repeats it — one candidate the same (skipped), one whose course JAMB changed (updated in place on the list it is on, the change
  * kept), one new (added) — and the upload says so, by count and by name. A date of birth sent again the same is skipped; sent
- * changed, it is recorded beside the first and counted as a replacement. Needs DATABASE_URL.
+ * changed, it is recorded beside the first and counted as a replacement.
+ * V636: the follow of JAMB's course changes answers the loading offices (a dry run names and writes nothing; the Bursary is refused);
+ * an O'Level awaiting result (A/R) on record is replaced by the grades uploaded under the same exam number, and an uploaded A/R over
+ * the grades changes nothing. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -145,5 +148,47 @@ class CapsMergeIT {
                 SELECT payload ->> 'dob' FROM admissions.attachment WHERE session = :s AND kind = 'DATE_OF_BIRTH' AND jamb_key = :k
                  ORDER BY arrived_at DESC LIMIT 1
                 """).param("s", SESSION).param("k", reg).query(String.class).single()).isEqualTo("21-03-2008");
+    }
+
+    @Test
+    void theFollowOfJambsCourseChangesAnswersTheLoadingOffices() {
+        String academic = ItSupport.token("academic");
+        String path = "/api/v1/admissions/sessions/" + SESSION + "/follow-caps?dryRun=true";
+        ResponseEntity<Map> dry = it.call(academic, HttpMethod.POST, path, Map.of());
+        assertThat(dry.getStatusCode().value()).as(String.valueOf(dry.getBody())).isEqualTo(200);
+        assertThat(dry.getBody()).containsEntry("dryRun", true).containsKeys("followed", "admittedLeft", "named");
+        assertThat(it.call(ItSupport.token("bursary"), HttpMethod.POST, path, Map.of()).getStatusCode().value()).isEqualTo(403);
+    }
+
+    @Test
+    void anAwaitingOlevelResultIsReplacedByTheGradesAndNeverTheOtherWay() {
+        String academic = ItSupport.token("academic");
+        String reg = freeReg();
+        String path = "/api/v1/admissions/sessions/" + SESSION + "/candidate-data";
+        // the screen names a file by the number, body and year, so a file sent again identical is skipped before any sitting is read;
+        // the A/R sent again below carries one more subject, as JAMB's next file might
+        java.util.function.Function<List<Map<String, String>>, Map<String, Object>> send = subjects -> Map.of("kind", "OLEVEL", "items", List.of(Map.of(
+                "sourceName", reg + " WAEC 2026", "jambKey", reg, "readAs", "COLUMN",
+                "payload", Map.of("sittings", List.of(Map.of("type", "WAEC", "series", "MAY/JUNE", "year", "2026", "examNumber", "40826" + reg.substring(4, 9),
+                        "subjects", subjects))))));
+        List<Map<String, String>> awaitingTwo = List.of(Map.of("subject", "English Language", "grade", "A/R"), Map.of("subject", "Mathematics", "grade", "A/R"));
+        List<Map<String, String>> gradedTwo = List.of(Map.of("subject", "English Language", "grade", "B3"), Map.of("subject", "Mathematics", "grade", "C4"));
+        List<Map<String, String>> awaitingThree = List.of(Map.of("subject", "English Language", "grade", "A/R"), Map.of("subject", "Mathematics", "grade", "A/R"),
+                Map.of("subject", "Physics", "grade", "A/R"));
+
+        ResponseEntity<Map> awaiting = it.call(academic, HttpMethod.POST, path, send.apply(awaitingTwo));
+        assertThat(awaiting.getStatusCode().value()).as(String.valueOf(awaiting.getBody())).isEqualTo(200);
+        assertThat(awaiting.getBody()).containsEntry("recorded", 1);
+        ResponseEntity<Map> graded = it.call(academic, HttpMethod.POST, path, send.apply(gradedTwo));
+        assertThat(graded.getStatusCode().value()).as(String.valueOf(graded.getBody())).isEqualTo(200);
+        assertThat((Map<String, Object>) graded.getBody().get("duplicates")).containsEntry("REPLACED", 1).containsEntry("SAME_SITTING", 0);
+        assertThat(jdbc.sql("""
+                SELECT string_agg(g.subject || ' ' || g.grade, ', ' ORDER BY g.subject) FROM admissions.olevel_sitting st JOIN admissions.olevel_grade g ON g.sitting_id = st.id
+                 WHERE st.session = :s AND st.jamb_key = :k
+                """).param("s", SESSION).param("k", reg).query(String.class).single()).isEqualTo("English Language B3, Mathematics C4");
+        ResponseEntity<Map> again = it.call(academic, HttpMethod.POST, path, send.apply(awaitingThree));
+        assertThat((Map<String, Object>) again.getBody().get("duplicates")).containsEntry("AWAITING", 1).containsEntry("REPLACED", 0);
+        assertThat(jdbc.sql("SELECT count(*) FROM admissions.olevel_grade g JOIN admissions.olevel_sitting st ON st.id = g.sitting_id WHERE st.session = :s AND st.jamb_key = :k AND g.grade = 'A/R'")
+                .param("s", SESSION).param("k", reg).query(Long.class).single()).isEqualTo(0L);
     }
 }

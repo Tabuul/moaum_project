@@ -113,6 +113,9 @@ interface Loaded {
   rowsUnchanged?: number;
   updated?: Updated[];
   otherList?: string[];
+  /** V636: after a course changed, the candidates on the portal who followed JAMB's course, and those left admitted */
+  programmesFollowed?: number;
+  programmesAdmittedLeft?: number;
   outcome?: string;
 }
 
@@ -310,6 +313,8 @@ export function CapsIntake({
         result.rowsUnchanged = (result.rowsUnchanged ?? 0) + (part.rowsUnchanged ?? 0);
         result.updated = [...(result.updated ?? []), ...(part.updated ?? [])];
         result.otherList = [...(result.otherList ?? []), ...(part.otherList ?? [])];
+        result.programmesFollowed = (result.programmesFollowed ?? 0) + (part.programmesFollowed ?? 0);
+        result.programmesAdmittedLeft = Math.max(result.programmesAdmittedLeft ?? 0, part.programmesAdmittedLeft ?? 0);
         result.batch = part.batch;
         sent += chunk.length;
         setProgress({ sent, of: rows.length });
@@ -341,6 +346,29 @@ export function CapsIntake({
       setCommitting(null);
     }
   }
+
+  /* V636: the candidates on the portal whose course JAMB changed follow it (unless an offer stands) — for those changed before the
+     loader did it by itself; the reconciliation then reads again */
+  const [following, setFollowing] = useState(false);
+  const [followed, setFollowed] = useState<{ followed: number; admittedLeft: number; named: { jambRegNo: string; name: string; from: string; to: string; admitted: boolean }[] } | null>(null);
+  async function followCaps() {
+    setFollowing(true);
+    setProblem(null);
+    try {
+      const r = await post(`/api/v1/admissions/sessions/${session}/follow-caps`, `JAMB's course changes applied to the ${session} candidates`);
+      if (r.ok) {
+        const f = r.body as { followed: number; admittedLeft: number; named: { jambRegNo: string; name: string; from: string; to: string; admitted: boolean }[] };
+        setFollowed(f);
+        notify(`${f.followed.toLocaleString()} candidate${f.followed === 1 ? "" : "s"} followed JAMB's course${f.admittedLeft ? ` · ${f.admittedLeft.toLocaleString()} admitted left for correction` : ""}`);
+        router.refresh();
+      } else {
+        setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
+      }
+    } finally {
+      setFollowing(false);
+    }
+  }
+  const undecided = reconciliation.find((x) => x.finding.endsWith("not yet decided"));
 
   async function commit(id: string, fromScreen: boolean) {
     setCommitting(id);
@@ -552,7 +580,7 @@ export function CapsIntake({
           ) : done ? (
             <Note
               kind="ok"
-              title={done.outcome ? `The ${list.label} list is ${done.outcome}` : `${done.rowsLoaded.toLocaleString()} new candidate${done.rowsLoaded === 1 ? "" : "s"} added to the ${list.label} list for ${session}${done.rowsUpdated ? ` · ${done.rowsUpdated.toLocaleString()} updated (JAMB changed them)` : ""}${done.rowsUnchanged ? ` · ${done.rowsUnchanged.toLocaleString()} already on it, unchanged` : ""} — held, not yet committed${done.excluded.length ? ` · ${done.excluded.length} under the cut-off, on record` : ""}`}
+              title={done.outcome ? `The ${list.label} list is ${done.outcome}` : `${done.rowsLoaded.toLocaleString()} new candidate${done.rowsLoaded === 1 ? "" : "s"} added to the ${list.label} list for ${session}${done.rowsUpdated ? ` · ${done.rowsUpdated.toLocaleString()} updated (JAMB changed them)` : ""}${done.rowsUnchanged ? ` · ${done.rowsUnchanged.toLocaleString()} already on it, unchanged` : ""}${done.programmesFollowed ? ` · ${done.programmesFollowed.toLocaleString()} candidate${done.programmesFollowed === 1 ? "" : "s"} on the portal followed JAMB's new course` : ""}${done.programmesAdmittedLeft ? ` · ${done.programmesAdmittedLeft.toLocaleString()} admitted candidate${done.programmesAdmittedLeft === 1 ? "" : "s"} need an admission correction` : ""} — held, not yet committed${done.excluded.length ? ` · ${done.excluded.length} under the cut-off, on record` : ""}`}
               action={
                 done.outcome ? undefined : (
                   <Btn kind="go" onClick={() => void commit(done.batch.id, true)} disabled={committing !== null || !mayLoad}>
@@ -784,6 +812,19 @@ export function CapsIntake({
       </Panel>
 
       <Panel title="Does the list reconcile?" right="What the database finds, both ways">
+        {undecided && undecided.n > 0 ? (
+          <Note kind="info" title={`${undecided.n.toLocaleString()} candidate${undecided.n === 1 ? "" : "s"} on the portal whose course JAMB changed, with no offer standing`}
+            action={mayLoad ? <Btn kind="primary" busy={following} busyLabel="Applying…" onClick={() => void followCaps()}>Apply JAMB&rsquo;s course changes</Btn> : undefined}>
+            Each follows JAMB&rsquo;s course: the programme becomes JAMB&rsquo;s, a programme change is written on the register, the applicant is told, and eligibility is read again.
+            Candidates with a released offer are left as offered: correct those on Programme Changes. New uploads do this by themselves.
+          </Note>
+        ) : null}
+        {followed && followed.named.length ? (
+          <DTable pageSize={10} cols={["JAMB number|mid", "Candidate", "From", "To", "|mid"]} rows={followed.named.map((x) => [
+            <span key="n" className="tnum">{x.jambRegNo}</span>, <strong key="c">{x.name}</strong>, <span key="f" className="sub2">{x.from}</span>, <span key="t">{x.to}</span>,
+            x.admitted ? <Pil key="s" kind="warn">admitted — correct on Programme Changes</Pil> : <Pil key="s" kind="ok">followed</Pil>,
+          ])} texts={followed.named.map((x) => `${x.jambRegNo} ${x.name} ${x.from} ${x.to}`)} />
+        ) : null}
         <DTable
           cols={["Rows|num", "Finding", "What it means", "Owner"]}
           rows={reconciliation.map((x) => [

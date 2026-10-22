@@ -62,12 +62,13 @@ export function OlevelDuplicates({ session, initial, may }: { session: string; i
     <Panel title="Duplicate O’Level uploads" right={open.length ? <Pil kind="bad">{open.length} to decide</Pil> : `${rows.length} finding${rows.length === 1 ? "" : "s"}`}>
       <PBody>
         <div className="stack">
-          <div className="sub2"><b>The same result again</b> is not recorded twice. <b>The same exam number with other grades</b> is held until the Office decides. <b>An exam number on another applicant&rsquo;s record</b> stays open until verified.</div>
+          <div className="sub2"><b>The same result again</b> is not recorded twice. <b>The same exam number with other grades</b> is held until the Office decides; <b>an awaiting result (A/R) on record</b> is replaced by the grades uploaded (V636). <b>An exam number on another applicant&rsquo;s record</b> stays open until verified.</div>
           {problem && !acting ? <ProblemNotice problem={problem} /> : null}
           <Tiles items={[
-            ["Held — same number, other grades", String(rows.filter((r) => r.state === "HELD").length), rows.some((r) => r.state === "HELD") ? "var(--red-ink)" : null, `${count("SAME_SITTING")} found in all`],
+            ["Held — same number, other grades", String(rows.filter((r) => r.state === "HELD").length), rows.some((r) => r.state === "HELD") ? "var(--red-ink)" : null, `${rows.filter((r) => r.kind === "SAME_SITTING" && r.state !== "REPLACED").length} found in all`],
             ["Open — shared exam number", String(rows.filter((r) => r.state === "OPEN").length), rows.some((r) => r.state === "OPEN") ? "var(--amber-ink)" : null, `${count("NUMBER_ELSEWHERE")} found in all`],
-            ["Same result sent again", String(count("SAME_RESULT")), null, "Not recorded twice"],
+            ["Same result sent again", String(count("SAME_RESULT") + count("AWAITING")), null, `Not recorded twice${count("AWAITING") ? ` · ${count("AWAITING")} awaiting result${count("AWAITING") === 1 ? "" : "s"} over grades on record` : ""}`],
+            ["Awaiting results replaced", String(rows.filter((r) => r.state === "REPLACED").length), null, "A/R on record replaced by the grades uploaded"],
             ["Decided", String(rows.filter((r) => ["KEPT", "USED", "VERIFIED"].includes(r.state)).length), null, "With how it was verified"],
           ]} />
           <div className="row row--between">

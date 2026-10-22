@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 462
+\set EXPECTED 463
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23582,6 +23582,92 @@ BEGIN
         format('final %s | at 400: levels %s next %s refusal %s | at 500: final %s next %s %s | chemistry at 400: final %s %s',
                v_final, o400->'levels', o400->>'nextLevel', o400->>'progressRefusal', o500->>'finalLevel', o500->>'nextLevel', left(o500->>'progressRefusal', 15),
                o_chm->>'finalLevel', left(o_chm->>'progressRefusal', 15)));
+END $$;
+-- ── V636. The JAMB list merge followed through: two made-up candidates on a Direct Entry list are moved by JAMB to another programme;
+--          the reconciliation tells the undecided one from the one with a released offer; the follow dry run names both and writes
+--          nothing; the follow moves the undecided candidate (a JAMB_CAPS programme change approved as made) and leaves the admitted
+--          one, and a second run finds nothing more to follow. An O'Level awaiting result (A/R) on record is replaced by the grades
+--          a later upload carries under the same exam number (REPLACED); an uploaded A/R over the grades changes nothing (AWAITING,
+--          skipped); other real grades under the number are still held. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9636/9637'; b1 uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid();
+    c1 uuid := gen_random_uuid(); c2 uuid := gen_random_uuid(); acct1 uuid := gen_random_uuid(); acct2 uuid := gen_random_uuid();
+    app1 uuid := gen_random_uuid(); app2 uuid := gen_random_uuid(); pa text; pb text; na text; nb text;
+    f0 record; f1 record; dry record; wet record; again record; c1_dry text; c1_after text; c2_after text; req record;
+    k text := '9636000001OL'; a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); a3 uuid := gen_random_uuid(); a4 uuid := gen_random_uuid();
+    n1 int; n2 int; n3 int; n4 int; st2 text; st3 text; st4 text; grades_after text; sittings_after int; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V636', true);
+    SELECT code, name INTO pa, na FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT code, name INTO pb, nb FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived AND code <> pa ORDER BY code LIMIT 1;
+    -- a Direct Entry list (no cut-off applies) with two candidates on programme A
+    INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b1, S, 'CAPS_DOWNLOAD', 'check-v636.xlsx', decode(repeat('ab', 32), 'hex'), 2, 'DIRECT_ENTRY', current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+        (r1, b1, S, '963600000001DE', '{}'::jsonb, 'CHECKV636', 'Undecided', pa, NULL, 'DIRECT_ENTRY'),
+        (r2, b1, S, '963600000002DE', '{}'::jsonb, 'CHECKV636', 'Offered', pa, NULL, 'DIRECT_ENTRY');
+    -- one registered with no decision; one admitted on a released offer
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from) VALUES
+        (c1, S, '963600000001DE', 'CHECKV636', 'Undecided', na, 'DIRECT_ENTRY', 200, 'PROPOSED', NULL),
+        (c2, S, '963600000002DE', 'CHECKV636', 'Offered', na, 'DIRECT_ENTRY', 200, 'ADMITTED', r2);
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+        (acct1, S, c1, '963600000001DE', 'v636a@example.test', '08030000636', crypt('x', gen_salt('bf', 12))),
+        (acct2, S, c2, '963600000002DE', 'v636b@example.test', '08030000637', crypt('x', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at) VALUES (app1, acct1, c1, S, 'APP/36/636001', now());
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, decision, decided_at, decision_released_at)
+    VALUES (app2, acct2, c2, S, 'APP/36/636002', now(), 'OFFERED', now(), now());
+    SELECT * INTO f0 FROM admissions.follow_caps_course(S, true);
+    -- JAMB moves both to programme B: the merge updates the rows in place (V629)
+    UPDATE admissions.caps_row SET jamb_code = pb WHERE id IN (r1, r2);
+    SELECT coalesce(sum(n) FILTER (WHERE finding LIKE '%not yet decided'), 0) AS undecided, coalesce(sum(n) FILTER (WHERE finding LIKE '%— admitted'), 0) AS admitted
+      INTO f1 FROM admissions.reconcile(S);
+    SELECT * INTO dry FROM admissions.follow_caps_course(S, true);
+    SELECT programme INTO c1_dry FROM admissions.candidate WHERE id = c1;
+    SELECT * INTO wet FROM admissions.follow_caps_course(S, false);
+    SELECT programme INTO c1_after FROM admissions.candidate WHERE id = c1;
+    SELECT programme INTO c2_after FROM admissions.candidate WHERE id = c2;
+    SELECT * INTO req FROM admissions.programme_change_request WHERE candidate_id = c1 ORDER BY requested_at DESC LIMIT 1;
+    SELECT * INTO again FROM admissions.follow_caps_course(S, false);
+    -- O'Level: awaiting result on record, then the grades under the same exam number, then A/R again, then other grades
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a1, S, 'OLEVEL', 'v636-1', k, 'COLUMN',
+      '{"sittings":[{"type":"WAEC","series":"MAY/JUNE","year":"2026","examNumber":"4082636001","subjects":[{"subject":"English Language","grade":"A/R"},{"subject":"Mathematics","grade":"A/R"}]}]}'::jsonb);
+    n1 := admissions.olevel_from_attachment(a1);
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a2, S, 'OLEVEL', 'v636-2', k, 'COLUMN',
+      '{"sittings":[{"type":"WAEC","series":"MAY/JUNE","year":"2026","examNumber":"4082636001","subjects":[{"subject":"English Language","grade":"B3"},{"subject":"Mathematics","grade":"C4"}]}]}'::jsonb);
+    n2 := admissions.olevel_from_attachment(a2);
+    SELECT kind || '/' || state INTO st2 FROM admissions.olevel_duplicate WHERE attachment_id = a2 AND sitting_no = 1;
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a3, S, 'OLEVEL', 'v636-3', k, 'COLUMN',
+      '{"sittings":[{"type":"WAEC","series":"MAY/JUNE","year":"2026","examNumber":"4082636001","subjects":[{"subject":"English Language","grade":"A/R"},{"subject":"Mathematics","grade":"A/R"}]}]}'::jsonb);
+    n3 := admissions.olevel_from_attachment(a3);
+    SELECT kind || '/' || state INTO st3 FROM admissions.olevel_duplicate WHERE attachment_id = a3 AND sitting_no = 1;
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload) VALUES (a4, S, 'OLEVEL', 'v636-4', k, 'COLUMN',
+      '{"sittings":[{"type":"WAEC","series":"MAY/JUNE","year":"2026","examNumber":"4082636001","subjects":[{"subject":"English Language","grade":"B2"},{"subject":"Mathematics","grade":"A1"}]}]}'::jsonb);
+    n4 := admissions.olevel_from_attachment(a4);
+    SELECT kind || '/' || state INTO st4 FROM admissions.olevel_duplicate WHERE attachment_id = a4 AND sitting_no = 1;
+    grades_after := (SELECT string_agg(g.subject || ' ' || g.grade, ', ' ORDER BY g.subject) FROM admissions.olevel_sitting st JOIN admissions.olevel_grade g ON g.sitting_id = st.id
+                      WHERE st.session = S AND st.jamb_key = k);
+    sittings_after := (SELECT count(*) FROM admissions.olevel_sitting st WHERE st.session = S AND st.jamb_key = k);
+    RAISE EXCEPTION 'the V636 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V636 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V636: a candidate JAMB moved follows the course unless an offer stands; an awaiting O''Level result is replaced by the grades, never the other way',
+        coalesce(f0.followed = 0 AND f0.admitted_left = 0 AND f1.undecided = 1 AND f1.admitted = 1
+                 AND dry.followed = 1 AND dry.admitted_left = 1 AND jsonb_array_length(dry.named) = 2 AND c1_dry = na
+                 AND wet.followed = 1 AND wet.admitted_left = 1 AND c1_after = nb AND c2_after = na
+                 AND req.state = 'APPROVED' AND req.reason_code = 'JAMB_CAPS' AND req.to_programme_code = pb AND req.kind = 'CHANGE'
+                 AND again.followed = 0 AND again.admitted_left = 1
+                 AND n1 = 1 AND n2 = 1 AND st2 = 'SAME_SITTING/REPLACED' AND n3 = 0 AND st3 = 'AWAITING/SKIPPED' AND n4 = 0 AND st4 = 'SAME_SITTING/HELD'
+                 AND grades_after = 'English Language B3, Mathematics C4' AND sittings_after = 1, false),
+        format('before %s/%s | findings undecided %s admitted %s | dry %s/%s named %s c1 %s | followed %s/%s c1 %s c2 %s | request %s/%s/%s/%s | again %s/%s | olevel %s/%s %s, %s %s, %s %s, grades %s, sittings %s',
+               f0.followed, f0.admitted_left, f1.undecided, f1.admitted, dry.followed, dry.admitted_left, jsonb_array_length(dry.named), c1_dry = na,
+               wet.followed, wet.admitted_left, c1_after = nb, c2_after = na, req.state, req.reason_code, req.to_programme_code = pb, req.kind,
+               again.followed, again.admitted_left, n1, n2, st2, n3, st3, n4, st4, grades_after, sittings_after));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

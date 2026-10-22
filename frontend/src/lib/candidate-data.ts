@@ -226,9 +226,16 @@ export function examYear(y: unknown): string {
 
 const sigOf = (s: OlSitting) => [...new Set(s.subjects.map((g) => `${g.subject}=${g.grade}`))].sort().join(",");
 
+/** V636: a grade that is no grade — A/R, AR, awaiting result, or blank */
+export const isAwaitingGrade = (g: string | null | undefined) => /^(?:AR|AWR|AWAITING(?:RESULTS?)?)?$/.test(String(g ?? "").toUpperCase().replace(/[^A-Z]/g, ""));
+/** V636: a sitting whose every grade is an awaiting result */
+export const isAwaitingSitting = (s: OlSitting) => s.subjects.length > 0 && s.subjects.every((g) => isAwaitingGrade(g.grade));
+
 export interface OlFileDuplicates {
   /** V315: a candidate with the same exam number twice under other grades — one sitting cannot have two sets of grades */
   sameSitting: { num: string; body: string; year: string; series: "INTERNAL" | "EXTERNAL"; numbers: string[] }[];
+  /** V636: the same exam number twice where one is an awaiting result (A/R) and the other the grades — the grades are recorded */
+  awaitingUpdated: { num: string; body: string; year: string; exnum: string }[];
   /** the same result twice in the file (the same body and exam number with the same grades, or, without a number, the same examination and grades) */
   sameResult: { num: string; body: string; year: string; exnum: string }[];
   /** an exam number the file gives more than one candidate */
@@ -241,7 +248,7 @@ export interface OlFileDuplicates {
  *  duplicate is the SAME EXAM NUMBER; another number of the same body, whatever the year and series, is another sitting, recorded —
  *  results are combined across sittings. */
 export function olDuplicates(rows: OlRow[]): OlFileDuplicates {
-  const out: OlFileDuplicates = { sameSitting: [], sameResult: [], sharedNumber: [], repeatedSubjects: [] };
+  const out: OlFileDuplicates = { sameSitting: [], awaitingUpdated: [], sameResult: [], sharedNumber: [], repeatedSubjects: [] };
   const byNumber = new Map<string, { body: string; exnum: string; nums: Set<string> }>();
   for (const r of rows) {
     const kept: OlSitting[] = [];
@@ -260,6 +267,12 @@ export function olDuplicates(rows: OlRow[]): OlFileDuplicates {
         || ((!key || !examKey(o.exnum)) && year && body !== "OTHER" && examYear(o.year) === year && seriesClass(o.type, o.series) === cls && sigOf(o) === sigOf(s))));
       if (same) { out.sameResult.push({ num: r.num, body, year: s.year, exnum: s.exnum }); continue; }
       const clash = key ? kept.find((o) => examBody(o.type) === body && examKey(o.exnum) === key) : undefined;
+      if (clash && (isAwaitingSitting(clash) || isAwaitingSitting(s))) {
+        /* V636: an awaiting result beside the grades under one number — the grades stand, the A/R is set aside */
+        out.awaitingUpdated.push({ num: r.num, body, year: s.year, exnum: s.exnum });
+        if (isAwaitingSitting(clash) && !isAwaitingSitting(s)) kept.splice(kept.indexOf(clash), 1, s);
+        continue;
+      }
       if (clash) {
         const hit = out.sameSitting.find((x) => x.num === r.num && x.body === body && examKey(x.numbers[0]) === key);
         if (hit) hit.numbers.push(s.exnum);
@@ -275,7 +288,7 @@ export function olDuplicates(rows: OlRow[]): OlFileDuplicates {
 
 /** V298: a finding of the O'Level upload check, as the register gives it (admissions.olevel_duplicates) */
 export interface OlevelDuplicateRow {
-  id: string; kind: "SAME_RESULT" | "SAME_SITTING" | "NUMBER_ELSEWHERE"; state: "SKIPPED" | "HELD" | "KEPT" | "USED" | "OPEN" | "VERIFIED";
+  id: string; kind: "SAME_RESULT" | "SAME_SITTING" | "NUMBER_ELSEWHERE" | "AWAITING"; state: "SKIPPED" | "HELD" | "KEPT" | "USED" | "OPEN" | "VERIFIED" | "REPLACED";
   jamb_key: string; candidate?: string | null; programme?: string | null; source_name: string; sitting_no: number;
   exam_body: string; exam_type_raw?: string | null; exam_year?: string | null; exam_series?: string | null; exam_number?: string | null; subjects?: string | null;
   other_jamb_key?: string | null; other_candidate?: string | null; other_exam_year?: string | null; other_exam_number?: string | null; other_subjects?: string | null; other_on_record?: boolean;
@@ -287,8 +300,10 @@ export const FINDING_WORD: Record<OlevelDuplicateRow["kind"], [string, "grey" | 
   SAME_RESULT: ["Already on record", "grey"],
   SAME_SITTING: ["Same exam number, other grades", "bad"],
   NUMBER_ELSEWHERE: ["Exam number on another applicant", "warn"],
+  AWAITING: ["Awaiting result sent again — grades already on record", "grey"],
 };
 export const FINDING_STATE: Record<OlevelDuplicateRow["state"], [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
   SKIPPED: ["Not recorded again", "grey"], HELD: ["Held — to decide", "bad"], KEPT: ["Result on record kept", "ok"],
   USED: ["Uploaded result used", "ok"], OPEN: ["Open — to verify", "warn"], VERIFIED: ["Verified", "ok"],
+  REPLACED: ["Awaiting result replaced by the grades", "ok"],
 };

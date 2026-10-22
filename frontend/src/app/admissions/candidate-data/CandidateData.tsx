@@ -143,7 +143,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
     try {
       let recorded = 0, skipped = 0, replaced = 0;
       const tally: Record<string, number> = {};
-      const found: Record<string, number> = { SAME_RESULT: 0, SAME_SITTING: 0, NUMBER_ELSEWHERE: 0 };
+      const found: Record<string, number> = { SAME_RESULT: 0, SAME_SITTING: 0, NUMBER_ELSEWHERE: 0, REPLACED: 0, AWAITING: 0 };
       for (let i = 0; i < items.length; i += CHUNK) {
         const slice = items.slice(i, i + CHUNK);
         if (items.length > CHUNK) setSaid(`Recording ${Math.min(i + slice.length, items.length)} of ${items.length}…`);
@@ -163,6 +163,8 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
       const checked = kind === "OLEVEL" ? [
         skipped ? `${skipped} already recorded exactly as sent (skipped)` : "",
         found.SAME_RESULT ? `${found.SAME_RESULT} result${found.SAME_RESULT === 1 ? "" : "s"} already on record, not recorded again` : "",
+        found.REPLACED ? `${found.REPLACED} awaiting result${found.REPLACED === 1 ? "" : "s"} (A/R) on record replaced by the grades uploaded` : "",
+        found.AWAITING ? `${found.AWAITING} awaiting result${found.AWAITING === 1 ? "" : "s"} sent again where the grades are already on record (nothing changed)` : "",
         found.SAME_SITTING ? `${found.SAME_SITTING} result${found.SAME_SITTING === 1 ? "" : "s"} under an exam number already on record with other grades, HELD for the Office to decide` : "",
         found.NUMBER_ELSEWHERE ? `${found.NUMBER_ELSEWHERE} exam number${found.NUMBER_ELSEWHERE === 1 ? "" : "s"} already on another applicant's record, flagged` : "",
       ].filter(Boolean).join("; ") : [
@@ -408,7 +410,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
     const short = m ? m.matched.filter((r) => !r.meets) : [];
     const fd = ol ? olDuplicates(ol.rows) : null;
     const fdSerious = fd ? fd.sameSitting.length + fd.sharedNumber.length : 0;
-    const fdAll = fd ? fdSerious + fd.sameResult.length + fd.repeatedSubjects.length : 0;
+    const fdAll = fd ? fdSerious + fd.awaitingUpdated.length + fd.sameResult.length + fd.repeatedSubjects.length : 0;
     return (
       <>
         <div className="card"><div className="card__body">
@@ -418,11 +420,12 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         {fd ? (
           <Note kind={fdSerious ? "bad" : fdAll ? "info" : "ok"} title={fdAll ? `Duplicate check on this file: ${[
             fd.sameSitting.length ? `${fd.sameSitting.length} candidate${fd.sameSitting.length === 1 ? " has" : "s have"} the same exam number twice with other grades` : "",
+            fd.awaitingUpdated.length ? `${fd.awaitingUpdated.length} awaiting result${fd.awaitingUpdated.length === 1 ? "" : "s"} (A/R) now graded — the grades are recorded` : "",
             fd.sharedNumber.length ? `${fd.sharedNumber.length} exam number${fd.sharedNumber.length === 1 ? " is" : "s are"} given to more than one candidate` : "",
             fd.sameResult.length ? `${fd.sameResult.length} result${fd.sameResult.length === 1 ? "" : "s"} repeated` : "",
             fd.repeatedSubjects.length ? `${fd.repeatedSubjects.length} subject${fd.repeatedSubjects.length === 1 ? "" : "s"} listed twice in a sitting` : "",
           ].filter(Boolean).join("; ")}` : "Duplicate check on this file: nothing repeated"}>
-            {fdAll ? <>A duplicate is the <b>same exam number</b>: with the same grades it is not recorded twice; with other grades it is <b>held</b> for the Office; on another applicant&rsquo;s record it is recorded and <b>flagged</b> (see Duplicate O&rsquo;Level uploads below). Another exam number is another sitting.</> : "No exam number is repeated for a candidate, no exam number is given to two candidates, and nothing is repeated. Each sitting is still checked against the record as it is recorded."}
+            {fdAll ? <>A duplicate is the <b>same exam number</b>: with the same grades it is not recorded twice; with other grades it is <b>held</b> for the Office (an awaiting result, A/R, on record is <b>replaced</b> by the grades); on another applicant&rsquo;s record it is recorded and <b>flagged</b> (see Duplicate O&rsquo;Level uploads below). Another exam number is another sitting.</> : "No exam number is repeated for a candidate, no exam number is given to two candidates, and nothing is repeated. Each sitting is still checked against the record as it is recorded."}
             {fdSerious ? (
               <DTable pageSize={10} cols={["JAMB number|mid", "Examination", "Exam numbers"]} rows={[
                 ...fd.sameSitting.map((x) => [<span key="n" className="tnum">{x.num}</span>, <span key="e">{x.body} {x.year} · {x.series === "EXTERNAL" ? "Nov/Dec (private)" : "May/June (school)"} · the same exam number, other grades</span>, <span key="x" className="tnum">{[...new Set(x.numbers)].join(" · ")}</span>]),

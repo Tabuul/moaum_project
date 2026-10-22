@@ -193,6 +193,13 @@ class AdmissionsController {
         return Map.of("batchId", id, "outcome", outcome);
     }
 
+    /** V636: the candidates JAMB moved on the list follow the course where no offer stands; dryRun names them and writes nothing */
+    @PostMapping("/sessions/{session}/{year}/follow-caps")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> followCaps(@PathVariable String session, @PathVariable String year, @RequestParam(defaultValue = "false") boolean dryRun) {
+        return intake.followCapsCourse(session + "/" + year, dryRun);
+    }
+
     @GetMapping("/sessions/{session}/{year}/reconciliation")
     @PreAuthorize(READERS)
     List<Finding> reconciliation(@PathVariable String session, @PathVariable String year) {
