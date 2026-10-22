@@ -2,6 +2,10 @@ package ng.edu.moaum.portal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * V623: the audit trail screen reads the end of the trail and counts it from the chain. A made-up member of staff written now by the
@@ -23,9 +28,13 @@ import org.springframework.transaction.PlatformTransactionManager;
  * entries (the window is stated), and the filters' counts name the domains and offices present; the Bursary may not read the trail.
  * "Today" on the tiles starts at midnight in Lagos, not at the database's UTC midnight: a made-up student sign-in a minute after
  * Lagos midnight is counted. The security posture's count of entries is the chain's, equal to the entries counted one by one.
+ * V627: "who" reads one person's own entries — a made-up member of staff's writes by staff number, a made-up student's sign-in
+ * by matriculation number, nobody for a name that matches no one — and a date range reads only those days (in Lagos).
+ * The tiles are worked out on every call here (moaum.audit.tiles-seconds=0), so the counts are exact.
  * Needs DATABASE_URL.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {"moaum.auth.hmac-secret=" + TestTokens.SECRET, "moaum.audit.tiles-seconds=0"})
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
 @SuppressWarnings({"rawtypes", "unchecked"})
 class AuditTrailIT {
@@ -130,5 +139,63 @@ class AuditTrailIT {
         assertThat(posture.getStatusCode().value()).as(String.valueOf(posture.getBody())).isEqualTo(200);
         long entries = ((Number) ((Map<String, Object>) posture.getBody().get("audit")).get("entries")).longValue();
         assertThat(entries).isBetween(rowsBefore, rowsAfter);
+    }
+
+    private static Instant at(Map<String, Object> entry) {
+        return OffsetDateTime.parse(String.valueOf(entry.get("occurred_at"))).toInstant();
+    }
+
+    @Test
+    void whoReadsOnePersonsOwnEntriesAndADateRangeOnlyThoseDays() {
+        String auditor = ItSupport.token("audit");
+        String base = "/api/v1/audit";
+        // a made-up member of staff who writes something now (an attributed write of their own) and a made-up student who signs in
+        String tag = it.freeSurname("ZZAUDWHO");
+        String staffNo = "ZZ-AWH-" + tag.substring(8);
+        UUID person = it.person(staffNo, tag);
+        UUID other = UUID.randomUUID();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            jdbc.sql("SELECT set_config('moaum.actor_id', :a, true), set_config('moaum.actor_office', 'ict', true), "
+                    + "set_config('moaum.reason', 'audit trail who check', true)").param("a", person.toString()).query().listOfRows();
+            jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (:id, :n, :s, 'Invented')")
+                    .param("id", other).param("n", staffNo + "B").param("s", tag + "B").update();
+        });
+        String matric = it.freeNumber("MOAUM/AWH/26/", 5);
+        UUID student = it.student(it.freeSurname("ZZAUDSTU"), "C00023", it.freeNumber("MOAUM/ADM/26/", 6), matric, 100);
+        jdbc.sql("INSERT INTO iam.student_event (student_id, identifier, outcome, ip) VALUES (:s, :i, 'SIGNED_IN', '10.9.9.7')")
+                .param("s", student).param("i", matric).update();
+
+        // who = the staff number: their entries alone, the write among them, the person named back
+        ResponseEntity<Map> byStaff = it.get(auditor, base + "/entries?who=" + staffNo);
+        assertThat(byStaff.getStatusCode().value()).as(String.valueOf(byStaff.getBody())).isEqualTo(200);
+        assertThat((List<Map<String, Object>>) byStaff.getBody().get("who")).extracting(w -> w.get("id")).containsExactly(person.toString());
+        assertThat(entries(byStaff)).isNotEmpty().allSatisfy(e -> assertThat(e).containsEntry("actor_id", person.toString()))
+                .anySatisfy(e -> assertThat(e).containsEntry("subject_id", other.toString()));
+        // who = the matriculation number: the student's sign-in
+        ResponseEntity<Map> byStudent = it.get(auditor, base + "/entries?who=" + matric);
+        assertThat(entries(byStudent)).isNotEmpty().allSatisfy(e -> assertThat(e).containsEntry("actor_id", student.toString()))
+                .anySatisfy(e -> assertThat(e).containsEntry("action", "auth:SIGNED_IN"));
+        // who = nobody: nothing, and nobody named
+        ResponseEntity<Map> nobody = it.get(auditor, base + "/entries?who=ZZNOBODY" + tag.substring(8));
+        assertThat(entries(nobody)).isEmpty();
+        assertThat((List<?>) nobody.getBody().get("who")).isEmpty();
+        // the person's filters' counts
+        Map<String, Object> facets = it.get(auditor, base + "/facets?who=" + staffNo).getBody();
+        assertThat((List<Map<String, Object>>) facets.get("actions")).extracting(a -> a.get("domain")).contains("INSERT");
+
+        // a date range: today in Lagos holds the write; up to yesterday holds nothing from today
+        LocalDate today = LocalDate.now(ZoneId.of("Africa/Lagos"));
+        Instant midnight = today.atStartOfDay(ZoneId.of("Africa/Lagos")).toInstant();
+        ResponseEntity<Map> todays = it.get(auditor, base + "/entries?who=" + staffNo + "&from=" + today + "&to=" + today);
+        assertThat(entries(todays)).anySatisfy(e -> assertThat(e).containsEntry("subject_id", other.toString()))
+                .allSatisfy(e -> assertThat(at(e)).isAfterOrEqualTo(midnight));
+        ResponseEntity<Map> before = it.get(auditor, base + "/entries?to=" + today.minusDays(1));
+        assertThat(before.getStatusCode().value()).isEqualTo(200);
+        assertThat(entries(before)).allSatisfy(e -> assertThat(at(e)).isBefore(midnight));
+        ResponseEntity<Map> filtered = it.get(auditor, base + "/entries?office=ict&from=" + today + "&to=" + today);
+        assertThat(entries(filtered)).isNotEmpty().allSatisfy(e -> {
+            assertThat(e).containsEntry("actor_office", "ict");
+            assertThat(at(e)).isAfterOrEqualTo(midnight);
+        });
     }
 }

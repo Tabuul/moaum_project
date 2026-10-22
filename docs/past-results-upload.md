@@ -11,6 +11,12 @@ screen shows them neither tab. The other migration steps (students, registration
 offices that had them. So does posting results already uploaded and held for a student not yet loaded (`/legacy/reconcile-results`,
 run after every student upload): it brings in no new result.
 
+Since V627 the database holds the same rule. `assessment.legacy_semester_load` and `admissions.import_legacy_pg_semester`, asked to
+load results or preview them, refuse an acting office other than ict or super with `PAST_RESULTS_OFFICE` (403). A load with no
+acting office (the database's own maintenance, the demo data) is not an office's act and passes. The two reconcile functions mark
+their own transaction (`moaum.legacy_reconcile`) while they post held results, so posting stays open to every migrating office. The
+fixtures in check.sql and demo.sql load results as ict.
+
 ## The mark
 
 The upload used to refuse any mark whose CA was over 40 or exam over 60 ("No mark, or a mark out of range"). The old portal's export

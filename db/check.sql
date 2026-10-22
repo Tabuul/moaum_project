@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 454
+\set EXPECTED 455
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2156,15 +2156,19 @@ BEGIN
         ('CHK 203', 'Check Result Three', 3, 1, 200, dept, 'Core', 'LIVE');
 
     -- first session: CHK 201 failed (30 → F, 0.0), CHK 202 passed (70 → A, 5.0)
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     PERFORM assessment.import_legacy_semester('9991/9992', 1, $rows$[
         {"matric":"MOAUM/CHK/99/0002","course":"CHK 201","total":"30"},
         {"matric":"MOAUM/CHK/99/0002","course":"CHK 202","total":"70"}
     ]$rows$::jsonb, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     -- second session: CHK 201 repeated and passed (55 → C, 3.0), CHK 203 taken (60 → B, 4.0)
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     PERFORM assessment.import_legacy_semester('9992/9993', 1, $rows$[
         {"matric":"MOAUM/CHK/99/0002","course":"CHK 201","total":"55"},
         {"matric":"MOAUM/CHK/99/0002","course":"CHK 203","total":"60"}
     ]$rows$::jsonb, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
 
     -- the carryover shows as two attempts of the same course
     SELECT count(*) INTO attempts FROM assessment.student_results(st) WHERE course_code = 'CHK 201' AND published;
@@ -2804,8 +2808,10 @@ BEGIN
     SELECT * INTO r FROM people.import_students('[{"matric":"MOAUM/MIG/22/0001","name":"CHECKMIG, Invented","programme":"C00023","level":"200","sex":"M"}]'::jsonb);
     SELECT id INTO stu FROM people.student WHERE matric_no = 'MOAUM/MIG/22/0001';
     -- 3. a past result imported as final (creating the registration), plus a number that is not a student
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     SELECT * INTO g FROM assessment.import_legacy_semester('9994/9995', 1,
         '[{"matric":"MOAUM/MIG/22/0001","course":"ARC 999","units":"3","ca":"30","exam":"45"},{"matric":"MOAUM/NOPE/22/0009","course":"ARC 999","total":"50"}]'::jsonb, true);
+    PERFORM set_config('moaum.actor_office', 'exams', true);
     PERFORM pg_temp.assert('The legacy migration creates the student, an approved registration, and a PUBLISHED result the transcript and GPA read (a row for a student not loaded yet is HELD)',
         r.created = 1 AND stu IS NOT NULL
         AND g.results = 1 AND g.held = 1 AND g.registrations = 1
@@ -10744,6 +10750,7 @@ BEGIN
         END LOOP;
 
         -- the old portal's results, published as they came: B, C, D, H in S1; G in S0
+        PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
         PERFORM assessment.import_legacy_semester(S1, 2, jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/ZZP/99/0422', 'course', 'ZZP 101', 'total', '42', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZP/99/0422', 'course', 'ZZP 102', 'total', '41', 'level', '100'),
@@ -10753,8 +10760,11 @@ BEGIN
             jsonb_build_object('matric', 'MOAUM/ZZP/99/0424', 'course', 'ZZP 101', 'total', '30', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZP/99/0428', 'course', 'ZZP 101', 'outcome', 'ABSENT', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZP/99/0428', 'course', 'ZZP 102', 'total', '30', 'level', '100')), true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
         PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/ZZP/99/0427', 'course', 'ZZP 101', 'total', '65', 'level', '100')), true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
 
         -- the registrations that came over without results: A (ZZP 101, ZZP 102), G in S1 (ZZP 102); D's second course has no sheet;
         -- E's sheet is at verification, F's at Senate
@@ -10868,6 +10878,7 @@ BEGIN
 
         -- the old portal's results for the semester: W withheld + a pass, X absent (and absent from the GST course), Y exempted + a
         -- pass, Z malpractice + a pass; M's mark makes ZZL 101's sheet
+        PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
         PERFORM assessment.import_legacy_semester(SL, 2, jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/ZZL/99/0422', 'course', 'ZZL 101', 'total', '55', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZL/99/0423', 'course', 'ZZL 101', 'outcome', 'WITHHELD', 'level', '100'),
@@ -10878,6 +10889,7 @@ BEGIN
             jsonb_build_object('matric', 'MOAUM/ZZL/99/0425', 'course', 'ZZL 102', 'total', '70', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZL/99/0426', 'course', 'ZZL 101', 'outcome', 'MALPRACTICE', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZL/99/0426', 'course', 'ZZL 102', 'total', '64', 'level', '100')), true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
         SELECT s.id INTO sheet FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
          WHERE o.course_code = 'ZZL 101' AND o.session = SL AND o.semester = 2;
 
@@ -11056,9 +11068,12 @@ BEGIN
         END LOOP;
 
         -- the old portal's results: B fails ZZM 102 in S0, then is absent from it in SA; C absent in S0, passes in SA
+        PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
         PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0424', 'course', 'ZZM 102', 'total', '20', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0425', 'course', 'ZZM 102', 'outcome', 'ABSENT', 'level', '100')), true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
         PERFORM assessment.import_legacy_semester(SA, 2, jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0421', 'course', 'ZZM 101', 'outcome', 'WITHHELD', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0422', 'course', 'ZZM 101', 'outcome', 'MALPRACTICE', 'level', '100'),
@@ -11067,6 +11082,7 @@ BEGIN
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0425', 'course', 'ZZM 102', 'total', '65', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0426', 'course', 'ZZM 101', 'outcome', 'ABSENT', 'level', '100'),
             jsonb_build_object('matric', 'MOAUM/ZZM/99/0427', 'course', 'GST 943', 'outcome', 'ABSENT', 'level', '100')), true);
+        PERFORM set_config('moaum.actor_office', 'records', true);
         SELECT s.id INTO sheet FROM assessment.score_sheet s JOIN catalogue.offering o ON o.id = s.offering_id
          WHERE o.course_code = 'ZZM 101' AND o.session = SA AND o.semester = 2;
         -- the sheet was published 40 days ago
@@ -14020,9 +14036,11 @@ BEGIN
      WHERE r.student_id = st AND o.course_code = 'ZZQ 102';
 
     -- the old import's counts, over the loader: a result for the dropped course approves it, a missing student is held
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     SELECT * INTO g FROM assessment.import_legacy_semester(v_ses, 1, jsonb_build_array(
         jsonb_build_object('matric', 'MOAUM/ZZQ/89/4721', 'course', 'ZZQ 101', 'total', '70'),
         jsonb_build_object('matric', 'MOAUM/ZZQ/89/9998', 'course', 'ZZQ 101', 'total', '50')), true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT e.status INTO st_after FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
      WHERE r.student_id = st AND o.course_code = 'ZZQ 101';
 
@@ -22581,22 +22599,30 @@ BEGIN
         jsonb_build_object('line', '6', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 105', 'ca', '10', 'exam', '50', 'total', '82'),
         jsonb_build_object('line', '7', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 106', 'ca', '50', 'exam', '60'));
     -- the check before the upload says each row; the upload posts five
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     pv := assessment.legacy_semester_load(v_ses, 1, rows1, true, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO statuses FROM jsonb_array_elements(pv->'lines') l;
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     up := assessment.legacy_semester_load(v_ses, 1, rows1, true, false);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT string_agg(course_code || '=' || coalesce(total::text, '-'), ',' ORDER BY course_code) INTO totals
       FROM assessment.student_results(st) WHERE session = v_ses AND semester = 1;
     -- the same rows again (ZZR 103 now 72): two the same, one replaced
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     again := assessment.legacy_semester_load(v_ses, 1, jsonb_build_array(rows1->0, rows1->1,
                  jsonb_build_object('line', '4', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 103', 'exam', '72')), true, false);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO again_statuses FROM jsonb_array_elements(again->'lines') l;
     SELECT count(*) INTO versions FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id JOIN catalogue.offering o ON o.id = sh.offering_id
      WHERE sc.student_id = st AND o.course_code = 'ZZR 101' AND o.session = v_ses;
     -- ZZR 101 as if entered on the portal: the old portal's mark is never loaded over it
     UPDATE assessment.score sc SET imported = false FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
      WHERE sc.sheet_id = sh.id AND sc.student_id = st AND o.course_code = 'ZZR 101' AND o.session = v_ses;
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     portal := assessment.legacy_semester_load(v_ses, 1, jsonb_build_array(
                   jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZR/63/6141', 'course', 'ZZR 101', 'ca', '30', 'exam', '45')), true, false);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     RAISE EXCEPTION 'the V614 check undoes its writes';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
@@ -22770,13 +22796,19 @@ BEGIN
         jsonb_build_object('line', '5', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 194', 'outcome', 'Abs (F)'),
         jsonb_build_object('line', '6', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 195', 'ca', 'AB', 'exam', '45'),
         jsonb_build_object('line', '7', 'matric', 'MOAUM/ZAB/19/6191', 'course', 'ZAB 196'));
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     pv := assessment.legacy_semester_load(v_ses, 1, rows1, true, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO statuses FROM jsonb_array_elements(pv->'lines') l;
     SELECT l->>'detail' INTO detail2 FROM jsonb_array_elements(pv->'lines') l WHERE l->>'line' = '2';
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     up := assessment.legacy_semester_load(v_ses, 1, rows1, true, false);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT string_agg(course_code || '=' || coalesce(outcome, '-') || '/' || coalesce(grade, '-') || '/' || coalesce(total::text, '-'), ',' ORDER BY course_code) INTO outcomes
       FROM assessment.student_results(st) WHERE session = v_ses AND semester = 1;
+    PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
     again := assessment.legacy_semester_load(v_ses, 1, rows1, true, false);
+    PERFORM set_config('moaum.actor_office', 'records', true);
     SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')) INTO again_statuses FROM jsonb_array_elements(again->'lines') l;
     RAISE EXCEPTION 'the V619 check undoes its writes';
   EXCEPTION WHEN raise_exception THEN
@@ -23145,6 +23177,57 @@ BEGIN
     PERFORM pg_temp.assert('V626: the audit trail is indexed by kind of record and time on every partition',
         coalesce(parts >= 24 AND indexed = parts AND parent_valid AND cols LIKE '%(subject_type, occurred_at DESC)%', false),
         format('partitions %s, indexed %s, parent valid %s, %s', parts, indexed, parent_valid, cols));
+END $$;
+-- ── V627. Past results are the Directorate of ICT's to load, in the database as in the API: Records is refused a results load and
+--          its preview (undergraduate and postgraduate) with PAST_RESULTS_OFFICE, but not a registration load; ICT previews results;
+--          a result ICT uploaded for a made-up student not yet loaded is held, and posts when Records loads the student and
+--          reconciles (posting held results stays open). The audit screen's "who" filter has its sign-in indexes. The block undoes
+--          its writes ──
+DO $$
+DECLARE
+    rows1 jsonb := '[{"matric":"MOAUM/ZZV/27/0627","course":"ARC 627","units":"3","total":"64"}]';
+    rec_res text; rec_prev text; rec_pg text; rec_reg jsonb; ict_prev jsonb; up jsonb; h record; stu uuid; posted numeric;
+    ix_staff boolean; ix_student boolean; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.reason', 'CHECK V627', true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code)
+    VALUES ('ARC 627', 'Invented Course V627', 3, 1, 100, 'ARC') ON CONFLICT (code) DO NOTHING;
+    -- Records: refused results (the load, its preview, the postgraduate load); a registration load is not refused
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    BEGIN PERFORM assessment.legacy_semester_load('9627/9628', 1, rows1, true, false);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS rec_res = MESSAGE_TEXT; END;
+    BEGIN PERFORM assessment.legacy_semester_load('9627/9628', 1, rows1, true, true);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS rec_prev = MESSAGE_TEXT; END;
+    BEGIN PERFORM * FROM admissions.import_legacy_pg_semester('9627/9628', 1, rows1, true);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS rec_pg = MESSAGE_TEXT; END;
+    rec_reg := assessment.legacy_semester_load('9627/9628', 1, rows1, false, true);
+    -- ICT: the preview, then the upload — the student is not loaded yet, so the result is held
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    ict_prev := assessment.legacy_semester_load('9627/9628', 1, rows1, true, true);
+    up := assessment.legacy_semester_load('9627/9628', 1, rows1, true, false);
+    -- Records loads the student and reconciles: the held result posts
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM people.import_students('[{"matric":"MOAUM/ZZV/27/0627","name":"ZZCHKV627, Invented","programme":"C00023","level":"100","sex":"F"}]'::jsonb);
+    SELECT * INTO h FROM assessment.reconcile_legacy_holding();
+    SELECT id INTO stu FROM people.student WHERE matric_no = 'MOAUM/ZZV/27/0627';
+    posted := (SELECT total FROM assessment.student_results(stu) WHERE course_code = 'ARC 627');
+    ix_staff := to_regclass('iam.ix_sign_in_person') IS NOT NULL;
+    ix_student := to_regclass('iam.ix_student_event_student') IS NOT NULL;
+    RAISE EXCEPTION 'the V627 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V627 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V627: past results are the Directorate of ICT''s to load; held results still post for any migrating office',
+        coalesce(rec_res LIKE 'PAST_RESULTS_OFFICE%' AND rec_prev LIKE 'PAST_RESULTS_OFFICE%' AND rec_pg LIKE 'PAST_RESULTS_OFFICE%'
+                 AND rec_reg IS NOT NULL AND ict_prev IS NOT NULL AND (up->>'held')::int = 1
+                 AND h.reconciled >= 1 AND posted = 64 AND ix_staff AND ix_student, false),
+        format('records: results %s, preview %s, pg %s, registration %s | ict preview %s, held %s | reconciled %s, posted %s | indexes %s %s',
+               left(rec_res, 20), left(rec_prev, 20), left(rec_pg, 20), rec_reg IS NOT NULL, ict_prev IS NOT NULL, up->>'held',
+               h.reconciled, posted, ix_staff, ix_student));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

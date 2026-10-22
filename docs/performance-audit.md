@@ -690,3 +690,20 @@ staff sign-ins), local PostgreSQL 18, cold then warm:
   already fast. Each audited write keeps one more index entry.
 - The times above are execution times. Planning a query over the 24 monthly partitions took about 450 ms more on the local
   PostgreSQL 18 (Windows), whose backends are slower than production's; it is the same with or without the index.
+
+### Searching the trail by date and by person, the tiles kept a minute (21 October 2026, V627)
+
+- Since V623 the filters read the latest 50,000 entries, which on live is a day or two. The audit screen now takes a date range
+  (`from`, `to`: days in Lagos) and a **who**: a staff number, matriculation number, name or id, naming at most 10 people (staff
+  first). Each source is read from the end of its own index within those limits:
+  - `audit.entries` by time (V623) or by actor (`ix_entries_actor`, V002);
+  - the sign-ins by time, or by person through V627's `iam.ix_sign_in_person (person_id, at DESC)` and
+    `iam.ix_student_event_student (student_id, at DESC)`.
+
+  A person is read one at a time (LATERAL), each newest first, then merged. The domain and office filters, and their counts, read
+  the latest 50,000 entries within the range and the person. The answer names the people a "who" matched.
+- The four tiles are kept for a minute (`AuditTilesCache`, `moaum.audit.tiles-seconds`, default 60) and shared by everyone who
+  opens the screen or the Internal Audit home. One request works them out at a time; the others are given the kept figures.
+- `.card__body.row` now lays out as a row. `.card__body` is a flex column and `.row` never set a direction, so on about 16
+  screens (export log, record views, eligibility, readiness, results sheets, the overview, NELFUND and others) the filters stood
+  stacked down the right edge of their card. One rule in `prototype.css` puts them side by side.

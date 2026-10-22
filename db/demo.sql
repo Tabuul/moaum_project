@@ -915,7 +915,9 @@ BEGIN
                   CROSS JOIN LATERAL (SELECT CASE WHEN c.cnum = 203 AND i % 4 = 0 THEN 22
                                                   ELSE 40 + ((i * 7 + c.cnum) % 55) END AS total) t
               ) q;
+            PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
             PERFORM assessment.import_legacy_semester(v_prev, 2, v_rows, true);
+            PERFORM set_config('moaum.actor_office', 'academic', true);
 
             -- ── current 300-level (semester 1): published results ──
             SELECT jsonb_agg(jsonb_build_object('matric', m, 'course', crs, 'level', 300, 'units', 3, 'ca', ca, 'exam', ex))
@@ -929,7 +931,9 @@ BEGIN
                   CROSS JOIN (VALUES (301),(302),(303),(304),(305)) c(cnum)
                   CROSS JOIN LATERAL (SELECT 40 + ((i * 11 + c.cnum) % 55) AS total) t
               ) q;
+            PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
             PERFORM assessment.import_legacy_semester(v_session, 1, v_rows, true);
+            PERFORM set_config('moaum.actor_office', 'academic', true);
         END;
     END LOOP;
 
@@ -1307,11 +1311,13 @@ BEGIN
             'email', 'pg.legacy1@example.com', 'phone', '08030000077', 'entrySession', '2022/2023')));
         SELECT id INTO v_student FROM people.student WHERE upper(matric_no) = 'MOAU/SC/CSC/MSC/22/0007';
         IF v_student IS NOT NULL THEN
+            PERFORM set_config('moaum.actor_office', 'ict', true);  -- V627: past results are loaded by the Directorate of ICT
             PERFORM admissions.import_legacy_pg_semester('2022/2023', 1,
                 jsonb_build_array(
                     jsonb_build_object('matric','MOAU/SC/CSC/MSC/22/0007','course','CSC 801','title','Advanced Algorithms & Complexity','units','3','kind','CORE','ca','30','exam','45'),
                     jsonb_build_object('matric','MOAU/SC/CSC/MSC/22/0007','course','CSC 803','title','Research Methodology','units','3','kind','CORE','ca','28','exam','40')),
                 true);
+            PERFORM set_config('moaum.actor_office', 'academic', true);
             PERFORM admissions.import_legacy_pg_research(jsonb_build_array(jsonb_build_object(
                 'matric','MOAU/SC/CSC/MSC/22/0007','topic','A study of scheduling heuristics for stream processing',
                 'supervisor','Dr. J. Aondo','supervisor2','Dr. M. Adaikwu','stage','AWARDED',

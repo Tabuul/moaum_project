@@ -1696,6 +1696,9 @@ body.nav-slim .nav__item[aria-current="page"]::before { left: 0; }
 .row--right { justify-content: flex-end; }
 .row--between { justify-content: space-between; }
 .row--inline { display: inline-flex; }
+/* a card body marked "row" lays its children in a row: .card__body is a column (the building blocks above) and .row alone never
+   says which way, so filter bars stood stacked down the right edge of their card (21 Oct 2026) */
+.card__body.row { flex-direction: row; }
 .stack { display: flex; flex-direction: column; gap: var(--s-2); }
 .grow { flex-grow: 1; min-width: 0; }
 .ml-auto { margin-left: auto; }
