@@ -28,7 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 class FeeReportController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_dregistrar',"
-            + "'OFFICE_academic','OFFICE_vc','OFFICE_dvc','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod')";
+            + "'OFFICE_academic','OFFICE_vc','OFFICE_dvc','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod',"
+            // 22 Oct 2026: the College Finance Controller, held to the College by OfficeScope.bound as a Dean to a faculty
+            + "'OFFICE_financecontroller')";
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;

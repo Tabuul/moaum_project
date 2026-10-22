@@ -36,6 +36,9 @@ class FinanceController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc')";
     private static final String BURSARY = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
+    /** 22 Oct 2026: the payments query is the Bursary's and the College Finance Controller's — the Controller's held to the College
+     *  (OfficeScope.bound: the College's faculty filled in, another faculty, department or programme refused) */
+    private static final String PAYMENT_QUERY_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc','OFFICE_financecontroller')";
     /** V520: the school fees setup and binding — the fee schedule, its lines, copies and fee sources — the Bursary's and the Students
      *  Account Officer's; the officer holds none of the Bursary's other writes (confirmations, bank credits, old fees, clearance) */
     private static final String FEE_SETTERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')";
@@ -76,10 +79,12 @@ class FinanceController {
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    private final ng.edu.moaum.portal.shared.OfficeScope scope;
 
-    FinanceController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    FinanceController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope) {
         this.jdbc = jdbc;
         this.json = json;
+        this.scope = scope;
     }
 
     /** bulk-load past students' confirmed payment (school-fees) history from the old portal (V120); retired by V498 — the
@@ -1036,13 +1041,18 @@ class FinanceController {
      *  session, faculty, department, programme, level, payment category and channel. Returns the page, the
      *  full-match count and total, and the option lists for the filters. */
     @GetMapping("/payments")
-    @PreAuthorize(READERS)
+    @PreAuthorize(PAYMENT_QUERY_READERS)
     @Transactional(readOnly = true)
     Map<String, Object> payments(@RequestParam(required = false) String session, @RequestParam(required = false) String faculty,
             @RequestParam(required = false) String dept, @RequestParam(required = false) String programme,
             @RequestParam(required = false) Integer level, @RequestParam(required = false) String category,
             @RequestParam(required = false) String channel, @RequestParam(required = false) LocalDate from,
             @RequestParam(required = false) LocalDate to, @RequestParam(defaultValue = "500") int limit) {
+        // 22 Oct 2026: the College Finance Controller reads the College's payments alone — its faculty filled in, another refused
+        ng.edu.moaum.portal.shared.OfficeScope.Bound bound = scope.bound(faculty, dept, programme);
+        faculty = bound.fac();
+        dept = bound.dept();
+        programme = bound.prog();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT * FROM finance.payments_query(:session, :faculty, :dept, :programme, :level, :category, :channel, :from, :to, :limit)
                 """)
@@ -1083,9 +1093,14 @@ class FinanceController {
         java.util.function.Function<String, List<String>> of = k -> paidIn.stream().filter(r -> k.equals(r.get("k"))).map(r -> (String) r.get("v"))
                 .filter(java.util.Objects::nonNull).sorted().toList();
         options.put("sessions", of.apply("session").reversed());
-        options.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty ORDER BY name").query().listOfRows());
-        options.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department ORDER BY name").query().listOfRows());
-        options.put("programmes", jdbc.sql("SELECT code, name, faculty_code, dept_code FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows());
+        // the College Finance Controller chooses among the College's faculties, departments and programmes alone
+        String[] own = scope.actingCollegeOffice() ? scope.actingCollegeFaculties().toArray(String[]::new) : null;
+        options.put("faculties", jdbc.sql("SELECT code, name FROM ref.faculty WHERE (:own::text[] IS NULL OR code = ANY (:own::text[])) ORDER BY name")
+                .param("own", own, Types.ARRAY).query().listOfRows());
+        options.put("departments", jdbc.sql("SELECT code, name, faculty_code FROM ref.department WHERE (:own::text[] IS NULL OR faculty_code = ANY (:own::text[])) ORDER BY name")
+                .param("own", own, Types.ARRAY).query().listOfRows());
+        options.put("programmes", jdbc.sql("SELECT code, name, faculty_code, dept_code FROM ref.programme WHERE NOT archived AND (:own::text[] IS NULL OR faculty_code = ANY (:own::text[])) ORDER BY name")
+                .param("own", own, Types.ARRAY).query().listOfRows());
         options.put("categories", of.apply("category"));
         options.put("channels", of.apply("channel"));
 

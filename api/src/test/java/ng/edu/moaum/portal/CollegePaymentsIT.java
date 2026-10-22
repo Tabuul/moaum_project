@@ -111,6 +111,61 @@ class CollegePaymentsIT {
         assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/college/payments?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
     }
 
+    /** 22 Oct 2026: the College Finance Controller reads every College payment as the Bursary reads the University's — the Payments
+     *  Query (by date range, department, programme …) and the School Fees Report, held to the College on the server */
+    @Test
+    void theFinanceControllerQueriesTheCollegesPaymentsAloneAsTheBursaryQueriesTheUniversitys() {
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/ADM/92/10" + k, "MOAUM/MED/92/1" + k, "ZZCHSQ" + k, "MOAUM/ADM/92/20" + k, "MOAUM/MTC/92/2" + k, "ZZUNIQ" + k));
+        UUID college = it.student("ZZCHSQ" + n, "C00061", "MOAUM/ADM/92/10" + n, "MOAUM/MED/92/1" + n, 300);
+        UUID other = it.student("ZZUNIQ" + n, "C00023", "MOAUM/ADM/92/20" + n, "MOAUM/MTC/92/2" + n, 300);
+        String collegeFaculty = jdbc.sql("SELECT faculty_code FROM ref.programme WHERE code = 'C00061'").query(String.class).single();
+        String otherFaculty = jdbc.sql("SELECT faculty_code FROM ref.programme WHERE code = 'C00023'").query(String.class).single();
+        // the session's school fees for both programmes (taken away after the test)
+        it.db(() -> {
+            jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", SESSION).update();
+            for (String prog : List.of("C00061", "C00023")) {
+                jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 100000, 300, :p)")
+                        .param("s", SESSION).param("p", prog).update();
+            }
+            return null;
+        });
+        String collegeRef = it.db(() -> jdbc.sql("SELECT finance.new_reference(:s, :ses, 70000, 'School fees')").param("s", college).param("ses", SESSION).query(String.class).single());
+        String otherRef = it.db(() -> jdbc.sql("SELECT finance.new_reference(:s, :ses, 60000, 'School fees')").param("s", other).param("ses", SESSION).query(String.class).single());
+        for (String ref : List.of(collegeRef, otherRef)) {
+            ResponseEntity<Map> c = it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + ref + "/confirm", Map.of("channel", "bank", "note", "test"));
+            assertThat(c.getStatusCode().value()).as(String.valueOf(c.getBody())).isEqualTo(200);
+        }
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).toString();
+        String q = "/api/v1/finance/payments?session=" + SESSION + "&from=" + java.time.LocalDate.parse(today).minusDays(1) + "&to=" + java.time.LocalDate.parse(today).plusDays(1);
+
+        // the Controller: the College's payment, never the University's other faculties'; the choices are the College's
+        ResponseEntity<Map> mine = it.get(finance, q);
+        assertThat(mine.getStatusCode().value()).as(String.valueOf(mine.getBody())).isEqualTo(200);
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) mine.getBody().get("rows");
+        assertThat(rows).extracting(r -> r.get("reference")).contains(collegeRef).doesNotContain(otherRef);
+        assertThat(rows).allSatisfy(r -> assertThat(r.get("faculty_code")).isEqualTo(collegeFaculty));
+        Map<String, Object> options = (Map<String, Object>) mine.getBody().get("options");
+        assertThat((List<Map<String, Object>>) options.get("faculties")).extracting(f -> f.get("code")).containsExactly(collegeFaculty);
+        assertThat((List<Map<String, Object>>) options.get("programmes")).extracting(x -> x.get("code")).contains("C00061").doesNotContain("C00023");
+        // by programme and by date: the College's programme finds it; a range that ends before today does not
+        assertThat((List<Map<String, Object>>) it.get(finance, q + "&programme=C00061").getBody().get("rows")).extracting(r -> r.get("reference")).contains(collegeRef);
+        assertThat((List<Map<String, Object>>) it.get(finance, "/api/v1/finance/payments?session=" + SESSION + "&to=" + java.time.LocalDate.parse(today).minusDays(2)).getBody().get("rows"))
+                .extracting(r -> r.get("reference")).doesNotContain(collegeRef);
+        // another faculty or programme asked for is refused
+        ResponseEntity<Map> outside = it.get(finance, q + "&faculty=" + otherFaculty);
+        assertThat(outside.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(outside.getBody())).contains("SCOPE_COLLEGE");
+        assertThat(it.get(finance, q + "&programme=C00023").getStatusCode().value()).isEqualTo(422);
+        // the Bursary reads both, as before
+        assertThat((List<Map<String, Object>>) it.get(bursar, q).getBody().get("rows")).extracting(r -> r.get("reference")).contains(collegeRef, otherRef);
+
+        // the School Fees Report opens for the Controller, held to the College
+        ResponseEntity<Map> report = it.get(finance, "/api/v1/finance/fee-report?session=" + SESSION);
+        assertThat(report.getStatusCode().value()).as(String.valueOf(report.getBody())).isEqualTo(200);
+        assertThat(report.getBody().get("faculty")).isEqualTo(collegeFaculty);
+        assertThat(it.get(finance, "/api/v1/finance/fee-report?session=" + SESSION + "&fac=" + otherFaculty).getStatusCode().value()).isEqualTo(422);
+    }
+
     private Map<String, Object> rowFor(String token, String query, UUID student) {
         ResponseEntity<Map> r = it.get(token, "/api/v1/college/payments?" + query);
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);

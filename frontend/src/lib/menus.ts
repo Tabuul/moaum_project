@@ -2554,6 +2554,9 @@ export const MENUS: Record<string, Menu> = {
         "name": "Finance",
         "items": [
           { "id": "t/collegepayments", "icon": "card", "label": "Student Payment Report" },
+          { "id": "t/payments", "icon": "card", "label": "Payments Query" },
+          { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
+          { "id": "t/studentpaymenthistory", "icon": "doc", "label": "Payment History" },
         ]
       },
       {

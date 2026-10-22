@@ -4,7 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { LinkBtn, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import type { ExamSummary } from "../examinations/Examinations";
-import { FinanceHome, type PaySummary } from "./FinanceHome";
+import { FinanceHome, type PaySummary, type RecentPayments } from "./FinanceHome";
 import { StatsPanel } from "@/components/stats/StatsPanel";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 
@@ -42,10 +42,11 @@ export default async function CollegeDashboardPage() {
   /* V603: the Finance Controller's home is the College's fees position and its analytics (FinanceHome); the Student Payment Report
      (V256) with every student is a click away. The College's academic dashboard is not read for it. */
   if (me.ok && me.data.activeOffice === "financecontroller") {
-    const pay = await api<PaySummary>("/api/v1/college/payments?summary=true");
+    // 22 Oct 2026: the College's newest payments, from the Bursary's payments query held to the College on the server
+    const [pay, recent] = await Promise.all([api<PaySummary>("/api/v1/college/payments?summary=true"), api<RecentPayments>("/api/v1/finance/payments?limit=15")]);
     return (
       <Shell route="r/college" me={me.data}>
-        {pay.ok ? <FinanceHome name={me.data.name ?? null} pay={pay.data} /> : <ProblemNotice problem={pay.problem} />}
+        {pay.ok ? <FinanceHome name={me.data.name ?? null} pay={pay.data} recent={recent.ok ? recent.data : null} /> : <ProblemNotice problem={pay.problem} />}
       </Shell>
     );
   }
