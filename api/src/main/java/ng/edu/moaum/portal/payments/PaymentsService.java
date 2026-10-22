@@ -1407,6 +1407,10 @@ public class PaymentsService {
         out.put("reference", r.reference());
         out.put("confirmed", r.confirmedAt() != null);
         out.put("confirmedAt", r.confirmedAt());
+        // V635: an unpaid reference past its time, and whether the payer may regenerate it here (a student's own reference)
+        out.put("expiresAt", r.expiresAt());
+        out.put("expired", r.confirmedAt() == null && r.expiresAt() != null && !r.expiresAt().isAfter(java.time.OffsetDateTime.now()));
+        out.put("renewable", "FEES".equals(r.kind()));
         // Oct 2026: a reference Quickteller was told may be paid, and no payment reported yet — the payer may have paid and
         // Interswitch's report not arrived, or stopped before paying; the screen asks them to check before paying again
         out.put("startedAt", r.confirmedAt() != null ? null : repo.quicktellerStartedAt(r.reference()).map(Object::toString).orElse(null));

@@ -146,7 +146,8 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
                   <span className="sub2">The application form below is open to you.</span>
                 </div>
               </>
-            ) : fee && fee.state === "PENDING" ? (
+            ) : fee && (fee.state === "PENDING" || fee.state === "EXPIRED") ? (
+              /* V635: an expired reference is regenerated in the pay block and paid — the same reference, never a second fee */
               <>
                 <KvGrid cls="grid--3" pairs={[["Amount", naira(fee.amount)], ["Payment status", "NOT PAID"], ["Payment reference", <span key="r" className="tnum">{fee.reference}</span>], ["Reference expires", whenAt(fee.expires_at)]]} />
                 <div className="mt-2"><PayByCard reference={fee.reference} amount={Number(fee.amount)} /></div>
@@ -155,7 +156,6 @@ export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
             ) : (
               <>
                 <KvGrid cls="grid--3" pairs={[["Application fee", naira(feeAmount)], ["Payment status", "NOT PAID"], ["Session", data.current.session ?? s.session]]} />
-                {fee && fee.state === "EXPIRED" ? <div className="sub2 mt-1">Your earlier reference {fee.reference} expired unpaid; generate a new one.</div> : null}
                 <div className="row mt-2"><Btn kind="primary" disabled={busy} onClick={() => void startFee()}>Pay {naira(feeAmount)} Deferment Fee</Btn></div>
               </>
             )}

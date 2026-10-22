@@ -14,7 +14,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { PayByCard, naira, onDay, when } from "../common";
+import { PayByCard, RenewReference, naira, onDay, when } from "../common";
 
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
   PAID: ["PAID", "ok"], NOT_PAID: ["NOT PAID", "bad"], PENDING: ["REFERENCE OPEN", "warn"], NOT_STATED: ["NO FEE STATED", "grey"], NOT_REQUIRED: ["NOT REQUIRED", "grey"],
@@ -145,7 +145,9 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
           <span key="n" className="tnum sub2">{i + 1}</span>, <span key="r" className="tnum">{r.reference}</span>, <span key="s" className="tnum">{r.session}</span>, <span key="a" className="tnum">{naira(Number(r.amount))}</span>,
           <span key="g" className="sub2">{when(r.generated_at)}</span>,
           <Pil key="t" kind={r.confirmed_at ? "ok" : new Date(r.expires_at).getTime() > now ? "warn" : "grey"}>{r.confirmed_at ? `Confirmed ${onDay(r.confirmed_at)}` : new Date(r.expires_at).getTime() > now ? "Awaiting payment" : "Expired"}</Pil>,
-          r.confirmed_at ? <a key="x" className="btn btn--ghost btn--sm" href={`/student/receipt/${encodeURIComponent(r.reference)}/pdf`} target="_blank" rel="noopener">Receipt</a> : <span key="x" className="sub2">—</span>,
+          r.confirmed_at ? <a key="x" className="btn btn--ghost btn--sm" href={`/student/receipt/${encodeURIComponent(r.reference)}/pdf`} target="_blank" rel="noopener">Receipt</a>
+            // V635: an expired GST reference regenerated here — while the fee is still owed
+            : new Date(r.expires_at).getTime() <= now && !e.entitled ? <RenewReference key="x" reference={r.reference} kind="ghost" /> : <span key="x" className="sub2">—</span>,
         ])} /> : <PBody><div className="sub2">No GST payment on record yet.</div></PBody>}
       </Panel>
     </>

@@ -23,15 +23,20 @@ export interface ReferenceState {
   longAgo: boolean;
   /** V480: the receipt the payer reported for it, while it waits */
   claim: Claim | null;
+  /** V635: unpaid and past its time; and whether the payer may regenerate it on the portal (a student's own reference) */
+  expired?: boolean;
+  expiresAt?: string | null;
+  renewable?: boolean;
 }
 
 async function readState(reference: string): Promise<ReferenceState | null> {
   const r = await fetch(`/api/bff/api/v1/payments/state?reference=${encodeURIComponent(reference)}`, { cache: "no-store" });
   if (!r.ok) return null;
-  const j = (await r.json().catch(() => null)) as { confirmed?: boolean; startedAt?: string | null; claim?: Claim | null } | null;
+  const j = (await r.json().catch(() => null)) as { confirmed?: boolean; startedAt?: string | null; claim?: Claim | null; expired?: boolean; expiresAt?: string | null; renewable?: boolean } | null;
   if (!j) return null;
   const startedAt = j.startedAt ?? null;
-  return { confirmed: !!j.confirmed, startedAt, longAgo: !!startedAt && Date.now() - Date.parse(startedAt) >= DAY_MS, claim: j.claim ?? null };
+  return { confirmed: !!j.confirmed, startedAt, longAgo: !!startedAt && Date.now() - Date.parse(startedAt) >= DAY_MS, claim: j.claim ?? null,
+    expired: !!j.expired, expiresAt: j.expiresAt ?? null, renewable: !!j.renewable };
 }
 
 /** the reference as the University's record has it, read once when the pay block opens */

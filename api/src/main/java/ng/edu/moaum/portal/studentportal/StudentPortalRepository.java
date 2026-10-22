@@ -486,6 +486,14 @@ class StudentPortalRepository {
                 """).param("s", student).param("ses", session).query(Integer.class).single();
     }
 
+    /** V635: finance.renew_reference — the reference payable again (REOPENED), a new one for what is owed now (NEW), or the one still open (OPEN) */
+    Map<String, Object> renewReference(UUID student, String reference) {
+        return jdbc.sql("""
+                SELECT reference_out AS reference, amount_out AS amount, until_out AS "expiresAt", purpose_out AS purpose, outcome
+                  FROM finance.renew_reference(:s, :r)
+                """).param("s", student).param("r", reference).query().singleRow();
+    }
+
     String newReference(UUID student, String session, BigDecimal amount, String purpose) {
         return jdbc.sql("SELECT finance.new_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount)
                 .param("p", purpose, Types.VARCHAR).query(String.class).single();
@@ -913,7 +921,8 @@ class StudentPortalRepository {
     List<Map<String, Object>> transcripts(UUID student) {
         return jdbc.sql("""
                 SELECT t.id, t.ref, t.destination, t.destination_name, t.mode, t.copies, t.requested_at, t.paid_at, t.stage, t.produced_at, t.released_at,
-                       (SELECT r.reference FROM finance.payment_reference r WHERE r.student_id = :s AND r.purpose = 'Transcript ' || t.ref AND r.confirmed_at IS NULL AND r.expires_at > now() ORDER BY r.generated_at DESC LIMIT 1) AS open_reference
+                       -- V635: the unpaid reference, expired or not — the pay block regenerates an expired one
+                       (SELECT r.reference FROM finance.payment_reference r WHERE r.student_id = :s AND r.purpose = 'Transcript ' || t.ref AND r.confirmed_at IS NULL ORDER BY (r.expires_at > now()) DESC, r.generated_at DESC LIMIT 1) AS open_reference
                   FROM credentials.transcript_request t WHERE t.student_id = :s ORDER BY t.requested_at DESC
                 """).param("s", student).query().listOfRows();
     }

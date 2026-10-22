@@ -453,6 +453,13 @@ public class StudentPortalService {
         return out;
     }
 
+    /** V635: an expired, unpaid reference of the student's made payable again — the same reference reopened for 24 hours while what
+     *  it pays for is still owed, or (school fees, the GST fee owed now at less) a new one for what is owed; the database decides */
+    @Transactional
+    public Map<String, Object> renewReference(UUID id, String reference) {
+        return repo.renewReference(id, reference);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> receipt(UUID id, String reference) {
         Map<String, Object> r = repo.reference(id, reference).orElseThrow(() -> new NotFound("payment reference", reference));

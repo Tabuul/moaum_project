@@ -14,9 +14,9 @@ import { type StudentOverpayment, overpaymentWords, refundAccountWords } from "@
 import { type BankAccountValue, accountDigits, accountProblem, bankToSend, valueFromAccount } from "@/lib/banks";
 import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFields";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
-import { Passport } from "@/components/proto/blocks";
+import { Modal, Passport } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
-import { PayByCard, naira, onDay, useAct, when } from "./common";
+import { PayByCard, RenewReference, naira, onDay, useAct, when } from "./common";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 /** V528: the student gives the bank account a refund of overpaid fees is paid into — while it awaits approval (and may change it
@@ -45,6 +45,21 @@ function RefundAccountForm({ o, act, busy, holder }: { o: StudentOverpayment; ac
         {given ? <Btn kind="ghost" size="sm" onClick={() => { setOpen(false); setTyped(null); }}>Keep the current one</Btn> : null}
       </span>
     </span>
+  );
+}
+
+/** V635: an open reference paid from Payment History — whatever it pays for: school fees, the GST fee, a transcript, a hostel bed, a fine */
+function PayFromHistory({ reference, amount, purpose }: { reference: string; amount: number; purpose: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Btn kind="primary" size="sm" onClick={() => setOpen(true)}>Pay</Btn>
+      {open ? (
+        <Modal title={`Pay ${naira(amount)}`} sub={`${purpose} · reference ${reference}`} onClose={() => setOpen(false)} foot={<Btn kind="ghost" onClick={() => setOpen(false)}>Close</Btn>}>
+          <div className="row" style={{ flexWrap: "wrap" }}><PayByCard reference={reference} amount={amount} /></div>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
@@ -208,7 +223,11 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           <span className="tnum" key="ss">{r.session}</span>,
           <span className="tnum" key="a">{naira(r.amount)}</span>,
           r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
-          r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn> : <span key="x" />,
+          // V635: a paid reference has its receipt; an open one is paid here; an expired one is regenerated here and then paid
+          r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn>
+            : r.confirmed_at ? <span key="x" />
+            : new Date(r.expires_at).getTime() > now ? <PayFromHistory key="x" reference={r.reference} amount={Number(r.amount)} purpose={r.purpose_label ?? r.purpose} />
+            : <RenewReference key="x" reference={r.reference} kind="ghost" />,
         ])} />
         {!fees.references.length ? <PBody><div className="sub2">No payments yet.</div></PBody> : null}
       </Panel>

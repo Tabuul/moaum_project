@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 460
+\set EXPECTED 461
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23507,6 +23507,49 @@ BEGIN
         format('one %s | two %s decided %s | offices %s | batch %s state %s moved %s', one, two, dec->>'status', offices, batch, batch_state, moved));
 END $$;
 
+-- ── V635. An expired student payment reference regenerated: a made-up student's expired deferment-fee reference (the fee still
+--          pending) is reopened — the same reference, payable for another day — and asked again is answered as open; another
+--          student, a paid reference, an expired transcript reference whose request is closed and a payment an office raised are
+--          refused. The block undoes its writes ──
+DO $$
+DECLARE s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); v_prog text; v_entry text; ses text := '9935/9936';
+        a1 record; a2 record; until_db timestamptz; r_other text := ''; r_paid text := ''; r_closed text := ''; r_office text := ''; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V635', true);
+    SELECT code INTO v_prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT name INTO v_entry FROM policy.academic_session ORDER BY starts_on DESC LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/99/635001', 'MOAUM/ZZS/99/6351', 'CHECKV635', 'Renews', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/99/635002', 'MOAUM/ZZS/99/6352', 'CHECKV635', 'Another', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at) VALUES
+        (s1, ses, 'MOAUM-FEE-CHK635-0001', 'Deferment application fee', 5000, now() - interval '3 days', now() - interval '2 days'),
+        (s1, ses, 'MOAUM-FEE-CHK635-0003', 'Transcript TRN-2026-999999', 7000, now() - interval '3 days', now() - interval '2 days'),
+        (s1, ses, 'MOAUM-FEE-CHK635-0004', 'Gateway test by the Bursary', 100, now() - interval '3 days', now() - interval '2 days');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (s1, ses, 'MOAUM-FEE-CHK635-0002', 'Deferment application fee', 5000, now() - interval '3 days', now() - interval '2 days', now() - interval '2 days', gen_random_uuid(), 'Bank transfer', 'RCPT-CHK635-2');
+    INSERT INTO people.deferment_fee (student_id, session, reference, amount) VALUES (s1, ses, 'MOAUM-FEE-CHK635-0001', 5000);
+    SELECT * INTO a1 FROM finance.renew_reference(s1, 'moaum-fee-chk635-0001');
+    SELECT expires_at INTO until_db FROM finance.payment_reference WHERE reference = 'MOAUM-FEE-CHK635-0001';
+    SELECT * INTO a2 FROM finance.renew_reference(s1, 'MOAUM-FEE-CHK635-0001');
+    BEGIN PERFORM finance.renew_reference(s2, 'MOAUM-FEE-CHK635-0001'); EXCEPTION WHEN no_data_found THEN r_other := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.renew_reference(s1, 'MOAUM-FEE-CHK635-0002'); EXCEPTION WHEN check_violation THEN r_paid := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.renew_reference(s1, 'MOAUM-FEE-CHK635-0003'); EXCEPTION WHEN check_violation THEN r_closed := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.renew_reference(s1, 'MOAUM-FEE-CHK635-0004'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+    msg := format('first %s %s until +%s h | again %s | other %s | paid %s | closed %s | office %s',
+                  a1.outcome, a1.reference_out, round(extract(epoch FROM (a1.until_out - now())) / 3600), a2.outcome, r_other, r_paid, r_closed, r_office);
+    RAISE EXCEPTION 'the V635 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V635 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V635: an expired reference whose item is still owed is reopened (the same reference, another day); a paid one, another student''s, a closed item''s and an office''s are refused',
+      coalesce(a1.outcome = 'REOPENED' AND a1.reference_out = 'MOAUM-FEE-CHK635-0001' AND a1.until_out > now() + interval '23 hours' AND until_db = a1.until_out
+               AND a2.outcome = 'OPEN' AND a2.reference_out = 'MOAUM-FEE-CHK635-0001'
+               AND r_other = 'REFERENCE_NOT_FOUND' AND r_paid = 'REFERENCE_PAID' AND r_closed = 'REFERENCE_ITEM_CLOSED' AND r_office = 'REFERENCE_NOT_RENEWABLE', false),
+      msg);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -75,6 +75,12 @@ class MeController {
         return portal.newReference(id(auth), body == null ? null : body.session(), body == null ? null : body.amount());
     }
 
+    /** V635: an expired payment reference regenerated — school fees, the GST fee and every payment the student started */
+    @PostMapping("/fees/references/{reference}/renew")
+    Map<String, Object> renewReference(Authentication auth, @PathVariable String reference) {
+        return portal.renewReference(id(auth), reference);
+    }
+
     /** V528: the student gives (or, while it awaits approval, changes) the account a refund of overpaid fees is paid into */
     @PostMapping("/fees/refunds/{reference}/account")
     Map<String, Object> refundAccount(Authentication auth, @PathVariable String reference, @Valid @RequestBody RefundAccount body) {
