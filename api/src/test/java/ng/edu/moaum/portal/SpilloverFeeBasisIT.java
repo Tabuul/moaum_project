@@ -19,7 +19,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 /**
  * V571, end to end: the Bursary reads who is charged the spillover fee lines (by the level, the default), previews the change —
- * an invented student at the final level whom the cohort engine reads in a spillover year moves onto the lines, with the session's
+ * an invented student below the final level whom the cohort engine reads in a spillover year moves onto the lines (V637: one AT the
+ * final level in a spillover year is on them by level already), with the session's
  * charges under each basis — and changes it with a reason; the Bursar alone changes it, and a short reason is refused. The basis is
  * put back to LEVEL however the test ends. Needs DATABASE_URL.
  */
@@ -41,7 +42,7 @@ class SpilloverFeeBasisIT {
     void theBursaryPreviewsAndChangesWhoIsChargedTheSpilloverLines() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
         int n = 10000 + new Random().nextInt(89999);
-        UUID a = it.student("ZZSPB" + n, "C00023", "MOAUM/ADM/87/" + (100000 + n), "MOAU/SC/SPB/26/" + n, 400);
+        UUID a = it.student("ZZSPB" + n, "C00023", "MOAUM/ADM/87/" + (100000 + n), "MOAU/SC/SPB/26/" + n, 300);
         it.db(() -> jdbc.sql("UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_1' WHERE student_id = :s").param("s", a).update());
         String bursar = TestTokens.token(it.person("ZZ-SPB-BU-" + n, "ZZSPBBU" + n), List.of("bursar"));
         String audit = TestTokens.token(it.person("ZZ-SPB-AU-" + n, "ZZSPBAU" + n), List.of("audit"));
