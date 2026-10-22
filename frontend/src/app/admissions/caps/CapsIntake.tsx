@@ -361,6 +361,8 @@ export function CapsIntake({
     }
   }
 
+  /** V629: a course JAMB changed, by the University's name for it and its code */
+  const courseWord = (code: string) => (code ? `${programmes.find((p) => p.code === code)?.name ?? code} (${code})` : "—");
   const distinct = d ? new Set(d.rows.map((r) => r.jambCode).filter(Boolean)).size : 0;
 
   return (
@@ -616,7 +618,7 @@ export function CapsIntake({
                     <span className="tnum" key="n">{u.jambRegNo}</span>,
                     <strong key="c">{u.surname} {u.otherNames ?? ""}</strong>,
                     <span key="w">{Object.entries(u.changes).map(([field, c]) => (
-                      <div key={field} className="sub2"><b>{CHANGED[field] ?? field}</b>: {String(c.from || "—")} &rarr; {String(c.to || "—")}</div>
+                      <div key={field} className="sub2"><b>{CHANGED[field] ?? field}</b>: {field === "course" ? courseWord(String(c.from)) : String(c.from || "—")} &rarr; {field === "course" ? courseWord(String(c.to)) : String(c.to || "—")}</div>
                     ))}</span>,
                   ])}
                   texts={done.updated.map((u) => `${u.jambRegNo} ${u.surname} ${u.otherNames ?? ""}`)}
