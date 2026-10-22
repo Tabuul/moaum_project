@@ -92,7 +92,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
     const list = Array.from(files);
     setStream({ read: 0, recorded: 0, attached: 0, unreadable: 0, total: list.length });
     const B = 150;
-    let read = 0, recorded = 0, attached = 0, unreadable = 0;
+    let read = 0, recorded = 0, attached = 0, unreadable = 0, replaced = 0, skippedP = 0;
     const sample: Pas[] = [];
     try {
       for (let i = 0; i < list.length; i += B) {
@@ -105,12 +105,14 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         const j = await r.json().catch(() => null);
         if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
         recorded += (j.recorded as number) ?? 0;
+        replaced += (j.replaced as number | undefined) ?? 0;   // V629: a changed photograph for a candidate already held
+        skippedP += (j.skipped as number | undefined) ?? 0;
         for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) if (a.kind === "PASSPORT") attached += a.newly_attached;
         setStream({ read, recorded, attached, unreadable, total: list.length });
         // `items` (and its data URLs) fall out of scope here, so the batch is reclaimed before the next
       }
       setStreamSample(sample);
-      notify(`${recorded} passport${recorded === 1 ? "" : "s"} recorded · ${attached} attached`);
+      notify(`${recorded} passport${recorded === 1 ? "" : "s"} recorded${replaced ? ` (${replaced} replacing an earlier photograph)` : ""} · ${attached} attached${skippedP ? ` · ${skippedP} already held, the same (skipped)` : ""}`);
       router.refresh();
     } finally {
       setStreaming(false);
@@ -139,7 +141,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
        so the tranches add up and the last findings stand. */
     const CHUNK = 400;
     try {
-      let recorded = 0, skipped = 0;
+      let recorded = 0, skipped = 0, replaced = 0;
       const tally: Record<string, number> = {};
       const found: Record<string, number> = { SAME_RESULT: 0, SAME_SITTING: 0, NUMBER_ELSEWHERE: 0 };
       for (let i = 0; i < items.length; i += CHUNK) {
@@ -150,6 +152,7 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
         recorded += (j.recorded as number) ?? 0;
         skipped += (j.skipped as number | undefined) ?? 0;
+        replaced += (j.replaced as number | undefined) ?? 0;   // V629: changed since it was first recorded — the newest is read
         for (const a of (j.attached as { kind: string; newly_attached: number }[] | undefined) ?? []) {
           tally[a.kind] = (tally[a.kind] ?? 0) + a.newly_attached;
         }
@@ -162,7 +165,10 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
         found.SAME_RESULT ? `${found.SAME_RESULT} result${found.SAME_RESULT === 1 ? "" : "s"} already on record, not recorded again` : "",
         found.SAME_SITTING ? `${found.SAME_SITTING} result${found.SAME_SITTING === 1 ? "" : "s"} under an exam number already on record with other grades, HELD for the Office to decide` : "",
         found.NUMBER_ELSEWHERE ? `${found.NUMBER_ELSEWHERE} exam number${found.NUMBER_ELSEWHERE === 1 ? "" : "s"} already on another applicant's record, flagged` : "",
-      ].filter(Boolean).join("; ") : (skipped ? `${skipped} already recorded (skipped)` : "");
+      ].filter(Boolean).join("; ") : [
+        skipped ? `${skipped} already recorded the same (skipped)` : "",
+        replaced ? `${replaced} changed since first recorded — the new one recorded and read from now on` : "",
+      ].filter(Boolean).join("; ");
       setSaid(`${recorded} recorded; ${attached || "nothing newly"} attached to a candidate.${checked ? ` Duplicate check: ${checked}.` : kind === "OLEVEL" ? " Duplicate check: nothing repeated." : ""}`);
       notify(`${recorded} recorded · ${attached || 0} attached${found.SAME_SITTING || found.NUMBER_ELSEWHERE ? ` · ${found.SAME_SITTING + found.NUMBER_ELSEWHERE} duplicate${found.SAME_SITTING + found.NUMBER_ELSEWHERE === 1 ? "" : "s"} to review` : ""}`);
       router.refresh();

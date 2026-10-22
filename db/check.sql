@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 456
+\set EXPECTED 457
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23308,6 +23308,31 @@ BEGIN
                AND lv4 = 300 AND NOT pinned_after_lift AND n_dec = 4
                AND r_office = 'LEVEL_SUPPORT_OFFICE' AND r_year = 'LEVEL_SPILLOVER_YEAR' AND r_stale = 'LEVEL_CHANGED', false),
       msg);
+END $$;
+-- ── V629. The JAMB list upload merges with the list already held: the changes JAMB made to a candidate already on the list are kept
+--          field by field (admissions.caps_row_change, an empty change refused), each upload counts the candidates it updated and the
+--          ones it found the same, and the database still holds one live row a candidate a session (§29). Reads only, and one refused
+--          insert ──
+DO $$
+DECLARE has_table boolean; has_counts boolean; one_live boolean; empty_refused boolean := false;
+BEGIN
+    has_table := to_regclass('admissions.caps_row_change') IS NOT NULL;
+    has_counts := (SELECT count(*) FROM pg_attribute WHERE attrelid = 'admissions.caps_batch'::regclass AND attname IN ('rows_updated', 'rows_unchanged') AND NOT attisdropped) = 2;
+    one_live := EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = 'admissions' AND indexname = 'uq_caps_row_per_session'
+                         AND indexdef LIKE '%UNIQUE%(session, jamb_reg_no)%WHERE (NOT withdrawn)%');
+    BEGIN
+        INSERT INTO admissions.caps_row_change (session, row_id, jamb_key, batch_id, changes)
+        SELECT r.session, r.id, r.jamb_key, r.batch_id, '{}'::jsonb FROM admissions.caps_row r LIMIT 1;
+        IF NOT FOUND THEN empty_refused := true; END IF;   -- no row to try it on: the constraint is read below instead
+        RAISE EXCEPTION 'the V629 check undoes its writes';
+    EXCEPTION WHEN check_violation THEN empty_refused := true;
+              WHEN raise_exception THEN NULL;
+    END;
+    empty_refused := empty_refused OR EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'admissions.caps_row_change'::regclass AND contype = 'c'
+                                                 AND pg_get_constraintdef(oid) LIKE '%<> ''{}''::jsonb%');
+    PERFORM pg_temp.assert('V629: a JAMB change to a listed candidate is kept field by field, each upload counts what it updated, one live row a candidate',
+        coalesce(has_table AND has_counts AND one_live AND empty_refused, false),
+        format('change table %s, counts %s, one live row %s, empty change refused %s', has_table, has_counts, one_live, empty_refused));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

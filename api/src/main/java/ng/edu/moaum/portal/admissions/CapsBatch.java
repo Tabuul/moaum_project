@@ -8,5 +8,7 @@ import java.util.UUID;
 public record CapsBatch(UUID id, String session, String source, String filename, String fileSha256, int rowsRead,
                         String listKind, LocalDate downloadedOn, OffsetDateTime uploadedAt, UUID uploadedBy,
                         String uploadedOffice, OffsetDateTime committedAt,
-                        OffsetDateTime withdrawnAt, String withdrawnReason) {
+                        OffsetDateTime withdrawnAt, String withdrawnReason,
+                        /* V629: the candidates this upload added to the list, updated on it, and found on it the same */
+                        int rowsAdded, int rowsUpdated, int rowsUnchanged) {
 }

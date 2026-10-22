@@ -54,6 +54,10 @@ export interface CapsBatch {
   /** a list loaded in error: kept, marked, and out of every count (V019) */
   withdrawnAt: string | null;
   withdrawnReason: string | null;
+  /** V629: the candidates this upload added to the list, updated on it (JAMB changed them), and found on it the same */
+  rowsAdded?: number;
+  rowsUpdated?: number;
+  rowsUnchanged?: number;
 }
 
 export interface AdmissionPolicy {
@@ -97,12 +101,23 @@ interface FileInfo {
   err?: string;
 }
 
+/** V629: a candidate already on the list whom JAMB changed — each field as it was and as it became */
+interface Updated { jambRegNo: string; surname: string; otherNames: string | null; changes: Record<string, { from: string | number; to: string | number }> }
+
 interface Loaded {
   batch: { id: string; rowsRead: number };
   rowsLoaded: number;
   excluded: { jambRegNo: string; surname: string; otherNames: string; programme: string; aggregate: number | null; cutoff: number }[];
+  /** V629: candidates already on the list — updated where JAMB changed them, else skipped; one on the other list left as it is */
+  rowsUpdated?: number;
+  rowsUnchanged?: number;
+  updated?: Updated[];
+  otherList?: string[];
   outcome?: string;
 }
+
+/** V629: a field JAMB changed, in words */
+const CHANGED: Record<string, string> = { course: "Course", aggregate: "Aggregate", surname: "Surname", otherNames: "Other names", sex: "Sex", state: "State", lga: "LGA", subjects: "Subjects" };
 
 function esc(s: string | null | undefined): string {
   return s ?? "";
@@ -291,12 +306,16 @@ export function CapsIntake({
         const part = r.body as Loaded;
         result.rowsLoaded += part.rowsLoaded;
         result.excluded = [...result.excluded, ...part.excluded];
+        result.rowsUpdated = (result.rowsUpdated ?? 0) + (part.rowsUpdated ?? 0);
+        result.rowsUnchanged = (result.rowsUnchanged ?? 0) + (part.rowsUnchanged ?? 0);
+        result.updated = [...(result.updated ?? []), ...(part.updated ?? [])];
+        result.otherList = [...(result.otherList ?? []), ...(part.otherList ?? [])];
         result.batch = part.batch;
         sent += chunk.length;
         setProgress({ sent, of: rows.length });
       }
       setLoaded({ ...loaded, [kind]: result });
-      notify(`${sent} CAPS row${sent === 1 ? "" : "s"} loaded`);
+      notify(`${result.rowsLoaded.toLocaleString()} new · ${(result.rowsUpdated ?? 0).toLocaleString()} updated · ${(result.rowsUnchanged ?? 0).toLocaleString()} already on the list`);
       router.refresh();
     } finally {
       setWorking(null);
@@ -379,7 +398,7 @@ export function CapsIntake({
                         <Pil kind="bad">Could not be read</Pil>
                       ) : held.length ? (
                         <Pil kind={held.some((b) => b.committedAt) ? "ok" : "info"}>
-                          {held.reduce((n, b) => n + b.rowsRead, 0)} candidates {held.some((b) => b.committedAt) ? "committed" : "loaded, held"}
+                          {held.reduce((n, b) => n + (b.rowsAdded ?? b.rowsRead), 0).toLocaleString()} candidates {held.some((b) => b.committedAt) ? "committed" : "loaded, held"}
                         </Pil>
                       ) : (
                         <Pil kind="grey">Not uploaded</Pil>
@@ -531,7 +550,7 @@ export function CapsIntake({
           ) : done ? (
             <Note
               kind="ok"
-              title={done.outcome ? `The ${list.label} list is ${done.outcome}` : `${done.rowsLoaded} candidates loaded as the ${list.label} list for ${session} — held, not yet committed${done.excluded.length ? ` · ${done.excluded.length} under the cut-off, on record` : ""}`}
+              title={done.outcome ? `The ${list.label} list is ${done.outcome}` : `${done.rowsLoaded.toLocaleString()} new candidate${done.rowsLoaded === 1 ? "" : "s"} added to the ${list.label} list for ${session}${done.rowsUpdated ? ` · ${done.rowsUpdated.toLocaleString()} updated (JAMB changed them)` : ""}${done.rowsUnchanged ? ` · ${done.rowsUnchanged.toLocaleString()} already on it, unchanged` : ""} — held, not yet committed${done.excluded.length ? ` · ${done.excluded.length} under the cut-off, on record` : ""}`}
               action={
                 done.outcome ? undefined : (
                   <Btn kind="go" onClick={() => void commit(done.batch.id, true)} disabled={committing !== null || !mayLoad}>
@@ -585,6 +604,29 @@ export function CapsIntake({
           )}
 
           {problem ? <ProblemNotice problem={problem} /> : null}
+
+          {/* V629: the candidates already on the list whom JAMB changed — updated in place — and any on the other list, left as they are */}
+          {done && (done.updated?.length || done.otherList?.length) ? (
+            <Panel title={`Updated from JAMB — ${(done.rowsUpdated ?? 0).toLocaleString()} candidate${done.rowsUpdated === 1 ? "" : "s"} already on the list`}
+              right={(done.updated?.length ?? 0) < (done.rowsUpdated ?? 0) ? `the first ${done.updated?.length} named` : "each change kept on the record"}>
+              {done.updated?.length ? (
+                <DTable
+                  cols={["JAMB number|mid", "Candidate", "What changed"]}
+                  rows={done.updated.map((u) => [
+                    <span className="tnum" key="n">{u.jambRegNo}</span>,
+                    <strong key="c">{u.surname} {u.otherNames ?? ""}</strong>,
+                    <span key="w">{Object.entries(u.changes).map(([field, c]) => (
+                      <div key={field} className="sub2"><b>{CHANGED[field] ?? field}</b>: {String(c.from || "—")} &rarr; {String(c.to || "—")}</div>
+                    ))}</span>,
+                  ])}
+                  texts={done.updated.map((u) => `${u.jambRegNo} ${u.surname} ${u.otherNames ?? ""}`)}
+                />
+              ) : null}
+              {done.otherList?.length ? (
+                <PBody><div className="sub2">On the other list (UTME or Direct Entry) already, left as they are: {done.otherList.join(", ")}</div></PBody>
+              ) : null}
+            </Panel>
+          ) : null}
 
           {d.unresolved.length > 0 && (
             <AliasMapper
@@ -708,7 +750,11 @@ export function CapsIntake({
                 {b.filename ?? <span className="sub2">{b.source}</span>}
                 <div className="sub2 tnum">{b.fileSha256.slice(0, 12)}…</div>
               </span>,
-              <span className="tnum" key="r">{b.rowsRead}</span>,
+              <span className="tnum" key="r">{b.rowsRead.toLocaleString()}
+                {b.rowsAdded != null && (b.rowsUpdated || b.rowsUnchanged) ? (
+                  <div className="sub2">{b.rowsAdded.toLocaleString()} new · {(b.rowsUpdated ?? 0).toLocaleString()} updated · {(b.rowsUnchanged ?? 0).toLocaleString()} unchanged</div>
+                ) : null}
+              </span>,
               <span className="tnum" key="d">{b.downloadedOn}</span>,
               <span className="tnum" key="l">{new Date(b.uploadedAt).toLocaleString("en-GB")}</span>,
               <span className="sub2" key="b">{officeLabel(b.uploadedOffice)}</span>,

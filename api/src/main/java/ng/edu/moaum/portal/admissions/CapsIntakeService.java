@@ -117,14 +117,49 @@ public class CapsIntakeService {
         }
     }
 
+    /**
+     * V629: the CAPS download is cumulative — each week's file repeats every candidate already loaded — so each row is read against
+     * the session's live list first: the same → skipped; changed by JAMB (the course, the aggregate, the names, sex, state, LGA,
+     * the subject scores) → updated in place, the change kept (admissions.caps_row_change); not on it → added under the cut-off.
+     */
     private CapsLoadResult insertRows(UUID id, String session, String listKind, Integer loadCutoff, List<CapsRowIn> rows) {
-        int loaded = 0;
+        int loaded = 0, updatedCount = 0, unchanged = 0;
         List<CapsLoadResult.ExcludedRow> excluded = new ArrayList<>();
+        List<CapsLoadResult.UpdatedRow> updated = new ArrayList<>();
+        List<String> otherList = new ArrayList<>();
         Map<String, String> names = "UTME".equals(listKind) ? programmeNames() : Map.of();
+        AuditContext actor = AuditContextHolder.required();
+        Map<String, CapsRepository.LiveRow> live = caps.liveRows(session,
+                rows.stream().map(r -> r.jambRegNo().trim().toUpperCase()).collect(Collectors.toCollection(LinkedHashSet::new)));
+        Set<String> seen = new java.util.HashSet<>();
         for (CapsRowIn row : rows) {
             Map<String, Object> raw = row.raw() == null ? Map.of() : row.raw();
             String rawJson = json.writeValueAsString(raw);
             String code = row.jambCode().trim().toUpperCase();
+            String key = row.jambRegNo().trim().toUpperCase();
+            if (!seen.add(key)) {
+                unchanged++;   // the same candidate twice in one file: the first stands
+                continue;
+            }
+            CapsRepository.LiveRow was = live.get(key);
+            if (was != null) {
+                if (!was.entryMode().equals(row.entryMode())) {
+                    otherList.add(key);   // on the other list (UTME or Direct Entry): left as it is
+                    continue;
+                }
+                Map<String, Map<String, Object>> changes = changes(was, row, raw);
+                if (changes.isEmpty()) {
+                    unchanged++;
+                    continue;
+                }
+                caps.updateRow(was.id(), row, rawJson);
+                caps.recordChange(was.id(), session, key, id, json.writeValueAsString(changes), actor.actorId(), actor.actorOffice());
+                updatedCount++;
+                if (updated.size() < CapsLoadResult.UPDATED_LISTED) {
+                    updated.add(new CapsLoadResult.UpdatedRow(key, row.surname().trim(), row.otherNames(), changes));
+                }
+                continue;
+            }
             if (loadCutoff != null && row.aggregate() != null && row.aggregate() < loadCutoff) {
                 caps.insertExcluded(id, session, row, loadCutoff, "BELOW_CUTOFF", rawJson);
                 excluded.add(new CapsLoadResult.ExcludedRow(row.jambRegNo().trim().toUpperCase(), row.surname(),
@@ -134,7 +169,60 @@ public class CapsIntakeService {
             caps.insertRow(id, session, row, rawJson);
             loaded++;
         }
-        return new CapsLoadResult(caps.find(id).orElseThrow(), loaded, excluded);
+        caps.countMerge(id, updatedCount, unchanged);
+        return new CapsLoadResult(caps.find(id).orElseThrow(), loaded, excluded, updatedCount, unchanged, updated, otherList);
+    }
+
+    /** V629: the subject columns of either layout (and JAMB's course name), compared as the file wrote them */
+    private static final Set<String> SUBJECT_KEYS = Set.of("coname", "subject1", "rgsub1score", "subject2", "rgsub2score", "subject3",
+            "rgsub3score", "engscore", "sub1", "sub1score", "sub2", "sub2score", "sub3", "sub3score", "sub4score");
+
+    private static String norm(String s) {
+        return s == null ? "" : s.toLowerCase().replaceAll("[^a-z0-9]", "");
+    }
+
+    private static String text(Object v) {
+        String t = v == null ? "" : String.valueOf(v).trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /** the subjects and scores as "Physics 96 · Biology 85 · …", from whichever columns the file carried */
+    private String subjects(Map<String, Object> raw) {
+        java.util.TreeMap<String, String> by = new java.util.TreeMap<>();
+        raw.forEach((k, v) -> {
+            String n = norm(k);
+            if (SUBJECT_KEYS.contains(n) && text(v) != null) {
+                by.put(n, text(v));
+            }
+        });
+        return String.join(" · ", by.entrySet().stream().map(e -> e.getKey() + " " + e.getValue()).toList());
+    }
+
+    private Map<String, Object> rawOf(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return Map.of();
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> m = json.readValue(rawJson, Map.class);
+        return m == null ? Map.of() : m;
+    }
+
+    /** V629: what JAMB changed for a candidate already on the list, field by field; nothing when it is the same */
+    private Map<String, Map<String, Object>> changes(CapsRepository.LiveRow was, CapsRowIn row, Map<String, Object> raw) {
+        Map<String, Map<String, Object>> out = new java.util.LinkedHashMap<>();
+        java.util.function.BiConsumer<String, Object[]> put = (field, pair) -> out.put(field, new java.util.LinkedHashMap<>(Map.of(
+                "from", pair[0] == null ? "" : pair[0], "to", pair[1] == null ? "" : pair[1])));
+        String code = row.jambCode().trim().toUpperCase();
+        if (!code.equals(was.jambCode())) put.accept("course", new Object[] {was.jambCode(), code});
+        if (!java.util.Objects.equals(was.aggregate(), row.aggregate())) put.accept("aggregate", new Object[] {was.aggregate(), row.aggregate()});
+        if (!java.util.Objects.equals(text(was.surname()), text(row.surname()))) put.accept("surname", new Object[] {was.surname(), text(row.surname())});
+        if (!java.util.Objects.equals(text(was.otherNames()), text(row.otherNames()))) put.accept("otherNames", new Object[] {was.otherNames(), text(row.otherNames())});
+        if (!java.util.Objects.equals(text(was.sex()), text(row.sex()))) put.accept("sex", new Object[] {was.sex(), text(row.sex())});
+        if (!java.util.Objects.equals(text(was.stateOfOrigin()), text(row.stateOfOrigin()))) put.accept("state", new Object[] {was.stateOfOrigin(), text(row.stateOfOrigin())});
+        if (!java.util.Objects.equals(text(was.lga()), text(row.lga()))) put.accept("lga", new Object[] {was.lga(), text(row.lga())});
+        String before = subjects(rawOf(was.raw())), after = subjects(raw);
+        if (!before.equals(after)) put.accept("subjects", new Object[] {before, after});
+        return out;
     }
 
     private Map<String, String> programmeNames() {

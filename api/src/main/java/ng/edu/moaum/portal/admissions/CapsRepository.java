@@ -18,7 +18,8 @@ class CapsRepository {
 
     private static final String BATCH_COLUMNS = """
             id, session, source, filename, encode(file_sha256, 'hex') AS file_sha256, rows_read, list_kind,
-            downloaded_on, uploaded_at, uploaded_by, uploaded_office, committed_at, withdrawn_at, withdrawn_reason
+            downloaded_on, uploaded_at, uploaded_by, uploaded_office, committed_at, withdrawn_at, withdrawn_reason,
+            (SELECT count(*) FROM admissions.caps_row r WHERE r.batch_id = caps_batch.id)::int AS rows_added, rows_updated, rows_unchanged
             """;
 
     private final JdbcClient jdbc;
@@ -59,6 +60,60 @@ class CapsRepository {
                 .param("by", uploadedBy)
                 .param("office", uploadedOffice)
                 .update();
+    }
+
+    /** V629: a candidate as the session's live list holds them, to be compared with what an upload carries */
+    record LiveRow(UUID id, String jambKey, String surname, String otherNames, String jambCode, Integer aggregate, String sex,
+                   String stateOfOrigin, String lga, String entryMode, String raw) {
+    }
+
+    /** V629: the candidates of a chunk already on the session's live list (withdrawn rows are evidence, not the list) */
+    Map<String, LiveRow> liveRows(String session, Collection<String> keys) {
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+        return jdbc.sql("""
+                SELECT id, jamb_key, surname, other_names, jamb_code, aggregate, sex, state_of_origin, lga, entry_mode, raw::text AS raw
+                  FROM admissions.caps_row
+                 WHERE session = :s AND NOT withdrawn AND jamb_key = ANY (string_to_array(:keys, ','))
+                """).param("s", session).param("keys", String.join(",", keys))
+                .query(LiveRow.class).list().stream().collect(Collectors.toMap(LiveRow::jambKey, r -> r, (a, b) -> a));
+    }
+
+    /** V629: the candidate JAMB changed, updated in place on the list they are on */
+    void updateRow(UUID id, CapsRowIn row, String rawJson) {
+        jdbc.sql("""
+                UPDATE admissions.caps_row
+                   SET raw = CAST(:raw AS jsonb), surname = :surname, other_names = :others, jamb_code = :code, aggregate = :aggregate,
+                       sex = :sex, state_of_origin = :state, lga = :lga
+                 WHERE id = :id
+                """)
+                .param("id", id)
+                .param("raw", rawJson)
+                .param("surname", row.surname().trim())
+                .param("others", row.otherNames() == null ? "" : row.otherNames().trim())
+                .param("code", row.jambCode().trim().toUpperCase())
+                .param("aggregate", row.aggregate(), Types.INTEGER)
+                .param("sex", row.sex(), Types.VARCHAR)
+                .param("state", row.stateOfOrigin(), Types.VARCHAR)
+                .param("lga", row.lga(), Types.VARCHAR)
+                .update();
+    }
+
+    /** V629: what changed, field by field, and the upload that carried it */
+    void recordChange(UUID rowId, String session, String jambKey, UUID batchId, String changesJson, UUID by, String office) {
+        jdbc.sql("""
+                INSERT INTO admissions.caps_row_change (row_id, session, jamb_key, batch_id, changes, changed_by, changed_office)
+                VALUES (:row, :s, :key, :batch, CAST(:changes AS jsonb), :by, :office)
+                """)
+                .param("row", rowId).param("s", session).param("key", jambKey).param("batch", batchId).param("changes", changesJson)
+                .param("by", by, Types.OTHER).param("office", office, Types.VARCHAR).update();
+    }
+
+    /** V629: the upload's own count of the candidates it updated and the ones it found the same */
+    void countMerge(UUID batchId, int updated, int unchanged) {
+        jdbc.sql("UPDATE admissions.caps_batch SET rows_updated = rows_updated + :u, rows_unchanged = rows_unchanged + :n WHERE id = :id")
+                .param("u", updated).param("n", unchanged).param("id", batchId).update();
     }
 
     void insertRow(UUID batchId, String session, CapsRowIn row, String rawJson) {

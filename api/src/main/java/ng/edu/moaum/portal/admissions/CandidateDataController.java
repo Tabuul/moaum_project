@@ -161,7 +161,7 @@ class CandidateDataController {
             throw new DomainRuleViolation("ATT_KIND", "'" + batch.kind() + "' is not one of the three downloads.",
                     new DomainRuleViolation.Remedy("PASSPORT, DATE_OF_BIRTH or OLEVEL.", "Directorate of ICT"));
         }
-        int recorded = 0, skipped = 0;
+        int recorded = 0, skipped = 0, replaced = 0;
         List<String> olevels = new ArrayList<>();
         for (Item it : batch.items()) {
             String key = it.jambKey() == null || it.jambKey().isBlank() ? null : it.jambKey().trim().toUpperCase();
@@ -172,13 +172,26 @@ class CandidateDataController {
                     .param("s", s).param("k", batch.kind()).param("n", name).query(Long.class).single();
             if (already > 0) {
                 /* V298: an O'Level result already recorded under this name is a duplicate upload only when it says the same; one that
-                   has changed is recorded beside it, and its sittings are checked against the record like any other */
-                boolean same = !"OLEVEL".equals(batch.kind()) || jdbc.sql("""
-                        SELECT EXISTS (SELECT 1 FROM admissions.attachment WHERE session = :s AND kind = :k
-                                          AND (source_name = :n OR source_name LIKE :n || ' · %') AND payload = CAST(:p AS jsonb))
-                        """).param("s", s).param("k", batch.kind()).param("n", name).param("p", payload).query(Boolean.class).single();
+                   has changed is recorded beside it, and its sittings are checked against the record like any other.
+                   V629: so are a date of birth (the date and names read) and a passport (the photograph — its size and dimensions, and
+                   the image itself where both carry it): the same → skipped; changed → recorded beside it, and the newest is the one
+                   every screen reads */
+                boolean same = "PASSPORT".equals(batch.kind())
+                        ? jdbc.sql("""
+                                SELECT EXISTS (SELECT 1 FROM admissions.attachment a WHERE a.session = :s AND a.kind = :k
+                                                  AND (a.source_name = :n OR a.source_name LIKE :n || ' · %')
+                                                  AND a.bytes IS NOT DISTINCT FROM :b AND a.width_px IS NOT DISTINCT FROM :w AND a.height_px IS NOT DISTINCT FROM :h
+                                                  AND (a.payload ->> 'dataUrl' IS NULL OR CAST(:p AS jsonb) ->> 'dataUrl' IS NULL
+                                                       OR a.payload ->> 'dataUrl' = CAST(:p AS jsonb) ->> 'dataUrl'))
+                                """).param("s", s).param("k", batch.kind()).param("n", name).param("p", payload)
+                                .param("b", it.bytes(), Types.BIGINT).param("w", it.widthPx(), Types.INTEGER).param("h", it.heightPx(), Types.INTEGER)
+                                .query(Boolean.class).single()
+                        : jdbc.sql("""
+                                SELECT EXISTS (SELECT 1 FROM admissions.attachment WHERE session = :s AND kind = :k
+                                                  AND (source_name = :n OR source_name LIKE :n || ' · %') AND payload = CAST(:p AS jsonb))
+                                """).param("s", s).param("k", batch.kind()).param("n", name).param("p", payload).query(Boolean.class).single();
                 /* nor when every sitting it carries is already on the candidate's record as the same result (a file uploaded again after V298 added the series) */
-                if (same || key != null && jdbc.sql("SELECT admissions.olevel_payload_known(:s, :k, CAST(:p AS jsonb))")
+                if (same || "OLEVEL".equals(batch.kind()) && key != null && jdbc.sql("SELECT admissions.olevel_payload_known(:s, :k, CAST(:p AS jsonb))")
                         .param("s", s).param("k", key).param("p", payload).query(Boolean.class).single()) {
                     skipped++;
                     continue;
@@ -190,6 +203,7 @@ class CandidateDataController {
                     skipped++;
                     continue;
                 }
+                replaced++;   // V629: a changed file for one already held, recorded beside it
             }
             UUID id = UUID.randomUUID();
             UUID oid = null;
@@ -233,6 +247,7 @@ class CandidateDataController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("recorded", recorded);
         out.put("skipped", skipped);
+        out.put("replaced", replaced);
         out.put("attached", attached);
         out.put("duplicates", duplicates);
         out.put("findings", intake.attachmentState(s));
