@@ -15,7 +15,7 @@ import { Btn, Note, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import {
-  LEVEL_REASON_MIN, levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverOf,
+  LEVEL_REASON_MIN, levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverChoiceLabel, spilloverChoiceNote, spilloverOf,
   type LevelAction, type LevelState,
 } from "@/lib/level-management";
 
@@ -36,6 +36,7 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
   const [reload, setReload] = useState(0);
   const [act, setAct] = useState<LevelAction | null>(null);
   const [level, setLevel] = useState<number | null>(null);
+  const [spYear, setSpYear] = useState<number | null>(null);   // V628: a spillover year chosen instead of a level
   const [reason, setReason] = useState("");
   const [chosenTicket, setChosenTicket] = useState("");
   const [ack, setAck] = useState(false);
@@ -67,7 +68,9 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
   const o = state.options;
   const warning = registrationWarning(state);
   const ticketId = ticket?.id ?? (chosenTicket || null);
-  const target = act === "PROGRESS" ? o.nextLevel : level;
+  const choices = o.spilloverChoices ?? [];
+  const chosenSp = spYear == null ? null : choices.find((c) => c.year === spYear) ?? null;
+  const target = act === "PROGRESS" ? o.nextLevel : chosenSp ? o.finalLevel : level;
   const ready = !!act && target != null && reasonOk(reason) && (!warning || ack);
   const path = levelPath(state.registrations);
 
@@ -78,6 +81,7 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
   function open(a: LevelAction, to?: number) {
     setAct(a);
     setLevel(a === "CORRECTION" ? (to ?? o.otherLevels[0] ?? null) : null);
+    setSpYear(a === "CORRECTION" && to == null && !o.otherLevels.length && choices.length ? choices[0].year : null);
     setReason("");
     setAck(false);
     setFailure("");
@@ -91,14 +95,16 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
       const r = await fetch(`/api/bff/api/v1/helpdesk/support/students/${studentId}/level`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Student level ${act === "PROGRESS" ? "progressed" : "corrected"} at the ICT Support Desk: ${reason.trim()}`) },
-        body: JSON.stringify(levelBody(act, state!, level, reason, ticketId, ack)),
+        body: JSON.stringify(levelBody(act, state!, level, reason, ticketId, ack, chosenSp ? chosenSp.year : null)),
       });
       const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
       if (!r.ok) {
         setFailure(refusalWords(String(j?.detail ?? "")) || String(j?.title ?? "The level could not be changed."));
         return;
       }
-      notify(j?.alreadyDone ? "The level was changed moments ago; nothing more was done." : `Level ${act === "PROGRESS" ? "progressed" : "corrected"}: ${j?.previousLevel} → ${j?.newLevel}.`);
+      notify(j?.alreadyDone ? "The level was changed moments ago; nothing more was done."
+        : chosenSp ? `Set to ${chosenSp.year === 0 ? "the final year" : `SP${chosenSp.year}`} at ${j?.newLevel} Level (expected completion ${j?.expectedCompletion}).`
+        : `Level ${act === "PROGRESS" ? "progressed" : "corrected"}: ${j?.previousLevel} → ${j?.newLevel}.`);
       if (j?.view) setState(j.view as LevelState);
       setAct(null);
       setReload((n) => n + 1);
@@ -171,7 +177,7 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
           title={sp ? `A spillover student is not progressed one level at a time; the record is put at ${sp.final} Level (${sp.short}).` : o.progressRefusal ? refusalWords(o.progressRefusal) : undefined}>
           {o.nextLevel ? `PROGRESS TO ${o.nextLevel} LEVEL` : "PROGRESS TO NEXT LEVEL"}
         </Btn>
-        <Btn kind="secondary" disabled={!state.mayCorrect || !!o.correctRefusal || !o.otherLevels.length} onClick={() => open("CORRECTION")}>CHANGE/CORRECT LEVEL</Btn>
+        <Btn kind="secondary" disabled={!state.mayCorrect || !!o.correctRefusal || (!o.otherLevels.length && !choices.length)} onClick={() => open("CORRECTION")}>CHANGE/CORRECT LEVEL</Btn>
       </div>
       {!state.mayProgress && !state.mayCorrect ? <Note kind="info" title="You can read this student's level but not change it">Your posting does not carry level changes for this student. The Head of the ICT Support Desk grants them.</Note> : null}
       {o.correctRefusal ? <Note kind="bad" title="The level cannot be changed">{refusalWords(o.correctRefusal)}</Note>
@@ -203,13 +209,27 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
               <Kv k="Current level" v={<b>{o.currentLevel}</b>} />
               {act === "PROGRESS" ? <Kv k="Next level" v={<b>{o.nextLevel}</b>} /> : (
                 <Field id="lv-to" label="Change to" required>
-                  <select id="lv-to" className="ctl" value={level ?? ""} onChange={(e) => setLevel(Number(e.target.value))}>
-                    {o.otherLevels.map((l) => <option key={l} value={l}>{levelLabel(l, spState, sp?.final)}</option>)}
+                  <select id="lv-to" className="ctl" value={chosenSp ? `sp${chosenSp.year}` : String(level ?? "")}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v.startsWith("sp")) { setSpYear(Number(v.slice(2))); setLevel(null); } else { setSpYear(null); setLevel(Number(v)); }
+                    }}>
+                    {choices.length ? (
+                      <>
+                        <optgroup label="Levels">
+                          {o.otherLevels.map((l) => <option key={l} value={l}>{levelLabel(l, spState, sp?.final)}</option>)}
+                        </optgroup>
+                        <optgroup label="Spillover years (past the final level)">
+                          {choices.map((c) => <option key={`sp${c.year}`} value={`sp${c.year}`}>{spilloverChoiceLabel(c, o.finalLevel)}</option>)}
+                        </optgroup>
+                      </>
+                    ) : o.otherLevels.map((l) => <option key={l} value={l}>{levelLabel(l, spState, sp?.final)}</option>)}
                   </select>
                 </Field>
               )}
             </div>
-            {act === "CORRECTION" ? <div className="sub2">Only the levels of the student&rsquo;s programme are offered. A correction puts right a data problem or records an authorised academic adjustment; it is recorded as a correction, apart from a progression.</div> : null}
+            {act === "CORRECTION" && chosenSp ? <Note kind="info" title={spilloverChoiceLabel(chosenSp, o.finalLevel)}>{spilloverChoiceNote(chosenSp, o.finalLevel, o.currentSession ?? state.session)}</Note>
+              : act === "CORRECTION" ? <div className="sub2">Only the levels of the student&rsquo;s programme are offered{choices.length ? ", and the spillover years past its final level" : ""}. A correction puts right a data problem or records an authorised academic adjustment; it is recorded as a correction, apart from a progression.</div> : null}
             <Field id="lv-reason" label="Reason" required hint={`At least ${LEVEL_REASON_MIN} characters: what was checked, and why the level changes.`}>
               <textarea id="lv-reason" className="ctl" rows={3} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder="e.g. Student was incorrectly left at 300 Level after academic progression; 2025/2026 results checked." />

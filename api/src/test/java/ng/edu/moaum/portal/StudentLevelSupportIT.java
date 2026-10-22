@@ -194,4 +194,48 @@ class StudentLevelSupportIT {
         assertThat(corrected.getStatusCode().value()).as(String.valueOf(corrected.getBody())).isEqualTo(200);
         assertThat(corrected.getBody()).containsEntry("newLevel", 400).containsEntry("action", "LEVEL_CORRECTION");
     }
+
+    /** V628: the desk sets a spillover year — the record put at the final level and the expected completion pinned to the session before */
+    @Test
+    void theDeskSetsASpilloverYearByTheExpectedCompletion() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        String surname = it.freeSurname("ZZLVSY");
+        String programme = jdbc.sql("""
+                SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1
+                """).query(String.class).single();
+        UUID student = it.student(surname, programme, it.freeNumber("MOAUM/ADM/26/", 6), it.freeNumber("MOAUM/ITY/26/", 5), 300);
+        // the session the engine counts in, set by hand as the other tests here do (a migrated database has no current session): the latest
+        // on the calendar whose session before is on it too, so SP1 has a completion to pin after the student's cohort (2020/2021)
+        String current = jdbc.sql("""
+                SELECT a.name FROM policy.academic_session a
+                 WHERE a.state <> 'CANCELLED' AND EXISTS (SELECT 1 FROM policy.academic_session b WHERE b.name = policy.session_before(a.name, 1) AND b.state <> 'CANCELLED')
+                 ORDER BY policy.session_year(a.name) DESC LIMIT 1
+                """).query(String.class).single();
+        String before = jdbc.sql("SELECT policy.session_before(:c, 1)").param("c", current).query(String.class).single();
+        jdbc.sql("UPDATE people.academic_position SET current_session = :c, effective_cohort = NULL, final_level = 400 WHERE student_id = :s")
+                .param("c", current).param("s", student).update();
+        String agent = TestTokens.token(agent(it, "SY" + surname.substring(6)), List.of("ictagent"));
+
+        Map<String, Object> options = (Map<String, Object>) it.get(agent, "/api/v1/helpdesk/support/students/" + student + "/level").getBody().get("options");
+        // SP1 (SP2 too where the calendar holds the session two before)
+        assertThat((List<Map<String, Object>>) options.get("spilloverChoices")).extracting(c -> c.get("year")).contains(1);
+        ResponseEntity<Map> set = change(it, agent, student, Map.of("action", "SPILLOVER", "spilloverYear", 1, "expected", 300,
+                "reason", "Senate list of 2 March: in the first spillover year", "acknowledgeRegistration", true));
+        assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
+        assertThat(set.getBody()).containsEntry("newLevel", 400).containsEntry("previousLevel", 300).containsEntry("action", "LEVEL_SPILLOVER_YEAR")
+                .containsEntry("expectedCompletion", before);
+        assertThat(jdbc.sql("SELECT current_level FROM people.student WHERE id = :s").param("s", student).query(Integer.class).single()).isEqualTo(400);
+        assertThat(jdbc.sql("SELECT expected_completion FROM people.completion_override WHERE student_id = :s").param("s", student).query(String.class).single())
+                .isEqualTo(before);
+        // on the history (at the same level, still shown) and on the support ledger
+        List<Map<String, Object>> history = (List<Map<String, Object>>) ((Map<String, Object>) set.getBody().get("view")).get("history");
+        assertThat(history).anySatisfy(h -> assertThat(h).containsEntry("rule", "LEVEL_SPILLOVER_YEAR"));
+        assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.support_action WHERE student_id = :s AND action = 'LEVEL_CORRECTED'")
+                .param("s", student).query(Long.class).single()).isEqualTo(1L);
+        // a year the desk does not set
+        ResponseEntity<Map> third = change(it, agent, student, Map.of("action", "SPILLOVER", "spilloverYear", 3, "expected", 400,
+                "reason", "A third spillover year asked for", "acknowledgeRegistration", true));
+        assertThat(third.getStatusCode().value()).isEqualTo(422);
+        assertThat(third.getBody().get("code")).isEqualTo("LEVEL_SPILLOVER_YEAR");
+    }
 }

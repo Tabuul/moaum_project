@@ -18,7 +18,13 @@ export interface LevelOptions {
   correctRefusal: string | null;
   /** V601: the cohort engine's spillover state; a student in spillover is not progressed a level at a time (LEVEL_IN_SPILLOVER) */
   spilloverState?: string | null;
+  /** V628: the session the engine counts in, and the spillover years the desk may set — each by the expected completion it pins */
+  currentSession?: string | null;
+  spilloverChoices?: SpilloverChoice[];
 }
+
+/** V628: a spillover year the desk may set — 1 (SP1), 2 (SP2), or 0 (the final year again) — and the expected completion it pins */
+export interface SpilloverChoice { year: number; completion: string }
 
 export interface LevelChange {
   id: string;
@@ -60,6 +66,19 @@ export interface LevelState {
 }
 
 export type LevelAction = "PROGRESS" | "CORRECTION";
+
+/** V628: a spillover choice in words, at the programme's final level: "400 Level — SP1 (spillover year 1)" */
+export function spilloverChoiceLabel(choice: SpilloverChoice, final: number): string {
+  return choice.year === 0 ? `${final} Level — final year (not in spillover)` : `${final} Level — SP${choice.year} (spillover year ${choice.year})`;
+}
+
+/** V628: what setting the choice does, in words */
+export function spilloverChoiceNote(choice: SpilloverChoice, final: number, session: string | null | undefined): string {
+  const now = session ? ` (${session})` : "";
+  return choice.year === 0
+    ? `Puts the record at ${final} Level and pins the expected completion to ${choice.completion}: this session${now} is the final year, not a spillover year.`
+    : `Puts the record at ${final} Level and pins the expected completion to ${choice.completion}, so this session${now} counts as spillover year ${choice.year} (SP${choice.year}). Each later session counts as the next.`;
+}
 
 /**
  * A student past the programme's length, as the cohort engine reads it: the spillover year (SP1, SP2 …) or the limit reached; the
@@ -106,6 +125,7 @@ export function ruleWord(rule: string | null | undefined): string {
     case "LEVEL_REGISTRATION": return "Correction from the registration";
     case "LEVEL_ARITHMETIC": return "Correction by the sessions counted";
     case "LEVEL_ABOVE_FINAL": return "Brought to the final level";   // V601
+    case "LEVEL_SPILLOVER_YEAR": return "Spillover year set (level desk)";   // V628
     default: return rule ? "Registry decision" : "Level change";
   }
 }
@@ -130,8 +150,13 @@ export function registrationWarning(state: Pick<LevelState, "session" | "registr
     + "Changing the academic level may affect course eligibility and programme course selection. The registration is not deleted or changed; correct it afterwards through Course Registration support if it must change.";
 }
 
-/** the request's body */
-export function levelBody(action: LevelAction, state: LevelState, level: number | null, reason: string, ticket: string | null, acknowledge: boolean) {
+/** the request's body; a correction to a spillover year (V628) is sent as SPILLOVER with the year */
+export function levelBody(action: LevelAction, state: LevelState, level: number | null, reason: string, ticket: string | null, acknowledge: boolean,
+                          spilloverYear: number | null = null) {
+  if (action === "CORRECTION" && spilloverYear != null) {
+    return { action: "SPILLOVER", spilloverYear, level: null, expected: state.options.currentLevel, reason: reason.trim(), ticket: ticket || null,
+             acknowledgeRegistration: acknowledge };
+  }
   return {
     action,
     level: action === "PROGRESS" ? state.options.nextLevel : level,
@@ -148,6 +173,7 @@ export const HISTORY_ACTIONS = [
   ["SUPPORT", "Made on the level desk"],
   ["LEVEL_PROGRESS", "Progressed"],
   ["LEVEL_CORRECTION", "Corrected"],
+  ["LEVEL_SPILLOVER_YEAR", "Spillover year set"],
   ["OTHER", "Registry and cohort corrections"],
 ] as const;
 

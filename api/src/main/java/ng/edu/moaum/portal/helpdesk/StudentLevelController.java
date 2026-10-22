@@ -43,8 +43,9 @@ class StudentLevelController {
 
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
+    /** V628: spilloverYear with action SPILLOVER — 1 (SP1), 2 (SP2), or 0 (the final year again) */
     public record LevelIn(@NotBlank String action, Integer level, Integer expected, @NotBlank @Size(max = 2000) String reason, UUID ticket,
-                          Boolean acknowledgeRegistration) {
+                          Boolean acknowledgeRegistration, Integer spilloverYear) {
     }
 
     private final JdbcClient jdbc;
@@ -120,7 +121,9 @@ class StudentLevelController {
         switch (action) {
             case "PROGRESS" -> can(a, "PROGRESS_LEVEL");
             case "CORRECTION", "CORRECT" -> { action = "CORRECTION"; can(a, "CORRECT_LEVEL"); }
-            default -> throw new DomainRuleViolation("LEVEL_ACTION", "A level is progressed (PROGRESS) or corrected (CORRECTION).");
+            // V628: a spillover year is a correction of where the student stands, by the expected completion it pins
+            case "SPILLOVER" -> can(a, "CORRECT_LEVEL");
+            default -> throw new DomainRuleViolation("LEVEL_ACTION", "A level is progressed (PROGRESS), corrected (CORRECTION) or set to a spillover year (SPILLOVER).");
         }
         String reason = body.reason().trim();
         UUID ticket = support.ticketFor(a, body.ticket(), id, false);
@@ -134,6 +137,9 @@ class StudentLevelController {
             throw new DomainRuleViolation("LEVEL_REGISTRATION_ACK", "This student already has a course registration for " + session + " semester " + r.get("semester")
                     + " (" + String.valueOf(r.get("status")).toLowerCase() + ", " + r.get("level") + " Level). Changing the level does not change it; the courses the student may choose follow the new level.",
                     new DomainRuleViolation.Remedy("Confirm that you have seen this, or correct the registration afterwards through Course Registration support.", "You"));
+        }
+        if ("SPILLOVER".equals(action)) {
+            return spillover(auth, id, body, reason, ticket, session, semester, !registered.isEmpty());
         }
         Map<String, Object> done = JSON.readValue(jdbc.sql("SELECT people.support_set_level(:s, :a, :l, :e, :r, :ses, :sem, :t)::text")
                 .param("s", id).param("a", action).param("l", body.level(), Types.INTEGER).param("e", body.expected(), Types.INTEGER).param("r", reason)
@@ -151,13 +157,40 @@ class StudentLevelController {
         return out;
     }
 
+    /**
+     * V628: the student set to a spillover year (SP1, SP2) or back to the final year — the record at the programme's final level and the
+     * expected completion pinned so the cohort engine counts this session as that year (people.support_set_spillover)
+     */
+    private Map<String, Object> spillover(Authentication auth, UUID id, LevelIn body, String reason, UUID ticket, String session, int semester,
+                                          boolean registered) {
+        if (body.spilloverYear() == null) {
+            throw new DomainRuleViolation("LEVEL_SPILLOVER_YEAR", "Say which spillover year: SP1, SP2, or the final year again.");
+        }
+        Map<String, Object> done = JSON.readValue(jdbc.sql("SELECT people.support_set_spillover(:s, :y, :e, :r, :ses, :sem, :t)::text")
+                .param("s", id).param("y", body.spilloverYear()).param("e", body.expected(), Types.INTEGER).param("r", reason)
+                .param("ses", session, Types.VARCHAR).param("sem", semester).param("t", ticket, Types.OTHER).query(String.class).single(), Map.class);
+        if (!Boolean.TRUE.equals(done.get("alreadyDone"))) {
+            String from = String.valueOf(done.get("previousLevel")), to = String.valueOf(done.get("newLevel"));
+            int year = body.spilloverYear();
+            String word = year == 0 ? "the final year" : "SP" + year;
+            support.act(id, ticket, "LEVEL_CORRECTED", "current_level", from, to + (year == 0 ? "" : " (SP" + year + ")"), reason, session, semester,
+                    Map.of("summary", "Student set to " + word + " at " + to + " Level (expected completion " + done.get("expectedCompletion") + ")",
+                           "before", Map.of("current_level", done.get("previousLevel")),
+                           "after", Map.of("current_level", done.get("newLevel"), "spillover_year", year, "expected_completion", String.valueOf(done.get("expectedCompletion")))));
+        }
+        Map<String, Object> out = new LinkedHashMap<>(done);
+        out.put("registrationKept", registered);
+        out.put("view", level(auth, id));
+        return out;
+    }
+
     /** every level change on the record, whoever made it: the ICT Support Desk, the Registry's decisions, the cohort corrections */
     private List<Map<String, Object>> history(UUID id) {
         return jdbc.sql("""
                 SELECT d.id, d.decided_at, d.previous_level, d.new_level, d.rule, d.reason, d.actor_office, d.session, d.semester,
                        helpdesk.person_name(d.officer) AS officer, t.number AS ticket_number, d.batch_ref
                   FROM people.cohort_decision d LEFT JOIN helpdesk.ticket t ON t.id = d.ticket_id
-                 WHERE d.student_id = :s AND d.new_level IS NOT NULL AND d.previous_level IS DISTINCT FROM d.new_level
+                 WHERE d.student_id = :s AND d.new_level IS NOT NULL AND (d.previous_level IS DISTINCT FROM d.new_level OR d.rule = 'LEVEL_SPILLOVER_YEAR')
                  ORDER BY d.decided_at DESC LIMIT 100
                 """).param("s", id).query().listOfRows();
     }
@@ -181,10 +214,10 @@ class StudentLevelController {
                   JOIN people.student s ON s.id = d.student_id
                   LEFT JOIN ref.programme p ON p.code = s.programme_code
                   LEFT JOIN helpdesk.ticket t ON t.id = d.ticket_id
-                 WHERE d.new_level IS NOT NULL AND d.previous_level IS DISTINCT FROM d.new_level
+                 WHERE d.new_level IS NOT NULL AND (d.previous_level IS DISTINCT FROM d.new_level OR d.rule = 'LEVEL_SPILLOVER_YEAR')
                    AND (:head OR EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY (sc.faculties) OR p.dept_code = ANY (sc.departments)))
-                   AND (:act::text IS NULL OR (:act = 'SUPPORT' AND d.rule IN ('LEVEL_PROGRESS', 'LEVEL_CORRECTION'))
-                        OR (:act = 'OTHER' AND d.rule IS DISTINCT FROM 'LEVEL_PROGRESS' AND d.rule IS DISTINCT FROM 'LEVEL_CORRECTION') OR d.rule = :act)
+                   AND (:act::text IS NULL OR (:act = 'SUPPORT' AND d.rule IN ('LEVEL_PROGRESS', 'LEVEL_CORRECTION', 'LEVEL_SPILLOVER_YEAR'))
+                        OR (:act = 'OTHER' AND d.rule NOT IN ('LEVEL_PROGRESS', 'LEVEL_CORRECTION', 'LEVEL_SPILLOVER_YEAR')) OR d.rule = :act)
                    AND (:like::text IS NULL OR upper(coalesce(s.matric_no, '')) LIKE :like ESCAPE '\\' OR upper(s.surname || ' ' || s.other_names) LIKE :like ESCAPE '\\'
                         OR upper(coalesce(t.number, '')) LIKE :like ESCAPE '\\')
                    AND (:from::date IS NULL OR d.decided_at >= :from)

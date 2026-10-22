@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 455
+\set EXPECTED 456
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23228,6 +23228,86 @@ BEGIN
         format('records: results %s, preview %s, pg %s, registration %s | ict preview %s, held %s | reconciled %s, posted %s | indexes %s %s',
                left(rec_res, 20), left(rec_prev, 20), left(rec_pg, 20), rec_reg IS NOT NULL, ict_prev IS NOT NULL, up->>'held',
                h.reconciled, posted, ix_staff, ix_student));
+END $$;
+-- ── V628. Student Level Management sets the spillover years: the levels run to 500 for Nursing and Urban and Regional Planning
+--          and to 600 for MBBS; a made-up student on a four-year programme, counted SP2 at 300 Level, is set SP1 by ICT Support (the
+--          record put at 400, the expected completion pinned to last session), then SP2, then the final year again, each the cohort
+--          engine's reading and a LEVEL_SPILLOVER_YEAR row on the history; the year the student is in is not offered; a correction
+--          below the final level lifts a pin before this session; the Registrar, a year that is not 0-2 and a stale screen are refused.
+--          The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2628; v_prog text; v_dept text; v_fac text; cur text; e5 text;
+    s1 uuid := gen_random_uuid(); s_mb uuid := gen_random_uuid(); s_nu uuid := gen_random_uuid(); s_ur uuid := gen_random_uuid();
+    o0 jsonb; o1 jsonb; a1 record; a2 record; a3 record; a4 record; lv1 int; lv4 int; pinned_after_lift boolean; n_dec int;
+    top_mb int; top_nu int; top_ur int; r_office text := ''; r_year text := ''; r_stale text := ''; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V628', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 6, y + 2) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1); e5 := format('%s/%s', y - 5, y - 4);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2628/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V628', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1,   'MOAUM/ADM/28/628001', 'MOAUM/ZZS/28/6281', 'CHECKV628', 'Four years', v_prog, 'UTME', e5, 100, 300, 'ACTIVE', now()),
+        (s_mb, 'MOAUM/ADM/28/628002', 'MOAUM/ZZS/28/6282', 'CHECKV628', 'Medicine', 'C00061', 'UTME', e5, 100, 300, 'ACTIVE', now()),
+        (s_nu, 'MOAUM/ADM/28/628003', 'MOAUM/ZZS/28/6283', 'CHECKV628', 'Nursing', 'C35147', 'UTME', e5, 100, 300, 'ACTIVE', now()),
+        (s_ur, 'MOAUM/ADM/28/628004', 'MOAUM/ZZS/28/6284', 'CHECKV628', 'Planning', 'C30468', 'UTME', e5, 100, 300, 'ACTIVE', now());
+    top_mb := (SELECT max(x::int) FROM jsonb_array_elements_text(people.level_options(s_mb)->'levels') x);
+    top_nu := (SELECT max(x::int) FROM jsonb_array_elements_text(people.level_options(s_nu)->'levels') x);
+    top_ur := (SELECT max(x::int) FROM jsonb_array_elements_text(people.level_options(s_ur)->'levels') x);
+    o0 := people.level_options(s1);
+    -- the refusals: the Registrar on the level desk; a year that is not 0-2; a stale screen
+    BEGIN PERFORM people.support_set_spillover(s1, 1, 300, 'Registry check of the spillover year', cur, 1, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    BEGIN PERFORM people.support_set_spillover(s1, 3, 300, 'A third spillover year asked for', cur, 1, NULL);
+    EXCEPTION WHEN check_violation THEN r_year := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.support_set_spillover(s1, 1, 200, 'The screen read 200 Level', cur, 1, NULL);
+    EXCEPTION WHEN check_violation THEN r_stale := split_part(SQLERRM, ':', 1); END;
+    -- SP1: the record put at 400, the completion pinned to last session; then SP2; then the final year again
+    PERFORM people.support_set_spillover(s1, 1, 300, 'Senate list of 2 March: in the first spillover year', cur, 1, NULL);
+    SELECT current_level INTO lv1 FROM people.student WHERE id = s1;
+    SELECT expected_completion, spillover_state INTO a1 FROM people.academic_position WHERE student_id = s1;
+    o1 := people.level_options(s1);
+    PERFORM people.support_set_spillover(s1, 2, 400, 'Senate list of 2 March: in the second spillover year', cur, 1, NULL);
+    SELECT expected_completion, spillover_state INTO a2 FROM people.academic_position WHERE student_id = s1;
+    PERFORM people.support_set_spillover(s1, 0, 400, 'The Registrar''s letter: the final year is this session', cur, 1, NULL);
+    SELECT expected_completion, spillover_state INTO a3 FROM people.academic_position WHERE student_id = s1;
+    -- SP1 again, then a correction to 300 lifts the pin before this session
+    PERFORM people.support_set_spillover(s1, 1, 400, 'Senate list of 2 March: in the first spillover year', cur, 1, NULL);
+    PERFORM people.support_set_level(s1, 'CORRECTION', 300, 400, 'The 400-Level record was a data error; the student is at 300', cur, 1, NULL);
+    SELECT current_level INTO lv4 FROM people.student WHERE id = s1;
+    pinned_after_lift := EXISTS (SELECT 1 FROM people.completion_override WHERE student_id = s1);
+    SELECT count(*) INTO n_dec FROM people.cohort_decision WHERE student_id = s1 AND rule = 'LEVEL_SPILLOVER_YEAR';
+    msg := format('top levels MBBS %s, Nursing %s, URP %s | choices before %s | SP1: level %s, %s/%s; choices after %s | SP2 %s/%s | final %s/%s | lifted: level %s, pinned %s | decisions %s | refusals %s %s %s',
+                  top_mb, top_nu, top_ur, o0->'spilloverChoices', lv1, a1.expected_completion, a1.spillover_state, o1->'spilloverChoices',
+                  a2.expected_completion, a2.spillover_state, a3.expected_completion, a3.spillover_state, lv4, pinned_after_lift, n_dec,
+                  r_office, r_year, r_stale);
+    RAISE EXCEPTION 'the V628 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V628 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V628: the level desk sets SP1, SP2 and the final year by the expected completion; the levels run to 500 for Nursing and URP, 600 for MBBS',
+      coalesce(top_mb = 600 AND top_nu = 500 AND top_ur = 500
+               AND jsonb_array_length(o0->'spilloverChoices') = 3
+               AND lv1 = 400 AND a1.spillover_state = 'SPILLOVER_YEAR_1' AND a1.expected_completion = format('%s/%s', y - 1, y)
+               AND NOT (o1->'spilloverChoices') @> '[{"year": 1}]' AND (o1->'spilloverChoices') @> '[{"year": 2}]' AND (o1->'spilloverChoices') @> '[{"year": 0}]'
+               AND a2.spillover_state = 'SPILLOVER_YEAR_2' AND a2.expected_completion = format('%s/%s', y - 2, y - 1)
+               AND a3.spillover_state = 'NORMAL' AND a3.expected_completion = cur
+               AND lv4 = 300 AND NOT pinned_after_lift AND n_dec = 4
+               AND r_office = 'LEVEL_SUPPORT_OFFICE' AND r_year = 'LEVEL_SPILLOVER_YEAR' AND r_stale = 'LEVEL_CHANGED', false),
+      msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

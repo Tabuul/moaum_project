@@ -17,7 +17,7 @@ export function LevelDesk({ q, student: student0, desk = true }: { q: string; st
   return (
     <>
       <PageHead title="Student level management" eyebrow={desk ? "ICT Support Desk" : "Students Account Officer"}
-        description="Find the student, check the record, and progress the student to the next level or correct the level. Only the levels of the student's programme are offered; a reason is required, and the registrations, results and transcript are not changed."
+        description="Find the student, check the record, and progress the student to the next level or correct the level. Only the levels of the student's programme are offered, and the spillover years (SP1, SP2) past its final level; a reason is required, and the registrations, results and transcript are not changed."
         actions={<><LinkBtn href="/helpdesk/levels/history">Level change history</LinkBtn>{desk ? <LinkBtn href="/helpdesk">Support Desk</LinkBtn> : null}</>} />
 
       <StudentFinder q={q} selected={student} onSelect={setStudent} />

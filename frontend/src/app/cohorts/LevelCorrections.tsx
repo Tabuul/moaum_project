@@ -193,7 +193,7 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
             <Field id="lv-cur" label="Level on record" style={{ flex: "1 1 160px" }}>
               <select id="lv-cur" className="ctl" value={cur} onChange={(e) => { setCur(e.target.value); setPage(1); setChosen(new Set()); }}>
                 <option value="">Any level</option>
-                {[100, 200, 300, 400, 500].map((l) => <option key={l} value={String(l)}>{l} Level</option>)}
+                {[100, 200, 300, 400, 500, 600].map((l) => <option key={l} value={String(l)}>{l} Level</option>)}
               </select>
             </Field>
             <Field id="lv-level" label="Should be at" style={{ flex: "1 1 160px" }}>

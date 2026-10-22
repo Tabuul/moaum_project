@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverOf, SUPPORT_DESK_OFFICES, type LevelState } from "./level-management.ts";
+import { levelBody, levelLabel, levelPath, reasonOk, refusalWords, registrationWarning, ruleWord, spilloverChoiceLabel, spilloverChoiceNote, spilloverOf, SUPPORT_DESK_OFFICES, type LevelState } from "./level-management.ts";
 
 const state = (over: Partial<LevelState> = {}): LevelState => ({
   student: { id: "s", full_name: "DOE, John", matric_no: "MOAU/SC/CSC/24/12345", jamb_reg_no: null, application_no: null, faculty: null, department: null, programme: null,
@@ -65,4 +65,17 @@ test("the level desk's support-desk links are for ICT Support's offices, not the
   assert.equal(SUPPORT_DESK_OFFICES.includes("helpdeskhead"), true);
   assert.equal(SUPPORT_DESK_OFFICES.includes("studentaccounts"), false);
   assert.equal(SUPPORT_DESK_OFFICES.includes("bursar"), false);
+});
+
+test("V628: a spillover year is sent as SPILLOVER with its year, and read in words at the final level", () => {
+  assert.deepEqual(levelBody("CORRECTION", state(), null, " Senate list of 2 March ", "t1", true, 1),
+    { action: "SPILLOVER", spilloverYear: 1, level: null, expected: 300, reason: "Senate list of 2 March", ticket: "t1", acknowledgeRegistration: true });
+  assert.deepEqual(levelBody("CORRECTION", state(), null, "The final year is this session", null, false, 0),
+    { action: "SPILLOVER", spilloverYear: 0, level: null, expected: 300, reason: "The final year is this session", ticket: null, acknowledgeRegistration: false });
+  assert.equal(spilloverChoiceLabel({ year: 1, completion: "2025/2026" }, 400), "400 Level — SP1 (spillover year 1)");
+  assert.equal(spilloverChoiceLabel({ year: 2, completion: "2024/2025" }, 600), "600 Level — SP2 (spillover year 2)");
+  assert.equal(spilloverChoiceLabel({ year: 0, completion: "2026/2027" }, 500), "500 Level — final year (not in spillover)");
+  assert.match(spilloverChoiceNote({ year: 1, completion: "2025/2026" }, 400, "2026/2027"), /pins the expected completion to 2025\/2026, so this session \(2026\/2027\) counts as spillover year 1 \(SP1\)/);
+  assert.match(spilloverChoiceNote({ year: 0, completion: "2026/2027" }, 400, "2026/2027"), /this session \(2026\/2027\) is the final year, not a spillover year/);
+  assert.equal(ruleWord("LEVEL_SPILLOVER_YEAR"), "Spillover year set (level desk)");
 });

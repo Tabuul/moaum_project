@@ -176,6 +176,38 @@ the limit the policy allows, two by default) and puts the record at the programm
 The API: `GET /support/students/{id}/level` adds the position's final level, length, spillover years, elapsed sessions, last session,
 the policy's limit, and `carryovers` for a spillover student; the support search adds `spillover_state` and `final_level`.
 
+## The spillover years and the levels above 400 (22 October 2026, V628)
+
+The University asked for levels above 400 on Level Management: SP1 and SP2 for four-year courses, 500 for Nursing and Urban and
+Regional Planning, and 600 for MBBS.
+
+- **The levels.** The level list runs from 100 to the programme's own final level (`finance.final_level`). That is 500 for
+  Nursing (C35147) and Urban and Regional Planning (C30468) since V598, and 600 for MBBS (C00061). These were already offered.
+- **The spillover years.** A spillover year is not a level. The record stays at the final level, and the cohort engine counts the
+  sessions past the programme's length from the expected completion (V331, V595), which the Registry may pin (V612). The
+  **Change/correct level** list now has a second group, *Spillover years (past the final level)*. Each choice pins a completion:
+  - **SP1**: the completion is pinned to the session before this one;
+  - **SP2**: the completion is pinned to two sessions before;
+  - **the final year again**, for a student in spillover: the completion is pinned to this session.
+
+  Each choice is offered for every undergraduate programme, past its own final level (400 on a four-year course, 500 on Nursing,
+  600 on MBBS), when the session to pin is on the calendar and not before the cohort. The year the student is in now is not
+  offered. A note under the list says which completion will be pinned.
+- **`people.support_set_spillover(student, year, expected, reason, session, semester, ticket)`.**
+  - Offices: ICT Support and the Students Account Officer, as for `support_set_level`.
+  - It puts the record at the final level where it reads lower and pins the completion through `people.set_completion_override`.
+  - It writes a `LEVEL_SPILLOVER_YEAR` decision on the history ("SP1 (expected completion pinned to 2024/2025): …") beside the
+    Registry's `COMPLETION` row.
+  - Refusals: another office; a year other than 0–2 (`LEVEL_SPILLOVER_YEAR`); a choice not offered now
+    (`LEVEL_SPILLOVER_UNAVAILABLE`); a postgraduate student; a stale screen (`LEVEL_CHANGED`). A repeat within a minute does
+    nothing.
+- **A correction below the final level lifts a pin.** If the completion was pinned to a session before this one, it is removed,
+  because below the final level the student is not past the programme's length.
+- **API.** `POST /support/students/{id}/level` takes `action: "SPILLOVER"` with `spilloverYear`, on the `CORRECT_LEVEL`
+  capability. The support ledger records it as `LEVEL_CORRECTED`, naming the year and the completion. The student's level history
+  and Level Change History show the `LEVEL_SPILLOVER_YEAR` rows; the history's *Made on the level desk* filter includes them.
+- Student Cohorts → Level corrections: the *Level on record* filter now lists 600.
+
 ## Tests
 
 | Test | What it covers |
@@ -183,3 +215,5 @@ the policy's limit, and `carryovers` for a spillover student; the support search
 | `StudentLevelSupportIT` | an agent in service reads, progresses (once) and corrects a level on the student's ticket; the refusals (outside the programme, a stale screen, a short reason, a withdrawn student, off the desk, another office); the registration kept; the history, ledger and timeline; the reset without a posting; the reset history by its own capability; the phone on the ticket and in the search, not in the student's view |
 | `SupportBaselineIT`, `SupportDeskIT` | updated: the reset is in the baseline |
 | `check.sql` V500 | two properties (EXPECTED 338) |
+| `check.sql` V628 | the levels to 500 (Nursing, URP) and 600 (MBBS); SP1 → SP2 → the final year on a made-up student, as the engine reads them; the choice the student is in not offered; a correction below the final level lifts the pin; the refusals |
+| `StudentLevelSupportIT` (V628) | the desk sets SP1 through the API: the record at 400, the engine's SP1, the history row, the ledger |
