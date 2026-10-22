@@ -176,6 +176,7 @@ class ApplicantIT {
         assertThat(afterRelease.get("decision")).isNull();
         assertThat(afterRelease.get("result")).as("no score before the admission is decided").isNull();
         assertThat(afterRelease.get("scoreReleasedAt")).isNull();
+        assertThat(afterRelease.get("putme")).as("not an index course: no PUTME card (V632)").isNull();
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = CAST(:a AS uuid) AND channel = 'EMAIL' "
                 + "AND subject = 'Post-UTME screening results released' AND body LIKE '%shown on the portal with your admission decision%' AND body NOT LIKE '%Sign in to see%'")
                 .param("a", appId).query(Long.class).single()).isEqualTo(1);

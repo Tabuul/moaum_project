@@ -40,6 +40,18 @@ export function putmeOnDashboard(a: Pick<Application, "result" | "scoreReleasedA
     aggregate: r.aggregate == null ? null : Number(r.aggregate), weights: `UTME ${r.weightUtme}% · Post-UTME ${r.weightPutme}%` };
 }
 
+/** the PUTME score card on the Overview (22 October 2026, V632): for an applicant to an index course alone — a programme that sits the
+ *  Post-UTME examination — the score as soon as the Academic Office releases it, before the admission decision; until then the card
+ *  says it is awaited. No card for any other applicant (the API gives them no putme). */
+export type PutmeCard = { value: string; sub: string } | null;
+export function putmeCard(a: Pick<Application, "putme">): PutmeCard {
+  const p = a.putme;
+  if (!p) return null;
+  if (!p.released) return { value: "Awaited", sub: "Shown here once the Academic Office releases the scores" };
+  if (p.score == null || p.score === "") return { value: "—", sub: "No Post-UTME score is recorded for you" };
+  return { value: String(Number(p.score)), sub: "of 100 · the Post-UTME examination" };
+}
+
 /** the UTME score against the programme's UTME cut-off: null when either is not known */
 export function utmeMeetsCutoff(r: Pick<ScreeningResult, "utme" | "cutoff">): boolean | null {
   return r.utme == null || r.cutoff == null ? null : Number(r.utme) >= Number(r.cutoff);

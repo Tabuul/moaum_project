@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 458
+\set EXPECTED 459
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23401,6 +23401,51 @@ BEGIN
                AND r_delete = 'LEGACY_OUTSTANDING_CREDITED' AND r_reject = 'LEGACY_OUTSTANDING_CREDITED'
                AND rs.deleted = 2 AND rs.kept_in_use = 1 AND kept AND gone, false),
       msg);
+END $$;
+-- ── V632. The PUTME score shown to index-course applicants from the release: a session's scores released over an applicant to a
+--          programme that sits the Post-UTME examination (an index course) and one to a programme that does not — both released and
+--          told once; the index-course applicant is told the score is on the Overview now, the other that it comes with the
+--          admission decision (V617). The block undoes its writes ──
+DO $$
+DECLARE S constant text := '9632/9633'; v_index text; v_other text;
+        c1 uuid := gen_random_uuid(); c2 uuid := gen_random_uuid(); ac1 uuid := gen_random_uuid(); ac2 uuid := gen_random_uuid();
+        ap1 uuid := gen_random_uuid(); ap2 uuid := gen_random_uuid(); n int; rel int; m1 int; m2 int; b1 text; b2 text; s1 text; s2 text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V632', true);
+        SELECT code INTO v_index FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+        SELECT code INTO v_other FROM ref.programme WHERE NOT archived AND code <> v_index AND name <> (SELECT name FROM ref.programme WHERE code = v_index) ORDER BY code LIMIT 1;
+        INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (S, v_index);
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state) VALUES
+            (c1, S, '96329633AA', 'CHECKV632', 'Index course', (SELECT name FROM ref.programme WHERE code = v_index), 'UTME', 100, 'PROPOSED'),
+            (c2, S, '96329633BB', 'CHECKV632', 'Other course', (SELECT name FROM ref.programme WHERE code = v_other), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+            (ac1, S, c1, '96329633AA', 'check.v632a@example.com', '08030000001', '$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab'),
+            (ac2, S, c2, '96329633BB', 'check.v632b@example.com', '08030000002', '$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, screening_score, score_entered_at) VALUES
+            (ap1, ac1, c1, S, 'APP/32/000001', now(), now(), 57, now()),
+            (ap2, ac2, c2, S, 'APP/32/000002', now(), now(), 61, now());
+        n := admissions.release_scores(S);
+        SELECT count(*) INTO rel FROM admissions.application WHERE id IN (ap1, ap2) AND score_released_at IS NOT NULL;
+        SELECT count(*) INTO m1 FROM platform.notice WHERE about_kind = 'application' AND about_id = ap1 AND channel = 'EMAIL';
+        SELECT count(*) INTO m2 FROM platform.notice WHERE about_kind = 'application' AND about_id = ap2 AND channel = 'EMAIL';
+        SELECT body INTO b1 FROM platform.notice WHERE about_kind = 'application' AND about_id = ap1 AND channel = 'EMAIL' LIMIT 1;
+        SELECT body INTO b2 FROM platform.notice WHERE about_kind = 'application' AND about_id = ap2 AND channel = 'EMAIL' LIMIT 1;
+        SELECT body INTO s1 FROM platform.notice WHERE about_kind = 'application' AND about_id = ap1 AND channel = 'SMS' LIMIT 1;
+        SELECT body INTO s2 FROM platform.notice WHERE about_kind = 'application' AND about_id = ap2 AND channel = 'SMS' LIMIT 1;
+        RAISE EXCEPTION 'the V632 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V632 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V632: on the release the index-course applicant is told the Post-UTME score is on the Overview now, every other applicant that it comes with the decision',
+        coalesce(n = 2 AND rel = 2 AND m1 = 1 AND m2 = 1
+                 AND b1 LIKE '%' || S || '%' AND b1 LIKE '%score is now on your portal Overview%' AND b1 NOT LIKE '%with your admission decision%'
+                 AND s1 LIKE '%score is now on your portal Overview%'
+                 AND b2 LIKE '%shown on the portal with your admission decision%' AND b2 NOT LIKE '%Overview%'
+                 AND s2 LIKE '%shown on the portal with your admission decision%', false),
+        format('released %s of 2 (n=%s), mails %s/%s | index: %L / %L | other: %L / %L', rel, n, m1, m2, b1, s1, b2, s2));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

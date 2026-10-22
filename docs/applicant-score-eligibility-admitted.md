@@ -80,3 +80,35 @@ score. The release, the count and who is told (every seated or scored applicatio
 - `AdmissionLifecycleIT`: the accepted applicant whose screening was unsuccessful reads the panel and may ask for the change.
 - `lib/applicant-score.test.ts`: the Overview's score only with a decision (offered, waiting list or not offered), nothing before it;
   `check.sql` V608/V610/V617: the release notice's words (no new block; EXPECTED unchanged).
+
+## 5. The PUTME score card for index courses (22 October 2026, V632)
+
+The University asked for a **PUTME score** card on the Post-UTME applicant's Overview, between **UTME score** and **Stage**, for
+applicants who applied for **index courses** only. It also asked that the card show the score as soon as the scores are released,
+with a waiting note before that.
+
+- **Index course:** a programme the Academic Office states sits the Post-UTME examination for the session
+  (`admissions.screening_exam_programme`, read by `admissions.screened_by_exam` against the programme as JAMB recorded it). For
+  2026/2027 these are LL.B (Law), MBBS, Doctor of Pharmacy, Nursing Sciences, Radiography and Radiation Science, and Medical
+  Laboratory Science. The Office's applicant list calls the same test `index_programme`.
+- **`GET /api/v1/applicant/me` → `putme`:** given to an index-course applicant only, as `{released, score, releasedAt}`.
+  - `score` and `releasedAt` come once the Academic Office has released the scores, before any admission decision.
+  - Every other applicant gets no `putme`.
+  - `result` (the aggregate, the cut-off, the merit position) and the Screening result screen still wait for the decision (V617).
+- **The card** (`putmeCard`, `lib/applicant-score.ts`) shows one of three things:
+  - **Awaited**, "Shown here once the Academic Office releases the scores", before the release;
+  - the score, "of 100 · the Post-UTME examination", once released;
+  - **—**, "No Post-UTME score is recorded for you", when released with no score.
+  - Without a card the Overview keeps its four cards. The "Your screening result" note under the cards still comes with the
+    decision.
+- **The release notice** (`admissions.release_scores`, restated from V617):
+  - An index-course applicant is told: "Your Post-UTME score is now on your portal Overview".
+  - Every other applicant is told, as before, that the score is shown with the admission decision.
+
+**Tests:**
+- `check.sql` V632 (EXPECTED 459): one index-course and one other applicant released together, each told once and in their own
+  words.
+- `PutmeIT.anIndexCourseApplicantReadsThePutmeScoreFromTheRelease`: the card waits, then shows the score before any decision, and
+  `result` still waits. The applicant to another programme has no card, and each is told the right thing.
+- `ApplicantIT`: an applicant to a programme that is not an index course has no `putme`.
+- `lib/applicant-score.test.ts`: the card's three states, and no card without `putme`.

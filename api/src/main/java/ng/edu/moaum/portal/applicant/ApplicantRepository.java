@@ -90,6 +90,9 @@ class ApplicantRepository {
                        c.surname, c.other_names, c.programme, c.entry_mode, c.entry_level, c.offer_state, c.jamb_reg_no,
                        r.sex, r.state_of_origin, r.lga, r.aggregate AS utme, b.list_kind,
                        (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS programme_code,
+                       -- an index course (22 Oct 2026): a programme the Academic Office states sits the Post-UTME examination this session
+                       coalesce(admissions.screened_by_exam(a.session,
+                           (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)), false) AS index_programme,
                        (SELECT f.name FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS faculty_name,
                        (SELECT d.payload ->> 'dob' FROM admissions.attachment d WHERE d.candidate_id = c.id AND d.kind = 'DATE_OF_BIRTH' ORDER BY d.arrived_at DESC LIMIT 1) AS dob,
                        acc.email, acc.phone,

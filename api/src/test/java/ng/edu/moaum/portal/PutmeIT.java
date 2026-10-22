@@ -309,4 +309,44 @@ class PutmeIT {
         List<Map<String, Object>> rows = (List<Map<String, Object>>) byProg.get("rows");
         for (int i = 1; i < rows.size(); i++) assertThat(String.valueOf(rows.get(i).get("surname")).compareTo(String.valueOf(rows.get(i - 1).get("surname")))).isGreaterThanOrEqualTo(0);
     }
+
+    /** 22 October 2026 (V632): the PUTME score card — an applicant to an index course (a programme that sits the Post-UTME examination)
+     *  reads the score from the release, before any admission decision, and is told so; before the release the card waits. An applicant
+     *  to another programme has no card and is told the score comes with the decision. The aggregate and the merit position still wait
+     *  for the decision (V617). */
+    @Test
+    void anIndexCourseApplicantReadsThePutmeScoreFromTheRelease() {
+        String tag = String.format("%04d", new Random().nextInt(10_000));
+        String[] x = applicant("ZZPUTME-X" + tag, "C00061", true, true);   // MBBS: screened by the examination this session
+        String[] y = applicant("ZZPUTME-Y" + tag, "C00002", true, true);   // a programme not screened by examination
+
+        Map<String, Object> before = me(x[0]);
+        Map<String, Object> putme = (Map<String, Object>) before.get("putme");
+        assertThat(putme).as(String.valueOf(before)).isNotNull().containsEntry("released", false);
+        assertThat(putme.get("score")).isNull();
+        assertThat(me(y[0]).get("putme")).as("not an index course: no PUTME card").isNull();
+
+        // both scored, then the Academic Office releases the session's scores
+        it.db(() -> jdbc.sql("""
+                UPDATE admissions.application SET screening_score = CASE application_no WHEN :x THEN 57 ELSE 61 END, score_entered_at = now()
+                 WHERE session = :s AND application_no IN (:x, :y)
+                """).param("s", SESSION).param("x", x[1]).param("y", y[1]).update());
+        assertThat(it.call(academic, HttpMethod.POST, PATH + "/screening-scores/release", Map.of()).getStatusCode().value()).isEqualTo(200);
+
+        Map<String, Object> after = me(x[0]);
+        assertThat(after.get("decision")).isNull();
+        putme = (Map<String, Object>) after.get("putme");
+        assertThat(putme).as(String.valueOf(after)).containsEntry("released", true);
+        assertThat(((Number) putme.get("score")).intValue()).isEqualTo(57);
+        assertThat(putme.get("releasedAt")).isNotNull();
+        assertThat(after.get("result")).as("the aggregate and the merit position wait for the decision (V617)").isNull();
+        assertThat(me(y[0]).get("putme")).isNull();
+        assertThat(me(y[0]).get("result")).isNull();
+
+        // the notices of the release: the index-course applicant to the Overview now, the other to the decision
+        String notice = "SELECT count(*) FROM platform.notice n JOIN admissions.application a ON a.id = n.about_id "
+                + "WHERE n.about_kind = 'application' AND n.channel = 'EMAIL' AND a.session = :s AND a.application_no = :no AND n.body LIKE :words";
+        assertThat(jdbc.sql(notice).param("s", SESSION).param("no", x[1]).param("words", "%score is now on your portal Overview%").query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql(notice).param("s", SESSION).param("no", y[1]).param("words", "%shown on the portal with your admission decision%").query(Long.class).single()).isEqualTo(1L);
+    }
 }

@@ -91,6 +91,9 @@ export interface Application {
   scoreReleasedAt: string | null;
   result: ScreeningResult | null;
   screeningScore?: number | null;
+  /** the PUTME score card (22 October 2026, V632): given to an applicant to an index course alone — released or not, and the score once
+   *  the Academic Office has released it; absent for every other applicant */
+  putme?: { released: boolean; score?: number | string | null; releasedAt?: string | null } | null;
   decisionReleasedAt: string | null;
   /** the admission checking fee is owed before the status can be read (V271, V295: whatever the decision) */
   checkingDue?: boolean;

@@ -476,6 +476,21 @@ public class ApplicantService {
         }
         if (forOffice) {
             v.put("screeningScore", a.get("screening_score"));
+        } else {
+            /* the PUTME score card (22 October 2026, V632): an applicant to an index course — a programme the Academic Office states
+               sits the Post-UTME examination for the session (admissions.screening_exam_programme: Law, MBBS, Pharmacy, Nursing,
+               Radiography, Medical Laboratory Science for 2026/2027) — reads their Post-UTME score on the Overview as soon as the
+               scores are released, before the admission decision; until then the card says it is awaited. Every other applicant
+               has no such card. The aggregate, the cut-off and the merit position stay with the decision (V617, above). */
+            if (Boolean.TRUE.equals(a.get("index_programme"))) {
+                Map<String, Object> putme = new LinkedHashMap<>();
+                putme.put("released", released);
+                putme.put("score", released ? a.get("screening_score") : null);
+                putme.put("releasedAt", released ? a.get("score_released_at") : null);
+                v.put("putme", putme);
+            } else {
+                v.put("putme", null);
+            }
         }
 
         v.put("checkingDue", checkingDue);

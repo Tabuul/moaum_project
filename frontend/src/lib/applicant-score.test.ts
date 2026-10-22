@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { putmeOnDashboard, scoreOf, scoreReleased, screeningResultOpen, utmeMeetsCutoff } from "./applicant-score.ts";
+import { putmeCard, putmeOnDashboard, scoreOf, scoreReleased, screeningResultOpen, utmeMeetsCutoff } from "./applicant-score.ts";
 import type { ScreeningResult } from "./applicant.ts";
 
 const result = (r: Partial<ScreeningResult>): ScreeningResult => ({ utme: 240, utmeScaled: 60, screening: 68, screeningSource: "CBT", weightUtme: 70, weightPutme: 30,
@@ -49,4 +49,17 @@ test("the score and the Screening result screen wait for the admission decision:
   assert.equal(screeningResultOpen({ decision: "OFFERED" }), true);
   assert.equal(screeningResultOpen({ decision: "WAITING" }), true);
   assert.equal(screeningResultOpen({ decision: "NOT_OFFERED" }), true);
+});
+
+test("the PUTME score card: an index-course applicant's alone — awaited before the release, the score from it, before any decision (V632)", () => {
+  // no putme from the API: not an index course — no card
+  assert.equal(putmeCard({ putme: null }), null);
+  assert.equal(putmeCard({}), null);
+  // an index course, scores not yet released
+  assert.deepEqual(putmeCard({ putme: { released: false } }), { value: "Awaited", sub: "Shown here once the Academic Office releases the scores" });
+  // released: the score as the record holds it, out of 100
+  assert.deepEqual(putmeCard({ putme: { released: true, score: "57.00", releasedAt: AT } }), { value: "57", sub: "of 100 · the Post-UTME examination" });
+  assert.equal(putmeCard({ putme: { released: true, score: 68.5, releasedAt: AT } })?.value, "68.5");
+  // released with no score recorded (absent from the examination)
+  assert.deepEqual(putmeCard({ putme: { released: true, score: null, releasedAt: AT } }), { value: "—", sub: "No Post-UTME score is recorded for you" });
 });
