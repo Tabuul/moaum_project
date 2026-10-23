@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 465
+\set EXPECTED 466
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -23886,6 +23886,72 @@ BEGIN
              st_after, corrected, n_corr));
 END $$;
 
+
+-- ── V639. A JUPEB candidate's fee is paid on Quickteller: the biller's page offered for the reference, Quickteller told whose fee it
+-- is and refused one expired or paid, the collections report confirming the whole amount and leaving a short one open. A
+-- postgraduate student's school fees are offered and answered as before. The block undoes its own writes.
+DO $$
+DECLARE acc uuid; app uuid; prog text; ses text := '9639/9640'; pg_student uuid := gen_random_uuid(); pg_prog text; r_pg text := 'MOAUM-FEE-996391-0001';
+        l_pg text; cu_pg record;
+        r_app text := 'MOAUM-JUPEBAPP-9639-000001'; r_school text := 'MOAUM-JUPEBSCH-9639-000002'; r_old text := 'MOAUM-JUPEBAPP-9639-000003';
+        off_link int; l_app text; cu record; cu_old record; cu_paid record; imp record; app_paid boolean; fee_on boolean; school_open boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT code INTO prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check639@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, middle_name, email, programme_code, state_of_origin, state)
+        VALUES (acc, ses, 'JUPEB/APP/9639/000001', 'CHECKJQT', 'Candidate', 'Quick', 'zz.check639@example.com', prog, 'Benue', 'SUBMITTED') RETURNING id INTO app;
+        INSERT INTO jupeb.fee_reference (application_id, kind, reference, amount, session, expires_at) VALUES
+            (app, 'APPLICATION', r_app, 15000, ses, now() + interval '1 day'),
+            (app, 'SCHOOL_FIRST', r_school, 126000, ses, now() + interval '1 day'),
+            (app, 'APPLICATION', r_old, 15000, ses, now() - interval '1 day');
+
+        -- off until the Bursary switches the University's biller on; then the page is offered for the JUPEB reference
+        PERFORM finance.set_paydirect_biller('MAIN', '04255101', 'Benue State University, Makurdi', NULL, false, false, true);
+        SELECT count(*) INTO off_link FROM finance.quickteller_link(r_app);
+        PERFORM finance.set_paydirect_biller('MAIN', '04255101', 'Benue State University, Makurdi', 'https://quickteller.com/bsum', true, true, true);
+        SELECT url INTO l_app FROM finance.quickteller_link(lower(r_app));
+        -- a postgraduate student's school fees, on the student's reference, go the same way
+        SELECT p.code INTO pg_prog FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'POST GRADUATE' AND NOT p.archived AND f.college_code IS DISTINCT FROM 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (pg_student, 'MOAUM/ADM/99/996391', 'MOAUM/PG/99/6391', 'CHECKPGQT', 'Student', pg_prog, 'POSTGRADUATE', ses, 700, 700, 'ACTIVE', now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        VALUES (pg_student, ses, r_pg, 'School fees', 250000, now() + interval '1 day');
+        SELECT url INTO l_pg FROM finance.quickteller_link(r_pg);
+        SELECT * INTO cu_pg FROM finance.paydirect_customer(r_pg);
+
+        -- what Quickteller is told
+        SELECT * INTO cu FROM finance.paydirect_customer(lower(r_app));
+        SELECT * INTO cu_old FROM finance.paydirect_customer(r_old);
+        -- the collections report: the whole application fee confirms it; part of the school fee stays open
+        SELECT * INTO imp FROM finance.import_paydirect(jsonb_build_array(
+            jsonb_build_object('prn', r_app, 'amount', '15000', 'rrn', 'RRNJ639A'),
+            jsonb_build_object('prn', r_school, 'amount', '1000', 'rrn', 'RRNJ639B')));
+        app_paid := (SELECT confirmed_at IS NOT NULL FROM jupeb.fee_reference WHERE reference = r_app);
+        fee_on := (SELECT fee_confirmed_at IS NOT NULL FROM jupeb.application WHERE id = app);
+        school_open := (SELECT confirmed_at IS NULL FROM jupeb.fee_reference WHERE reference = r_school);
+        SELECT * INTO cu_paid FROM finance.paydirect_customer(r_app);
+        RAISE EXCEPTION 'the V639 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V639: a JUPEB candidate''s fee is paid on Quickteller — the University''s page offered for the reference once switched on, Quickteller told whose fee it is and refused one expired or paid, the collections report confirming the whole amount and leaving part open; a postgraduate student''s school fees as before',
+        coalesce(off_link = 0 AND l_app = 'https://quickteller.com/bsum?cid=' || r_app || '&amount=15000'
+                 AND cu.valid AND cu.reference = r_app AND cu.surname = 'CHECKJQT' AND cu.other_names = 'Candidate Quick'
+                 AND cu.number = 'JUPEB/APP/9639/000001' AND cu.amount = 15000 AND cu.description = 'JUPEB application fee 9639/9640' AND cu.scope = 'MAIN'
+                 AND NOT cu_old.valid AND cu_old.why LIKE 'Expired%'
+                 AND imp.matched = 1 AND imp.short_paid = 1 AND app_paid AND fee_on AND school_open
+                 AND NOT cu_paid.valid AND cu_paid.why = 'Already paid'
+                 AND l_pg = 'https://quickteller.com/bsum?cid=' || r_pg || '&amount=250000' AND cu_pg.valid AND cu_pg.surname = 'CHECKPGQT'
+                 AND cu_pg.amount = 250000 AND cu_pg.description = 'School fees 9639/9640', false),
+        format('off=%s link=%s customer=%s/%s/%s/%s/%s/%s/%s expired=%s/%s import=%s/%s paid=%s/%s open=%s again=%s/%s pg=%s/%s/%s/%s/%s',
+               off_link, l_app, cu.valid, cu.surname, cu.other_names, cu.number, cu.amount, cu.description, cu.scope, cu_old.valid, cu_old.why,
+               imp.matched, imp.short_paid, app_paid, fee_on, school_open, cu_paid.valid, cu_paid.why,
+               l_pg, cu_pg.valid, cu_pg.surname, cu_pg.amount, cu_pg.description));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

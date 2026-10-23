@@ -754,4 +754,52 @@ class PaymentsIT {
             it.call(bursar, HttpMethod.PUT, "/api/v1/payments/bursary/hanging-setting", Map.of("abandonHours", 24, "tellAfterHours", 24));
         }
     }
+
+    /**
+     * V639: a JUPEB candidate's fee reference is paid on Quickteller like any other — the University's page offered for it once the
+     * Bursary switches the biller on, the checkout carrying the reference and the amount, and Quickteller's question answered with
+     * the candidate's amount. Before V639 the page said card payment was not open, and Quickteller was told no such reference existed.
+     */
+    @Test
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    void aJupebFeeReferenceIsPaidOnQuicktellerLikeAnyOther() {
+        String bursar = ItSupport.token("bursar");
+        List<Map<String, Object>> billers = (List<Map<String, Object>>) it.get(bursar, "/api/v1/payments/paydirect").getBody().get("billers");
+        Map<String, Object> main = billers.stream().filter(b -> "MAIN".equals(b.get("scope"))).findFirst().orElseThrow();
+        String reference = "MOAUM-JUPEBAPP-9639-" + String.format("%06d", new Random().nextInt(1_000_000));
+        String prog = jdbc.sql("SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1").query(String.class).single();
+        java.util.UUID app = it.db(() -> {
+            java.util.UUID acc = jdbc.sql("INSERT INTO jupeb.account (email, password_hash) VALUES (:e, '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id")
+                    .param("e", "zz." + reference.toLowerCase() + "@example.com").query(java.util.UUID.class).single();
+            java.util.UUID a = jdbc.sql("""
+                    INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, programme_code, state_of_origin, state)
+                    VALUES (:acc, '9639/9640', :no, 'ITJUPEBQT', 'Candidate', :e, :p, 'Benue', 'SUBMITTED') RETURNING id
+                    """).param("acc", acc).param("no", "JUPEB/APP/" + reference.substring(15)).param("e", "zz." + reference.toLowerCase() + "@example.com")
+                    .param("p", prog).query(java.util.UUID.class).single();
+            jdbc.sql("INSERT INTO jupeb.fee_reference (application_id, kind, reference, amount, session, expires_at) VALUES (:a, 'APPLICATION', :r, 15000, '9639/9640', now() + interval '1 day')")
+                    .param("a", a).param("r", reference).update();
+            return a;
+        });
+        // a JUPEB candidate signs in as an applicant whose account is the application
+        String token = TestTokens.token(app, List.of("applicant"));
+        try {
+            ResponseEntity<Map> on = it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/MAIN", Map.of("code", "04255101",
+                    "name", "Benue State University, Makurdi", "link", "https://quickteller.com/bsum", "active", true, "redirect", true, "withAmount", true));
+            assertThat(on.getStatusCode().value()).as(String.valueOf(on.getBody())).isEqualTo(200);
+            assertThat(it.get(token, "/api/v1/payments/gateways?reference=" + reference).getBody().get("paydirect")).isEqualTo(true);
+            ResponseEntity<Map> checkout = it.call(token, HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", reference, "gateway", "paydirect"));
+            assertThat(checkout.getStatusCode().value()).as(String.valueOf(checkout.getBody())).isEqualTo(200);
+            assertThat(checkout.getBody().get("url")).isEqualTo("https://quickteller.com/bsum?cid=" + reference + "&amount=15000");
+            assertThat(postXml("/api/v1/payments/paydirect/interswitch", "<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword>"
+                    + "<MerchantReference>6405</MerchantReference><CustReference>" + reference.toLowerCase() + "</CustReference><PaymentItemCode>01</PaymentItemCode>"
+                    + "<ThirdPartyCode></ThirdPartyCode></CustomerInformationRequest>"))
+                    .contains("<Status>0</Status>").contains("<Amount>15000.00</Amount>");
+        } finally {
+            ResponseEntity<Map> back = it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/MAIN", Map.of(
+                    "code", String.valueOf(main.get("biller_code")), "name", String.valueOf(main.get("name")),
+                    "link", main.get("pay_link") == null ? "" : String.valueOf(main.get("pay_link")),
+                    "active", Boolean.TRUE.equals(main.get("active")), "redirect", Boolean.TRUE.equals(main.get("redirect")), "withAmount", true));
+            assertThat(back.getStatusCode().value()).as("biller MAIN restored: " + back.getBody()).isEqualTo(200);
+        }
+    }
 }
