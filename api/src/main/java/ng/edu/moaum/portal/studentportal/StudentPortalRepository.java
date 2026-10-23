@@ -480,12 +480,16 @@ class StudentPortalRepository {
             """;
 
     /** the level the student was at during a session — for a receipt, the level when they paid, not
-     *  today's. The enrolment for that session if there is one; otherwise derived from the entry level
-     *  and how many sessions have passed (a non-dated 'LEGACY' session falls back to the current level).
-     *  A postgraduate's level is their own (V455): never advanced a level a session and capped at 600. */
+     *  today's. V641: first the session's course registration, as the examination card and the GST & EPS permit print it (an
+     *  approved one first, as people.level_in reads it), so a corrected level carried into the session reads the same on
+     *  every document; then the enrolment for that session; otherwise derived from the entry level and how many sessions
+     *  have passed (a non-dated 'LEGACY' session falls back to the current level). A postgraduate's level is their own
+     *  (V455): never advanced a level a session and capped at 600. */
     int levelForSession(UUID student, String session) {
         return jdbc.sql("""
                 SELECT coalesce(
+                    (SELECT r.level FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :ses
+                      ORDER BY (r.status IN ('APPROVED', 'LOCKED')) DESC, r.semester LIMIT 1),
                     (SELECT e.level FROM people.enrolment e WHERE e.student_id = :s AND e.session = :ses LIMIT 1),
                     (SELECT CASE WHEN :ses ~ '^[0-9]{4}/[0-9]{4}$' AND NOT people.is_postgraduate(st.entry_mode, p.category)
                                  THEN least(600, greatest(100, st.entry_level + (left(:ses, 4)::int - left(st.entry_session, 4)::int) * 100))

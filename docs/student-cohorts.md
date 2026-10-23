@@ -412,7 +412,8 @@ the migration in one set-based pass; the triggers keep them from there.
 Every level-dependent part of the portal already reads the programme's own final level (`ref.programme.final_level`):
 
 - the levels Level Management offers (100 up to the final level, never beyond) and the next level it progresses to;
-- the session rollover (`people.roll_over_session` stops at the final level);
+- the session rollover (`people.roll_over_session` stops at the final level; since V641 it never promotes a student into their
+  own entry session nor past the level their entry reaches — see docs/student-level-management.md);
 - the cohort engine's expected completion and SP1/SP2, which start only after the programme's whole length and never because
   of a carry-over;
 - graduation candidates at the final level;

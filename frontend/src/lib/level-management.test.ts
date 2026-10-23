@@ -34,6 +34,16 @@ test("the session's registration is warned of, never another session's", () => {
   assert.match(w ?? "", /not deleted or changed/);
 });
 
+test("V641: a correction says the session's registration and enrolment follow it; a progression and a spillover year say they stay", () => {
+  const regs = { registrations: [{ session: "2026/2027", semester: 2, level: 200, status: "APPROVED", courses: 8 }] };
+  const c = registrationWarning(state(regs), "CORRECTION");
+  assert.match(c ?? "", /sets this session's registration and enrolment to the corrected level/);
+  assert.match(c ?? "", /examination card, the GST & EPS permit and the receipt print it/);
+  assert.doesNotMatch(c ?? "", /Course Registration support/);
+  assert.match(registrationWarning(state(regs), "PROGRESS") ?? "", /The registration is not deleted or changed/);
+  assert.match(registrationWarning(state(regs), "CORRECTION", true) ?? "", /The registration is not deleted or changed/);
+});
+
 test("the levels on the record run one per session, and each change is named by how it came about", () => {
   assert.deepEqual(levelPath([
     { session: "2025/2026", semester: 2, level: 300, status: "APPROVED", courses: 8 },

@@ -155,7 +155,10 @@ export function SessionSetup({
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setRefusal(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setRolled(`${j.promoted} continuing student${j.promoted === 1 ? "" : "s"} promoted into ${looking}${j.created_session ? " — the session was opened as planned" : ""}. Fresh, final-year and inactive students were left as they are.`);
+      // V641: a student who entered in this session (or is already at the level their entry reaches) is held, never promoted
+      const held = Number(j.held ?? 0);
+      setRolled(`${j.promoted} continuing student${j.promoted === 1 ? "" : "s"} promoted into ${looking}${j.created_session ? " — the session was opened as planned" : ""}. Fresh, final-year and inactive students were left as they are`
+        + (held > 0 ? `, and ${held} student${held === 1 ? "" : "s"} who entered in ${looking} or are already at the level their entry year reaches were held at their level.` : "."));
       notify(`${j.promoted} student${j.promoted === 1 ? "" : "s"} promoted into ${looking}`);
       router.refresh();
     } finally {

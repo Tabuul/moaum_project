@@ -105,19 +105,25 @@ When the student already has a course registration for the session, the agent is
 names the semester, its state, its level and its courses, and the server refuses until the agent confirms
 (`LEVEL_REGISTRATION_ACK`).
 
-The registration is never deleted or changed. The courses the student may choose next follow the new level through the
-programme structure. If the registration must change, the agent uses the existing Course Registration support.
+The registration is never deleted, and its courses stay as they are. The courses the student may choose next follow the new
+level through the programme structure.
+
+**Since V641 a correction carries into the session.** The session's course registrations and enrolment still at the level
+corrected from are set to the corrected level, so the examination card, the GST & EPS permit and the receipt print it. The
+warning says so for a correction. A progression, and a spillover year, leave the registration's level as it was. See
+*A correction carries into the session* below.
 
 ### What it never touches
 
 A level change leaves these alone:
-- registrations, results and scores;
+- the courses registered, results and scores;
 - GPA and CGPA;
-- transcripts and earlier sessions;
+- transcripts of earlier sessions;
 - matriculation and admission;
 - the graduation status.
 
-An examination card or a GST & EPS permit is drawn from the registration, so neither is regenerated or revoked here.
+An examination card or a GST & EPS permit is drawn from the registration when it is printed, so neither is regenerated or
+revoked here; after a correction it prints the corrected level.
 
 ### Where it is recorded
 
@@ -209,6 +215,46 @@ Regional Planning, and 600 for MBBS.
   and Level Change History show the `LEVEL_SPILLOVER_YEAR` rows; the history's *Made on the level desk* filter includes them.
 - Student Cohorts → Level corrections: the *Level on record* filter now lists 600.
 
+## A correction carries into the session (23 October 2026, V641)
+
+The University reported a 100 Level student (entered 2025/2026 by UTME) whose GST & EPS permit card and payment receipt read
+200 Level.
+
+**Where the documents read the level.**
+- The examination card and the GST & EPS permit print the level on the session's course registration.
+- The receipt printed the session's enrolment level, else the arithmetic from the entry session.
+- A registration takes the record's level when the student starts it (`registration.student_draft`).
+
+**What went wrong.** Nothing wrote those levels again.
+- A level corrected here, or by the Academic Office's level corrections, changed the record alone. The old warning sent the
+  agent to Course Registration support, but no support path changes a registration's level (a reset keeps the row and its
+  level).
+- The session rollover (`people.roll_over_session`, V110) promoted every active, matriculated student below the final level who
+  had no enrolment in the target session. Every fresh student here is matriculated at admission, so a rollover into the fresh
+  students' own entry session moved them to 200 with a 200 Level enrolment.
+
+**Now:**
+- **`people.carry_level_to_session(student, from, to, session)`.** The session's course registrations and enrolment still at the
+  level corrected from are set to the corrected level. Courses, results and fees are not touched. The cohort position and the
+  CGPA follow through their own triggers.
+- **The desk.** `people.support_set_level` carries a CORRECTION into the desk's session. The answer's `carried` gives the
+  session and how many registrations and enrolments were set, and `registrationKept` is false. A progression carries nothing.
+- **Level corrections.** `people.apply_level_corrections` carries each correction into the University's current session.
+- **The rollover.** It never promotes a student into their entry session or one before it, nor past the level their entry
+  reaches by the target session (entry level + 100 a session). Those it leaves are counted as `held`, and Session Setup says
+  how many.
+- **The put-right.** `people.repair_session_levels(session)` ran once for the current session; it is safe to run again. It sets
+  two kinds of rows to the level on record:
+  - a session's rows left at the level of a correction made in that session, where the record still holds the correction;
+  - the rows of a student in their entry session whose record holds the entry level.
+- **The receipt.** Every receipt (the student's, the Student Records view, the help desk) reads the session's course
+  registration first, as the examination card and the permit do. Then it reads the enrolment, then the arithmetic from the
+  entry session.
+
+**For the student reported.** If her record still reads 200, correct it to 100 here (Correct level). Her second-semester
+registration and her enrolment follow, and the permit, the examination card and the receipt then read 100 Level. If her record
+already reads 100, the put-right has set them.
+
 ## Tests
 
 | Test | What it covers |
@@ -218,3 +264,6 @@ Regional Planning, and 600 for MBBS.
 | `check.sql` V500 | two properties (EXPECTED 338) |
 | `check.sql` V628 | the levels to 500 (Nursing, URP) and 600 (MBBS); SP1 → SP2 → the final year on a made-up student, as the engine reads them; the choice the student is in not offered; a correction below the final level lifts the pin; the refusals |
 | `StudentLevelSupportIT` (V628) | the desk sets SP1 through the API: the record at 400, the engine's SP1, the history row, the ledger |
+| `StudentLevelSupportIT` (V641) | a student at 200, registered, enrolled and billed for the session: the receipt reads 200; the warning says a correction carries; corrected to 100, the registration and enrolment read 100 (`carried` 1/1, `registrationKept` false) and so does the receipt; a progression leaves the registration as it is |
+| `check.sql` V641 | the desk's correction carries (record, registration, enrolment and `people.level_in` at 100), a progression does not; the put-right sets a fresh student's rows left at 200 and finds none the second time; the rollover into the fresh students' entry session promotes the continuing student and holds the fresh one (EXPECTED 467) |
+| `level-management.test.ts` (V641) | the warning for a correction says the registration and enrolment follow; for a progression and a spillover year, that the registration stays |

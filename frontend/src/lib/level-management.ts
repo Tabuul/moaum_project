@@ -142,12 +142,17 @@ export function levelPath(registrations: LevelState["registrations"]): { session
 }
 
 /** the registration of the session the change is made in, which the change leaves as it is: the warning the agent confirms */
-export function registrationWarning(state: Pick<LevelState, "session" | "registrations">): string | null {
+export function registrationWarning(state: Pick<LevelState, "session" | "registrations">, action: LevelAction | null = null, spillover = false): string | null {
   const now = state.registrations.filter((r) => r.session === state.session).sort((a, b) => b.semester - a.semester)[0];
   if (!now) return null;
   const sem = now.semester === 1 ? "First" : now.semester === 2 ? "Second" : "Third";
-  return `This student currently has a course registration for ${state.session} ${sem} Semester (${now.status.toLowerCase()}, ${now.level} Level, ${now.courses} course${now.courses === 1 ? "" : "s"}). `
-    + "Changing the academic level may affect course eligibility and programme course selection. The registration is not deleted or changed; correct it afterwards through Course Registration support if it must change.";
+  const reg = `This student currently has a course registration for ${state.session} ${sem} Semester (${now.status.toLowerCase()}, ${now.level} Level, ${now.courses} course${now.courses === 1 ? "" : "s"}). `;
+  // V641: a correction of the level carries into the session's registration and enrolment; a progression or a spillover year does not
+  if (action === "CORRECTION" && !spillover) {
+    return reg + "Correcting the level sets this session's registration and enrolment to the corrected level, so the examination card, the GST & EPS permit "
+      + "and the receipt print it. The courses registered are not deleted or changed.";
+  }
+  return reg + "Changing the academic level may affect course eligibility and programme course selection. The registration is not deleted or changed; correct the level instead if the session's level was wrong.";
 }
 
 /** the request's body; a correction to a spillover year (V628) is sent as SPILLOVER with the year */

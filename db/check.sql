@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 466
+\set EXPECTED 467
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -3016,7 +3016,9 @@ END $$;
 
 -- ── 130. the session roll-over promotes active continuing students one level and enrols them, leaving final-year and withdrawn students (V110) ──
 -- Runs the real roll-over inside a savepoint and rolls it back, so it neither
--- promotes the suite's other fixtures nor leaves a session behind.
+-- promotes the suite's other fixtures nor leaves a session behind. (V641: the
+-- students entered two sessions before the one rolled into — a student is never
+-- promoted into their entry session or one before it.)
 DO $$
 DECLARE
     v_active uuid := gen_random_uuid(); v_final uuid := gen_random_uuid(); v_wd uuid := gen_random_uuid();
@@ -3028,9 +3030,9 @@ BEGIN
 
     INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode,
                                 entry_session, entry_level, current_level, status, matriculated_at) VALUES
-      (v_active, 'MOAUM/ADM/99/970001', 'MOAUM/RLA/99/0001', 'ROLLACTIVE', 'Two Hundred', 'C00061', 'UTME', '9990/9991', 100, 200, 'ACTIVE', now()),
-      (v_final,  'MOAUM/ADM/99/970002', 'MOAUM/RLF/99/0002', 'ROLLFINAL',  'Final Year',  'C00019', 'UTME', '9990/9991', 100, 400, 'ACTIVE', now()),
-      (v_wd,     'MOAUM/ADM/99/970003', 'MOAUM/RLW/99/0003', 'ROLLGONE',   'Withdrawn',   'C00061', 'UTME', '9990/9991', 100, 200, 'WITHDRAWN', now());
+      (v_active, 'MOAUM/ADM/99/970001', 'MOAUM/RLA/99/0001', 'ROLLACTIVE', 'Two Hundred', 'C00061', 'UTME', '9987/9988', 100, 200, 'ACTIVE', now()),
+      (v_final,  'MOAUM/ADM/99/970002', 'MOAUM/RLF/99/0002', 'ROLLFINAL',  'Final Year',  'C00019', 'UTME', '9987/9988', 100, 400, 'ACTIVE', now()),
+      (v_wd,     'MOAUM/ADM/99/970003', 'MOAUM/RLW/99/0003', 'ROLLGONE',   'Withdrawn',   'C00061', 'UTME', '9987/9988', 100, 200, 'WITHDRAWN', now());
 
     BEGIN
         res := people.roll_over_session('9989/9990', 'ROLLOVER', 'CHECK session rollover');
@@ -23951,6 +23953,64 @@ BEGIN
                off_link, l_app, cu.valid, cu.surname, cu.other_names, cu.number, cu.amount, cu.description, cu.scope, cu_old.valid, cu_old.why,
                imp.matched, imp.short_paid, app_paid, fee_on, school_open, cu_paid.valid, cu_paid.why,
                l_pg, cu_pg.valid, cu_pg.surname, cu_pg.amount, cu_pg.description));
+END $$;
+
+
+-- ── V641. A level correction carries into the session's course registration and enrolment — what the examination card, the GST &
+-- EPS permit and the receipt print — and a progression does not; the put-right sets the rows left behind by a correction, and a
+-- fresh student's whose record holds the entry level; the rollover never promotes a student into their own entry session nor past
+-- the level their entry reaches. The block undoes its own writes.
+DO $$
+DECLARE prog text; ses text := '9641/9642'; prev text := '9640/9641';
+        f uuid := gen_random_uuid(); p uuid := gen_random_uuid(); r uuid := gen_random_uuid(); c uuid := gen_random_uuid(); nw uuid := gen_random_uuid();
+        ans jsonb; pans jsonb; f_lv text; p_lv text; rep1 record; rep2 record; r_lv text; roll jsonb; c_lv text; nw_lv int; nw_enr int; f_in int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        PERFORM set_config('moaum.reason', 'V641 check', true);
+        SELECT code INTO prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1;
+        PERFORM assessment.ensure_session(prev);
+        PERFORM assessment.ensure_session(ses);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (f,  'MOAUM/ADM/99/964101', 'MOAUM/CHK/99/964101', 'CHECKLVF', 'Fresh', prog, 'UTME', ses,  100, 200, 'ACTIVE', now()),   -- a fresh student the record put at 200
+            (p,  'MOAUM/ADM/99/964102', 'MOAUM/CHK/99/964102', 'CHECKLVP', 'Prog',  prog, 'UTME', prev, 100, 100, 'ACTIVE', now()),   -- progressed at the desk
+            (r,  'MOAUM/ADM/99/964103', 'MOAUM/CHK/99/964103', 'CHECKLVR', 'Left',  prog, 'UTME', ses,  100, 100, 'ACTIVE', now()),   -- put back to 100, rows left at 200
+            (c,  'MOAUM/ADM/99/964104', 'MOAUM/CHK/99/964104', 'CHECKLVC', 'Cont',  prog, 'UTME', prev, 100, 100, 'ACTIVE', now()),   -- continuing: promoted by the rollover
+            (nw, 'MOAUM/ADM/99/964105', 'MOAUM/CHK/99/964105', 'CHECKLVN', 'New',   prog, 'UTME', ses,  100, 100, 'ACTIVE', now());   -- fresh: held by the rollover
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+            (gen_random_uuid(), f, ses, 2, 200, 'SUBMITTED'), (gen_random_uuid(), p, ses, 1, 100, 'DRAFT'), (gen_random_uuid(), r, ses, 1, 200, 'SUBMITTED');
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), f, ses, 200), (gen_random_uuid(), r, ses, 200);
+
+        -- the desk corrects the fresh student to 100: the session's registration and enrolment follow, and the session's level reads 100
+        ans := people.support_set_level(f, 'CORRECTION', 100, 200, 'Fresh student recorded at 200 Level', ses, 2, NULL);
+        SELECT (SELECT current_level FROM people.student WHERE id = f) || '/' || (SELECT level FROM registration.course_registration WHERE student_id = f AND session = ses)
+               || '/' || (SELECT level FROM people.enrolment WHERE student_id = f AND session = ses) INTO f_lv;
+        f_in := people.level_in(f, ses);
+        -- a progression does not carry
+        pans := people.support_set_level(p, 'PROGRESS', NULL, 100, 'Promoted after the Senate decision', ses, 1, NULL);
+        SELECT (SELECT current_level FROM people.student WHERE id = p) || '/' || (SELECT level FROM registration.course_registration WHERE student_id = p AND session = ses) INTO p_lv;
+        -- the put-right: a fresh student whose record holds the entry level, the session's rows left at 200; a second run finds none
+        SELECT * INTO rep1 FROM people.repair_session_levels(ses);
+        SELECT * INTO rep2 FROM people.repair_session_levels(ses);
+        SELECT (SELECT level FROM registration.course_registration WHERE student_id = r AND session = ses) || '/' || (SELECT level FROM people.enrolment WHERE student_id = r AND session = ses) INTO r_lv;
+        -- rolled into the fresh students' entry session: the continuing student promoted, the fresh ones held at 100
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        roll := people.roll_over_session(ses, 'ROLLOVER', 'V641 check');
+        SELECT (SELECT current_level FROM people.student WHERE id = c) || '/' || (SELECT level FROM people.enrolment WHERE student_id = c AND session = ses) INTO c_lv;
+        nw_lv := (SELECT current_level FROM people.student WHERE id = nw);
+        nw_enr := (SELECT count(*) FROM people.enrolment WHERE student_id = nw AND session = ses);
+        RAISE EXCEPTION 'the V641 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V641: a level correction carries into the session''s course registration and enrolment (the examination card, the GST & EPS permit and the receipt print it), a progression does not; the rows a correction left behind are put right once; the rollover never promotes a student into their own entry session',
+        coalesce(f_lv = '100/100/100' AND f_in = 100 AND ans->'carried'->>'registrations' = '1' AND ans->'carried'->>'enrolment' = '1' AND ans->'carried'->>'session' = ses
+                 AND p_lv = '200/100' AND pans->'carried' = 'null'::jsonb
+                 AND rep1.students = 1 AND rep1.registrations = 1 AND rep1.enrolments = 1 AND rep2.students = 0 AND r_lv = '100/100'
+                 AND c_lv = '200/200' AND nw_lv = 100 AND nw_enr = 0 AND (roll->>'held')::int >= 1, false),
+        format('f %s in %s ans %s | p %s pans %s | rep %s/%s/%s again %s r %s | roll %s c %s nw %s/%s',
+               f_lv, f_in, ans->'carried', p_lv, pans->'carried', rep1.students, rep1.registrations, rep1.enrolments, rep2.students, r_lv, roll, c_lv, nw_lv, nw_enr));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

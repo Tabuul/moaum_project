@@ -34,8 +34,10 @@ import static ng.edu.moaum.portal.helpdesk.SupportAccess.can;
  * the programme has, the level the cohort engine computes, the levels the registrations carry and every earlier change; then
  * progresses the student to the next level or corrects the level to another of the programme's levels, with a reason and, where
  * there is one, the student's ticket. The database refuses what the programme or the student's status does not allow
- * (people.support_set_level). A registration already made for the session is not touched — the agent is told of it first and
- * goes on knowingly. Each change is on the cohort decision history and the support ledger, and on the ticket's timeline.
+ * (people.support_set_level). A registration already made for the session is named to the agent first, who goes on knowingly:
+ * (V641) a correction carries into the session's course registration and enrolment at the level corrected from — what the
+ * examination card, the GST and EPS permit and the receipt print — and a progression leaves them as they are. Each change is on the
+ * cohort decision history and the support ledger, and on the ticket's timeline.
  */
 @RestController
 @RequestMapping("/api/v1/helpdesk/support")
@@ -134,9 +136,13 @@ class StudentLevelController {
                 """).param("s", id).param("ses", session).query().listOfRows();
         if (!registered.isEmpty() && !Boolean.TRUE.equals(body.acknowledgeRegistration())) {
             Map<String, Object> r = registered.get(registered.size() - 1);
-            throw new DomainRuleViolation("LEVEL_REGISTRATION_ACK", "This student already has a course registration for " + session + " semester " + r.get("semester")
-                    + " (" + String.valueOf(r.get("status")).toLowerCase() + ", " + r.get("level") + " Level). Changing the level does not change it; the courses the student may choose follow the new level.",
-                    new DomainRuleViolation.Remedy("Confirm that you have seen this, or correct the registration afterwards through Course Registration support.", "You"));
+            String reg = "This student already has a course registration for " + session + " semester " + r.get("semester")
+                    + " (" + String.valueOf(r.get("status")).toLowerCase() + ", " + r.get("level") + " Level). ";
+            // V641: a correction carries into the session's registration and enrolment; a progression does not
+            throw new DomainRuleViolation("LEVEL_REGISTRATION_ACK", "CORRECTION".equals(action)
+                    ? reg + "Correcting the level sets the session's registration and enrolment to the corrected level, so the examination card, the GST & EPS permit and the receipt print it; the courses registered stay as they are."
+                    : reg + "Changing the level does not change it; the courses the student may choose follow the new level.",
+                    new DomainRuleViolation.Remedy("CORRECTION".equals(action) ? "Confirm that you have seen this." : "Confirm that you have seen this, or correct the level instead if the session's level was wrong.", "You"));
         }
         if ("SPILLOVER".equals(action)) {
             return spillover(auth, id, body, reason, ticket, session, semester, !registered.isEmpty());
@@ -152,7 +158,8 @@ class StudentLevelController {
                            "before", Map.of("current_level", done.get("previousLevel")), "after", Map.of("current_level", done.get("newLevel"))));
         }
         Map<String, Object> out = new LinkedHashMap<>(done);
-        out.put("registrationKept", !registered.isEmpty());
+        // V641: a correction's registration follows it ('carried' says how many rows); a progression's stays
+        out.put("registrationKept", !registered.isEmpty() && !"CORRECTION".equals(action));
         out.put("view", level(auth, id));
         return out;
     }

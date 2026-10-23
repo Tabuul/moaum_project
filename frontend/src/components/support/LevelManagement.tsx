@@ -66,10 +66,10 @@ export function LevelManagement({ studentId, ticket, onDone }: { studentId: stri
 
   const s = state.student;
   const o = state.options;
-  const warning = registrationWarning(state);
   const ticketId = ticket?.id ?? (chosenTicket || null);
   const choices = o.spilloverChoices ?? [];
   const chosenSp = spYear == null ? null : choices.find((c) => c.year === spYear) ?? null;
+  const warning = registrationWarning(state, act, !!chosenSp);
   const target = act === "PROGRESS" ? o.nextLevel : chosenSp ? o.finalLevel : level;
   const ready = !!act && target != null && reasonOk(reason) && (!warning || ack);
   const path = levelPath(state.registrations);

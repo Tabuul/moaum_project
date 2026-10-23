@@ -166,6 +166,56 @@ class StudentLevelSupportIT {
         assertThat(it.get(studentTok, "/api/v1/helpdesk/my/tickets/" + ticket).getBody()).doesNotContainKey("student_phone");
     }
 
+    /** V641: a level corrected at the desk carries into the session's course registration and enrolment, so the examination card,
+     *  the GST & EPS permit and the receipt print the corrected level (the University's report of a 100 Level student whose permit and
+     *  receipt read 200); a progression leaves them as they are */
+    @Test
+    void aCorrectionCarriesIntoTheSessionsRegistrationEnrolmentAndReceipt() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        String tag = UUID.randomUUID().toString().substring(0, 4).toUpperCase().replaceAll("[^A-Z0-9]", "Q");
+        int n = it.freeDraw(1000, 9999, k -> List.of("MOAUM/ITC/26/" + k, "MOAUM/ADM/26/52" + k));
+        String programme = jdbc.sql("""
+                SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1
+                """).query(String.class).single();
+        UUID student = it.student("ZZLVCARRY" + tag, programme, "MOAUM/ADM/26/52" + n, "MOAUM/ITC/26/" + n, 200);
+        String agent = TestTokens.token(agent(it, "C" + tag), List.of("ictagent"));
+        String base = "/api/v1/helpdesk/support/students/" + student + "/level";
+        String session = String.valueOf(it.get(agent, base).getBody().get("session"));
+        it.session(session, Integer.parseInt(session.substring(0, 4)));
+        String ref = "MOAUM-FEE-" + n + "-0641";
+        // registered, enrolled and billed for the session at the 200 Level the record held
+        UUID reg = it.db(() -> {
+            jdbc.sql("INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), :s, :ses, 200)")
+                    .param("s", student).param("ses", session).update();
+            jdbc.sql("INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at) VALUES (:s, :ses, :r, 'School fees', 1000, now() + interval '1 day')")
+                    .param("s", student).param("ses", session).param("r", ref).update();
+            return jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), :s, :ses, 2, 200, 'SUBMITTED') RETURNING id")
+                    .param("s", student).param("ses", session).query(UUID.class).single();
+        });
+        String studentTok = TestTokens.token(student, List.of("student"));
+        assertThat(it.get(studentTok, "/api/v1/me/fees/receipts/" + ref).getBody()).containsEntry("level", 200);
+
+        // the desk names the registration, and says a correction carries into it
+        ResponseEntity<Map> unacknowledged = change(it, agent, student, Map.of("action", "CORRECTION", "level", 100, "expected", 200, "reason", "Fresh student recorded at 200 Level"));
+        assertThat(unacknowledged.getBody().get("code")).isEqualTo("LEVEL_REGISTRATION_ACK");
+        assertThat(String.valueOf(unacknowledged.getBody())).contains("sets the session's registration and enrolment to the corrected level");
+        ResponseEntity<Map> corrected = change(it, agent, student, Map.of("action", "CORRECTION", "level", 100, "expected", 200, "reason", "Fresh student recorded at 200 Level",
+                "acknowledgeRegistration", true));
+        assertThat(corrected.getStatusCode().value()).as(String.valueOf(corrected.getBody())).isEqualTo(200);
+        assertThat(corrected.getBody()).containsEntry("newLevel", 100).containsEntry("registrationKept", false);
+        assertThat((Map<String, Object>) corrected.getBody().get("carried")).containsEntry("session", session).containsEntry("registrations", 1).containsEntry("enrolment", 1);
+        assertThat(jdbc.sql("SELECT level || '/' || status FROM registration.course_registration WHERE id = :r").param("r", reg).query(String.class).single()).isEqualTo("100/SUBMITTED");
+        assertThat(jdbc.sql("SELECT level FROM people.enrolment WHERE student_id = :s AND session = :ses").param("s", student).param("ses", session).query(Integer.class).single()).isEqualTo(100);
+        assertThat(it.get(studentTok, "/api/v1/me/fees/receipts/" + ref).getBody()).containsEntry("level", 100);
+
+        // a progression leaves the session's registration as it is
+        ResponseEntity<Map> progressed = change(it, agent, student, Map.of("action", "PROGRESS", "expected", 100, "reason", "Promoted after the Senate's decision",
+                "acknowledgeRegistration", true));
+        assertThat(progressed.getStatusCode().value()).as(String.valueOf(progressed.getBody())).isEqualTo(200);
+        assertThat(progressed.getBody()).containsEntry("newLevel", 200).containsEntry("registrationKept", true);
+        assertThat(jdbc.sql("SELECT level FROM registration.course_registration WHERE id = :r").param("r", reg).query(Integer.class).single()).isEqualTo(100);
+    }
+
     /** V601: a student past the programme's length is not progressed a level at a time at the desk — the server refuses it, not
      *  only the screen — while the correction to the final level stays open */
     @Test
