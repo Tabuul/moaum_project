@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 471
+\set EXPECTED 472
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -4981,9 +4981,10 @@ BEGIN
         SELECT count(*) INTO n_hist FROM catalogue.course_offer_history WHERE course_code = v_new AND programme_code = p_b;
         PERFORM catalogue.end_course(v_new);
         BEGIN PERFORM catalogue.bind_offer(v_new, p_b, 200, 'Borrowed', NULL, 'COURSE'); EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT; r_ended := split_part(msg, ':', 1); END;
-        -- a structure upload that names another department's course binds it, and leaves its title and units to its owner
+        -- a structure upload that names another department's course binds it, and leaves its title and units to its owner (V646: the
+        -- row says it is the same course — a code held under another title is the same course or a separate one, as the upload says)
         PERFORM catalogue.create_course('ZZQ 334', 'Owned Elsewhere', 2, 2, 300, d_a, 'Core');
-        SELECT * INTO imp FROM catalogue.import_courses(p_b, jsonb_build_array(jsonb_build_object('code', 'ZZQ 334', 'title', 'Rewritten Title', 'units', '9', 'level', '300', 'semester', '2', 'status', 'C')), NULL);
+        SELECT * INTO imp FROM catalogue.import_courses(p_b, jsonb_build_array(jsonb_build_object('code', 'ZZQ 334', 'title', 'Rewritten Title', 'units', '9', 'level', '300', 'semester', '2', 'status', 'C', 'titleChoice', 'SAME')), NULL);
         SELECT title, units INTO v_title, v_units FROM catalogue.course WHERE code = 'ZZQ 334';
         SELECT basis INTO v_basis FROM catalogue.course_offer WHERE course_code = 'ZZQ 334' AND programme_code = p_b;
         SELECT id INTO v_id3 FROM catalogue.course WHERE code = 'ZZQ 334';
@@ -21208,7 +21209,8 @@ END $$;
 
 -- ── V592. A course created under a BSU- or MOAU- code. Made-up courses of a made-up subject: written loosely, a BSU- code is put
 --          right (bsu-zqx106 → BSU-ZQX 106) and its MOAU- twin created beside it (the pair found by catalogue.twin_by_code); the plain
---          code still created; another prefix, a four-letter subject and a code already held refused. The block undoes its writes ──
+--          code still created; another prefix, a four-letter subject and a code already held refused (V646: under the same title — another
+--          title is a separate course under the code). The block undoes its writes ──
 DO $$
 DECLARE dept text; c_bsu text; c_moau text; c_plain text; twin text; other_prefix text; four_letters text; again text; msg text;
 BEGIN
@@ -21225,7 +21227,7 @@ BEGIN
         EXCEPTION WHEN check_violation THEN other_prefix := split_part(SQLERRM, ':', 1); END;
         BEGIN PERFORM catalogue.create_course('BSU-ZQXY 108', 'Check V592 four letters', 2, 2, 100, dept, 'Core'); four_letters := 'CREATED';
         EXCEPTION WHEN check_violation THEN four_letters := split_part(SQLERRM, ':', 1); END;
-        BEGIN PERFORM catalogue.create_course('BSU-ZQX 106', 'Check V592 again', 2, 2, 100, dept, 'Core'); again := 'CREATED';
+        BEGIN PERFORM catalogue.create_course('BSU-ZQX 106', 'Check V592 BSU course', 2, 2, 100, dept, 'Core'); again := 'CREATED';
         EXCEPTION WHEN unique_violation THEN again := 'EXISTS'; END;
         RAISE EXCEPTION 'the V592 check undoes its writes';
     EXCEPTION WHEN raise_exception THEN
@@ -24339,6 +24341,97 @@ BEGIN
         coalesce(sub_bsu = 'GST' AND sub_moau = 'GST' AND sub_plain = 'GST' AND sub_phy = 'PHY'
                  AND off_bsu = 'GST' AND off_moau = 'GST' AND off_ent = 'EPS' AND off_dept IS NULL AND unclassified = 0, false),
         format('subjects=%s/%s/%s/%s offices=%s/%s/%s/%s unclassified=%s', sub_bsu, sub_moau, sub_plain, sub_phy, off_bsu, off_moau, off_ent, off_dept, unclassified));
+END $$;
+
+
+-- ── V646. One course code, different titles: separate courses. A second course under a code is created with its own key (the code
+-- and its curriculum) and the exact course refused; a code and a title are held once; the structure upload refuses a code held under
+-- another title until the row says the same course (its title and curriculum kept) or a separate one, and binds a row of the same
+-- title without asking; a 400 Level student sees and registers both courses under the code, the same class never twice; a 500 Level
+-- student sees the other curriculum's course; the Duplicate course code report lists them; a separate course takes the programmes
+-- moved to it. The block undoes its own writes.
+DO $$
+DECLARE prog text := 'C00061'; dept text; ses text := '9645/9646'; k1 text; k2 text; dup_refused text; idx_refused text;
+        undecided text; preview int; up record; sep_key text; same_title text; same_curr text; plain_bound text;
+        s4 uuid := gen_random_uuid(); s5 uuid := gen_random_uuid(); reg uuid := gen_random_uuid();
+        o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o5 uuid := gen_random_uuid(); menu4 text; menu5 text; s5_curr text; both_reg int; twice text;
+        rep int; rep_under int; sp jsonb; moved_to text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'V646 check', true);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = prog;
+        UPDATE registration.flex_policy SET curriculum_open = true WHERE id = 1;
+        PERFORM assessment.ensure_session(ses);
+
+        -- a second course under a code: its own key; the same code and title refused; a code and title held once
+        k1 := catalogue.create_course('ZZQ 645', 'Computer Networks', 3, 1, 400, dept, 'Core', 'CCMAS');
+        k2 := catalogue.create_course('zzq645', 'Advanced Computer Systems', 3, 1, 400, dept, 'Core', 'BMAS');
+        BEGIN
+            PERFORM catalogue.create_course('ZZQ 645', 'computer  networks', 3, 1, 400, dept, 'Core', 'BMAS');
+            dup_refused := 'CREATED';
+        EXCEPTION WHEN unique_violation THEN dup_refused := 'REFUSED';
+        END;
+        BEGIN
+            INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZQ 645 V2', 'Computer Networks.', 3, 1, 400, dept, 'Core', 'LIVE');
+            idx_refused := 'INSERTED';
+        EXCEPTION WHEN unique_violation THEN idx_refused := 'REFUSED';
+        END;
+
+        -- the structure upload: a code held under another title refused until the row says; previewed
+        BEGIN
+            PERFORM catalogue.import_courses_rows(prog, '[{"code":"ZZQ 645","title":"Computer Architecture","units":"3","status":"C","level":"400","semester":"1"}]'::jsonb, 'CCMAS');
+            undecided := 'LOADED';
+        EXCEPTION WHEN check_violation THEN undecided := split_part(SQLERRM, ':', 1);
+        END;
+        preview := (SELECT count(*) FROM catalogue.structure_title_choices(jsonb_build_array(jsonb_build_object('programme', prog, 'rows',
+                     '[{"code":"ZZQ 645","title":"Computer Architecture","level":"400"},{"code":"ZZQ645","title":"COMPUTER NETWORKS","level":"400"}]'::jsonb))));
+        SELECT * INTO up FROM catalogue.import_courses_rows(prog,
+            '[{"code":"ZZQ 645","title":"Computer Architecture","units":"3","status":"C","level":"500","semester":"1","titleChoice":"SEPARATE"},
+              {"code":"ZZQ 645","title":"Advanced Computing","units":"3","status":"C","level":"400","semester":"1","titleChoice":"SAME","sameAs":"ZZQ 645 BMAS"},
+              {"code":"ZZQ645","title":"computer networks","units":"3","status":"C","level":"400","semester":"1"}]'::jsonb, 'CCMAS');
+        sep_key := (SELECT code FROM catalogue.course WHERE catalogue.shown_code(code) = 'ZZQ 645' AND title = 'Computer Architecture');
+        SELECT title, curriculum INTO same_title, same_curr FROM catalogue.course WHERE code = 'ZZQ 645 BMAS';
+        plain_bound := (SELECT string_agg(course_code || '@' || level, ' ' ORDER BY course_code, level) FROM catalogue.course_offer WHERE programme_code = prog AND course_code LIKE 'ZZQ 645%');
+
+        -- a 400 Level student sees both courses under the code and registers both; the same class never twice
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s4, 'MOAUM/ADM/99/996451', 'MOAUM/CHK/99/6451', 'CHECKSAMECODE', 'Four', prog, 'UTME', '9641/9642', 100, 400, 'ACTIVE', now()),
+            (s5, 'MOAUM/ADM/99/996452', 'MOAUM/CHK/99/6452', 'CHECKSAMECODE', 'Five', prog, 'UTME', '2019/2020', 100, 500, 'ACTIVE', now());   -- a BMAS cohort
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, k1, ses, 1), (o2, k2, ses, 1), (o5, sep_key, ses, 1);
+        menu4 := (SELECT string_agg(m.course_code, ' ' ORDER BY m.course_code) FROM registration.student_menu(s4, ses, 1) m WHERE m.course_code LIKE 'ZZQ 645%');
+        s5_curr := (SELECT curriculum_version FROM people.student WHERE id = s5);
+        menu5 := (SELECT string_agg(m.course_code, ' ' ORDER BY m.course_code) FROM registration.student_menu(s5, ses, 1) m WHERE m.course_code LIKE 'ZZQ 645%');
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, s4, ses, 1, 400, 'DRAFT');
+        INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (reg, o1, 3), (reg, o2, 3);
+        both_reg := (SELECT count(*) FROM registration.entry WHERE registration_id = reg);
+        BEGIN
+            INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (reg, o1, 3);
+            twice := 'TWICE';
+        EXCEPTION WHEN unique_violation THEN twice := 'ONCE';
+        END;
+
+        -- the report, and a separate course taking the programme moved to it
+        rep := (SELECT count(*) FROM catalogue.same_code_courses() WHERE shown_code = 'ZZQ 645');
+        rep_under := (SELECT max(courses_under_code) FROM catalogue.same_code_courses() WHERE shown_code = 'ZZQ 645');
+        sp := catalogue.separate_course(k1, 'Data Communications', 'BMAS', jsonb_build_array(jsonb_build_object('programme', prog, 'level', 400)), 'The BMAS students take their own course');
+        moved_to := (SELECT string_agg(course_code, ' ') FROM catalogue.course_offer WHERE programme_code = prog AND level = 400 AND course_code = sp->>'code');
+        RAISE EXCEPTION 'the V646 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V646: one course code, different titles, as separate courses — a second course created under its own key, the exact course refused, a code and title held once; the upload asks the same course or a separate one and binds a row of the same title; both courses seen and registered at 400 Level, the same class never twice; the other curriculum''s course seen at 500 Level; the report; a separate course taking the programme moved to it',
+        coalesce(k1 = 'ZZQ 645' AND k2 = 'ZZQ 645 BMAS' AND dup_refused = 'REFUSED' AND idx_refused = 'REFUSED'
+                 AND catalogue.shown_code(k2) = 'ZZQ 645' AND catalogue.code_variant(k2) = 'BMAS'
+                 AND undecided = 'COURSE_TITLE_DIFFERS' AND preview = 1 AND up.offers = 3 AND up.skipped = 0
+                 AND sep_key = 'ZZQ 645 CCMAS' AND same_title = 'Advanced Computer Systems' AND same_curr = 'BMAS'
+                 AND plain_bound = 'ZZQ 645@400 ZZQ 645 BMAS@400 ZZQ 645 CCMAS@500'
+                 AND menu4 = 'ZZQ 645 ZZQ 645 BMAS' AND s5_curr = 'BMAS' AND menu5 = 'ZZQ 645 CCMAS' AND both_reg = 2 AND twice = 'ONCE'
+                 AND rep = 3 AND rep_under = 3 AND sp->>'code' = 'ZZQ 645 BMAS2' AND (sp->>'bindingsMoved')::int = 1 AND moved_to = 'ZZQ 645 BMAS2', false),
+        format('keys %s/%s dup %s idx %s | upload %s preview %s loaded %s/%s sep %s same %s/%s bound %s | menu %s / %s (%s) reg %s %s | report %s/%s sep %s moved %s',
+               k1, k2, dup_refused, idx_refused, undecided, preview, up.offers, up.skipped, sep_key, same_title, same_curr, plain_bound,
+               menu4, menu5, s5_curr, both_reg, twice, rep, rep_under, sp, moved_to));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

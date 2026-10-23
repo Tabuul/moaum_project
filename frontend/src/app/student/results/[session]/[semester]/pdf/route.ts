@@ -8,6 +8,7 @@ import { qrMatrix, resultVerifyPath, studentCheckCode } from "@/lib/qr";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
+import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
 
@@ -81,8 +82,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   rows.forEach((c, i) => {
     if (i % 2 === 1) p.fill(L, y - 5, W, 16, 0.965);
     // keep the course code bold, the title lighter, and truncate so it never reaches the UNIT column
-    p.text(L + 8, y, clean(c.course_code), 8.5, true);
-    p.text(L + 8 + Math.min(clean(c.course_code).length * 5.4 + 8, 78), y, cut(clean(c.title), 44), 8.5, false, [0.2, 0.2, 0.2]);
+    p.text(L + 8, y, clean(shownCode(c.course_code)), 8.5, true);
+    p.text(L + 8 + Math.min(clean(shownCode(c.course_code)).length * 5.4 + 8, 78), y, cut(clean(c.title), 44), 8.5, false, [0.2, 0.2, 0.2]);
     p.text(cUnit, y, String(c.units), 8.5);
     p.text(cScore, y, scoreOf(c), 8.5, false, c.outcome !== "GRADED" ? [0.5, 0.3, 0.05] : [0, 0, 0]);
     p.text(cGrade, y, c.grade ?? "—", 8.5, true, c.grade === "F" ? [0.72, 0.11, 0.11] : [0.05, 0.05, 0.05]);

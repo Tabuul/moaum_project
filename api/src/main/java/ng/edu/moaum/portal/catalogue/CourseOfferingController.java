@@ -123,9 +123,13 @@ class CourseOfferingController {
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
                 """;
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("byCode", jdbc.sql(head + " WHERE upper(regexp_replace(c.code, '[^A-Za-z0-9]', '', 'g')) = upper(regexp_replace(:c, '[^A-Za-z0-9]', '', 'g')) ORDER BY (c.state <> 'ENDED') DESC LIMIT 1")
-                .param("c", code).query().listOfRows().stream().findFirst().orElse(null));
         String t = blank(title);
+        // V646: one code may carry more than one course — the course under this code with this title is the same course (byCode);
+        // every course held under the code is listed (underCode), and another title makes a separate course under it
+        String sameCode = " WHERE upper(regexp_replace(catalogue.shown_code(c.code), '[^A-Za-z0-9]', '', 'g')) = upper(regexp_replace(:c, '[^A-Za-z0-9]', '', 'g'))";
+        out.put("byCode", jdbc.sql(head + sameCode + " AND (CAST(:t AS text) IS NULL OR catalogue.title_key(c.title) = catalogue.title_key(:t)) ORDER BY (c.state <> 'ENDED') DESC, c.code LIMIT 1")
+                .param("c", code).param("t", t, Types.VARCHAR).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("underCode", jdbc.sql(head + sameCode + " ORDER BY c.code").param("c", code).query().listOfRows());
         out.put("byTitle", t == null ? List.of() : jdbc.sql(head + """
                  WHERE c.state <> 'ENDED'
                    AND lower(regexp_replace(btrim(c.title), '\\s+', ' ', 'g')) = lower(regexp_replace(btrim(:t), '\\s+', ' ', 'g'))
@@ -631,5 +635,32 @@ class CourseOfferingController {
         }
         return json.readValue(jdbc.sql("SELECT catalogue.merge_course(:k, :m, :r, false)::text").param("k", body.keep().trim()).param("m", body.merge().trim())
                 .param("r", body.reason().trim()).query(String.class).single(), Object.class);
+    }
+
+    /* ── V646: one code, different titles — separate courses ── */
+
+    /** the Duplicate course code report: every course under a code the pool holds more than once, and every course whose title was
+     *  changed after it was created, with its curriculum, owner, level, semester, state and the programmes it is bound to */
+    @GetMapping("/same-code")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> sameCode() {
+        return jdbc.sql("SELECT * FROM catalogue.same_code_courses()").query().listOfRows();
+    }
+
+    public record Separate(@NotBlank @Size(max = 120) String title, @Size(max = 6) String curriculum,
+                           @Size(max = 500) List<Map<String, Object>> bindings, @Size(max = 400) String reason) {
+    }
+
+    /** a separate course under a course's code — its own title and curriculum — with the chosen programme bindings (programme,
+     *  level) moved to it; the classes, registrations and results already held stay with the course they were made under */
+    @PostMapping("/courses/{code}/separate")
+    @PreAuthorize(MERGERS)
+    @Transactional
+    Object separate(@PathVariable String code, @Valid @RequestBody Separate body) {
+        return json.readValue(jdbc.sql("SELECT catalogue.separate_course(:c, :t, :cur, CAST(:b AS jsonb), :r)::text")
+                .param("c", code.trim()).param("t", body.title().trim()).param("cur", blank(body.curriculum()), Types.VARCHAR)
+                .param("b", json.writeValueAsString(body.bindings() == null ? List.of() : body.bindings()))
+                .param("r", blank(body.reason()), Types.VARCHAR).query(String.class).single(), Object.class);
     }
 }

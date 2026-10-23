@@ -20,6 +20,7 @@ import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { CardActions, PermitActions } from "./exams/CardActions";
 import { permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
 import { examCardStatusLabel, examCardSummary, type ExamCardState } from "@/lib/exam-card";
+import { shownCode } from "@/lib/course-code";
 
 /* ── result query ── */
 
@@ -208,7 +209,7 @@ export function AttendanceScreen({ t }: { t: Timetable }) {
   return (
     <>
       {below.length ? (
-        <Note kind="bad" title={`${below.map((b) => b.course_code).join(", ")} ${below.length === 1 ? "is" : "are"} below the 75% threshold`}>
+        <Note kind="bad" title={`${below.map((b) => shownCode(b.course_code)).join(", ")} ${below.length === 1 ? "is" : "are"} below the 75% threshold`}>
           Students below 75% may be barred from the examination.
         </Note>
       ) : t.attendance.some((a) => a.held) ? (
@@ -238,7 +239,7 @@ function RegisterAttendance({ t }: { t: Timetable }) {
   return (
     <>
       {below.length ? (
-        <Note kind="bad" title={`${below.map((b) => b.course_code).join(", ")} ${below.length === 1 ? "is" : "are"} below the Centre's minimum of ${min}%`}>
+        <Note kind="bad" title={`${below.map((b) => shownCode(b.course_code)).join(", ")} ${below.length === 1 ? "is" : "are"} below the Centre's minimum of ${min}%`}>
           Students below the Centre&rsquo;s minimum may be barred from the examination.
         </Note>
       ) : t.attendance.some((a) => a.total) ? (

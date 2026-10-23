@@ -6,6 +6,7 @@ import { AllCourses, type Filters } from "./AllCourses";
 import { GstTransfers, type ChaseSettings, type GeneralTransfer } from "@/components/gst/GstTransfers";
 import { CodeFamiliesPanel, type CodeFamilies, type CodeFamilyMismatch } from "./CodeFamilies";
 import { CodeOwnersPanel, type CodeOwners } from "./CodeOwners";
+import { SameCodePanel, type SameCodeRow } from "./SameCode";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,12 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
   const codeOwners = await api<CodeOwners>("/api/v1/catalogue/code-owners").then((r) => (r.ok ? r.data : null)).catch(() => null);
   // V413: students registered under the other family's code, for the central offices to move
   const mismatches = familiesCentral ? await api<CodeFamilyMismatch[]>("/api/v1/catalogue/code-families/mismatches").then((r) => (r.ok ? r.data : [])).catch(() => [] as CodeFamilyMismatch[]) : [];
+  // V646: one code, different titles — the Duplicate course code report
+  const sameCode = await api<SameCodeRow[]>("/api/v1/catalogue/same-code").then((r) => (r.ok ? r.data : null)).catch(() => null);
   return (
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
       {codeOwners ? <CodeOwnersPanel data={codeOwners} maySet={familiesCentral} /> : null}
+      {sameCode ? <SameCodePanel rows={sameCode} maySeparate={["academic", "registrar", "dregistrar", "super"].includes(acting ?? "")} /> : null}
       {families ? <CodeFamiliesPanel data={families} sessions={sessions.map((x) => x.name)} maySet={familiesCentral} mismatches={mismatches} /> : null}
       {central ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} settings={chase} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (

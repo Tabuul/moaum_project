@@ -11,6 +11,7 @@ import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { EVIDENCE, KINDS, LEVELS, REVIEW, STATE, courseSemName, type CourseList, type Directory, type DuplicatePair } from "@/lib/catalogue";
+import { codeVariant, shownCode } from "@/lib/course-code";
 
 /** V471: ptype — postgraduate or undergraduate courses; unbound — courses no programme takes */
 export interface Filters { q: string; fac: string; dept: string; prog: string; level: string; semester: string; kind: string; state: string; session: string; ptype: string; unbound: string; sort: string; dir: string; size: string }
@@ -92,8 +93,8 @@ export function AllCourses({ list, directory, sessions, filters, page, generated
         {list.rows.length ? (
           <DTable pageSize={0} cols={["S/N|num", "Code|mid", "Title", "Units|mid", "Level|mid", "Semester|mid", "Type", "Owner", "Programmes offering", "Last session|mid", "Status|mid", "|num"]} rows={list.rows.map((r, i) => [
             <span key="n" className="tnum sub2">{(list.page - 1) * list.size + i + 1}</span>,
-            <b key="c" className="tnum">{r.code}</b>,
-            <span key="t">{r.title}{r.pending ? <div className="sub2 ink-amber">{r.pending} proposal{r.pending === 1 ? "" : "s"} awaiting a department</div> : null}</span>,
+            <b key="c" className="tnum">{shownCode(r.code)}</b>,
+            <span key="t">{r.title}{codeVariant(r.code) ? <div className="sub2">A separate course under {shownCode(r.code)} · key {r.code}</div> : null}{r.pending ? <div className="sub2 ink-amber">{r.pending} proposal{r.pending === 1 ? "" : "s"} awaiting a department</div> : null}</span>,
             <span key="u" className="tnum">{r.units}</span>, <span key="l" className="tnum">{r.level}</span>, <span key="s" className="tnum">{courseSemName(r.semester, r.both_semesters)}</span>,
             <span key="k" className="sub2">{r.kind}{r.general_office ? ` · ${r.general_office}` : ""}</span>,
             <span key="o">{r.dept_name ?? r.dept_code ?? "—"}<div className="sub2">{r.owner_programme_name ? `${r.owner_programme_name} · ` : ""}{r.faculty_name ?? ""}</div></span>,

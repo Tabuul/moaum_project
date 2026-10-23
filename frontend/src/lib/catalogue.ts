@@ -83,7 +83,8 @@ export interface CourseHistoryData {
   review_status: ReviewStatus | null; review_note: string | null; reviewed_at: string | null; reviewed_office: string | null; reviewed_by: string | null; issues: string[] | null;
 }
 
-export interface Exists { byCode: CourseHead | null; byTitle: CourseHead[] }
+/** V646: byCode — the course under the code with the title typed (the same course); underCode — every course the code carries */
+export interface Exists { byCode: CourseHead | null; byTitle: CourseHead[]; underCode?: CourseHead[] }
 
 export const STATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
   LIVE: ["ok", "Live"], BOARD: ["warn", "Not yet live"], SENATE: ["warn", "Not yet live"], ENDED: ["grey", "Ended"],

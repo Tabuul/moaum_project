@@ -12,6 +12,7 @@ import { GRADE_COLOUR, STAGE_LABEL, semesterName } from "@/lib/student-portal";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { onDay } from "./common";
+import { shownCode } from "@/lib/course-code";
 
 /** V422: how an outcome other than a grade reads to the student */
 const OUTCOME_WORD: Record<string, string> = { ABSENT: "ABS", WITHHELD: "Withheld", INCOMPLETE: "Incomplete", MALPRACTICE: "Malpractice case", EXEMPTED: "Exempted" };
@@ -91,7 +92,7 @@ export function ResultsScreen({ r }: { r: Results }) {
           </Panel>
           {r.carryovers.length ? (
             <Note kind="bad" title={`${r.carryovers.length} carryover${r.carryovers.length === 1 ? "" : "s"}`}>
-              {r.carryovers.map((c) => `${c.course_code} (${c.failed_in})`).join(", ")} will be added to your next registration automatically. You do not need to request {r.carryovers.length === 1 ? "it" : "them"}.
+              {r.carryovers.map((c) => `${shownCode(c.course_code)} (${c.failed_in})`).join(", ")} will be added to your next registration automatically. You do not need to request {r.carryovers.length === 1 ? "it" : "them"}.
             </Note>
           ) : null}
         </>
@@ -127,7 +128,7 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
         </tbody>
       </table></div></div>
       {failed.length ? (
-        <Note kind="bad" title={`${failed.length} carryover${failed.length === 1 ? "" : "s"}`}>{failed.map((x) => x.course_code).join(", ")} will be added to your next registration automatically. You do not need to request {failed.length === 1 ? "it" : "them"}.</Note>
+        <Note kind="bad" title={`${failed.length} carryover${failed.length === 1 ? "" : "s"}`}>{failed.map((x) => shownCode(x.course_code)).join(", ")} will be added to your next registration automatically. You do not need to request {failed.length === 1 ? "it" : "them"}.</Note>
       ) : null}
       <div className="row">
         <a href={`/student/results/${encodeURIComponent(session)}/${semester}/pdf`} target="_blank" rel="noopener" className="btn btn--primary">Download result slip</a>
@@ -166,7 +167,7 @@ export function Broadsheet({ r }: { r: Results }) {
               <tbody>
                 {g.rows.map((c) => (
                   <tr key={c.course_code}>
-                    <td className="tnum b600">{c.course_code}</td>
+                    <td className="tnum b600">{shownCode(c.course_code)}</td>
                     <td>{c.title}</td>
                     <td className="mid tnum">{c.units}</td>
                     <td className="mid tnum">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</td>

@@ -17,6 +17,7 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 import { TwinCourses, type Twins } from "./TwinCourses";
 import { PROPOSAL_STATE, type Directory, type Exists, type Proposal } from "@/lib/catalogue";
 import { MergeCourse } from "@/components/catalogue/MergeCourse";
+import { shownCode } from "@/lib/course-code";
 
 export interface Dept { code: string; name: string; faculty_code: string }
 export interface Course {
@@ -58,7 +59,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
   const router = useRouter();
   const queryNav = useQueryNav();
   const [add, setAdd] = useState(false);
-  const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" });
+  const [f, setF] = useState({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core", curriculum: "" });
   /* V332: the programmes that offer the new course — the department's own bound at once, another department's proposed to it */
   const [own, setOwn] = useState<string[]>([]);
   const [extra, setExtra] = useState<{ programme: string; name: string; dept: string; deptName: string }[]>([]);
@@ -186,7 +187,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           <div className="row ml-auto">
             {filtered ? <Btn kind="ghost" onClick={() => { setFLevel(""); setFSem(""); setFKind(""); setFProg(""); }}>Clear filters</Btn> : null}
             {waiting ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Make ${waiting} awaiting course${waiting === 1 ? "" : "s"} Live? They enter the current session's registration.`)) void send(`/courses/live-all?dept=${encodeURIComponent(dept)}`, {}, `Make ${waiting} courses live in ${dept}`).then((j) => { if (j) setSaid(`${String(j.made_live ?? waiting)} course(s) made Live`); }); }}>{busy ? "Working…" : `Make ${waiting} Live`}</Btn> : null}
-            <Btn kind="primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core" }); setErr(null); setOwn(defaultTicked("100")); setExtra([]); setPickDept(""); setPickProgs([]); setWhy(""); setFound(null); setAdd(true); }}>+ New course</Btn>
+            <Btn kind="primary" onClick={() => { setF({ code: "", title: "", units: "3", semester: "1", level: "100", kind: "Core", curriculum: "" }); setErr(null); setOwn(defaultTicked("100")); setExtra([]); setPickDept(""); setPickProgs([]); setWhy(""); setFound(null); setAdd(true); }}>+ New course</Btn>
           </div>
         </div>
       </div>
@@ -353,7 +354,7 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
           foot={<><Btn kind="ghost" onClick={() => setAdd(false)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !f.code.trim() || !f.title.trim() || Boolean(found?.byCode)} onClick={async () => {
               const offers = [...own.map((p) => ({ programme: p, level: Number(f.level) })), ...extra.map((x) => ({ programme: x.programme, level: Number(f.level), reason: why.trim() || null }))];
-              const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind, offers }, `New course ${f.code}`);
+              const j = await send("/courses", { code: f.code.toUpperCase(), title: f.title, units: Number(f.units), semester: Number(f.semester), level: Number(f.level), dept, kind: f.kind, offers, curriculum: f.curriculum || null }, `New course ${f.code}`);
               if (j) { setSaid(`${String(j.code)} created and live · offered to ${String(j.bound ?? 0)} programme(s)${Number(j.proposed ?? 0) ? ` · proposed to ${String(j.proposed)} of another department` : ""}`); setAdd(false); }
             }}>Create</Btn></>}>
           {err ? <ProblemNotice problem={err} /> : null}
@@ -368,8 +369,19 @@ export function DeptCourses({ depts, dept, courses, duplicates = [], programmes 
             <Field id="nc-kind" label="Kind"><select id="nc-kind" className="ctl" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>{KINDS.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}</select></Field>
           </div>
           {found?.byCode ? (
-            <Note kind="bad" title={`${found.byCode.code} already exists`} action={<span className="row row--inline row--tight"><LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(found.byCode.code)}`}>Open the course</LinkBtn>{own.length ? <Btn kind="primary" size="sm" disabled={busy} onClick={() => void adoptExisting(found.byCode!.code)}>Offer it to my programme{own.length === 1 ? "" : "s"} instead</Btn> : null}</span>}>
+            <Note kind="bad" title={`${shownCode(found.byCode.code)} — ${found.byCode.title} already exists`} action={<span className="row row--inline row--tight"><LinkBtn size="sm" href={`/catalogue/course?code=${encodeURIComponent(found.byCode.code)}`}>Open the course</LinkBtn>{own.length ? <Btn kind="primary" size="sm" disabled={busy} onClick={() => void adoptExisting(found.byCode!.code)}>Offer it to my programme{own.length === 1 ? "" : "s"} instead</Btn> : null}</span>}>
               {found.byCode.title} · {found.byCode.dept_name ?? found.byCode.dept_code} · {found.byCode.level} Level · {STATE[found.byCode.state]?.[1] ?? found.byCode.state} · offered to {found.byCode.programmes ?? 0} programme{found.byCode.programmes === 1 ? "" : "s"}. Add your programme as an offering instead of creating a second record.
+            </Note>
+          ) : found?.underCode?.length && f.title.trim() ? (
+            // V646: the code carries other courses: this title is a separate course under it, with its own classes and results
+            <Note kind="info" title={`${shownCode(found.underCode[0].code)} already carries ${found.underCode.length === 1 ? "a course" : `${found.underCode.length} courses`}`}>
+              {found.underCode.map((c) => `${c.title} (${c.dept_name ?? c.dept_code}, ${c.level} Level)`).join("; ")}. Creating <b>{f.title.trim()}</b> makes a separate course
+              under {shownCode(found.underCode[0].code)}, with its own classes and results; if it is one of these, offer that course to your programme instead.
+              <div className="mt-2"><Field id="nc-curr" label="Curriculum of the separate course">
+                <select id="nc-curr" className="ctl" value={f.curriculum} onChange={(e) => setF({ ...f, curriculum: e.target.value })}>
+                  <option value="">None</option><option value="BMAS">BMAS</option><option value="CCMAS">CCMAS</option>
+                </select>
+              </Field></div>
             </Note>
           ) : found?.byTitle.length ? (
             <Note kind="info" title="A course with this title already exists">

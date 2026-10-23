@@ -19,6 +19,7 @@ import { SearchSelect, type Opt } from "@/components/proto/SearchSelect";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { BulkUpload, type ImportRecord } from "../allocate/BulkUpload";
 import { ACTION_WORD, ROLE_WORD, SOURCE_WORD, CheckList, HistoryTable, whenText as when, type AllocationChecks as Checks, type AllocationEvent as HistoryRow } from "@/components/allocation/AllocationParts";
+import { courseLabel, shownCode } from "@/lib/course-code";
 
 export interface DeskOptions {
   sessions: { name: string; state: string; semesters: number | null }[];
@@ -251,7 +252,7 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
             {!list ? <p className="sub2">Loading…</p> : rows.length === 0 ? <p className="sub2">No course matches these filters.</p> : (
               <>
                 <DTable pageSize={0} cols={["S/N|num", "Course Code", "Course Title", "Units|num", "Department", "Programmes", "Level|num", "Lecturer", "Co-lecturers", "Status|mid", "Last Updated", "|mid"]}
-                  rows={rows.map((c, i) => [from + i, <b key="c">{c.course_code}</b>, c.title, c.units, c.department ?? c.dept_code, c.programmes ?? "—", c.level,
+                  rows={rows.map((c, i) => [from + i, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.units, c.department ?? c.dept_code, c.programmes ?? "—", c.level,
                     c.lecturer ? <span key="l">{c.lecturer}{c.lecturer_staff_number ? <span className="sub2"> · {c.lecturer_staff_number}</span> : null}</span> : <span key="l" className="sub2">—</span>,
                     c.co_lecturers ?? "—",
                     <Pil key="s" kind={c.lecturer_id ? "ok" : "warn"}>{c.lecturer_id ? "Allocated" : "Unallocated"}</Pil>,
@@ -359,7 +360,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
 
 
   return (
-    <Modal wide title={`${view.course_code} — ${view.title}`} sub={`${view.session}, ${SEM(view.semester)} semester · ${view.units} units · ${view.level} level`} onClose={onClose}
+    <Modal wide title={courseLabel(view.course_code, view.title)} sub={`${view.session}, ${SEM(view.semester)} semester · ${view.units} units · ${view.level} level`} onClose={onClose}
       foot={removing ? (
         <><Btn kind="ghost" onClick={() => setRemoving(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || reason.trim().length < 5} onClick={() => void remove()}>Remove allocation</Btn></>
       ) : review ? (
@@ -419,7 +420,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
         <div className="mt-2" style={{ border: "1px solid var(--line, #d9dde4)", borderRadius: 8, padding: 12, background: "var(--sky-bg, #eef5fb)" }}>
           <b>{verb}</b>
           <KvGrid cls="grid--2" pairs={[
-              ["Course", `${view.course_code} — ${view.title}`], ["Faculty", view.faculty ?? "—"], ["Department", view.department ?? view.dept_code], ["Programme", programmes],
+              ["Course", courseLabel(view.course_code, view.title)], ["Faculty", view.faculty ?? "—"], ["Department", view.department ?? view.dept_code], ["Programme", programmes],
               ["Session", view.session], ["Semester", `${SEM(view.semester)} semester`],
               ...(reassign ? [["Current lecturer", view.lecturer?.name ?? "—"] as [ReactNode, ReactNode], ["New lecturer", person.name] as [ReactNode, ReactNode]]
                 : [[act === "SECOND_EXAMINER" ? "Second examiner" : act === "CO_LECTURER" ? "Co-lecturer" : "Lecturer", person.name] as [ReactNode, ReactNode]]),
@@ -471,7 +472,7 @@ function LecturerLoad({ session, semester, onOpen, scope }: { session: string; s
             {view.outside ? <Note kind="info" title={`${view.outside} more class${view.outside === 1 ? "" : "es"} outside your scope`}>Your allocation scope is {scope}.</Note> : null}
             {view.classes.length ? (
               <DTable pageSize={0} cols={["S/N|num", "Course Code", "Course Title", "Units|num", "Department", "Programmes", "Level|num", "Session", "Semester", "Role", "Score Sheet", "|mid"]}
-                rows={view.classes.map((c, i) => [i + 1, <b key="c">{c.course_code}</b>, c.title, c.units, c.department ?? "—", c.programmes ?? "—", c.level, c.session, SEM(c.semester), ROLE_WORD[c.role] ?? c.role, stageWord(c.stage),
+                rows={view.classes.map((c, i) => [i + 1, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.units, c.department ?? "—", c.programmes ?? "—", c.level, c.session, SEM(c.semester), ROLE_WORD[c.role] ?? c.role, stageWord(c.stage),
                   <Btn key="o" kind="ghost" onClick={() => onOpen(c.id)}>View</Btn>])} />
             ) : <p className="sub2 mt-2">No class allocated to {view.name} in {session}{allSemesters ? "" : `, ${SEM(semester)} semester`}.</p>}
           </>
@@ -530,7 +531,7 @@ function Conflicts({ session, semester, dept, onOpen }: { session: string; semes
       <PBody>
         {rows === null ? <p className="sub2">Loading…</p> : shown.length === 0 ? <p className="sub2">Nothing needs a look in {session}, {SEM(semester)} semester.</p> : (
           <DTable pageSize={50} cols={["S/N|num", "Course Code", "Course Title", "Department", "Conflict", "What", "|mid"]} texts={shown.map((c) => `${c.course_code} ${c.title} ${c.department ?? ""} ${c.words}`)}
-            rows={shown.map((c, i) => [i + 1, <b key="c">{c.course_code}</b>, c.title, c.department ?? c.dept_code, <Pil key="k" kind={c.kind === "OVERLOAD" || c.kind === "TIMETABLE_CLASH" ? "warn" : "bad"}>{CONFLICT_WORD[c.kind] ?? c.kind}</Pil>, c.words,
+            rows={shown.map((c, i) => [i + 1, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.department ?? c.dept_code, <Pil key="k" kind={c.kind === "OVERLOAD" || c.kind === "TIMETABLE_CLASH" ? "warn" : "bad"}>{CONFLICT_WORD[c.kind] ?? c.kind}</Pil>, c.words,
               <Btn key="o" kind="ghost" onClick={() => onOpen(c.offering_id)}>View</Btn>])} />
         )}
       </PBody>

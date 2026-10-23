@@ -14,6 +14,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { BASES, EVIDENCE, ISSUE, KINDS, LEVELS, PROPOSAL_STATE, REVIEW, SOURCE, STATE, courseSemName, semName, usageWords, type CourseDetail as Detail, type CourseHistoryData, type Directory } from "@/lib/catalogue";
 import { CourseUnitsImpactNote } from "../UnitsChange";
+import { codeVariant, shownCode } from "@/lib/course-code";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
@@ -90,8 +91,8 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
 
   return (
     <>
-      <PageHead eyebrow={<span className="tnum">{c.dept_name ?? c.dept_code} · {c.faculty_name ?? ""}</span>} title={<><span className="tnum">{c.code}</span> — {c.title}</>}
-        description={<>{c.units} units · {c.level} Level · {courseSemName(c.semester, c.both_semesters)} semester · {c.kind}{c.curriculum ? ` · ${c.curriculum}` : ""}{c.general_office ? ` · ${c.general_office}` : ""} · <Pil kind={STATE[c.state]?.[0] ?? "grey"}>{STATE[c.state]?.[1] ?? c.state}</Pil> <span className="sub2 tnum">Course ID {c.id}</span></>}
+      <PageHead eyebrow={<span className="tnum">{c.dept_name ?? c.dept_code} · {c.faculty_name ?? ""}</span>} title={<><span className="tnum">{shownCode(c.code)}</span> — {c.title}</>}
+        description={<>{c.units} units · {c.level} Level · {courseSemName(c.semester, c.both_semesters)} semester · {c.kind}{c.curriculum ? ` · ${c.curriculum}` : ""}{c.general_office ? ` · ${c.general_office}` : ""} · <Pil kind={STATE[c.state]?.[0] ?? "grey"}>{STATE[c.state]?.[1] ?? c.state}</Pil> <span className="sub2 tnum">Course ID {c.id}</span>{codeVariant(c.code) ? <span className="sub2 tnum"> · a separate course under {shownCode(c.code)} (key {c.code})</span> : null}</>}
         actions={<>
           {data.may.edit && c.state !== "ENDED" ? <Btn kind="secondary" onClick={() => setEdit({ title: c.title, units: String(c.units), semester: c.both_semesters ? "both" : String(c.semester), level: String(c.level), kind: c.kind })}>Edit</Btn> : null}
           {data.may.edit ? <Btn kind="ghost" onClick={() => setRename(c.code)}>Rename the code</Btn> : null}

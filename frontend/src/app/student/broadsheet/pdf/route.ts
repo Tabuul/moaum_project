@@ -7,6 +7,7 @@ import { brandHeader } from "@/lib/pdf-crest";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
+import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +68,7 @@ export async function GET() {
     for (const c of g.rows) {
       need(16);
       if (y === A4.h - 56) { /* fresh page: no repeat header, keep simple */ }
-      p.text(L + 6, y, clean(c.course_code), 8.5, true);
+      p.text(L + 6, y, clean(shownCode(c.course_code)), 8.5, true);
       p.text(cTitle, y, cut(clean(c.title), 34), 8.5, false, [0.2, 0.2, 0.2]);
       p.text(cUnit, y, String(c.units), 8.5);
       p.text(cCa, y, c.outcome === "GRADED" ? (c.ca == null ? "-" : String(c.ca)) : "-", 8.5);

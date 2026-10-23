@@ -13,6 +13,7 @@ import { DTable } from "@/components/proto/DTable";
 import { semesterName } from "@/lib/student-portal";
 import { paymentRemedy, permitSections, permitStatusLabel, permitSummary, registrationRemedy, slotDate, slotTime, slotVenue, type PermitState } from "@/lib/gst-eps-permit";
 import { PermitActions } from "../CardActions";
+import { shownCode } from "@/lib/course-code";
 
 function CourseTables({ v }: { v: PermitState }) {
   // the S/N runs on from the GST courses into the EPS courses
@@ -27,7 +28,7 @@ function CourseTables({ v }: { v: PermitState }) {
             const pending = (t: string) => (t === "TO BE SCHEDULED" ? <span className="sub2 ink-faint">{t}</span> : <span className="tnum">{t}</span>);
             return [
               <span key="n" className="tnum">{n}</span>,
-              <Two key="c" a={c.course_code} b={c.title} />,
+              <Two key="c" a={shownCode(c.course_code)} b={c.title} />,
               <span key="u" className="tnum">{c.units}</span>,
               <Pil key="t" kind={c.course_type === "GST" ? "info" : "ok"}>{c.course_type}</Pil>,
               <span key="d">{pending(slotDate(c))}</span>,

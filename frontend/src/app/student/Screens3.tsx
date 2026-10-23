@@ -22,6 +22,7 @@ import { CATEGORY_LABEL, addedAsLabel, categoryWords, courseCategory, gstOffice,
 import { loadKind, loadSummary, minimumBinds, waivedWords, type LoadKind } from "@/lib/registration-load";
 import { AddOtherCourse } from "./AddOtherCourse";
 import { OverloadRequest } from "./OverloadRequest";
+import { courseLabel, shownCode } from "@/lib/course-code";
 
 /** the academic type shown on the form: GST, Elective or Core (Core/Required → Core).
  *  Prefer the per-programme offer basis (an elective borrowed from another department that owns
@@ -130,7 +131,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   // under Carry-over courses, the others under Add other courses
   const extraRow = (e: (typeof extras)[number]) => (
     <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "center" }}>
-      <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
+      <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(e.courseCode)}</span>
       <span className="grow">{e.title} <span className="sub2">· {addedAsLabel(e.addedAs) ?? (e.studentAdded ? "added by you" : "registered before your programme's structure changed; kept as registered")}</span></span>
       <Pil kind="grey">{CATEGORY_LABEL[courseCategory(e)]}</Pil>
       <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
@@ -253,7 +254,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       title={m.gstLocked ? "Locked until the GST fee is paid" : m.prerequisiteLocked ? `Pass ${m.prerequisitesUnmet} first` : m.prerequisitesUnmet ? `Prerequisite not yet passed: ${m.prerequisitesUnmet}` : undefined}
       onClick={() => { if (fixed || locked || m.gstLocked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else if (m.prerequisiteLocked) return; else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
-      <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
+      <div className="grow"><div className="pick__t tnum">{courseLabel(m.course_code, m.title)}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.deferred ? `Deferred · originally ${m.deferred_from ?? ""} · status DEFERRED` : m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
       {m.basis === "Research" || m.basis === "Deficiency" ? <Pil kind={m.basis === "Research" ? "ok" : "warn"}>{m.basis}</Pil> : null}
@@ -268,7 +269,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
     // V512: a GST/EPS carry-over waits for the GST fee — being a carry-over does not pass it
     <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>
       <div className="pick__box" />
-      <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
+      <div className="grow"><div className="pick__t tnum">{courseLabel(m.course_code, m.title)}</div>
         <div className="pick__s" style={{ color: "var(--red-deep)" }}>{m.deferred ? `Deferred from ${m.deferred_from ?? ""}` : `Failed ${m.failed_in}`} — a {gstOffice(m.course_code)} course: GST/EPS PAYMENT REQUIRED before it can be registered</div></div>
       <Pil kind="info">{gstOffice(m.course_code)}</Pil>
       <LinkBtn kind="urgent" size="sm" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST/EPS FEE</LinkBtn>
@@ -277,7 +278,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   ) : reg && !onReg.has(m.offering_id) ? (
     <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)" }}>
       <div className="pick__box" />
-      <div className="grow"><div className="pick__t tnum">{m.course_code} — {m.title}</div>
+      <div className="grow"><div className="pick__t tnum">{courseLabel(m.course_code, m.title)}</div>
         <div className="pick__s" style={{ color: "var(--red-deep)" }}>{m.deferred ? `Deferred from ${m.deferred_from ?? ""}` : `Failed ${m.failed_in}`} — not yet on this registration{m.kind === "GST" ? "; the GST/EPS fee no longer holds it" : ""}</div></div>
       {m.kind === "GST" ? <Pil kind="info">{gstOffice(m.course_code)}</Pil> : null}
       <Btn kind="primary" size="sm" disabled={busy !== null} busy={busy === `carry-${m.offering_id}`} busyLabel="Registering..."
@@ -376,7 +377,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 <div className="eyebrow mt-2">Registered — drop</div>
                 {droppable.map((e) => (
                   <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
+                    <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(e.courseCode)}</span>
                     <span className="grow">{e.title} <span className="sub2">· {e.units}u · {courseType(e)}</span></span>
                     <Btn kind="ghost" disabled={busy !== null} onClick={() => void act(`drop-${e.offeringId}`, "POST", "/me/registration/drop", { session: v.session, semester: v.semester, offering: e.offeringId }, `Dropped ${e.courseCode}`)}>{busy === `drop-${e.offeringId}` ? "Dropping…" : "Drop"}</Btn>
                   </div>
@@ -386,7 +387,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 <div className="eyebrow mt-3">Offered — add</div>
                 {addable.map((m) => (
                   <div key={m.offering_id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
-                    <span className="tnum b600" style={{ minWidth: 92 }}>{m.course_code}</span>
+                    <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(m.course_code)}</span>
                     <span className="grow">{m.title} <span className="sub2">· {m.units}u · {m.lecturer ?? "no lecturer yet"}</span></span>
                     <Btn kind="primary" disabled={busy !== null} onClick={() => void act(`add-${m.offering_id}`, "POST", "/me/registration/add", { session: v.session, semester: v.semester, offering: m.offering_id }, `Added ${m.course_code}`)}>{busy === `add-${m.offering_id}` ? "Adding…" : "Add"}</Btn>
                   </div>
@@ -431,7 +432,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
             {registered.length ? registered.map((e, i) => (
               <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
                 <span className="tnum sub2" style={{ minWidth: 24 }}>{i + 1}</span>
-                <span className="tnum b600" style={{ minWidth: 92 }}>{e.courseCode}</span>
+                <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(e.courseCode)}</span>
                 <span className="grow">{e.title}{e.lecturer ? <span className="sub2"> · {e.lecturer}</span> : null}{e.studentAdded ? <span className="sub2"> · {addedAsLabel(e.addedAs) ?? "added by you"}</span> : null}</span>
                 <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{e.entryType === "DEFERRED" ? "Deferred" : categoryWords(e)}</Pil>
                 <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
@@ -449,7 +450,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
             {away.map((o) => (
               <div key={o.course_code} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", opacity: 0.85 }}>
                 <div className="pick__box" />
-                <div className="grow"><div className="pick__t tnum">{o.course_code} — {o.title}</div>
+                <div className="grow"><div className="pick__t tnum">{courseLabel(o.course_code, o.title)}</div>
                   <div className="pick__s" style={{ color: "var(--red-deep)" }}>Failed {o.failed_in} — {o.offering_id ? (v.siwes ? "not registered in the SIWES semester" : "not open to you this semester; ask your department")
                     : o.runs_in ? `not offered this semester; it runs in the ${o.runs_in} semester of ${v.session}` : `not offered in ${v.session} yet`}</div></div>
                 <Pil kind="warn">Outstanding</Pil>
@@ -610,7 +611,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
             {byOrder(reg.entries.filter((e) => e.status !== "DROPPED" && e.status !== "WITHDRAWN")).map((e, i) => { const co = e.entryType === "CARRYOVER" || e.entryType === "DEFERRED"; return (
               <tr key={e.offeringId}>
                 <td className="tnum sub2">{i + 1}</td>
-                <td className="tnum b600">{e.courseCode}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
+                <td className="tnum b600">{shownCode(e.courseCode)}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>

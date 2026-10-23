@@ -16,6 +16,7 @@ import { Btn, LinkBtn, Note, Pil } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { useAct } from "./common";
+import { shownCode } from "@/lib/course-code";
 
 interface Dept { code: string; name: string; faculty_code: string | null; faculty: string | null }
 
@@ -173,7 +174,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
               const key = `addother-${c.offering_id}`;
               return (
                 <tr key={c.course_code}>
-                  <td className="tnum b600">{c.course_code}</td>
+                  <td className="tnum b600">{shownCode(c.course_code)}</td>
                   <td>{c.title}
                     <div className="sub2">{c.refusal ? refusalText(c.refusal) : [c.why, c.added_as === "CARRY_OVER_DECLARED" ? null : addedAsLabel(c.added_as)].filter(Boolean).join(" · ")}{c.recommended ? " · on your recommended list" : ""}</div>
                     {st.ok && after.over ? <div className="sub2 ink-red">Adding it takes you to {after.total} units, over the maximum of {max}.</div> : null}

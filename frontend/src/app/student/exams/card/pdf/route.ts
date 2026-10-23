@@ -11,6 +11,7 @@ import { inUniversityOrder } from "@/lib/course-order";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
+import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
   let sn = 0;
   for (const e of inUniversityOrder(card.courses)) {
     p.text(L + 8, y, String(++sn), 9);
-    p.text(codeX, y, clean(e.course_code), 9, true);
+    p.text(codeX, y, clean(shownCode(e.course_code)), 9, true);
     p.text(titleX, y, cut(clean(e.title), titleMax), 8.5);
     p.text(unitX + 2, y, String(e.units), 9);
     if (barred.has(e.course_code)) p.text(signX, y, "BARRED: ATTENDANCE", 8, true, [0.6, 0.1, 0.1]);

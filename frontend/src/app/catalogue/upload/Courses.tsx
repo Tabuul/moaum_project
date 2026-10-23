@@ -16,6 +16,7 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import { semesterText } from "@/lib/student-portal";
+import { courseLabel, titleChoiceKey } from "@/lib/course-code";
 
 interface ProgrammeOption { code: string; name: string; facultyName?: string }
 interface Row { code: string; title: string; units: string; status: string; level: number | null; /** V386: "Both" for a course taught in the first and the second */ semester: number | "Both" | null; lh: string; ph: string; programmeCode?: string; category?: string; classification?: string }
@@ -27,6 +28,10 @@ interface Placement { code: string; title: string; programme: string; status: st
 interface UnitChange { code: string; title: string; programme: string; level: number; fileUnits: number; courseUnits: number; nowUnits: number; department: string | null; change: "PROGRAMME_OWN" | "BACK_TO_COURSE" }
 interface UnitChanges { rows: UnitChange[]; counts: { programmeOwn: number; backToCourse: number } }
 interface Placements { placements: Placement[]; counts: { toGst: number; toEps: number; noOffice: number; backToDepartment: number; keptWithOffice: number; keptWithDepartment: number; otherOffice?: number } }
+/** V646: a row whose code the pool holds under other titles (catalogue.structure_title_choices) — the same course or a separate one */
+interface HeldCourse { code: string; title: string; curriculum: string | null; dept: string | null; level: number | null; semester: number | null; variant: string | null }
+interface TitleChoiceRow { programme: string; code: string; title: string; level: number | null; held: HeldCourse[] }
+type TitleDecision = { choice: "SAME"; sameAs: string } | { choice: "SEPARATE" };
 /* the status (or Classification) as the file says it — V370: EPS is read whole, never as E */
 const statusWord = (s: string) => ({ C: "Core", R: "Required", E: "Elective", G: "General (G)", GST: "General (GST)", EPS: "Entrepreneurship (EPS)" } as Record<string, string>)[s.toUpperCase()]
   ?? ({ C: "Core", R: "Required", E: "Elective", G: "General (G)" } as Record<string, string>)[s.charAt(0).toUpperCase()] ?? s;
@@ -53,6 +58,9 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   const [placements, setPlacements] = useState<Placements | null>(null);
   // V460: the existing courses whose units this structure would change for its programme
   const [unitChanges, setUnitChanges] = useState<UnitChanges | null>(null);
+  // V646: the rows whose code the pool holds under other titles, and the choice made for each (by code and title)
+  const [titleRows, setTitleRows] = useState<TitleChoiceRow[] | null>(null);
+  const [decisions, setDecisions] = useState<Record<string, TitleDecision>>({});
   const [loaded, setLoaded] = useState<Loaded[] | null>(null);
   const [listing, setListing] = useState(false);
   const [unregistered, setUnregistered] = useState<{ programme: string; rows: number }[]>([]);
@@ -179,24 +187,53 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
   async function readPlacements(rows: Row[], prog: string) {
     setPlacements(null);
     setUnitChanges(null);
+    setTitleRows(null);
+    setDecisions({});
     if (!may) return;
     const groups = [...groupsOf(rows, prog).values()].map((g) => ({ programme: g.programme, rows: g.rows }));
     if (!groups.length) return;
     const body = JSON.stringify({ groups });
-    const [r, u] = await Promise.all([
+    const [r, u, t] = await Promise.all([
       fetch("/api/bff/api/v1/catalogue/import/placements", { method: "POST", headers: { "Content-Type": "application/json" }, body }),
       fetch("/api/bff/api/v1/catalogue/import/units", { method: "POST", headers: { "Content-Type": "application/json" }, body }),
+      fetch("/api/bff/api/v1/catalogue/import/titles", { method: "POST", headers: { "Content-Type": "application/json" }, body }),
     ]);
     const j = await r.json().catch(() => null);
     if (r.ok && j) setPlacements(j as Placements);
     const k = await u.json().catch(() => null);
     if (u.ok && k) setUnitChanges(k as UnitChanges);
+    const ti = await t.json().catch(() => null);
+    if (t.ok && Array.isArray(ti)) setTitleRows(ti as TitleChoiceRow[]);
   }
+
+  /* V646: one choice for each code and title the pool holds under other titles — the rows of every programme that carry it share it */
+  const titleChoices = (() => {
+    const seen = new Map<string, TitleChoiceRow & { programmes: string[] }>();
+    for (const t of titleRows ?? []) {
+      const k = titleChoiceKey(t.code, t.title);
+      const s = seen.get(k);
+      if (s) { if (!s.programmes.includes(t.programme)) s.programmes.push(t.programme); } else seen.set(k, { ...t, programmes: [t.programme] });
+    }
+    return [...seen.entries()].map(([key, t]) => ({ key, ...t }));
+  })();
+  const undecided = titleChoices.filter((t) => !decisions[t.key]).length;
+  const decideAll = (choice: "SAME" | "SEPARATE") => setDecisions(Object.fromEntries(titleChoices.map((t) => [t.key,
+    choice === "SAME" ? { choice: "SAME", sameAs: t.held[0]?.code ?? t.code } : { choice: "SEPARATE" }] as [string, TitleDecision])));
+  /* the rows sent with their choice: titleChoice SAME (sameAs the course named) or SEPARATE, by the row's code and title */
+  const withChoices = (rows: Row[]) => rows.map((r) => {
+    const d = decisions[titleChoiceKey(r.code, r.title)];
+    return !d ? r : d.choice === "SAME" ? { ...r, titleChoice: "SAME", sameAs: d.sameAs } : { ...r, titleChoice: "SEPARATE" };
+  });
 
   async function upload() {
     if (!preview) return;
     const perRow = preview.some((r) => r.programmeCode);
     if (!perRow && !programme) { setProblem({ status: 400, title: "Choose a programme, or upload a file with a programme_code column.", detail: "A file without a Programme Code column loads against the one programme chosen above." }); notifyProblem({ status: 400, title: "Choose a programme, or upload a file with a programme_code column.", detail: "A file without a Programme Code column loads against the one programme chosen above." }); return; }
+    // V646: a code the pool holds under another title is loaded only once the same course or a separate one is chosen
+    if (undecided > 0) {
+      const pr = { status: 400, title: `Choose for ${undecided} course${undecided === 1 ? "" : "s"}: the same course, or a separate one`, detail: "The pool holds these codes under other titles. Choose under \"Same code, different title\" below." };
+      setProblem(pr); notifyProblem(pr); return;
+    }
     setBusy(true);
     setProblem(null);
     setMsg(null);
@@ -208,7 +245,7 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       let done = 0;
       const notRegistered: { programme: string; rows: number }[] = [];
       for (const g of groups.values()) {
-        const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${g.programme}`) }, body: JSON.stringify({ programme: g.programme, rows: g.rows, curriculum: g.curriculum }) });
+        const r = await fetch("/api/bff/api/v1/catalogue/import", { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Course structure uploaded for ${g.programme}`) }, body: JSON.stringify({ programme: g.programme, rows: withChoices(g.rows), curriculum: g.curriculum }) });
         const j = await r.json().catch(() => null);
         if (!r.ok) {
           const base = (j ?? { status: r.status, title: r.statusText }) as Problem;
@@ -237,6 +274,8 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
       setPreview(null);
       setPlacements(null);
       setUnitChanges(null);
+      setTitleRows(null);
+      setDecisions({});
       if (programme) void viewLoaded();
     } finally {
       setBusy(false);
@@ -438,9 +477,49 @@ export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOpt
                 </div>
               </div>
             ) : null}
+            {titleChoices.length ? (
+              <div className="mt-3">
+                <Note kind={undecided ? "bad" : "info"} title={`Same code, different title — ${titleChoices.length} course${titleChoices.length === 1 ? "" : "s"}${undecided ? `, ${undecided} to choose` : ""}`}>
+                  The pool already holds these codes under other titles, and one code may carry more than one course. For each, choose whether
+                  the file&rsquo;s row is the same course (it keeps the title the pool holds) or a separate course under the same code (created with
+                  the file&rsquo;s title for this upload&rsquo;s curriculum, with its own classes and results). Nothing is merged and no title is written over.
+                  <div className="row row--inline row--tight mt-2">
+                    <Btn kind="ghost" size="sm" onClick={() => decideAll("SAME")}>All: the same course</Btn>
+                    <Btn kind="ghost" size="sm" onClick={() => decideAll("SEPARATE")}>All: separate courses</Btn>
+                  </div>
+                </Note>
+                <div className="tablewrap" tabIndex={0} style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r-md)" }}>
+                  <table className="tbl--data">
+                    <thead><tr><th>Code</th><th>Title in the file</th><th>Held under the code</th><th>Programme</th><th>Choice</th></tr></thead>
+                    <tbody>
+                      {titleChoices.map((t) => {
+                        const d = decisions[t.key];
+                        return (
+                          <tr key={t.key}>
+                            <td className="tnum">{t.code}</td>
+                            <td>{t.title}</td>
+                            <td>{t.held.map((h) => <div key={h.code} className="sub2">{courseLabel(h.code, h.title, h.curriculum)}{h.curriculum && !h.variant ? ` (${h.curriculum})` : ""}</div>)}</td>
+                            <td className="tnum sub2">{t.programmes.join(", ")}</td>
+                            <td>
+                              <select className="ctl" aria-label={`Choice for ${t.code} ${t.title}`} value={!d ? "" : d.choice === "SEPARATE" ? "SEPARATE" : `SAME:${d.sameAs}`}
+                                onChange={(e) => { const v = e.target.value; setDecisions((x) => ({ ...x, [t.key]: v === "SEPARATE" ? { choice: "SEPARATE" } : { choice: "SAME", sameAs: v.slice(5) } })); }}>
+                                <option value="" disabled>Choose…</option>
+                                {t.held.map((h) => <option key={h.code} value={`SAME:${h.code}`}>The same course as {courseLabel(h.code, h.title, h.curriculum)}</option>)}
+                                <option value="SEPARATE">A separate course under {t.code}</option>
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
             <div className="row mt-3">
-              <Btn kind="primary" size="md" disabled={busy || !may} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} courses`}</Btn>
-              <Btn kind="ghost" size="md" disabled={busy} onClick={() => { setPreview(null); setPlacements(null); setUnitChanges(null); }}>Cancel</Btn>
+              <Btn kind="primary" size="md" disabled={busy || !may || undecided > 0} onClick={() => void upload()}>{busy ? "Loading…" : `Load ${preview.length} courses`}</Btn>
+              <Btn kind="ghost" size="md" disabled={busy} onClick={() => { setPreview(null); setPlacements(null); setUnitChanges(null); setTitleRows(null); setDecisions({}); }}>Cancel</Btn>
+              {undecided > 0 ? <span className="sub2">Choose for the {undecided} course{undecided === 1 ? "" : "s"} under &ldquo;Same code, different title&rdquo; first.</span> : null}
             </div>
           </PBody>
         </Panel>

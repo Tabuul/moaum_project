@@ -83,7 +83,7 @@ class CatalogueController {
     public record NewCourse(@NotBlank @Size(max = 20) String code, @NotBlank @Size(max = 120) String title,
                             @NotNull @Min(0) Integer units, @NotNull Integer semester, @NotNull Integer level,
                             @NotBlank @Size(max = 12) String dept, @Size(max = 20) String kind, @Valid List<FirstOffer> offers,
-                            Boolean bothSemesters) {
+                            Boolean bothSemesters, @Size(max = 6) String curriculum) {
     }
 
     public record CourseUpload(@NotBlank @Size(max = 20) String programme, @NotNull List<Map<String, Object>> rows, @Size(max = 12) String curriculum) {
@@ -279,6 +279,17 @@ class CatalogueController {
     @Transactional(readOnly = true)
     Object importPlacements(@Valid @RequestBody PlacementsIn body) {
         String out = jdbc.sql("SELECT catalogue.structure_placements(:g::jsonb)::text").param("g", json.writeValueAsString(body.groups())).query(String.class).single();
+        return json.readValue(out, Object.class);
+    }
+
+    /** V646: the rows of these structures whose code the pool holds under other titles, each with the courses held under the code —
+     *  the upload asks, row by row, the same course (its title kept) or a separate course under the code; read, nothing written */
+    @PostMapping("/import/titles")
+    @PreAuthorize(UPLOADERS)
+    @Transactional(readOnly = true)
+    Object importTitles(@Valid @RequestBody PlacementsIn body) {
+        String out = jdbc.sql("SELECT coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb)::text FROM catalogue.structure_title_choices(CAST(:g AS jsonb)) x")
+                .param("g", json.writeValueAsString(body.groups())).query(String.class).single();
         return json.readValue(out, Object.class);
     }
 
@@ -1085,9 +1096,11 @@ class CatalogueController {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_SEMESTER_BOTH", "A course taught in both semesters is taught in the first and the second.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose the first semester with both, or the third semester alone.", "Head of Department"));
         }
-        String code = jdbc.sql("SELECT catalogue.create_course(:c, :t, :u, :s, :l, :d, :k)")
+        // V646: a code held under another title gives a separate course under it, of the curriculum named (CSC 401 BMAS)
+        String code = jdbc.sql("SELECT catalogue.create_course(:c, :t, :u, :s, :l, :d, :k, :cur)")
                 .param("c", body.code()).param("t", body.title()).param("u", body.units()).param("s", body.semester())
                 .param("l", body.level()).param("d", body.dept()).param("k", body.kind())
+                .param("cur", body.curriculum() == null || body.curriculum().isBlank() ? null : body.curriculum().trim().toUpperCase(), java.sql.Types.VARCHAR)
                 .query(String.class).single();
         if (Boolean.TRUE.equals(body.bothSemesters())) {   // V386: taught in the first and the second semester alike
             jdbc.sql("UPDATE catalogue.course SET semester = 1, both_semesters = true WHERE code = :c").param("c", code).update();

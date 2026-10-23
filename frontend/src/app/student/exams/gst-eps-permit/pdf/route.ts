@@ -11,6 +11,7 @@ import {
   cardTableEnd, cardTableHead, cardVerify, cardWrap,
 } from "@/lib/exam-card-pdf";
 import { permitSections, permitSummary, permitVerifyPath, scheduled, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitState } from "@/lib/gst-eps-permit";
+import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
 
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
       const title = cardWrap(clean(c.title), W.title, 8.5);
       const venue = scheduled(c) ? cardWrap(clean(slotVenue(c)), W.venue, 8) : [];
       p.text(X.sn, y, String(n), 9);
-      p.text(X.code, y, clean(c.course_code), 9, true);
+      p.text(X.code, y, clean(shownCode(c.course_code)), 9, true);
       title.forEach((t, i) => p.text(X.title, y - i * 10, t, 8.5));
       p.text(X.unit + 2, y, String(c.units), 9);
       p.text(X.type, y, c.course_type, 8.5, true);
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
       } else {
         p.text(X.date, y, TO_BE_SCHEDULED, 7.5, true, [0.45, 0.45, 0.45]);   // no date, time or venue is ever invented
       }
-      if (c.bar) { p.text(X.sign, y, "BARRED", 7.5, true, [0.6, 0.1, 0.1]); barred.push(clean(c.course_code)); }
+      if (c.bar) { p.text(X.sign, y, "BARRED", 7.5, true, [0.6, 0.1, 0.1]); barred.push(clean(shownCode(c.course_code))); }
       else p.rule(X.sign, y - 2, A4.w - L - 8, y - 2, 0.4, 0.75);   // a signature line per paper, as on the examination card
       y -= Math.max(16, 10 * Math.max(title.length, venue.length) + 6);
     }

@@ -10,6 +10,7 @@ import { qrMatrix, regVerifyPath, studentCheckCode } from "@/lib/qr";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
+import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
   for (const e of inUniversityOrder(reg.entries.filter((x) => x.status !== "DROPPED" && x.status !== "WITHDRAWN"))) {
     const co = e.entryType === "CARRYOVER";
     p.text(snX, y, String(++sn), 9, false, [0.35, 0.35, 0.35]);
-    p.text(codeX, y, clean(e.courseCode), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
+    p.text(codeX, y, clean(shownCode(e.courseCode)), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
     p.text(titleX, y, cut(clean(e.title), 42), 9, false, [0.2, 0.2, 0.2]);
     p.text(unitX, y, String(e.units), 9);
     p.text(typeX, y, courseType(e), 8.5, true, [0.35, 0.35, 0.35]);
