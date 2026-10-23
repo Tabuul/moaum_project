@@ -10,6 +10,9 @@ export interface FeeLine {
   item: string; amount: number; level: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null;
   programme_code: string | null; programme_name: string | null; fee_group_name?: string | null; semester: number | null; indigene: string | null;
   spillover: boolean; kind?: string; ord?: number;
+  /** V648: ACTIVE, ARCHIVED (deactivated), REPLACED (a corrected line stated beside it) or REMOVED — a report of more than the lines
+   *  in force says which each is */
+  status?: string;
 }
 
 export interface FeeGroup { key: string; faculty: string; programme: string | null; lines: FeeLine[] }
@@ -31,6 +34,7 @@ export const levelOf = (l: FeeLine) => (l.spillover ? "Spillover" : l.level ? `$
 export const modeOf = (l: FeeLine) => (l.entry_mode ? MODE_LABEL[l.entry_mode] ?? l.entry_mode : "All");
 /** the item as the student's fees page words it: "School fees (First Semester)", not "(semester 1)" */
 export const itemOf = (l: FeeLine) => l.item.replace(/\(semester ([123])\)/i, (_m, n: string) => `(${["First", "Second", "Third"][Number(n) - 1]} Semester)`);
+export const statusOf = (l: FeeLine) => ({ ACTIVE: "Active", ARCHIVED: "Archived", REPLACED: "Replaced", REMOVED: "Removed" } as Record<string, string>)[l.status ?? "ACTIVE"] ?? l.status ?? "Active";
 export const indigeneOf = (l: FeeLine) => (l.indigene === "INDIGENE" ? "Indigene" : l.indigene === "NON_INDIGENE" ? "Non-indigene" : "All");
 
 const rank = (v: string | null, order: string[]) => (v == null ? order.length + 1 : order.indexOf(v) < 0 ? order.length : order.indexOf(v));
@@ -76,10 +80,12 @@ export function feeGroups(lines: FeeLine[]): FeeGroup[] {
 
 /** the Excel rows: S/N first, then faculty, programme, semester, level, entry mode, indigeneship, item and amount */
 export const FEE_SHEET_HEADERS = ["S/N", "Faculty", "Programme", "Semester", "Level", "Entry mode", "Indigeneship", "Item", "Amount (₦)"];
-export function feeSheetRows(lines: FeeLine[]): (string | number)[][] {
+/** V648: with the status column when the report holds archived, replaced or removed lines beside the ones in force */
+export const FEE_SHEET_HEADERS_WITH_STATUS = [...FEE_SHEET_HEADERS, "Status"];
+export function feeSheetRows(lines: FeeLine[], withStatus = false): (string | number)[][] {
   return sortFeeLines(lines).map((l, i) => [
     i + 1, l.faculty_code ? facultyOf(l) : "All faculties", l.programme_name ?? "All programmes", semesterOf(l), levelOf(l),
-    modeOf(l), indigeneOf(l), itemOf(l), Number(l.amount),
+    modeOf(l), indigeneOf(l), itemOf(l), Number(l.amount), ...(withStatus ? [statusOf(l)] : []),
   ]);
 }
 
@@ -103,7 +109,7 @@ export function feeSetupBodyHtml(lines: FeeLine[]): string {
     for (const l of g.lines) bySem.set(semesterOf(l), [...(bySem.get(semesterOf(l)) ?? []), l]);
     const body = [...bySem.entries()].map(([sem, ls]) =>
       `<tr class="sem"><td colspan="${cols}">${esc(sem)}</td></tr>` +
-      ls.map((l) => `<tr><td class="sn">${++n}</td><td>${esc(levelOf(l))}</td><td>${esc(modeOf(l))}</td><td>${esc(indigeneOf(l))}</td><td>${esc(itemOf(l))}</td>` +
+      ls.map((l) => `<tr><td class="sn">${++n}</td><td>${esc(levelOf(l))}</td><td>${esc(modeOf(l))}</td><td>${esc(indigeneOf(l))}</td><td>${esc(itemOf(l))}${l.status && l.status !== "ACTIVE" ? ` <small>(${esc(statusOf(l))})</small>` : ""}</td>` +
         `${withGroup ? `<td>${esc(l.fee_group_name ?? "")}</td>` : ""}<td class="n">${naira(l.amount)}</td></tr>`).join("")).join("");
     const title = g.programme ? `${esc(g.faculty)} <small>· ${esc(g.programme)}</small>` : esc(g.faculty);
     return `<div class="fs-grp">${title} <small>· ${g.lines.length} line${g.lines.length === 1 ? "" : "s"}</small></div>` +

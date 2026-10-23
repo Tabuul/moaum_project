@@ -14,9 +14,12 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.AuditContext;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,7 +60,14 @@ class FinanceController {
                        /** V613: a spillover line (its level then the programme's final level) and the spillover year it is for — 1, 2 or 3; null for any */
                        Boolean spillover, Integer spillYear,
                        /** V288: FEE, or LATE_PAYMENT / LATE_REGISTRATION charged only in the window's late period */
-                       @Pattern(regexp = "FEE|LATE_PAYMENT|LATE_REGISTRATION") String kind) {
+                       @Pattern(regexp = "FEE|LATE_PAYMENT|LATE_REGISTRATION") String kind,
+                       /** V648: why a line is edited — kept with the edit (finance.fee_line_change) */
+                       @Size(max = 400) String reason) {
+    }
+
+    /** V648: why a line is ended — the reason code and words, as for a removal (blank: ended on the fee schedule) */
+    public record EndLine(@Pattern(regexp = "ADDED_IN_ERROR|WRONG_LEVEL|DUPLICATE|WRONG_PROGRAMME|WRONG_FACULTY|WRONG_SESSION|WRONG_SEMESTER|REPLACED|OTHER") String reasonCode,
+                          @Size(max = 400) String reason) {
     }
 
     public record Scheme(@NotBlank @Size(max = 200) String instrument, LocalDate from) {
@@ -385,17 +395,38 @@ class FinanceController {
     @GetMapping("/sessions/{session}/{year}/schedule")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
-    Map<String, Object> schedule(@PathVariable String session, @PathVariable String year) {
+    Map<String, Object> schedule(@PathVariable String session, @PathVariable String year,
+                                 @RequestParam(required = false) @Pattern(regexp = "ACTIVE|ARCHIVED|ALL") String status) {
         String s = session + "/" + year;
+        String st = status == null ? "ACTIVE" : status;
+        // V648: the lines in force (ACTIVE, as before), the lines ended and kept (ARCHIVED; REPLACED when a corrected line was stated
+        // beside them), or both; each with its programme's department, the level checked against the programme structure (once per
+        // distinct scope), the line a versioned edit replaced and the one that replaced it
         List<Map<String, Object>> items = jdbc.sql("""
+                WITH f AS MATERIALIZED (
+                    SELECT f.* FROM finance.fee_schedule f
+                     WHERE f.session = :s AND CASE :st WHEN 'ARCHIVED' THEN f.ended_at IS NOT NULL WHEN 'ALL' THEN true ELSE f.ended_at IS NULL END),
+                lp AS (SELECT DISTINCT f.level, f.programme_code, f.faculty_code, f.spillover FROM f WHERE f.level IS NOT NULL),
+                lpp AS MATERIALIZED (SELECT lp.*, finance.fee_line_level_problem(lp.level, lp.programme_code, lp.faculty_code, lp.spillover) AS problem FROM lp)
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
-                       f.programme_code, p.name AS programme_name, f.fee_group, g.name AS fee_group_name, f.semester, f.indigene, f.ord, f.spillover, f.spill_year, f.kind
-                  FROM finance.fee_schedule f
+                       f.programme_code, p.name AS programme_name, p.dept_code, d.name AS department_name, p.category AS programme_category, pfa.name AS programme_faculty_name,
+                       f.fee_group, g.name AS fee_group_name, f.semester, f.indigene, f.ord, f.spillover, f.spill_year, f.kind, f.ended_at,
+                       CASE WHEN f.ended_at IS NULL THEN 'ACTIVE' WHEN rp.replaced_by IS NOT NULL THEN 'REPLACED' ELSE 'ARCHIVED' END AS status,
+                       rp.replaced_by, pv.line_id AS replaces, lpp.problem AS level_problem
+                  FROM f
                   LEFT JOIN ref.faculty fa ON fa.code = f.faculty_code
                   LEFT JOIN ref.programme p ON p.code = f.programme_code
+                  LEFT JOIN ref.department d ON d.code = p.dept_code
+                  LEFT JOIN ref.faculty pfa ON pfa.code = p.faculty_code
                   LEFT JOIN ref.fee_group g ON g.code = f.fee_group
-                 WHERE f.session = :s AND f.ended_at IS NULL ORDER BY f.ord, f.item
-                """).param("s", s).query().listOfRows();
+                  LEFT JOIN LATERAL (SELECT c.replaced_by FROM finance.fee_line_change c
+                                      WHERE c.line_id = f.id AND c.replaced_by IS NOT NULL ORDER BY c.at DESC LIMIT 1) rp ON true
+                  LEFT JOIN LATERAL (SELECT c.line_id FROM finance.fee_line_change c WHERE c.replaced_by = f.id ORDER BY c.at DESC LIMIT 1) pv ON true
+                  LEFT JOIN lpp ON lpp.level = f.level AND lpp.programme_code IS NOT DISTINCT FROM f.programme_code
+                               AND lpp.faculty_code IS NOT DISTINCT FROM f.faculty_code AND lpp.spillover = f.spillover
+                 ORDER BY f.ended_at DESC NULLS FIRST, f.ord, f.item
+                 LIMIT 5000
+                """).param("s", s).param("st", st).query().listOfRows();
         Map<String, Object> scheme = jdbc.sql("""
                 SELECT v.id, v.instrument, lower(v.validity) AS from_date, upper(v.validity) AS until_date, v.decided_by,
                        (SELECT json_object_agg(r.purpose, r.releases_at)::text FROM policy.clearance_rule r WHERE r.version_id = v.id) AS rules
@@ -406,7 +437,35 @@ class FinanceController {
                        count(*) FILTER (WHERE r.confirmed_at IS NULL AND r.expires_at > now()) AS references_open
                   FROM finance.payment_reference r WHERE r.session = :s
                 """).param("s", s).query().singleRow();
-        return Map.of("session", s, "items", items, "scheme", scheme == null ? Map.of() : scheme, "schemeInForce", scheme != null, "position", position);
+        return Map.of("session", s, "status", st, "items", items, "scheme", scheme == null ? Map.of() : scheme, "schemeInForce", scheme != null, "position", position);
+    }
+
+    Map<String, Object> schedule(String session, String year) {
+        return schedule(session, year, null);
+    }
+
+    /* ── V648: the fee setup's grants and the level a line names ── */
+
+    private static String office() {
+        return AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+    }
+
+    /** the acting office holds the permission on the fee setup (finance.fee_setup_grant) */
+    private void need(String permission) {
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT finance.fee_setup_may(:o, :p)").param("o", office()).param("p", permission).query(Boolean.class).single())) {
+            throw new AccessDeniedException("Your office does not hold " + permission + " on the school fees setup.");
+        }
+    }
+
+    /** a level outside the programme structure (finance.fee_line_level_problem) is refused on a line stated or re-scoped by hand */
+    private void refuseLevelOutsideStructure(Item body) {
+        String problem = jdbc.sql("SELECT coalesce(finance.fee_line_level_problem(CAST(:l AS integer), CAST(:p AS text), CAST(:f AS text), :sp), '')")
+                .param("l", body.level(), Types.INTEGER).param("p", blank(body.programmeCode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
+                .param("sp", spilloverOf(body)).query(String.class).single();
+        if (!problem.isEmpty()) {
+            throw new DomainRuleViolation("FEE_LEVEL_NOT_IN_STRUCTURE", problem,
+                    new DomainRuleViolation.Remedy("Choose a level the programme structure has; a programme's levels are corrected by the Academic Office.", "Bursary"));
+        }
     }
 
     /** the fee groups a charge can be scoped to — data, not code, so the set can grow */
@@ -550,7 +609,8 @@ class FinanceController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> programmes() {
-        return jdbc.sql("SELECT code, name, category, faculty_code FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows();
+        // V648: the levels a fee line for each may name — its programme structure (finance.fee_levels_of)
+        return jdbc.sql("SELECT code, name, category, faculty_code, dept_code, finance.fee_levels_of(code) AS levels FROM ref.programme WHERE NOT archived ORDER BY name").query().listOfRows();
     }
 
     /** V520: an active line of the session that already states this item for the same scope (the scope finance.fee_line_same_scope
@@ -621,12 +681,14 @@ class FinanceController {
     @Transactional
     Map<String, Object> addItem(@PathVariable String session, @PathVariable String year, @Valid @RequestBody Item body) {
         String s = session + "/" + year;
+        need("CREATE_FEE_STRUCTURE");
         if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600, 700, 800, 900).contains(body.level())) {
             throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 900 (700–900 are postgraduate).", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
         }
+        refuseLevelOutsideStructure(body);
         refuseDuplicateLine(s, body, null);
         jdbc.sql("""
                 INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind, spillover, spill_year)
@@ -643,9 +705,17 @@ class FinanceController {
     @PostMapping("/sessions/{session}/{year}/schedule/{id}/end")
     @PreAuthorize(FEE_SETTERS)
     @Transactional
-    Map<String, Object> endItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id) {
-        jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE id = :id AND session = :s AND ended_at IS NULL")
-                .param("id", id).param("s", session + "/" + year).update();
+    Map<String, Object> endItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id,
+                                @Valid @RequestBody(required = false) EndLine body) {
+        // V648: ending a line is deactivating it — the office's grant, a reason, and the line kept in finance.fee_line_change
+        need("DEACTIVATE_FEE_STRUCTURE");
+        String code = body == null || body.reasonCode() == null ? "OTHER" : body.reasonCode();
+        String reason = body == null || body.reason() == null || body.reason().isBlank() ? "Ended on the school fees setup" : body.reason().trim();
+        if (jdbc.sql("SELECT count(*) FROM finance.fee_schedule WHERE id = :id AND session = :s AND ended_at IS NULL")
+                .param("id", id).param("s", session + "/" + year).query(Long.class).single() > 0) {
+            jdbc.sql("SELECT count(*) FROM finance.remove_fee_lines(ARRAY[CAST(:id AS uuid)], 'DEACTIVATE', :c, :r, true)")
+                    .param("id", id).param("c", code).param("r", reason).query(Long.class).single();
+        }
         return schedule(session, year);
     }
 
@@ -657,6 +727,7 @@ class FinanceController {
     Map<String, Object> clearSchedule(@PathVariable String session, @PathVariable String year,
                                       @RequestParam(required = false) @Pattern(regexp = "ALL|FULL_TIME|CCE") String kind) {
         // V380: the CCE lines (entry mode CCE) or the full-time lines (every other) alone, when the Bursar names one; every line otherwise
+        need("DEACTIVATE_FEE_STRUCTURE");
         String k = kind == null ? "ALL" : kind;
         jdbc.sql("UPDATE finance.fee_schedule SET ended_at = now() WHERE session = :s AND ended_at IS NULL"
                         + ("CCE".equals(k) ? " AND entry_mode = 'CCE'" : "FULL_TIME".equals(k) ? " AND entry_mode IS DISTINCT FROM 'CCE'" : ""))
@@ -730,33 +801,52 @@ class FinanceController {
         return out;
     }
 
-    /** edit a standing fee line in place — its amount and the filters it carries */
+    /** edit a standing fee line — its amount and the filters it carries. V648: a line no invoice or payment was made under is corrected
+     *  in place; one that was is versioned by finance.edit_fee_line (ended and kept, the corrected line stated beside it), so the
+     *  configuration an invoice was generated under stays on record; the answer names what it did */
     @PutMapping("/sessions/{session}/{year}/schedule/{id}")
     @PreAuthorize(FEE_SETTERS)
     @Transactional
     Map<String, Object> editItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody Item body) {
+        need("EDIT_FEE_STRUCTURE");
         if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600, 700, 800, 900).contains(body.level())) {
             throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 900 (700–900 are postgraduate).", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
         }
-        refuseDuplicateLine(session + "/" + year, body, id);
-        int n = jdbc.sql("""
-                UPDATE finance.fee_schedule SET item = :i, amount = :a, level = :l, entry_mode = :m, faculty_code = :f,
-                       programme_code = :p, fee_group = :g, semester = :sem, ord = :o, kind = coalesce(:k, kind), spillover = :sp, spill_year = :sy
-                 WHERE id = :id AND session = :s AND ended_at IS NULL
-                """).param("id", id).param("k", body.kind() == null || body.kind().isBlank() ? null : body.kind(), Types.VARCHAR).param("s", session + "/" + year)
-                .param("sp", spilloverOf(body)).param("sy", spillYearOf(body), Types.INTEGER)
-                .param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
-                .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
-                .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
-                .param("sem", body.semester(), Types.INTEGER).param("o", body.ord() == null ? 0 : body.ord()).update();
-        if (n == 0) {
-            throw new DomainRuleViolation("FEE_GONE", "That fee line is not on the current schedule.",
-                    new DomainRuleViolation.Remedy("Refresh the schedule.", "Bursary"));
+        String s = session + "/" + year;
+        Map<String, Object> was = jdbc.sql("SELECT level, programme_code, faculty_code, spillover FROM finance.fee_schedule WHERE id = :id AND session = :s AND ended_at IS NULL")
+                .param("id", id).param("s", s).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new DomainRuleViolation("FEE_GONE", "That fee line is not on the current schedule.",
+                        new DomainRuleViolation.Remedy("Refresh the schedule.", "Bursary")));
+        // a line already outside the structure may have its amount corrected; moving it to another level or scope is checked
+        boolean rescoped = !java.util.Objects.equals(was.get("level"), body.level()) || !java.util.Objects.equals(was.get("programme_code"), blank(body.programmeCode()))
+                || !java.util.Objects.equals(was.get("faculty_code"), blank(body.facultyCode())) || !java.util.Objects.equals(was.get("spillover"), spilloverOf(body));
+        if (rescoped) {
+            refuseLevelOutsideStructure(body);
         }
-        return schedule(session, year);
+        refuseDuplicateLine(s, body, id);
+        Map<String, Object> line = new java.util.HashMap<>();
+        line.put("item", body.item().trim());
+        line.put("amount", body.amount());
+        line.put("level", body.level());
+        line.put("entry_mode", blank(body.entryMode()));
+        line.put("faculty_code", blank(body.facultyCode()));
+        line.put("programme_code", blank(body.programmeCode()));
+        line.put("fee_group", blank(body.feeGroup()));
+        line.put("semester", body.semester());
+        line.put("ord", body.ord() == null ? 0 : body.ord());
+        line.put("kind", body.kind() == null || body.kind().isBlank() ? null : body.kind());
+        line.put("spillover", spilloverOf(body));
+        line.put("spill_year", spillYearOf(body));
+        Map<String, Object> edit = jdbc.sql("SELECT * FROM finance.edit_fee_line(:id, CAST(:j AS jsonb), :r)")
+                .param("id", id).param("j", json.writeValueAsString(line))
+                .param("r", body.reason() == null || body.reason().isBlank() ? null : body.reason().trim(), Types.VARCHAR)
+                .query().singleRow();
+        Map<String, Object> out = new java.util.LinkedHashMap<>(schedule(session, year));
+        out.put("edit", edit);
+        return out;
     }
 
     /* ── the inter-departmental transfer processing fee (Bursary-set) ── */

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 475
+\set EXPECTED 477
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24734,6 +24734,165 @@ BEGIN
         format('resolve=%s/%s %s/%s/%s name=%s crosswalk=%s paid=%s/%s identity=%s/%s held=%s/%s/%s again=%s category=%s/%s refusals=%s/%s decided=%s paidD=%s held=%s identity=%s',
                r_jamb.student_id = a, r_jamb.method, r_amb.student_id, r_amb.status, cardinality(r_amb.candidates), r_name.student_id, crosswalk,
                paid_a, paid_a_amount, ident, ident_ok, held_amb, held_none, held_applicant, again_paid, cat_before, cat_after, r_office, r_same, dec, d_paid, held_after, ident_batch));
+END $$;
+-- ── V648. The school fees setup: a line's use is decided by the database — never used (removed permanently), charged to students
+-- now, used by an invoice, a payment or the ledger (archived, never deleted); a removal needs a reason and the office's grant (the
+-- Students Account Officer deactivates but does not remove); every removal and archive is kept with the line as it was; no payment
+-- reference is touched; an archived line charges nobody. The block undoes its own writes.
+DO $$
+DECLARE ses text := '9648/9649'; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        e uuid := gen_random_uuid(); officer uuid := gen_random_uuid();
+        l600 uuid; l200 uuid; l300 uuid; l100 uuid; l400 uuid; l_ledger uuid;
+        u600 text; u200 text; u300 text; u100 text; u400 text; u_ledger text; rm600 boolean; msg300 text;
+        r_sao text; r_reg text; r_reason text; r_other text; cannot text; still_active boolean;
+        prev_removed int; prev_archived int; outcomes text; gone boolean; archived300 boolean; archived100 boolean; kept int; kept_batch int;
+        kept_before boolean; audit_reason text; refs_before text; refs_after text; charged_before numeric; charged_after numeric; sao_deact text;
+        r_kept text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'V648 check: fee lines stated', true);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/99/996481', 'MOAUM/CHK/99/6481', 'CHECKFEELINE', 'Two Hundred', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now()),
+            (b, 'MOAUM/ADM/99/996482', 'MOAUM/CHK/99/6482', 'CHECKFEELINE', 'Three Hundred', 'C00023', 'UTME', '9999/0000', 100, 300, 'ACTIVE', now()),
+            (c, 'MOAUM/ADM/99/996483', 'MOAUM/CHK/99/6483', 'CHECKFEELINE', 'One Hundred', 'C00023', 'UTME', '9999/0000', 100, 100, 'ACTIVE', now()),
+            (d, 'MOAUM/ADM/99/996484', 'MOAUM/CHK/99/6484', 'CHECKFEELINE', 'Four Hundred', 'C00023', 'UTME', '9999/0000', 100, 400, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check fee', 99000, 600, 'C00023', 1) RETURNING id INTO l600;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check fee', 92000, 200, 'C00023', 1) RETURNING id INTO l200;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check fee', 93000, 300, 'C00023', 1) RETURNING id INTO l300;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check fee', 91000, 100, 'C00023', 1) RETURNING id INTO l100;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check fee', 94000, 400, 'C00023', 1) RETURNING id INTO l400;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check levy', 5000, 100, 'C00023', 1) RETURNING id INTO l_ledger;
+        -- the 300 Level student generated an invoice; the 100 Level student paid one, posted to the ledger; the 400 Level student's was
+        -- generated the day before the line was stated (not made under it)
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at) VALUES
+            (b, ses, 'MOAUM-FEE-V648-B', 'School fees ' || ses, 93000, clock_timestamp(), now() + interval '3 days');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (c, ses, 'MOAUM-FEE-V648-C', 'School fees ' || ses, 96000, clock_timestamp(), now() + interval '3 days', clock_timestamp(), officer, 'Bank branch', 'V648-CHECK-RECEIPT');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at) VALUES
+            (d, ses, 'MOAUM-FEE-V648-D', 'School fees ' || ses, 94000, now() - interval '1 day', now() + interval '3 days');
+        INSERT INTO finance.gl_journal (entry_date, memo, source, source_type, source_ref, status, posted_at)
+        SELECT current_date, 'V648 check: a payment posted', 'AUTO', 'PAYMENT', 'MOAUM-FEE-V648-C', 'POSTED', now()
+         WHERE NOT EXISTS (SELECT 1 FROM finance.gl_journal j WHERE j.source_ref = 'MOAUM-FEE-V648-C');
+        refs_before := (SELECT string_agg(r.reference || '=' || r.amount || '/' || (r.confirmed_at IS NOT NULL), ',' ORDER BY r.reference) FROM finance.payment_reference r WHERE r.reference LIKE 'MOAUM-FEE-V648-%');
+        charged_before := (SELECT coalesce(sum(x.amount), 0) FROM finance.charges(c, ses) x);
+
+        SELECT x.used_by INTO u600 FROM finance.fee_line_usage(ARRAY[l600]) x;
+        SELECT x.removable INTO rm600 FROM finance.fee_line_usage(ARRAY[l600]) x;
+        SELECT x.used_by INTO u200 FROM finance.fee_line_usage(ARRAY[l200]) x;
+        SELECT x.used_by, x.message INTO u300, msg300 FROM finance.fee_line_usage(ARRAY[l300]) x;
+        SELECT x.used_by INTO u100 FROM finance.fee_line_usage(ARRAY[l100]) x;
+        SELECT x.used_by INTO u400 FROM finance.fee_line_usage(ARRAY[l400]) x;
+        SELECT x.used_by INTO u_ledger FROM finance.fee_line_usage(ARRAY[l_ledger]) x;
+
+        -- who may: the Students Account Officer does not remove; the Registrar reads but neither removes nor deactivates
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        BEGIN PERFORM * FROM finance.remove_fee_lines(ARRAY[l600], 'AUTO', 'WRONG_LEVEL', NULL, true);
+        EXCEPTION WHEN insufficient_privilege THEN r_sao := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        PERFORM * FROM finance.remove_fee_lines(ARRAY[l600], 'AUTO', NULL, NULL, false);
+        BEGIN PERFORM * FROM finance.remove_fee_lines(ARRAY[l600], 'DEACTIVATE', 'WRONG_LEVEL', NULL, true);
+        EXCEPTION WHEN insufficient_privilege THEN r_reg := split_part(SQLERRM, ':', 1); END;
+        -- the Bursar: a reason is required, and described when it is Other
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM * FROM finance.remove_fee_lines(ARRAY[l600], 'AUTO', NULL, NULL, true);
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM * FROM finance.remove_fee_lines(ARRAY[l600], 'AUTO', 'OTHER', 'oops', true);
+        EXCEPTION WHEN check_violation THEN r_other := split_part(SQLERRM, ':', 1); END;
+        -- remove a used line: refused, unchanged
+        cannot := (SELECT x.outcome FROM finance.remove_fee_lines(ARRAY[l300], 'REMOVE', 'WRONG_LEVEL', NULL, true) x);
+        still_active := EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.id = l300 AND f.ended_at IS NULL);
+        -- the bulk: previewed, then applied — the line never used removed, the used ones archived
+        SELECT count(*) FILTER (WHERE x.outcome = 'REMOVED'), count(*) FILTER (WHERE x.outcome = 'ARCHIVED')
+          INTO prev_removed, prev_archived FROM finance.remove_fee_lines(ARRAY[l600, l300, l100], 'AUTO', NULL, NULL, false) x;
+        outcomes := (SELECT string_agg(x.level || ':' || x.outcome, ',' ORDER BY x.level)
+                       FROM finance.remove_fee_lines(ARRAY[l600, l300, l100], 'AUTO', 'WRONG_LEVEL', '600 Level was added in error', true) x);
+        gone := NOT EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.id = l600);
+        archived300 := EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.id = l300 AND f.ended_at IS NOT NULL);
+        archived100 := EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.id = l100 AND f.ended_at IS NOT NULL);
+        SELECT count(*), count(DISTINCT k.batch), bool_and(k.before_state ->> 'item' = 'V648 check fee' AND k.reason_code = 'WRONG_LEVEL' AND k.actor = officer AND k.actor_office = 'bursar')
+          INTO kept, kept_batch, kept_before FROM finance.fee_line_change k WHERE k.line_id IN (l600, l300, l100);
+        audit_reason := (SELECT e.reason FROM audit.entries e WHERE e.subject_type = 'finance.fee_schedule' AND e.subject_id = l600 AND e.action = 'DELETE' ORDER BY e.occurred_at DESC LIMIT 1);
+        refs_after := (SELECT string_agg(r.reference || '=' || r.amount || '/' || (r.confirmed_at IS NOT NULL), ',' ORDER BY r.reference) FROM finance.payment_reference r WHERE r.reference LIKE 'MOAUM-FEE-V648-%');
+        charged_after := (SELECT coalesce(sum(x.amount), 0) FROM finance.charges(c, ses) x);
+        -- the Students Account Officer deactivates a line charged to students now
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        sao_deact := (SELECT x.outcome FROM finance.remove_fee_lines(ARRAY[l200], 'DEACTIVATE', 'DUPLICATE', NULL, true) x);
+        BEGIN UPDATE finance.fee_line_change SET reason = 'changed' WHERE line_id = l600;
+        EXCEPTION WHEN check_violation THEN r_kept := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V648 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V648: a fee line never used is removed, one used by an invoice, a payment or the ledger archived (never deleted), with a reason, by the Bursar; no payment reference touched',
+        coalesce(u600 = 'NONE' AND rm600 AND u200 = 'STUDENTS' AND u300 = 'INVOICE' AND msg300 LIKE '%1 school-fees invoice generated%' AND u100 IN ('PAYMENT', 'LEDGER')
+                 AND u_ledger = 'LEDGER' AND u400 = 'STUDENTS'
+                 AND r_sao = 'FEE_SETUP_NOT_PERMITTED' AND r_reg = 'FEE_SETUP_NOT_PERMITTED' AND r_reason = 'FEE_REMOVE_REASON' AND r_other = 'FEE_REMOVE_REASON'
+                 AND cannot = 'CANNOT_REMOVE' AND still_active AND prev_removed = 1 AND prev_archived = 2
+                 AND outcomes = '100:ARCHIVED,300:ARCHIVED,600:REMOVED' AND gone AND archived300 AND archived100
+                 AND kept = 3 AND kept_batch = 1 AND kept_before AND audit_reason = 'Wrong level: 600 Level was added in error'
+                 AND refs_after = refs_before AND charged_before - charged_after = 91000 AND sao_deact = 'ARCHIVED' AND r_kept = 'FEE_LINE_CHANGE_KEPT', false),
+        format('use=%s/%s/%s/%s/%s/%s/%s msg=%s refusals=%s/%s/%s/%s/%s still=%s preview=%s/%s outcomes=%s gone=%s archived=%s/%s kept=%s/%s/%s reason=%s refs=%s charged=%s->%s sao=%s kept=%s',
+               u600, rm600, u200, u300, u100, u_ledger, u400, msg300, r_sao, r_reg, r_reason, r_other, cannot, still_active, prev_removed, prev_archived,
+               outcomes, gone, archived300, archived100, kept, kept_batch, kept_before, audit_reason, refs_after = refs_before, charged_before, charged_after,
+               sao_deact, r_kept));
+END $$;
+
+-- ── V648. Editing a fee line: one never used to make an invoice is corrected in place; one that was is versioned — ended and kept,
+-- the corrected line stated beside it and in force — so the invoice keeps its amount and the history lists every version; the
+-- level a line names is checked against the programme structure (Computer Science runs 100 to 400 Level). The block undoes its writes.
+DO $$
+DECLARE ses text := '9648/9649'; b uuid := gen_random_uuid(); officer uuid := gen_random_uuid(); l_free uuid; l_used uuid;
+        ed record; ve record; same_id boolean; free_amount numeric; old_ended boolean; new_active numeric; ref_amount numeric; link int;
+        hist text; r_reg text; unchanged text; p600 text; p200 text; p_spill text; p_fac text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'V648 check: fee lines stated', true);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (b, 'MOAUM/ADM/99/996485', 'MOAUM/CHK/99/6485', 'CHECKFEELINE', 'Edited', 'C00023', 'UTME', '9999/0000', 100, 300, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check edit', 70000, 200, 'C00023', 2) RETURNING id INTO l_free;
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (ses, 'V648 check edit', 200000, 300, 'C00023', 2) RETURNING id INTO l_used;
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at) VALUES
+            (b, ses, 'MOAUM-FEE-V648-E', 'School fees ' || ses, 200000, clock_timestamp(), now() + interval '3 days');
+
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM * FROM finance.edit_fee_line(l_free, jsonb_build_object('item', 'V648 check edit', 'amount', 71000, 'level', 200, 'programme_code', 'C00023', 'semester', 2), 'Corrected amount');
+        EXCEPTION WHEN insufficient_privilege THEN r_reg := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        unchanged := (SELECT x.outcome FROM finance.edit_fee_line(l_free, jsonb_build_object('item', 'V648 check edit', 'amount', 70000, 'level', 200, 'programme_code', 'C00023', 'semester', 2), NULL) x);
+        SELECT * INTO ed FROM finance.edit_fee_line(l_free, jsonb_build_object('item', 'V648 check edit', 'amount', 71000, 'level', 200, 'programme_code', 'C00023', 'semester', 1), 'Wrong semester and amount');
+        same_id := ed.line_id = l_free;
+        free_amount := (SELECT f.amount FROM finance.fee_schedule f WHERE f.id = l_free AND f.ended_at IS NULL AND f.semester = 1);
+        -- the line an invoice was generated under: ₦200,000 to ₦220,000
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT * INTO ve FROM finance.edit_fee_line(l_used, jsonb_build_object('item', 'V648 check edit', 'amount', 220000, 'level', 300, 'programme_code', 'C00023', 'semester', 2), 'Council approved the new amount');
+        old_ended := EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.id = l_used AND f.ended_at IS NOT NULL AND f.amount = 200000);
+        new_active := (SELECT f.amount FROM finance.fee_schedule f WHERE f.id = ve.line_id AND f.ended_at IS NULL);
+        ref_amount := (SELECT r.amount FROM finance.payment_reference r WHERE r.reference = 'MOAUM-FEE-V648-E');
+        link := (SELECT count(*) FROM finance.fee_line_change k WHERE k.line_id = l_used AND k.replaced_by = ve.line_id AND k.action = 'FEE_STRUCTURE_VERSIONED'
+                                                                  AND (k.before_state ->> 'amount')::numeric = 200000 AND (k.after_state ->> 'amount')::numeric = 220000);
+        hist := (SELECT string_agg(h.version || ':' || h.action || ':' || h.amount, ',' ORDER BY h.version) FROM finance.fee_line_history(ve.line_id) h);
+
+        p600 := finance.fee_line_level_problem(600, 'C00023', 'SC', false);
+        p200 := finance.fee_line_level_problem(200, 'C00023', 'SC', false);
+        p_spill := finance.fee_line_level_problem(300, 'C00023', NULL, true);
+        p_fac := finance.fee_line_level_problem(800, NULL, NULL, false);
+        RAISE EXCEPTION 'the V648 edit check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V648: a fee line never invoiced is corrected in place; one invoiced is versioned (kept, ended, corrected beside it), the invoice unchanged; levels checked against the programme',
+        coalesce(r_reg = 'FEE_SETUP_NOT_PERMITTED' AND unchanged = 'UNCHANGED' AND ed.outcome = 'EDITED' AND same_id AND free_amount = 71000
+                 AND ve.outcome = 'VERSIONED' AND ve.previous_id = l_used AND ve.line_id <> l_used AND old_ended AND new_active = 220000 AND ref_amount = 200000
+                 AND link = 1 AND hist = '1:CREATED:200000.00,2:REPLACED:200000.00,3:VERSIONED:220000.00'
+                 AND p600 LIKE '%runs 100, 200, 300 and 400 Level%not 600 Level.' AND p200 IS NULL AND p_spill LIKE 'A spillover line names%400 Level, not 300 Level.'
+                 AND p_fac IS NULL, false),
+        format('registrar=%s unchanged=%s edited=%s/%s/%s versioned=%s/%s/%s/%s/%s invoice=%s link=%s history=%s levels=%s | %s | %s | %s',
+               r_reg, unchanged, ed.outcome, same_id, free_amount, ve.outcome, ve.previous_id = l_used, old_ended, new_active, ve.line_id <> l_used, ref_amount, link,
+               hist, p600, p200, p_spill, p_fac));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

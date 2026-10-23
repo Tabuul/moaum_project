@@ -19,7 +19,7 @@ import { DTable } from "@/components/proto/DTable";
 import { semesterText } from "@/lib/student-portal";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { notify , notifyProblem } from "@/components/proto/Toast";
+import { notify, notifyProblem, toast } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
 import { PgFees } from "./PgFees";
 import { FeeCopy } from "./FeeCopy";
@@ -35,11 +35,19 @@ import type { GstFeePage } from "@/lib/gst";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { printDocument } from "@/lib/document/html";
 import { logExport } from "@/lib/export-log";
-import { FEE_SHEET_HEADERS, feeGroups as reportSections, feeSetupBodyHtml, feeSheetRows } from "@/lib/fee-setup-report";
-export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; /** V613: the spillover year the line is for, null for any */ spill_year: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string }
+import { FEE_SHEET_HEADERS, FEE_SHEET_HEADERS_WITH_STATUS, feeGroups as reportSections, feeSetupBodyHtml, feeSheetRows } from "@/lib/fee-setup-report";
+import { FeeLineRemove, type RemoveLine } from "./FeeLineRemove";
+import { FeeLineHistory, FeeLineView } from "./FeeLineHistory";
+import { STATUS_WORDS, USED_WORDS, levelsFor, type EditAnswer, type LineUsage, type RemovedLine } from "@/lib/fee-setup";
+export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; /** V613: the spillover year the line is for, null for any */ spill_year: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string;
+  /** V648: the programme's department, the line's status (ACTIVE, ARCHIVED, REPLACED; REMOVED for a line removed permanently), the
+   *  versions it links, and why its level is outside the programme structure */
+  dept_code?: string | null; department_name?: string | null; programme_category?: string | null; programme_faculty_name?: string | null; ended_at?: string | null;
+  status?: "ACTIVE" | "ARCHIVED" | "REPLACED" | "REMOVED"; replaced_by?: string | null; replaces?: string | null; level_problem?: string | null;
+  removed_at?: string | null; removed_reason?: string | null }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
-export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string }
+export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string; dept_code?: string | null; /** V648: the levels its structure has */ levels?: number[] | null }
 export interface Schedule {
   session: string;
   items: ScheduleItem[];
@@ -56,13 +64,21 @@ export interface ApplicantFees {
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null, permissions = null }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; permissions?: string[] | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
   // V520: the session's school fees (lines, the gap sheet, copies, the structure) are the Students Account Officer's to state too;
   // the clearance scheme, confirmations and the other fees stay the Bursar's
   const mayFees = may || actingOffice === "studentaccounts";
+  // V648: what the office may do with the fee setup (finance.fee_setup_grant): the Bursar's office removes, the Students Account
+  // Officer states, edits and deactivates, the reading offices read; the server checks every act again
+  const perms = permissions ?? (may ? ["VIEW_FEE_SETUP", "CREATE_FEE_STRUCTURE", "EDIT_FEE_STRUCTURE", "REMOVE_FEE_STRUCTURE", "DEACTIVATE_FEE_STRUCTURE", "VIEW_FEE_STRUCTURE_HISTORY", "EXPORT_FEE_STRUCTURE"]
+    : mayFees ? ["VIEW_FEE_SETUP", "CREATE_FEE_STRUCTURE", "EDIT_FEE_STRUCTURE", "DEACTIVATE_FEE_STRUCTURE", "VIEW_FEE_STRUCTURE_HISTORY", "EXPORT_FEE_STRUCTURE"]
+    : ["VIEW_FEE_SETUP", "VIEW_FEE_STRUCTURE_HISTORY", "EXPORT_FEE_STRUCTURE"]);
+  const can = (permission: string) => perms.includes(permission);
+  const canView = can("VIEW_FEE_SETUP");
+  const canHistory = can("VIEW_FEE_STRUCTURE_HISTORY");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [adding, setAdding] = useState(false);
@@ -82,18 +98,95 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const [pending, setPending] = useState<{ fileName: string; read: UploadRead; cce: boolean } | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(0);
+  // V648: the lines in force, archived or removed; their use (the database's answer, read in the background); the selection; the
+  // dialogs (view, history, remove)
+  const [filterStatus, setFilterStatus] = useState<"ACTIVE" | "ARCHIVED" | "REMOVED" | "ALL">("ACTIVE");
+  const [filterUse, setFilterUse] = useState("");
+  const [filterLevel, setFilterLevel] = useState("");
+  const [filterProg, setFilterProg] = useState("");
+  const [reload, setReload] = useState(0);
+  const [usage, setUsage] = useState<{ key: string; map: Record<string, LineUsage> } | null>(null);
+  const [archived, setArchived] = useState<{ key: string; items: ScheduleItem[] } | null>(null);
+  const [removedLines, setRemovedLines] = useState<{ key: string; items: ScheduleItem[] } | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [removing, setRemoving] = useState<RemoveLine[] | null>(null);
+  const [viewing, setViewing] = useState<ScheduleItem | null>(null);
+  const [historyOf, setHistoryOf] = useState<ScheduleItem | null>(null);
+  const [editReason, setEditReason] = useState("");
+  const wantArchived = filterStatus === "ARCHIVED" || filterStatus === "ALL";
+  const wantRemoved = filterStatus === "REMOVED" || filterStatus === "ALL";
+  const usageKey = `${session}|${wantArchived ? "ALL" : "ACTIVE"}|${reload}|${schedule.items.length}`;
+  const archKey = `${session}|${reload}|${schedule.items.length}`;
+  useEffect(() => {
+    if (!canView) return;
+    let alive = true;
+    fetch(`/api/bff/api/v1/finance/sessions/${session}/schedule/usage?status=${wantArchived ? "ALL" : "ACTIVE"}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: LineUsage[] | null) => { if (alive && j) setUsage({ key: usageKey, map: Object.fromEntries(j.map((u) => [u.line_id, u])) }); })
+      .catch(() => { /* the use reads "—" */ });
+    return () => { alive = false; };
+  }, [session, wantArchived, usageKey, canView]);
+  useEffect(() => {
+    if (!wantArchived) return;
+    let alive = true;
+    fetch(`/api/bff/api/v1/finance/sessions/${session}/schedule?status=ARCHIVED`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: Schedule | null) => { if (alive && j) setArchived({ key: archKey, items: j.items }); })
+      .catch(() => { /* none listed */ });
+    return () => { alive = false; };
+  }, [session, wantArchived, archKey]);
+  useEffect(() => {
+    if (!wantRemoved || !canHistory) return;
+    let alive = true;
+    fetch(`/api/bff/api/v1/finance/sessions/${session}/schedule/removed`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: RemovedLine[] | null) => {
+        if (alive && j) setRemovedLines({ key: archKey, items: j.map((x) => ({
+          id: x.id, item: x.item ?? "—", amount: Number(x.amount ?? 0), level: x.level, spill_year: x.spill_year, entry_mode: x.entry_mode,
+          faculty_code: x.faculty_code, faculty_name: x.faculty_name, programme_code: x.programme_code, programme_name: x.programme_name,
+          department_name: x.department_name, programme_faculty_name: x.programme_faculty_name, fee_group: null, fee_group_name: null, semester: x.semester, indigene: x.indigene, ord: 0,
+          spillover: x.spillover, kind: x.kind ?? "FEE", status: "REMOVED" as const, removed_at: x.at,
+          removed_reason: [x.reason_words, x.reason].filter(Boolean).join(": "),
+        })) });
+      })
+      .catch(() => { /* none listed */ });
+    return () => { alive = false; };
+  }, [session, wantRemoved, canHistory, archKey]);
   const val = (k: string, d = "") => edits[k] ?? d;
 
   const indigeneText = (i: ScheduleItem) => i.indigene === "INDIGENE" ? "Indigene" : i.indigene === "NON_INDIGENE" ? "Non-indigene" : null;
   const appliesTo = (i: ScheduleItem) => [i.fee_group_name, levelWords(i.level, i.spillover, i.spill_year), i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
 
-  const filteredItems = schedule.items.filter((i) =>
+  const usageMap = usage && usage.key === usageKey ? usage.map : null;
+  const archivedItems = wantArchived && archived?.key === archKey ? archived.items : [];
+  const removedItems = wantRemoved && removedLines?.key === archKey ? removedLines.items : [];
+  const listLoading = (wantArchived && archived?.key !== archKey) || (wantRemoved && canHistory && removedLines?.key !== archKey);
+  const baseItems: ScheduleItem[] = filterStatus === "ACTIVE" ? schedule.items : filterStatus === "ARCHIVED" ? archivedItems
+    : filterStatus === "REMOVED" ? removedItems : [...schedule.items, ...archivedItems, ...removedItems];
+  const levelChoices = [...new Set(baseItems.map((i) => i.level).filter((l): l is number => l != null))].sort((a, b) => a - b);
+  const flagged = schedule.items.filter((i) => i.level_problem).length;
+  const lineUse = (i: ScheduleItem) => (i.status === "REMOVED" ? "NONE" : usageMap?.[i.id]?.used_by ?? null);
+  const filteredItems = baseItems.filter((i) =>
     (!filterFac || i.faculty_code === filterFac || (filterFac === "__none__" && !i.faculty_code)) &&
+    (!filterProg || i.programme_code === filterProg) &&
+    (!filterLevel || (filterLevel === "PROBLEM" ? !!i.level_problem : String(i.level ?? "") === filterLevel)) &&
     (!filterSem || String(i.semester ?? "") === filterSem) &&
     (!filterSpill || (filterSpill === "spill" ? i.spillover : !i.spillover)) &&
-    (!filterRoute || (filterRoute === "CCE" ? i.entry_mode === "CCE" : i.entry_mode !== "CCE")));
+    (!filterRoute || (filterRoute === "CCE" ? i.entry_mode === "CCE" : i.entry_mode !== "CCE")) &&
+    (!filterUse || (filterUse === "USED" ? lineUse(i) != null && lineUse(i) !== "NONE" : filterUse === "UNUSED" ? lineUse(i) === "NONE" : lineUse(i) === filterUse)));
   const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(filteredItems.length / pageSize)) : 1;
   const pageItems = pageSize > 0 ? filteredItems.slice(page * pageSize, page * pageSize + pageSize) : filteredItems;
+  // V648: the selection, the lines of this session only; a line is chosen to remove (the Bursar's office) or to deactivate (in force)
+  const known = [...schedule.items, ...archivedItems];
+  const chosen = selected.filter((id) => known.some((k) => k.id === id));
+  const selectable = (i: ScheduleItem) => i.status !== "REMOVED" && (can("REMOVE_FEE_STRUCTURE") || (can("DEACTIVATE_FEE_STRUCTURE") && (i.status ?? "ACTIVE") === "ACTIVE"));
+  const pageSelectable = pageItems.filter(selectable);
+  const allOnPage = pageSelectable.length > 0 && pageSelectable.every((i) => chosen.includes(i.id));
+  const toggle = (id: string) => setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const asRemoveLine = (i: ScheduleItem): RemoveLine => ({ id: i.id, item: i.item, amount: i.amount, level: i.level, faculty_name: i.faculty_name ?? i.programme_faculty_name ?? null,
+    department_name: i.department_name ?? null, programme_name: i.programme_name, semester: i.semester, spillover: i.spillover, spill_year: i.spill_year, entry_mode: i.entry_mode });
+  const extrasOf = (i: ScheduleItem) => [i.fee_group_name, i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, indigeneText(i),
+    i.kind === "LATE_PAYMENT" ? "Late payment fee" : i.kind === "LATE_REGISTRATION" ? "Late registration fee" : null].filter(Boolean).join(" · ");
 
   /** the school fees setup as a report (Excel and PDF alike): grouped by faculty — by programme where a faculty's fees differ by
    *  programme — each faculty's first and second semester together before the next, one serial number down the report, under the
@@ -108,12 +201,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       ["Semester", filterSem ? semesterText(Number(filterSem)).replace("Semester: ", "") : "All semesters"],
       ["Students", filterRoute === "CCE" ? "CCE (part-time)" : filterRoute === "FULL_TIME" ? "Full-time" : "Full-time and CCE"],
       ["Spillover", filterSpill === "spill" ? "Spillover lines only" : filterSpill === "normal" ? "Excluding spillover" : "Included"],
+      ["Status", filterStatus === "ACTIVE" ? "Active (in force)" : filterStatus === "ARCHIVED" ? "Archived (deactivated)" : filterStatus === "REMOVED" ? "Removed (never used)" : "Active, archived and removed"],
       ["Fee lines", `${filteredItems.length.toLocaleString()} in ${new Set(groups.map((g) => g.faculty)).size} ${new Set(groups.map((g) => g.faculty)).size === 1 ? "faculty" : "faculties"}`],
     ];
   }
 
   async function exportExcel() {
-    const blob = await brandedXlsx(reportTitle, FEE_SHEET_HEADERS, feeSheetRows(filteredItems), {
+    const withStatus = filterStatus !== "ACTIVE";
+    const blob = await brandedXlsx(reportTitle, withStatus ? FEE_SHEET_HEADERS_WITH_STATUS : FEE_SHEET_HEADERS, feeSheetRows(filteredItems, withStatus), {
       sheetName: `Fees ${session.replace("/", "-")}`, serial: docSerial("FEE"), sub: `${session} academic session`, meta: reportMeta(),
     });
     downloadBlob(blob, `School fees setup ${session.replace("/", "-")}.xlsx`);
@@ -131,6 +226,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
 
   function openEdit(i: ScheduleItem) {
     const known = feeItems.some((it) => it.name === i.item);
+    setEditReason("");
     setEditingId(i.id);
     setAdding(true);
     setEdits({
@@ -260,6 +356,30 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     }
   }
 
+  /** V648: an edit names what it did — corrected in place, or a new version beside the line invoices were generated under */
+  async function saveEdit(addSession: string, body: Record<string, unknown>): Promise<boolean> {
+    setBusy("edit");
+    setProblem(null);
+    try {
+      const why = editReason.trim();
+      const r = await fetch(`/api/bff/api/v1/finance/sessions/${addSession}/schedule/${editingId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(why || `Fee structure edited for ${addSession}: ${String(body.item)}`) },
+        body: JSON.stringify({ ...body, reason: why || null }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return false; }
+      const e = (j as { edit?: EditAnswer } | null)?.edit;
+      if (e?.outcome === "VERSIONED") toast.success("Fee structure saved as a new version.", "Invoices were made under the line it was: that line is kept, archived, and every invoice and payment keeps its amount.");
+      else if (e?.outcome === "UNCHANGED") notify("Nothing changed.", "info");
+      else notify("Fee structure saved.");
+      setReload((n) => n + 1);
+      router.refresh();
+      return true;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function uploadFees(file: File) {
     setBusy("feeupload");
     setProblem(null);
@@ -326,7 +446,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         <select aria-label="Session" className="ctl" style={{ width: "auto" }} value={session} onChange={(e) => { if (e.target.value !== session) queryNav(`/finance/fees?session=${encodeURIComponent(e.target.value)}`); }}>
           {(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <Btn kind="primary" disabled={!mayFees} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>
+        <Btn kind="primary" disabled={!can("CREATE_FEE_STRUCTURE")} onClick={() => { setEditingId(null); setAdding(true); setEdits({}); }}>Add an item</Btn>
       </span>}>
         <PBody>
           <div className="row row--end">
@@ -335,6 +455,38 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
                 <option value="">Every faculty</option>
                 <option value="__none__">No faculty (all students)</option>
                 {faculties.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}
+              </select>
+            </Field>
+            <Field id="flt-prog" label="Programme">
+              <select id="flt-prog" className="ctl" style={{ minWidth: 180, maxWidth: 260 }} value={filterProg} onChange={(e) => { setFilterProg(e.target.value); setPage(0); }}>
+                <option value="">Every programme</option>
+                {programmes.filter((pr) => !filterFac || filterFac === "__none__" || pr.faculty_code === filterFac).map((pr) => <option key={pr.code} value={pr.code}>{pr.name}</option>)}
+              </select>
+            </Field>
+            <Field id="flt-level" label="Level">
+              <select id="flt-level" className="ctl" style={{ minWidth: 150 }} value={filterLevel} onChange={(e) => { setFilterLevel(e.target.value); setPage(0); }}>
+                <option value="">Every level</option>
+                <option value="PROBLEM">Outside the programme structure</option>
+                {levelChoices.map((l) => <option key={l} value={String(l)}>{l} Level</option>)}
+              </select>
+            </Field>
+            <Field id="flt-status" label="Status">
+              <select id="flt-status" className="ctl" style={{ minWidth: 150 }} value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value as typeof filterStatus); setPage(0); }}>
+                <option value="ACTIVE">Active (in force)</option>
+                <option value="ARCHIVED">Archived (deactivated)</option>
+                {canHistory ? <option value="REMOVED">Removed</option> : null}
+                <option value="ALL">All</option>
+              </select>
+            </Field>
+            <Field id="flt-use" label="Use">
+              <select id="flt-use" className="ctl" style={{ minWidth: 160 }} value={filterUse} onChange={(e) => { setFilterUse(e.target.value); setPage(0); }}>
+                <option value="">Used or not</option>
+                <option value="USED">Used</option>
+                <option value="UNUSED">Never used</option>
+                <option value="STUDENTS">Charged to students only</option>
+                <option value="INVOICE">Used by invoices</option>
+                <option value="PAYMENT">Used by payments</option>
+                <option value="LEDGER">Used by the ledger</option>
               </select>
             </Field>
             <Field id="flt-sem" label="Semester">
@@ -358,21 +510,68 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
               </select>
             </Field>
             <span className="grow" />
-            <Btn kind="ghost" onClick={exportExcel}>Download Excel</Btn>
-            <Btn kind="ghost" onClick={exportPdf}>Download PDF</Btn>
+            <Btn kind="ghost" disabled={!can("EXPORT_FEE_STRUCTURE")} onClick={exportExcel}>Download Excel</Btn>
+            <Btn kind="ghost" disabled={!can("EXPORT_FEE_STRUCTURE")} onClick={exportPdf}>Download PDF</Btn>
           </div>
-          <div className="sub2 mt-2">{filteredItems.length} of {schedule.items.length} line{schedule.items.length === 1 ? "" : "s"}{filterFac || filterSem || filterSpill || filterRoute ? " (filtered)" : ""}. A line with no entry mode is the full-time students&rsquo;; CCE students are charged only CCE lines; postgraduate students only lines naming a postgraduate level (700, 800, 900), the Postgraduate entry mode or group, or their programme.</div>
+          <div className="sub2 mt-2">{filteredItems.length} of {baseItems.length} line{baseItems.length === 1 ? "" : "s"}{filterFac || filterProg || filterLevel || filterSem || filterSpill || filterRoute || filterUse ? " (filtered)" : ""}{listLoading ? " · reading the archived and removed lines…" : ""}{filterUse && !usageMap ? " · checking each line’s use…" : ""}. A line with no entry mode is the full-time students&rsquo;; CCE students are charged only CCE lines; postgraduate students only lines naming a postgraduate level (700, 800, 900), the Postgraduate entry mode or group, or their programme.</div>
         </PBody>
-        <DTable cols={["Item", "Applies to", "Amount|num", "|num"]} rows={pageItems.map((i) => [
-          <strong key="i">{i.item}{i.spillover ? <Pil kind="info" key="sp">{i.spill_year ? `Spillover SP${i.spill_year}` : "Spillover"}</Pil> : null}</strong>,
-          <span className="sub2" key="a">{appliesTo(i)}</span>,
-          <span className="tnum" key="m">{naira(i.amount)}</span>,
-          <span key="x" className="row row--tight row--right">
-            <IcoBtn key="e" icon="edit" label={`Edit ${i.item}`} disabled={!mayFees || busy !== null} onClick={() => openEdit(i)} />
-            <Btn kind="ghost" disabled={!mayFees || busy !== null} onClick={() => void send(`end-${i.id}`, "POST", `/sessions/${session}/schedule/${i.id}/end`, {}, `Fee item ended: ${i.item}`)}>{busy === `end-${i.id}` ? "Ending…" : "End"}</Btn>
-          </span>,
-        ])} />
-        {!schedule.items.length ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no reference can be generated and registration waits.</div></PBody>
+        {flagged && filterLevel !== "PROBLEM" ? (
+          <PBody>
+            <Note kind="bad" title={`${flagged} line${flagged === 1 ? " names" : "s name"} a level outside the programme structure`}
+              action={<Btn kind="secondary" onClick={() => { setFilterStatus("ACTIVE"); setFilterLevel("PROBLEM"); setPage(0); }}>Show {flagged === 1 ? "it" : "them"}</Btn>}>
+              A programme&rsquo;s levels come from its structure (a four-year programme runs 100 to 400 Level). Review each line: one added by mistake is removed permanently if it was never used, archived otherwise. Nothing changes until you confirm.
+            </Note>
+          </PBody>
+        ) : null}
+        {(can("REMOVE_FEE_STRUCTURE") || can("DEACTIVATE_FEE_STRUCTURE")) && filterStatus !== "REMOVED" ? (
+          <PBody>
+            <div className="row">
+              <label className="sub2 row row--tight" style={{ gap: 6 }}>
+                <input type="checkbox" className="pchk" checked={allOnPage} disabled={!pageSelectable.length}
+                  onChange={() => setSelected((cur) => (allOnPage ? cur.filter((id) => !pageSelectable.some((i) => i.id === id)) : [...new Set([...cur, ...pageSelectable.map((i) => i.id)])]))} /> Select every line on this page
+              </label>
+              {chosen.length ? (
+                <>
+                  <span className="sub2">{chosen.length} selected</span>
+                  <Btn kind="urgent" onClick={() => setRemoving(chosen.map((id) => known.find((k) => k.id === id)).filter((k): k is ScheduleItem => !!k).map(asRemoveLine))}>
+                    {can("REMOVE_FEE_STRUCTURE") ? "Remove selected" : "Deactivate selected"}
+                  </Btn>
+                  <Btn kind="ghost" onClick={() => setSelected([])}>Clear selection</Btn>
+                </>
+              ) : null}
+            </div>
+          </PBody>
+        ) : null}
+        <DTable cols={["|mid", "S/N|num", "Item", "Faculty", "Department", "Programme", "Level|num", "Semester", "Amount|num", "Status", "|num"]} rows={pageItems.map((i, n) => {
+          const st = i.status ?? "ACTIVE";
+          const u = st === "REMOVED" ? null : usageMap?.[i.id] ?? null;
+          const used = u ? u.used_by !== "NONE" : null;
+          return [
+            selectable(i) ? <input key="c" type="checkbox" className="pchk" aria-label={`Select ${i.item}${i.level ? `, ${i.level} Level` : ""}${i.programme_name ? `, ${i.programme_name}` : ""}`} checked={chosen.includes(i.id)} onChange={() => toggle(i.id)} /> : <span key="c" />,
+            <span key="n" className="tnum sub2">{(pageSize > 0 ? page * pageSize : 0) + n + 1}</span>,
+            <span key="i"><strong>{i.item}</strong>{i.spillover ? <Pil kind="info" key="sp">{i.spill_year ? `Spillover SP${i.spill_year}` : "Spillover"}</Pil> : null}{extrasOf(i) ? <span className="sub2" style={{ display: "block" }}>{extrasOf(i)}</span> : null}{st === "REMOVED" && i.removed_reason ? <span className="sub2" style={{ display: "block" }}>Removed: {i.removed_reason}</span> : null}</span>,
+            <span key="f" className="sub2">{i.faculty_name ?? i.programme_faculty_name ?? "Every faculty"}</span>,
+            <span key="d" className="sub2">{i.department_name ?? "—"}</span>,
+            <span key="p" className="sub2">{i.programme_name ?? "Every programme"}</span>,
+            <span key="l" className="tnum">{i.level ?? "Every"}{i.level_problem ? <> <Pil kind="bad" title={i.level_problem}>Not in the structure</Pil></> : null}</span>,
+            <span key="s" className="sub2">{i.semester ? semesterText(i.semester).replace("Semester: ", "") : "Whole session"}</span>,
+            <span key="m" className="tnum">{naira(i.amount)}</span>,
+            <span key="t" className="row row--tight" style={{ flexWrap: "wrap" }}>
+              <Pil kind={STATUS_WORDS[st][1]}>{STATUS_WORDS[st][0]}</Pil>
+              {u ? <Pil kind={USED_WORDS[u.used_by][1]} title={u.message}>{USED_WORDS[u.used_by][0]}</Pil> : st !== "REMOVED" && canView && !usageMap ? <span className="sub2">Checking use…</span> : null}
+            </span>,
+            <span key="x" className="row row--tight row--right">
+              <IcoBtn icon="eye" label={`View ${i.item}${i.level ? `, ${i.level} Level` : ""}`} onClick={() => setViewing(i)} />
+              {st === "ACTIVE" && can("EDIT_FEE_STRUCTURE") ? <IcoBtn icon="edit" label={`Edit ${i.item}${i.level ? `, ${i.level} Level` : ""}`} disabled={busy !== null} onClick={() => openEdit(i)} /> : null}
+              {st !== "REMOVED" && can("REMOVE_FEE_STRUCTURE") && used !== true && (st === "ACTIVE" || used === false)
+                ? <IcoBtn icon="trash" danger label={`Remove ${i.item}${i.level ? `, ${i.level} Level` : ""}`} disabled={busy !== null} onClick={() => setRemoving([asRemoveLine(i)])} /> : null}
+              {st === "ACTIVE" && can("DEACTIVATE_FEE_STRUCTURE") && (!can("REMOVE_FEE_STRUCTURE") || used === true)
+                ? <IcoBtn icon="box" label={`Deactivate ${i.item}${i.level ? `, ${i.level} Level` : ""}`} disabled={busy !== null} onClick={() => setRemoving([asRemoveLine(i)])} /> : null}
+              {canHistory ? <IcoBtn icon="clock" label={`History of ${i.item}${i.level ? `, ${i.level} Level` : ""}`} onClick={() => setHistoryOf(i)} /> : null}
+            </span>,
+          ];
+        })} texts={pageItems.map((i) => `${i.item} ${appliesTo(i)} ${i.department_name ?? ""} ${i.level ?? ""}`)} />
+        {!schedule.items.length && filterStatus === "ACTIVE" ? <PBody><div className="sub2">No charge is stated for {session}. Until one is, no reference can be generated and registration waits.</div></PBody>
           : !filteredItems.length ? <PBody><div className="sub2">No fee line matches the filters.</div></PBody> : null}
         {pageSize > 0 && filteredItems.length > pageSize ? (
           <PBody>
@@ -439,8 +638,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
               spillover: !!val("spill"), spillYear: val("spill") && val("spill") !== "any" ? Number(val("spill")) : null };
             let ok = true;
             if (editingId) {
-              // edit the one line in place
-              ok = await send("edit", "PUT", `/sessions/${addSession}/schedule/${editingId}`, { ...shared, programmeCode: selectedProgs[0] ?? null }, `Fee item edited for ${addSession}: ${itemName}`);
+              // V648: the one line edited — in place, or a new version beside the line invoices were made under
+              ok = await saveEdit(addSession, { ...shared, programmeCode: selectedProgs[0] ?? null });
             } else if (selectedProgs.length) {
               // one row per chosen programme; the fee applies to exactly those
               for (const code of selectedProgs) {
@@ -451,7 +650,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
               ok = await send("add", "POST", `/sessions/${addSession}/schedule`, { ...shared, programmeCode: null }, `Fee item stated for ${addSession}: ${itemName}`);
             }
             if (ok) { setAdding(false); setEditingId(null); if (addSession !== session) queryNav(`/finance/fees?session=${encodeURIComponent(addSession)}`); }
-          }}>{busy === "edit" ? "Saving…" : busy === "add" || (busy ?? "").startsWith("add-") ? "Stating…" : editingId ? "Save changes" : "State the item"}</Btn></>}>
+          }}>{busy === "edit" ? "Saving fee structure…" : busy === "add" || (busy ?? "").startsWith("add-") ? "Stating…" : editingId ? "Save changes" : "State the item"}</Btn></>}>
           <div className="grid grid--2">
             <Field id="fi" label="Payment item" hint="A payment category; choose Other to name a one-off">
               <select id="fi" className="ctl" value={val("item")} onChange={(e) => setEdits({ ...edits, item: e.target.value })}>
@@ -462,9 +661,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             </Field>
             <Field id="fa" label="Amount" hint="In naira"><input id="fa" className="ctl tnum" value={val("amount")} inputMode="numeric" onChange={(e) => setEdits({ ...edits, amount: e.target.value })} /></Field>
           </div>
+          {editingId ? (
+            <Field id="fre" label="Reason for the change" hint="Kept with the change and in the audit trail; a line invoices were made under is kept as it was and the corrected line stated beside it">
+              <input id="fre" className="ctl" value={editReason} maxLength={400} onChange={(e) => setEditReason(e.target.value)} placeholder="e.g. Council approved the new amount" />
+            </Field>
+          ) : null}
           {val("item") === "__other__" ? <Field id="fio" label="Item name" hint="The name this charge appears under"><input id="fio" className="ctl" value={val("itemOther")} onChange={(e) => setEdits({ ...edits, itemOther: e.target.value })} placeholder="e.g. Faculty dues" /></Field> : null}
           <div className="grid grid--2">
-            <Field id="fs" label="Session" hint="Which session this charge is for"><select id="fs" className="ctl" value={addSession} onChange={(e) => setEdits({ ...edits, addSession: e.target.value })}>{(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+            <Field id="fs" label="Session" hint={editingId ? "A line stays in its session; state it in another session and remove it here" : "Which session this charge is for"}><select id="fs" className="ctl" disabled={!!editingId} value={addSession} onChange={(e) => setEdits({ ...edits, addSession: e.target.value })}>{(sessions.length ? sessions : [session]).map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
             <Field id="fsem" label="Semester" hint="Blank for the whole session"><select id="fsem" className="ctl" value={val("semester")} onChange={(e) => setEdits({ ...edits, semester: e.target.value })}><option value="">Whole session</option><option value="1">First semester</option><option value="2">Second semester</option></select></Field>
           </div>
           <Field id="fk" label="Kind" hint="A late fee is charged only during the window's late period, when the obligation was not met in time">
@@ -481,7 +685,13 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             </select>
           </Field>
           <div className="grid grid--2">
-            <Field id="fl" label="Level" hint={val("spill") ? "The programme's final level (400 on a four-year programme, 500 on a five-year one); blank for every programme" : "Blank for every level; 700–900 are postgraduate"}><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{[100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => <option key={l} value={l}>{l === 700 ? "700 · PGD" : l === 800 ? "800 · Master’s" : l === 900 ? "900 · Doctoral" : l}</option>)}</select></Field>
+            <Field id="fl" label="Level" hint={val("spill") ? "The programme's final level (400 on a four-year programme, 500 on a five-year one); blank for every programme" : "The levels the programme structure has; blank for every level"}><select id="fl" className="ctl" value={val("level")} onChange={(e) => setEdits({ ...edits, level: e.target.value })}><option value="">Every level</option>{(() => {
+              // V648: the programme structure's levels — the programmes ticked, else the faculty's, else every programme's — never a fixed list
+              const allowed = levelsFor(programmes, facultyPick, selectedProgs);
+              const current = val("level") ? Number(val("level")) : null;
+              const shown = current != null && !allowed.includes(current) ? [...allowed, current].sort((x, y) => x - y) : allowed;
+              return shown.map((l) => <option key={l} value={l}>{l === 700 ? "700 · PGD" : l === 800 ? "800 · Master’s" : l === 900 ? "900 · Doctoral" : l}{allowed.includes(l) ? "" : " (outside the programme structure)"}</option>);
+            })()}</select></Field>
             <Field id="fm" label="Entry mode" hint="Blank for every full-time mode; a CCE student is charged only CCE lines"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every full-time mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option><option>POSTGRADUATE</option><option value="CCE">CCE — Centre for Continuing Education (part-time)</option></select></Field>
           </div>
           {/* V613: a spillover line, for any spillover year or for SP1, SP2 or SP3 alone — "400 Level (SP1) First semester" */}
@@ -516,6 +726,15 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         </Modal>
         );
       })() : null}
+      {removing ? (
+        <FeeLineRemove session={session} lines={removing} permissions={perms} onClose={() => setRemoving(null)}
+          onDone={() => { setRemoving(null); setSelected([]); setReload((n) => n + 1); router.refresh(); }} />
+      ) : null}
+      {viewing ? (
+        <FeeLineView session={session} line={asRemoveLine(viewing)} status={STATUS_WORDS[viewing.status ?? "ACTIVE"][0]} levelProblem={viewing.level_problem ?? null}
+          removed={viewing.status === "REMOVED"} onClose={() => setViewing(null)} onHistory={canHistory ? () => { setHistoryOf(viewing); setViewing(null); } : null} />
+      ) : null}
+      {historyOf ? <FeeLineHistory session={session} line={{ id: historyOf.id, item: historyOf.item }} onClose={() => setHistoryOf(null)} /> : null}
       {confirming ? (
         <Modal title={`Confirm ${confirming.reference}`} sub={`${confirming.surname}, ${confirming.other_names} · ${naira(confirming.amount)}`} onClose={() => setConfirming(null)}
           foot={<><Btn kind="ghost" onClick={() => setConfirming(null)}>Cancel</Btn><span className="grow" /><Btn kind="go" disabled={!val("channel") || busy !== null} onClick={async () => { const ok = await send("confirm", "POST", `/references/${confirming.reference}/confirm`, { channel: val("channel"), note: val("note") || undefined }, `Payment ${confirming.reference} confirmed against the bank's record`); if (ok) setConfirming(null); }}>{busy === "confirm" ? "Confirming…" : "Confirm the payment"}</Btn></>}>

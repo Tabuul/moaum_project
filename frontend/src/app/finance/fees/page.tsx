@@ -31,6 +31,8 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
   const gstFee = await api<GstFeePage>(`/api/v1/gst/fee?session=${encodeURIComponent(session)}`);
   // V401: the Bursary's rule for a session whose applicant fees are not stated
   const feePolicy = await api<{ policy: "CARRY" | "REFUSE" }>("/api/v1/finance/applicant-fee-policy");
+  // V648: what the office may do with the fee setup — edit, remove, deactivate, read the history, export
+  const feePerms = await api<{ office: string; permissions: string[] }>("/api/v1/finance/fee-setup/permissions");
   const sessions = sessionsRes;
   return (
     <Shell route="t/feesetup" me={me.ok ? me.data : null}>
@@ -48,6 +50,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
           feeItems={feeItems.ok ? feeItems.data : []}
           sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]}
           actingOffice={me.ok ? me.data.activeOffice : null}
+          permissions={feePerms.ok ? feePerms.data.permissions : null}
         />
       ) : <ProblemNotice problem={schedule.problem} />}
     </Shell>
