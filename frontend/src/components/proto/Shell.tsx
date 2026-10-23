@@ -34,6 +34,7 @@ export const ROUTES: Record<string, string> = {
   "r/academic": "/",
   "t/records": "/records",
   "t/students": "/students",
+  "t/studentedit": "/students/edit",   // V642
   "t/cohorts": "/cohorts",
   "t/programmeswap": "/programme-swap",
   "t/transferbulk": "/transfers/bulk",
@@ -469,6 +470,7 @@ const OVERRIDES: Record<string, string> = {
   "s/slip": "Semester result",
   "s/courses": "My courses",
   "t/student": "Student record",
+  "t/studentedit": "Student edit",
   "t/admissions": "Admissions",
   "t/admissionsetup": "Admission settings",
   "t/matriculation": "Matriculation",

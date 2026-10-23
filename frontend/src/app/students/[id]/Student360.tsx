@@ -25,7 +25,7 @@ import { fullName, statusLabel, statusPill } from "@/lib/student";
 import { semesterText, type Me as Portal } from "@/lib/student-portal";
 import { money } from "@/lib/format";
 import type { Problem } from "@/lib/api";
-import { Btn, Note, Panel, PBody, Pil, Tick, WarnIcon } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, WarnIcon } from "@/components/proto/ui";
 import { Field, Modal, Passport, Row, day } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OpenStudentPortal } from "@/components/support/OpenStudentPortal";
@@ -102,6 +102,8 @@ export function Student360({
   // V521: ICT Support opens the student's portal as the student, read-only (the server checks the agent's reach and capability)
   const [portalOpen, setPortalOpen] = useState(false);
   const mayViewPortal = ["ictagent", "helpdeskhead", "ict", "admin", "super"].includes(actingOffice ?? "");
+  // V642: the offices that hold EDIT_STUDENT_ACADEMIC_RECORD open the Academic Office student edit page
+  const mayEdit = ["academic", "registrar", "dregistrar", "super"].includes(actingOffice ?? "");
   const [to, setTo] = useState("ACTIVE");
   const [instrument, setInstrument] = useState("");
   const [reason, setReason] = useState("");
@@ -324,6 +326,7 @@ export function Student360({
                 Open student portal
               </Btn>
             ) : null}
+            {mayEdit ? <LinkBtn kind="primary" href={`/students/${record.student.id}/edit`}>Edit</LinkBtn> : null}
             <Btn kind="ghost" disabled={!may} onClick={() => setChanging(true)}>
               Change status
             </Btn>

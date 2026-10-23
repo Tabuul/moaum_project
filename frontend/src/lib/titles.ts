@@ -221,6 +221,7 @@ export const TITLES: Record<string, string> = {
   "t/exception": "Payment investigation",
   "t/approvals": "Result approvals",
   "t/students": "Students",
+  "t/studentedit": "Student edit",
   "t/student": "ADAMU, Grace Mwuese",
   "t/screeningreview": "Screening review",
   "a/admission": "Your admission",

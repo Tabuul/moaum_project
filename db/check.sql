@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 468
+\set EXPECTED 469
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -15690,7 +15690,8 @@ BEGIN
     END IF;
     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, stu, S, 1, 100, 'DRAFT');
     opts := people.level_options(stu);
-    -- another office is refused: the level fix of the Registry is apply_level_corrections, this is the support desk's
+    -- another office is refused: the Bursary changes no level (V642 admits the Academic Office and the Registry beside the support desk)
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
     BEGIN PERFORM people.support_set_level(stu, 'PROGRESS', NULL, 100, 'CHECK V500: progressed', S, 1, NULL); e_office := 'accepted';
     EXCEPTION WHEN insufficient_privilege THEN e_office := split_part(SQLERRM, ':', 1); END;
     PERFORM set_config('moaum.actor_office', 'ictagent', true);
@@ -23271,7 +23272,8 @@ BEGIN
     top_nu := (SELECT max(x::int) FROM jsonb_array_elements_text(people.level_options(s_nu)->'levels') x);
     top_ur := (SELECT max(x::int) FROM jsonb_array_elements_text(people.level_options(s_ur)->'levels') x);
     o0 := people.level_options(s1);
-    -- the refusals: the Registrar on the level desk; a year that is not 0-2; a stale screen
+    -- the refusals: an office that changes no level, the Bursary (V642 admits the Academic Office and the Registry); a year that is not 0-2; a stale screen
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
     BEGIN PERFORM people.support_set_spillover(s1, 1, 300, 'Registry check of the spillover year', cur, 1, NULL);
     EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
     PERFORM set_config('moaum.actor_office', 'ictagent', true);
@@ -24154,6 +24156,88 @@ BEGIN
              ref1, ref2, e_owner, e_del, e_office, e_log, n_office, sc_u, sc_d, sc_n, dq, dq_fig));
 END $$;
 
+
+-- ── V642. The Academic Office student edit page: the grants by office, an edit on an older reading refused, a reason that says
+-- nothing refused, a JAMB number confirmed before it is written and never another student's, all the fields written or none, every
+-- edit kept under its reference, the history reading them beside a status change, and the level corrected by the Academic Office
+-- through the desk's own function. The block undoes its own writes.
+DO $$
+DECLARE s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); ses text; v text; r jsonb; msg text;
+        g_acad boolean; g_records_edit boolean; g_records_hist boolean; g_bursary boolean;
+        r_stale text; r_reason text; r_confirm text; r_taken text; r_session text; r_office text; r_atomic text; atomic_kept boolean;
+        jamb_after text; edits int; ref1 text; r_kept_upd text; r_kept_del text; hist int; hist_status int; lvl jsonb; lvl_after int; lvl_note int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        SELECT name INTO ses FROM policy.academic_session ORDER BY name LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, jamb_reg_no) VALUES
+            (s1, 'MOAUM/ADM/99/996421', 'MOAUM/CHK/99/6421', 'CHECKEDIT', 'One', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now(), '99642100001AA'),
+            (s2, 'MOAUM/ADM/99/996422', 'MOAUM/CHK/99/6422', 'CHECKEDIT', 'Two', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now(), '99642200002BB');
+
+        -- the grants: the Academic Office holds all, Records reads the history, the Bursary nothing
+        g_acad := people.student_edit_may('academic', 'EDIT_STUDENT_ADMISSION') AND people.student_edit_may('academic', 'OVERRIDE_STUDENT_REGISTRATION');
+        g_records_edit := people.student_edit_may('records', 'EDIT_STUDENT_ADMISSION');
+        g_records_hist := people.student_edit_may('records', 'VIEW_STUDENT_EDIT_HISTORY');
+        g_bursary := cardinality(people.student_edit_permissions('bursar')) > 0;
+
+        v := people.student_edit_version(s1);
+        -- an older reading is refused
+        BEGIN PERFORM people.student_edit_apply(s1, '{"study_mode":"PART_TIME"}', 'Corrected from the admission letter of the student', 'not-the-version', false, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_stale := split_part(SQLERRM, ':', 1); END;
+        -- a reason that says nothing is refused
+        BEGIN PERFORM people.student_edit_apply(s1, '{"study_mode":"PART_TIME"}', 'correction', v, false, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        -- a JAMB number is confirmed first, and another student's is never taken
+        BEGIN PERFORM people.student_edit_apply(s1, '{"jamb_reg_no":"99642100009CC"}', 'Corrected from the JAMB admission letter on file', v, false, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_confirm := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM people.student_edit_apply(s1, '{"jamb_reg_no":"99642200002BB"}', 'Corrected from the JAMB admission letter on file', v, true, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_taken := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM people.student_edit_apply(s1, '{"entry_session":"1801/1802"}', 'Corrected from the admission list of the session', v, false, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_session := split_part(SQLERRM, ':', 1); END;
+        -- all or nothing: a valid study mode beside a centre the University does not have writes neither
+        BEGIN PERFORM people.student_edit_apply(s1, '{"study_mode":"PART_TIME","centre_code":"NOWHERE_CENTRE"}', 'Corrected from the admission letter of the student', v, false, NULL, NULL, NULL);
+        EXCEPTION WHEN check_violation THEN r_atomic := split_part(SQLERRM, ':', 1); END;
+        atomic_kept := (SELECT study_mode IS DISTINCT FROM 'PART_TIME' FROM people.student WHERE id = s1);
+        -- the JAMB number corrected, confirmed, and the session too
+        r := people.student_edit_apply(s1, jsonb_build_object('jamb_reg_no', '99642100009cc', 'entry_session', ses), 'Corrected from the JAMB admission letter on file', v, true, ses, 1, 'JAMB letter');
+        jamb_after := (SELECT jamb_reg_no FROM people.student WHERE id = s1);
+        edits := (SELECT count(*) FROM people.student_edit WHERE student_id = s1);
+        ref1 := r -> 'edits' -> 0 ->> 'reference';
+        -- another office without the grant
+        PERFORM set_config('moaum.actor_office', 'records', true);
+        BEGIN PERFORM people.student_edit_apply(s1, '{"study_mode":"PART_TIME"}', 'Corrected from the admission letter of the student', people.student_edit_version(s1), false, NULL, NULL, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        -- kept: never changed, never removed
+        BEGIN UPDATE people.student_edit SET reason = 'changed afterwards' WHERE student_id = s1;
+        EXCEPTION WHEN check_violation THEN r_kept_upd := split_part(SQLERRM, ':', 1); END;
+        BEGIN DELETE FROM people.student_edit WHERE student_id = s1;
+        EXCEPTION WHEN check_violation THEN r_kept_del := split_part(SQLERRM, ':', 1); END;
+        -- the history: the edits and a status change made elsewhere
+        PERFORM people.change_status(s1, 'SUSPENDED', 'Senate minute CHECK/642', current_date, 'For the check');
+        hist := (SELECT count(*) FROM people.student_edit_history(s1));
+        hist_status := (SELECT count(*) FROM people.student_edit_history(s1) WHERE change_type = 'STATUS' AND new_value = 'SUSPENDED');
+        PERFORM people.change_status(s1, 'ACTIVE', 'Senate minute CHECK/642', current_date, 'For the check');
+        -- the level corrected by the Academic Office through the desk's own function
+        lvl := people.support_set_level(s2, 'CORRECTION', 100, 200, 'Corrected migrated student level from the admission session', NULL, 1, NULL);
+        lvl_after := (SELECT current_level FROM people.student WHERE id = s2);
+        lvl_note := (SELECT count(*) FROM people.cohort_decision WHERE student_id = s2 AND actor_office = 'academic' AND new_level = 100);
+        RAISE EXCEPTION 'the V642 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V642: the Academic Office edits a student''s record on the grants it holds, on the reading it was made on, with a reason, a critical change confirmed, all fields or none, every edit kept and in the history, the level through the desk''s own function',
+        coalesce(g_acad AND NOT g_records_edit AND g_records_hist AND NOT g_bursary
+                 AND r_stale = 'STU_EDIT_STALE' AND r_reason = 'STU_EDIT_REASON' AND r_confirm = 'STU_EDIT_CONFIRM' AND r_taken = 'STU_EDIT_JAMB_TAKEN'
+                 AND r_session = 'STU_EDIT_SESSION' AND r_atomic = 'STU_EDIT_CENTRE' AND atomic_kept AND r_office = 'STU_EDIT_PERMISSION'
+                 AND jamb_after = '99642100009CC' AND edits = 2 AND ref1 ~ '^STU-EDIT/[0-9]{4}/[0-9]{6}$'
+                 AND r_kept_upd = 'STU_EDIT_KEPT' AND r_kept_del = 'STU_EDIT_KEPT' AND hist >= 3 AND hist_status = 1
+                 AND lvl_after = 100 AND lvl_note = 1, false),
+        format('grants=%s/%s/%s/%s refusals=%s/%s/%s/%s/%s/%s/%s/%s jamb=%s edits=%s ref=%s kept=%s/%s history=%s/%s level=%s/%s',
+               g_acad, g_records_edit, g_records_hist, g_bursary, r_stale, r_reason, r_confirm, r_taken, r_session, r_atomic, atomic_kept, r_office,
+               jamb_after, edits, ref1, r_kept_upd, r_kept_del, hist, hist_status, lvl_after, lvl_note));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran
