@@ -104,7 +104,9 @@ export function resultWord(r: Pick<ResultRow, "published" | "stage" | "grade" | 
 
 export interface Payment { id: string; session: string | null; reference: string; purpose: string | null; amount: number | string; generated_at: string; expires_at: string | null;
   confirmed_at: string | null; channel: string | null; receipt_no: string | null; term: string | null; status: "PAID" | "PENDING" | "EXPIRED"; school_fees: boolean;
-  gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null; note?: string | null }
+  gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null; note?: string | null;
+  /** V647: the number the payment was made under before matriculation (a JAMB registration number, say), when it was not the matriculation number */
+  original_identifier?: string | null; original_identifier_type?: string | null; match_method?: string | null }
 
 export const PAYMENT_WORDS: Record<Payment["status"], string> = { PAID: "Paid", PENDING: "Pending", EXPIRED: "Expired, not paid" };
 

@@ -241,6 +241,7 @@ export const ROUTES: Record<string, string> = {
   "t/nellegacy": "/finance/nelfund?tab=legacy",
   "t/legacywallet": "/finance/legacy-wallet",
   "t/legacyrecon": "/finance/legacy-reconciliation",
+  "t/feehistoryrecon": "/finance/fee-history-reconciliation",   // V647
   "s/courses": "/student/courses",
   "t/lms": "/lms",
   "r/upload": "/lms?tab=upload",
@@ -497,6 +498,7 @@ const OVERRIDES: Record<string, string> = {
   "t/iut": "Inter-university transfer",
   "t/legacywallet": "Old e-wallet balances",
   "t/legacyrecon": "Legacy financial reconciliation",
+  "t/feehistoryrecon": "School fees history reconciliation",
   "t/helpdeskoffice": "Support escalations",
   "t/supportstudents": "Student support",
   "t/supportreach": "Students we cannot reach",

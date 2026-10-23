@@ -327,10 +327,13 @@ class StudentFullRecordController {
                            CASE WHEN r.confirmed_at IS NOT NULL THEN finance.payment_term(r.id) END AS term,
                            CASE WHEN r.confirmed_at IS NOT NULL THEN 'PAID' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS status,
                            r.purpose LIKE 'School fees%' AS school_fees,
-                           ge.gateway, ge.gateway_ref, ge.outcome AS gateway_outcome
+                           ge.gateway, ge.gateway_ref, ge.outcome AS gateway_outcome,
+                           -- V647: paid under another number before matriculation (a JAMB registration number, say): the number as paid
+                           pi.original_identifier, pi.original_identifier_type, pi.match_method
                       FROM finance.payment_reference r
                       LEFT JOIN LATERAL (SELECT e.gateway, e.gateway_ref, e.outcome FROM finance.gateway_event e
                                           WHERE e.reference = r.reference ORDER BY e.received_at DESC LIMIT 1) ge ON true
+                      LEFT JOIN finance.payment_identity pi ON pi.payment_id = r.id
                      WHERE r.student_id = :s),
                 sessions AS (SELECT DISTINCT r.session FROM refs r WHERE r.school_fees AND r.session ~ '^[0-9]{4}/[0-9]{4}$'
                              UNION SELECT e.session FROM people.enrolment e WHERE e.student_id = :s)

@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Problem } from "@/lib/api";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tabs, Tiles } from "@/components/proto/ui";
+import { Btn, KvGrid, Note, Panel, PBody, Pil, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -429,8 +429,10 @@ export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name:
         </PBody>
         {/* Oct 2026: the semester its own column, out of the purpose; the reference is on the receipt (still found by the search) */}
         {shown.length ? <DTable cols={["Date", "Session", "Semester", "Purpose", "Amount|num", "Status", "Channel", "Receipt"]}
-          texts={shown.map((p) => `${p.reference} ${p.purpose ?? ""} ${p.session ?? ""} ${semesterOf(p.term, p.purpose)} ${p.receipt_no ?? ""} ${p.gateway_ref ?? ""}`)}
-          rows={shown.map((p) => [day(p.confirmed_at ?? p.generated_at), s(p.session), semesterOf(p.term, p.purpose) || "—", purposeOnly(p.purpose) || "—",
+          texts={shown.map((p) => `${p.reference} ${p.purpose ?? ""} ${p.session ?? ""} ${semesterOf(p.term, p.purpose)} ${p.receipt_no ?? ""} ${p.gateway_ref ?? ""} ${p.original_identifier ?? ""}`)}
+          rows={shown.map((p) => [day(p.confirmed_at ?? p.generated_at), s(p.session), semesterOf(p.term, p.purpose) || "—",
+            // V647: paid under another number before matriculation — the number as paid, kept with the payment
+            p.original_identifier ? <Two key="pu" a={purposeOnly(p.purpose) || "—"} b={`Paid as ${p.original_identifier_type === "JAMB_NUMBER" ? "JAMB number" : p.original_identifier_type === "ADMISSION_NUMBER" ? "admission number" : p.original_identifier_type === "APPLICATION_NUMBER" ? "application number" : "number"} ${p.original_identifier}`} /> : purposeOnly(p.purpose) || "—",
             <span key="a" className="tnum">{naira(p.amount)}</span>,
             <Pil key="s" kind={pillOf(p.status)}>{PAYMENT_WORDS[p.status] ?? p.status}</Pil>, s(p.channel) || "—",
             p.status === "PAID" && p.receipt_no ? <Btn key="v" kind="ghost" size="sm" onClick={() => onReceipt(p.reference)}>View receipt</Btn> : <span key="v" className="sub2">—</span>])} />

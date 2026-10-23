@@ -776,6 +776,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/legacyrecon", "icon": "swap", "label": "Legacy Financial Reconciliation" },
+          { "id": "t/feehistoryrecon", "icon": "swap", "label": "School Fees History Reconciliation" },
           { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" },
           { "id": "jupeb/payments", "icon": "card", "label": "JUPEB Payments" },
           { "id": "cce/fees", "icon": "card", "label": "CCE Applicant Fees" },
@@ -844,7 +845,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
-          { "id": "t/legacyrecon", "icon": "swap", "label": "Legacy Financial Reconciliation" }
+          { "id": "t/legacyrecon", "icon": "swap", "label": "Legacy Financial Reconciliation" },
+          { "id": "t/feehistoryrecon", "icon": "swap", "label": "School Fees History Reconciliation" }
         ]
       },
       {

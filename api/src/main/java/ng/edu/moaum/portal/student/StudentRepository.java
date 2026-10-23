@@ -55,7 +55,10 @@ class StudentRepository {
                         OR s.surname ILIKE CAST(:like AS text)
                         OR s.other_names ILIKE CAST(:like AS text)
                         OR (s.surname || ' ' || s.other_names) ILIKE CAST(:like AS text)
-                        OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE CAST(:like AS text)))
+                        OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND a.ended_at IS NULL AND a.old_no ILIKE CAST(:like AS text))
+                        -- V647: the JAMB registration number, and a number a payment was made under before matriculation
+                        OR upper(s.jamb_reg_no) = upper(CAST(:q AS text))
+                        OR EXISTS (SELECT 1 FROM finance.payment_identity pi WHERE pi.resolved_student_id = s.id AND upper(pi.original_identifier) = upper(CAST(:q AS text))))
                  ORDER BY s.surname, s.other_names
                  LIMIT 2000
                 """), scope)

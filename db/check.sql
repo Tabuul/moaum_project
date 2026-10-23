@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 474
+\set EXPECTED 475
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24658,6 +24658,82 @@ BEGIN
                chk->'destination', same, not_verified, refunded, unsupported, unknown_ses, gst_short, def_short, short_reason, no_confirm, open_again, sao_decide, self_decide,
                ret->>'status', done->>'status', t_after.purpose, t_after.session, paid_after, balance_after, cash_before, cash_after, reclass, bank_lines, events,
                twice, back->>'status', t_back, x1_status, paid_back, s1_paid, s2_paid, def_state, gst_entitled, rej, rej_purpose));
+END $$;
+
+-- ── V647. An old-portal school-fees payment named by the student's JAMB number is the student's: recorded once under the student,
+-- the JAMB number kept beside it, beside the payments named by the matriculation number; a number naming several students, or none,
+-- held for the reconciliation; an applicant's payment not taken; the same payment sent again not recorded twice; a held payment whose
+-- student now exists reconciled by a batch one officer initiates and another decides. The block undoes its own writes.
+DO $$
+DECLARE a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        p1 uuid := gen_random_uuid(); p2 uuid := gen_random_uuid(); ses text := '9647/9648'; imp record; again record;
+        r_jamb record; r_amb record; r_name record; paid_a int; paid_a_amount numeric; ident int; ident_ok boolean; held_amb text; held_none text;
+        held_applicant int; again_paid int; crosswalk int; cat_before text; cat_after text; v_ref text; r_office text; r_same text; dec jsonb;
+        d_paid int; held_after text; ident_batch text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', p1::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, jamb_reg_no) VALUES
+            (a, 'MOAUM/ADM/99/996471', 'MOAUM/CHK/99/6471', 'CHECKJAMBPAY', 'Matched', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now(), '99647100001AA'),
+            (b, 'MOAUM/ADM/99/996472', 'MOAUM/CHK/99/6472', 'CHECKJAMBPAY', 'Twin One', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now(), '99647200002BB'),
+            (c, 'MOAUM/ADM/99/996473', 'MOAUM/CHK/99/6473', 'CHECKJAMBPAY', 'Twin Two', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now(), '99647200002BB');
+        r_jamb := (SELECT x FROM people.resolve_student('99647100001aa') x);
+        r_amb := (SELECT x FROM people.resolve_student('99647200002BB') x);
+        r_name := (SELECT x FROM people.resolve_student('CHECKJAMBPAY Matched') x);
+        crosswalk := (SELECT count(*) FROM people.student_identifier i WHERE i.identifier_value = '99647100001AA' AND i.student_id = a AND i.identifier_type = 'JAMB_NUMBER');
+
+        SELECT * INTO imp FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matno', '99647100001AA', 'session', ses, 'semester', '1', 'amount', '50000', 'purpose', 'SCHOOL FEES', 'payref', 'CHK647A', 'date', '2024-11-02'),
+            jsonb_build_object('matno', '99647100001AA', 'session', ses, 'semester', '2', 'amount', '30000', 'purpose', 'SCHOOL FEES MAKE UP', 'payref', 'CHK647B', 'date', '2025-03-10'),
+            jsonb_build_object('matno', 'MOAUM/CHK/99/6471', 'session', '9648/9649', 'semester', '1', 'amount', '60000', 'purpose', 'SCHOOL FEES', 'payref', 'CHK647C', 'date', '2025-10-01'),
+            jsonb_build_object('matno', '99647200002BB', 'session', ses, 'semester', '1', 'amount', '50000', 'purpose', 'SCHOOL FEES', 'payref', 'CHK647D', 'date', '2024-11-03'),
+            jsonb_build_object('matno', '99647999999ZZ', 'session', ses, 'semester', '1', 'amount', '45000', 'purpose', 'SCHOOL FEES', 'payref', 'CHK647E', 'date', '2024-11-04'),
+            jsonb_build_object('matno', '99647100001AA', 'session', ses, 'amount', '2000', 'purpose', 'POST UTME APPLICATION', 'payref', 'CHK647F', 'date', '2024-06-01')));
+        SELECT count(*), sum(r.amount) INTO paid_a, paid_a_amount FROM finance.payment_reference r WHERE r.student_id = a AND r.channel = 'Legacy' AND r.confirmed_at IS NOT NULL;
+        SELECT count(*), bool_and(i.original_identifier = '99647100001AA' AND i.original_identifier_type = 'JAMB_NUMBER' AND i.match_method = 'MATCHED_BY_JAMB'
+                                  AND i.resolved_matric_no = 'MOAUM/CHK/99/6471' AND i.source = 'OLD_FEES_IMPORT')
+          INTO ident, ident_ok FROM finance.payment_identity i WHERE i.resolved_student_id = a;
+        held_amb := (SELECT status FROM finance.legacy_payment_held WHERE payref = 'CHK647D');
+        held_none := (SELECT status FROM finance.legacy_payment_held WHERE payref = 'CHK647E');
+        held_applicant := (SELECT count(*) FROM finance.legacy_payment_held WHERE payref = 'CHK647F');
+        -- the same file again: nothing recorded twice
+        SELECT * INTO again FROM finance.import_legacy_payments(jsonb_build_array(
+            jsonb_build_object('matno', '99647100001AA', 'session', ses, 'semester', '1', 'amount', '50000', 'purpose', 'SCHOOL FEES', 'payref', 'CHK647A', 'date', '2024-11-02')));
+        again_paid := (SELECT count(*) FROM finance.payment_reference r WHERE r.student_id = a AND r.channel = 'Legacy');
+
+        -- the student the unknown number names comes onto the register: the held payment is matched, and reconciled by two officers
+        cat_before := (SELECT s.category FROM finance.fee_history_scan(ses, NULL, NULL, 'CHK647E', NULL, NULL, NULL) s);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, jamb_reg_no)
+        VALUES (d, 'MOAUM/ADM/99/996474', 'MOAUM/CHK/99/6474', 'CHECKJAMBPAY', 'Arrived Later', 'C00023', 'UTME', '9999/0000', 100, 200, 'ACTIVE', now(), '99647999999ZZ');
+        cat_after := (SELECT s.category FROM finance.fee_history_scan(ses, NULL, NULL, 'CHK647E', NULL, NULL, NULL) s);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM finance.fee_history_initiate(ARRAY(SELECT id FROM finance.legacy_payment_held WHERE payref = 'CHK647E'), 'The JAMB number names the student on the register now');
+        EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        v_ref := finance.fee_history_initiate(ARRAY(SELECT id FROM finance.legacy_payment_held WHERE payref IN ('CHK647D', 'CHK647E')), 'The JAMB number names the student on the register now');
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM finance.fee_history_decide(v_ref, true, NULL);
+        EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', p2::text, true);
+        dec := finance.fee_history_decide(v_ref, true, 'Checked against the old portal statement');
+        d_paid := (SELECT count(*) FROM finance.payment_reference r WHERE r.student_id = d AND r.channel = 'Legacy' AND r.amount = 45000);
+        held_after := (SELECT status FROM finance.legacy_payment_held WHERE payref = 'CHK647E');
+        ident_batch := (SELECT i.batch_ref || ' ' || i.source FROM finance.payment_identity i WHERE i.resolved_student_id = d);
+        RAISE EXCEPTION 'the V647 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V647: an old-portal school-fees payment named by the JAMB number is the student''s, once, the number kept; several students or none held; the applicant''s payment not taken; a held one reconciled by two officers',
+        coalesce(r_jamb.student_id = a AND r_jamb.method = 'MATCHED_BY_JAMB' AND r_amb.student_id IS NULL AND r_amb.status = 'AMBIGUOUS' AND cardinality(r_amb.candidates) = 2
+                 AND r_name.student_id IS NULL AND crosswalk = 1
+                 AND paid_a = 3 AND paid_a_amount = 140000 AND ident = 2 AND ident_ok AND held_amb = 'AMBIGUOUS' AND held_none = 'NO_MATCH' AND held_applicant = 0
+                 AND again.duplicates + again.matched + again.cleared >= 0 AND again_paid = 3
+                 AND cat_before = 'NO_MATCH' AND cat_after = 'MATCHED' AND r_office = 'FEE_RECON_OFFICE' AND r_same = 'FEE_RECON_SAME_OFFICER'
+                 AND (dec->>'reconciled')::int = 1 AND d_paid = 1 AND held_after = 'RECONCILED' AND ident_batch = v_ref || ' FEE_HISTORY_RECONCILIATION', false),
+        format('resolve=%s/%s %s/%s/%s name=%s crosswalk=%s paid=%s/%s identity=%s/%s held=%s/%s/%s again=%s category=%s/%s refusals=%s/%s decided=%s paidD=%s held=%s identity=%s',
+               r_jamb.student_id = a, r_jamb.method, r_amb.student_id, r_amb.status, cardinality(r_amb.candidates), r_name.student_id, crosswalk,
+               paid_a, paid_a_amount, ident, ident_ok, held_amb, held_none, held_applicant, again_paid, cat_before, cat_after, r_office, r_same, dec, d_paid, held_after, ident_batch));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
