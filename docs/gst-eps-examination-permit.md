@@ -38,6 +38,9 @@ gate and the offices (V366/V367). That is `catalogue.course.kind = 'GST'` with `
 code family through `catalogue.general_family`, or claimed by an office). No second classification was added. A course
 named "Entrepreneurship and …" that no office holds is a departmental course and stays off the permit.
 
+The code family is read behind the cohort prefix (V644): `GST 112`, `BSU-GST 112` and `MOAU-GST 112` are all the GST family, so a
+student registered on `BSU-GST 112` has it on the permit. Before V644 the `BSU-` prefix hid the family and the course kept no office.
+
 The courses are read at every issue, never stored as the permit's content:
 - a reset (V491) takes them off;
 - a new registration puts the new ones on, under the same permit number;

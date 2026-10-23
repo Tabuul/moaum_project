@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 470
+\set EXPECTED 471
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24304,6 +24304,41 @@ BEGIN
                  AND closed_payable = 0 AND closed_gate = 'OPEN' AND closed_ref = 'GST_NOT_REQUIRED', false),
         format('other %s req %s payable %s gate %s/%s ref %s renew %s/%s paid %s | closed %s %s %s', other, req, payable, g_gst, g_core, ref1, ren.outcome, ren.reference_out, paid_gate,
                closed_payable, closed_gate, closed_ref));
+END $$;
+
+-- ── V644. A BSU- GST course is a GST course: its subject is read behind the prefix, the GST office holds it, and a department's
+-- course of another subject is not made general. The block undoes its own writes.
+DO $$
+DECLARE dept text; sub_bsu text; sub_moau text; sub_plain text; sub_phy text; off_bsu text; off_moau text; off_ent text; off_dept text; unclassified int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        sub_bsu := catalogue.course_subject('BSU-GST 112');
+        sub_moau := catalogue.course_subject('MOAU-GST 112');
+        sub_plain := catalogue.course_subject('GST 112');
+        sub_phy := catalogue.course_subject('bsu-phy 106');
+        SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('BSU-GST 964', 'Check Nigerian Peoples and Culture', 2, 2, 100, dept, 'GST', 'LIVE'),
+            ('MOAU-GST 964', 'Check Communication in English', 2, 1, 100, dept, 'GST', 'LIVE'),
+            ('BSU-ENT 964', 'Check Entrepreneurship', 2, 1, 200, dept, 'GST', 'LIVE'),
+            ('BSU-PHY 964', 'Check General Physics', 3, 1, 100, dept, 'GST', 'LIVE');
+        off_bsu := (SELECT general_office FROM catalogue.course WHERE code = 'BSU-GST 964');
+        off_moau := (SELECT general_office FROM catalogue.course WHERE code = 'MOAU-GST 964');
+        off_ent := (SELECT general_office FROM catalogue.course WHERE code = 'BSU-ENT 964');
+        off_dept := (SELECT general_office FROM catalogue.course WHERE code = 'BSU-PHY 964');
+        -- none of the University's GST-kind courses a family names is left without its office
+        unclassified := (SELECT count(*) FROM catalogue.course c WHERE c.kind = 'GST' AND c.general_office IS NULL
+                           AND catalogue.general_office_of(c.code, c.title, c.kind) IS NOT NULL);
+        RAISE EXCEPTION 'the V644 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V644: a BSU- GST course is a GST course — the subject read behind BSU- as behind MOAU-, the GST or EPS office holding it, a department''s course of another subject left alone',
+        coalesce(sub_bsu = 'GST' AND sub_moau = 'GST' AND sub_plain = 'GST' AND sub_phy = 'PHY'
+                 AND off_bsu = 'GST' AND off_moau = 'GST' AND off_ent = 'EPS' AND off_dept IS NULL AND unclassified = 0, false),
+        format('subjects=%s/%s/%s/%s offices=%s/%s/%s/%s unclassified=%s', sub_bsu, sub_moau, sub_plain, sub_phy, off_bsu, off_moau, off_ent, off_dept, unclassified));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

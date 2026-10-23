@@ -34,7 +34,7 @@ result system.
 | Object | Kind | Notes |
 |---|---|---|
 | `ref.office` rows `gst`, `eps` | data | scope `unit` |
-| `catalogue.course.general_office` | column | `GST` or `EPS` for kind-GST courses, derived by `catalogue.general_office_of` and kept by trigger; partial index |
+| `catalogue.course.general_office` | column | `GST` or `EPS` for kind-GST courses, derived by `catalogue.general_office_of` from the code family behind any `BSU-` or `MOAU-` prefix (`catalogue.course_subject`, V644) and kept by trigger; partial index |
 | `finance.gst_setting` | table (id = 1) | `required_for_gst_eps` (true), `required_for_all` (false), `covers_eps` (true) |
 | `finance.gst_fee` | table (uuid PK) | per session; optional level / entry mode / faculty / programme scope; `superseded_at`; index on live rules |
 | `finance.state_gst_fee`, `end_gst_fee`, `gst_fee_for` | functions | state, withdraw, price one student (most specific live rule) |
