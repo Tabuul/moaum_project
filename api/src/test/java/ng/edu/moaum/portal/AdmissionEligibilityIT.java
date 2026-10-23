@@ -544,6 +544,80 @@ class AdmissionEligibilityIT {
         assertThat(reasons((Map<String, Object>) dm.get("applied"))).anyMatch(x -> x.contains("Required UTME subject not offered: Literature in English"));
     }
 
+    /* ── 9 · the template's cases add up to the registered applicants (the University, 23 October 2026) ── */
+    @Test
+    @Order(9)
+    @SuppressWarnings("unchecked")
+    void everyRegisteredApplicantIsAQualifiedOrNonQualifiedCase() {
+        // a programme of this test's own, screened by the Post-UTME examination this session, with no rule of its own
+        String prog = it.db(() -> jdbc.sql("""
+                SELECT code FROM ref.programme WHERE NOT archived AND category = 'UNDER GRADUATE' AND code NOT IN (:x)
+                   AND name NOT IN (SELECT name FROM ref.programme GROUP BY name HAVING count(*) > 1) ORDER BY code DESC LIMIT 1
+                """).param("x", List.of(CS, ACC, ECO, MBBS, THE, TAX, BUS)).query(String.class).single());
+        String name = it.db(() -> jdbc.sql("SELECT name FROM ref.programme WHERE code = :c").param("c", prog).query(String.class).single());
+        it.db(() -> jdbc.sql("INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (:s, :c) ON CONFLICT DO NOTHING")
+                .param("s", SESSION).param("c", prog).update());
+        try {
+            Applicant ranked = applicant(prog, 230, UTME_SCIENCE, SCIENCE);
+            Applicant absent = applicant(prog, 225, UTME_SCIENCE, SCIENCE);
+            Applicant unreleased = applicant(prog, 220, UTME_SCIENCE, SCIENCE);
+            Applicant unsubmitted = applicant(prog, 215, UTME_SCIENCE, SCIENCE);
+            Applicant offTheList = applicant(prog, 212, UTME_SCIENCE, SCIENCE);
+            Applicant directEntry = applicant(prog, 205, UTME_SCIENCE, SCIENCE);
+            it.db(() -> {
+                jdbc.sql("UPDATE admissions.application SET screening_score = 60, score_entered_at = now(), score_released_at = now() WHERE id IN (:a)")
+                        .param("a", List.of(ranked.app(), offTheList.app())).update();
+                jdbc.sql("UPDATE admissions.application SET screening_score = 55, score_entered_at = now() WHERE id = :a").param("a", unreleased.app()).update();
+                jdbc.sql("UPDATE admissions.application SET submitted_at = NULL WHERE id = :a").param("a", unsubmitted.app()).update();
+                jdbc.sql("UPDATE admissions.caps_row SET withdrawn = true WHERE session = :s AND jamb_reg_no = :j").param("s", SESSION).param("j", offTheList.jamb()).update();
+                jdbc.sql("UPDATE admissions.candidate SET entry_mode = 'DIRECT_ENTRY', entry_level = 200 WHERE id = :c").param("c", directEntry.candidate()).update();
+                return null;
+            });
+
+            ResponseEntity<Map> r = it.get(academic, PATH + "/jamb-template?programme=" + name);
+            assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
+            Map<String, Object> summary = (Map<String, Object>) r.getBody().get("summary");
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) r.getBody().get("rows");
+            long registered = ((Number) summary.get("registeredApplicants")).longValue();
+            long qualified = ((Number) summary.get("qualifiedCases")).longValue();
+            long nonQualified = ((Number) summary.get("nonQualifiedCases")).longValue();
+            // the registered are every UTME application of the programme, submitted or not; each is a case, and the ranked sheet lists them all
+            long applications = it.db(() -> jdbc.sql("""
+                    SELECT count(*) FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                     WHERE a.session = :s AND c.entry_mode = 'UTME' AND c.programme = :p
+                    """).param("s", SESSION).param("p", name).query(Long.class).single());
+            assertThat(registered).isEqualTo(applications);
+            assertThat(qualified + nonQualified).as(String.valueOf(summary)).isEqualTo(registered);
+            assertThat(rows).hasSize((int) registered);
+            assertThat(rows).allSatisfy(x -> assertThat(x.get("decision")).isIn("OFFERED", "WAITING", "NOT_OFFERED"));
+            assertThat(rows.stream().filter(x -> "NOT_OFFERED".equals(x.get("decision"))).count()).isEqualTo(nonQualified);
+
+            java.util.function.Function<Applicant, Map<String, Object>> row = a -> rows.stream().filter(x -> a.jamb().equals(x.get("regNo"))).findFirst()
+                    .orElseThrow(() -> new AssertionError(a.jamb() + " is not on the template"));
+            assertThat(row.apply(ranked).get("decision")).isIn("OFFERED", "WAITING");
+            Map<String, Object> absentRow = row.apply(absent);
+            assertThat(absentRow.get("decision")).isEqualTo("NOT_OFFERED");
+            assertThat(absentRow.get("decisionNote")).isEqualTo("No Post-UTME screening score");
+            assertThat(row.apply(unreleased).get("decisionNote")).isEqualTo("Post-UTME screening score not released");
+            assertThat(row.apply(unsubmitted).get("decisionNote")).isEqualTo("Application not submitted");
+            assertThat(row.apply(offTheList).get("decisionNote")).isEqualTo("Not on JAMB's current list for the session");
+            // Direct Entry is set aside this cycle: neither counted nor listed
+            assertThat(rows.stream().map(x -> x.get("regNo"))).doesNotContain(directEntry.jamb());
+            // the Board's recorded decision stands for one the merit list does not rank
+            it.db(() -> jdbc.sql("UPDATE admissions.application SET decision = 'WAITING', decided_at = now() WHERE id = :a").param("a", absent.app()).update());
+            Map<String, Object> again = it.get(academic, PATH + "/jamb-template?programme=" + name).getBody();
+            Map<String, Object> s2 = (Map<String, Object>) again.get("summary");
+            assertThat(((List<Map<String, Object>>) again.get("rows")).stream().filter(x -> absent.jamb().equals(x.get("regNo"))).findFirst().orElseThrow().get("decision"))
+                    .isEqualTo("WAITING");
+            assertThat(((Number) s2.get("qualifiedCases")).longValue()).isEqualTo(qualified + 1);
+            assertThat(((Number) s2.get("qualifiedCases")).longValue() + ((Number) s2.get("nonQualifiedCases")).longValue())
+                    .isEqualTo(((Number) s2.get("registeredApplicants")).longValue());
+        } finally {
+            it.db(() -> jdbc.sql("DELETE FROM admissions.screening_exam_programme WHERE session = :s AND programme_code = :c")
+                    .param("s", SESSION).param("c", prog).update());
+        }
+    }
+
     /* ── 10 · the doors ── */
     @Test
     @Order(7)

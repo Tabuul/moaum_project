@@ -898,6 +898,12 @@ class ApplicantsController {
      * relevant subjects — the sittings and their bonus, the two ratios under
      * the session's weighting, the total, and the Board's decision as the
      * remark. Every figure is the same one the applicant's result shows.
+     *
+     * Every registered UTME applicant of the programme is a row — submitted or
+     * not, ranked or not — and every row is qualified (OFFERED, WAITING) or
+     * not (NOT_OFFERED, with the reason), so the qualified and non-qualified
+     * cases add up to the registered applicants and the ranked sheet lists them
+     * all (the University, 23 October 2026).
      */
     @GetMapping("/jamb-template")
     @PreAuthorize(READERS)
@@ -905,10 +911,15 @@ class ApplicantsController {
     Map<String, Object> jambTemplate(@PathVariable String session, @PathVariable String year,
                                      @org.springframework.web.bind.annotation.RequestParam(required = false) String programme) {
         String s = session + "/" + year;
+        // UTME only for now — Direct Entry is set aside this cycle; the applicants are the registered ones the summary counts,
+        // and a scoring function with nothing to return for one of them leaves its columns empty rather than the applicant out
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id, a.application_no, c.jamb_reg_no, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
                        r.sex, r.state_of_origin, r.lga, r.aggregate AS utme, r.raw::text AS raw_text,
                        a.decision, a.decision_note, a.decision_basis, a.decision_released_at, a.screening_score, a.submitted_at,
+                       a.score_released_at,
+                       (SELECT x.entry_mode FROM admissions.caps_row_live x WHERE x.session = a.session AND x.jamb_reg_no = c.jamb_reg_no
+                         ORDER BY (x.entry_mode = 'UTME') DESC LIMIT 1) AS live_mode,
                        sr.utme_scaled, sr.screening, sr.screening_source, sr.weight_utme, sr.weight_putme, sr.aggregate AS total, sr.cutoff,
                        sc.olevel_total, sc.olevel_ceiling,
                        admissions.olevel_sittings(a.session, c.jamb_key) AS sittings,
@@ -922,10 +933,10 @@ class ApplicantsController {
                   FROM admissions.application a
                   JOIN admissions.candidate c ON c.id = a.candidate_id
                   LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from
-                  CROSS JOIN LATERAL admissions.screening_result(a.id) sr
-                  CROSS JOIN LATERAL admissions.screening_component(a.id) sc
-                  CROSS JOIN LATERAL admissions.olevel_rule(a.session) rule
-                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND (:p::text IS NULL OR c.programme = :p)
+                  LEFT JOIN LATERAL admissions.screening_result(a.id) sr ON true
+                  LEFT JOIN LATERAL admissions.screening_component(a.id) sc ON true
+                  LEFT JOIN LATERAL admissions.olevel_rule(a.session) rule ON true
+                 WHERE a.session = :s AND c.entry_mode = 'UTME' AND (:p::text IS NULL OR c.programme = :p)
                  ORDER BY c.programme, sr.aggregate DESC NULLS LAST, c.surname, c.other_names
                 """).param("s", s).param("p", programme, Types.VARCHAR).query().listOfRows();
         // the LIVE merit allocation, so the downloaded template matches the merit-list screen without a re-record:
@@ -934,15 +945,32 @@ class ApplicantsController {
         Map<java.util.UUID, Map<String, Object>> meritByApp = new java.util.HashMap<>();
         java.util.Set<String> codes = rows.stream().map(r -> (String) r.get("programme_code"))
                 .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        // the merit list reads the settings in force and refuses a session without them; asked first, so nothing is refused
+        boolean inForce = jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.session_policy WHERE session = :s AND state = 'IN_FORCE')")
+                .param("s", s).query(Boolean.class).single();
+        java.util.Set<String> meritRead = new java.util.HashSet<>(), byExam = new java.util.HashSet<>(), closed = new java.util.HashSet<>();
         for (String code : codes) {
+            if (Boolean.TRUE.equals(jdbc.sql("SELECT admissions.screened_by_exam(:s, :c)").param("s", s).param("c", code).query(Boolean.class).single())) {
+                byExam.add(code);
+            }
+            if (!inForce) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(jdbc.sql("SELECT admissions.programme_is_closed(:s, :c)").param("s", s).param("c", code).query(Boolean.class).single())) {
+                closed.add(code);
+            }
+            // a programme the merit list cannot read is rolled back to its savepoint, so the rest of the template is still read
+            jdbc.sql("SAVEPOINT jamb_template_merit").update();
             try {
                 for (Map<String, Object> m : jdbc.sql(
-                        "SELECT app_id, basis, eligible, proposed_offer, meets_cutoff, meets_compulsory, meets_utme FROM admissions.merit_list(:s, :c)")
+                        "SELECT app_id, basis, eligible, proposed_offer, meets_cutoff, meets_compulsory, meets_utme, aggregate FROM admissions.merit_list(:s, :c)")
                         .param("s", s).param("c", code).query().listOfRows()) {
                     meritByApp.put((java.util.UUID) m.get("app_id"), m);
                 }
-            } catch (RuntimeException ex) {
-                // no policy in force for the session, or the programme is not settable — fall back to the recorded decision
+                jdbc.sql("RELEASE SAVEPOINT jamb_template_merit").update();
+                meritRead.add(code);
+            } catch (org.springframework.dao.DataAccessException ex) {
+                jdbc.sql("ROLLBACK TO SAVEPOINT jamb_template_merit").update();
             }
         }
         List<Map<String, Object>> out = new java.util.ArrayList<>();
@@ -956,7 +984,7 @@ class ApplicantsController {
                   FROM admissions.olevel_sitting st JOIN admissions.olevel_grade g ON g.sitting_id = st.id
                  WHERE st.session = :s
                    AND (:p::text IS NULL OR st.jamb_key IN (SELECT c.jamb_key FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
-                                                              WHERE a.session = :s AND a.submitted_at IS NOT NULL AND c.programme = :p))
+                                                              WHERE a.session = :s AND c.entry_mode = 'UTME' AND c.programme = :p))
                  GROUP BY st.jamb_key, g.subject ORDER BY st.jamb_key, points DESC, g.subject
                 """).param("s", s).param("p", programme, Types.VARCHAR).query().listOfRows()) {
             gradesByKey.computeIfAbsent((String) g.get("jamb_key"), k -> new java.util.ArrayList<>()).add(g);
@@ -967,8 +995,9 @@ class ApplicantsController {
             Map<String, Object> eng = grades.stream().filter(g -> "English Language".equals(g.get("subject"))).findFirst().orElse(null);
             Map<String, Object> maths = grades.stream().filter(g -> "Mathematics".equals(g.get("subject"))).findFirst().orElse(null);
             List<Map<String, Object>> others = grades.stream().filter(g -> g != eng && g != maths).limit(3).toList();
-            long sittings = ((Number) r.get("sittings")).longValue();
-            int bonus = sittings == 0 ? 0 : sittings == 1 ? ((Number) r.get("bonus_one_sitting")).intValue() : ((Number) r.get("bonus_two_sittings")).intValue();
+            long sittings = r.get("sittings") == null ? 0 : ((Number) r.get("sittings")).longValue();
+            Object bonusStated = sittings == 0 ? null : r.get(sittings == 1 ? "bonus_one_sitting" : "bonus_two_sittings");
+            int bonus = bonusStated == null ? 0 : ((Number) bonusStated).intValue();
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("applicationNo", r.get("application_no"));
             row.put("regNo", r.get("jamb_reg_no"));
@@ -998,25 +1027,33 @@ class ApplicantsController {
             row.put("utmeRatio", r.get("utme_scaled") == null ? null : scale(r.get("utme_scaled"), r.get("weight_utme")));
             row.put("total", r.get("total"));
             row.put("cutoff", r.get("cutoff"));
-            // decision, basis and remark from the live merit list (falls back to the recorded decision when the
-            // candidate is not in the pool — e.g. no released score yet)
+            // decision, basis and remark from the live merit list; an applicant the list does not rank keeps the Board's
+            // recorded decision, and without one is a non-qualified case with the reason the list leaves them out
             Map<String, Object> mi = meritByApp.get((java.util.UUID) r.get("id"));
+            String code = (String) r.get("programme_code");
+            boolean assessed = true;
             if (mi != null) {
                 boolean elig = Boolean.TRUE.equals(mi.get("eligible"));
                 boolean off = Boolean.TRUE.equals(mi.get("proposed_offer"));
                 if (!elig) {
                     row.put("decision", "NOT_OFFERED");
                     row.put("decisionBasis", null);
-                    row.put("decisionNote", ineligibleReason(mi, r));
+                    row.put("decisionNote", ineligibleReason(mi, r, closed.contains(code)));
                 } else {
                     row.put("decision", off ? "OFFERED" : "WAITING");
                     row.put("decisionBasis", off ? mi.get("basis") : null);
                     row.put("decisionNote", null);
                 }
-            } else {
+            } else if (r.get("decision") != null) {
                 row.put("decision", r.get("decision"));
-                row.put("decisionNote", r.get("decision_note"));
+                row.put("decisionNote", r.get("decision_note") == null && "NOT_OFFERED".equals(r.get("decision"))
+                        ? notRankedReason(r, inForce, meritRead.contains(code), byExam.contains(code)) : r.get("decision_note"));
                 row.put("decisionBasis", r.get("decision_basis"));
+            } else {
+                assessed = false;
+                row.put("decision", "NOT_OFFERED");
+                row.put("decisionNote", notRankedReason(r, inForce, meritRead.contains(code), byExam.contains(code)));
+                row.put("decisionBasis", null);
             }
             row.put("released", r.get("decision_released_at") != null);
             row.put("utmeRemark", utmeCombination((String) r.get("utme_missing")));
@@ -1027,10 +1064,13 @@ class ApplicantsController {
                     : "Correct Combination";
             // for a non-qualified candidate, the programmes the eligibility engine finds them eligible for (V266) — the same
             // the Programme Eligibility desk shows; an application the engine has not seen yet is evaluated here, within a budget
+            // (one the merit list never ranked carries the engine's suggestions only where it has already evaluated them)
             List<Map<String, Object>> suggestions = List.of();
             if ("NOT_OFFERED".equals(row.get("decision"))) {
-                List<Map<String, Object>> alt = engineAlternatives((UUID) r.get("id"), budget);
-                if (alt == null) {
+                List<Map<String, Object>> alt = engineAlternatives((UUID) r.get("id"), assessed ? budget : new int[] { 0 });
+                if (alt == null && !assessed) {
+                    // not evaluated, and not to be: the reason is the remark
+                } else if (alt == null) {
                     olRemark = olRemark + " — Eligibility not yet evaluated";
                     unevaluated++;
                 } else {
@@ -1043,11 +1083,6 @@ class ApplicantsController {
             row.put("suggestions", suggestions);
             out.add(row);
         }
-        // UTME only for now — Direct Entry is set aside this cycle, so the summary counts it out too
-        Map<String, Object> fees = jdbc.sql("""
-                SELECT count(*) AS n FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
-                 WHERE a.session = :s AND c.entry_mode = 'UTME' AND (:p::text IS NULL OR c.programme = :p)
-                """).param("s", s).param("p", programme, Types.VARCHAR).query().singleRow();
         long onCaps = jdbc.sql("SELECT count(*) FROM admissions.caps_row_live r JOIN ref.programme p ON p.code = r.jamb_code WHERE r.session = :s AND r.entry_mode = 'UTME' AND (:p::text IS NULL OR p.name = :p)")
                 .param("s", s).param("p", programme, Types.VARCHAR).query(Long.class).single();
         // the quota is per programme (admissions.programme_rule.quota), the same figure the merit engine fills to
@@ -1063,14 +1098,16 @@ class ApplicantsController {
                  WHERE p.session = :s LIMIT 1
                 """).param("s", s).param("p", programme).query(Integer.class).optional().orElse(null);
         Integer utmeQuota = (quota == null || ratioUtme == null) ? null : (int) Math.round(quota * ratioUtme / 100.0);
-        // UTME only for now: count UTME candidates' decisions, so the summary matches the UTME merit list
-        long onMerit = out.stream().filter(x -> "OFFERED".equals(x.get("decision")) && "UTME".equals(x.get("entryMode"))).count();
+        // the rows are the registered UTME applicants, each qualified or not: the cases add up to the registered, and the
+        // ranked sheet is every one of them
+        long onMerit = out.stream().filter(x -> "OFFERED".equals(x.get("decision"))).count();
+        long qualified = out.stream().filter(x -> "OFFERED".equals(x.get("decision")) || "WAITING".equals(x.get("decision"))).count();
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("totalApplicants", onCaps);
-        summary.put("registeredApplicants", ((Number) fees.get("n")).longValue());
+        summary.put("registeredApplicants", (long) out.size());
         summary.put("unevaluated", unevaluated);
-        summary.put("qualifiedCases", out.stream().filter(x -> ("OFFERED".equals(x.get("decision")) || "WAITING".equals(x.get("decision"))) && "UTME".equals(x.get("entryMode"))).count());
-        summary.put("nonQualifiedCases", out.stream().filter(x -> "NOT_OFFERED".equals(x.get("decision")) && "UTME".equals(x.get("entryMode"))).count());
+        summary.put("qualifiedCases", qualified);
+        summary.put("nonQualifiedCases", out.size() - qualified);
         summary.put("totalQuota", quota);
         summary.put("utmeQuota", utmeQuota);
         summary.put("numberOnMeritList", onMerit);
@@ -1431,7 +1468,7 @@ class ApplicantsController {
     /** why an eligible-pool candidate did not qualify: below the cut-off, the O'Level requirement and/or the UTME
      *  subject combination, spelt out — whether the O'Level was not uploaded, which compulsory subject has no credit,
      *  which required UTME subject was not sat */
-    private static String ineligibleReason(Map<String, Object> merit, Map<String, Object> row) {
+    private static String ineligibleReason(Map<String, Object> merit, Map<String, Object> row, boolean closed) {
         boolean meetsCutoff = Boolean.TRUE.equals(merit.get("meets_cutoff"));
         boolean meetsComp = Boolean.TRUE.equals(merit.get("meets_compulsory"));
         boolean meetsUtme = Boolean.TRUE.equals(merit.get("meets_utme"));
@@ -1439,6 +1476,12 @@ class ApplicantsController {
         String missing = (String) row.get("olevel_missing");
         String utmeMissing = (String) row.get("utme_missing");
         List<String> parts = new java.util.ArrayList<>();
+        if (closed) {
+            parts.add("Programme not admitting this session");
+        }
+        if (merit.get("aggregate") == null) {
+            parts.add("No score to rank on");
+        }
         if (!meetsCutoff) {
             parts.add("Below the programme cut-off");
         }
@@ -1450,6 +1493,36 @@ class ApplicantsController {
             parts.add("Incorrect UTME subject combination" + (utmeMissing == null || utmeMissing.isBlank() ? "" : ": [" + utmeMissing + "]"));
         }
         return parts.isEmpty() ? "Not qualified on the merit list" : String.join("; ", parts);
+    }
+
+    /** why a registered applicant is not ranked on the programme's merit list: the first of the merit list's own tests
+     *  for its pool (admissions.merit_list) the application does not pass */
+    private static String notRankedReason(Map<String, Object> row, boolean inForce, boolean meritRead, boolean byExam) {
+        if (row.get("submitted_at") == null) {
+            return "Application not submitted";
+        }
+        if (row.get("programme_code") == null) {
+            return "Programme not on the University's list of programmes";
+        }
+        if (row.get("live_mode") == null) {
+            return "Not on JAMB's current list for the session";
+        }
+        if (!"UTME".equals(row.get("live_mode"))) {
+            return "On JAMB's list as Direct Entry";
+        }
+        if (!inForce) {
+            return "No admission settings in force for the session";
+        }
+        if (!meritRead) {
+            return "The programme's merit list could not be read";
+        }
+        if (byExam && row.get("screening_score") == null) {
+            return "No Post-UTME screening score";
+        }
+        if (byExam && row.get("score_released_at") == null) {
+            return "Post-UTME screening score not released";
+        }
+        return "Not ranked on the programme's merit list";
     }
 
     /** the UTME subject combination as the merit list's gate reads it (admissions.utme_combination_missing, V384 —
@@ -1535,10 +1608,21 @@ class ApplicantsController {
         if (run == null) {
             if (budget[0] <= 0) return null;
             budget[0]--;
+            // inside a transaction a refused evaluation is rolled back to its savepoint, so the caller's reading goes on
+            boolean inTx = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive();
+            if (inTx) {
+                jdbc.sql("SAVEPOINT engine_alternatives").update();
+            }
             try {
                 run = jdbc.sql("SELECT admissions.evaluate_application(:a, 'SYSTEM', :by)").param("a", app)
                         .param("by", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER).query(UUID.class).single();
+                if (inTx) {
+                    jdbc.sql("RELEASE SAVEPOINT engine_alternatives").update();
+                }
             } catch (org.springframework.dao.DataAccessException cannot) {
+                if (inTx) {
+                    jdbc.sql("ROLLBACK TO SAVEPOINT engine_alternatives").update();
+                }
                 return null;   // a candidate whose programme the engine does not know is not evaluated; the row says so
             }
         }
