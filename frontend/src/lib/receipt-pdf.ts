@@ -65,7 +65,9 @@ export function receiptPdf(req: Request, x: Receipt, photo: { width: number; hei
   y -= 40;
   // V409: the gateway's own reference beside the University's, the purpose and the office that owns it
   for (const [k, v] of [["Channel", x.channel ?? "—"], ["Gateway or teller reference", x.gateway_reference ?? x.note ?? "—"],
-      ...(x.purpose_label ? [["Payment purpose", x.purpose_label]] : []), ...(x.responsible_office_label ? [["Responsible office", x.responsible_office_label]] : [])]) {
+      ...(x.purpose_label ? [["Payment purpose", x.purpose_label]] : []), ...(x.responsible_office_label ? [["Responsible office", x.responsible_office_label]] : []),
+      // V649: the Bursary's correction of the payment to another purpose or period — the same payment, not a second one
+      ...(x.correction_ref ? [["Allocation corrected", `${x.correction_ref}, first applied to ${x.correction_from_session ?? ""}`]] : [])]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 170, y, v, 10);
     y -= 18;

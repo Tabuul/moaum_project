@@ -222,12 +222,19 @@ export interface Graduation {
   held_reason: string | null; verification_code: string | null; issued_on: string | null;
   name?: string; matricNo?: string | null; programme?: string; level?: number; clearance?: ClearanceUnit[];
 }
-export interface Receipt extends PaymentRef { name: string; matricNo: string; programme: string; level: number; term?: string | null; /** V360: signed by the API */ checkCode?: string | null }
+export interface Receipt extends PaymentRef {
+  name: string; matricNo: string; programme: string; level: number; term?: string | null; /** V360: signed by the API */ checkCode?: string | null;
+  /** V649: the Bursary's correction of this payment to another purpose or period — the same payment, not a second one */
+  correction_ref?: string | null; correction_from?: string | null; correction_from_session?: string | null; correction_at?: string | null;
+}
 
 /** the semester a fee receipt is for, parsed from its purpose ("… · semester 1") or reference ("…-S1") */
 export function receiptSemester(r: { purpose?: string | null; reference?: string | null }): number | null {
   const m = (r.purpose ?? "").match(/semester\s*([123])/i) ?? (r.reference ?? "").match(/-S([123])\b/i);
-  return m ? Number(m[1]) : null;
+  if (m) return Number(m[1]);
+  // V649: a corrected payment's label names the semester in words ("· second semester")
+  const w = (r.purpose ?? "").match(/\b(first|1st|second|2nd|third|3rd)\s+semester/i);
+  return w ? ({ first: 1, "1st": 1, second: 2, "2nd": 2, third: 3, "3rd": 3 } as Record<string, number>)[w[1].toLowerCase()] ?? null : null;
 }
 
 /** the semester named in words, or null when there is none (e.g. an acceptance fee) */

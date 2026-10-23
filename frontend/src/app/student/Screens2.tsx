@@ -276,7 +276,8 @@ export function ReceiptScreen({ r, qr, verifyUrl, token, photoSrc, staff }: { r:
         <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 400 }}>
           <thead><tr><th style={{ background: "var(--chrome)", color: "var(--surface)" }}>Being payment for</th><th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Amount</th></tr></thead>
           <tbody>
-            <tr><td>{receiptPurpose(r.purpose)}<div className="sub2 tnum">Against reference {r.reference}</div></td><td className="num tnum b600">{naira(r.amount)}</td></tr>
+            <tr><td>{receiptPurpose(r.purpose)}<div className="sub2 tnum">Against reference {r.reference}</div>
+              {r.correction_ref ? <div className="sub2">Allocation corrected by the Bursary ({r.correction_ref}): first applied to {receiptPurpose(r.correction_from ?? "")} ({r.correction_from_session}). The same payment — not paid twice.</div> : null}</td><td className="num tnum b600">{naira(r.amount)}</td></tr>
             <tr style={{ background: "var(--bg)" }}><td className="b700">TOTAL RECEIVED</td><td className="num tnum b700 t-md">{naira(r.amount)}</td></tr>
           </tbody>
         </table></div>

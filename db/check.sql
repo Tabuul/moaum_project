@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 473
+\set EXPECTED 474
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24486,6 +24486,178 @@ BEGIN
         format('keys %s/%s dup %s idx %s | upload %s preview %s loaded %s/%s sep %s same %s/%s bound %s | menu %s / %s (%s) reg %s %s | report %s/%s sep %s moved %s',
                k1, k2, dup_refused, idx_refused, undecided, preview, up.offers, up.skipped, sep_key, same_title, same_curr, plain_bound,
                menu4, menu5, s5_curr, both_reg, twice, rep, rep_under, sp, moved_to));
+END $$;
+-- ── V649. Bursary payment reallocation and correction: a verified inter-departmental transfer payment of NGN 100,000 moved to the
+-- session's school fees of NGN 180,000 beside NGN 50,000 already paid — the balance NGN 30,000, the payment's reference, amount and
+-- confirmation unchanged, the student's money received unchanged, the ledger reclassified with no bank line; the Students Account
+-- Officer initiates, the initiator never decides, a return is changed and sent again; the payment is not corrected twice, and a
+-- reversal takes it back; a school-fees payment moved to the next session, a payment moved to the deferment application fee and to the
+-- GST fee, each as the engine reads them; a pending, a refunded, an unsupported and a short payment refused; a rejection changes
+-- nothing. The block undoes its own writes.
+DO $$
+DECLARE S text := '2649/2650'; S2 text := '2650/2651'; prog text; dept text; msg text;
+        o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o3 uuid := gen_random_uuid(); st uuid := gen_random_uuid();
+        p0 text; tref text; tpay uuid; pend text; refd text; p1 text; big text; small text; dfee text; gst text;
+        chk jsonb; same text; not_verified text; refunded text; unsupported text; unknown_ses text; gst_short text; def_short text;
+        short_reason text; no_confirm text; open_again text; sao_decide text; self_decide text; x1 uuid; ret jsonb; done jsonb;
+        t_after finance.payment_reference; t_before finance.payment_reference; paid_after numeric; balance_after numeric; cash_before numeric; cash_after numeric;
+        reclass text; bank_lines int; twice text; rv uuid; back jsonb; t_back text; x1_status text; paid_back numeric;
+        x2 uuid; s1_paid numeric; s2_paid numeric; x3 uuid; def_state text; x4 uuid; gst_entitled boolean; x5 uuid; rej text; rej_purpose text;
+        events text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V649', true);
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (o1, 'CHK-V649-1', 'CHECKV649', 'Accounts'), (o2, 'CHK-V649-2', 'CHECKV649', 'Bursar'), (o3, 'CHK-V649-3', 'CHECKV649', 'Deputy');
+        PERFORM assessment.ensure_session(S);
+        PERFORM assessment.ensure_session(S2);
+        INSERT INTO policy.semester (id, session, number) SELECT gen_random_uuid(), x.s, n FROM (VALUES (S), (S2)) x(s), generate_series(1, 2) n
+         WHERE NOT EXISTS (SELECT 1 FROM policy.semester m WHERE m.session = x.s AND m.number = n);
+        SELECT code, dept_code INTO prog, dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/00/996491', 'MOAUM/CHK/00/6491', 'CHECKV649', 'Realloc', prog, 'UTME', S, 100, 100, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES
+            (S, 'School fees (check V649)', 180000, 100, prog), (S2, 'School fees (check V649)', 200000, 100, prog), (S2, 'School fees (check V649)', 200000, 200, prog);
+        -- the session's GST course, owed by the student; the GST fee stated
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('GST 649', 'Check Communication', 2, 1, 100, dept, 'GST', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 649', prog, 100, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'GST 649', S, 1);
+        PERFORM finance.state_gst_fee(S, 4000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+        -- the payments: school fees already paid, the transfer payment meant for school fees, and the others the check moves or refuses
+        p0 := finance.new_purpose_reference(st, S, 50000, 'School fees ' || S);
+        PERFORM finance.confirm_payment(p0, 'BANK_BRANCH', 'teller for check V649');
+        tref := finance.new_purpose_reference(st, S, 100000, 'Inter-departmental transfer to B.Sc. CHECK V649');
+        PERFORM finance.confirm_payment(tref, 'BANK_BRANCH', 'teller for check V649');
+        SELECT id INTO tpay FROM finance.payment_reference WHERE reference = tref;
+        pend := finance.new_purpose_reference(st, S, 1000, 'Inter-departmental transfer to B.Sc. CHECK V649');
+        refd := finance.new_purpose_reference(st, S, 7000, 'Other check V649 refunded');
+        PERFORM finance.confirm_payment(refd, 'BANK_BRANCH', 'teller for check V649');
+        INSERT INTO finance.refund (reference, student_id, payer, reason, amount, proposed_by, source_reference)
+        VALUES ('RF-CHK-649', st, 'Student', 'check V649', 7000, o2, refd);
+        small := finance.new_purpose_reference(st, S, 1000, 'Other check V649 small');
+        PERFORM finance.confirm_payment(small, 'BANK_BRANCH', 'teller for check V649');
+        dfee := finance.new_purpose_reference(st, S, 15000, 'Other check V649 deferment');
+        PERFORM finance.confirm_payment(dfee, 'BANK_BRANCH', 'teller for check V649');
+        gst := finance.new_purpose_reference(st, S, 4000, 'Other check V649 gst');
+        PERFORM finance.confirm_payment(gst, 'BANK_BRANCH', 'teller for check V649');
+        -- the transfer payment is on the ledger as the sync posts a student payment: Dr bank, Cr its income account
+        PERFORM finance.gl_post(current_date, 'Fee receipt ' || tref, 'AUTO', 'PAYMENT', tref, jsonb_build_array(
+            jsonb_build_object('account', '1010', 'debit', 100000, 'session', S),
+            jsonb_build_object('account', finance.gl_income_account(finance.payment_category('Inter-departmental transfer to B.Sc. CHECK V649')), 'credit', 100000, 'session', S)));
+
+        -- the check: the balance read with the payment already made
+        chk := finance.payment_reallocation_check(tpay, 'SCHOOL_FEES', S, 1);
+        same := split_part(finance.payment_reallocation_check((SELECT id FROM finance.payment_reference WHERE reference = p0), 'SCHOOL_FEES', S, NULL)->'refusals'->>0, ':', 1);
+        not_verified := split_part(finance.payment_reallocation_check((SELECT id FROM finance.payment_reference WHERE reference = pend), 'SCHOOL_FEES', S, NULL)->'refusals'->>0, ':', 1);
+        refunded := split_part(finance.payment_reallocation_check((SELECT id FROM finance.payment_reference WHERE reference = refd), 'SCHOOL_FEES', S, NULL)->'refusals'->>0, ':', 1);
+        unsupported := split_part(finance.payment_reallocation_check(tpay, 'HOSTEL_FEE', S, NULL)->'refusals'->>0, ':', 1);
+        unknown_ses := split_part(finance.payment_reallocation_check(tpay, 'SCHOOL_FEES', '2999/3000', NULL)->'refusals'->>0, ':', 1);
+        gst_short := split_part(finance.payment_reallocation_check((SELECT id FROM finance.payment_reference WHERE reference = small), 'GST_FEE', S, NULL)->'refusals'->>0, ':', 1);
+        def_short := split_part(finance.payment_reallocation_check((SELECT id FROM finance.payment_reference WHERE reference = small), 'DEFERMENT_FEE', S, NULL)->'refusals'->>0, ':', 1);
+
+        -- initiated by the Students Account Officer: what was wrong, a reason and the confirmation
+        PERFORM set_config('moaum.actor_id', o1::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        BEGIN PERFORM finance.initiate_payment_reallocation(tpay, 'SCHOOL_FEES', S, 1, 'WRONG_PURPOSE', 'wrong', NULL, true); short_reason := 'MADE';
+        EXCEPTION WHEN check_violation THEN short_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.initiate_payment_reallocation(tpay, 'SCHOOL_FEES', S, 1, 'WRONG_PURPOSE', 'The student chose inter-departmental transfer instead of school fees', NULL, false); no_confirm := 'MADE';
+        EXCEPTION WHEN check_violation THEN no_confirm := split_part(SQLERRM, ':', 1); END;
+        x1 := finance.initiate_payment_reallocation(tpay, 'SCHOOL_FEES', S, 1, 'WRONG_PURPOSE', 'The student chose inter-departmental transfer instead of school fees', 'Teller 649', true);
+        BEGIN PERFORM finance.initiate_payment_reallocation(tpay, 'SCHOOL_FEES', S, 2, 'WRONG_PURPOSE', 'The student chose inter-departmental transfer instead of school fees', NULL, true); open_again := 'MADE';
+        EXCEPTION WHEN check_violation THEN open_again := split_part(SQLERRM, ':', 1); END;
+        -- never decided by the Students Account Officer, nor by the officer who initiated it
+        BEGIN PERFORM finance.decide_payment_reallocation(x1, 'APPROVE', NULL, true); sao_decide := 'DECIDED';
+        EXCEPTION WHEN insufficient_privilege THEN sao_decide := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM finance.decide_payment_reallocation(x1, 'APPROVE', NULL, true); self_decide := 'DECIDED';
+        EXCEPTION WHEN insufficient_privilege THEN self_decide := split_part(SQLERRM, ':', 1); END;
+        -- the Bursar returns it; the officer changes the semester and sends it again; the Bursar approves: executed at once
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        ret := finance.decide_payment_reallocation(x1, 'RETURN', 'The teller says second semester', false);
+        PERFORM set_config('moaum.actor_id', o1::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        PERFORM finance.resubmit_payment_reallocation(x1, 'SCHOOL_FEES', S, 2, 'WRONG_PURPOSE', 'The student chose inter-departmental transfer instead of school fees, second semester', NULL, true);
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        SELECT * INTO t_before FROM finance.payment_reference WHERE id = tpay;
+        cash_before := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = st AND confirmed_at IS NOT NULL);
+        done := finance.decide_payment_reallocation(x1, 'APPROVE', 'Teller seen', true);
+        SELECT * INTO t_after FROM finance.payment_reference WHERE id = tpay;
+        paid_after := (finance.position(st, S)).paid;
+        balance_after := (finance.position(st, S)).balance;
+        cash_after := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = st AND confirmed_at IS NOT NULL);
+        SELECT string_agg(p.account || CASE WHEN p.debit > 0 THEN ' Dr' ELSE ' Cr' END, ',' ORDER BY p.line) INTO reclass
+          FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id WHERE j.source_type = 'REALLOCATION' AND j.source_ref = (SELECT realloc_ref FROM finance.payment_reallocation WHERE id = x1);
+        bank_lines := (SELECT count(*) FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id
+                        WHERE j.source_type = 'REALLOCATION' AND p.account IN ('1010', '1020'));
+        events := (SELECT string_agg(action, ',' ORDER BY at, action) FROM finance.payment_reallocation_event WHERE reallocation_id = x1);
+        BEGIN PERFORM finance.initiate_payment_reallocation(tpay, 'SCHOOL_FEES', S2, NULL, 'WRONG_SESSION', 'Moving the same payment once more to see the refusal', NULL, true); twice := 'MADE';
+        EXCEPTION WHEN check_violation THEN twice := split_part(SQLERRM, ':', 1); END;
+        -- the reversal, by the Bursar, decided by another Bursar officer: the payment back where it was
+        rv := finance.initiate_payment_reallocation(NULL, NULL, NULL, NULL, 'OTHER', 'The correction was made on the wrong payment; taken back', NULL, true, x1);
+        PERFORM set_config('moaum.actor_id', o3::text, true);
+        back := finance.decide_payment_reallocation(rv, 'APPROVE', NULL, true);
+        t_back := (SELECT purpose FROM finance.payment_reference WHERE id = tpay);
+        x1_status := (SELECT status FROM finance.payment_reallocation WHERE id = x1);
+        paid_back := (finance.position(st, S)).paid;
+
+        -- a school-fees payment moved to the next session
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        p1 := finance.new_purpose_reference(st, S, 120000, 'School fees ' || S);
+        PERFORM finance.confirm_payment(p1, 'BANK_BRANCH', 'teller for check V649');
+        x2 := finance.initiate_payment_reallocation((SELECT id FROM finance.payment_reference WHERE reference = p1), 'SCHOOL_FEES', S2, 1, 'WRONG_SESSION',
+                                                    'The student paid the next session''s fees under this session', NULL, true);
+        PERFORM set_config('moaum.actor_id', o3::text, true);
+        PERFORM finance.decide_payment_reallocation(x2, 'APPROVE', NULL, true);
+        s1_paid := (finance.position(st, S)).paid;
+        s2_paid := (finance.position(st, S2)).paid;
+        -- a payment moved to the deferment application fee: the fee given, confirmed as the payment was
+        x3 := finance.initiate_payment_reallocation((SELECT id FROM finance.payment_reference WHERE reference = dfee), 'DEFERMENT_FEE', S, NULL, 'WRONG_PURPOSE',
+                                                    'The student paid for a deferment under the wrong purpose', NULL, true);
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        PERFORM finance.decide_payment_reallocation(x3, 'APPROVE', NULL, true);
+        def_state := (SELECT state FROM people.deferment_fee WHERE reference = dfee);
+        -- a payment moved to the GST fee: the entitlement follows the completed move, not the request
+        x4 := finance.initiate_payment_reallocation((SELECT id FROM finance.payment_reference WHERE reference = gst), 'GST_FEE', S, NULL, 'WRONG_PURPOSE',
+                                                    'The GST fee was paid under the wrong purpose', NULL, true);
+        PERFORM set_config('moaum.actor_id', o3::text, true);
+        PERFORM finance.decide_payment_reallocation(x4, 'APPROVE', NULL, true);
+        gst_entitled := (SELECT entitled FROM finance.gst_entitlement(st, S));
+        -- a rejection changes nothing
+        x5 := finance.initiate_payment_reallocation((SELECT id FROM finance.payment_reference WHERE reference = small), 'SCHOOL_FEES', S, NULL, 'WRONG_PURPOSE',
+                                                    'A small payment the student says was meant for school fees', NULL, true);
+        PERFORM set_config('moaum.actor_id', o2::text, true);
+        rej := finance.decide_payment_reallocation(x5, 'REJECT', 'Not the student''s intention', false)->>'status';
+        rej_purpose := (SELECT purpose FROM finance.payment_reference WHERE reference = small);
+        RAISE EXCEPTION 'the V649 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V649 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V649: a verified payment reallocated to the obligation it was meant for — the balance read with what was already paid, the payment unchanged but for its purpose and session, the money received unchanged, the ledger reclassified with no bank line; separation of duties, return and resubmit, never twice, reversed; the next session, the deferment fee and the GST fee as the engine reads them; pending, refunded, unsupported and short payments refused; a rejection changes nothing',
+        coalesce((chk->>'ok')::boolean AND (chk->'destination'->>'fee')::numeric = 180000 AND (chk->'destination'->>'paidBefore')::numeric = 50000
+                 AND (chk->'destination'->>'balance')::numeric = 30000 AND chk->'destination'->>'outcome' = 'PART_PAID'
+                 AND same = 'REALLOC_SAME' AND not_verified = 'REALLOC_NOT_VERIFIED' AND refunded = 'REALLOC_REFUNDED'
+                 AND unsupported = 'REALLOC_PURPOSE_UNSUPPORTED' AND unknown_ses = 'REALLOC_SESSION_UNKNOWN'
+                 AND gst_short = 'REALLOC_GST_SHORT' AND def_short = 'REALLOC_DEFERMENT_SHORT'
+                 AND short_reason = 'REALLOC_REASON' AND no_confirm = 'REALLOC_CONFIRM' AND open_again = 'REALLOC_OPEN'
+                 AND sao_decide = 'REALLOC_OFFICE' AND self_decide = 'REALLOC_SAME_OFFICER' AND ret->>'status' = 'RETURNED'
+                 AND done->>'status' = 'COMPLETED' AND t_after.purpose = 'School fees ' || S || ' · second semester' AND t_after.session = S
+                 AND t_after.reference = t_before.reference AND t_after.amount = t_before.amount AND t_after.confirmed_at = t_before.confirmed_at
+                 AND t_after.receipt_no IS NOT DISTINCT FROM t_before.receipt_no AND t_after.student_id = t_before.student_id
+                 AND paid_after = 150000 AND balance_after = 30000 AND cash_after = cash_before
+                 AND reclass = finance.gl_income_account(finance.payment_category('Inter-departmental transfer to B.Sc. CHECK V649')) || ' Dr,4010 Cr' AND bank_lines = 0
+                 AND events LIKE 'REALLOCATION_INITIATED,REALLOCATION_RETURNED,REALLOCATION_RESUBMITTED,REALLOCATION_APPROVED,REALLOCATION_EXECUTION_STARTED,%REALLOCATION_COMPLETED'
+                 AND twice = 'REALLOC_ALREADY' AND back->>'status' = 'COMPLETED' AND t_back = 'Inter-departmental transfer to B.Sc. CHECK V649'
+                 AND x1_status = 'REVERSED' AND paid_back = 50000
+                 AND s1_paid = 50000 AND s2_paid = 120000 AND def_state = 'CONFIRMED' AND gst_entitled
+                 AND rej = 'REJECTED' AND rej_purpose = 'Other check V649 small', false),
+        format('check %s same %s pending %s refunded %s unsupported %s session %s gst %s def %s | reason %s confirm %s open %s sao %s self %s ret %s | done %s %s %s paid %s bal %s cash %s/%s reclass %s bank %s | events %s | twice %s back %s %s %s %s | s1 %s s2 %s def %s gst %s rej %s %s',
+               chk->'destination', same, not_verified, refunded, unsupported, unknown_ses, gst_short, def_short, short_reason, no_confirm, open_again, sao_decide, self_decide,
+               ret->>'status', done->>'status', t_after.purpose, t_after.session, paid_after, balance_after, cash_before, cash_after, reclass, bank_lines, events,
+               twice, back->>'status', t_back, x1_status, paid_back, s1_paid, s2_paid, def_state, gst_entitled, rej, rej_purpose));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

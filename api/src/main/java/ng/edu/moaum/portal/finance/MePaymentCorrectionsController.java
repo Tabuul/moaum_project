@@ -31,9 +31,15 @@ class MePaymentCorrectionsController {
     @GetMapping("/payment-corrections")
     @Transactional(readOnly = true)
     List<Map<String, Object>> corrections(Authentication auth) {
+        // V649: and the Bursary's corrections of the student's own payments to another purpose or period (direction PURPOSE)
         return jdbc.sql("""
-                SELECT swap_ref, kind, reference, amount, session, direction, executed_at, status
-                  FROM finance.payment_swaps_of(:me) ORDER BY executed_at DESC
+                SELECT swap_ref, kind, reference, amount, session, direction, executed_at, status,
+                       NULL::text AS from_purpose, NULL::text AS from_session, NULL::text AS to_purpose, NULL::numeric AS balance_after
+                  FROM finance.payment_swaps_of(:me)
+                UNION ALL
+                SELECT realloc_ref, kind, reference, amount, to_session, 'PURPOSE', executed_at, status, from_purpose, from_session, to_purpose, balance_after
+                  FROM finance.payment_reallocations_of(:me)
+                 ORDER BY executed_at DESC
                 """).param("me", UUID.fromString(auth.getName())).query().listOfRows();
     }
 }

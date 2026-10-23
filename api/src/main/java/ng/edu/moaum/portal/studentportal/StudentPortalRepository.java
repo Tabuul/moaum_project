@@ -456,8 +456,14 @@ class StudentPortalRepository {
                        CASE WHEN pr.confirmed_at IS NOT NULL THEN finance.payment_term(pr.id) END AS term,
                        """ + CLASSIFIED + """
                        , (SELECT e.gateway_ref FROM finance.gateway_event e WHERE e.reference = pr.reference AND e.outcome IN ('SETTLED', 'ALREADY_SETTLED')
-                           AND e.gateway_ref IS NOT NULL ORDER BY e.received_at DESC LIMIT 1) AS gateway_reference
+                           AND e.gateway_ref IS NOT NULL ORDER BY e.received_at DESC LIMIT 1) AS gateway_reference,
+                       x.realloc_ref AS correction_ref, x.from_purpose AS correction_from, x.from_session AS correction_from_session,
+                       x.executed_at AS correction_at
                   FROM finance.payment_reference pr""" + LEDGER + """
+                  -- V649: the Bursary's correction of the payment to another purpose or period, standing
+                  LEFT JOIN LATERAL (SELECT y.realloc_ref, y.from_purpose, y.from_session, y.executed_at FROM finance.payment_reallocation y
+                                      WHERE y.payment_id = pr.id AND y.status = 'COMPLETED' AND y.kind = 'REALLOCATION'
+                                      ORDER BY y.executed_at DESC LIMIT 1) x ON true
                  WHERE pr.student_id = :s AND pr.reference = upper(btrim(:r))
                 """).param("s", student).param("r", reference).query().listOfRows().stream().findFirst();
     }

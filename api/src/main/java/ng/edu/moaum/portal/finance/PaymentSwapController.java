@@ -371,11 +371,20 @@ class PaymentSwapController {
         return out;
     }
 
-    /** the swaps a student's account carries, either way — for the student record */
+    /** the swaps a student's account carries, either way — for the student record — and (V649) the corrections of its payments to
+     *  another purpose or period (direction PURPOSE) */
     @GetMapping("/of/{student}")
     @PreAuthorize(READERS + " or hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_admin')")
     @Transactional(readOnly = true)
     List<Map<String, Object>> of(@PathVariable UUID student) {
-        return jdbc.sql("SELECT * FROM finance.payment_swaps_of(:s)").param("s", student).query().listOfRows();
+        return jdbc.sql("""
+                SELECT swap_ref, kind, reference, amount, session, direction, other_matric, executed_at, status,
+                       NULL::text AS from_purpose, NULL::text AS from_session, NULL::text AS to_purpose, NULL::numeric AS balance_after
+                  FROM finance.payment_swaps_of(:s)
+                UNION ALL
+                SELECT realloc_ref, kind, reference, amount, to_session, 'PURPOSE', NULL, executed_at, status, from_purpose, from_session, to_purpose, balance_after
+                  FROM finance.payment_reallocations_of(:s)
+                 ORDER BY executed_at DESC
+                """).param("s", student).query().listOfRows();
     }
 }

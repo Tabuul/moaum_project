@@ -66,6 +66,7 @@ export const ROUTES: Record<string, string> = {
   "r/admin": "/admin",
   "t/refunds": "/finance/refunds",
   "t/paymentswaps": "/finance/payment-swaps",
+  "t/paymentrealloc": "/finance/payment-reallocations",
   "t/pv": "/vouchers",
   "t/prepayment": "/vouchers",
   "t/budget": "/finance/budget",
