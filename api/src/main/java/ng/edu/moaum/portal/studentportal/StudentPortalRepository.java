@@ -1012,6 +1012,13 @@ class StudentPortalRepository {
         return ng.edu.moaum.portal.shared.GstEpsExplain.read(jdbc, student, session);
     }
 
+    /** V643: the GST/EPS courses the registration page shows the student this session (finance.gst_payable_courses) — a student
+     *  shown one pays the GST fee for it, whether or not it is owed yet */
+    List<Map<String, Object>> gstPayable(UUID student, String session) {
+        return jdbc.sql("SELECT course_code, office FROM finance.gst_payable_courses(:s, :ses) ORDER BY course_code")
+                .param("s", student).param("ses", session).query().listOfRows();
+    }
+
     String newGstReference(UUID student, String session) {
         return jdbc.sql("SELECT finance.new_gst_reference(:s, :ses)").param("s", student).param("ses", session).query(String.class).single();
     }

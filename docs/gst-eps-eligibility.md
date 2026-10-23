@@ -292,3 +292,43 @@ The "paid, not required" list is also on the Bursary's Fee Setup page and at `GE
   Academic Office on All Courses (`GET/PUT /api/v1/gst/transfers/settings`); the requests list shows when each was
   reminded or sent on.
 - **Tests.** check.sql property 215; GstEligibilityIT covers the setting, the chase and EPS in the preview.
+
+## 16. V643 — a student shown a GST/EPS course pays the fee for it (23 October 2026)
+
+The University reported a student refused with *"you are required to pay the GST fee of NGN 4000.00 for 2025/2026 before you
+can register your courses"* who could not pay it. It asked that a student who sees a GST course on the registration page,
+300 Level included, be able to pay.
+
+**What went wrong.**
+- Since V590 the registration menu lists the programme's courses at the student's level whatever the binding's track and the
+  course's curriculum (the curricula are open).
+- The engine (`finance.gst_eps_rows`) still owed a programme course only within the student's own curriculum. That was left
+  on purpose: many programmes bind both curricula's GST courses at one level, and a student takes one set.
+- So a student whose only GST/EPS course on the page was of the other curriculum owed nothing. GST & EPS said no payment was
+  required, and the reference was refused (`GST_NOT_REQUIRED`).
+- Saving that course beside others then failed with the message above. Once the course was on the registration being saved,
+  the fee became owed (a course being taken counts), so the Bursary's *required for all registration* refused the next
+  course. The save was undone, and the student was back to *no payment required*.
+- On the live-shaped copy, 997 students saw a GST/EPS course and owed nothing: 984 at 400 Level (BMAS: GST 312, GST 412,
+  ENT 412), 11 at 300 Level (BMAS: EPS 301, GST 312) and 2 at 100 Level.
+
+**Now.** What is owed, course by course, is unchanged. Counting the menu's courses in the engine was tried and dropped: it
+nearly doubled the engine's rows and its whole-register time (2.5 s to 24 s), and it listed both curricula's sets as owed.
+- `finance.gst_payable_courses(student, session)` gives the GST/EPS courses the registration page shows the student. These
+  are the programme's courses at the student's level (whatever the curriculum while the curricula are open), offered in the
+  session in the student's stream and not already passed. It covers undergraduates in good standing, never CCE.
+- `finance.new_gst_reference` issues the fee to a student who owes it, or who is shown such a course.
+- `finance.renew_reference` renews an expired GST reference on the same terms.
+- `registration.gst_gate` holds such a course, not yet owed, until the fee is paid. The student is asked to pay at the course
+  itself (*"before you can register GST courses"*); the save no longer fails on the course after it. Every other course
+  registers as before.
+- The API: `GET /api/v1/me/gst` adds `payable`, the courses shown.
+- GST & EPS offers **PAY GST FEE** and names those courses ("held there until the fee is paid"), instead of "No GST or EPS
+  payment is required". The dashboard's GST & EPS card shows for these students too (`lib/gst-payable.ts`).
+
+A student who pays and registers the course then owes it as a course being taken, like every other student. One who pays and
+never registers it stays on the Bursary's review of payments no course requires (V367). With the curricula kept apart again,
+the course is not on the page: nothing is held and nothing is paid.
+
+Tests: `check.sql` V643 (EXPECTED 469); `GstEligibilityIT.aGstCourseOfTheOtherCurriculumOnTheFormIsPaidForBeforeItRegisters`;
+`lib/gst-payable.test.ts`.

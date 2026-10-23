@@ -623,6 +623,8 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("eligibility", repo.gstExplain(id, session).get("eligibility"));
         out.put("entitlement", repo.gstEntitlement(id, session));
+        // V643: the GST/EPS courses the registration page shows — the fee is paid for them though not yet owed
+        out.put("payable", repo.gstPayable(id, session));
         out.put("setting", repo.gstSetting());
         out.put("references", repo.gstReferences(id));
         out.put("courses", repo.gstCourses(id, session));

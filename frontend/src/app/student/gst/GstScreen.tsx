@@ -14,6 +14,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
+import { gstPayState } from "@/lib/gst-payable";
 import { PayByCard, RenewReference, naira, onDay, when } from "../common";
 
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
@@ -29,15 +30,21 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
   const [now] = useState(() => Date.now());
   const e = gst.entitlement;
   const el = gst.eligibility ?? null;
-  const [word, kind] = STATE[e.state] ?? [e.state, "grey"];
+  // V643: a student shown a GST/EPS course on the registration page pays the fee for it, though not yet owing it
+  const payState = gstPayState(e, gst.payable);
+  const shownOnly = payState.shown.length > 0;
+  const shownOf = (eps: boolean) => (gst.payable ?? []).filter((p) => !e.required && (p.office === "EPS") === eps).map((p) => p.course_code);
+  const [word, kind] = (shownOnly && !e.entitled ? STATE[e.open_reference ? "PENDING" : "NOT_PAID"] : STATE[e.state]) ?? [e.state, "grey"];
   const gstCourses = gst.courses.filter((c) => c.general_office !== "EPS");
   const epsCourses = gst.courses.filter((c) => c.general_office === "EPS");
   const owes = (list: GstView["courses"]) => list.filter((c) => c.counts !== false);
   const gstReg = owes(gstCourses).some((c) => c.registered);
   const epsReg = owes(epsCourses).some((c) => c.registered);
   const lockedWord = e.entitled ? "REGISTERED" : "LOCKED";
-  const unpaid = e.required && e.stated && !e.entitled && e.fee > 0;
-  const concerned = e.required || e.state === "PAID";
+  const unpaid = payState.unpaid;
+  const concerned = e.required || e.state === "PAID" || shownOnly;
+  const gstNeeded = e.gst_required !== false || payState.gstShown;
+  const epsNeeded = !!e.eps_required || payState.epsShown;
 
   async function pay() {
     setBusy(true); setProblem(null);
@@ -83,13 +90,18 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
       ) : null}
       {unpaid ? (
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={e.open_reference ? null : <Btn kind="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Generating…" : "PAY GST FEE"}</Btn>}>
-          Pay the GST fee of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} to register GST/EPS courses: {reasonWord(e.reason)}
-          {owes(gst.courses).length ? ` (${owes(gst.courses).map((c) => c.code).join(", ")})` : ""}. One payment covers GST and EPS.
+          {shownOnly ? (
+            <>Pay the GST fee of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} to register the GST/EPS course{payState.shown.length === 1 ? "" : "s"} on
+              your registration page ({payState.shown.join(", ")}). {payState.shown.length === 1 ? "It is" : "They are"} held there until the fee is paid. One payment covers GST and EPS.</>
+          ) : (
+            <>Pay the GST fee of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} to register GST/EPS courses: {reasonWord(e.reason)}
+              {owes(gst.courses).length ? ` (${owes(gst.courses).map((c) => c.code).join(", ")})` : ""}. One payment covers GST and EPS.</>
+          )}
         </Note>
       ) : null}
       {e.required && e.state === "NOT_STATED" ? <Note kind="info" title={`No GST fee is stated for ${gst.session} yet`}>Your GST/EPS courses register as usual.</Note> : null}
       {e.state === "EXEMPT" ? <Note kind="info" title={`No GST fee for you in ${gst.session}`}>Your GST/EPS courses register as usual.</Note> : null}
-      {e.state === "NOT_REQUIRED" ? (
+      {e.state === "NOT_REQUIRED" && !shownOnly ? (
         <Note kind="info" title={`No GST or EPS payment is required of you in ${gst.session}`}>
           {el ? <>GST: {reasonWord(el.gst_reason)}. EPS: {reasonWord(el.eps_reason)}.</> : "No GST or EPS course is offered to your programme at your level, and none is carried over."}
           {" "}Nothing is owed. If you believe a course is missing, contact ICT Support.
@@ -97,7 +109,9 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
       ) : null}
       {e.review ? (
         <Note kind="info" title="Paid, though no course requires it this session">
-          No GST or EPS course requires the fee in {gst.session}. The Bursary will review your payment.
+          {shownOnly
+            ? <>Register the GST/EPS course{payState.shown.length === 1 ? "" : "s"} on your registration page ({payState.shown.join(", ")}). Until one is registered no course requires the fee, and the Bursary reviews the payment.</>
+            : <>No GST or EPS course requires the fee in {gst.session}. The Bursary will review your payment.</>}
         </Note>
       ) : null}
       {concerned ? (
@@ -106,8 +120,10 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
           ["PAYMENT STATUS", word, kind === "ok" ? "var(--green-ink)" : kind === "bad" ? "var(--red-ink)" : null, e.paid_at ? `Paid ${onDay(e.paid_at)}` : e.open_reference ? `Reference ${e.open_reference}` : e.stated ? `${naira(Number(e.paid))} of ${naira(Number(e.fee))} paid` : "—"],
           ["GST ENTITLEMENT", e.entitled ? "ACTIVE" : unpaid ? "LOCKED" : "—", e.entitled ? "var(--green-ink)" : unpaid ? "var(--red-ink)" : null, e.entitled ? "You may register GST courses" : unpaid ? "Pay the GST fee to unlock" : "Nothing owed"],
           ["EPS ENTITLEMENT", e.entitled ? (e.covers_eps ? "COVERED" : "ACTIVE") : unpaid ? "LOCKED" : "—", e.entitled ? "var(--green-ink)" : unpaid ? "var(--red-ink)" : null, e.covers_eps ? "Covered by the GST payment" : "Not covered by GST"],
-          ["GST REGISTRATION", gstReg ? "REGISTERED" : unpaid && e.gst_required !== false ? lockedWord : e.gst_required === false ? "NOT REQUIRED" : "NOT REGISTERED", gstReg ? "var(--green-ink)" : unpaid && e.gst_required !== false ? "var(--red-ink)" : null, `${owes(gstCourses).filter((c) => c.registered).length} of ${owes(gstCourses).length} GST course${owes(gstCourses).length === 1 ? "" : "s"} owed`],
-          ["EPS REGISTRATION", epsReg ? "REGISTERED" : unpaid && e.eps_required ? lockedWord : !e.eps_required ? "NOT REQUIRED" : "NOT REGISTERED", epsReg ? "var(--green-ink)" : unpaid && e.eps_required ? "var(--red-ink)" : null, `${owes(epsCourses).filter((c) => c.registered).length} of ${owes(epsCourses).length} EPS course${owes(epsCourses).length === 1 ? "" : "s"} owed`],
+          ["GST REGISTRATION", gstReg ? "REGISTERED" : unpaid && gstNeeded ? lockedWord : !gstNeeded ? "NOT REQUIRED" : "NOT REGISTERED", gstReg ? "var(--green-ink)" : unpaid && gstNeeded ? "var(--red-ink)" : null,
+            payState.gstShown ? `${shownOf(false).join(", ")} on your registration page` : `${owes(gstCourses).filter((c) => c.registered).length} of ${owes(gstCourses).length} GST course${owes(gstCourses).length === 1 ? "" : "s"} owed`],
+          ["EPS REGISTRATION", epsReg ? "REGISTERED" : unpaid && epsNeeded ? lockedWord : !epsNeeded ? "NOT REQUIRED" : "NOT REGISTERED", epsReg ? "var(--green-ink)" : unpaid && epsNeeded ? "var(--red-ink)" : null,
+            payState.epsShown ? `${shownOf(true).join(", ")} on your registration page` : `${owes(epsCourses).filter((c) => c.registered).length} of ${owes(epsCourses).length} EPS course${owes(epsCourses).length === 1 ? "" : "s"} owed`],
         ]} />
       ) : null}
 
@@ -135,10 +151,14 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
       ) : null}
 
       <Panel title="GST courses" right={<span className="sub2">{s.programme} · {s.level} Level</span>}>
-        {gstCourses.length ? <DTable cols={cols} rows={courseRows(gstCourses)} /> : <PBody><div className="sub2">No GST course this session: none offered at {s.level} level, none carried over.</div></PBody>}
+        {gstCourses.length ? <DTable cols={cols} rows={courseRows(gstCourses)} /> : <PBody><div className="sub2">{payState.gstShown
+          ? `${shownOf(false).join(", ")} on your registration page: register it there once the GST fee is paid.`
+          : `No GST course this session: none offered at ${s.level} level, none carried over.`}</div></PBody>}
       </Panel>
       <Panel title="EPS courses" right={<span className="sub2">{e.covers_eps ? "Covered by the GST payment" : "Not covered by GST"}</span>}>
-        {epsCourses.length ? <DTable cols={cols} rows={courseRows(epsCourses)} /> : <PBody><div className="sub2">No EPS course this session: none offered at {s.level} level, none carried over.</div></PBody>}
+        {epsCourses.length ? <DTable cols={cols} rows={courseRows(epsCourses)} /> : <PBody><div className="sub2">{payState.epsShown
+          ? `${shownOf(true).join(", ")} on your registration page: register it there once the GST fee is paid.`
+          : `No EPS course this session: none offered at ${s.level} level, none carried over.`}</div></PBody>}
       </Panel>
       <Panel title="GST payment history">
         {gst.references.length ? <DTable cols={["S/N|num", "Reference", "Session|mid", "Amount|num", "Generated|mid", "Status|mid", "Receipt|mid"]} rows={gst.references.map((r, i) => [

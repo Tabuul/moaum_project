@@ -223,6 +223,62 @@ class GstEligibilityIT {
         assertThat(m(m(desk.getBody().get("gstEps")).get("eligibility")).get("gst_carryovers")).isEqualTo(List.of(gstCode));
     }
 
+    /** V643: a student shown a GST/EPS course on the registration page pays the GST fee for it. A 300-level student on one curriculum,
+     *  whose programme binds a GST course of the other at 300 (the curricula open), owes nothing by the engine, yet the course is on the
+     *  form: GST & EPS lists it as one to pay for, the form holds it until the fee is paid, the reference opens, and a save with it asks
+     *  for the fee at the GST course — never on the course after it — while a save without it goes through */
+    @Test
+    void aGstCourseOfTheOtherCurriculumOnTheFormIsPaidForBeforeItRegisters() {
+        String prog = jdbc.sql("""
+                SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400
+                   AND code NOT IN (:a, :b) ORDER BY code LIMIT 1
+                """).param("a", PROG_A).param("b", PROG_B).query(String.class).single();
+        String otherCode = freshCode("GST ", 700);
+        String coreCode = freshCode("ZZF ", 700);
+        UUID st = it.student("ZZELE" + n, prog, "MOAUM/ADM/17/" + String.format("%06d", n), "MOAUM/ELE/16/" + n, 300);
+        // the cohort sets the student's curriculum; the GST course is of the other one
+        String other = jdbc.sql("SELECT CASE WHEN curriculum_version = 'CCMAS' THEN 'BMAS' ELSE 'CCMAS' END FROM people.student WHERE id = :s AND curriculum_version IS NOT NULL")
+                .param("s", st).query(String.class).single();
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", prog).query(String.class).single();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, curriculum) VALUES (:c, :t, 2, 1, 300, :d, 'GST', 'LIVE', :cur)")
+                    .param("c", otherCode).param("t", "Peace Studies " + n).param("d", dept).param("cur", other).update();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES (:c, :t, 3, 1, 300, :d, 'Core', 'LIVE')")
+                    .param("c", coreCode).param("t", "Departmental Course " + n).param("d", dept).update();
+            jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:g, :p, 300, 'GST'), (:c, :p, 300, 'Core')")
+                    .param("g", otherCode).param("c", coreCode).param("p", prog).update();
+            for (String code : List.of(otherCode, coreCode)) {
+                jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1)").param("c", code).param("s", SESSION).update();
+            }
+            jdbc.sql("UPDATE registration.flex_policy SET curriculum_open = true WHERE id = 1").update();
+            return jdbc.sql("UPDATE finance.gst_setting SET required_for_all = true WHERE id = 1").update();   // as the Bursary runs it
+        });
+        try {
+            String student = TestTokens.token(st, List.of("student"));
+            Map<String, Object> view = myGst(student);
+            assertThat(m(view.get("entitlement")).get("required")).isEqualTo(false);
+            assertThat(l(view.get("payable"))).extracting(p -> p.get("course_code")).containsExactly(otherCode);
+            // the form shows it, held until the fee is paid
+            Map<String, Object> form = it.get(student, "/api/v1/me/registration?session=" + SESSION + "&semester=1").getBody();
+            assertThat(l(form.get("menu"))).anySatisfy(x -> { assertThat(x.get("course_code")).isEqualTo(otherCode); assertThat(x.get("gstLocked")).isEqualTo(true); });
+            // a save with it asks for the fee at the GST course; a save without it goes through
+            UUID otherOffering = offering(otherCode);
+            UUID core = offering(coreCode);
+            ResponseEntity<Map> held = it.call(student, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", List.of(otherOffering, core)));
+            assertThat(held.getStatusCode().value()).isEqualTo(422);
+            assertThat(held.getBody().get("code")).isEqualTo("GST_PAYMENT_REQUIRED");
+            assertThat(String.valueOf(held.getBody())).contains("before you can register GST courses");
+            ResponseEntity<Map> plain = it.call(student, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", List.of(core)));
+            assertThat(plain.getStatusCode().value()).as(String.valueOf(plain.getBody())).isEqualTo(200);
+            // the fee is paid for it
+            ResponseEntity<Map> ref = it.call(student, HttpMethod.POST, "/api/v1/me/gst/reference", Map.of("session", SESSION));
+            assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
+            assertThat(String.valueOf(ref.getBody().get("reference"))).startsWith("MOAUM-FEE-");
+        } finally {
+            it.db(() -> jdbc.sql("UPDATE finance.gst_setting SET required_for_all = false WHERE id = 1").update());
+        }
+    }
+
     @Test
     void theEpsCourseOfferedToOneProgrammeAtThreeHundredIsOwedThereAlone() {
         Map<String, Object> a = myGst(TestTokens.token(a300, List.of("student")));

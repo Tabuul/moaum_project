@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 469
+\set EXPECTED 470
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24237,6 +24237,73 @@ BEGIN
         format('grants=%s/%s/%s/%s refusals=%s/%s/%s/%s/%s/%s/%s/%s jamb=%s edits=%s ref=%s kept=%s/%s history=%s/%s level=%s/%s',
                g_acad, g_records_edit, g_records_hist, g_bursary, r_stale, r_reason, r_confirm, r_taken, r_session, r_atomic, atomic_kept, r_office,
                jamb_after, edits, ref1, r_kept_upd, r_kept_del, hist, hist_status, lvl_after, lvl_note));
+END $$;
+
+
+-- ── V643. A student shown a GST/EPS course on the registration page pays the GST fee for it: a BMAS student whose programme binds a
+-- CCMAS GST course at their level (the curricula open) owes nothing by the engine, yet the course is offered to them — it is held
+-- until the fee is paid, the fee is paid (a reference, renewed once expired), and paid it registers; with the curricula kept apart
+-- the course is not theirs and nothing is paid. The block undoes its own writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); dept text; ses text := '9643/9644'; o uuid := gen_random_uuid(); oc uuid := gen_random_uuid();
+        other text; req boolean; payable text; g_gst text; g_core text; ref1 text; ren record; paid_gate text; closed_payable int; closed_gate text; closed_ref text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'V643 check', true);
+        PERFORM assessment.ensure_session(ses);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, curriculum_version)
+        VALUES (st, 'MOAUM/ADM/99/996431', 'MOAUM/CHK/99/6431', 'CHECKGSTSHOWN', 'Invented', 'C00061', 'UTME', '9640/9641', 100, 400, 'ACTIVE', now(), 'BMAS');
+        -- the cohort sets the student's curriculum; the course is of the other one
+        SELECT CASE WHEN curriculum_version = 'CCMAS' THEN 'BMAS' ELSE 'CCMAS' END INTO other FROM people.student WHERE id = st AND curriculum_version IS NOT NULL;
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, curriculum) VALUES
+            ('GST 964', 'Check Other-Curriculum Studies', 2, 1, 400, dept, 'GST', 'LIVE', other),
+            ('CHK 964', 'Check Core Course', 2, 1, 400, dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 964', 'C00061', 400, 'GST'), ('CHK 964', 'C00061', 400, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'GST 964', ses, 1), (oc, 'CHK 964', ses, 1);
+        UPDATE finance.gst_setting SET required_for_gst_eps = true, required_for_all = true WHERE id = 1;   -- as the Bursary runs it
+        UPDATE registration.flex_policy SET curriculum_open = true WHERE id = 1;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(ses, 4000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+        PERFORM set_config('moaum.actor_office', 'student', true);
+
+        -- the curricula open: not owed by the engine, but shown — held until paid, and payable
+        req := (SELECT required FROM finance.gst_entitlement(st, ses));
+        payable := (SELECT string_agg(course_code || '/' || office, ' ') FROM finance.gst_payable_courses(st, ses));
+        g_gst := split_part(coalesce(registration.gst_gate(st, ses, 'GST 964'), 'OPEN'), ':', 1);
+        g_core := coalesce(registration.gst_gate(st, ses, 'CHK 964'), 'OPEN');
+        ref1 := finance.new_gst_reference(st, ses);
+        -- expired, it is renewed on the same terms
+        UPDATE finance.payment_reference SET expires_at = now() - interval '1 minute' WHERE reference = ref1;
+        SELECT * INTO ren FROM finance.renew_reference(st, ref1);
+        -- paid: the course registers
+        UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = st, channel = 'CHECK', receipt_no = 'RCT-CHK-643' WHERE reference = ref1;
+        paid_gate := coalesce(registration.gst_gate(st, ses, 'GST 964'), 'OPEN');
+        UPDATE finance.payment_reference SET confirmed_at = NULL, confirmed_by = NULL, channel = NULL, receipt_no = NULL WHERE reference = ref1;
+
+        -- the curricula kept apart: the course is not theirs — not shown, not held, not paid
+        UPDATE registration.flex_policy SET curriculum_open = false WHERE id = 1;
+        closed_payable := (SELECT count(*) FROM finance.gst_payable_courses(st, ses));
+        closed_gate := coalesce(registration.gst_gate(st, ses, 'GST 964'), 'OPEN');
+        UPDATE finance.payment_reference SET expires_at = now() - interval '1 minute' WHERE reference = ref1;
+        BEGIN
+            PERFORM finance.new_gst_reference(st, ses);
+            closed_ref := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN
+            closed_ref := split_part(SQLERRM, ':', 1);
+        END;
+        RAISE EXCEPTION 'the V643 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V643: a student shown a GST/EPS course on the registration page pays the GST fee for it — held until paid, a reference issued and renewed, registered once paid; another course untouched; with the curricula kept apart, not shown and nothing to pay',
+        coalesce(other IS NOT NULL AND NOT req AND payable = 'GST 964/GST' AND g_gst = 'GST_PAYMENT_REQUIRED' AND g_core = 'OPEN' AND ref1 LIKE 'MOAUM-FEE-%'
+                 AND ren.outcome = 'REOPENED' AND ren.reference_out = ref1 AND paid_gate = 'OPEN'
+                 AND closed_payable = 0 AND closed_gate = 'OPEN' AND closed_ref = 'GST_NOT_REQUIRED', false),
+        format('other %s req %s payable %s gate %s/%s ref %s renew %s/%s paid %s | closed %s %s %s', other, req, payable, g_gst, g_core, ref1, ren.outcome, ren.reference_out, paid_gate,
+               closed_payable, closed_gate, closed_ref));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

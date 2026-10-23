@@ -17,6 +17,7 @@ import { Field, Passport, Step } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct, when } from "./common";
 import { SpilloverCard } from "./SpilloverCard";
+import { gstPayState } from "@/lib/gst-payable";
 import { PasswordInput } from "@/components/PasswordInput";
 
 /** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
@@ -163,15 +164,18 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
       {/* V637: a spillover student's fees by semester — never a full session for being in spillover — with Pay and Add carry-over */}
       {f.spillover ? <SpilloverCard sp={f.spillover} compact /> : null}
       {/* V366: the card is shown only when a GST or EPS course requires the fee of the student (or they hold a payment): never because they are a student, never a ₦0 fee */}
-      {gst && (gst.entitlement.state === "PAID" || (gst.entitlement.required && ["NOT_PAID", "PENDING", "NOT_STATED"].includes(gst.entitlement.state))) ? (() => {
+      {/* V643: and when the registration page shows them a GST/EPS course they are to pay the fee for */}
+      {gst && (gst.entitlement.state === "PAID" || (gst.entitlement.required && ["NOT_PAID", "PENDING", "NOT_STATED"].includes(gst.entitlement.state))
+               || gstPayState(gst.entitlement, gst.payable).unpaid) ? (() => {
         const e = gst.entitlement;
-        const unpaid = e.required && e.stated && !e.entitled && Number(e.fee) > 0;
+        const pay = gstPayState(e, gst.payable);
+        const unpaid = pay.unpaid;
         const owed = gst.courses.filter((c) => c.counts !== false);
         const gstReg = owed.some((c) => c.general_office !== "EPS" && c.registered);
         const epsReg = owed.some((c) => c.general_office === "EPS" && c.registered);
         const pairs: [string, ReactNode][] =[["GST fee", e.stated ? naira(Number(e.fee)) : "Not yet stated"]];
-        if (e.gst_required !== false) pairs.push(["GST registration", gstReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"]);
-        if (e.eps_required) pairs.push(["EPS registration", epsReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"]);
+        if (e.gst_required !== false || pay.gstShown) pairs.push(["GST registration", gstReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"]);
+        if (e.eps_required || pay.epsShown) pairs.push(["EPS registration", epsReg ? "✓ Registered" : unpaid ? "🔒 Locked" : "Not registered"]);
         pairs.push([unpaid ? "Pay" : "More", <LinkBtn key="g" kind={unpaid ? "primary" : "ghost"} size="sm" href={`/student/gst?session=${encodeURIComponent(gst.session)}`}>{unpaid ? "PAY GST FEE" : "GST & EPS"}</LinkBtn>]);
         return (
           <Panel title="GST & EPS" right={<Pil kind={e.entitled ? "ok" : unpaid ? "bad" : "grey"}>{e.entitled ? "PAID" : unpaid ? (e.state === "PENDING" ? "REFERENCE OPEN" : "NOT PAID") : "NO FEE STATED"}</Pil>}>
@@ -180,6 +184,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
               {owed.length ? (
                 <div className="sub2 mt-1">Required for {owed.map((c) => `${c.code}${c.source === "CARRYOVER" ? " (carryover)" : ""}`).join(", ")} in {gst.session}.</div>
               ) : null}
+              {pay.shown.length ? <div className="sub2 mt-1">On your registration page: {pay.shown.join(", ")}. Pay the GST fee to register {pay.shown.length === 1 ? "it" : "them"}.</div> : null}
               {unpaid ? <div className="sub2 mt-1">One GST payment covers GST and EPS. Your GST/EPS courses stay locked until it is confirmed.</div> : null}
               {e.review ? <div className="sub2 mt-1">No GST or EPS course requires this payment in {gst.session}. The Bursary will review it.</div> : null}
             </PBody>

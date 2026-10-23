@@ -96,6 +96,8 @@ export interface GstView {
   eligibility?: GstEpsEligibility | null;
   references: { reference: string; receipt_no: string | null; amount: number; session: string; purpose: string; generated_at: string; expires_at: string; confirmed_at: string | null; channel: string | null }[];
   courses: GstCourseView[]; reference?: string;
+  /** V643: the GST/EPS courses the registration page shows the student — the fee is paid for them though not yet owed */
+  payable?: import("./gst-payable").GstPayableCourse[];
 }
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number; curriculum?: string | null; basis?: "CURRICULUM" | "LEVEL" | "CCE" | "SIWES" }; probation?: Probation | null;
