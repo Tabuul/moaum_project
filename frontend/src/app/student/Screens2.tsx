@@ -231,6 +231,8 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn>
             : r.confirmed_at ? <span key="x" />
             : new Date(r.expires_at).getTime() > now ? <PayFromHistory key="x" reference={r.reference} amount={Number(r.amount)} purpose={r.purpose_label ?? r.purpose} />
+            // Oct 2026: an expired GST reference is paid from GST & EPS, which says whether the fee is still owed and why
+            : r.purpose.startsWith("GST fee ") ? <LinkBtn key="x" kind="ghost" href={`/student/gst?session=${encodeURIComponent(r.session)}`}>GST &amp; EPS</LinkBtn>
             : <RenewReference key="x" reference={r.reference} kind="ghost" />,
         ])} />
         {!fees.references.length ? <PBody><div className="sub2">No payments yet.</div></PBody> : null}

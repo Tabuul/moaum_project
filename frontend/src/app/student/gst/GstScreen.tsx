@@ -146,8 +146,11 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
           <span key="g" className="sub2">{when(r.generated_at)}</span>,
           <Pil key="t" kind={r.confirmed_at ? "ok" : new Date(r.expires_at).getTime() > now ? "warn" : "grey"}>{r.confirmed_at ? `Confirmed ${onDay(r.confirmed_at)}` : new Date(r.expires_at).getTime() > now ? "Awaiting payment" : "Expired"}</Pil>,
           r.confirmed_at ? <a key="x" className="btn btn--ghost btn--sm" href={`/student/receipt/${encodeURIComponent(r.reference)}/pdf`} target="_blank" rel="noopener">Receipt</a>
-            // V635: an expired GST reference regenerated here — while the fee is still owed
-            : new Date(r.expires_at).getTime() <= now && !e.entitled ? <RenewReference key="x" reference={r.reference} kind="ghost" /> : <span key="x" className="sub2">—</span>,
+            : new Date(r.expires_at).getTime() > now ? <span key="x" className="sub2">—</span>
+            // Oct 2026: another session's reference is regenerated on that session's page, which knows whether its fee is owed
+            : r.session !== gst.session ? <LinkBtn key="x" kind="ghost" size="sm" href={`/student/gst?session=${encodeURIComponent(r.session)}`}>{r.session}</LinkBtn>
+            // V635: an expired GST reference regenerated here — only while the fee is still owed; otherwise there is nothing to pay
+            : unpaid ? <RenewReference key="x" reference={r.reference} kind="ghost" /> : <span key="x" className="sub2">Not needed</span>,
         ])} /> : <PBody><div className="sub2">No GST payment on record yet.</div></PBody>}
       </Panel>
     </>
