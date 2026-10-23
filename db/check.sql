@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 472
+\set EXPECTED 473
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24343,6 +24343,60 @@ BEGIN
         format('subjects=%s/%s/%s/%s offices=%s/%s/%s/%s unclassified=%s', sub_bsu, sub_moau, sub_plain, sub_phy, off_bsu, off_moau, off_ent, off_dept, unclassified));
 END $$;
 
+
+-- ── V645. A 400 Level student registers their courses whatever their GST history: one who owes the GST fee only for a 100-level GST
+-- course on this session's registration registers a departmental course and submits unpaid, while the GST course itself is held
+-- until paid; at 300 Level, or owing for a GST course of their own level, every course is held as before. The block undoes its
+-- own writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); dept text; ses text := '9645/9646'; og uuid := gen_random_uuid(); oc uuid := gen_random_uuid();
+        ol uuid := gen_random_uuid(); rg uuid := gen_random_uuid();
+        req boolean; hist boolean; g_core text; g_gst text; g_submit text; g300 text; hist300 boolean; g_own text; hist_own boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'V645 check', true);
+        PERFORM assessment.ensure_session(ses);
+        SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/99/996451', 'MOAUM/CHK/99/6451', 'CHECKGSTHISTORY', 'Invented', 'C00061', 'UTME', '9640/9641', 100, 400, 'ACTIVE', now());
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, curriculum) VALUES
+            ('GST 965', 'Check Communication in English', 2, 1, 100, dept, 'GST', 'LIVE', NULL),
+            ('GST 966', 'Check Final-Year General Studies', 2, 1, 400, dept, 'GST', 'LIVE', NULL),
+            ('CHK 965', 'Check Final-Year Core Course', 2, 1, 400, dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (og, 'GST 965', ses, 1), (oc, 'CHK 965', ses, 1), (ol, 'GST 966', ses, 1);
+        UPDATE finance.gst_setting SET required_for_gst_eps = true, required_for_all = true WHERE id = 1;   -- as the Bursary runs it
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(ses, 4000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        -- the 100-level GST course never taken, on this session's registration: the fee is owed for it
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (rg, st, ses, 1, 400, 'DRAFT');
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (rg, og, 2, 'CURRENT', 'REGISTERED');
+
+        req := (SELECT required FROM finance.gst_entitlement(st, ses));
+        hist := registration.gst_history_only(st, ses);
+        g_core := coalesce(registration.gst_gate(st, ses, 'CHK 965'), 'OPEN');
+        g_gst := split_part(coalesce(registration.gst_gate(st, ses, 'GST 965'), 'OPEN'), ':', 1);
+        g_submit := coalesce(registration.gst_gate(st, ses, NULL), 'OPEN');
+        -- at 300 Level the same history holds every course, as before
+        UPDATE people.student SET current_level = 300 WHERE id = st;
+        hist300 := registration.gst_history_only(st, ses);
+        g300 := split_part(coalesce(registration.gst_gate(st, ses, 'CHK 965'), 'OPEN'), ':', 1);
+        UPDATE people.student SET current_level = 400 WHERE id = st;
+        -- owing also for a GST course of their own level, the fee holds every course, as before
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('GST 966', 'C00061', 400, 'GST');
+        hist_own := registration.gst_history_only(st, ses);
+        g_own := split_part(coalesce(registration.gst_gate(st, ses, 'CHK 965'), 'OPEN'), ':', 1);
+        RAISE EXCEPTION 'the V645 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V645: a 400 Level student owing the GST fee only for their GST history registers a departmental course and submits unpaid, the GST course held until paid; at 300 Level or owing for a GST course of their own level, held as before',
+        coalesce(req AND hist AND g_core = 'OPEN' AND g_gst = 'GST_PAYMENT_REQUIRED' AND g_submit = 'OPEN'
+                 AND NOT hist300 AND g300 = 'GST_PAYMENT_REQUIRED' AND NOT hist_own AND g_own = 'GST_PAYMENT_REQUIRED', false),
+        format('req %s hist %s core %s gst %s submit %s | 300: %s %s | own level: %s %s', req, hist, g_core, g_gst, g_submit, hist300, g300, hist_own, g_own));
+END $$;
 
 -- ── V646. One course code, different titles: separate courses. A second course under a code is created with its own key (the code
 -- and its curriculum) and the exact course refused; a code and a title are held once; the structure upload refuses a code held under

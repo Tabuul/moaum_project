@@ -332,3 +332,34 @@ the course is not on the page: nothing is held and nothing is paid.
 
 Tests: `check.sql` V643 (EXPECTED 469); `GstEligibilityIT.aGstCourseOfTheOtherCurriculumOnTheFormIsPaidForBeforeItRegisters`;
 `lib/gst-payable.test.ts`.
+
+## 17. V645 — a 400 Level student registers their courses whatever their GST history (23 October 2026)
+
+**The report.** A 400 Level student (BSU/SC/MCB/22/64470, B.Sc. Microbiology, BMAS) was refused her second-semester courses:
+*"you are required to pay the GST fee of NGN 4,000.00 for 2025/2026 before you can register your courses"*. The University's
+word: *"ignore all GST course registration history and allow all 400 level students who doesn't register their GST in the past
+to go ahead and register their courses"*.
+
+**The cause.** She had never taken GST 111 (a 100-level course) and put it on her 2025/2026 first-semester registration. A
+GST/EPS course being taken makes the session's GST fee owed (`REQUIRED_REGISTERED`), and the Bursary holds every course on the
+fee (`finance.gst_setting.required_for_all`). So every departmental course of her final year was refused until the fee for
+GST 111 was paid.
+
+**Now.**
+- `registration.gst_history_only(student, session)` is true when the student is at 400 Level and every GST/EPS course that
+  makes the fee owed is of their history: a carry-over, or a course of an earlier level. None may be of their own level.
+- `registration.gst_gate`: for such a student, the fee holds no course but a GST/EPS course. Their departmental courses
+  register, and the registration submits, as if nothing were owed.
+
+**Unchanged.**
+- What is owed and paid: the GST desk, the fee, and the student's GST & EPS page.
+- A GST/EPS course itself is held until the fee is paid, so the GST & EPS examination permit (V589, which reads the gate on
+  each GST/EPS course) prints only once paid.
+- A 400 Level student who owes for a GST/EPS course of their own level is held as before, and so is a student at any other
+  level.
+
+On the live-shaped copy, 62 unpaid 400 Level students were held for their GST history only and are no longer held; the reported
+student's BIO 412 and MCB 402 open, while GST 111 and GST 412 still ask for the fee.
+
+Tests: `check.sql` V645 (a 100-level GST course on a 400 Level student's registration: the core course open and the
+registration submits, the GST course held; at 300 Level, or owing for a GST course of their own level, held as before).
