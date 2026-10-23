@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 467
+\set EXPECTED 468
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 45, n || ' offices (42 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 46, n || ' offices (43 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520, the Database Operator V640; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -24012,6 +24012,148 @@ BEGIN
         format('f %s in %s ans %s | p %s pans %s | rep %s/%s/%s again %s r %s | roll %s c %s nw %s/%s',
                f_lv, f_in, ans->'carried', p_lv, pans->'carried', rep1.students, rep1.registrations, rep1.enrolments, rep2.students, r_lv, roll, c_lv, nw_lv, nw_enr));
 END $$;
+-- ── V640. Examination readiness and the Database Operations office. On a made-up four-year programme with its school fees stated
+--          for 200 Level, and a second with none, in a current session of the check's own (first semester): a student paid and
+--          registered (submitted, one course) reads PAID_REGISTERED and holds the examination card; one paid and not registered,
+--          PAID_NOT_REGISTERED; one registered and not paid, NOT_PAID registered (REGISTERED_NOT_PAID); one neither, NOT_PAID; one of
+--          the programme with no fee stated, NO_FEE_STATED (never not paid); one paid with a draft registration, PAID_NOT_REGISTERED
+--          (REGISTRATION_NOT_SUBMITTED, no card); one with a pending reference, NOT_PAID; a graduate who paid, nowhere. The card
+--          agrees with registration.exam_card_state for every one. The summary counts them; for the course, the registered, the
+--          paid and those the programme structure expects; the course summary agrees. A reference reads DBO/EXAM/YYYY/NNNNNN and
+--          the next is the next; a saved query is changed by its owner alone, archived never deleted, shared only with offices of
+--          the register; the query log is kept as written; the office dbops is on the register and an operator's scope is the
+--          University, a department, or none; data quality finds a duplicate JAMB number, the paid not registered and the
+--          registered not paid. The block undoes its writes ──
+DO $$
+DECLARE y int := 2741; cur text; v_prog text; v_prog2 text; v_dept text; v_fac text; msg text; y_now int := extract(year FROM (now() AT TIME ZONE 'Africa/Lagos'))::int;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); g uuid := gen_random_uuid(); h uuid := gen_random_uuid(); i uuid := gen_random_uuid(); ri uuid := gen_random_uuid(); full_i text; card_i text;
+        ra uuid := gen_random_uuid(); rc uuid := gen_random_uuid(); rf uuid := gen_random_uuid(); o1 uuid := gen_random_uuid();
+        actor uuid := gen_random_uuid(); other uuid := gen_random_uuid(); op_u uuid := gen_random_uuid(); op_d uuid := gen_random_uuid(); op_n uuid := gen_random_uuid();
+        got text; cards text; agree boolean; sm record; cm text; cs record; ref1 text; ref2 text; n_reg int; sq uuid;
+        e_owner text; e_del text; e_office text; e_log text; n_office int; sc_u text; sc_d text; sc_n text; dq text; dq_fig int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V640', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 2, y) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2741/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT p.dept_code, p.faculty_code INTO v_dept, v_fac FROM ref.programme p JOIN ref.faculty fa ON fa.code = p.faculty_code
+     WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND coalesce(fa.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+    VALUES (v_prog, 'B.Sc. CHECK V640', v_dept, v_fac, 'UNDER GRADUATE', 0, 400, 4);
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog2 FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+    VALUES (v_prog2, 'B.Sc. CHECK V640 no fee', v_dept, v_fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZR 640', 'Check readiness course', 3, 1, 200, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZR 640', v_prog, 200, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZZR 640', cur, 1);
+    INSERT INTO people.student (id, admission_no, matric_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/41/640001', 'MOAUM/ZZR/RDY/41/64001', '274164000001AA', 'CHECKV640', 'Paid Registered', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/41/640002', 'MOAUM/ZZR/RDY/41/64002', '274164000001AA', 'CHECKV640', 'Paid Only', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/41/640003', 'MOAUM/ZZR/RDY/41/64003', NULL, 'CHECKV640', 'Registered Only', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/41/640004', 'MOAUM/ZZR/RDY/41/64004', NULL, 'CHECKV640', 'Neither', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (e, 'MOAUM/ADM/41/640005', 'MOAUM/ZZR/RDY/41/64005', NULL, 'CHECKV640', 'No Fee', v_prog2, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (f, 'MOAUM/ADM/41/640006', 'MOAUM/ZZR/RDY/41/64006', NULL, 'CHECKV640', 'Paid Draft', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (g, 'MOAUM/ADM/41/640007', 'MOAUM/ZZR/RDY/41/64007', NULL, 'CHECKV640', 'Graduate', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (h, 'MOAUM/ADM/41/640008', 'MOAUM/ZZR/RDY/41/64008', NULL, 'CHECKV640', 'Pending', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now()),
+        (i, 'MOAUM/ADM/41/640009', 'MOAUM/ZZR/RDY/41/64009', NULL, 'CHECKV640', 'Zpart Paid', v_prog, 'UTME', format('%s/%s', y - 1, y), 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (cur, 'School fees', 100000, 200, v_prog);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES
+        (ra, a, cur, 1, 200, 'SUBMITTED', now()), (rc, c, cur, 1, 200, 'SUBMITTED', now()), (rf, f, cur, 1, 200, 'DRAFT', NULL);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (ri, i, cur, 1, 200, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES
+        (ra, o1, 3, 'CURRENT', 'REGISTERED'), (rc, o1, 3, 'CURRENT', 'REGISTERED'), (rf, o1, 3, 'CURRENT', 'REGISTERED'), (ri, o1, 3, 'CURRENT', 'APPROVED');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(x, cur, 100000, NULL), 'Bank transfer', 'CHECK V640') FROM unnest(ARRAY[a, b, f, g]) x;
+    PERFORM finance.new_reference(h, cur, 100000, NULL);
+    PERFORM finance.confirm_payment(finance.new_reference(i, cur, 50000, NULL), 'Bank transfer', 'CHECK V640');
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    UPDATE people.student SET status = 'GRADUATED' WHERE id = g;
+
+    -- each student's readiness, and the card against the card's own function
+    SELECT string_agg(split_part(r.other_names, ' ', 1) || '=' || r.readiness || coalesce('/' || r.exception, '') || CASE WHEN r.registered THEN '/reg' ELSE '' END, ' ' ORDER BY r.other_names)
+      INTO got FROM reporting.exam_readiness(cur, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'CARD') r WHERE r.programme_code IN (v_prog, v_prog2);
+    SELECT string_agg(split_part(r.other_names, ' ', 1) || '=' || r.exam_card, ' ' ORDER BY r.other_names),
+           bool_and(r.exam_card = (registration.exam_card_state(r.student_id, cur, 1) ->> 'available')::boolean)
+      INTO cards, agree FROM reporting.exam_readiness(cur, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'CARD') r WHERE r.programme_code IN (v_prog, v_prog2);
+    SELECT r.readiness || coalesce('/' || r.exception, '') INTO card_i FROM reporting.exam_readiness(cur, 1, NULL, NULL, v_prog, NULL, NULL, NULL, 'CARD') r WHERE r.student_id = i;
+    SELECT r.readiness || coalesce('/' || r.exception, '') INTO full_i FROM reporting.exam_readiness(cur, 1, NULL, NULL, v_prog, NULL, NULL, NULL, 'FULL') r WHERE r.student_id = i;
+    SELECT * INTO sm FROM reporting.exam_readiness_summary(cur, 1, NULL, NULL, v_prog, NULL, NULL, NULL, 'CARD', 'programme');
+    SELECT string_agg(split_part(r.other_names, ' ', 1) || '=' || r.readiness || CASE WHEN r.course_registered THEN '/reg' WHEN r.course_expected IS NOT NULL THEN '/exp' ELSE '' END, ' ' ORDER BY r.other_names)
+      INTO cm FROM reporting.exam_readiness(cur, 1, NULL, NULL, NULL, NULL, NULL, 'ZZR 640', 'CARD') r WHERE r.programme_code IN (v_prog, v_prog2);
+    SELECT * INTO cs FROM reporting.course_readiness_summary(cur, 1, NULL, NULL, NULL, NULL, v_dept, NULL, 'CARD') x WHERE x.course_code = 'ZZR 640';
+
+    -- references, saved queries, the log
+    ref1 := reporting.issue_report('EXAM', 'Check V640: paid and registered', jsonb_build_object('session', cur), 'The University', NULL, 1, NULL);
+    ref2 := reporting.issue_report('EXAM', 'Check V640: paid not registered', jsonb_build_object('session', cur), 'The University', NULL, 2, NULL);
+    INSERT INTO reporting.saved_query (name, kind, source, definition, owner_id, owner_office, shared_offices)
+    VALUES ('Check V640 readiness', 'EXAM_READINESS', 'EXAM_READINESS', jsonb_build_object('session', cur), actor, 'registrar', ARRAY['ict'])
+    RETURNING id INTO sq;
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    BEGIN UPDATE reporting.saved_query SET name = 'Taken over' WHERE id = sq; e_owner := 'NOT REFUSED';
+    EXCEPTION WHEN insufficient_privilege THEN e_owner := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', actor::text, true);
+    BEGIN DELETE FROM reporting.saved_query WHERE id = sq; e_del := 'NOT REFUSED';
+    EXCEPTION WHEN check_violation THEN e_del := split_part(SQLERRM, ':', 1); END;
+    BEGIN UPDATE reporting.saved_query SET shared_offices = ARRAY['ict', 'nosuchoffice'] WHERE id = sq; e_office := 'NOT REFUSED';
+    EXCEPTION WHEN check_violation THEN e_office := split_part(SQLERRM, ':', 1); END;
+    INSERT INTO reporting.query_log (actor_id, actor_office, action, source, row_count) VALUES (actor, 'registrar', 'RUN', 'EXAM_READINESS', 8);
+    BEGIN UPDATE reporting.query_log SET row_count = 0 WHERE actor_id = actor; e_log := 'NOT REFUSED';
+    EXCEPTION WHEN check_violation THEN e_log := split_part(SQLERRM, ':', 1); END;
+
+    -- the office and an operator's scope
+    n_office := (SELECT count(*) FROM ref.office WHERE code = 'dbops');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (op_u, 'ZZ-DBO-640-U', 'CHECKV640', 'University operator'), (op_d, 'ZZ-DBO-640-D', 'CHECKV640', 'Department operator'), (op_n, 'ZZ-DBO-640-N', 'CHECKV640', 'No grant');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), op_u, 'dbops', 'institution', NULL, 'CHECK V640', actor, current_date),
+        (gen_random_uuid(), op_d, 'dbops', 'department', v_dept, 'CHECK V640', actor, current_date);
+    SELECT x.kind || coalesce(':' || x.code, '') INTO sc_u FROM iam.dbops_scope(op_u) x;
+    SELECT x.kind || coalesce(':' || x.code, '') INTO sc_d FROM iam.dbops_scope(op_d) x;
+    SELECT x.kind || coalesce(':' || x.code, '') INTO sc_n FROM iam.dbops_scope(op_n) x;
+
+    -- data quality: the shared JAMB number, the paid not registered, the registered not paid
+    SELECT string_agg(q.kind || ':' || split_part(s.other_names, ' ', 1), ' ' ORDER BY q.kind, s.other_names) INTO dq
+      FROM reporting.data_quality_rows(NULL, NULL, v_prog, cur, 1) q JOIN people.student s ON s.id = q.student_id
+     WHERE q.kind IN ('DUPLICATE_JAMB', 'PAID_NOT_REGISTERED', 'REGISTERED_NOT_PAID');
+    SELECT n INTO dq_fig FROM reporting.data_quality(NULL, NULL, v_prog, cur, 1) WHERE kind = 'PAID_NOT_REGISTERED';
+    RAISE EXCEPTION 'the V640 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V640 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V640: examination readiness reads the examination card''s own paid and registered tests and the Bursary''s obligation — paid and registered, paid not registered, not paid (a fee charged, nothing paid; registered or not), no fee stated (never not paid), a part payment paid by the card''s rule and not paid in full by the Bursary''s, a draft registration not registered, a pending reference not paid, a graduate in no report; the card agrees with exam_card_state; the summary, the course and the course summary count the same students; references DBO/EXAM/YYYY/NNNNNN in turn; a saved query is its owner''s, archived never deleted, shared only with offices; the query log is kept; the office dbops and an operator''s scope; data quality',
+      coalesce(got = 'Neither=NOT_PAID No=NO_FEE_STATED Paid=PAID_NOT_REGISTERED/REGISTRATION_NOT_SUBMITTED Paid=PAID_NOT_REGISTERED Paid=PAID_REGISTERED/REGISTRATION_AWAITING_APPROVAL/reg Pending=NOT_PAID Registered=NOT_PAID/REGISTERED_NOT_PAID/reg Zpart=PAID_REGISTERED/PART_PAYMENT/reg'
+               AND cards = 'Neither=false No=false Paid=false Paid=false Paid=true Pending=false Registered=false Zpart=true' AND agree
+               AND sm.total = 7 AND sm.paid_registered = 2 AND sm.paid_not_registered = 2 AND sm.not_paid = 3 AND sm.not_paid_registered = 1
+               AND sm.no_fee_stated = 0 AND sm.exam_cards = 2 AND sm.part_paid = 1
+               AND card_i = 'PAID_REGISTERED/PART_PAYMENT' AND full_i = 'NOT_PAID/REGISTERED_NOT_PAID'
+               AND cm = 'Neither=NOT_PAID/exp Paid=PAID_NOT_REGISTERED/exp Paid=PAID_NOT_REGISTERED/exp Paid=PAID_REGISTERED/reg Pending=NOT_PAID/exp Registered=NOT_PAID/reg Zpart=PAID_REGISTERED/reg'
+               AND cs.registered = 3 AND cs.registered_paid = 2 AND cs.registered_not_paid = 1 AND cs.expected = 7
+               AND cs.expected_not_registered = 4 AND cs.expected_not_registered_paid = 2 AND cs.not_paid = 3
+               AND ref1 = 'DBO/EXAM/' || y_now || '/' || lpad((split_part(ref1, '/', 4))::int::text, 6, '0')
+               AND split_part(ref2, '/', 4)::int = split_part(ref1, '/', 4)::int + 1
+               AND e_owner = 'SAVED_QUERY_OWNER' AND e_del = 'SAVED_QUERY_KEPT' AND e_office = 'SAVED_QUERY_OFFICE' AND e_log = 'QUERY_LOG_KEPT'
+               AND n_office = 1 AND sc_u = 'institution' AND sc_d = 'department:' || v_dept AND sc_n = 'none'
+               AND dq = 'DUPLICATE_JAMB:Paid DUPLICATE_JAMB:Paid PAID_NOT_REGISTERED:Paid PAID_NOT_REGISTERED:Paid REGISTERED_NOT_PAID:Registered'
+               AND dq_fig = 2, false),
+      format('got %s | cards %s agree %s | summary %s/%s/%s/%s/%s/%s/%s part %s i %s/%s | course %s | course summary %s/%s/%s/%s/%s/%s/%s | refs %s %s | saved %s %s %s log %s | office %s scope %s %s %s | dq %s (%s)',
+             got, cards, agree, sm.total, sm.paid_registered, sm.paid_not_registered, sm.not_paid, sm.not_paid_registered, sm.no_fee_stated, sm.exam_cards, sm.part_paid, card_i, full_i,
+             cm, cs.registered, cs.registered_paid, cs.registered_not_paid, cs.expected, cs.expected_not_registered, cs.expected_not_registered_paid, cs.not_paid,
+             ref1, ref2, e_owner, e_del, e_office, e_log, n_office, sc_u, sc_d, sc_n, dq, dq_fig));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

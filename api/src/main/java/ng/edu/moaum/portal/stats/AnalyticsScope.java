@@ -24,7 +24,7 @@ public class AnalyticsScope {
     public static final Set<String> CHS_OFFICES = Set.of("provost", "collegesecretary", "financecontroller");
     /** the offices that see amounts and individual transactions */
     public static final Set<String> MONEY = Set.of("bursar", "studentaccounts", "financecontroller", "registrar", "dregistrar", "super", "admin",
-            "pgschool", "pgsecretary", "provost", "collegesecretary", "dvc", "vc", "audit");
+            "pgschool", "pgsecretary", "provost", "collegesecretary", "dvc", "vc", "audit", "dbops");
     /** the offices that read the financial summary of their scope without the individual transactions */
     public static final Set<String> SUMMARY_ONLY = Set.of("ict", "academic");
     /** the offices bound to a faculty or a department that may read their own scope's money */
@@ -57,6 +57,25 @@ public class AnalyticsScope {
         boolean money = MONEY.contains(office) || SCOPED_MONEY.contains(office);
         if (PG_OFFICES.contains(office)) return new Bound("PG_SCHOOL", "Postgraduate School", null, null, money);
         if (CHS_OFFICES.contains(office)) return new Bound("COLLEGE", "College of Health Sciences", null, null, money);
+        // V640: a Database Operator reads the scope of their grant — the University, a faculty or a department; a grant bounded to one
+        // programme reads its programme on the Database Operations screens and nothing here, where the grain is the department
+        if (scope.actingOperator()) {
+            String[] own = scope.operatorScope();
+            switch (own[0]) {
+                case "institution" -> {
+                    return new Bound("UNIVERSITY", "University", null, null, money);
+                }
+                case "faculty" -> {
+                    return new Bound("FACULTY", "Faculty", own[1], null, money);
+                }
+                case "department" -> {
+                    return new Bound("DEPARTMENT", "Department", null, own[1], money);
+                }
+                default -> {
+                    return new Bound("DEPARTMENT", "Department", null, "__none__", money);
+                }
+            }
+        }
         if (scope.actingFacultyOffice()) {
             String f = scope.actingFaculty();
             return new Bound("FACULTY", "Faculty", f == null ? "__none__" : f, null, money);

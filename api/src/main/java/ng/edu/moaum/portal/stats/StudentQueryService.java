@@ -32,7 +32,7 @@ public class StudentQueryService {
     /** the statuses a learner has left with: "current students" leaves them out */
     static final String[] ENDED = {"GRADUATED", "COMPLETED", "WITHDRAWN", "VOLUNTARY_WITHDRAWAL", "EXPELLED", "TRANSFERRED_OUT", "DECEASED", "PROGRESSED"};
     /** the offices that read a student's school-fee standing — the same offices as the student record's (StudentController.FEE_READERS, V360) */
-    static final Set<String> FEE_READERS = Set.of("bursar", "studentaccounts", "financecontroller", "registrar", "dregistrar", "academic",
+    static final Set<String> FEE_READERS = Set.of("bursar", "dbops", "studentaccounts", "financecontroller", "registrar", "dregistrar", "academic",
             "records", "vc", "dvc", "dean", "hod", "facultyofficer", "provost", "audit", "ict", "admin", "super");
     /** the offices that decide a student's classification (people.require_classifier) */
     static final Set<String> CLASSIFIERS = Set.of("academic", "registrar", "dregistrar", "super");

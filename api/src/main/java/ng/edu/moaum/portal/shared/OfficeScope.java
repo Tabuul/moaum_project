@@ -217,6 +217,46 @@ public class OfficeScope {
             }
             return new Bound(f, dept, prog);
         }
+        // V640: a Database Operator is held to the scope of their grant — the University, or a faculty, a department or a programme
+        if (actingOperator()) {
+            String[] own = operatorScope();
+            switch (own[0]) {
+                case "institution" -> {
+                    return new Bound(fac, dept, prog);
+                }
+                case "faculty" -> {
+                    String f = own[1];
+                    if (fac != null && !fac.equalsIgnoreCase(f)) throw outside("faculty", "faculty");
+                    if (dept != null && !f.equalsIgnoreCase(String.valueOf(facultyOfDept(dept)))) throw outside("department", "faculty");
+                    if (prog != null) {
+                        String pd = deptOfProgramme(prog);
+                        if (pd == null || !f.equalsIgnoreCase(String.valueOf(facultyOfDept(pd)))) throw outside("programme", "faculty");
+                    }
+                    return new Bound(f, dept, prog);
+                }
+                case "department" -> {
+                    String d = own[1];
+                    if (dept != null && !dept.equalsIgnoreCase(d)) throw outside("department", "department");
+                    if (prog != null && !d.equalsIgnoreCase(String.valueOf(deptOfProgramme(prog)))) throw outside("programme", "department");
+                    String f = "__none__".equals(d) ? "__none__" : facultyOfDept(d);
+                    if (fac != null && f != null && !fac.equalsIgnoreCase(f)) throw outside("faculty", "department");
+                    return new Bound(f, d, prog);
+                }
+                case "programme" -> {
+                    String p = own[1];
+                    if (prog != null && !prog.equalsIgnoreCase(p)) throw outside("programme", "programme");
+                    String d = "__none__".equals(p) ? "__none__" : deptOfProgramme(p);
+                    if (d == null) d = "__none__";
+                    if (dept != null && !dept.equalsIgnoreCase(d)) throw outside("department", "programme");
+                    String f = "__none__".equals(d) ? "__none__" : facultyOfDept(d);
+                    if (fac != null && f != null && !fac.equalsIgnoreCase(f)) throw outside("faculty", "programme");
+                    return new Bound(f, d, p);
+                }
+                default -> {
+                    return new Bound("__none__", "__none__", "__none__");
+                }
+            }
+        }
         if (actingDepartmentOffice()) {
             String own = actingDept();
             if (own == null) own = "__none__";
@@ -306,6 +346,25 @@ public class OfficeScope {
                          ORDER BY f.code
                         """).param("p", c.actorId()).param("office", c.actorOffice()).query(String.class).list())
                 .orElse(java.util.List.of());
+    }
+
+    /** V640: true when the request is made in the Database Operations office */
+    public boolean actingOperator() {
+        return AuditContextHolder.current().map(c -> "dbops".equals(c.actorOffice())).orElse(false);
+    }
+
+    /**
+     * V640: the scope the acting Database Operator's live grant holds them to, from the server's record (iam.dbops_scope):
+     * {"institution", null}, {"faculty"|"department"|"programme", code} or {"none", null} — a scoped grant whose scope no longer
+     * resolves reads nothing. {"institution", null} when not acting as a Database Operator.
+     */
+    public String[] operatorScope() {
+        return AuditContextHolder.current().filter(c -> "dbops".equals(c.actorOffice()))
+                .map(c -> jdbc.sql("SELECT kind, code FROM iam.dbops_scope(:p)").param("p", c.actorId())
+                        .query((rs, i) -> new String[] {rs.getString("kind"), rs.getString("code") == null ? "__none__" : rs.getString("code")})
+                        .single())
+                .map(s -> "institution".equals(s[0]) ? new String[] {"institution", null} : s)
+                .orElse(new String[] {"institution", null});
     }
 
     /** true when the acting office is bound to one faculty (Dean or Faculty Officer) */

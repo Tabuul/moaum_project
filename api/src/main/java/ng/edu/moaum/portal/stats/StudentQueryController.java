@@ -28,7 +28,9 @@ class StudentQueryController {
             + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_vc','OFFICE_dvc','OFFICE_bursar','OFFICE_studentaccounts',"
             + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod','OFFICE_exams',"
             + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller',"
-            + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_cce','OFFICE_jupeb','OFFICE_prelim','OFFICE_sandwich')";
+            + "'OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_cce','OFFICE_jupeb','OFFICE_prelim','OFFICE_sandwich',"
+            // V640: the Database Operations office
+            + "'OFFICE_dbops')";
 
     private final StudentQueryService query;
 

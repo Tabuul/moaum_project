@@ -30,7 +30,9 @@ class SpilloverFeesController {
     // the School Fees Report's readers (FeeReportController): a Dean, faculty officer, Head or the College Finance Controller held to their own by OfficeScope.bound
     private static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_audit','OFFICE_deputyaudit','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_academic','OFFICE_vc','OFFICE_dvc','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod',"
-            + "'OFFICE_financecontroller')";
+            + "'OFFICE_financecontroller',"
+            // V640: the Database Operations office
+            + "'OFFICE_dbops')";
     private static final Set<String> STATES = Set.of("NOT_REGISTERED", "NO_CHARGE", "OWES", "PART_PAID", "PAID", "PAID_ABOVE");
 
     private final JdbcClient jdbc;

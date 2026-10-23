@@ -32,7 +32,9 @@ class StudentStatsController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_bursar','OFFICE_academic','OFFICE_records',"
             + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_dvc','OFFICE_vc','OFFICE_pgschool','OFFICE_pgsecretary',"
-            + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod','OFFICE_exams')";
+            + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_dean','OFFICE_facultyofficer','OFFICE_hod','OFFICE_exams',"
+            // V640: the Database Operations office
+            + "'OFFICE_dbops')";
     private static final Set<String> STATUSES = Set.of("ACTIVE", "PROBATION", "ADMITTED");
     private static final Set<String> WHICH = Set.of("ALL", "PAID", "REGISTERED", "PAID_NOT_REGISTERED", "NOT_PAID", "NO_CHARGE", "NOT_REGISTERED", "REGISTERED_OWING", "PART_PAID");
 

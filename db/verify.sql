@@ -60,9 +60,9 @@ BEGIN
     -- Studies' Dean and Secretary V201, the College Finance Controller V227, the MBBS
     -- Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446 and the Sandwich Programme Office V469), the applicant (V021), the student (V026) and the Post-UTME CBT candidate (V385)
     SELECT count(*) INTO n FROM ref.office;
-    IF n <> 45 THEN
+    IF n <> 46 THEN
         RAISE EXCEPTION 'deployment verification failed: % offices in the register, '
-                        'expected 45 (42 staff offices — with the GST and EPS offices of V314, the Head of ICT Support Desk of V328, the JUPEB Office of V339, the Centre for Continuing Education of V379, the Alumni Relations Office of V415, the Preliminary Science Office of V446, the Sandwich Programme Office of V469 and the Students Account Officer of V520 — the applicant, the student and the Post-UTME CBT candidate of V385).', n;
+                        'expected 46 (43 staff offices — with the GST and EPS offices of V314, the Head of ICT Support Desk of V328, the JUPEB Office of V339, the Centre for Continuing Education of V379, the Alumni Relations Office of V415, the Preliminary Science Office of V446, the Sandwich Programme Office of V469 and the Students Account Officer of V520, the Database Operator of V640 — the applicant, the student and the Post-UTME CBT candidate of V385).', n;
     END IF;
 
     -- 5 · the University's programme table is loaded

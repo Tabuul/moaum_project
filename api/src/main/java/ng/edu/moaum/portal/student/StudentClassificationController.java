@@ -28,7 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 class StudentClassificationController {
 
     static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super',"
-            + "'OFFICE_ict','OFFICE_vc','OFFICE_dvc','OFFICE_records','OFFICE_admin')";
+            + "'OFFICE_ict','OFFICE_vc','OFFICE_dvc','OFFICE_records','OFFICE_admin',"
+            // V640: the Database Operations office reads the classification; deciding one stays with the Academic Office and the Registry
+            + "'OFFICE_dbops')";
     static final String DECIDERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final ClassificationService classification;

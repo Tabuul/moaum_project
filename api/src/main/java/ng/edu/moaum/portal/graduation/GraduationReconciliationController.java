@@ -58,7 +58,9 @@ public class GraduationReconciliationController {
     private static final UUID NOBODY = new UUID(0, 0);
     private static final String READERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_records',"
-            + "'OFFICE_dean','OFFICE_hod','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            + "'OFFICE_dean','OFFICE_hod','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            // V640: the Database Operations office reads; reconciling stays with the Academic Office and the Registry
+            + "'OFFICE_dbops')";
     /** who reconciles: the Academic Office and the Registry (the database holds the same rule) */
     private static final String ACTORS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
     /** who switches the nightly run on or off: the Directorate of ICT and the Registrar */

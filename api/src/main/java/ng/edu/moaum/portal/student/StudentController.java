@@ -33,11 +33,13 @@ class StudentController {
             + "'OFFICE_bursar','OFFICE_studentaccounts','OFFICE_library','OFFICE_security','OFFICE_housing','OFFICE_hrm',"
             + "'OFFICE_audit','OFFICE_deputyaudit','OFFICE_lecturer',"
             // the College's offices, whose menu offers the search (V285)
-            + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_mbbscoordinator')";
+            + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_mbbscoordinator',"
+            // V640: the Database Operations office reads the record; it writes none of it
+            + "'OFFICE_dbops')";
     private static final String WRITERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
     /** V360: the offices that read a student's school fees here — the Bursary, the Registry, the academic heads and their
      *  scopes, audit and the platform; the other readers of the record (a lecturer, the library, security, housing) do not */
-    static final java.util.Set<String> FEE_READERS = java.util.Set.of("bursar", "studentaccounts", "financecontroller", "registrar", "dregistrar", "academic",
+    static final java.util.Set<String> FEE_READERS = java.util.Set.of("bursar", "dbops", "studentaccounts", "financecontroller", "registrar", "dregistrar", "academic",
             "records", "vc", "dvc", "dean", "hod", "facultyofficer", "provost", "audit", "ict", "admin", "super");
 
     private static boolean readsFees() {

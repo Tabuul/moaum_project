@@ -46,7 +46,9 @@ class StudentFullRecordController {
             + "'OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_ict','OFFICE_admin','OFFICE_super',"
             + "'OFFICE_bursar','OFFICE_studentaccounts','OFFICE_library','OFFICE_security','OFFICE_housing','OFFICE_hrm',"
             + "'OFFICE_audit','OFFICE_deputyaudit','OFFICE_lecturer',"
-            + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_mbbscoordinator')";
+            + "'OFFICE_provost','OFFICE_collegesecretary','OFFICE_financecontroller','OFFICE_mbbscoordinator',"
+            // V640: the Database Operations office
+            + "'OFFICE_dbops')";
     /** the offices that read the activity on a record: the Registry, the platform and audit */
     private static final Set<String> AUDIT_READERS = Set.of("registrar", "dregistrar", "records", "ict", "admin", "super", "audit", "deputyaudit");
     /** the offices that read a student's support tickets: the Registry, the academic offices and heads, the platform */

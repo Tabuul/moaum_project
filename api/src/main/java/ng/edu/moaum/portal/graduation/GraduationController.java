@@ -24,7 +24,9 @@ class GraduationController {
 
     private static final String READERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_records',"
-            + "'OFFICE_dean','OFFICE_hod','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+            + "'OFFICE_dean','OFFICE_hod','OFFICE_ict','OFFICE_admin','OFFICE_super',"
+            // V640: the Database Operations office reads; the batches and corrections stay with the Academic Office and the Registry
+            + "'OFFICE_dbops')";
     private static final String OFFICE = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records')";
 
     /** V602: who confirms awards in batches — the Academic Office and the Registry; and who corrects a graduation — the Registrar only */
