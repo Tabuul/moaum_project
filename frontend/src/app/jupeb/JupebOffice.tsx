@@ -46,7 +46,7 @@ function SessionPick({ sessions, value, onChange }: { sessions: SessionRow[]; va
 /* ── the dashboard ─────────────────────────────────────────────────────────────────────────────── */
 
 interface Dash {
-  session: string; sessions: SessionRow[]; window: { state: string; opens_at: string | null; closes_at: string | null };
+  session: string; sessions: SessionRow[]; oldPortalSessions?: SessionRow[]; window: { state: string; opens_at: string | null; closes_at: string | null };
   checkingWindow: { state: string; opens_at: string | null; closes_at: string | null };
   feeRule: { application_fee: number; checking_fee: number; acceptance_fee: number; first_percent: number };
   counts: Record<string, number>; money: { kind: string; paid: number; amount: number }[];
@@ -1760,7 +1760,8 @@ export function JupebOldPortalImport() {
   const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) { setSessions(r.data.sessions); setSession((s) => s || r.data.session); } });
+    // every session of the calendar up to JUPEB's current one: old-portal students may belong to a past session (2025/2026)
+    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) { setSessions(r.data.oldPortalSessions ?? r.data.sessions); setSession((s) => s || r.data.session); } });
     return () => { live = false; };
   }, []);
   async function judge(list: Record<string, string | number>[], name: string | null) {

@@ -101,7 +101,10 @@ copies of them.
   unused email are required (a row to correct is skipped and exported for correction); an unreadable phone, NIN, sex or
   date is left blank and said; a student already on the portal is skipped, so the same file can be uploaded again. Dates are
   read day/month/year unless the office says otherwise (upload the file as the old portal gave it: Excel may turn 9/1/2004
-  into 1 September). Each student becomes an active JUPEB student of the session chosen, with the old App No as the
+  into 1 September). The session is chosen from every session of the University's calendar up to JUPEB's current one
+  (none cancelled or merged), with any session already holding JUPEB records: a past session such as 2025/2026 is offered
+  though nothing is in it yet (25 Oct 2026; the list had held only the sessions with records and the current one).
+  Each student becomes an active JUPEB student of the session chosen, with the old App No as the
   application number and username, marked as from the old portal; a **temporary password** is generated for each, shown to
   the office once in a downloadable login sheet (never stored readable, never emailed), and must be changed at first sign-in;
   each student can also be emailed a seven-day link to set their own password. Nothing else is announced while the records

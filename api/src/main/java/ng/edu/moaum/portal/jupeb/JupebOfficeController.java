@@ -88,6 +88,7 @@ class JupebOfficeController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
         out.put("sessions", sessions());
+        out.put("oldPortalSessions", oldPortalSessions());
         out.put("window", jdbc.sql("SELECT state, opens_at, closes_at FROM policy.window_state('JUPEB_APPLICATION', :s, NULL)").param("s", s).query().singleRow());
         out.put("checkingWindow", jdbc.sql("SELECT state, opens_at, closes_at FROM policy.window_state('JUPEB_ADMISSION_STATUS_CHECKING', :s, NULL)").param("s", s).query().singleRow());
         out.put("feeRule", jdbc.sql("SELECT application_fee, checking_fee, acceptance_fee, first_percent FROM jupeb.fee_setting_of(:s)").param("s", s).query().singleRow());
@@ -145,6 +146,20 @@ class JupebOfficeController {
         return jdbc.sql("""
                 SELECT x.session, (SELECT count(*) FROM jupeb.application a WHERE a.session = x.session) AS applications
                   FROM (SELECT DISTINCT session FROM jupeb.application UNION SELECT jupeb.current_session()) x
+                 WHERE x.session IS NOT NULL ORDER BY x.session DESC
+                """).query().listOfRows();
+    }
+
+    /** the sessions old-portal students may be uploaded into: every session of the University's calendar up to JUPEB's current one
+     *  (a past session such as 2025/2026 holds no JUPEB record until its students are uploaded, so the list of sessions with records
+     *  never offered it), none cancelled or merged into another, and any session already holding JUPEB records */
+    private List<Map<String, Object>> oldPortalSessions() {
+        return jdbc.sql("""
+                SELECT x.session, (SELECT count(*) FROM jupeb.application a WHERE a.session = x.session) AS applications
+                  FROM (SELECT s.name AS session FROM policy.academic_session s
+                         WHERE s.state <> 'CANCELLED' AND s.merged_into IS NULL AND s.name <= jupeb.current_session()
+                        UNION SELECT DISTINCT session FROM jupeb.application
+                        UNION SELECT jupeb.current_session()) x
                  WHERE x.session IS NOT NULL ORDER BY x.session DESC
                 """).query().listOfRows();
     }

@@ -539,6 +539,19 @@ class JupebIT {
         in.put("commit", false);
         in.put("fileName", "old-portal.xlsx");
         in.put("emailLinks", true);
+        // the upload offers every session of the calendar up to JUPEB's current one, a past session with no JUPEB record yet among them
+        // (25 Oct 2026: the list held only the sessions with records and the current one, so 2025/2026 could not be chosen)
+        List<String> offered = ((List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/dashboard")).get("oldPortalSessions")).stream()
+                .map((r) -> String.valueOf(r.get("session"))).toList();
+        List<String> calendar = jdbc.sql("""
+                SELECT name FROM policy.academic_session WHERE state <> 'CANCELLED' AND merged_into IS NULL AND name <= jupeb.current_session()
+                """).query(String.class).list();
+        List<String> never = jdbc.sql("""
+                SELECT s.name FROM policy.academic_session s
+                 WHERE (s.state = 'CANCELLED' OR s.name > jupeb.current_session()) AND NOT EXISTS (SELECT 1 FROM jupeb.application a WHERE a.session = s.name)
+                """).query(String.class).list();
+        assertThat(offered).containsAll(calendar).contains(jdbc.sql("SELECT jupeb.current_session()").query(String.class).single())
+                .noneMatch(never::contains);
         assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in))).isEqualTo(403);
         Map<String, Object> preview = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
         List<Map<String, Object>> judged = (List<Map<String, Object>>) preview.get("rows");
