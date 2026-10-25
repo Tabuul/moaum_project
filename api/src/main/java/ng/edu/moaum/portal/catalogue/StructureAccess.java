@@ -222,12 +222,24 @@ class StructureAccess {
             for (String p : programmes) assertProgramme(p);
             return;
         }
-        Reach r = require(EDIT);
+        assertDepartment(dept, EDIT);
+    }
+
+    /** a department the support desk works with the capability: the Head anywhere, an agent within the posting's faculties and departments
+     *  (a new course's department; the department a course is moved to, Oct 2026) */
+    void assertDepartment(String dept, String capability) {
+        if (!special() || pg()) return;
+        Reach r = require(capability);
         String faculty = jdbc.sql("SELECT faculty_code FROM ref.department WHERE code = :d").param("d", dept).query(String.class).optional().orElse(null);
         if (!r.covers(faculty, dept)) {
             throw new DomainRuleViolation("STRUCTURE_SCOPE", "That department is outside your support scope (" + (r.words().isBlank() ? "none" : r.words()) + ").",
                     new DomainRuleViolation.Remedy("Escalate it to the Head of the ICT Support Desk or the Director of ICT.", "Head of ICT Support Desk"));
         }
+    }
+
+    /** the ICT Support Desk's offices (the Head and the agents), not the School's */
+    static boolean supportDesk() {
+        return SUPPORT.contains(office());
     }
 
     /** the offices that work tickets: the support desk, and the Directorate of ICT that heads it */

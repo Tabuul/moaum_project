@@ -393,7 +393,9 @@ class CourseOfferingController {
         may.put("prerequisites", special ? access.mayCourse(c, StructureAccess.PREREQ) : !ict && authority.owns(dept));   // V471
         may.put("central", authority.central());
         may.put("actingDept", mine == null ? "" : mine);
-        may.put("changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office));
+        // Oct 2026: the ICT Support Desk changes a course's owner as it edits the course (the Head anywhere, an agent within its posting)
+        may.put("changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office)
+                || (StructureAccess.supportDesk() && access.mayCourse(c, StructureAccess.EDIT)));
         may.put("ticket", StructureAccess.ticketOffice());
         may.put("deptDesk", !special);                       // the department's own courses desk is the academic offices'; the School and the desk work the structure
         out.put("may", may);

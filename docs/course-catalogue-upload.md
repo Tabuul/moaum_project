@@ -6,7 +6,10 @@ were rolled back at the University's request, by V340 and the code changes along
 ## What stays from V338
 
 - **Owners.** `catalogue.course.owner_programme` names the owning programme, which must belong to the owning department.
-  **Change owner** on a course's page is for the Academic Office, the Registry and ICT. Every change of owner
+  **Change owner** on a course's page is for the Academic Office, the Registry and ICT, and (Oct 2026) the ICT Support Desk
+  as it edits courses: its Head for any course, an agent whose posting carries editing courses (EDIT_COURSES) for a course
+  and a new department both within the posting's faculties and departments, on a support ticket when one is named (the change
+  goes on the ticket's timeline). A Head of Department edits the department's own courses but does not move one. Every change of owner
   department or programme goes to `catalogue.course_owner_history` with the source (desk or upload), the reason, and
   who made it.
 - **History keeps its title.** Each session offering keeps the title and units it was given (`catalogue.offering.title`,

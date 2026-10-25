@@ -33,15 +33,18 @@ class CourseCatalogueAdminController {
 
     /** who uploads the catalogue: the Directorate of ICT and the Academic Office */
     private static final String CENTRAL = "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_super')";
-    /** who changes a course's owner: the Academic Office, the Registry and the Directorate of ICT */
-    private static final String OWNERSHIP = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
+    /** who changes a course's owner: the Academic Office, the Registry and the Directorate of ICT; and the ICT Support Desk, as it edits
+     *  a course (Oct 2026: the Head anywhere, an agent whose posting carries editing courses, within its faculties and departments) */
+    private static final String OWNERSHIP = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super','OFFICE_ictagent','OFFICE_helpdeskhead')";
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    private final StructureAccess access;
 
-    CourseCatalogueAdminController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    CourseCatalogueAdminController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, StructureAccess access) {
         this.jdbc = jdbc;
         this.json = json;
+        this.access = access;
     }
 
     private Object parse(Object jsonb) {
@@ -94,15 +97,25 @@ class CourseCatalogueAdminController {
     @PostMapping("/courses/{code}/owner")
     @PreAuthorize(OWNERSHIP)
     @Transactional
-    Map<String, Object> changeOwner(@PathVariable String code, @Valid @RequestBody OwnerIn body) {
+    Map<String, Object> changeOwner(@PathVariable String code, @Valid @RequestBody OwnerIn body, @RequestParam(required = false) String ticket) {
         String c = code.trim().toUpperCase().replaceAll("\\s+", " ");
+        // the ICT Support Desk: a course it may edit, on a ticket it can see when one is named
+        boolean desk = StructureAccess.supportDesk();
+        String from = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", c).query(String.class).optional().orElse(null);
+        if (desk) access.assertCourse(c, StructureAccess.EDIT);
+        java.util.UUID on = access.ticket(ticket);
         jdbc.sql("SELECT catalogue.change_owner(:c, :d, :p, :why)")
                 .param("c", c).param("d", body.department()).param("p", blank(body.programme()), Types.VARCHAR)
                 .param("why", body.reason()).query().listOfRows();
-        return jdbc.sql("""
+        Map<String, Object> out = jdbc.sql("""
                 SELECT c.code, c.dept_code, d.name AS dept_name, c.owner_programme, p.name AS owner_programme_name
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.programme p ON p.code = c.owner_programme
                  WHERE c.code = :c
                 """).param("c", c).query().singleRow();
+        // and the department it goes to within the desk's reach too (refused here, the move is undone with the transaction)
+        if (desk) access.assertDepartment(String.valueOf(out.get("dept_code")), StructureAccess.EDIT);
+        access.note(on, "Changed the owner of " + c + " from " + (from == null ? "no department" : from) + " to " + out.get("dept_code")
+                + (out.get("owner_programme") == null ? "" : " (" + out.get("owner_programme") + ")") + ": " + body.reason().trim());
+        return out;
     }
 }
