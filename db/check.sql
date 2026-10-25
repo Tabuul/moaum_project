@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 482
+\set EXPECTED 483
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25414,6 +25414,167 @@ BEGIN
                kept_stage, ug_after, pg_after, charged_ret, charged_fr, parsed, left(r_unknown, 80), left(r_prog, 140), left(r_level, 140), left(r_partial, 160), unchanged,
                eff->'totals'->>'changed', eff->'totals'->>'same', eff->'totals'->>'new', eff->'totals'->>'ended', left((eff->'changes')::text, 200),
                lines1.already, lines1.added, lines2.added, lines3.skipped, left(lines3.first_error, 80), unstated));
+END $$;
+-- ── V654. Historical school fees and the graduate's financial clearance: a graduate of Computer Science (today 400 Level) admitted
+-- three sessions back. Session 1 states 100 Level lines for each semester and a 400 Level line (never theirs then); session 2 a 200
+-- Level whole-session line; session 3 states nothing. Paid: 70,000 in session 1, 80,000 in session 2, 10,000 in session 3. The
+-- account reads each period at the level of its session: session 1 first semester cleared, second partly paid (30,000 owed); session
+-- 2 first semester cleared, second nothing due; session 3 both semesters for review (the 10,000 shown against the first). The final
+-- clearance's Bursary stage is refused over it. The Students Account Officer assesses session 3's first semester from the official
+-- fee circular and submits it; the officer cannot approve, nor can the same person as Bursar; another Bursar approves — owed, the
+-- student told, the approved amount kept as it is; a correction supersedes it; a second semester assessment returned, changed and
+-- rejected; a cohort batch for it previewed, refused to its maker, approved. Refusals: no amount, a short reason, components that do
+-- not add up, a period after graduation, a second assessment in force. The graduate pays part online outside the session's window,
+-- never more than owed; a student still studying is refused; once confirmed the summary is worked out again; a graduate with no
+-- summary yet is worked out by the next read. The student stays
+-- GRADUATED throughout. The block undoes its own writes.
+DO $$
+DECLARE officer uuid := gen_random_uuid(); bursar uuid := gen_random_uuid(); bursar2 uuid := gen_random_uuid();
+        st uuid := gen_random_uuid(); act uuid := gen_random_uuid(); gnew uuid := gen_random_uuid(); new_before boolean; new_after text;
+        s0 text := '9881/9882'; s1 text := '9882/9883'; s2 text := '9883/9884'; s3 text := '9884/9885';
+        acct text; acct2 text; summ text; blk text; blk2 text; pid uuid; a1 record; a2 record; a3 record; corr record; b record; bdec record;
+        r_officer text; r_same text; r_amount text; r_reason text; r_comp text; r_period text; r_twice text; r_kept text; r_batch_same text;
+        r_pay_above text; r_pay_active text; notices int; superseded text; returned text; rejected text; prev text; ref text; purpose text;
+        stale_before int; summ_after text; status_after text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V654 check: historical school fees', true);
+        PERFORM set_config('moaum.actor_id', bursar::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s0, '9881-10-01', '9882-08-31'), (gen_random_uuid(), s1, '9882-10-01', '9883-08-31'),
+            (gen_random_uuid(), s2, '9883-10-01', '9884-08-31'), (gen_random_uuid(), s3, '9884-10-01', '9885-08-31');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (st, 'MOAUM/ADM/98/965401', 'MOAUM/HFA/98/6541', 'CHECKHISTORICAL', 'Graduate', 'C00023', 'UTME', s0, 100, 400, 'GRADUATED', now()),
+            (act, 'MOAUM/ADM/98/965402', 'MOAUM/HFA/98/6542', 'CHECKHISTORICAL', 'Still Studying', 'C00023', 'UTME', s3, 100, 100, 'ACTIVE', now());
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, s0, 100), (gen_random_uuid(), st, s1, 200), (gen_random_uuid(), st, s2, 300);
+        PERFORM finance.historical_set_start(s0, 'V654 check: assessed from the first session');
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+            (s0, 'V654 check fees', 50000, 100, 'C00023', 1), (s0, 'V654 check fees', 50000, 100, 'C00023', 2),
+            (s0, 'V654 check 400 Level fees', 999999, 400, 'C00023', 1),
+            (s1, 'V654 check fees', 80000, 200, 'C00023', NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (st, s0, 'MOAUM-FEE-V654-0001', 'School fees ' || s0, 70000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V654-0001'),
+            (st, s1, 'MOAUM-FEE-V654-0002', 'School fees ' || s1, 80000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V654-0002'),
+            (st, s2, 'MOAUM-FEE-V654-0003', 'School fees ' || s2, 10000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V654-0003');
+        -- graduated since the summaries were last worked out: no summary, until the next read picks the graduate up
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (gnew, 'MOAUM/ADM/98/965403', 'MOAUM/HFA/98/6543', 'CHECKHISTORICAL', 'Newly Graduated', 'C00023', 'UTME', s0, 100, 100, 'GRADUATED', now());
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), gnew, s0, 100);
+        new_before := EXISTS (SELECT 1 FROM finance.historical_summary h WHERE h.student_id = gnew);
+        PERFORM finance.historical_refresh_stale(1000000);
+        new_after := (SELECT h.financial_status || '/' || h.outstanding FROM finance.historical_summary h WHERE h.student_id = gnew);
+        acct := (SELECT string_agg(x.session || 'S' || x.semester || ':' || x.level || '/' || coalesce(x.assessed::text, '-') || '/' || x.paid || '/' || coalesce(x.outstanding::text, '-') || '/' || x.status, ' '
+                                   ORDER BY x.session, x.semester) FROM finance.historical_account(st) x);
+        PERFORM finance.historical_refresh(ARRAY[st]);
+        summ := (SELECT h.financial_status || '/' || h.outstanding || '/' || h.review_periods || '/' || h.owing FROM finance.historical_summary h WHERE h.student_id = st);
+        pid := clearance.start('FINAL', st, s2, 'OVERRIDE', 'V654 check: the final clearance', bursar, 'registrar');
+        blk := clearance.blocker(pid, 'BURSARY', clearance.evidence(pid, 'BURSARY'));
+
+        -- the officer assesses session 3's first semester from the official circular and submits it
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        BEGIN PERFORM finance.historical_assessment_save(NULL, st, s2, 1, 0, NULL, 'OFFICIAL_FEE_DOCUMENT', 'BUR/9883/14', 'V654 check: the fee circular for the session', NULL, NULL, true);
+        EXCEPTION WHEN check_violation THEN r_amount := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.historical_assessment_save(NULL, st, s2, 1, 90000, NULL, 'OFFICIAL_FEE_DOCUMENT', 'BUR/9883/14', 'too short', NULL, NULL, true);
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.historical_assessment_save(NULL, st, s2, 1, 90000, '[{"item": "Tuition", "amount": 60000}, {"item": "Levies", "amount": 20000}]'::jsonb,
+                                                         'OFFICIAL_FEE_DOCUMENT', 'BUR/9883/14', 'V654 check: the fee circular for the session', NULL, NULL, true);
+        EXCEPTION WHEN check_violation THEN r_comp := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.historical_assessment_save(NULL, st, s3, 1, 90000, NULL, 'OFFICIAL_FEE_DOCUMENT', 'BUR/9884/02', 'V654 check: a session after graduation', NULL, NULL, true);
+        EXCEPTION WHEN check_violation THEN r_period := split_part(SQLERRM, ':', 1); END;
+        SELECT x.* INTO a1 FROM finance.historical_assessment_save(NULL, st, s2, 1, 90000, '[{"item": "Tuition", "amount": 70000}, {"item": "Levies", "amount": 20000}]'::jsonb,
+                                                                   'OFFICIAL_FEE_DOCUMENT', 'BUR/9883/14', 'V654 check: the fee circular for the session', NULL, NULL, true) x;
+        prev := (SELECT x.status FROM finance.historical_account(st) x WHERE x.session = s2 AND x.semester = 1);
+        BEGIN PERFORM finance.historical_assessment_decide(a1.id, 'APPROVE', NULL);
+        EXCEPTION WHEN insufficient_privilege THEN r_officer := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM finance.historical_assessment_decide(a1.id, 'APPROVE', NULL);
+        EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bursar::text, true);
+        PERFORM finance.historical_assessment_decide(a1.id, 'APPROVE', 'From the 9883/9884 fee circular');
+        notices := (SELECT count(*) FROM platform.notice n WHERE n.event_key = 'HISTORICAL_FEES_ASSESSED:' || a1.id);
+        BEGIN UPDATE finance.historical_assessment SET amount = 1 WHERE id = a1.id;
+        EXCEPTION WHEN check_violation THEN r_kept := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        BEGIN PERFORM finance.historical_assessment_save(NULL, st, s2, 1, 85000, NULL, 'OFFICIAL_FEE_DOCUMENT', 'BUR/9883/14', 'V654 check: a second assessment in force', NULL, NULL, true);
+        EXCEPTION WHEN check_violation THEN r_twice := split_part(SQLERRM, ':', 1); END;
+        -- a correction supersedes it
+        SELECT x.* INTO corr FROM finance.historical_assessment_save(NULL, st, s2, 1, 85000, NULL, 'OFFICIAL_FEE_DOCUMENT', 'BUR/9883/14A',
+                                                                     'V654 check: the circular was amended to 85,000', NULL, a1.id, true) x;
+        PERFORM set_config('moaum.actor_id', bursar2::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.historical_assessment_decide(corr.id, 'APPROVE', 'The amended circular');
+        superseded := (SELECT x.state || '>' || coalesce((SELECT y.reference FROM finance.historical_assessment y WHERE y.id = x.superseded_by), '-') FROM finance.historical_assessment x WHERE x.id = a1.id);
+
+        -- the second semester: returned, changed, rejected
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        SELECT x.* INTO a2 FROM finance.historical_assessment_save(NULL, st, s2, 2, 60000, NULL, 'MANUAL_HISTORICAL_ASSESSMENT', NULL,
+                                                                   'V654 check: read from the old portal statement', NULL, NULL, true) x;
+        PERFORM set_config('moaum.actor_id', bursar::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        returned := finance.historical_assessment_decide(a2.id, 'RETURN', 'Attach the old portal statement');
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        PERFORM finance.historical_assessment_save(a2.id, NULL, NULL, NULL, 55000, NULL, 'MANUAL_HISTORICAL_ASSESSMENT', NULL,
+                                                   'V654 check: read again from the old portal statement', NULL, NULL, true);
+        PERFORM set_config('moaum.actor_id', bursar::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        rejected := finance.historical_assessment_decide(a2.id, 'REJECT', 'The statement does not support it');
+
+        -- a cohort batch for the second semester: previewed, refused to its maker, approved by another
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        SELECT x.verdict INTO b FROM finance.historical_bulk_preview(s2, 2, NULL, NULL, 'C00023', NULL, true) x WHERE x.student_id = st;
+        SELECT x.* INTO a3 FROM finance.historical_bulk_create(ARRAY[st, act], s2, 2, 55000, NULL, 'COHORT_FEE_RECORD', 'BUR/9883/14 (second semester)',
+                                                              'V654 check: the cohort''s second semester fee', '{"programme": "C00023"}'::jsonb) x;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM finance.historical_batch_decide(a3.batch_id, 'APPROVE', NULL);
+        EXCEPTION WHEN check_violation THEN r_batch_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bursar2::text, true);
+        SELECT x.* INTO bdec FROM finance.historical_batch_decide(a3.batch_id, 'APPROVE', 'The cohort fee') x;
+        acct2 := (SELECT string_agg(x.session || 'S' || x.semester || ':' || coalesce(x.assessed::text, '-') || '/' || x.paid || '/' || coalesce(x.outstanding::text, '-') || '/' || x.status, ' '
+                                    ORDER BY x.session, x.semester) FROM finance.historical_account(st) x WHERE x.session = s2);
+
+        -- the graduate pays online, outside the session's window, never more than owed; a student still studying is refused
+        BEGIN PERFORM finance.historical_reference(st, s2, 999999);
+        EXCEPTION WHEN check_violation THEN r_pay_above := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.historical_reference(act, s0, 100);
+        EXCEPTION WHEN check_violation THEN r_pay_active := split_part(SQLERRM, ':', 1); END;
+        ref := finance.historical_reference(st, s2, 50000);
+        purpose := (SELECT r.purpose FROM finance.payment_reference r WHERE r.reference = ref);
+        UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = bursar, channel = 'Interswitch', receipt_no = ref WHERE reference = ref;
+        stale_before := (SELECT count(*) FROM finance.historical_stale x WHERE x.student_id = st);
+        PERFORM finance.historical_refresh_stale(100);
+        summ_after := (SELECT h.financial_status || '/' || h.outstanding || '/' || h.review_periods FROM finance.historical_summary h WHERE h.student_id = st);
+        blk2 := clearance.blocker(pid, 'BURSARY', clearance.evidence(pid, 'BURSARY'));
+        status_after := (SELECT s.status FROM people.student s WHERE s.id = st);
+        RAISE EXCEPTION 'the V654 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V654 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V654: a graduate''s historical school fees read session by session and semester by semester at the level of each session; assessed by the officer, approved by another Bursar, corrected, a cohort batch; paid online; the final clearance refused while anything is owed or unknown',
+        coalesce(acct = '9881/9882S1:100/50000.00/50000.00/0/CLEARED 9881/9882S2:100/50000.00/20000.00/30000.00/PARTIALLY_PAID '
+                        || '9882/9883S1:200/80000.00/80000.00/0/CLEARED 9882/9883S2:200/0/0.00/0/CLEARED '
+                        || '9883/9884S1:300/-/10000.00/-/REQUIRES_REVIEW 9883/9884S2:300/-/0/-/REQUIRES_REVIEW'
+                 AND summ = 'HISTORICAL_FEE_REVIEW_REQUIRED/30000.00/2/9881/9882 S2'
+                 AND blk LIKE 'Not cleared — outstanding school fees: %30,000%(9881/9882 Second semester)%'
+                 AND r_amount = 'HFA_AMOUNT' AND r_reason = 'HFA_REASON' AND r_comp = 'HFA_COMPONENTS' AND r_period = 'HFA_PERIOD'
+                 AND prev = 'PENDING_APPROVAL' AND r_officer = 'HFA_NOT_PERMITTED' AND r_same = 'HFA_SAME_OFFICER' AND notices = 1 AND r_kept = 'HFA_KEPT'
+                 AND r_twice = 'HFA_ALREADY_ASSESSED', false)
+        AND coalesce(superseded = 'SUPERSEDED>' || corr.reference AND returned = 'RETURNED_FOR_CORRECTION' AND rejected = 'REJECTED'
+                 AND b.verdict = 'REQUIRES_ASSESSMENT' AND a3.created = 1 AND a3.skipped = 1 AND r_batch_same = 'HFA_SAME_OFFICER' AND bdec.decided = 1 AND bdec.state = 'APPROVED'
+                 AND acct2 = '9883/9884S1:85000.00/10000.00/75000.00/PARTIALLY_PAID 9883/9884S2:55000.00/0/55000.00/OUTSTANDING'
+                 AND r_pay_above = 'HFA_PAY_AMOUNT' AND r_pay_active = 'HFA_PAY_GRADUATES' AND purpose = 'School fees ' || s2 || ' (historical)'
+                 AND stale_before = 1 AND summ_after = 'FINANCIAL_OBLIGATION/110000.00/0'
+                 AND blk2 LIKE 'Not cleared — outstanding school fees: %110,000%' AND status_after = 'GRADUATED'
+                 AND NOT new_before AND new_after = 'FINANCIAL_OBLIGATION/100000.00', false),
+        format('acct=%s | summ=%s | blk=%s | refusals=%s/%s/%s/%s/%s/%s/%s/%s prev=%s notices=%s | superseded=%s returned=%s rejected=%s | batch=%s %s/%s %s %s/%s | acct2=%s | pay=%s/%s %s stale=%s summ_after=%s blk2=%s status=%s new=%s/%s',
+               acct, summ, blk, r_amount, r_reason, r_comp, r_period, r_officer, r_same, r_kept, r_twice, prev, notices, superseded, returned, rejected,
+               b.verdict, a3.created, a3.skipped, r_batch_same, bdec.decided, bdec.state, acct2, r_pay_above, r_pay_active, purpose, stale_before, summ_after, blk2, status_after, new_before, new_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { DTable } from "@/components/proto/DTable";
 import { money } from "@/lib/format";
 
 import type { ReconFigures } from "@/lib/legacy-reconciliation";
+import { HistoricalFeesDashPanel } from "@/components/finance/HistoricalFeesDashPanel";
 
 /** the NELFUND desk's figures as the Bursary reads them (finance.nelfund_desk_figures, V327) */
 interface NelfundFigures { session: string; figures: { students_funded: number; nelfund_credited: number; students_shortfall: number; shortfall_amount: number } }
@@ -90,6 +91,8 @@ export async function StudentAccountsDashboard({ session }: { session: string })
           ) : null}
         </>
       ) : null}
+      {/* V654: the historical fee review — the officer assesses, the Bursar approves */}
+      <HistoricalFeesDashPanel officer />
       <Panel title="Quick actions">
         <PBody>
           <div className="row row--tight" style={{ flexWrap: "wrap" }}>

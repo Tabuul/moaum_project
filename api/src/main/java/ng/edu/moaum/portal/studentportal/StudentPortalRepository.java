@@ -433,6 +433,38 @@ class StudentPortalRepository {
 
     /** V651: a postgraduate student's stage in the session — the qualification, the stage (800 B — Year 2), fresh or returning, the
      *  cycle, whether the stage is recorded or calculated; null for any other student */
+    /** V654: a graduate's historical school fees as the student may see them — the periods with an official amount (the fee structure or
+     *  an approved assessment), a period being assessed or reviewed shown as such and never as a debt, the totals of what is official,
+     *  whether it is paid online, and the historical references still open */
+    Map<String, Object> historicalFees(UUID student) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        List<Map<String, Object>> periods = jdbc.sql("""
+                SELECT x.session, x.semester, x.level,
+                       CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN NULL ELSE x.assessed END AS assessed,
+                       x.paid, x.outstanding, x.credit,
+                       CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN 'BEING_ASSESSED' ELSE x.status END AS status
+                  FROM finance.historical_account(:s) x
+                """).param("s", student).query().listOfRows();
+        out.put("periods", periods);
+        out.put("graduated", jdbc.sql("""
+                SELECT s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED')
+                  FROM people.student s WHERE s.id = :s
+                """).param("s", student).query(Boolean.class).optional().orElse(false));
+        out.put("graduationSession", jdbc.sql("SELECT records.graduation_session(:s)").param("s", student).query(String.class).optional().orElse(null));
+        out.put("onlinePayment", jdbc.sql("SELECT online_payment FROM finance.historical_setting WHERE id = 1").query(Boolean.class).optional().orElse(false));
+        out.put("open", jdbc.sql("""
+                SELECT r.reference, r.session, r.amount, r.expires_at FROM finance.payment_reference r
+                 WHERE r.student_id = :s AND r.confirmed_at IS NULL AND r.expires_at > now() AND r.purpose LIKE 'School fees % (historical)'
+                 ORDER BY r.generated_at DESC
+                """).param("s", student).query().listOfRows());
+        return out;
+    }
+
+    /** V654: a reference for a graduate's approved historical balance of a session (the database checks the balance and the student) */
+    String historicalReference(UUID student, String session, java.math.BigDecimal amount) {
+        return jdbc.sql("SELECT finance.historical_reference(:s, :ses, :a)").param("s", student).param("ses", session).param("a", amount).query(String.class).single();
+    }
+
     Map<String, Object> pgStage(UUID student, String session) {
         return jdbc.sql("""
                 SELECT x.cycle_no, x.qualification, q.label AS qualification_label, x.stage_code, x.stage_label, x.category, x.official, x.beyond,

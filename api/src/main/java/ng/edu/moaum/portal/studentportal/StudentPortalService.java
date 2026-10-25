@@ -458,6 +458,24 @@ public class StudentPortalService {
         return out;
     }
 
+    /** V654: a graduate's historical school fees, official amounts only */
+    @Transactional(readOnly = true)
+    public Map<String, Object> historicalFees(UUID id) {
+        return repo.historicalFees(id);
+    }
+
+    /** V654: a reference for an approved historical balance — the database refuses anything but a graduate's balance owed */
+    @Transactional
+    public Map<String, Object> historicalReference(UUID id, String session, BigDecimal amount) {
+        if (session == null || !session.matches("^[0-9]{4}/[0-9]{4}$")) {
+            throw new DomainRuleViolation("HFA_PERIOD", "Choose the session to pay for.", new DomainRuleViolation.Remedy("Pick a session that shows a balance.", "You"));
+        }
+        String reference = repo.historicalReference(id, session, amount);
+        Map<String, Object> out = new LinkedHashMap<>(repo.historicalFees(id));
+        out.put("reference", reference);
+        return out;
+    }
+
     /** V635: an expired, unpaid reference of the student's made payable again — the same reference reopened for 24 hours while what
      *  it pays for is still owed, or (school fees, the GST fee owed now at less) a new one for what is owed; the database decides */
     @Transactional

@@ -1,0 +1,166 @@
+/**
+ * V654: historical school fees and the graduate's financial clearance, as /api/v1/finance/historical answers. The account is the
+ * database's (finance.historical_rows); these are its types, its words, and the pure shapes the screens and exports build from it.
+ */
+
+export type PeriodStatus = "CLEARED" | "PARTIALLY_PAID" | "OUTSTANDING" | "CREDIT" | "REQUIRES_REVIEW" | "PENDING_APPROVAL" | "BEING_ASSESSED";
+export type FinancialStatus = "FINANCIALLY_CLEARED" | "FINANCIAL_OBLIGATION" | "FINANCIAL_CLEARANCE_PENDING" | "HISTORICAL_FEE_REVIEW_REQUIRED" | "NO_HISTORICAL_PERIOD";
+export type AssessmentState = "DRAFT" | "PENDING_BURSAR_APPROVAL" | "RETURNED_FOR_CORRECTION" | "APPROVED" | "REJECTED" | "CANCELLED" | "SUPERSEDED";
+type Tone = "ok" | "warn" | "bad" | "grey" | "info";
+type Money = number | string;
+
+export interface Period {
+  session: string; semester: number; level: number | null; programme_code?: string; assessed: Money | null; source?: "ASSESSMENT" | "STRUCTURE" | "NONE";
+  source_ref?: string | null; assessment_id?: string | null; structure_amount?: Money | null; structure_lines?: number; pending_id?: string | null;
+  pending_ref?: string | null; pending_amount?: Money | null; paid: Money; outstanding: Money | null; credit: Money; status: PeriodStatus;
+}
+
+export interface SessionGroup { session: string; periods: Period[]; assessed: number; paid: number; outstanding: number; credit: number; review: number }
+
+export interface Assessment {
+  id: string; reference: string; session: string; semester: number; level: number | null; amount: Money; components?: string | null; source: string;
+  source_reference: string | null; reason?: string; remarks?: string | null; state: AssessmentState; created_at: string; created_office?: string | null;
+  created_by_name: string | null; submitted_at: string | null; decided_at?: string | null; decided_office?: string | null; decided_by_name?: string | null;
+  decision_note?: string | null; batch: string | null; corrects?: string | null; superseded_by?: string | null; mine?: boolean;
+}
+
+export interface StudentRow {
+  student_id: string; surname: string; other_names: string; matric_no: string | null; admission_no: string | null; jamb_reg_no: string | null; status: string;
+  entry_session: string | null; programme_code: string; programme: string; department: string | null; faculty: string | null; first_session: string | null;
+  graduation_session: string | null; periods: number | null; assessed: Money | null; paid: Money | null; outstanding: Money | null; credit: Money | null;
+  owing_periods: number | null; review_periods: number | null; pending_periods: number | null; partial_periods: number | null; owing: string | null;
+  financial_status: FinancialStatus | null; last_payment_at: string | null; refreshed_at: string | null; bursary_clearance: string | null; clearance_ref: string | null;
+}
+
+export interface StudentAccount {
+  student: { id: string; surname: string; other_names: string; matric_no: string | null; admission_no: string | null; jamb_reg_no: string | null; status: string;
+    entry_session: string | null; entry_level: number | null; current_level: number | null; programme_code: string; programme: string; department: string | null;
+    faculty: string | null; graduation_session: string | null };
+  start: string | null; periods: Period[]; assessments: Assessment[];
+  payments?: { reference: string; session: string; purpose: string; amount: Money; generated_at: string; confirmed_at: string | null; channel: string | null;
+    receipt_no: string | null; paid_as: string | null }[];
+  reallocations?: { realloc_ref: string; kind: string; reference: string; amount: Money; from_purpose: string; from_session: string; to_purpose: string;
+    to_session: string; executed_at: string; status: string }[];
+  clearance: { id: string; reference: string; session: string; started_at: string; completed_at: string | null; overall: string | null; bursary: string | null;
+    bursary_at: string | null; verify_code: string } | null;
+}
+
+export interface Setting { assess_from: string | null; start: string | null; online_payment: boolean; set_at: string | null; reason: string | null; refreshed_at: string | null; set_by: string | null }
+export interface Desk { office: string; permissions: string[]; setting: Setting; sessions: string[]; sources: string[] }
+
+export interface Figures {
+  graduates: number; with_outstanding: number; cleared: number; requires_review: number; pending_approval: number; partially_paid: number; no_outstanding: number;
+  with_credit: number; no_period: number; auto_assessed: number; graduated_with_obligation: number; assessed: Money; paid: Money; outstanding: Money; credit: Money;
+  assessments: { state: AssessmentState; n: number; amount: Money }[]; batchesPending: number; unsummarised: number; refreshedAt: string | null; start: string | null;
+}
+
+export const PERIOD_WORDS: Record<PeriodStatus, [string, Tone]> = {
+  CLEARED: ["Cleared", "ok"], PARTIALLY_PAID: ["Partially paid", "warn"], OUTSTANDING: ["Outstanding", "bad"], CREDIT: ["Credit / overpayment", "info"],
+  REQUIRES_REVIEW: ["Requires historical review", "bad"], PENDING_APPROVAL: ["Pending Bursar approval", "warn"], BEING_ASSESSED: ["Being assessed by the Bursary", "grey"],
+};
+
+export const FINANCIAL_WORDS: Record<FinancialStatus, [string, Tone]> = {
+  FINANCIALLY_CLEARED: ["Financially cleared", "ok"], FINANCIAL_OBLIGATION: ["Financial obligation", "bad"],
+  FINANCIAL_CLEARANCE_PENDING: ["Financial clearance pending", "warn"], HISTORICAL_FEE_REVIEW_REQUIRED: ["Historical fee review required", "bad"],
+  NO_HISTORICAL_PERIOD: ["No historical period", "grey"],
+};
+
+export const STATE_WORDS: Record<AssessmentState, [string, Tone]> = {
+  DRAFT: ["Draft", "grey"], PENDING_BURSAR_APPROVAL: ["Pending Bursar approval", "warn"], RETURNED_FOR_CORRECTION: ["Returned for correction", "warn"],
+  APPROVED: ["Approved — in force", "ok"], REJECTED: ["Rejected", "bad"], CANCELLED: ["Withdrawn", "grey"], SUPERSEDED: ["Superseded by a correction", "grey"],
+};
+
+export const SOURCE_WORDS: Record<string, string> = {
+  HISTORICAL_FEE_STRUCTURE: "Historical fee structure", HISTORICAL_FEE_VERSION: "Historical fee structure version", COHORT_FEE_RECORD: "Cohort fee record",
+  STUDENT_SPECIFIC_APPROVED_FEE: "Student-specific approved fee", OFFICIAL_FEE_DOCUMENT: "Official fee document", MANUAL_HISTORICAL_ASSESSMENT: "Manual historical assessment",
+  LEGACY_MIGRATION: "Old portal (legacy migration)", OTHER_APPROVED_SOURCE: "Other approved source",
+};
+
+/** a document or approval is named for these sources (the database refuses them without one) */
+export const SOURCE_NEEDS_REFERENCE = new Set(["STUDENT_SPECIFIC_APPROVED_FEE", "OFFICIAL_FEE_DOCUMENT", "OTHER_APPROVED_SOURCE", "COHORT_FEE_RECORD"]);
+
+export const semesterWords = (n: number) => (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : `Semester ${n}`);
+export const num = (v: Money | null | undefined) => (v == null || v === "" ? 0 : Number(v));
+export const naira = (v: Money | null | undefined) => `₦${num(v).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+export const can = (desk: Pick<Desk, "permissions"> | null, p: string) => !!desk && desk.permissions.includes(p);
+
+/** the periods by session, with the session's totals (only an official amount counts; a period for review counts nothing owed) */
+export function bySession(periods: Period[]): SessionGroup[] {
+  const out: SessionGroup[] = [];
+  for (const p of [...periods].sort((a, b) => (a.session === b.session ? a.semester - b.semester : a.session < b.session ? -1 : 1))) {
+    let g = out[out.length - 1];
+    if (!g || g.session !== p.session) { g = { session: p.session, periods: [], assessed: 0, paid: 0, outstanding: 0, credit: 0, review: 0 }; out.push(g); }
+    g.periods.push(p);
+    g.assessed += num(p.assessed);
+    g.paid += num(p.paid);
+    g.outstanding += num(p.outstanding);
+    g.credit += num(p.credit);
+    if (p.status === "REQUIRES_REVIEW" || p.status === "PENDING_APPROVAL" || p.status === "BEING_ASSESSED") g.review += 1;
+  }
+  return out;
+}
+
+export function totals(periods: Period[]): { assessed: number; paid: number; outstanding: number; credit: number; review: number; owing: string[] } {
+  const groups = bySession(periods);
+  return {
+    assessed: groups.reduce((n, g) => n + g.assessed, 0), paid: groups.reduce((n, g) => n + g.paid, 0),
+    outstanding: groups.reduce((n, g) => n + g.outstanding, 0), credit: groups.reduce((n, g) => n + g.credit, 0),
+    review: groups.reduce((n, g) => n + g.review, 0),
+    owing: periods.filter((p) => num(p.outstanding) > 0).map((p) => `${p.session} ${semesterWords(p.semester).toLowerCase()}`),
+  };
+}
+
+/** the components typed on the form, as the API takes them; blank rows left out, an amount read as naira */
+export function readComponents(rows: { item: string; amount: string }[]): { item: string; amount: number }[] {
+  return rows.filter((r) => r.item.trim() || r.amount.trim()).map((r) => ({ item: r.item.trim(), amount: Number(r.amount.replace(/[^0-9.]/g, "")) }));
+}
+
+export const REPORT_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Graduation Session", "Fee Session", "Semester",
+  "Level", "Amount Assessed (₦)", "Amount Paid (₦)", "Outstanding (₦)", "Assessment Source", "Assessment Status", "Financial Clearance Status",
+  "Bursar Approval Status", "Date"];
+
+export interface ReportRow {
+  student: string; matric_no: string | null; jamb_reg_no: string | null; faculty: string | null; department: string | null; programme: string;
+  graduation_session: string | null; session: string; semester: number; level: number | null; assessed: Money | null; paid: Money; outstanding: Money | null;
+  credit: Money; source: string; source_ref: string | null; status: PeriodStatus; assessment_state: AssessmentState | null; financial_status: FinancialStatus;
+  bursary_clearance: string | null; dated: string | null;
+}
+
+/** the historical fee report's rows: S/N first and numeric, matriculation and JAMB numbers as text, amounts as numbers */
+export function reportRows(rows: ReportRow[]): (string | number)[][] {
+  return rows.map((r, i) => [
+    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, r.graduation_session ?? "", r.session,
+    semesterWords(r.semester), r.level ?? "", r.assessed == null ? "" : num(r.assessed), num(r.paid), r.outstanding == null ? "" : num(r.outstanding),
+    r.source === "ASSESSMENT" ? `Approved assessment ${r.source_ref ?? ""}`.trim() : r.source === "STRUCTURE" ? r.source_ref ?? "Fee structure" : "None — requires review",
+    PERIOD_WORDS[r.status]?.[0] ?? r.status, FINANCIAL_WORDS[r.financial_status]?.[0] ?? r.financial_status,
+    r.assessment_state ? STATE_WORDS[r.assessment_state]?.[0] ?? r.assessment_state : r.source === "STRUCTURE" ? "Not needed (fee structure)" : "—",
+    r.dated ? r.dated.slice(0, 10) : "",
+  ]);
+}
+
+export const CLEARANCE_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Graduation Session", "Historical Sessions With Debt",
+  "Total Assessed (₦)", "Total Paid (₦)", "Total Outstanding (₦)", "Financial Status", "Clearance Status", "Last Payment Date", "Bursary Officer", "Bursar Approval"];
+
+export interface ClearanceRow {
+  student: string; matric_no: string | null; jamb_reg_no: string | null; faculty: string | null; department: string | null; programme: string;
+  graduation_session: string | null; owing: string | null; assessed: Money; paid: Money; outstanding: Money; credit: Money; financial_status: FinancialStatus;
+  last_payment_at: string | null; bursary_clearance: string | null; bursary_officer: string | null; bursary_at: string | null;
+}
+
+export function clearanceRows(rows: ClearanceRow[]): (string | number)[][] {
+  return rows.map((r, i) => [
+    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, r.graduation_session ?? "", r.owing ?? "—",
+    num(r.assessed), num(r.paid), num(r.outstanding), FINANCIAL_WORDS[r.financial_status]?.[0] ?? r.financial_status,
+    r.bursary_clearance ? r.bursary_clearance.replace(/_/g, " ").toLowerCase() : "Not started", r.last_payment_at ? r.last_payment_at.slice(0, 10) : "",
+    r.bursary_officer ?? "", r.bursary_at ? `${r.bursary_clearance === "CLEARED" ? "Cleared" : "Decided"} ${r.bursary_at.slice(0, 10)}` : "",
+  ]);
+}
+
+/** the student's statement rows: session, semester, level, assessed, paid, outstanding */
+export function statementRows(periods: Period[]): (string | number)[][] {
+  return [...periods].sort((a, b) => (a.session === b.session ? a.semester - b.semester : a.session < b.session ? -1 : 1)).map((p, i) => [
+    i + 1, p.session, semesterWords(p.semester), p.level ?? "", p.assessed == null ? "Being assessed" : num(p.assessed), num(p.paid),
+    p.outstanding == null ? "—" : num(p.outstanding), PERIOD_WORDS[p.status]?.[0] ?? p.status,
+  ]);
+}
+export const STATEMENT_HEAD = ["S/N", "Session", "Semester", "Level", "Assessed (₦)", "Paid (₦)", "Outstanding (₦)", "Status"];

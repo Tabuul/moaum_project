@@ -240,6 +240,17 @@ class MeController {
         return portal.requestTranscript(id(auth), body.destination(), body.destinationName(), body.mode(), body.copies());
     }
 
+    /** V654: a graduate's historical school fees — the official amounts by session and semester — and a reference to pay a balance */
+    @GetMapping("/historical-fees")
+    Map<String, Object> historicalFees(Authentication auth) {
+        return portal.historicalFees(id(auth));
+    }
+
+    @PostMapping("/historical-fees/references")
+    Map<String, Object> historicalReference(Authentication auth, @RequestBody NewReference body) {
+        return portal.historicalReference(id(auth), body == null ? null : body.session(), body == null ? null : body.amount());
+    }
+
     private static UUID id(Authentication auth) {
         return UUID.fromString(auth.getName());
     }

@@ -454,6 +454,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
+          { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
@@ -514,6 +515,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation" },
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
+          { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
@@ -783,6 +785,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/refunds", "icon": "swap", "label": "Refunds & Credits" },
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
+          { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/fundsources", "icon": "card", "label": "Funding Sources" },
           { "id": "t/nelfund", "icon": "swap", "label": "Sources & Wallets" },
           { "id": "t/nelstatus", "icon": "user", "label": "NELFUND Applicants" },
@@ -856,6 +859,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
+          { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
           { "id": "t/legacyrecon", "icon": "swap", "label": "Legacy Financial Reconciliation" },

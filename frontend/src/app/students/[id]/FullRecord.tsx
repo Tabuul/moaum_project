@@ -23,6 +23,7 @@ import { printDocument } from "@/lib/document/html";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
 import { PgHistoryPanel } from "@/components/pg/PgHistory";
+import { HistoricalFeesPanel } from "@/components/finance/HistoricalFeesPanel";
 import {
   PAYMENT_WORDS, TAB_LABELS, day, levelHistory, naira, printBody, purposeOnly, resultWord, sectionTables, semesterOf, tabOf, tabsFor, timeline, words,
   type Payment, type Progression, type ResultRow, type Section, type Tab, type Table,
@@ -147,6 +148,8 @@ export function FullRecord({ studentId, name, number, overview, overviewBody, bi
       {d && tab === "registrations" ? <RegistrationsTab d={d} name={name} file={file} /> : null}
       {d && tab === "results" ? <ResultsTab d={d} name={name} file={file} /> : null}
       {d && tab === "finance" ? <FinanceTab d={d} name={name} file={file} swaps={swaps} onReceipt={setReceipt} /> : null}
+      {/* V654: the historical school fees by session and semester, and the financial clearance */}
+      {tab === "finance" ? <HistoricalFeesPanel studentId={studentId} /> : null}
       {d && tab === "hostel" ? <HostelTab d={d} name={name} file={file} /> : null}
       {d && tab === "clearance" ? <ClearanceTab d={d} name={name} file={file} /> : null}
       {d && tab === "documents" ? <DocumentsTab d={d} name={name} file={file} /> : null}

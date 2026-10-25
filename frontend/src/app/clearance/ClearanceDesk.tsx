@@ -406,7 +406,17 @@ function Evidence({ unit, ev }: { unit: string; ev: Record<string, unknown> }) {
   const line = (k: string, v: string, bad = false) => <div key={k} className="row row--tight"><span className="sub2" style={{ minWidth: 150 }}>{k}</span><b className={bad ? "ink-red" : undefined}>{v}</b></div>;
   const out: ReactNode[] = [];
   if (unit === "BURSARY") {
-    if (Array.isArray(ev.sessions)) {
+    if (Array.isArray(ev.periods)) {
+      // V654: a final clearance reads the historical account — each session and semester at the fees of the period
+      out.push(line("Outstanding school fees", naira(ev.outstanding), Number(ev.outstanding) > 0));
+      if (Number(ev.review) > 0) out.push(line("Requires historical review", String(ev.reviewPeriods ?? ev.review), true));
+      if (Number(ev.pending) > 0) out.push(line("Awaiting the Bursar's approval", String(ev.pendingPeriods ?? ev.pending), true));
+      if (Number(ev.credit) >= 1) out.push(line("Paid beyond what is assessed", naira(ev.credit)));
+      for (const s of ev.periods as { session: string; semester: number; level: number | null; assessed: number | null; paid: number; outstanding: number | null; status: string }[]) {
+        out.push(line(`${s.session} S${s.semester}`, s.assessed == null ? `${s.status === "PENDING_APPROVAL" ? "assessment pending" : "no fee structure — review"} · paid ${naira(s.paid)}`
+          : `${s.level ?? "—"} Level · ${naira(s.assessed)} assessed · paid ${naira(s.paid)} · owed ${naira(s.outstanding)}`, s.assessed == null || Number(s.outstanding) > 0));
+      }
+    } else if (Array.isArray(ev.sessions)) {
       out.push(line("Outstanding (sessions stated)", naira(ev.outstanding), Number(ev.outstanding) > 0));
       for (const s of ev.sessions as { session: string; stated: boolean; due: number; balance: number }[]) out.push(line(s.session, s.stated ? `${naira(s.due)} due · balance ${naira(s.balance)}` : "fees not stated (old portal)", s.stated && s.balance > 0));
     } else {
