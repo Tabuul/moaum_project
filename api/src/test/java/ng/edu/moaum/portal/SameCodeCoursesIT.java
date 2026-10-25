@@ -94,8 +94,18 @@ class SameCodeCoursesIT {
         assertThat(undecided.getBody().get("code")).isEqualTo("COURSE_TITLE_DIFFERS");
         Map<String, Object> separate = new java.util.HashMap<>(row);
         separate.put("titleChoice", "SEPARATE");
-        ok(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/import", Map.of("programme", PROGRAMME, "rows", List.of(separate), "curriculum", "CCMAS")));
+        // V657: a first semester whose classes are open — a session of the test's own holding the code's first course's class
+        int y = it.freeYear(4960, 4999);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        it.db(() -> jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), :c, :s, 1)")
+                .param("c", code).param("s", session).update());
+        Map<String, Object> uploaded = ok(it.call(ict, HttpMethod.POST, "/api/v1/catalogue/import", Map.of("programme", PROGRAMME, "rows", List.of(separate), "curriculum", "CCMAS")));
         assertThat(jdbc.sql("SELECT title FROM catalogue.course WHERE code = :c").param("c", code + " CCMAS").query(String.class).single()).isEqualTo("Computer Architecture");
+        // the separate course the row made gets its class there, by the upload's own act — not only the course the code resolves to
+        assertThat(((Number) uploaded.get("classes_opened")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM catalogue.offering WHERE course_code = :c AND session = :s AND semester = 1 AND stream = 'REGULAR'")
+                .param("c", code + " CCMAS").param("s", session).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT title FROM catalogue.course WHERE code = :c").param("c", code).query(String.class).single()).isEqualTo("Computer Networks");
 
         // the Duplicate course code report lists the three; the course list finds them all under the code

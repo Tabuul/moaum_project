@@ -54,6 +54,12 @@ The University's answers:
 - **The upload screen.** It previews these rows (`POST /catalogue/import/titles`, `catalogue.structure_title_choices`) in a
   "Same code, different title" panel. Each row gets a choice of "The same course as …" or "A separate course under …", with
   buttons to set every row one way. Load stays disabled until every row is decided.
+- **Its class (V657).** An upload made while a semester's classes are open opens the classes of the courses it bound
+  (`catalogue.open_classes_for_upload`): every course the programme binds under the codes the sheet named, the separate ones
+  with the first. Before V657 it asked only for the course the sheet's code resolves to, so a separate course it had just made
+  (LIN 402 BMAS beside LIN 402) read "No class yet" on the structure and could not be allocated or timetabled.
+  `catalogue.open_classes_for_separate_courses()` opened the missing classes of the separate courses already made, in the
+  semesters already open; a course of a semester whose registration has not opened still waits for it.
 
 ### The Duplicate course code report
 
@@ -97,5 +103,6 @@ test. V646's check proves that a 500 Level BMAS student sees a CCMAS course boun
 | Test | What it covers |
 |---|---|
 | `check.sql` V646 (EXPECTED 472) | a second course under a code created with its own key, and the exact course refused (by the function and by the index); the upload refused until it says, previewed, SEPARATE creating the course, SAME keeping the title and curriculum, a same-title row bound without asking; a 400 Level student seeing and registering both, the same class never twice; a 500 Level BMAS student seeing the CCMAS course; the report; a separate course taking the programme moved to it |
-| `SameCodeCoursesIT` | through the API: the exists check, create with curriculum, the exact course refused, the titles preview, the upload refused then separate, the report, the course list, separate by the Registry and refused to a Head of Department |
+| `check.sql` V657 | a separate course an upload makes gets its class in the semester already open and none in one not open; asked by the code resolved it got none; one made before gets its class from the put-right, and nothing twice |
+| `SameCodeCoursesIT` | through the API: the exists check, create with curriculum, the exact course refused, the titles preview, the upload refused then separate (and, V657, its class opened in the open semester), the report, the course list, separate by the Registry and refused to a Head of Department |
 | `lib/course-code.test.ts` | the code shown, the mark, the label, the row-choice key |

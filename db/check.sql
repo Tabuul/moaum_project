@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 485
+\set EXPECTED 486
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25771,6 +25771,62 @@ BEGIN
         format('preview %s | hrm %s lecturer %s | reasons %s/%s | remove only %s, B %s | applied %s | A gone %s C gone %s B %s session %s class %s listed %s D %s E %s | no password %s changes %s | restored %s B %s again %s deleted %s | listed %s | kept %s',
                prev, hrm, lect, no_reason, short_other, remove_only, b_after_remove_only, applied, a_gone, c_gone, b_state, b_session, b_class, b_listed,
                d_state, e_state, no_password, changes, restored, b_back, again, undo_removed, listed, kept));
+END $$;
+
+-- ── V657. A separate course under a code gets its class: a made-up programme's course ZZB 657 with its class in the first semester
+-- of a made-up session (so that semester's classes are open); a structure upload naming ZZB657 under two other titles, made separate
+-- courses (ZZB 657 BMAS in the first semester, ZZB 657 BMAS2 in the second); the classes asked for the code as resolved open
+-- nothing for them, those asked for the upload open ZZB 657 BMAS's first-semester class and nothing for the second semester, which is
+-- not open; a separate course made before (ZZB 657 V2, bound with no class) gets its class from the put-right. Undone after.
+DO $$
+DECLARE S text := '2657/2658'; p1 text := 'C96657'; d1 text; f1 text; msg text; o uuid := gen_random_uuid();
+        up record; codes text; before_new int; n_upload int; bmas int; bmas2 int; v2_before int; n_fix int; v2_after int; again int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V657', true);
+        PERFORM set_config('moaum.actor_id', o::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (o, 'CHK-V657-1', 'CHECKV657', 'Officer');
+        -- a session that is running (not closed), as the calendar opens one
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), S, make_date(2657, 10, 1), make_date(2658, 8, 31));
+        SELECT p.dept_code, p.faculty_code INTO d1, f1 FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+        VALUES (p1, 'B.A. Class Check', d1, f1, 'UNDER GRADUATE', 0, 400, 4);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZB 657', 'Syntactic Check', 3, 1, 400, d1, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZB 657', p1, 400, 'Core');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZB 657', S, 1);
+
+        -- the BMAS structure upload: the code under two other titles, each made a separate course
+        SELECT * INTO up FROM catalogue.import_courses(p1, jsonb_build_array(
+            jsonb_build_object('code', 'ZZB657', 'title', 'Stylistics Check II', 'units', '2', 'level', '400', 'semester', '1', 'status', 'C', 'titleChoice', 'SEPARATE'),
+            jsonb_build_object('code', 'ZZB 657', 'title', 'Phonology Check II', 'units', '2', 'level', '400', 'semester', '2', 'status', 'C', 'titleChoice', 'SEPARATE')), 'BMAS');
+        codes := (SELECT string_agg(code, ',' ORDER BY code) FROM catalogue.course WHERE catalogue.shown_code(code) = 'ZZB 657');
+        -- what the upload asked for before: the code resolved — the first course, never the separate ones
+        PERFORM catalogue.open_classes_for_courses(ARRAY[catalogue.resolve_course_code('ZZB657')]);
+        before_new := (SELECT count(*) FROM catalogue.offering WHERE course_code IN ('ZZB 657 BMAS', 'ZZB 657 BMAS2') AND session = S);
+        -- what it asks for now
+        n_upload := catalogue.open_classes_for_upload(p1, ARRAY['ZZB657', 'ZZB 657']);
+        bmas := (SELECT count(*) FROM catalogue.offering WHERE course_code = 'ZZB 657 BMAS' AND session = S AND semester = 1 AND stream = 'REGULAR');
+        bmas2 := (SELECT count(*) FROM catalogue.offering WHERE course_code = 'ZZB 657 BMAS2' AND session = S);
+
+        -- a separate course made before, bound with no class: the put-right opens it, and asking again opens nothing twice
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZB 657 V2', 'Morphology Check', 2, 1, 400, d1, 'Core', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZB 657 V2', p1, 400, 'Core');
+        v2_before := (SELECT count(*) FROM catalogue.offering WHERE course_code = 'ZZB 657 V2' AND session = S);
+        n_fix := catalogue.open_classes_for_separate_courses();
+        v2_after := (SELECT count(*) FROM catalogue.offering WHERE course_code = 'ZZB 657 V2' AND session = S AND semester = 1);
+        again := catalogue.open_classes_for_upload(p1, ARRAY['ZZB657']) + catalogue.open_classes_for_separate_courses();
+        RAISE EXCEPTION 'the V657 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V657 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V657: a separate course a structure upload makes under a code gets its class in the semesters already open; those made before get theirs',
+        coalesce(up.offers = 2 AND up.skipped = 0 AND codes = 'ZZB 657,ZZB 657 BMAS,ZZB 657 BMAS2' AND before_new = 0 AND n_upload >= 1 AND bmas = 1 AND bmas2 = 0
+                 AND v2_before = 0 AND n_fix >= 1 AND v2_after = 1 AND again = 0, false),
+        format('upload offers %s skipped %s | codes %s | before %s | upload opened %s: BMAS %s BMAS2 %s | V2 %s -> fix %s -> %s | again %s',
+               up.offers, up.skipped, codes, before_new, n_upload, bmas, bmas2, v2_before, n_fix, v2_after, again));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

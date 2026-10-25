@@ -260,12 +260,11 @@ class CatalogueController {
                 .param("curr", body.curriculum() == null || body.curriculum().isBlank() ? null : body.curriculum().trim().toUpperCase(), java.sql.Types.VARCHAR)
                 .query().singleRow());
         // V405/V406: a course uploaded while a semester's classes are already open gets its class now, by the upload's own act —
-        // the codes as the pool holds them (an alias or another spelling resolves to the course), nothing by a trigger
+        // the codes as the pool holds them (an alias or another spelling resolves to the course), nothing by a trigger; V657: and
+        // the courses the programme now binds under those codes, so a separate course a row made (LIN 402 BMAS) gets its class too
         String[] codes = body.rows().stream().map(r -> r.get("code")).filter(c -> c != null && !String.valueOf(c).isBlank()).map(String::valueOf).distinct().toArray(String[]::new);
-        int opened = codes.length == 0 ? 0 : jdbc.sql("""
-                SELECT catalogue.open_classes_for_courses(ARRAY(SELECT DISTINCT catalogue.resolve_course_code(x) FROM unnest(:c::text[]) x
-                                                                WHERE catalogue.resolve_course_code(x) IS NOT NULL))
-                """).param("c", codes).query(Integer.class).single();
+        int opened = codes.length == 0 ? 0 : jdbc.sql("SELECT catalogue.open_classes_for_upload(:p, :c::text[])")
+                .param("p", body.programme()).param("c", codes).query(Integer.class).single();
         out.put("classes_opened", opened);
         return out;
     }
