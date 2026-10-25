@@ -504,7 +504,9 @@ class FinanceController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> pgUnstated(@PathVariable String session, @PathVariable String year) {
-        return jdbc.sql("SELECT level, programme_code, programme, students FROM finance.pg_unstated(:s)").param("s", session + "/" + year).query().listOfRows();
+        // V653: by PG stage and fresh or returning too — the stage the Bursary states next
+        return jdbc.sql("SELECT level, programme_code, programme, stage_code, stage_label, category, students FROM finance.pg_unstated_by_stage(:s)")
+                .param("s", session + "/" + year).query().listOfRows();
     }
 
     /** V451: the live undergraduates with no school fee stated for the session — no line at all, or none for an open

@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 import { Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
-interface Unstated { level: number; programme_code: string; programme: string; students: number }
+/** V653: by PG stage too — the stage the Bursary states next (800 B — Year 2), and fresh or returning */
+interface Unstated { level: number; programme_code: string; programme: string; stage_code?: string | null; stage_label?: string | null; category?: string | null; students: number }
 interface Payment { reference: string; amount: number; purpose: string; confirmedAt: string; channel: string | null; receiptNo: string | null }
 interface Review {
   student_id: string; admission_no: string | null; matric_no: string | null; surname: string; other_names: string; status: string;
@@ -44,13 +45,16 @@ export function PgFees({ session }: { session: string }) {
       <PBody>
         {waiting ? (
           <Note kind="bad" title={`${waiting} postgraduate student${waiting === 1 ? " has" : "s have"} no fee line stated for ${session}`}>
-            They cannot register until a line reaches them: name a postgraduate level (700, 800, 900), the Postgraduate entry mode or group, or the programme.
+            They cannot register until a line reaches them: name a postgraduate level (700, 800, 900), a PG stage (800 B — Year 2) or fresh or returning, the
+            Postgraduate entry mode or group, or the programme. The stage below is each student&rsquo;s in {session}: state it with the Postgraduate fee structure.
           </Note>
         ) : <Note kind="ok" title={`Every live postgraduate student has a fee line stated for ${session}`}>Registration is not held on the School&rsquo;s fees.</Note>}
       </PBody>
       {waiting ? (
-        <DTable cols={["Level|num", "Programme", "Students|num"]} texts={unstated.map((u) => `${u.level} ${u.programme_code} ${u.programme}`)}
-          rows={unstated.map((u) => [<span key="l" className="tnum">{u.level}</span>, <span key="p"><b className="tnum">{u.programme_code}</b> {u.programme}</span>, <span key="n" className="tnum">{u.students}</span>])} />
+        <DTable cols={["Level|num", "Programme", "Stage", "Students|num"]} texts={unstated.map((u) => `${u.level} ${u.programme_code} ${u.programme} ${u.stage_label ?? ""}`)}
+          rows={unstated.map((u) => [<span key="l" className="tnum">{u.level}</span>, <span key="p"><b className="tnum">{u.programme_code}</b> {u.programme}</span>,
+            <span key="g">{u.stage_label ?? <span className="sub2">Past the maximum period or not read</span>}{u.category ? <span className="sub2"> · {u.category === "FRESH" ? "fresh" : "returning"}</span> : null}</span>,
+            <span key="n" className="tnum">{u.students}</span>])} />
       ) : null}
       {mayReview ? (
         <>

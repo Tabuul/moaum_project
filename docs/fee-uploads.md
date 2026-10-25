@@ -28,6 +28,11 @@ A file is read as stating the fees of the faculties and programmes in it. The up
 - for a row naming a **faculty**: that faculty's own lines (not its programmes' lines of their own);
 - for a row naming neither: the University-wide lines.
 
+V653: a postgraduate stage line (800 B — Year 2) or a fresh or returning line is ended only by a row of its own kind. A faculty-wide
+or University-wide undergraduate row ends the lines with no stage or category; a faculty-wide or University-wide stage or
+fresh/returning row ends the stage and category lines of its scope at the levels the file's stage rows state (an 800 B row the 800
+Level stage lines, not the PhD's). A programme row ends all of the programme's lines, its stage lines with them.
+
 Every other line of the session stands. So the College of Health Sciences' sheet replaces the College's programme lines and
 leaves the eleven other faculties as they are.
 
@@ -36,19 +41,38 @@ leaves the eleven other faculties as they are.
 Chosen on the window, the structure replaces every line of its kind for the session, as every upload did before V535. When the
 file states no fee for a faculty that has lines in force, the window names it ("left with no fee") and the upload is refused
 (`FEE_STRUCTURE_PARTIAL`) until the Bursar ticks that those faculties' lines end. An upload that does not say what it replaces
-(the API without `scope`) is read as the whole session, unconfirmed — refused the same way.
+(the API without `scope`) is read as the whole session, unconfirmed — refused the same way. V653: a file with no stage row that
+would end the session's postgraduate stage lines is refused the same way, naming "the postgraduate stages (n lines)".
 
 ## A name the portal does not hold
 
 A faculty or programme the file names that is not on the register refuses the whole upload (`FEE_STRUCTURE_UNKNOWN`, naming it):
-nothing is changed. Before V535 such a row became a line with no faculty, charged to every student of the University.
+nothing is changed. Before V535 such a row became a line with no faculty, charged to every student of the University. V653: a PG
+stage or a fresh/returning cell the portal cannot read is refused the same way ("PG stage 800 Z").
+
+## Postgraduate stages (V653)
+
+The one-row-per-fee sheet takes two more columns: **PG stage** — 800B, 800 B, "800 B — Year 2", 700 Extension, 900 D — Extension 1
+(`finance.pg_stage_from_text`, without case, spaces or punctuation, against the stages in use) — and **Fresh or returning** (Fresh,
+F, New; Returning, R, Old, Continuing). A stage sets the line's level and its category; a row may name a stage with no faculty and
+no programme (every programme of the qualification), or "All faculties". Every postgraduate row is checked before anything
+changes, as the table's guard would check it (`finance.pg_fee_line_problem`): a stage at another level, a stage on a spillover line,
+a stage on an undergraduate programme or one of another qualification, a category the stage contradicts — the upload is refused
+naming the rows (`FEE_STRUCTURE_PG`). The preview pairs lines by stage and category too, names the stage of each amount that
+changes, and says how many stage lines would end. The "fees to state" sheet reads the same columns, and a line already stated
+for the stage is not added twice.
+
+**Download as an upload sheet** (Fee Setup, beside the upload) gives the session's lines in force in this layout: Faculty (code),
+Programme code, Programme, Level, PG stage, Fresh or returning, Entry mode, Semester, Indigene, Spillover (SP1 … or Yes), Fee group,
+Kind, Item, Amount. Uploaded back unchanged every line reads the same; change an amount or a stage and the preview shows just that.
+The Postgraduate School's list of students with no fee stated (`finance.pg_unstated_by_stage`) names each student's stage.
 
 ## The layouts read
 
 All sheets of the workbook are read (`lib/fee-matrix.ts`, tested):
 
 - **One row per fee** — Faculty (or Faculty code, or Programme code), Level, Entry mode, Semester, Indigene, Amount; Item, Spillover,
-  Kind, Fee group, Order optional. The "fees to state" sheet reads this way too.
+  Kind, Fee group, Order, PG stage, Fresh or returning optional (V653). The "fees to state" sheet reads this way too.
 - **The faculty cross-tab** — a FACULTY/SEMESTER header with a column pair per level band, a block per faculty with 1st and 2nd
   Semester rows.
 - **The College's blocks** — a block per programme whose title row carries its level bands ("MBBS | 100L/200DE | 200L | … | 600L/SP"),

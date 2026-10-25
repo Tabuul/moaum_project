@@ -128,4 +128,4 @@ A Head of Department or a faculty Dean acts on their own students only.
 ## Not yet
 
 Course registration and the registration menus still read the level, not the stage. Transcripts are not split by cycle. A payment
-reallocation (V649) does not read cycles. The fee spreadsheet upload does not carry a stage.
+reallocation (V649) does not read cycles. The fee spreadsheet upload carries a stage since V653 (docs/fee-uploads.md).

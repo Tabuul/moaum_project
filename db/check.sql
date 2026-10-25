@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 481
+\set EXPECTED 482
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25320,6 +25320,100 @@ BEGIN
                sh1.reference, sh1.students, sh1.manual_lines, elig1, r_reissue, cat_c, marked, r_list, r_gst_mark, man, pend, r_note, dec, r_again, pend2, dec2,
                a_att.status, a_att.source, a_att.verified, rec1, rec2, sh2.reference, sh2.version, sh2.students, v1_kept, rec3,
                crs.students, crs.sheets, crs.sheet_reference, crs.present, crs.manual_present, crs.pending, r_gst_sheet, sg.reference, sg.students, sg.scope_fac, r_office));
+END $$;
+-- ── V653. The fee spreadsheet upload with PG stages: a session with a University-wide undergraduate line and a University-wide
+-- 800 B line. An undergraduate file for the rows it names replaces the undergraduate line and leaves the stage line; a PG file
+-- names its stages by label and by code — the 800 B line replaced, an 800 A line and a programme's 800 B Bench fee stated, each
+-- student charged their own stage's lines; an unknown stage and a stage that does not agree with its programme or level refused
+-- before anything changes; the whole session from a file with no stage row asks to be confirmed; the preview pairs the 800 A and
+-- 800 B lines by stage (one changed, one the same); the "fees to state" sheet takes a stage, a stage line already stated not added
+-- twice, an unknown stage the row's error; the PG students with no fee stated listed by stage. The block undoes its own writes.
+DO $$
+DECLARE officer uuid := gen_random_uuid(); ret uuid := gen_random_uuid(); fr uuid := gen_random_uuid(); ext uuid := gen_random_uuid();
+        s0 text := '9870/9871'; s1 text := '9871/9872';
+        kept_stage text; ug_after text; pg_after text; charged_ret numeric; charged_fr numeric; parsed text;
+        r_unknown text; r_prog text; r_level text; r_partial text; unchanged int; eff jsonb; lines1 record; lines2 record; lines3 record;
+        unstated text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'V653 check: the fee upload with PG stages', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s0, '9870-10-01', '9871-08-31'), (gen_random_uuid(), s1, '9871-10-01', '9872-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (ret, 'MOAUM/ADM/98/965301', 'MOAUM/PGC/98/6531', 'CHECKPGUPLOAD', 'Returning', 'C90090', 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()),
+            (fr, 'MOAUM/ADM/98/965302', 'MOAUM/PGC/98/6532', 'CHECKPGUPLOAD', 'Fresh', 'C90090', 'POSTGRADUATE', s1, 800, 800, 'ACTIVE', now()),
+            (ext, 'MOAUM/ADM/98/965303', 'MOAUM/PGC/98/6533', 'CHECKPGUPLOAD', 'Extension', 'C90090', 'POSTGRADUATE', '9869/9870', 800, 800, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level) VALUES (s1, 'V653 check UG', 1000, 100);
+        INSERT INTO finance.fee_schedule (session, item, amount, pg_stage) VALUES (s1, 'V653 check tuition', 50000, '800B');
+
+        -- an undergraduate file, for what it names: the undergraduate line replaced, the stage line kept
+        PERFORM finance.import_fee_structure(s1, '[{"amount": "1500", "level": "100", "item": "V653 check UG"}]'::jsonb, 'LISTED', false);
+        kept_stage := (SELECT string_agg(f.pg_stage || '=' || f.amount, ',') FROM finance.fee_schedule f WHERE f.session = s1 AND f.ended_at IS NULL AND f.pg_stage IS NOT NULL);
+        ug_after := (SELECT string_agg(f.amount::text, ',') FROM finance.fee_schedule f WHERE f.session = s1 AND f.ended_at IS NULL AND f.item = 'V653 check UG');
+
+        -- a PG file: stages by label and by code; the programme's own 800 B line beside
+        PERFORM finance.import_fee_structure(s1, jsonb_build_array(
+            jsonb_build_object('amount', '55000', 'pgStage', '800 B — Year 2', 'item', 'V653 check tuition'),
+            jsonb_build_object('amount', '70000', 'pgStage', '800A', 'item', 'V653 check tuition', 'feeCategory', 'Fresh'),
+            jsonb_build_object('amount', '12000', 'programmeCode', 'C90090', 'pgStage', '800 B', 'item', 'V653 check bench fee', 'semester', '1')), 'LISTED', false);
+        pg_after := (SELECT string_agg(coalesce(f.programme_code, '*') || ':' || f.pg_stage || '/' || f.fee_category || '/' || f.level || '=' || f.amount, ',' ORDER BY f.programme_code NULLS FIRST, f.pg_stage)
+                       FROM finance.fee_schedule f WHERE f.session = s1 AND f.ended_at IS NULL AND f.pg_stage IS NOT NULL);
+        ug_after := ug_after || '|' || (SELECT string_agg(f.amount::text, ',') FROM finance.fee_schedule f WHERE f.session = s1 AND f.ended_at IS NULL AND f.item = 'V653 check UG');
+        charged_ret := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(ret, s1) c);
+        charged_fr := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(fr, s1) c);
+        parsed := concat_ws(',', finance.pg_stage_from_text('900 D — Extension 1'), finance.pg_stage_from_text('700 extension'), finance.pg_stage_from_text('700 Level'),
+                            finance.pg_stage_from_text('800-c'), coalesce(finance.pg_stage_from_text('800 Z'), 'none'),
+                            finance.fee_category_from_text('Returning'), finance.fee_category_from_text('f'), coalesce(finance.fee_category_from_text('maybe'), 'none'));
+
+        -- refused before anything changes: an unknown stage, a PhD stage on a Masters programme, a stage at another level
+        unchanged := (SELECT count(*) FROM finance.fee_schedule f WHERE f.session = s1 AND f.ended_at IS NULL);
+        BEGIN PERFORM finance.import_fee_structure(s1, '[{"amount": "1", "pgStage": "800 Z"}]'::jsonb, 'LISTED', false);
+        EXCEPTION WHEN check_violation THEN r_unknown := SQLERRM; END;
+        BEGIN PERFORM finance.import_fee_structure(s1, '[{"amount": "1", "programmeCode": "C90090", "pgStage": "900A"}]'::jsonb, 'LISTED', false);
+        EXCEPTION WHEN check_violation THEN r_prog := SQLERRM; END;
+        BEGIN PERFORM finance.import_fee_structure(s1, '[{"amount": "1", "pgStage": "800B", "level": "700"}]'::jsonb, 'LISTED', false);
+        EXCEPTION WHEN check_violation THEN r_level := SQLERRM; END;
+        -- the whole session from a file with no stage row: confirmed first
+        BEGIN PERFORM finance.import_fee_structure(s1, '[{"amount": "1500", "level": "100", "item": "V653 check UG"}]'::jsonb, 'SESSION', false);
+        EXCEPTION WHEN check_violation THEN r_partial := SQLERRM; END;
+        unchanged := unchanged - (SELECT count(*) FROM finance.fee_schedule f WHERE f.session = s1 AND f.ended_at IS NULL);
+
+        -- the preview pairs the lines by stage: 800 B changed, 800 A the same
+        eff := finance.fee_upload_effect(s1, jsonb_build_array(
+            jsonb_build_object('amount', '60000', 'pgStage', '800B', 'item', 'V653 check tuition'),
+            jsonb_build_object('amount', '70000', 'pgStage', '800A', 'item', 'V653 check tuition')), 'STRUCTURE', 'LISTED');
+
+        -- the PG students with no fee stated, by stage: the extension student, before an 800 C line is stated
+        unstated := (SELECT string_agg(u.programme_code || ':' || u.stage_code || '/' || coalesce(u.category, '-') || '=' || u.students, ',')
+                       FROM finance.pg_unstated_by_stage(s1) u WHERE u.programme_code = 'C90090' AND u.stage_code = '800C');
+        -- the "fees to state" sheet: 800 B already stated for the programme's first semester, 800 C added, an unknown stage the row's error
+        SELECT x.* INTO lines1 FROM finance.add_fee_lines(s1, '[{"programmeCode": "C90090", "pgStage": "800B", "semester": "1", "amount": "12000"}]'::jsonb) x;
+        SELECT x.* INTO lines2 FROM finance.add_fee_lines(s1, '[{"programmeCode": "C90090", "pgStage": "800 C — Extension", "semester": "1", "amount": "30000"}]'::jsonb) x;
+        SELECT x.* INTO lines3 FROM finance.add_fee_lines(s1, '[{"programmeCode": "C90090", "pgStage": "Year 9", "semester": "1", "amount": "1"}]'::jsonb) x;
+        RAISE EXCEPTION 'the V653 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V653 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V653: the fee upload reads PG stages — an undergraduate row leaves the stage lines, stage rows replace their own, refusals before any change, the preview pairs by stage, the gap sheet and the unstated list by stage',
+        coalesce(kept_stage = '800B=50000.00' AND ug_after = '1500.00|1500.00'
+                 AND pg_after = '*:800A/FRESH/800=70000.00,*:800B/RETURNING/800=55000.00,C90090:800B/RETURNING/800=12000.00'
+                 AND charged_ret = 67000 AND charged_fr = 70000
+                 AND parsed = '900D,700B,700A,800C,none,RETURNING,FRESH,none'
+                 AND r_unknown LIKE 'FEE_STRUCTURE_UNKNOWN:%PG stage 800 Z%' AND r_prog LIKE 'FEE_STRUCTURE_PG:%row 1 (C90090, 900A)%qualification%'
+                 AND r_level LIKE 'FEE_STRUCTURE_PG:%800 B — Year 2 is a 800 Level stage, not 700 Level%'
+                 AND r_partial LIKE 'FEE_STRUCTURE_PARTIAL:%the postgraduate stages (2 lines)%' AND unchanged = 0
+                 AND (eff->'totals'->>'changed')::int = 1 AND (eff->'totals'->>'same')::int = 1 AND (eff->'totals'->>'new')::int = 0 AND (eff->'totals'->>'ended')::int = 0
+                 AND eff->'changes'->0->>'pgStage' = '800B' AND eff->'changes'->0->>'pgStageLabel' = '800 B — Year 2' AND (eff->'changes'->0->>'new')::numeric = 60000
+                 AND lines1.already = 1 AND lines1.added = 0 AND lines2.added = 1 AND lines3.skipped = 1 AND lines3.first_error LIKE '%FEE_PG_STAGE: Year 9%'
+                 AND unstated = 'C90090:800C/RETURNING=1', false),
+        format('kept=%s ug=%s pg=%s charged=%s/%s parsed=%s unknown=%s prog=%s level=%s partial=%s unchanged=%s eff=%s/%s/%s/%s %s lines=%s/%s %s %s/%s unstated=%s',
+               kept_stage, ug_after, pg_after, charged_ret, charged_fr, parsed, left(r_unknown, 80), left(r_prog, 140), left(r_level, 140), left(r_partial, 160), unchanged,
+               eff->'totals'->>'changed', eff->'totals'->>'same', eff->'totals'->>'new', eff->'totals'->>'ended', left((eff->'changes')::text, 200),
+               lines1.already, lines1.added, lines2.added, lines3.skipped, left(lines3.first_error, 80), unstated));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

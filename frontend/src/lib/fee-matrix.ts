@@ -34,6 +34,8 @@ export type Indigene = "INDIGENE" | "NON_INDIGENE";
 export interface StructureRow {
   faculty?: string; programmeCode?: string; level?: string; entryMode?: string; semester?: string; indigene?: string;
   spillover?: string; amount: string; item?: string; kind?: string; feeGroup?: string; ord?: string;
+  /** V653: the PG stage (800B, 800 B — Year 2) and fresh or returning, as the sheet writes them — the importer reads them */
+  pgStage?: string; feeCategory?: string;
   /** V613: the spillover year a spillover row is for (1–3) */
   spillYear?: string;
 }
@@ -241,6 +243,8 @@ export function parseFeeFlat(grid: Grid, cce = false): StructureRow[] {
     amount: find(/(^|\s)amount\b|^fees?$/), item: find(/item|descrip|charge|purpose/),
     spill: find(/spill/), programme: find(/programme code|^programme$|^program|course/),
     kind: find(/^kind|fee kind|^type/), group: find(/group/), ord: find(/^ord(er)?$|^order/),
+    /* V653: the PG stage and fresh or returning */
+    stage: find(/stage/), category: find(/fresh|returning|^category$|fee category/),
   };
   // the faculty's code where the sheet gives it (the "fees to state" sheet does), else its name
   const facCol = col.facultyCode >= 0 ? col.facultyCode : col.faculty >= 0 ? col.faculty : col.facultyAny;
@@ -250,9 +254,13 @@ export function parseFeeFlat(grid: Grid, cce = false): StructureRow[] {
     const cell = (c: number) => (c >= 0 ? (r[c] ?? "") : "");
     const amt = cell(col.amount).replace(/[^0-9.]/g, "");
     if (!amt || Number(amt) <= 0) continue;
-    const fac = cell(facCol);
-    const prog = cell(col.programme);
-    if (!fac && !prog) continue;
+    // "All faculties" / "All programmes" (the download writes them for a University-wide line) are no faculty and no programme
+    const every = (v: string) => (/^(all|every)\b/i.test(v) ? "" : v);
+    const fac = every(cell(facCol));
+    const prog = every(cell(col.programme));
+    const stage = cell(col.stage), category = cell(col.category);
+    // a row with no faculty and no programme is University-wide: read when the sheet says so, or names a PG stage or category
+    if (!fac && !prog && !stage && !category && !/^(all|every)\b/i.test(cell(facCol))) continue;
     const row: StructureRow = { amount: amt };
     if (fac) row.faculty = fac;
     if (prog) row.programmeCode = prog;
@@ -269,6 +277,8 @@ export function parseFeeFlat(grid: Grid, cce = false): StructureRow[] {
     if (cell(col.kind)) row.kind = cell(col.kind);
     if (cell(col.group)) row.feeGroup = cell(col.group);
     if (cell(col.ord)) row.ord = cell(col.ord);
+    if (stage) row.pgStage = stage;
+    if (category) row.feeCategory = category;
     rows.push(row);
   }
   return rows;

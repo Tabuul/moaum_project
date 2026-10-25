@@ -38,6 +38,7 @@ import { printDocument } from "@/lib/document/html";
 import { logExport } from "@/lib/export-log";
 import { FEE_SHEET_HEADERS, FEE_SHEET_HEADERS_WITH_STATUS, feeGroups as reportSections, feeSetupBodyHtml, feeSheetRows } from "@/lib/fee-setup-report";
 import { FeeLineRemove, type RemoveLine } from "./FeeLineRemove";
+import { UPLOAD_SHEET_HEADERS, uploadSheetRows } from "@/lib/fee-upload-sheet";
 import { FeeLineHistory, FeeLineView } from "./FeeLineHistory";
 import { STATUS_WORDS, USED_WORDS, levelsFor, type EditAnswer, type LineUsage, type RemovedLine } from "@/lib/fee-setup";
 export interface ScheduleItem { id: string; item: string; amount: number; level: number | null; /** V613: the spillover year the line is for, null for any */ spill_year: number | null; entry_mode: string | null; faculty_code: string | null; faculty_name: string | null; programme_code: string | null; programme_name: string | null; fee_group: string | null; fee_group_name: string | null; semester: number | null; indigene: string | null; ord: number; spillover: boolean; kind?: string;
@@ -218,6 +219,16 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       sheetName: `Fees ${session.replace("/", "-")}`, serial: docSerial("FEE"), sub: `${session} academic session`, meta: reportMeta(),
     });
     downloadBlob(blob, `School fees setup ${session.replace("/", "-")}.xlsx`);
+  }
+
+  /** V653: the session's lines in force as the one-row-per-fee sheet the upload reads back — edit an amount or a stage, upload it */
+  async function downloadUploadSheet() {
+    const rows = uploadSheetRows(schedule.items);
+    const blob = await brandedXlsx(`School fees to upload, ${session}`, UPLOAD_SHEET_HEADERS, rows, {
+      sheetName: `Upload ${session.replace("/", "-")}`, serial: docSerial("FEE"), sub: `${session} academic session`, noSerialColumn: true,
+      meta: [["Academic session", session], ["Fee lines", rows.length.toLocaleString()], ["How to use", "Change an amount, a stage or a row, keep the headers, upload it here"]],
+    });
+    downloadBlob(blob, `School fees to upload ${session.replace("/", "-")}.xlsx`);
   }
 
   function exportPdf() {
@@ -560,7 +571,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <span key="f" className="sub2">{i.faculty_name ?? i.programme_faculty_name ?? "Every faculty"}</span>,
             <span key="d" className="sub2">{i.department_name ?? "—"}</span>,
             <span key="p" className="sub2">{i.programme_name ?? "Every programme"}</span>,
-            <span key="l" className="tnum">{i.level ?? "Every"}{i.pg_stage_label ? <> <Pil kind="info" title={i.pg_stage_label}>{pgStages.find((x) => x.code === i.pg_stage)?.short_label ?? i.pg_stage}</Pil></> : null}{i.level_problem ? <> <Pil kind="bad" title={i.level_problem}>Not in the structure</Pil></> : null}</span>,
+            <span key="l" className="tnum">{i.level ?? "Every"}{i.pg_stage_label ? <> <Pil kind="info" title={i.pg_stage_label}>{pgStages.find((x) => x.code === i.pg_stage)?.short_label ?? i.pg_stage}</Pil></> : null}{!i.pg_stage && i.fee_category ? <> <Pil kind="info" title={pgCategoryText(i) ?? undefined}>{i.fee_category === "FRESH" ? "Fresh" : "Returning"}</Pil></> : null}{i.level_problem ? <> <Pil kind="bad" title={i.level_problem}>Not in the structure</Pil></> : null}</span>,
             <span key="s" className="sub2">{i.semester ? semesterText(i.semester).replace("Semester: ", "") : "Whole session"}</span>,
             <span key="m" className="tnum">{naira(i.amount)}</span>,
             <span key="t" className="row row--tight" style={{ flexWrap: "wrap" }}>
@@ -601,12 +612,13 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       {mayFees ? (
         <Panel title="Upload the approved fees structure" right="Council's approved table, in one upload">
           <PBody>
-            <div className="sub2 mb-2">Upload the approved fees spreadsheet (.xlsx or .csv) as it was approved: a block per faculty with 1st and 2nd Semester rows and a column per level, split Indigene / Non-indigene; the College&rsquo;s sheet with a block per programme (MBBS, Nursing … with 100L/200DE, 200L … 600L/SP and a TOTAL row); or a <b>one-row-per-fee</b> table with <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i>. Before anything changes you see what it would change — the lines new, changed and ended for each faculty and programme, and the students still with no fee — and choose whether it replaces <b>only the faculties and programmes in the file</b> or the whole {cceUpload ? "CCE" : "full-time"} structure for {session}. The CCE and full-time structures never replace each other.</div>
+            <div className="sub2 mb-2">Upload the approved fees spreadsheet (.xlsx or .csv) as it was approved: a block per faculty with 1st and 2nd Semester rows and a column per level, split Indigene / Non-indigene; the College&rsquo;s sheet with a block per programme (MBBS, Nursing … with 100L/200DE, 200L … 600L/SP and a TOTAL row); or a <b>one-row-per-fee</b> table with <i>Faculty, Level, Entry mode, Semester, Indigene, Amount</i> — and, for postgraduate fees, <i>PG stage</i> (800 B — Year 2, 900 D …) or <i>Fresh or returning</i>; <b>Download as an upload sheet</b> gives the session&rsquo;s lines in that layout to edit and upload back. Before anything changes you see what it would change — the lines new, changed and ended for each faculty and programme, and the students still with no fee — and choose whether it replaces <b>only the faculties and programmes in the file</b> or the whole {cceUpload ? "CCE" : "full-time"} structure for {session}. The CCE and full-time structures never replace each other.</div>
             <div className="row">
               <label className={`btn btn--primary m-0${busy === "feeupload" ? " btn--disabled" : ""}`} style={{ cursor: busy === "feeupload" ? "not-allowed" : "pointer" }}>
                 {busy === "feeupload" ? "Uploading…" : "Upload approved fees (.xlsx / .csv)"}
                 <input type="file" accept=".xlsx,.csv" style={{ display: "none" }} disabled={busy === "feeupload"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFees(f); e.target.value = ""; }} />
               </label>
+              <Btn kind="secondary" disabled={!schedule.items.length} busyLabel="Preparing…" onClick={downloadUploadSheet}>Download as an upload sheet</Btn>
               <Btn kind="ghost" disabled={busy !== null || !schedule.items.length} onClick={() => setClearing(true)}>{busy === "clear" ? "Clearing…" : `Clear the ${session} ${filterRoute === "CCE" ? "CCE " : filterRoute === "FULL_TIME" ? "full-time " : ""}schedule`}</Btn>
             </div>
             <label className="sub2 row row--tight mt-2" style={{ gap: 6 }}><input type="checkbox" className="pchk" checked={cceUpload} onChange={(e) => setCceUpload(e.target.checked)} /> This is the fee structure of the Centre for Continuing Education (CCE, part-time): every line is loaded for entry mode CCE</label>

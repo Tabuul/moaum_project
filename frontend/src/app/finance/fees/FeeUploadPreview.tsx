@@ -23,9 +23,10 @@ export type UploadRead = ReadWorkbook | { layout: "LINES"; rows: Record<string, 
 interface Effect {
   action: "STRUCTURE" | "LINES"; scope: "LISTED" | "SESSION" | null; result: Record<string, unknown>;
   linesBefore: number; linesAfter: number;
-  totals: { new: number; changed: number; same: number; ended: number };
+  totals: { new: number; changed: number; same: number; ended: number; /** V653: of the ended, the PG stage and category lines */ endedStage?: number };
   groups: { faculty: string; facultyCode: string | null; programme: string | null; programmeCode: string | null; new: number; changed: number; same: number; ended: number; losesAll: boolean }[];
-  changes: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; semester: number | null; indigene: string | null; spillover: boolean; spillYear?: number | null; item: string; old: number; new: number }[];
+  changes: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; semester: number | null; indigene: string | null; spillover: boolean; spillYear?: number | null; item: string; old: number; new: number;
+    /** V653: the PG stage (its label) or fresh/returning the line is for */ pgStage?: string | null; pgStageLabel?: string | null; feeCategory?: string | null }[];
   gaps: { before: { students: number; groups: number }; after: { students: number; groups: number };
     rows: { faculty: string; programme: string | null; level: number | null; entryMode: string | null; spillover: boolean; spillYear?: number | null; finalLevel?: number | null; students: number }[] };
 }
@@ -37,6 +38,9 @@ const named = (s: string | null | undefined) =>
 const MODE: Record<string, string> = { UTME: "UTME", DIRECT_ENTRY: "Direct entry", TRANSFER: "Transfer", JUPEB: "JUPEB", SANDWICH: "Sandwich", CCE: "CCE", POSTGRADUATE: "Postgraduate" };
 const levelText = (level: number | null, spill: boolean, spillYear?: number | null) => (spill ? levelWords(level, true, spillYear) ?? "Spillover" : level ? `${level}` : "Every level");
 const semText = (s: number | null) => (s ? semesterName(s) : "Whole session");
+/** V653: a change's level with its PG stage (800 B — Year 2) or fresh/returning */
+const changeLevel = (c: Effect["changes"][number]) => c.pgStageLabel ?? c.pgStage
+  ?? `${levelText(c.level, c.spillover, c.spillYear)}${c.feeCategory ? ` · ${c.feeCategory === "FRESH" ? "fresh" : "returning"}` : ""}`;
 
 export function FeeUploadPreview({ session, action, fileName, read, cce = false, programmes, faculties, onClose, onApplied }: {
   session: string; action: "STRUCTURE" | "LINES"; fileName: string; read: UploadRead; cce?: boolean;
@@ -190,6 +194,13 @@ export function FeeUploadPreview({ session, action, fileName, read, cce = false,
               ) : null}
             </Note>
           ) : null}
+          {effect.totals.endedStage ? (
+            <Note kind="bad" title={`${count(effect.totals.endedStage)} postgraduate stage line${effect.totals.endedStage === 1 ? "" : "s"} would end`}>
+              Lines for a PG stage (800 B — Year 2 …) or for fresh or returning students that the file does not state again. A file uploaded for the faculties
+              and programmes in it ends the stage lines of the programmes it names, and the faculty-wide or University-wide stage lines at the levels its own
+              stage rows state; an undergraduate row never ends a stage line.
+            </Note>
+          ) : null}
           {nothing ? <Note kind="info" title="The file changes nothing">Every line in it is already in force with the same amount.</Note> : null}
           <DTable title="By faculty and programme" pageSize={10} cols={["Faculty", "Programme", "New|num", "Changed|num", "Same|num", "Ended|num"]}
             rows={effect.groups.map((g) => [
@@ -204,7 +215,7 @@ export function FeeUploadPreview({ session, action, fileName, read, cce = false,
             <DTable title="Amounts that change" pageSize={10} cols={["Faculty / programme", "Level", "Entry mode", "Semester", "Indigene", "Now|num", "After|num"]}
               rows={effect.changes.map((c) => [
                 <span key="f">{c.programme ?? named(c.faculty)}</span>,
-                <span key="l" className="tnum">{levelText(c.level, c.spillover, c.spillYear)}</span>,
+                <span key="l" className="tnum">{changeLevel(c)}</span>,
                 <span key="m">{MODE[c.entryMode ?? ""] ?? c.entryMode ?? "Every entry mode"}</span>,
                 <span key="s">{semText(c.semester)}</span>,
                 <span key="i">{c.indigene === "INDIGENE" ? "Indigene" : c.indigene === "NON_INDIGENE" ? "Non-indigene" : "Both"}</span>,

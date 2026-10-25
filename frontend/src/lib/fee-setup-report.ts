@@ -13,6 +13,8 @@ export interface FeeLine {
   /** V648: ACTIVE, ARCHIVED (deactivated), REPLACED (a corrected line stated beside it) or REMOVED — a report of more than the lines
    *  in force says which each is */
   status?: string;
+  /** V651: the PG stage the line is for (its label), or FRESH / RETURNING without a stage */
+  pg_stage?: string | null; pg_stage_label?: string | null; fee_category?: string | null;
 }
 
 export interface FeeGroup { key: string; faculty: string; programme: string | null; lines: FeeLine[] }
@@ -30,7 +32,8 @@ export function titled(s: string | null | undefined): string {
 
 export const facultyOf = (l: FeeLine) => (l.faculty_name ? titled(l.faculty_name) : l.faculty_code ?? "All faculties");
 export const semesterOf = (l: FeeLine) => SEMESTER[l.semester ?? 0] ?? `Semester ${l.semester}`;
-export const levelOf = (l: FeeLine) => (l.spillover ? "Spillover" : l.level ? `${l.level} Level` : "All levels");
+export const levelOf = (l: FeeLine) => (l.pg_stage ? l.pg_stage_label ?? l.pg_stage
+  : `${l.spillover ? "Spillover" : l.level ? `${l.level} Level` : "All levels"}${l.fee_category ? ` (${l.fee_category === "FRESH" ? "fresh" : "returning"})` : ""}`);
 export const modeOf = (l: FeeLine) => (l.entry_mode ? MODE_LABEL[l.entry_mode] ?? l.entry_mode : "All");
 /** the item as the student's fees page words it: "School fees (First Semester)", not "(semester 1)" */
 export const itemOf = (l: FeeLine) => l.item.replace(/\(semester ([123])\)/i, (_m, n: string) => `(${["First", "Second", "Third"][Number(n) - 1]} Semester)`);
@@ -51,6 +54,9 @@ export function compareFeeLines(a: FeeLine, b: FeeLine): number {
   if (sa !== sb) return sa - sb;
   const la = a.spillover ? 10_000 : a.level ?? 0, lb = b.spillover ? 10_000 : b.level ?? 0;
   if (la !== lb) return la - lb;
+  // V653: the level's own lines, then fresh and returning, then each stage in its order (800A before 800B)
+  const ga = a.pg_stage ?? (a.fee_category ? `~${a.fee_category}` : ""), gb = b.pg_stage ?? (b.fee_category ? `~${b.fee_category}` : "");
+  if (ga !== gb) return !ga ? -1 : !gb ? 1 : ga.startsWith("~") !== gb.startsWith("~") ? (ga.startsWith("~") ? -1 : 1) : ga < gb ? -1 : 1;
   const ma = rank(a.entry_mode, MODES), mb = rank(b.entry_mode, MODES);
   if (ma !== mb) return ma - mb;
   const ia = rank(a.indigene, ["INDIGENE", "NON_INDIGENE"]), ib = rank(b.indigene, ["INDIGENE", "NON_INDIGENE"]);
