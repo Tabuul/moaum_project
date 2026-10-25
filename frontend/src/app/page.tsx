@@ -83,6 +83,8 @@ export default async function DashboardPage() {
   if (office === "ictagent") redirect("/helpdesk");
   /* an external examiner's home is their own workspace (V254) */
   if (office === "extexaminer") redirect("/examiner");
+  /* the Linkages & Partnerships office and the Legal Officer work from the partnerships desk (V658) */
+  if (office === "linkages" || office === "legal") redirect("/partnerships");
   const session = currentSession(sessions.ok ? sessions.data : []);
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;

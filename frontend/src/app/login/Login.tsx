@@ -145,6 +145,8 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
               <Link href="/track" className={css.helpLink}>Track a request</Link>
             </div>
           </div>
+          {/* V658: an organisation proposing a collaboration starts here, with no account */}
+          <p className={css.partner}>Proposing a partnership or collaboration? <Link href="/partnerships/collaboration">Collaborate with the University</Link></p>
           {/* on a phone the brand card hides its motto, so the links stay here; on a wide screen they sit under the motto */}
           <p className={`${css.foot} ${css.legalNarrow}`}><Link href="/privacy-policy">Privacy policy</Link> · <Link href="/privacy-policy#s-cookies">Cookies</Link></p>
         </div>

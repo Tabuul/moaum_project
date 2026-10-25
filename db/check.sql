@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 486
+\set EXPECTED 487
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 46, n || ' offices (43 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520, the Database Operator V640; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 48, n || ' offices (45 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520, the Database Operator V640, the Director, Linkages & Partnerships and the University Legal Officer V658; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -25827,6 +25827,187 @@ BEGIN
                  AND v2_before = 0 AND n_fix >= 1 AND v2_after = 1 AND again = 0, false),
         format('upload offers %s skipped %s | codes %s | before %s | upload opened %s: BMAS %s BMAS2 %s | V2 %s -> fix %s -> %s | again %s',
                up.offers, up.skipped, codes, before_new, n_upload, bmas, bmas2, v2_before, n_fix, v2_after, again));
+END $$;
+
+-- ── V658. Collaboration and partnership management: a research proposal from a local institute (human participants, personal data,
+-- ethics — compliance review, high risk; a conflict of interest to discuss in confidence) and an international student exchange.
+-- The public draft reads its problems until complete; submitted, PTN/YYYY/NNNNNN, routed (Research & Innovation, whose lead owns it;
+-- International Relations, ownerless), the applicant acknowledged; the same link again answers the same reference; the same title from
+-- the same address refused. The Linkages office accepts the first for review and may not accept the ownerless one until assigned; a
+-- Dean and a Head asked to review see it — another faculty's Dean and the Registrar do not, nor does the Dean read the confidential
+-- disclosure; a request answered through the link puts it back under review; due diligence pending holds the approval; the Linkages
+-- office may not approve, the Vice-Chancellor does; the agreement goes to the Legal Officer (not cleared by the Linkages office),
+-- approved by the VC (not the Legal Officer), executed only with the signed copy, its expiry told; active, an outcome recorded; the
+-- exchange declined with a reason. The block undoes its writes.
+DO $$
+DECLARE nobody uuid := '00000000-0000-0000-0000-000000000000';
+        lk uuid := gen_random_uuid(); vcp uuid := gen_random_uuid(); dean_a uuid := gen_random_uuid(); dean_b uuid := gen_random_uuid();
+        hod_a uuid := gen_random_uuid(); legal_p uuid := gen_random_uuid(); reg_p uuid := gen_random_uuid();
+        fa text; fb text; da text; t1 text := encode(gen_random_bytes(24), 'hex'); t2 text := encode(gen_random_bytes(24), 'hex');
+        t3 text := encode(gen_random_bytes(24), 'hex');
+        p1 uuid; p2 uuid; s1 record; s1b record; s2 record; probs_before int; probs_after int; dup text; ag uuid; msg text;
+        r1 partnership.proposal; r2 partnership.proposal; e_accept text; e_approve text; e_dd text; e_clear text; e_agr_approve text; e_exec text;
+        see_dean_a boolean; see_dean_b boolean; see_hod boolean; see_reg boolean; see_vc boolean; conf_dean boolean; conf_vc boolean;
+        e_review_b text; after_answer text; final1 text; final2 text; ag_ref text; ag_status text; alerts int; acks int; desk_notes int;
+        figs jsonb; outcome_n int; i record;
+        answers jsonb;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V658 check: collaboration and partnership management', true);
+        PERFORM set_config('moaum.actor_id', nobody::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        SELECT d.faculty_code, d.code INTO fa, da FROM ref.department d WHERE d.faculty_code IS NOT NULL AND d.ended_on IS NULL ORDER BY d.code LIMIT 1;
+        SELECT f.code INTO fb FROM ref.faculty f WHERE f.code <> fa ORDER BY f.code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (lk, 'ZZ-PTN-658-LK', 'CHECKV658', 'Linkages officer'), (vcp, 'ZZ-PTN-658-VC', 'CHECKV658', 'Vice-Chancellor'),
+            (dean_a, 'ZZ-PTN-658-DA', 'CHECKV658', 'Dean A'), (dean_b, 'ZZ-PTN-658-DB', 'CHECKV658', 'Dean B'), (hod_a, 'ZZ-PTN-658-HA', 'CHECKV658', 'Head A'),
+            (legal_p, 'ZZ-PTN-658-LG', 'CHECKV658', 'Legal Officer'), (reg_p, 'ZZ-PTN-658-RG', 'CHECKV658', 'Registrar');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), lk, 'linkages', 'institution', NULL, 'CHECK V658', nobody, current_date),
+            (gen_random_uuid(), vcp, 'vc', 'institution', NULL, 'CHECK V658', nobody, current_date),
+            (gen_random_uuid(), dean_a, 'dean', 'faculty', fa, 'CHECK V658', nobody, current_date),
+            (gen_random_uuid(), dean_b, 'dean', 'faculty', fb, 'CHECK V658', nobody, current_date),
+            (gen_random_uuid(), hod_a, 'hod', 'department', da, 'CHECK V658', nobody, current_date),
+            (gen_random_uuid(), legal_p, 'legal', 'institution', NULL, 'CHECK V658', nobody, current_date),
+            (gen_random_uuid(), reg_p, 'registrar', 'institution', NULL, 'CHECK V658', nobody, current_date);
+        UPDATE partnership.desk SET lead_person = lk WHERE code = 'RESEARCH';
+
+        -- the public form, as anyone
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        answers := jsonb_build_object('firstName', 'Ada', 'lastName', 'Check', 'orgName', 'Check Research Institute', 'orgType', 'RESEARCH_INSTITUTE',
+            'email', 'ada.check658@example.org', 'country', 'Nigeria');
+        p1 := partnership.draft_create(t1, answers);
+        probs_before := (SELECT count(*) FROM partnership.problems(p1));
+        PERFORM partnership.draft_save(t1, jsonb_build_object('proposalKind', 'NEW', 'hasContact', false, 'collaboratedBefore', 'NO',
+            'category', 'JOINT_RESEARCH', 'title', 'V658 check joint research on malaria', 'summary', 'A joint study of malaria prevention in the community.',
+            'description', 'A two-year joint study with field work and shared data.', 'facultyCode', fa, 'deptCode', da,
+            'fundingStatus', 'PARTLY_FUNDED', 'budget', '250,000', 'currency', 'USD', 'international', false, 'agreementTypes', jsonb_build_array('RESEARCH_AGREEMENT'),
+            'personalData', 'YES', 'sensitiveData', 'YES', 'sensitiveKinds', jsonb_build_array('HEALTH'), 'ethics', 'YES',
+            'highRisk', jsonb_build_object('HUMAN_PARTICIPANTS', 'YES', 'ANIMALS', 'NO', 'CLINICAL', 'NOT_SURE', 'HAZARDOUS', 'NO', 'CONTROLLED_TECHNOLOGY', 'NO',
+                                           'EXPORT_CONTROL', 'NO', 'SECURITY_SENSITIVE', 'NO'),
+            'coi', 'CONFIDENTIAL', 'ownDueDiligence', 'IN_PROGRESS',
+            'declaredAccurate', true, 'declaredAuthorised', true, 'declaredNoCommitment', true, 'declaredPrivacy', true, 'consentContact', true));
+        probs_after := (SELECT count(*) FROM partnership.problems(p1));
+        SELECT * INTO s1 FROM partnership.submit(t1, NULL);
+        SELECT * INTO s1b FROM partnership.submit(t1, NULL);
+        -- the same title from the same address, a second time
+        PERFORM partnership.draft_create(t3, answers || jsonb_build_object('proposalKind', 'NEW', 'hasContact', false, 'collaboratedBefore', 'NO',
+            'category', 'JOINT_RESEARCH', 'title', 'V658 check joint research on malaria', 'summary', 'The same study sent again by mistake.',
+            'description', 'The same study, sent a second time.', 'fundingStatus', 'NONE_IDENTIFIED', 'international', false, 'personalData', 'NO', 'ethics', 'NO',
+            'highRisk', jsonb_build_object('HUMAN_PARTICIPANTS', 'NO', 'ANIMALS', 'NO', 'CLINICAL', 'NO', 'HAZARDOUS', 'NO', 'CONTROLLED_TECHNOLOGY', 'NO',
+                                           'EXPORT_CONTROL', 'NO', 'SECURITY_SENSITIVE', 'NO'), 'coi', 'NO', 'ownDueDiligence', 'NO',
+            'declaredAccurate', true, 'declaredAuthorised', true, 'declaredNoCommitment', true, 'declaredPrivacy', true, 'consentContact', true));
+        BEGIN PERFORM partnership.submit(t3, NULL); dup := 'NOT REFUSED';
+        EXCEPTION WHEN check_violation THEN dup := split_part(SQLERRM, ':', 1); END;
+        -- an international student exchange
+        p2 := partnership.draft_create(t2, jsonb_build_object('firstName', 'Bo', 'lastName', 'Check', 'orgName', 'Check University Abroad', 'orgType', 'UNIVERSITY',
+            'email', 'bo.check658@example.edu', 'country', 'Ghana', 'proposalKind', 'NEW', 'hasContact', false, 'collaboratedBefore', 'NOT_SURE',
+            'category', 'STUDENT_EXCHANGE', 'title', 'V658 check student exchange', 'summary', 'An exchange of ten students a year.',
+            'description', 'Ten students each way every year for a semester.', 'fundingStatus', 'PREFER_TO_DISCUSS', 'international', true,
+            'countries', jsonb_build_array('Ghana'), 'agreementTypes', jsonb_build_array('STUDENT_EXCHANGE'), 'personalData', 'NO', 'ethics', 'NO',
+            'highRisk', jsonb_build_object('HUMAN_PARTICIPANTS', 'NO', 'ANIMALS', 'NO', 'CLINICAL', 'NO', 'HAZARDOUS', 'NO', 'CONTROLLED_TECHNOLOGY', 'NO',
+                                           'EXPORT_CONTROL', 'NO', 'SECURITY_SENSITIVE', 'NO'), 'coi', 'NO', 'ownDueDiligence', 'YES',
+            'declaredAccurate', true, 'declaredAuthorised', true, 'declaredNoCommitment', true, 'declaredPrivacy', true, 'consentContact', true));
+        SELECT * INTO s2 FROM partnership.submit(t2, NULL);
+        SELECT * INTO r1 FROM partnership.proposal WHERE id = p1;
+        SELECT * INTO r2 FROM partnership.proposal WHERE id = p2;
+        acks := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'PTN:' || s1.reference || ':RECEIVED%' AND n.recipient = 'ada.check658@example.org');
+        desk_notes := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'PTN:' || s1.reference || ':SUBMITTED:' || lk::text || '%');
+
+        -- the Linkages office screens
+        PERFORM set_config('moaum.actor_id', lk::text, true);
+        PERFORM set_config('moaum.actor_office', 'linkages', true);
+        PERFORM partnership.act(p1, 'ACCEPT', NULL);
+        BEGIN PERFORM partnership.act(p2, 'ACCEPT', NULL); e_accept := 'NOT REFUSED';
+        EXCEPTION WHEN check_violation THEN e_accept := split_part(SQLERRM, ':', 1); END;
+        PERFORM partnership.act(p2, 'ASSIGN', jsonb_build_object('person', lk));
+        PERFORM partnership.add_reviewer(p1, 'dean', fa, NULL, 'Faculty review', NULL, false);
+        PERFORM partnership.add_reviewer(p1, 'hod', da, NULL, 'Department review', NULL, false);
+
+        -- who sees it
+        PERFORM set_config('moaum.actor_id', dean_a::text, true); PERFORM set_config('moaum.actor_office', 'dean', true);
+        see_dean_a := partnership.may_see(p1) AND NOT partnership.may_see(p2); conf_dean := partnership.may_confidential(p1);
+        PERFORM partnership.review(p1, 'SUPPORT', 'A good fit for the faculty''s research.');
+        PERFORM set_config('moaum.actor_id', dean_b::text, true);
+        see_dean_b := partnership.may_see(p1);
+        BEGIN PERFORM partnership.review(p1, 'SUPPORT', 'Not my faculty at all.'); e_review_b := 'NOT REFUSED';
+        EXCEPTION WHEN insufficient_privilege THEN e_review_b := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', hod_a::text, true); PERFORM set_config('moaum.actor_office', 'hod', true);
+        see_hod := partnership.may_see(p1);
+        PERFORM set_config('moaum.actor_id', reg_p::text, true); PERFORM set_config('moaum.actor_office', 'registrar', true);
+        see_reg := partnership.may_see(p1);
+        PERFORM set_config('moaum.actor_id', vcp::text, true); PERFORM set_config('moaum.actor_office', 'vc', true);
+        see_vc := partnership.may_see(p1) AND partnership.may_see(p2); conf_vc := partnership.may_confidential(p1);
+
+        -- a request answered through the link
+        PERFORM set_config('moaum.actor_id', lk::text, true); PERFORM set_config('moaum.actor_office', 'linkages', true);
+        PERFORM partnership.act(p1, 'REQUEST_INFORMATION', jsonb_build_object('question', 'Send the study protocol and the ethics plan.', 'documents', 'Protocol'));
+        PERFORM set_config('moaum.actor_id', nobody::text, true); PERFORM set_config('moaum.actor_office', 'applicant', true);
+        after_answer := partnership.answer_request(t1, 'The protocol is attached; ethics approval is being sought.');
+
+        -- due diligence before approval; the Vice-Chancellor approves
+        PERFORM set_config('moaum.actor_id', lk::text, true); PERFORM set_config('moaum.actor_office', 'linkages', true);
+        PERFORM partnership.act(p1, 'START_DUE_DILIGENCE', NULL);
+        BEGIN PERFORM partnership.act(p1, 'SUBMIT_FOR_APPROVAL', NULL); e_dd := 'NOT REFUSED';
+        EXCEPTION WHEN check_violation THEN e_dd := split_part(SQLERRM, ':', 1); END;
+        FOR i IN SELECT code FROM partnership.dd_item WHERE active LOOP
+            PERFORM partnership.dd_set(p1, i.code, 'SATISFACTORY', NULL);
+        END LOOP;
+        PERFORM partnership.act(p1, 'SUBMIT_FOR_APPROVAL', NULL);
+        BEGIN PERFORM partnership.act(p1, 'APPROVE', NULL); e_approve := 'NOT REFUSED';
+        EXCEPTION WHEN insufficient_privilege THEN e_approve := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', vcp::text, true); PERFORM set_config('moaum.actor_office', 'vc', true);
+        PERFORM partnership.act(p1, 'APPROVE', jsonb_build_object('note', 'Approved for development'));
+
+        -- the agreement: legal review, the VC's approval, executed with the signed copy
+        PERFORM set_config('moaum.actor_id', lk::text, true); PERFORM set_config('moaum.actor_office', 'linkages', true);
+        ag := partnership.agreement_create(p1, 'RESEARCH_AGREEMENT', NULL, 'Research agreement on the malaria study', 'The University; Check Research Institute');
+        PERFORM partnership.agreement_act(ag, 'SEND_TO_LEGAL', NULL);
+        BEGIN PERFORM partnership.agreement_act(ag, 'LEGAL_CLEAR', jsonb_build_object('note', 'Cleared by the wrong office')); e_clear := 'NOT REFUSED';
+        EXCEPTION WHEN insufficient_privilege THEN e_clear := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', legal_p::text, true); PERFORM set_config('moaum.actor_office', 'legal', true);
+        PERFORM partnership.agreement_act(ag, 'LEGAL_CLEAR', jsonb_build_object('note', 'Terms reviewed; IP clause amended'));
+        BEGIN PERFORM partnership.agreement_act(ag, 'APPROVE', NULL); e_agr_approve := 'NOT REFUSED';
+        EXCEPTION WHEN insufficient_privilege THEN e_agr_approve := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', vcp::text, true); PERFORM set_config('moaum.actor_office', 'vc', true);
+        PERFORM partnership.agreement_act(ag, 'APPROVE', NULL);
+        PERFORM set_config('moaum.actor_id', lk::text, true); PERFORM set_config('moaum.actor_office', 'linkages', true);
+        BEGIN PERFORM partnership.agreement_act(ag, 'EXECUTE', jsonb_build_object('signedOn', current_date, 'effectiveOn', current_date)); e_exec := 'NOT REFUSED';
+        EXCEPTION WHEN check_violation THEN e_exec := split_part(SQLERRM, ':', 1); END;
+        INSERT INTO partnership.attachment (proposal_id, agreement_id, kind, filename, content_type, size_bytes, sha256, content, added_by, added_office)
+        VALUES (p1, ag, 'AGREEMENT', 'signed.pdf', 'application/pdf', 8, digest('%PDF-1.4', 'sha256'), convert_to('%PDF-1.4', 'UTF8'), lk, 'linkages');
+        PERFORM partnership.agreement_act(ag, 'EXECUTE', jsonb_build_object('signedOn', current_date, 'effectiveOn', current_date, 'expiresOn', current_date + 20));
+        SELECT reference, status INTO ag_ref, ag_status FROM partnership.agreement WHERE id = ag;
+        alerts := partnership.agreement_alerts();
+        PERFORM partnership.act(p1, 'ACTIVATE', NULL);
+        PERFORM partnership.outcome_add(p1, 'RESEARCH_PROJECT', 'The joint study begun', current_date, 1, NULL, NULL);
+        outcome_n := (SELECT count(*) FROM partnership.outcome WHERE proposal_id = p1);
+        PERFORM partnership.act(p2, 'DECLINE', jsonb_build_object('reason', 'Outside the University''s exchange priorities this year'));
+        final1 := (SELECT status FROM partnership.proposal WHERE id = p1);
+        final2 := (SELECT status FROM partnership.proposal WHERE id = p2);
+        figs := partnership.figures(lk, 'linkages');
+        RAISE EXCEPTION 'the V658 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V658 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V658: a collaboration enquiry submitted on the public form gets PTN/YYYY/NNNNNN, is acknowledged and routed, flagged for compliance, seen only by the offices asked, approved only by the Vice-Chancellor, its agreement cleared by the Legal Officer and executed with the signed copy',
+        coalesce(probs_before > 5 AND probs_after = 0 AND s1.reference ~ '^PTN/[0-9]{4}/[0-9]{6}$' AND NOT s1.already AND s1b.already AND s1b.reference = s1.reference
+                 AND dup = 'PTN_DUPLICATE' AND acks = 1 AND desk_notes >= 1
+                 AND r1.desk_code = 'RESEARCH' AND r1.owner_person = lk AND r1.compliance_review AND r1.risk_level = 'HIGH'
+                 AND 'HUMAN_PARTICIPANTS' = ANY (r1.flags) AND 'PERSONAL_DATA' = ANY (r1.flags) AND 'ETHICS' = ANY (r1.flags) AND 'CONFLICT_OF_INTEREST' = ANY (r1.flags)
+                 AND r1.budget = 250000 AND r2.desk_code = 'INTERNATIONAL' AND r2.owner_person IS NULL AND 'INTERNATIONAL' = ANY (r2.flags) AND r2.risk_level = 'MEDIUM'
+                 AND e_accept = 'PTN_OWNER_REQUIRED', false)
+        AND coalesce(see_dean_a AND NOT see_dean_b AND see_hod AND NOT see_reg AND see_vc AND NOT conf_dean AND conf_vc AND e_review_b = 'PTN_NOT_PERMITTED'
+                 AND after_answer = 'UNDER_REVIEW' AND e_dd = 'PTN_DD_OPEN' AND e_approve = 'PTN_NOT_PERMITTED'
+                 AND ag_ref ~ '^PTN-AGR/[0-9]{4}/[0-9]{6}$' AND e_clear = 'PTN_NOT_PERMITTED' AND e_agr_approve = 'PTN_NOT_PERMITTED' AND e_exec = 'PTN_AGREEMENT_DOCUMENT'
+                 AND ag_status = 'EXECUTED' AND alerts >= 1 AND final1 = 'ACTIVE' AND outcome_n = 1 AND final2 = 'DECLINED'
+                 AND (figs ->> 'total')::int >= 2 AND (figs ->> 'declined')::int >= 1, false),
+        format('problems %s→%s | ref %s again %s/%s dup %s acks %s desk %s | p1 %s %s %s %s %s %s | p2 %s %s %s %s | accept %s | see %s/%s/%s/%s/%s conf %s/%s review_b %s | answer %s dd %s approve %s | agr %s clear %s agr_approve %s exec %s status %s alerts %s | %s %s outcomes %s | figs %s',
+               probs_before, probs_after, s1.reference, s1b.reference, s1b.already, dup, acks, desk_notes,
+               r1.desk_code, r1.owner_person = lk, r1.compliance_review, r1.risk_level, r1.flags, r1.budget, r2.desk_code, r2.owner_person IS NULL, r2.flags, r2.risk_level,
+               e_accept, see_dean_a, see_dean_b, see_hod, see_reg, see_vc, conf_dean, conf_vc, e_review_b, after_answer, e_dd, e_approve,
+               ag_ref, e_clear, e_agr_approve, e_exec, ag_status, alerts, final1, final2, outcome_n, figs));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

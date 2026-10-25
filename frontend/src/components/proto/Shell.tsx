@@ -248,6 +248,7 @@ export const ROUTES: Record<string, string> = {
   "t/legacywallet": "/finance/legacy-wallet",
   "t/legacyrecon": "/finance/legacy-reconciliation",
   "t/feehistoryrecon": "/finance/fee-history-reconciliation",   // V647
+  "t/partnerships": "/partnerships",   // V658
   "s/courses": "/student/courses",
   "t/lms": "/lms",
   "r/upload": "/lms?tab=upload",

@@ -135,7 +135,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -228,7 +229,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -363,7 +365,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/hostel-accountability", "icon": "chart", "label": "Occupancy Accountability" },
           { "id": "t/hostel-finance", "icon": "card", "label": "Hostel Fees (read)" },
-          { "id": "t/audit", "icon": "doc", "label": "Audit Trail" }
+          { "id": "t/audit", "icon": "doc", "label": "Audit Trail" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -474,7 +477,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
           { "id": "t/exportlog", "icon": "doc", "label": "Export Log" },
-          { "id": "t/recordviews", "icon": "user", "label": "Record Views" }
+          { "id": "t/recordviews", "icon": "user", "label": "Record Views" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -535,7 +539,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
           { "id": "t/exportlog", "icon": "doc", "label": "Export Log" },
-          { "id": "t/recordviews", "icon": "user", "label": "Record Views" }
+          { "id": "t/recordviews", "icon": "user", "label": "Record Views" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -629,7 +634,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -815,7 +821,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -1233,7 +1240,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -1323,6 +1331,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -1416,7 +1425,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
-          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -1509,7 +1519,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -1693,7 +1704,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
-          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" }
+          { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -1949,7 +1961,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/approvals", "icon": "check", "label": "Senate Business", "badge": "7" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
-          { "id": "t/projects", "icon": "flask", "label": "Research" }
+          { "id": "t/projects", "icon": "flask", "label": "Research" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -2520,7 +2533,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
-          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" }
+          { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
       {
@@ -2947,6 +2961,44 @@ export const MENUS: Record<string, Menu> = {
         "name": "Me",
         "items": [
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "linkages": {
+    "label": "Director, Linkages & Partnerships",
+    "home": "t/partnerships",
+    "groups": [
+      {
+        "name": "Overview",
+        "open": true,
+        "items": [
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
+  "legal": {
+    "label": "University Legal Officer",
+    "home": "t/partnerships",
+    "groups": [
+      {
+        "name": "Overview",
+        "open": true,
+        "items": [
+          { "id": "t/partnerships", "icon": "scale", "label": "Partnerships & Agreements" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
           { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
         ]
       }

@@ -51,7 +51,13 @@ public class Throttle {
         SIGN_IN_HELP_CHECK(30, "HELPDESK_CHECK_SLOW_DOWN", "Too many number checks from this connection", "Check your own number; if the portal does not recognise it, visit the Registry with your admission letter."),
         /* V599: the day's number checks from one connection, counted in the database (helpdesk.setting.sign_in_lookups_daily): the
            limit here is never read — the refusal comes from refuseFor, until the next Lagos day */
-        SIGN_IN_HELP_CHECK_DAY(1, "HELPDESK_CHECK_DAY_LIMIT", "This connection has checked the day's number of student numbers", "Check your own number tomorrow, or visit the Registry with your admission letter.");
+        SIGN_IN_HELP_CHECK_DAY(1, "HELPDESK_CHECK_DAY_LIMIT", "This connection has checked the day's number of student numbers", "Check your own number tomorrow, or visit the Registry with your admission letter."),
+        /* V658: the public collaboration form — drafts made, saved, checked, files added and submissions, counted every request */
+        PARTNERSHIP_FORM(120, "PTN_SLOW_DOWN", "Too many collaboration-form requests from this connection", "Wait a few minutes; your draft is kept at its link."),
+        /* V658: an enquiry's private link asked for again by its reference and e-mail, counted every request, so references cannot be walked */
+        PARTNERSHIP_LINK(5, "PTN_SLOW_DOWN", "Too many link requests from this connection", "Wait; a new link already sent replaces the earlier one."),
+        /* V658: an enquiry followed by its private link, counted every look */
+        PARTNERSHIP_STATUS(120, "PTN_SLOW_DOWN", "Too many look-ups from this connection", "Wait a few minutes and open the link again.");
 
         final int limit;
         final String code;

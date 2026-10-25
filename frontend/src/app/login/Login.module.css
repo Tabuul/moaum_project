@@ -143,6 +143,9 @@
 }
 .helpLink:hover, .helpLink:focus-visible { border-color: var(--crimson); background: rgba(197, 30, 40, 0.05); }
 .legalNarrow { margin-top: 1.25rem; }
+/* V658: the collaboration enquiry, for an organisation with no account */
+.partner { margin-top: 1rem; font-size: 14px; color: var(--muted); }
+.partner a { font-weight: 700; color: var(--crimson); text-decoration: underline; text-underline-offset: 4px; }
 @media (min-width: 1024px) { .legalNarrow { display: none; } }
 
 
