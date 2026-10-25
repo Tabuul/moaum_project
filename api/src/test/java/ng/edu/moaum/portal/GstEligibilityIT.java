@@ -276,6 +276,9 @@ class GstEligibilityIT {
             assertThat(String.valueOf(ref.getBody().get("reference"))).startsWith("MOAUM-FEE-");
         } finally {
             it.db(() -> jdbc.sql("UPDATE finance.gst_setting SET required_for_all = false WHERE id = 1").update());
+            // the test's courses are taken off the programme: the next run's 300 Level student of it is shown only that run's GST course
+            it.db(() -> jdbc.sql("DELETE FROM catalogue.course_offer WHERE programme_code = :p AND course_code IN (:g, :c)")
+                    .param("p", prog).param("g", otherCode).param("c", coreCode).update());
         }
     }
 

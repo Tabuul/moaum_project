@@ -87,7 +87,9 @@ class GraduationReconciliationIT {
     private UUID student(String tag, int entryBack, String finalYear) {
         // no two-digit year in the number: the test's far-future entry session is the only evidence of the cohort
         String matric = it.freeNumber("MOAUM/MTC/GR" + tag + "/", 6);
-        UUID id = it.student("ZZGRADRECON" + tag, PROGRAMME, null, matric, 400);
+        // a surname no student holds: it.student hands back an earlier run's student of the same surname, whose graduation (and the
+        // correction that put it back to ACTIVE) would be counted again
+        UUID id = it.student(it.freeSurname("ZZGRADRECON" + tag), PROGRAMME, null, matric, 400);
         it.session(before(entryBack), Integer.parseInt(before(entryBack).substring(0, 4)));
         if (finalYear != null) it.session(finalYear, Integer.parseInt(finalYear.substring(0, 4)));
         it.db(() -> {
