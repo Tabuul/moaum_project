@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 477
+\set EXPECTED 478
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24894,6 +24894,93 @@ BEGIN
                r_reg, unchanged, ed.outcome, same_id, free_amount, ve.outcome, ve.previous_id = l_used, old_ended, new_active, ve.line_id <> l_used, ref_amount, link,
                hist, p600, p200, p_spill, p_fac));
 END $$;
+-- ── V650. The master university report: two students of a made-up programme — one paid in full, registered, the GST fee paid, the
+-- examination card drawn and the GST & EPS permit printed; the other owing everything — read once into every dimension (the
+-- departments the whole by construction, the genders the whole, GST registration and payment apart, the card eligible and issued
+-- apart); the transactions with their status (successful, pending, failed, refunded) and revenue only from the successful ones, net
+-- of refunds; the report's RPT reference, generating then completed, the other kinds still DBO. The block undoes its own writes.
+DO $$
+DECLARE S text := '2659/2660'; prog text := 'C96650'; dept text; fac text; a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); o uuid := gen_random_uuid(); o2 uuid := gen_random_uuid();
+        og uuid := gen_random_uuid(); oc uuid := gen_random_uuid(); rg uuid := gen_random_uuid(); msg text; f jsonb;
+        ra text; gref text; rb text; rexp text; rrf text; al record; dep_sum bigint; not_paid_rows text; tx record; ref1 text; ref_dbo text; st1 text; st2 text;
+        fmts text; refund_ok text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V650', true);
+        PERFORM set_config('moaum.actor_id', o::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (o, 'CHK-V650-1', 'CHECKV650', 'Officer'), (o2, 'CHK-V650-2', 'CHECKV650', 'Approver');
+        PERFORM assessment.ensure_session(S);
+        SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+        VALUES (prog, 'B.Sc. Master Report Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/00/996501', 'MOAUM/CHK/00/6501', 'CHECKV650', 'Ada Paid', 'F', prog, 'UTME', S, 100, 200, 'ACTIVE', now()),
+            (b, 'MOAUM/ADM/00/996502', 'MOAUM/CHK/00/6502', 'CHECKV650', 'Bayo Owing', 'M', prog, 'UTME', S, 100, 200, 'ACTIVE', now());
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (S, 'School fees (check V650)', 100000, 200, prog);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('ZZM 650', 'Check Master Core', 3, 1, 200, dept, 'Core', 'LIVE'), ('GST 650', 'Check Master GST', 2, 1, 200, dept, 'GST', 'LIVE');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZM 650', prog, 200, 'Core'), ('GST 650', prog, 200, 'GST');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (oc, 'ZZM 650', S, 1), (og, 'GST 650', S, 1);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.state_gst_fee(S, 4000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+        -- A pays the school fees and the GST fee, registers, draws the card and prints the permit; B owes everything
+        ra := finance.new_purpose_reference(a, S, 100000, 'School fees ' || S);
+        PERFORM finance.confirm_payment(ra, 'BANK_BRANCH', 'teller for check V650');
+        gref := finance.new_gst_reference(a, S);
+        PERFORM finance.confirm_payment(gref, 'BANK_BRANCH', 'teller for check V650');
+        rb := finance.new_purpose_reference(b, S, 50000, 'School fees ' || S);                    -- pending
+        rexp := finance.new_purpose_reference(b, S, 20000, 'School fees ' || S);                  -- failed: expired unpaid
+        UPDATE finance.payment_reference SET expires_at = now() - interval '1 day' WHERE reference = rexp;
+        rrf := finance.new_purpose_reference(b, S, 7000, 'Other check V650 refunded');            -- refunded in full
+        PERFORM finance.confirm_payment(rrf, 'BANK_BRANCH', 'teller for check V650');
+        BEGIN
+            INSERT INTO finance.refund (reference, student_id, payer, reason, amount, state, proposed_by, approved_by, approved_at, paid_at, paid_by, source_reference)
+            VALUES ('RF-CHK-650', b, 'Student', 'check V650', 7000, 'PAID', o, o2, now(), now(), o2, rrf);
+            refund_ok := 'PAID';
+        EXCEPTION WHEN others THEN
+            refund_ok := SQLERRM;
+        END;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (rg, a, S, 1, 200, 'SUBMITTED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (rg, oc, 3, 'CURRENT', 'REGISTERED'), (rg, og, 2, 'CURRENT', 'REGISTERED');
+        INSERT INTO registration.exam_card_issue (student_id, session, semester, times) VALUES (a, S, 1, 2);
+        INSERT INTO registration.gst_eps_permit (reference, student_id, session, semester, printed) VALUES ('GST-EPS/2659/000650', a, S, 1, 2);
+
+        f := jsonb_build_object('prog', prog);
+        SELECT * INTO al FROM reporting.master_summary(S, 1, f) WHERE dim = 'ALL';
+        dep_sum := (SELECT sum(total) FROM reporting.master_summary(S, 1, f) WHERE dim = 'DEPARTMENT');
+        not_paid_rows := (SELECT string_agg(other_names, ',') FROM reporting.master_rows(S, 1, f || '{"fee":"NOT_PAID"}'::jsonb));
+        SELECT count(*) FILTER (WHERE status = 'SUCCESSFUL') AS ok, count(*) FILTER (WHERE status = 'PENDING') AS pending,
+               count(*) FILTER (WHERE status = 'FAILED') AS failed, count(*) FILTER (WHERE status = 'REFUNDED') AS refunded,
+               coalesce(sum(net_amount) FILTER (WHERE status = 'SUCCESSFUL'), 0) AS revenue
+          INTO tx FROM reporting.master_payments(S, NULL, NULL, f);
+        -- the report's reference: RPT for the master report, generating until it is written; every other kind DBO as before
+        ref1 := reporting.issue_report('MASTER', 'Master Academic, Finance & Student Report', jsonb_build_object('session', S), 'check', NULL, 2, NULL);
+        st1 := (SELECT status FROM reporting.official_report WHERE reference = ref1);
+        PERFORM reporting.finish_report(ref1, 'COMPLETED', ARRAY['PDF', 'xlsx', 'DOCX'], 2);
+        SELECT status, formats::text INTO st2, fmts FROM reporting.official_report WHERE reference = ref1;
+        ref_dbo := reporting.issue_report('EXAM', 'Check examination readiness', '{}'::jsonb, 'check', NULL, 0, NULL);
+        RAISE EXCEPTION 'the V650 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V650 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V650: the master report reads every student once into every dimension — the departments the whole, the genders the whole, school fees, registration, GST registration and payment, the card eligible and issued, the permit eligible and printed — the transactions with their status and revenue only from successful payments net of refunds, and its RPT reference generating then completed',
+        coalesce(al.total = 2 AND al.female = 1 AND al.male = 1 AND al.fees_paid = 1 AND al.fees_not_paid = 1 AND al.registered = 1 AND al.paid_not_registered = 0
+                 AND al.gst_applicable = 2 AND al.gst_registered = 1 AND al.gst_paid = 1 AND al.gst_not_paid = 1
+                 AND al.card_eligible = 1 AND al.card_issued = 1 AND al.card_not_eligible = 1 AND al.permit_eligible = 1 AND al.permit_printed = 1
+                 AND al.payable = 200000 AND al.paid_amount = 100000 AND al.outstanding = 100000
+                 AND dep_sum = al.total AND not_paid_rows = 'Bayo Owing'
+                 AND tx.ok = 2 AND tx.pending = 1 AND tx.failed = 1 AND refund_ok = 'PAID' AND tx.refunded = 1 AND tx.revenue = 104000
+                 AND ref1 ~ '^RPT/[0-9]{4}/[0-9]{6}$' AND st1 = 'GENERATING' AND st2 = 'COMPLETED' AND fmts = '{PDF,XLSX}' AND ref_dbo ~ '^DBO/EXAM/', false),
+        format('all %s/%sF/%sM fees %s/%s reg %s pnr %s gst %s/%s/%s/%s card %s/%s/%s permit %s/%s money %s/%s/%s | depts %s not paid %s | tx ok %s pending %s failed %s refunded %s (%s) revenue %s | ref %s %s->%s %s %s',
+               al.total, al.female, al.male, al.fees_paid, al.fees_not_paid, al.registered, al.paid_not_registered, al.gst_applicable, al.gst_registered, al.gst_paid,
+               al.gst_not_paid, al.card_eligible, al.card_issued, al.card_not_eligible, al.permit_eligible, al.permit_printed, al.payable, al.paid_amount, al.outstanding,
+               dep_sum, not_paid_rows, tx.ok, tx.pending, tx.failed, tx.refunded, refund_ok, tx.revenue, ref1, st1, st2, fmts, ref_dbo));
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

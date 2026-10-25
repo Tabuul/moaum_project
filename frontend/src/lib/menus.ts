@@ -737,6 +737,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
           { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
@@ -921,6 +922,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Database Query",
         "items": [
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/dbquery", "icon": "search", "label": "Query Builder & Saved Reports" }
         ]
       },
@@ -1580,8 +1582,9 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
-        "name": "Reports",
+        "name": "Database Reports",
         "items": [
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
           { "id": "t/dbquery", "icon": "search", "label": "Database Query & Reports" },
           { "id": "t/dataquality", "icon": "shield", "label": "Data Quality" }

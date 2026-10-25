@@ -208,6 +208,7 @@ export const TITLES: Record<string, string> = {
   "r/studentaccounts": "Students Account Officer",
   "r/dbops": "Database Operations",
   "t/examreadiness": "Examination readiness",
+  "t/masterreport": "Master university report",
   "t/dbquery": "Database query",
   "t/dataquality": "Data quality",
   "r/registrar": "Registry",
