@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 484
+\set EXPECTED 485
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25669,6 +25669,108 @@ BEGIN
                c201.category, coalesce(c201.offering_id::text, '-'), coalesce(c201.refusal, '-'), left(c202.refusal, 70), coalesce(c203.refusal, '-'),
                ccarry.category, coalesce(ccarry.refusal, '-'), left(coth.refusal, 25), left(cgone.refusal, 30),
                coalesce(found.refusal, '-'), coalesce(found.offering_id::text, '-'), cls IS NOT NULL, again = cls, classes, on_draft, r_oth, r_sem, oth_classes, opened, opened_again, opened_gone, level_classes, none_classes, on_menu, gst_own, gst_typed));
+END $$;
+
+-- ── V656. Staff deleted or deactivated by what they are tied to: five made-up staff — a lecturer never used, a lecturer teaching a
+-- class (with an open session), a non-academic member never used, one who has signed in, a lecturer who is also Head of
+-- Department. The preview writes nothing; Human Resources may change non-academic staff only, a lecturer nobody; a reason is
+-- required and Other described; Delete only leaves a person tied to records as they were; applied, the unused are deleted and the
+-- tied deactivated — off the lists, the grant ended, the session ended, the class still theirs, the password never kept — the Head
+-- of Department and oneself refused; a deactivation restored once, its grant reopened; a deletion cannot be restored; the record
+-- of changes cannot be altered. The block undoes its own writes.
+DO $$
+DECLARE S text := '2656/2657'; dept text; o uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+        c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid(); ga uuid := gen_random_uuid(); gb uuid := gen_random_uuid();
+        msg text; prev text; written_before int; hrm text; lect text; no_reason text; short_other text; remove_only text; b_after_remove_only text;
+        applied text; a_gone boolean; c_gone boolean; b_state text; d_state text; e_state text; b_session text; b_class boolean; b_listed boolean;
+        no_password boolean; changes int; restored text; b_back text; again text; undo_removed text; kept text; listed text; selfout text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V656', true);
+        PERFORM set_config('moaum.actor_id', o::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM assessment.ensure_session(S);
+        SELECT p.dept_code INTO dept FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (o, 'CHK-V656-O', 'CHECKV656', 'Officer'), (a, 'CHK-V656-A', 'CHECKV656', 'Unused Lecturer'), (b, 'CHK-V656-B', 'CHECKV656', 'Teaching Lecturer'),
+            (c, 'CHK-V656-C', 'CHECKV656', 'Unused Clerk'), (d, 'CHK-V656-D', 'CHECKV656', 'Signed In Clerk'), (e, 'CHK-V656-E', 'CHECKV656', 'Head Lecturer');
+        INSERT INTO hrm.staff_record (person_id, category, home_department) VALUES (a, 'ACADEMIC', dept), (b, 'ACADEMIC', dept), (e, 'ACADEMIC', dept);
+        INSERT INTO hrm.staff_record (person_id, category, home_department) VALUES (c, 'NON_ACADEMIC', dept), (d, 'NON_ACADEMIC', dept);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (ga, a, 'lecturer', 'department', dept, 'check V656', o, DATE '2020-01-01'),
+            (gb, b, 'lecturer', 'department', dept, 'check V656', o, DATE '2020-01-01'),
+            (gen_random_uuid(), e, 'lecturer', 'department', dept, 'check V656', o, DATE '2020-01-01'),
+            (gen_random_uuid(), e, 'hod', 'department', dept, 'check V656', o, DATE '2020-01-01');
+        INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by) VALUES (a, 'chk656a', '$2a$12$checkv656notarealhash' || repeat('x', 31), true, o);
+        INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by, last_sign_in_at) VALUES (d, 'chk656d', '$2a$12$checkv656notarealhash' || repeat('x', 31), false, o, now());
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZS 656', 'Check Staff Course', 2, 1, 100, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id) VALUES (gen_random_uuid(), 'ZZS 656', S, 1, b);
+        INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (sha256(convert_to(b::text, 'UTF8')), b, 'lecturer', now() + interval '1 hour');
+
+        -- the preview: what happens to each, nothing written
+        written_before := (SELECT count(*) FROM iam.staff_change);
+        prev := (SELECT string_agg(left(r.name, 20) || '=' || r.outcome || coalesce('[' || (SELECT string_agg(t->>'label', '+') FROM jsonb_array_elements(r.ties) t) || ']', ''), ' ' ORDER BY r.name)
+                   FROM iam.remove_staff(ARRAY[a, b, c, d, e], 'AUTO', NULL, NULL, false) r);
+        IF (SELECT count(*) FROM iam.staff_change) <> written_before OR (SELECT ended_on FROM iam.person WHERE id = b) IS NOT NULL THEN prev := prev || ' WROTE'; END IF;
+        -- who may: Human Resources the non-academic staff only; a lecturer nobody
+        PERFORM set_config('moaum.actor_office', 'hrm', true);
+        hrm := (SELECT string_agg(r.outcome, ',' ORDER BY r.name) FROM iam.remove_staff(ARRAY[a, c], 'AUTO', NULL, NULL, false) r);
+        PERFORM set_config('moaum.actor_office', 'lecturer', true);
+        lect := (SELECT string_agg(DISTINCT r.outcome, ',') FROM iam.remove_staff(ARRAY[a, c], 'AUTO', NULL, NULL, false) r);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        -- a reason is required, and Other described
+        BEGIN PERFORM iam.remove_staff(ARRAY[a], 'AUTO', NULL, NULL, true); no_reason := 'applied'; EXCEPTION WHEN check_violation THEN no_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM iam.remove_staff(ARRAY[a], 'AUTO', 'OTHER', 'gone', true); short_other := 'applied'; EXCEPTION WHEN check_violation THEN short_other := split_part(SQLERRM, ':', 1); END;
+        -- Delete only: a person tied to records is left as they were
+        remove_only := (SELECT string_agg(r.outcome || '/' || r.applied, ',') FROM iam.remove_staff(ARRAY[b], 'REMOVE', 'ADDED_IN_ERROR', NULL, true) r);
+        b_after_remove_only := (SELECT coalesce(p.ended_on::text, 'live') || '/' || (SELECT count(*) FROM iam.staff_change x WHERE x.person_id = b) FROM iam.person p WHERE p.id = b);
+        -- applied: deleted where tied to nothing, deactivated where tied, the Head of Department and oneself refused
+        applied := (SELECT string_agg(left(r.name, 20) || '=' || r.outcome || '/' || r.applied, ' ' ORDER BY r.name)
+                      FROM iam.remove_staff(ARRAY[a, b, c, d, e, o], 'AUTO', 'LEFT_SERVICE', NULL, true) r);
+        a_gone := NOT EXISTS (SELECT 1 FROM iam.person WHERE id = a) AND NOT EXISTS (SELECT 1 FROM hrm.staff_record WHERE person_id = a)
+                  AND NOT EXISTS (SELECT 1 FROM iam.office_assignment WHERE person_id = a) AND NOT EXISTS (SELECT 1 FROM iam.credential WHERE person_id = a);
+        c_gone := NOT EXISTS (SELECT 1 FROM iam.person WHERE id = c);
+        b_state := (SELECT (p.ended_on = current_date)::text || '/' || (SELECT (g.valid_to = current_date - 1)::text FROM iam.office_assignment g WHERE g.id = gb)
+                      FROM iam.person p WHERE p.id = b);
+        b_session := (SELECT ended_reason FROM platform.session WHERE person_id = b);
+        b_class := EXISTS (SELECT 1 FROM catalogue.offering WHERE course_code = 'ZZS 656' AND lecturer_id = b);
+        -- the teaching-staff list's own reading (V137)
+        b_listed := EXISTS (SELECT 1 FROM iam.person p WHERE p.id = b AND p.ended_on IS NULL
+                              AND EXISTS (SELECT 1 FROM iam.office_assignment x WHERE x.person_id = p.id AND x.office_code = 'lecturer' AND (x.valid_to IS NULL OR x.valid_to >= current_date)));
+        d_state := (SELECT coalesce(ended_on::text, 'live') FROM iam.person WHERE id = d);
+        e_state := (SELECT coalesce(ended_on::text, 'live') FROM iam.person WHERE id = e);
+        no_password := NOT EXISTS (SELECT 1 FROM iam.staff_change WHERE person_id IN (a, b, c, d) AND before_state::text ~* 'password|checkv656notarealhash');
+        changes := (SELECT count(*) FROM iam.staff_change WHERE person_id IN (a, b, c, d, e, o));
+        -- a deactivation restored, once; its grant reopened; a deletion cannot be restored
+        restored := (SELECT r.grants_reopened::text FROM iam.restore_staff((SELECT id FROM iam.staff_change WHERE person_id = b AND action = 'STAFF_DEACTIVATED'), 'DEACTIVATED_IN_ERROR', NULL) r);
+        b_back := (SELECT coalesce(p.ended_on::text, 'live') || '/' || coalesce((SELECT g.valid_to::text FROM iam.office_assignment g WHERE g.id = gb), 'open') FROM iam.person p WHERE p.id = b);
+        BEGIN PERFORM iam.restore_staff((SELECT id FROM iam.staff_change WHERE person_id = b AND action = 'STAFF_DEACTIVATED'), 'DEACTIVATED_IN_ERROR', NULL); again := 'restored twice';
+        EXCEPTION WHEN check_violation THEN again := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM iam.restore_staff((SELECT id FROM iam.staff_change WHERE person_id = a), 'DEACTIVATED_IN_ERROR', NULL); undo_removed := 'restored';
+        EXCEPTION WHEN check_violation THEN undo_removed := split_part(SQLERRM, ':', 1); END;
+        listed := (SELECT string_agg(left(x.name, 20) || ':' || x.action || ':' || x.restorable || ':' || (x.restored_at IS NOT NULL), ' ' ORDER BY x.name, x.action)
+                     FROM iam.staff_changes('ACADEMIC') x WHERE x.person_id IN (a, b));
+        BEGIN UPDATE iam.staff_change SET reason = 'changed' WHERE person_id = a; kept := 'changed';
+        EXCEPTION WHEN check_violation THEN kept := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V656 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V656 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V656: staff tied to nothing are deleted and staff tied to records deactivated — off the lists, grants and sessions ended, their classes kept, never the password — the preview writing nothing, each office its own staff, a reason required, Delete only leaving the tied as they were, the Head of Department and oneself refused, a deactivation restored once with its grant, the record of changes kept',
+        coalesce(prev = 'CHECKV656, Head Lect=HOLDS_OFFICE CHECKV656, Signed In=DEACTIVATE[Has signed in to the portal] CHECKV656, Teaching =DEACTIVATE[Course allocation history+Lecturer of a course class] CHECKV656, Unused Cl=REMOVE CHECKV656, Unused Le=REMOVE'
+                 AND hrm = 'REMOVE,NOT_PERMITTED' AND lect = 'NOT_PERMITTED' AND no_reason = 'STAFF_REASON' AND short_other = 'STAFF_REASON_OTHER'
+                 AND remove_only = 'CANNOT_REMOVE/false' AND b_after_remove_only = 'live/0'
+                 AND applied = 'CHECKV656, Head Lect=HOLDS_OFFICE/false CHECKV656, Officer=SELF/false CHECKV656, Signed In=DEACTIVATE/true CHECKV656, Teaching =DEACTIVATE/true CHECKV656, Unused Cl=REMOVE/true CHECKV656, Unused Le=REMOVE/true'
+                 AND a_gone AND c_gone AND b_state = 'true/true' AND b_session = 'Staff deactivated' AND b_class AND NOT b_listed
+                 AND d_state = current_date::text AND e_state = 'live' AND no_password AND changes = 4
+                 AND restored = '1' AND b_back = 'live/open' AND again = 'STAFF_RESTORED' AND undo_removed = 'STAFF_NOT_DEACTIVATED'
+                 AND listed = 'CHECKV656, Teaching :STAFF_DEACTIVATED:false:true CHECKV656, Teaching :STAFF_RESTORED:false:false CHECKV656, Unused Le:STAFF_REMOVED:false:false'
+                 AND kept = 'STAFF_CHANGE_KEPT', false),
+        format('preview %s | hrm %s lecturer %s | reasons %s/%s | remove only %s, B %s | applied %s | A gone %s C gone %s B %s session %s class %s listed %s D %s E %s | no password %s changes %s | restored %s B %s again %s deleted %s | listed %s | kept %s',
+               prev, hrm, lect, no_reason, short_other, remove_only, b_after_remove_only, applied, a_gone, c_gone, b_state, b_session, b_class, b_listed,
+               d_state, e_state, no_password, changes, restored, b_back, again, undo_removed, listed, kept));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

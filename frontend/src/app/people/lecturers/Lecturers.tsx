@@ -22,6 +22,9 @@ import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/prot
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { RemoveStaff } from "@/components/staff/RemoveStaff";
+import { RemovedStaff } from "@/components/staff/RemovedStaff";
+import { deactivatedHolder, type StaffChange, type StaffPick } from "@/lib/staff-removal";
 
 export interface StaffRow {
   id: string; staff_number: string | null; name: string; surname: string | null; given_names: string | null;
@@ -40,7 +43,7 @@ const CHUNK = 25; // bcrypt-12 is ~¼s per row; keep each request short so it ne
 interface Row { pno: string; full_names: string; sex: string; date_first_appointment: string; department: string; present_rank: string; phone: string; conuass: string }
 interface Tally { rows: number; created: number; existing: number; credentialed: number; granted: number; records: number; no_department: number; skipped: number; failedRows: number; firstError: string | null; missing: string[] }
 
-export function Lecturers({ actingOffice, staff }: { actingOffice: string | null; staff: StaffRow[] }) {
+export function Lecturers({ actingOffice, staff, removed }: { actingOffice: string | null; staff: StaffRow[]; removed: StaffChange[] }) {
   const router = useRouter();
   const may = MAY.includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
@@ -50,6 +53,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [delMsg, setDelMsg] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<StaffPick[] | null>(null);   // the delete dialog, for one person or the ticked ones
   const [form, setForm] = useState<StaffForm | null>(null);   // null = closed; form.id null = add, set = edit
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
@@ -65,6 +69,12 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
     const edit = !!form.id;
     if (!form.surname.trim() || !form.given.trim() || !form.department.trim() || (!edit && !form.pno.trim().replace(/\D/g, ""))) {
       setProblem({ status: 400, title: "Staff id, surname, given names and department are all required." }); notifyProblem({ status: 400, title: "Staff id, surname, given names and department are all required." });
+      return;
+    }
+    const held = edit ? null : deactivatedHolder(form.pno, removed);
+    if (held) {
+      const p = { status: 409, title: `Staff id ${held.staff_number} belongs to ${held.name}, who was deactivated.`, detail: "Restore them under Removed staff below instead of adding them again." };
+      setProblem(p); notifyProblem(p);
       return;
     }
     setBusy(true); setProblem(null);
@@ -87,6 +97,7 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         return;
       }
       setForm(null);
+      setDelMsg(null);
       setSaveMsg(edit ? "Staff member updated." : "Staff member added.");
       notify(edit ? "Staff member updated" : "Staff member added");
       router.refresh();
@@ -112,24 +123,8 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
     });
   }
 
-  async function del() {
-    const ids = [...sel];
-    if (!ids.length) return;
-    if (!window.confirm(`Remove ${ids.length} lecturer${ids.length === 1 ? "" : "s"}? A lecturer who already teaches a course is kept. This cannot be undone.`)) return;
-    setBusy(true); setDelMsg(null); setProblem(null);
-    try {
-      const r = await fetch("/api/bff/api/v1/iam/lecturers/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${ids.length} lecturer(s) removed`) },
-        body: JSON.stringify({ ids }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setDelMsg(`${j.deleted ?? 0} lecturer(s) removed${j.skipped ? ` · ${j.skipped} kept (already teaching or on record)` : ""}.`);
-      notify(`${j.deleted ?? 0} lecturer(s) removed`);
-      setSel(new Set());
-      router.refresh();
-    } finally { setBusy(false); }
+  function pick(list: StaffRow[]): StaffPick[] {
+    return list.map((s) => ({ id: s.id, name: s.name, staffNumber: s.staff_number }));
   }
 
   function downloadTemplate() {
@@ -263,11 +258,11 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
           <div className="row">
             <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id or department" style={{ maxWidth: 300 }} />
             {may ? <Btn kind="primary" onClick={openAdd}>Add staff</Btn> : null}
-            {may && sel.size ? <Btn kind="urgent" disabled={busy} onClick={() => void del()}>{busy ? "Removing…" : `Delete selected (${sel.size})`}</Btn> : null}
+            {may && sel.size ? <Btn kind="urgent" disabled={busy} onClick={() => { setDelMsg(null); setRemoving(pick(staff.filter((s) => sel.has(s.id)))); }}>{`Delete selected (${sel.size})`}</Btn> : null}
             {sel.size ? <Btn kind="ghost" onClick={() => setSel(new Set())}>Clear selection</Btn> : null}
           </div>
         </PBody>
-        {delMsg ? <PBody><Note kind="ok" title="Lecturers removed">{delMsg}</Note></PBody> : null}
+        {delMsg ? <PBody><Note kind="ok" title="Staff deleted or deactivated">{delMsg}</Note></PBody> : null}
         {saveMsg ? <PBody><Note kind="ok" title="Saved">{saveMsg}</Note></PBody> : null}
         {shown.length ? (
           <DTable cols={[...(may ? ["|mid"] : []), "Staff id", "Name", "Department", "Rank", "Sign-in", ...(may ? ["|num"] : [])]} rows={shown.slice(0, 500).map((s) => [
@@ -279,7 +274,10 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
             s.has_signin
               ? (s.last_sign_in_at ? <Pil kind="ok" key="s">Active</Pil> : s.must_change ? <Pil kind="info" key="s">First password set</Pil> : <Pil kind="ok" key="s">Issued</Pil>)
               : <Pil kind="grey" key="s">No sign-in</Pil>,
-            ...(may ? [<Btn key="e" kind="ghost" onClick={() => openEdit(s)}>Edit</Btn>] : []),
+            ...(may ? [<span key="e" className="row row--inline row--tight">
+              <Btn kind="ghost" onClick={() => openEdit(s)}>Edit</Btn>
+              <Btn kind="ghost" aria-label={`Delete ${s.name}`} onClick={() => { setDelMsg(null); setRemoving(pick([s])); }}>Delete</Btn>
+            </span>] : []),
           ])} />
         ) : <PBody><div className="sub2">{staff.length ? "No staff match that search." : "No teaching staff on record yet. Upload the list above, or add one."}</div></PBody>}
         {may && shown.length ? (
@@ -289,6 +287,13 @@ export function Lecturers({ actingOffice, staff }: { actingOffice: string | null
         ) : null}
         {shown.length > 500 ? <PBody><div className="sub2">Showing the first 500 of {shown.length}. Narrow the search to find a particular lecturer.</div></PBody> : null}
       </Panel>
+
+      <RemovedStaff changes={removed} may={may} />
+
+      {removing ? (
+        <RemoveStaff people={removing} what="Teaching staff" onClose={() => setRemoving(null)}
+          onDone={(m) => { setRemoving(null); setSel(new Set()); setSaveMsg(null); setDelMsg(m); router.refresh(); }} />
+      ) : null}
 
       {form ? (
         <Modal title={form.id ? `Edit ${form.pno || "staff"}` : "Add a staff member"} onClose={() => setForm(null)}

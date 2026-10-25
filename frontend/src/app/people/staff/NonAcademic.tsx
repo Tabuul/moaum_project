@@ -5,6 +5,8 @@
  * to a unit, a department or a faculty and nothing is written; the spellings that cannot be placed are listed.
  * Then load it: each row becomes a person and an establishment record in its unit — no sign-in, no office.
  * Re-uploading never duplicates. Sent in chunks, so a slow batch never fails the whole file.
+ * V656: one member of staff added by hand (the same import, one row); deleted or deactivated — the database deciding by what each
+ * person is tied to — and restored from Removed staff.
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,7 +16,11 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { RemoveStaff } from "@/components/staff/RemoveStaff";
+import { RemovedStaff } from "@/components/staff/RemovedStaff";
+import { ddmmyyyy, deactivatedHolder, type StaffChange, type StaffPick } from "@/lib/staff-removal";
 
 export interface NonAcademicRow {
   id: string; staff_number: string | null; name: string; surname: string; given_names: string; email: string | null; phone: string | null;
@@ -27,9 +33,11 @@ const MAY = ["registrar", "dregistrar", "hrm", "ict", "admin", "super"];
 const CHUNK = 100;
 interface Row { pno: string; full_names: string; sex: string; date_first_appointment: string; department: string; present_rank: string; phone: string; contiss: string }
 interface Tally { rows: number; created: number; existing: number; records: number; unplaced: number; skipped: number; failedRows: number; firstError: string | null; missing: string[]; dry: boolean }
+interface AddForm { pno: string; surname: string; given: string; sex: string; unit: string; rank: string; phone: string; contiss: string; appointed: string; email: string }
+const EMPTY_ADD: AddForm = { pno: "", surname: "", given: "", sex: "", unit: "", rank: "", phone: "", contiss: "", appointed: "", email: "" };
 const KIND: Record<string, string> = { OFFICE: "Office", DIRECTORATE: "Directorate", DIVISION: "Division", UNIT: "Unit", CENTRE: "Centre", SCHOOL: "School", FACULTY_OFFICE: "Faculty office", DEPARTMENT: "Department" };
 
-export function NonAcademic({ actingOffice, staff, units }: { actingOffice: string | null; staff: NonAcademicRow[]; units: Unit[] }) {
+export function NonAcademic({ actingOffice, staff, units, removed }: { actingOffice: string | null; staff: NonAcademicRow[]; units: Unit[]; removed: StaffChange[] }) {
   const router = useRouter();
   const may = MAY.includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
@@ -40,11 +48,66 @@ export function NonAcademic({ actingOffice, staff, units }: { actingOffice: stri
   const [fileName, setFileName] = useState("");
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"staff" | "units">("staff");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState<StaffPick[] | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [add, setAdd] = useState<AddForm | null>(null);
+  const [addProblem, setAddProblem] = useState<Problem | null>(null);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? staff.filter((s) => `${s.name} ${s.staff_number ?? ""} ${s.placed_in ?? ""} ${s.unit_as_given ?? ""} ${s.present_rank ?? ""}`.toLowerCase().includes(q)) : staff;
   }, [staff, search]);
+
+  const shownIds = useMemo(() => shown.slice(0, 500).map((s) => s.id), [shown]);
+  const allShownPicked = shownIds.length > 0 && shownIds.every((id) => sel.has(id));
+  function toggle(id: string) {
+    setSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  function toggleAll() {
+    setSel((prev) => { const n = new Set(prev); if (allShownPicked) shownIds.forEach((id) => n.delete(id)); else shownIds.forEach((id) => n.add(id)); return n; });
+  }
+  function pick(list: NonAcademicRow[]): StaffPick[] {
+    return list.map((s) => ({ id: s.id, name: s.name, staffNumber: s.staff_number }));
+  }
+
+  /* one member of staff, through the roll's own import (one row): placed in its unit by the same spellings */
+  async function saveAdd() {
+    if (!add) return;
+    const pno = add.pno.replace(/\D/g, "");
+    if (!pno || !add.surname.trim() || !add.given.trim() || !add.unit.trim()) {
+      const p = { status: 400, title: "Staff number, surname, given names and unit are all required." }; setAddProblem(p); notifyProblem(p); return;
+    }
+    const held = deactivatedHolder(pno, removed);
+    if (held) {
+      const p = { status: 409, title: `Staff id ${held.staff_number} belongs to ${held.name}, who was deactivated.`, detail: "Restore them under Removed staff below instead of adding them again." };
+      setAddProblem(p); notifyProblem(p); return;
+    }
+    if (staff.some((s) => (s.staff_number ?? "").replace(/\D/g, "") === pno)) {
+      const p = { status: 409, title: `Staff id P${pno} is already on record.` }; setAddProblem(p); notifyProblem(p); return;
+    }
+    setBusy(true); setAddProblem(null);
+    try {
+      const r = await fetch("/api/bff/api/v1/iam/staff/import", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Non-academic staff P${pno} added`) },
+        body: JSON.stringify({ dryRun: false, rows: [{ pno, full_names: `${add.given.trim()} ${add.surname.trim()}`, sex: add.sex, date_first_appointment: ddmmyyyy(add.appointed),
+          department: add.unit.trim(), present_rank: add.rank.trim(), phone: add.phone.trim(), contiss: add.contiss.trim(), email: add.email.trim() }] }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j) { const p = j ?? { status: r.status, title: r.statusText }; setAddProblem(p); notifyProblem(p); return; }
+      if (Number(j.unplaced) > 0) {
+        const p = { status: 400, title: `No unit, department or faculty matching "${add.unit.trim()}".`, detail: "Pick the unit from the list, or ask ICT to add the unit or its spelling." };
+        setAddProblem(p); notifyProblem(p); return;
+      }
+      if (Number(j.skipped) > 0 || j.first_error) {
+        const p = { status: 400, title: "That member of staff could not be added.", detail: String(j.first_error ?? "") }; setAddProblem(p); notifyProblem(p); return;
+      }
+      setAdd(null);
+      setDone(`P${pno} added.`);
+      notify("Staff member added");
+      router.refresh();
+    } finally { setBusy(false); }
+  }
 
   function downloadTemplate() {
     const blob = buildXlsx(["PNO", "Full Names", "Sex", "Date of 1st Appt", "Department", "Present Rank", "Phone No", "CONTISS"],
@@ -160,9 +223,18 @@ export function NonAcademic({ actingOffice, staff, units }: { actingOffice: stri
       <Panel title="On record" right={<Tabs label="Staff or units" items={[{ id: "staff", label: "Non-Academic Staff", count: staff.length }, { id: "units", label: "The Unit Register", count: unitRows.length }]} value={tab} onChange={setTab} />}>
         {tab === "staff" ? (
           <>
-            <PBody><input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id, unit or rank" style={{ maxWidth: 320 }} aria-label="Search staff" /></PBody>
+            <PBody>
+              <div className="row">
+                <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id, unit or rank" style={{ maxWidth: 320 }} aria-label="Search staff" />
+                {may ? <Btn kind="primary" onClick={() => { setAddProblem(null); setAdd({ ...EMPTY_ADD }); }}>Add staff</Btn> : null}
+                {may && sel.size ? <Btn kind="urgent" onClick={() => { setDone(null); setRemoving(pick(staff.filter((s) => sel.has(s.id)))); }}>{`Delete selected (${sel.size})`}</Btn> : null}
+                {sel.size ? <Btn kind="ghost" onClick={() => setSel(new Set())}>Clear selection</Btn> : null}
+              </div>
+            </PBody>
+            {done ? <PBody><Note kind="ok" title="Done">{done}</Note></PBody> : null}
             {shown.length ? (
-              <DTable cols={["Staff id", "Name", "Placed in", "As the roll spelt it", "Rank", "Scale|mid", "First appointed|mid"]} rows={shown.slice(0, 500).map((s) => [
+              <DTable cols={[...(may ? ["|mid"] : []), "Staff id", "Name", "Placed in", "As the roll spelt it", "Rank", "Scale|mid", "First appointed|mid", ...(may ? ["|num"] : [])]} rows={shown.slice(0, 500).map((s) => [
+                ...(may ? [<input type="checkbox" key="x" checked={sel.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Select ${s.name}`} />] : []),
                 <span className="tnum b700" key="i">{s.staff_number ?? "—"}</span>,
                 <span key="n">{s.name}{s.sex ? <span className="sub2"> · {s.sex}</span> : null}</span>,
                 <span key="p">{s.placed_in ?? <span className="ink-red">Not placed</span>}{s.parent_unit ? <div className="sub2">{s.parent_unit}</div> : null}{s.campus === "CHS" ? <div><Pil kind="info">CHS</Pil></div> : s.placed_kind === "DEPARTMENT" ? <div><Pil kind="grey">Academic department</Pil></div> : s.placed_kind === "FACULTY" ? <div><Pil kind="grey">Faculty office</Pil></div> : null}</span>,
@@ -170,8 +242,14 @@ export function NonAcademic({ actingOffice, staff, units }: { actingOffice: stri
                 <span key="r" className="sub2">{s.present_rank ?? "—"}</span>,
                 <span key="s" className="tnum sub2">{s.salary_scale ? `${s.salary_scale}${s.contiss_step ? ` ${s.contiss_step}` : ""}` : "—"}</span>,
                 <span key="d" className="tnum sub2">{s.date_first_appointment ? new Date(s.date_first_appointment).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>,
+                ...(may ? [<Btn key="del" kind="ghost" aria-label={`Delete ${s.name}`} onClick={() => { setDone(null); setRemoving(pick([s])); }}>Delete</Btn>] : []),
               ])} texts={shown.slice(0, 500).map((s) => `${s.name} ${s.staff_number ?? ""} ${s.placed_in ?? ""} ${s.unit_as_given ?? ""}`)} />
             ) : <PBody><div className="sub2">{staff.length ? "No staff match that search." : "No non-academic staff on record yet. Check a file above, then load it."}</div></PBody>}
+            {may && shown.length ? (
+              <PBody><label className="sub2 row row--inline row--tight" style={{ cursor: "pointer" }}>
+                <input type="checkbox" checked={allShownPicked} onChange={toggleAll} /> Select all {shown.length > 500 ? "(first 500) " : ""}shown
+              </label></PBody>
+            ) : null}
             {shown.length > 500 ? <PBody><div className="sub2">Showing the first 500 of {shown.length}. Narrow the search.</div></PBody> : null}
           </>
         ) : (
@@ -185,6 +263,39 @@ export function NonAcademic({ actingOffice, staff, units }: { actingOffice: stri
           ])} texts={unitRows.map((u) => `${u.name} ${u.code} ${u.parent ?? ""} ${u.kind}`)} />
         )}
       </Panel>
+
+      <RemovedStaff changes={removed} may={may} />
+
+      {removing ? (
+        <RemoveStaff people={removing} what="Non-academic staff" onClose={() => setRemoving(null)}
+          onDone={(m) => { setRemoving(null); setSel(new Set()); setDone(m); router.refresh(); }} />
+      ) : null}
+
+      {add ? (
+        <Modal title="Add a member of non-academic staff" onClose={() => setAdd(null)}
+          foot={<><Btn kind="ghost" onClick={() => setAdd(null)}>Cancel</Btn><span className="grow" />
+            <Btn kind="primary" disabled={busy || !add.pno.trim() || !add.surname.trim() || !add.given.trim() || !add.unit.trim()} onClick={() => void saveAdd()}>{busy ? "Adding…" : "Add staff"}</Btn></>}>
+          {addProblem ? <ProblemNotice problem={addProblem} /> : null}
+          <div className="sub2 mb-3">As a row of the nominal roll: placed in its unit, no sign-in and no office. The staff id becomes P&lt;number&gt;.</div>
+          <div className="grid grid--2">
+            <Field id="na-pno" label="Staff number (PNO)" hint="Digits only"><input id="na-pno" className="ctl tnum" value={add.pno} onChange={(e) => setAdd({ ...add, pno: e.target.value })} placeholder="539" /></Field>
+            <Field id="na-unit" label="Unit" hint="As the register names it, or a known spelling">
+              <input id="na-unit" className="ctl" list="na-units" value={add.unit} onChange={(e) => setAdd({ ...add, unit: e.target.value })} placeholder="OFFICE OF THE REGISTRAR" />
+              <datalist id="na-units">{unitRows.map((u) => <option key={u.code} value={u.name} />)}</datalist>
+            </Field>
+            <Field id="na-sur" label="Surname"><input id="na-sur" className="ctl" value={add.surname} onChange={(e) => setAdd({ ...add, surname: e.target.value })} /></Field>
+            <Field id="na-giv" label="Given names"><input id="na-giv" className="ctl" value={add.given} onChange={(e) => setAdd({ ...add, given: e.target.value })} /></Field>
+            <Field id="na-sex" label="Sex">
+              <select id="na-sex" className="ctl" value={add.sex} onChange={(e) => setAdd({ ...add, sex: e.target.value })}><option value="">—</option><option value="M">M</option><option value="F">F</option></select>
+            </Field>
+            <Field id="na-rank" label="Present rank"><input id="na-rank" className="ctl" value={add.rank} onChange={(e) => setAdd({ ...add, rank: e.target.value })} placeholder="SENIOR DEPUTY BURSAR" /></Field>
+            <Field id="na-contiss" label="CONTISS" hint="A step, or CONSOLIDATED"><input id="na-contiss" className="ctl tnum" value={add.contiss} onChange={(e) => setAdd({ ...add, contiss: e.target.value })} placeholder="15" /></Field>
+            <Field id="na-appt" label="Date of first appointment"><input id="na-appt" type="date" className="ctl" value={add.appointed} onChange={(e) => setAdd({ ...add, appointed: e.target.value })} /></Field>
+            <Field id="na-phone" label="Phone"><input id="na-phone" className="ctl tnum" value={add.phone} onChange={(e) => setAdd({ ...add, phone: e.target.value })} /></Field>
+            <Field id="na-email" label="Email"><input id="na-email" className="ctl" value={add.email} onChange={(e) => setAdd({ ...add, email: e.target.value })} /></Field>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
 }

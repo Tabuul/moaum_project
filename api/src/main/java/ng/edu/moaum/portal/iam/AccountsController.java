@@ -85,9 +85,6 @@ class AccountsController {
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
 
-    public record Ids(@jakarta.validation.constraints.NotEmpty List<UUID> ids) {
-    }
-
     private static final String STAFF_LOADERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super')";
 
     public record StaffRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows, Boolean dryRun) {
@@ -144,14 +141,84 @@ class AccountsController {
                 """).query().listOfRows();
     }
 
-    /** remove selected lecturers (person + sign-in + lecturer grants + establishment) when they carry
-     *  no teaching history; one that already teaches an offering is kept. See iam.delete_lecturers (V138). */
-    @PostMapping("/lecturers/delete")
-    @PreAuthorize(CREDENTIALS)
+    /* ── V656: staff deleted or deactivated, the database deciding what each person is tied to ─────────────────────────────── */
+
+    public record RemoveStaff(@jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max = 500) List<UUID> ids,
+                              @jakarta.validation.constraints.Size(max = 12) String mode,
+                              @jakarta.validation.constraints.Size(max = 40) String reasonCode,
+                              @jakarta.validation.constraints.Size(max = 500) String reason) {
+    }
+
+    public record RestoreStaff(@NotBlank @jakarta.validation.constraints.Size(max = 40) String reasonCode,
+                               @jakarta.validation.constraints.Size(max = 500) String reason) {
+    }
+
+    /** a jsonb column read as text in the query, handed back as JSON */
+    private List<Map<String, Object>> parsed(List<Map<String, Object>> rows, String column) {
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+            Object v = m.get(column);
+            m.put(column, v == null ? List.of() : json.readValue(v.toString(), List.class));
+            out.add(m);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> removal(RemoveStaff b, boolean apply) {
+        return parsed(jdbc.sql("""
+                SELECT r.person_id, r.staff_number, r.name, r.category, r.ties::text AS ties, r.outcome, r.detail, r.applied, r.change_id
+                  FROM iam.remove_staff(:ids, :mode, :code, :reason, :apply) r
+                """).param("ids", b.ids().toArray(UUID[]::new)).param("mode", b.mode(), java.sql.Types.VARCHAR)
+                .param("code", b.reasonCode(), java.sql.Types.VARCHAR).param("reason", b.reason(), java.sql.Types.VARCHAR)
+                .param("apply", apply).query().listOfRows(), "ties");
+    }
+
+    /** what deleting these staff would do — each person, what they are tied to, deleted or deactivated or refused; nothing written */
+    @PostMapping("/staff/remove/preview")
+    @PreAuthorize(STAFF_LOADERS)
     @Transactional
-    Map<String, Object> deleteLecturers(@Valid @RequestBody Ids body) {
-        return jdbc.sql("SELECT * FROM iam.delete_lecturers(:ids)")
-                .param("ids", body.ids().toArray(UUID[]::new)).query().singleRow();
+    List<Map<String, Object>> previewRemoval(@Valid @RequestBody RemoveStaff body) {
+        return removal(body, false);
+    }
+
+    /** delete the staff tied to nothing, deactivate the rest (or as the mode says), with the reason; each kept on iam.staff_change */
+    @PostMapping("/staff/remove")
+    @PreAuthorize(STAFF_LOADERS)
+    @Transactional
+    Map<String, Object> removeStaff(@Valid @RequestBody RemoveStaff body) {
+        List<Map<String, Object>> rows = removal(body, true);
+        long removed = rows.stream().filter(r -> Boolean.TRUE.equals(r.get("applied")) && "REMOVE".equals(r.get("outcome"))).count();
+        long deactivated = rows.stream().filter(r -> Boolean.TRUE.equals(r.get("applied")) && "DEACTIVATE".equals(r.get("outcome"))).count();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("removed", removed);
+        out.put("deactivated", deactivated);
+        out.put("refused", rows.size() - removed - deactivated);
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** the staff deleted, deactivated and restored, newest first; a deactivation says whether it can be restored */
+    @GetMapping("/staff/removed")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> removedStaff(@RequestParam(required = false) String category) {
+        String c = category == null ? null : category.trim().toUpperCase();
+        if (c != null && !List.of("ACADEMIC", "NON_ACADEMIC").contains(c)) c = null;
+        return parsed(jdbc.sql("""
+                SELECT s.id, s.person_id, s.staff_number, s.name, s.category, s.action, s.reason_code, s.reason_words, s.reason, s.ties::text AS ties,
+                       s.actor_name, s.actor_office, s.at, s.restorable, s.restored_at
+                  FROM iam.staff_changes(:c) s
+                """).param("c", c, java.sql.Types.VARCHAR).query().listOfRows(), "ties");
+    }
+
+    /** a deactivation undone: back on the lists, able to sign in, the grants it ended reopened */
+    @PostMapping("/staff/removed/{id}/restore")
+    @PreAuthorize(STAFF_LOADERS)
+    @Transactional
+    Map<String, Object> restoreStaff(@PathVariable UUID id, @Valid @RequestBody RestoreStaff body) {
+        return jdbc.sql("SELECT r.person_id, r.name, r.grants_reopened, r.change_id FROM iam.restore_staff(:id, :code, :reason) r")
+                .param("id", id).param("code", body.reasonCode()).param("reason", body.reason(), java.sql.Types.VARCHAR).query().singleRow();
     }
 
     public record EditLecturer(@NotBlank String surname, @NotBlank String givenNames, String email, String phone,
