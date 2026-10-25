@@ -47,14 +47,15 @@ export default async function AllCoursesPage({ searchParams }: { searchParams: P
   const sameCode = await api<SameCodeRow[]>("/api/v1/catalogue/same-code").then((r) => (r.ok ? r.data : null)).catch(() => null);
   return (
     <Shell route="t/allcourses" me={me.ok ? me.data : null}>
-      {codeOwners ? <CodeOwnersPanel data={codeOwners} maySet={familiesCentral} /> : null}
-      {sameCode ? <SameCodePanel rows={sameCode} maySeparate={["academic", "registrar", "dregistrar", "super"].includes(acting ?? "")} /> : null}
-      {families ? <CodeFamiliesPanel data={families} sessions={sessions.map((x) => x.name)} maySet={familiesCentral} mismatches={mismatches} /> : null}
       {central ? <GstTransfers office={null} actingOffice={acting} transfers={transfers} settings={chase} /> : null}
       {!list.ok ? <ProblemNotice problem={list.problem} /> : (
         <AllCourses list={list.data} directory={directory.ok ? directory.data : null} sessions={sessions.map((x) => x.name)} filters={filters} page={page} generatedBy={me.ok ? me.data.name ?? null : null}
           duplicates={duplicates} mayMerge={["academic", "registrar", "dregistrar", "super"].includes(acting ?? "")} />
       )}
+      {/* the course list first; the code reviews (which department a code names, one code with different titles, the code families) after it */}
+      {codeOwners ? <CodeOwnersPanel data={codeOwners} maySet={familiesCentral} /> : null}
+      {sameCode ? <SameCodePanel rows={sameCode} maySeparate={["academic", "registrar", "dregistrar", "super"].includes(acting ?? "")} /> : null}
+      {families ? <CodeFamiliesPanel data={families} sessions={sessions.map((x) => x.name)} maySet={familiesCentral} mismatches={mismatches} /> : null}
     </Shell>
   );
 }
