@@ -21,7 +21,18 @@ export default async function MasterReportPage({ searchParams }: { searchParams:
   if (!options.ok) {
     return <Shell route="t/masterreport" me={me.ok ? me.data : null}><ProblemNotice problem={options.problem} /></Shell>;
   }
-  const sc: Scope = { ...scope, session: scope.session || options.data.period.session, sem: scope.sem && scope.sem !== "0" ? scope.sem : String(options.data.period.semester) };
+  // the office's own bound, as the API holds it (a College office its College's faculty, an operator their grant): the bar is locked
+  // to it, so it never offers what the API would refuse
+  const own = options.data.scope;
+  const ceil: Ceiling = { ...ceiling };
+  if (!ceil.fac && own.faculty) {
+    ceil.fac = own.faculty;
+    if (own.department) ceil.dept = own.department;
+    if (own.programme) ceil.prog = own.programme;
+    ceil.why = "Your office bounds this scope.";
+  }
+  const sc: Scope = { ...scope, fac: ceil.fac ?? scope.fac, dept: ceil.dept ?? scope.dept, prog: ceil.prog ?? scope.prog,
+    session: scope.session || options.data.period.session, sem: scope.sem && scope.sem !== "0" ? scope.sem : String(options.data.period.semester) };
   const filters = readFilters(params);
   const list = params.list === "1";
   const page = typeof params.page === "string" && /^\d{1,4}$/.test(params.page) ? Number(params.page) : 1;
@@ -29,7 +40,7 @@ export default async function MasterReportPage({ searchParams }: { searchParams:
   return (
     <Shell route="t/masterreport" me={me.ok ? me.data : null}>
       <Suspense fallback={<Note kind="info" title="Preparing the report…">Reading every student of the scope once — the classification, school fees, registration, GST, EPS, the examination card and the permit — and the period&apos;s transactions. Over the whole University this takes a few seconds.</Note>}>
-        <Figures scope={sc} structure={structure} sessions={sessions} ceiling={ceiling} options={options.data} filters={filters} list={list} page={page} actor={actor} />
+        <Figures scope={sc} structure={structure} sessions={sessions} ceiling={ceil} options={options.data} filters={filters} list={list} page={page} actor={actor} />
       </Suspense>
     </Shell>
   );

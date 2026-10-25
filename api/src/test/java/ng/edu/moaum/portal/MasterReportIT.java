@@ -226,6 +226,12 @@ class MasterReportIT {
         assertThat(it.get(hod, M + "/students" + q).getStatusCode().value()).isEqualTo(422);
         ResponseEntity<Map> hodOwn = it.get(hod, M + "/students?session=" + session + "&semester=1");
         assertThat(((List<Map<String, Object>>) hodOwn.getBody().get("rows"))).noneSatisfy(r -> assertThat(r.get("programme_code")).isEqualTo(PROGRAMME));
+        // the College's Finance Controller is held to the College: a programme outside it refused, the College's own faculty read
+        String controller = ItSupport.token("financecontroller");
+        assertThat(it.get(controller, M + "/summary" + q).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> college = it.get(controller, M + "/summary?session=" + session + "&semester=1");
+        assertThat(college.getStatusCode().value()).as(String.valueOf(college.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(college.getBody().get("scope"))).startsWith("Faculty of");
         assertThat(it.get(ItSupport.token("lecturer"), M + "/summary" + q).getStatusCode().value()).isEqualTo(403);
         assertThat(it.getBytes(ItSupport.token("lecturer"), M + "/workbook" + q).getStatusCode().value()).isEqualTo(403);
     }

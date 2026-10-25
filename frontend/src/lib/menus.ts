@@ -102,6 +102,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" },
           { "id": "t/examattendance", "icon": "check", "label": "Examination Attendance" },
           { "id": "t/search", "icon": "user", "label": "Search" }
@@ -201,6 +202,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/search", "icon": "user", "label": "Search" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" }
         ]
       },
@@ -466,6 +468,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Reports",
         "items": [
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
@@ -525,6 +528,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Reports",
         "items": [
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
@@ -872,6 +876,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/studentquery", "icon": "user", "label": "Student Accounts" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/supportlevels", "icon": "cap", "label": "Student Level Management" },
           { "id": "t/supportlevelhistory", "icon": "clock", "label": "Level Change History" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
@@ -1201,6 +1206,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" },
           { "id": "t/examattendance", "icon": "check", "label": "Examination Attendance" },
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
@@ -1298,6 +1304,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/search", "icon": "user", "label": "Search" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" },
           { "id": "t/classification", "icon": "check", "label": "Student Classification" }
         ]
@@ -1474,6 +1481,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" },
           { "id": "t/examattendance", "icon": "check", "label": "Examination Attendance" },
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
@@ -1922,6 +1930,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/examreadiness", "icon": "chart", "label": "Examination Readiness" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" },
           { "id": "t/classification", "icon": "check", "label": "Student Classification" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
@@ -2671,6 +2680,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/studentstats", "icon": "chart", "label": "Student Statistics" },
           { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Financial Analytics" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
       },
@@ -2788,6 +2798,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/gst", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "r/notices", "icon": "alert", "label": "Notifications" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]
@@ -2828,6 +2839,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "r/eps", "icon": "home", "label": "Dashboard" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
+          { "id": "t/masterreport", "icon": "chart", "label": "Master University Report" },
           { "id": "r/notices", "icon": "alert", "label": "Notifications" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]

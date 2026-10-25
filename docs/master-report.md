@@ -39,8 +39,19 @@ own scope on the server (`OfficeScope`), so a filter can narrow the scope but ne
 
 ## The screen
 
-Database Query → Master University Report for the Database Operator; Reports → Database Reports for the Director of ICT; Overview,
-after Examination Readiness, for the Bursar. (Every office in the API's reader list can open `/reports/master`.)
+On the menus of:
+
+| Office | Where |
+|---|---|
+| Database Operator | Database Query, first |
+| Director of ICT | Database Reports, first |
+| Bursar, Registrar, Deputy Registrar, VC, DVC, Dean, Head of Department, Students Account Officer | after Examination Readiness |
+| Internal Audit, Deputy Audit | Reports, first |
+| Finance Controller, GST and EPS offices | Overview, after the payments report |
+
+Each office sees only its own scope: a Dean their faculty, a Head of Department their department, the College's Finance Controller
+the College's faculty, a scoped Database Operator their grant. The scope bar is locked to that scope (the bound the API returns with
+the options), so it never offers a faculty the API would refuse.
 
 - The scope bar (faculty, department, programme, level, session, semester) and filters: programme type, gender, study mode, centre,
   school-fee standing, registration, GST, EPS, card, permit; for transactions the period (today, yesterday, this week, this month,
@@ -110,5 +121,6 @@ On the live-shaped copy (48,325 students): the summary over the whole University
 - `MasterReportIT`: the options, the summary and its reconciliation, the students behind a figure, the transactions by status, the
   reference, the PDF package with its lists, the workbook opened as a real workbook (sheets, frozen header, filter), the history,
   the query log; the Examinations Officer without amounts or transactions; the GST office with its own fee only; a Head of another
-  department refused; a lecturer refused; another officer unable to finish someone else's report.
+  department refused; the College's Finance Controller refused a programme outside the College and held to the College's faculty;
+  a lecturer refused; another officer unable to finish someone else's report.
 - `frontend/src/lib/master-report.test.ts`: filters, query, date presets, cell formats, tiles, charts.
