@@ -22,7 +22,10 @@ import { CATEGORY_LABEL, addedAsLabel, categoryWords, courseCategory, gstOffice,
 import { loadKind, loadSummary, minimumBinds, waivedWords, type LoadKind } from "@/lib/registration-load";
 import { AddOtherCourse } from "./AddOtherCourse";
 import { OverloadRequest } from "./OverloadRequest";
-import { courseLabel, shownCode } from "@/lib/course-code";
+import { codeVariant, courseLabel, shownCode } from "@/lib/course-code";
+
+/** V655: a course under a shared code named by its curriculum, as courseLabel names it ("ITN 201" + " (BMAS)") */
+const curriculumMark = (code: string) => { const v = codeVariant(code)?.replace(/\d$/, ""); return v && v !== "V" ? ` (${v})` : ""; };
 
 /** the academic type shown on the form: GST, Elective or Core (Core/Required → Core).
  *  Prefer the per-programme offer basis (an elective borrowed from another department that owns
@@ -452,7 +455,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 <div className="pick__box" />
                 <div className="grow"><div className="pick__t tnum">{courseLabel(o.course_code, o.title)}</div>
                   <div className="pick__s" style={{ color: "var(--red-deep)" }}>Failed {o.failed_in} — {o.offering_id ? (v.siwes ? "not registered in the SIWES semester" : "not open to you this semester; ask your department")
-                    : o.runs_in ? `not offered this semester; it runs in the ${o.runs_in} semester of ${v.session}` : `not offered in ${v.session} yet`}</div></div>
+                    : o.runs_in ? `not offered this semester; it runs in the ${o.runs_in} semester of ${v.session}` : `no class opened in ${v.session} yet — add it with + ADD CARRY-OVER COURSE, which opens its class`}</div></div>
                 <Pil kind="warn">Outstanding</Pil>
                 <div className="tnum b700" style={{ color: "var(--muted)" }}>{o.units}</div>
               </div>
@@ -525,8 +528,8 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 {selected.map((x, i) => (
                   <tr key={x.key}>
                     <td className="mid tnum">{i + 1}</td>
-                    <td className="tnum b600">{x.code}</td>
-                    <td>{x.title}{x.note && x.category !== "CARRY_OVER" ? <div className="sub2">{x.note}</div> : null}</td>
+                    <td className="tnum b600">{shownCode(x.code)}</td>
+                    <td>{x.title}{curriculumMark(x.code)}{x.note && x.category !== "CARRY_OVER" ? <div className="sub2">{x.note}</div> : null}</td>
                     <td className="mid tnum">{x.units}</td>
                     <td>{x.note === "Deferred" ? "Deferred" : x.note?.startsWith("Carry-over") ? x.note : CATEGORY_LABEL[courseCategory({ category: x.category })]}</td>
                   </tr>

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 483
+\set EXPECTED 484
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25575,6 +25575,100 @@ BEGIN
         format('acct=%s | summ=%s | blk=%s | refusals=%s/%s/%s/%s/%s/%s/%s/%s prev=%s notices=%s | superseded=%s returned=%s rejected=%s | batch=%s %s/%s %s %s/%s | acct2=%s | pay=%s/%s %s stale=%s summ_after=%s blk2=%s status=%s new=%s/%s',
                acct, summ, blk, r_amount, r_reason, r_comp, r_period, r_officer, r_same, r_kept, r_twice, prev, notices, superseded, returned, rejected,
                b.verdict, a3.created, a3.skipped, r_batch_same, bdec.decided, bdec.state, acct2, r_pay_above, r_pay_active, purpose, stale_before, summ_after, blk2, status_after, new_before, new_after));
+END $$;
+-- ── V655. Every course registrable, whatever its class: a 200 Level student of a programme whose courses have no class in the session
+-- (added or bound after registration opened). The programme's course of the first semester, one taught in both semesters and an owed
+-- carry-over pass the judge with no class and no refusal; the search lists the first with no class (a University GST course with no
+-- class only when typed); one taught in the second semester
+-- is refused in the first, named by its own semester; another department's course is still not available; a cancelled session holds no
+-- classes. Adding the course opens its class once (asked again, the same class), and the course is on the draft; a refused course opens
+-- no class. The student's registration read opens the classes of their level's courses taught in the semester (one bound later
+-- joins the recommended list), never another semester's, a higher level's or in a cancelled session, and a second read opens nothing.
+-- The block undoes its writes.
+DO $$
+DECLARE ses text := '2655/2656'; gone text := '2657/2658'; st uuid := gen_random_uuid(); prog text; dept text; other_dept text; msg text;
+        c201 record; c202 record; c203 record; ccarry record; coth record; cgone record; found record;
+        cls uuid; again uuid; classes int; on_draft int; r_oth text; r_sem text; oth_classes int;
+        opened int; opened_again int; opened_gone int; level_classes text; none_classes int; on_menu int; gst_own int; gst_typed int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V655', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2655-10-01', DATE '2656-08-31');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state, merged_reason) VALUES
+            (gen_random_uuid(), gone, DATE '2657-10-01', DATE '2658-08-31', 'CANCELLED', 'check V655: a cancelled session');
+        SELECT p.code, p.dept_code INTO prog, dept FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND registration.siwes_units(p.code, 200, 1) IS NULL ORDER BY p.code LIMIT 1;
+        SELECT d.code INTO other_dept FROM ref.department d WHERE d.code <> dept ORDER BY d.code LIMIT 1;
+        PERFORM registration.set_flex_policy(true, 'PROGRAMME', false, 'check V655: the default rule');
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (st, 'MOAUM/ADM/65/965501', 'CHECKV655', 'Any Course', prog, 'UTME', ses, 200, 200, 'ADMITTED');
+        INSERT INTO catalogue.course (code, title, units, semester, both_semesters, level, dept_code, kind, state) VALUES
+            ('ZQN 201', 'Check Course With No Class', 3, 1, false, 200, dept, 'Core', 'LIVE'),
+            ('ZQN 202', 'Check Second Semester Course', 2, 2, false, 200, dept, 'Core', 'LIVE'),
+            ('ZQN 203', 'Check Both Semesters Course', 2, 1, true, 200, dept, 'Core', 'LIVE'),
+            ('ZQN 105', 'Check Owed Course', 2, 1, false, 100, dept, 'Core', 'LIVE'),
+            ('ZQN 299', 'Check Another Department', 2, 1, false, 200, other_dept, 'Core', 'LIVE'),
+            ('ZQN 204', 'Check Bound Later', 2, 1, false, 200, dept, 'Core', 'LIVE'),
+            ('ZQN 304', 'Check Higher Level', 2, 1, false, 300, dept, 'Core', 'LIVE');
+        INSERT INTO catalogue.course (code, title, units, semester, both_semesters, level, dept_code, kind, state, general_office) VALUES
+            ('GST 655', 'Check University GST With No Class', 2, 1, false, 100, dept, 'GST', 'LIVE', 'GST');
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('ZQN 201', prog, 200, 'Core'), ('ZQN 202', prog, 200, 'Core'), ('ZQN 203', prog, 200, 'Core'), ('ZQN 105', prog, 100, 'Core'),
+            ('ZQN 204', prog, 200, 'Core'), ('ZQN 304', prog, 300, 'Core');
+        -- no class of any of them in the session
+        SELECT * INTO c201 FROM registration.course_check(st, ses, 1, 'ZQN 201', '{}', '{}', '{}', '{}');
+        SELECT * INTO c202 FROM registration.course_check(st, ses, 1, 'ZQN 202', '{}', '{}', '{}', '{}');
+        SELECT * INTO c203 FROM registration.course_check(st, ses, 1, 'ZQN 203', '{}', '{}', '{}', '{}');
+        SELECT * INTO ccarry FROM registration.course_check(st, ses, 1, 'ZQN 105', '{}', '{}', '{ZQN 105}', '{}');
+        SELECT * INTO coth FROM registration.course_check(st, ses, 1, 'ZQN 299', '{}', '{}', '{}', '{}');
+        SELECT * INTO cgone FROM registration.course_check(st, gone, 1, 'ZQN 201', '{}', '{}', '{}', '{}');
+        SELECT * INTO found FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, NULL, 100, 0) x WHERE x.course_code = 'ZQN 201';
+        -- a University GST course with no class: not among the student's own courses (it would crowd the programme's), found when typed
+        gst_own := (SELECT count(*) FROM registration.course_search(st, ses, 1, NULL, NULL, NULL, NULL, NULL, 100, 0) x WHERE x.course_code = 'GST 655');
+        gst_typed := (SELECT count(*) FROM registration.course_search(st, ses, 1, 'GST 655', NULL, NULL, NULL, NULL, 100, 0) x WHERE x.course_code = 'GST 655' AND x.refusal IS NULL);
+        -- added: its class opened once, the course on the draft
+        cls := registration.class_to_add(st, ses, 1, 'ZQN 201');
+        again := registration.class_to_add(st, ses, 1, 'ZQN 201');
+        classes := (SELECT count(*) FROM catalogue.offering o WHERE o.course_code = 'ZQN 201' AND o.session = ses AND o.semester = 1 AND o.stream = 'REGULAR');
+        PERFORM registration.student_add_other(st, ses, 1, cls);
+        on_draft := (SELECT count(*) FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id
+                      WHERE r.student_id = st AND r.session = ses AND r.semester = 1 AND e.offering_id = cls AND e.status = 'REGISTERED');
+        -- refused: no class opened
+        BEGIN PERFORM registration.class_to_add(st, ses, 1, 'ZQN 299');
+        EXCEPTION WHEN check_violation THEN r_oth := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM registration.class_to_add(st, ses, 1, 'ZQN 202');
+        EXCEPTION WHEN check_violation THEN r_sem := split_part(SQLERRM, ':', 1); END;
+        oth_classes := (SELECT count(*) FROM catalogue.offering o WHERE o.course_code IN ('ZQN 299', 'ZQN 202') AND o.session = ses);
+        -- the student's registration read: the level's courses of the semester opened, nothing twice, nothing elsewhere
+        opened := registration.open_student_classes(st, ses, 1);
+        opened_again := registration.open_student_classes(st, ses, 1);
+        opened_gone := registration.open_student_classes(st, gone, 1);
+        level_classes := (SELECT string_agg(o.course_code, ',' ORDER BY o.course_code) FROM catalogue.offering o
+                           WHERE o.course_code IN ('ZQN 201', 'ZQN 203', 'ZQN 204') AND o.session = ses AND o.semester = 1 AND o.stream = 'REGULAR');
+        none_classes := (SELECT count(*) FROM catalogue.offering o WHERE o.course_code IN ('ZQN 202', 'ZQN 304') AND o.session = ses);
+        on_menu := (SELECT count(*) FROM registration.student_menu(st, ses, 1) m WHERE m.course_code = 'ZQN 204');
+        RAISE EXCEPTION 'the V655 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V655 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V655: a course with no class in the session is registrable — judged with no refusal, listed by the search, its class opened once when added — unless it runs in the other semester, belongs nowhere the student may take it, or the session holds no classes; the student''s registration read opens their level''s classes',
+        coalesce(c201.refusal IS NULL AND c201.offering_id IS NULL AND c201.category = 'CORE'
+                 AND c202.refusal LIKE 'REG_NOT_OFFERED_SEMESTER:%second semester%' AND c203.refusal IS NULL
+                 AND ccarry.refusal IS NULL AND ccarry.category = 'CARRY_OVER' AND coth.refusal LIKE 'REG_NOT_AVAILABLE:%'
+                 AND cgone.refusal LIKE 'REG_NOT_OFFERED_SESSION:%'
+                 AND found.refusal IS NULL AND found.offering_id IS NULL
+                 AND cls IS NOT NULL AND again = cls AND classes = 1 AND on_draft = 1
+                 AND r_oth = 'REG_NOT_AVAILABLE' AND r_sem = 'REG_NOT_OFFERED_SEMESTER' AND oth_classes = 0
+                 AND opened >= 2 AND opened_again = 0 AND opened_gone = 0 AND level_classes = 'ZQN 201,ZQN 203,ZQN 204' AND none_classes = 0
+                 AND on_menu = 1 AND gst_own = 0 AND gst_typed = 1, false),
+        format('201 %s/%s/%s | 202 %s | 203 %s | carry %s/%s | other %s | cancelled %s | search %s/%s | class %s again %s classes %s draft %s | refused %s/%s classes %s | opened %s again %s cancelled %s level %s none %s menu %s | gst %s/%s',
+               c201.category, coalesce(c201.offering_id::text, '-'), coalesce(c201.refusal, '-'), left(c202.refusal, 70), coalesce(c203.refusal, '-'),
+               ccarry.category, coalesce(ccarry.refusal, '-'), left(coth.refusal, 25), left(cgone.refusal, 30),
+               coalesce(found.refusal, '-'), coalesce(found.offering_id::text, '-'), cls IS NOT NULL, again = cls, classes, on_draft, r_oth, r_sem, oth_classes, opened, opened_again, opened_gone, level_classes, none_classes, on_menu, gst_own, gst_typed));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

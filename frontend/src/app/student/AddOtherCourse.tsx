@@ -95,11 +95,13 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
   }, [q, lvl, dept, cat]);
 
   async function add(c: FoundCourse) {
-    if (!c.offering_id) return;
-    const j = await act(`addother-${c.offering_id}`, "POST", "/me/registration/courses", { session, semester, offering: c.offering_id },
-      `Course ${c.course_code} added by the student beside the recommended list`, `${c.course_code} added`);
+    // V655: a course with no class in the session yet is added by its code: the engine judges it and opens its class
+    const j = await act(`addother-${c.course_code}`, "POST", "/me/registration/courses",
+      c.offering_id ? { session, semester, offering: c.offering_id } : { session, semester, courseCode: c.course_code },
+      `Course ${c.course_code} added by the student beside the recommended list`, `${shownCode(c.course_code)} added`);
     if (j) {
-      onAdded(c.offering_id);
+      const id = c.offering_id ?? (typeof j.offering === "string" ? j.offering : null);
+      if (id) onAdded(id);
       setUnits((u) => u + Number(c.units || 0));
       void search(page);
     }
@@ -171,7 +173,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
             {rows.map((c) => {
               const st = courseStatus(c);
               const after = unitsAfter(units, Number(c.units || 0), max);
-              const key = `addother-${c.offering_id}`;
+              const key = `addother-${c.course_code}`;
               return (
                 <tr key={c.course_code}>
                   <td className="tnum b600">{shownCode(c.course_code)}</td>
@@ -186,7 +188,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
                   <td>{c.category ? <Pil kind={c.category === "CARRY_OVER" ? "bad" : c.category === "GST" ? "info" : "grey"}>{CATEGORY_LABEL[c.category]}</Pil> : "—"}</td>
                   <td><Pil kind={st.ok ? "ok" : st.label === "Already added" || st.label === "Added automatically" ? "info" : "warn"}>{st.label}</Pil></td>
                   <td className="num">
-                    <Btn kind="primary" size="sm" disabled={!st.ok || after.over || !c.offering_id || busy !== null} busy={busy === key} busyLabel="Adding..."
+                    <Btn kind="primary" size="sm" disabled={!st.ok || after.over || busy !== null} busy={busy === key} busyLabel="Adding..."
                       onClick={() => void add(c)}>ADD COURSE</Btn>
                   </td>
                 </tr>

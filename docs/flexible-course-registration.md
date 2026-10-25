@@ -13,7 +13,9 @@ course, programme, result or student table. A course the student adds is an ordi
 ## What a student may add
 
 The **Add Other Course** search on Course Registration opens on the student's own courses: their programme's courses at
-every level that run in the session, the University GST/EPS courses and their carry-overs (V507). A level or a category
+every level, the University GST/EPS courses and their carry-overs (V507). The programme's courses and the carry-overs are listed
+whether or not the session has a class of them yet (V655), those taught in the semester first; the GST/EPS courses, and the
+department's or faculty's, when they have a class in the session. A level or a category
 narrows them. Typing a code or title, or choosing a department, searches every course. The server judges each course it
 finds, for that student and that semester (`registration.course_check`). It says the category the course would be
 registered in and why it is allowed, or why it is not.
@@ -35,8 +37,8 @@ A course is refused, with the reason shown to the student, when:
 | `REG_RESULT_AWAITED` | the student registered it before and the result is not yet published ("Result pending"). It is not a carry-over, and it is not registered again. The department settles the result, or ICT Support adds the course on the student's ticket |
 | `REG_ALREADY_ADDED` | the course is already on this registration |
 | `REG_ALREADY_REGISTERED` | the course is on the registration for another semester of the session |
-| `REG_NOT_OFFERED_SEMESTER` | the course runs in another semester of the session, which is named |
-| `REG_NOT_OFFERED_SESSION` | the course has no class in the session yet |
+| `REG_NOT_OFFERED_SEMESTER` | the course is taught in another semester, which is named (by the course's own semester when the session has no class of it) |
+| `REG_NOT_OFFERED_SESSION` | the session holds no classes (cancelled or merged). Before V655, any course with no class in the session yet |
 | `REG_HIGHER_LEVEL` | the course is taken at a higher level than the student's, and the rule does not allow it |
 | `REG_NOT_AVAILABLE` | the course is not part of the student's programme, department or faculty, as the rule allows |
 | `REG_OTHER_CURRICULUM` | the course belongs to another curriculum (CCMAS or BMAS) |
@@ -48,6 +50,27 @@ A course is refused, with the reason shown to the student, when:
 | `REG_OTHER_COURSES_OFF` | the Academic Office has closed adding courses beside the list |
 
 While the student owes the GST fee, it holds every course they add, as it already holds every course on the list (V314).
+
+### A course with no class yet (V655)
+
+*25 Oct 2026.* A course is never tied to a session; the session holds its class (`catalogue.offering`). Classes are opened when
+registration opens (for the courses a programme binds then), on a course upload, or when a course goes live. A course created,
+bound or separated under a shared code after that had no class, and was refused as `REG_NOT_OFFERED_SESSION` ("Not offered this
+session"), CCMAS or BMAS. Now:
+- `registration.no_class_refusal` refuses a course with no class only when it is not taught in the semester, or the session holds
+  no classes; otherwise the course is judged by every other rule as before and found **Available**, with no class;
+- the student adds it by its code (`POST /api/v1/me/registration/courses` `{session, semester, courseCode}`):
+  `registration.class_to_add` judges it again, opens its class for the student's stream (`catalogue.open_class`) and the add
+  goes on as any other (`registration.student_add_other`, or `registration.student_add` in add and drop), in one transaction, so an
+  add refused afterwards (the GST fee, the unit ceiling) opens no class. A second add finds the class already open;
+- a carry-over with no class is added the same way, from **+ Add carry-over course**; the outstanding courses panel says so;
+- as the student opens their registration, the classes of their level's courses (every curriculum while curricula are open) and
+  of their carry-overs, taught in the semester, are opened where the session has none (`registration.open_student_classes`) —
+  only in the session the student registers in now, never in ICT Support's read-only view. The courses uploaded are one pool for
+  every session: each student's recommended list holds every course of their level, whenever it was uploaded or bound, and they
+  register it as they progress from level to level.
+
+Once a course's class is open, it reads as any other course.
 
 The minimum and maximum units (V495), the registration window, the school fees gate and the submission's own checks apply
 as before. The search shows the units the registration would reach and refuses an add past the maximum.
@@ -223,7 +246,7 @@ the curricula apart again.
 | `GET /api/v1/me/registration` | the student | now also carries `outstanding` and `flex`; entries carry `category`, `addedAs`, `studentAdded`, in the University's order |
 | `GET /api/v1/me/registration/courses?session&semester&q&level&dept&faculty&category&page` | the student | the search, 20 a page, each course judged |
 | `GET /api/v1/me/registration/courses/filters` | the student | the departments and faculties to narrow by |
-| `POST /api/v1/me/registration/courses` `{session, semester, offering}` | the student | add a course; the engine refuses with its reason |
+| `POST /api/v1/me/registration/courses` `{session, semester, offering}` or `{session, semester, courseCode}` | the student | add a course by its class, or by its code when the session has no class of it yet (V655: the class opens; the answer carries `offering`); the engine refuses with its reason |
 | `GET /api/v1/registration/flex` | registration offices | the rule in force |
 | `PUT /api/v1/registration/flex` | Academic Office, Registry, ICT, super | set the rule with a reason |
 | `PUT /api/v1/registration/flex/curriculum` `{open, reason}` | Academic Office, Registry, ICT, super | every curriculum open, or kept apart (V590) |

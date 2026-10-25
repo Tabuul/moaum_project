@@ -607,6 +607,19 @@ class StudentPortalRepository {
                 """).query().listOfRows();
     }
 
+    /** V655: the classes of the student's level's courses and carry-overs taught in the semester, opened where the session has none */
+    int openStudentClasses(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT registration.open_student_classes(:s, :ses, :sem)")
+                .param("s", student).param("ses", session).param("sem", semester).query(Integer.class).single();
+    }
+
+    /** V655: the class a student adds a course by — the course judged by the engine (refused with its reason), the session's class of
+     *  it, opened now when there is none */
+    UUID classToAdd(UUID student, String session, int semester, String course) {
+        return jdbc.sql("SELECT registration.class_to_add(:s, :ses, :sem, :c)")
+                .param("s", student).param("ses", session).param("sem", semester).param("c", course).query(UUID.class).single();
+    }
+
     /** V504: the student adds one course to the semester's draft (made if there is none); the engine refuses what it does not allow */
     String addOther(UUID student, String session, int semester, UUID offering) {
         return jdbc.sql("SELECT registration.student_add_other(:s, :ses, :sem, :o)::text")

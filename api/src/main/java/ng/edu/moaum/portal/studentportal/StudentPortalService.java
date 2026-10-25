@@ -521,6 +521,18 @@ public class StudentPortalService {
 
     /* ── registration ── */
 
+    /** V655: the student's registration page — a course is never tied to a session: the classes of the student's level's courses and
+     *  carry-overs that the session has none of yet are opened first, so the recommended list holds every course of the level whenever
+     *  it was uploaded or bound (never in ICT Support's read-only view of the portal, which writes nothing) */
+    @Transactional
+    public Map<String, Object> registrationPage(UUID id, String session, int semester) {
+        // only the session the student registers in now: the page names a session, and an older or later one opens nothing
+        if (!ng.edu.moaum.portal.platform.SupportView.active() && semester >= 1 && semester <= 3 && session != null && session.equals(sessionFor(id))) {
+            repo.openStudentClasses(id, session, semester);
+        }
+        return registrationView(id, session, semester);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> registrationView(UUID id, String session, int semester) {
         StudentPortalRepository.Student s = student(id);
@@ -743,15 +755,24 @@ public class StudentPortalService {
 
     /** V504: the student adds a course found by the search — to the draft while the registration is being made, or by add and drop
      *  once it is submitted or approved; the engine judges it (programme, level, semester, passed, awaited, prerequisites, GST fee)
-     *  and refuses with its reason; the window and the student's standing are the API's to check first */
+     *  and refuses with its reason; the window and the student's standing are the API's to check first.
+     *  V655: a course with no class in the session yet comes by its code; the engine judges it and opens its class, in this transaction,
+     *  so an add refused afterwards (the GST fee, the unit ceiling) leaves no class behind */
     @Transactional
-    public Map<String, Object> addOtherCourse(UUID id, String session, int semester, UUID offering) {
+    public Map<String, Object> addOtherCourse(UUID id, String session, int semester, UUID offering, String courseCode) {
         StudentPortalRepository.Student s = student(id);
         if (!List.of("ADMITTED", "ACTIVE", "PROBATION").contains(s.status())) {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "A student who is " + s.status().toLowerCase() + " does not register.",
                     new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
         }
         assertWindowOpen(id, session, semester);
+        if (offering == null) {
+            if (courseCode == null || courseCode.isBlank()) {
+                throw new DomainRuleViolation("REG_COURSE_UNKNOWN", "Choose the course to add.",
+                        new DomainRuleViolation.Remedy("Pick a course from the search.", "Student"));
+            }
+            offering = repo.classToAdd(id, session, semester, courseCode.trim());
+        }
         String status = repo.registration(id, session, semester).map(r -> String.valueOf(r.get("status"))).orElse("DRAFT");
         // V512: a GST/EPS carry-over the student asks to register is logged as attempted, and as held where the GST fee stops it
         Map<String, Object> g = repo.gstCourseOf(id, offering);
@@ -776,6 +797,7 @@ public class StudentPortalService {
         }
         Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
         out.put("added", added);
+        out.put("offering", offering);   // V655: the class the course was added by, opened now or not
         return out;
     }
 

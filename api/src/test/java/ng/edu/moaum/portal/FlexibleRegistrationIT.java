@@ -160,14 +160,20 @@ class FlexibleRegistrationIT {
         assertThat(rows.get(rows.size() - 1).get("refusal")).isNotNull();
         assertThat(it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("category", "ANY").build()).getBody())
                 .containsEntry("code", "REG_SEARCH_CATEGORY");
-        // V507: nothing typed, the student's own courses are listed; a category alone narrows them
+        // V507: nothing typed, the student's own courses are listed; a level or a category narrows them. V655: the programme's courses at
+        // every level whether the session has a class of them or not — other tests bind theirs to C00061 too, so each is looked for at its level
         Map<String, Object> own = it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1).build()).getBody();
         assertThat(own).containsEntry("listed", "YOUR_COURSES");
-        assertThat((List<Map<String, Object>>) own.get("results")).extracting(x -> x.get("course_code")).contains("ITF 201", "ITF 101", "ITF 301").doesNotContain("ITX 201");
+        assertThat((List<Map<String, Object>>) own.get("results")).extracting(x -> x.get("course_code")).doesNotContain("ITX 201");
+        for (Map.Entry<Integer, String> at : Map.of(100, "ITF 101", 200, "ITF 201", 300, "ITF 301").entrySet()) {
+            Map<String, Object> level = it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1)
+                    .queryParam("level", at.getKey()).build()).getBody();
+            assertThat((List<Map<String, Object>>) level.get("results")).extracting(x -> x.get("course_code")).contains(at.getValue());
+        }
         Map<String, Object> core = it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1)
-                .queryParam("category", "CORE").build()).getBody();
+                .queryParam("level", 200).queryParam("category", "CORE").build()).getBody();
         assertThat((List<Map<String, Object>>) core.get("results")).isNotEmpty().allSatisfy(x -> assertThat(x.get("category")).isEqualTo("CORE"));
-        assertThat((List<Map<String, Object>>) core.get("results")).extracting(x -> x.get("course_code")).contains("ITF 201", "ITF 101");
+        assertThat((List<Map<String, Object>>) core.get("results")).extracting(x -> x.get("course_code")).contains("ITF 201");
         assertThat(((Number) it.get(token, u -> u.path("/api/v1/me/registration/courses").queryParam("session", session).queryParam("semester", 1)
                 .queryParam("category", "CARRY_OVER").build()).getBody().get("total")).intValue()).isZero();
 

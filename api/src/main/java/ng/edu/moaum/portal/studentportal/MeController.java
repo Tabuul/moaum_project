@@ -112,7 +112,7 @@ class MeController {
 
     @GetMapping("/registration")
     Map<String, Object> registration(Authentication auth, @RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester) {
-        return portal.registrationView(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester);
+        return portal.registrationPage(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester);
     }
 
     @GetMapping("/registration-history")
@@ -143,6 +143,10 @@ class MeController {
     public record AddDrop(@NotBlank String session, @Min(1) @Max(3) int semester, @jakarta.validation.constraints.NotNull UUID offering) {
     }
 
+    /** V655: a course the search found — by its class, or by its code when the session has no class of it yet (opened as it is added) */
+    public record AddCourse(@NotBlank String session, @Min(1) @Max(3) int semester, UUID offering, @Size(max = 40) String courseCode) {
+    }
+
     /** add a course to a submitted/approved registration during the add/drop window */
     @PostMapping("/registration/add")
     Map<String, Object> addCourse(Authentication auth, @Valid @RequestBody AddDrop body) {
@@ -168,8 +172,8 @@ class MeController {
 
     /** V504: the student adds a course the search found; the engine judges it, and refuses with its reason */
     @PostMapping("/registration/courses")
-    Map<String, Object> addOtherCourse(Authentication auth, @Valid @RequestBody AddDrop body) {
-        return portal.addOtherCourse(id(auth), body.session(), body.semester(), body.offering());
+    Map<String, Object> addOtherCourse(Authentication auth, @Valid @RequestBody AddCourse body) {
+        return portal.addOtherCourse(id(auth), body.session(), body.semester(), body.offering(), body.courseCode());
     }
 
     /** drop a non-carryover course from a registration during the add/drop window */

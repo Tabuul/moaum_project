@@ -169,7 +169,9 @@ class StudentPortalIT {
         Map<String, Object> view = it.get(token, "/api/v1/me/registration?session=2090/2091&semester=1").getBody();
         List<Map<String, Object>> menu = (List<Map<String, Object>>) view.get("menu");
         assertThat(menu.stream().map(m -> String.valueOf(m.get("course_code"))).toList()).contains("ITP 101", "ITP 102");
-        List<UUID> offerings = menu.stream().map(m -> UUID.fromString(String.valueOf(m.get("offering_id")))).toList();
+        // V655: the list holds every course bound to the programme at the level (other tests bind theirs to C00061 too): the two chosen
+        List<UUID> offerings = menu.stream().filter(m -> List.of("ITP 101", "ITP 102").contains(String.valueOf(m.get("course_code"))))
+                .map(m -> UUID.fromString(String.valueOf(m.get("offering_id")))).toList();
         Map<String, Object> chosen = it.call(token, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", SESSION, "semester", 1, "offerings", offerings)).getBody();
         assertThat(((Map<String, Object>) chosen.get("registration")).get("units")).isEqualTo(18);
 
