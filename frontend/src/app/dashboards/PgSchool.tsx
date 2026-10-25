@@ -6,6 +6,7 @@ import { StatsPanel } from "@/components/stats/StatsPanel";
 import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 import { PgStructurePanel } from "@/components/catalogue/PgStructurePanel";
+import { PgStagePanel } from "@/components/pg/PgStagePanel";
 
 export interface PgHome {
   session: string;
@@ -79,6 +80,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
 
       <FinancePanel />
 
+      <PgStagePanel />
       <PgStructurePanel />
       <Tiles items={[
         ["Applications", String(c.total), null, home.session, desk],
@@ -164,6 +166,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
 
       <FinancePanel />
 
+      <PgStagePanel />
       <PgStructurePanel />
       <Tiles items={[
         ["To register", String(c.toRegister), Number(c.toRegister) ? "var(--chrome)" : null, "PG students yet to register this session", register],

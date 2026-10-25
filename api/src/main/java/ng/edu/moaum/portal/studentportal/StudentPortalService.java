@@ -381,6 +381,8 @@ public class StudentPortalService {
         out.put("spilloverBySemester", spill);
         // V637: the SP year, each semester's spillover fee and whether a course is registered in it, the carry-overs by semester
         out.put("spillover", spill ? repo.spilloverPanel(id, session) : null);
+        // V651: a postgraduate student's stage and fresh/returning in the session, the fee lines read by them
+        out.put("pg", repo.pgStage(id, session));
         out.put("due", pos.get("due"));
         out.put("paid", pos.get("paid"));
         out.put("balance", pos.get("balance"));

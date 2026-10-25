@@ -114,6 +114,14 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           What is shown covers what the Bursary has stated so far; nothing here pays for the {unstatedWords} semester. The Bursary is told when a student&rsquo;s fees are missing, and the charge appears here once it is stated. If it is still not here in a few days, <Link href={askBursary(`${semesterName(unstated[0])} semester school fees for ${fees.session} not stated`)}>ask the Bursary</Link>.
         </Note>
       ) : null}
+      {/* V651: a postgraduate student's stage and fresh/returning — the fee lines read by them */}
+      {fees.pg ? (
+        <Note kind={fees.pg.beyond || fees.pg.recommendation === "RESTART_REQUIRED" ? "bad" : "info"}
+          title={`Postgraduate fees, ${fees.session}: ${fees.pg.stage_label ?? (fees.pg.beyond ? "past the maximum period" : "stage not set")}${fees.pg.category ? ` · ${fees.pg.category === "FRESH" ? "Fresh" : "Returning"}` : ""}`}>
+          {fees.pg.qualification_label ?? "Postgraduate"}, cycle {fees.pg.cycle_no}{fees.pg.start_session ? ` from ${fees.pg.start_session}` : ""}. Your school fees are the Postgraduate School&rsquo;s for this stage{fees.pg.category ? ` and for ${fees.pg.category === "FRESH" ? "fresh" : "returning"} students` : ""}{fees.pg.official ? "" : " (the stage is read from the calendar until the School records it)"}.
+          {fees.pg.beyond || fees.pg.recommendation === "RESTART_REQUIRED" ? " Your programme has passed its maximum period: ask the Postgraduate School about a restart." : ""}
+        </Note>
+      ) : null}
       {/* V637: a spillover student's fees by semester — the SP year, each semester's fee, the carry-overs, what is owed and paid */}
       {fees.spillover ? <SpilloverCard sp={fees.spillover} /> : null}
       {/* V616: a spillover student is charged a semester's fees only when they register a course in it */}

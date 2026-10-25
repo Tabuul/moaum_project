@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 478
+\set EXPECTED 480
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -24979,6 +24979,178 @@ BEGIN
                al.total, al.female, al.male, al.fees_paid, al.fees_not_paid, al.registered, al.paid_not_registered, al.gst_applicable, al.gst_registered, al.gst_paid,
                al.gst_not_paid, al.card_eligible, al.card_issued, al.card_not_eligible, al.permit_eligible, al.permit_printed, al.payable, al.paid_amount, al.outstanding,
                dep_sum, not_paid_rows, tx.ok, tx.pending, tx.failed, tx.refunded, refund_ok, tx.revenue, ref1, st1, st2, fmts, ref_dbo));
+END $$;
+-- ── V651. Postgraduate stages and stage-based fees: the structure as the University set it (PG Diploma 700 and 700 Extension;
+-- Masters 800 A, 800 B, 800 C; PhD 900 A–900 E); a Masters student read year by year from the admission session — 800 A FRESH, 800 B
+-- RETURNING, 800 C an extension, then past the maximum period; a fee line for a stage, or for fresh or returning students, reaching
+-- only them, the bulk sums agreeing with the student's own charges; a stage line's level and category kept to the stage's, its programme a postgraduate one of the stage's qualification; a
+-- copied line keeping its stage; a school-fees reference naming its stage. The block undoes its own writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); ug uuid := gen_random_uuid(); officer uuid := gen_random_uuid();
+        s0 text := '9851/9852'; s1 text := '9852/9853'; s2 text := '9853/9854'; s3 text := '9854/9855';
+        shape text; r0 record; r1 record; r2 record; r3 record; charged numeric; bulk numeric; due numeric; ug_charged numeric;
+        r_level text; r_cat text; r_ug text; r_prog text; r_qual text; auto_cat text; copied text; ctx record;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'V651 check: postgraduate stages and fees', true);
+        shape := (SELECT string_agg(q.code || ':' || (SELECT string_agg(s.label, '/' ORDER BY s.sequence) FROM admissions.pg_stage s WHERE s.qualification = q.code AND s.active), ' ' ORDER BY q.level)
+                    FROM admissions.pg_qualification q);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s0, '9851-10-01', '9852-08-31'), (gen_random_uuid(), s1, '9852-10-01', '9853-08-31'),
+            (gen_random_uuid(), s2, '9853-10-01', '9854-08-31'), (gen_random_uuid(), s3, '9854-10-01', '9855-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (st, 'MOAUM/ADM/98/965101', 'MOAUM/PGC/98/6510', 'CHECKPGSTAGE', 'Masters Student', 'C90090', 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()),
+            (ug, 'MOAUM/ADM/98/965103', 'MOAUM/UGC/98/6510', 'CHECKPGSTAGE', 'Undergraduate', 'C00023', 'UTME', s0, 100, 200, 'ACTIVE', now());
+        SELECT x.* INTO r0 FROM admissions.pg_stages_of(s0, ARRAY[st]) x;
+        SELECT x.* INTO r1 FROM admissions.pg_stages_of(s1, ARRAY[st]) x;
+        SELECT x.* INTO r2 FROM admissions.pg_stages_of(s2, ARRAY[st]) x;
+        SELECT x.* INTO r3 FROM admissions.pg_stages_of(s3, ARRAY[st]) x;
+
+        -- the fees of s1: every Masters student, 800 B alone, 800 A alone, the fresh, the returning; an undergraduate's line
+        INSERT INTO finance.fee_schedule (session, item, amount, level, semester) VALUES (s1, 'V651 check Masters levy', 10000, 800, 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, semester) VALUES (s1, 'V651 check tuition', 50000, '800B', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, semester) VALUES (s1, 'V651 check tuition', 70000, '800A', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, fee_category, semester) VALUES (s1, 'V651 check fresh levy', 3000, 800, 'FRESH', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, fee_category, semester) VALUES (s1, 'V651 check returning levy', 2000, 800, 'RETURNING', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, semester) VALUES (s1, 'V651 check UG fee', 40000, 200, 1);
+        charged := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(st, s1) c);
+        bulk := (SELECT p.due FROM finance.session_fee_positions(s1) p WHERE p.student_id = st);
+        due := finance.due_for_semester(st, s1, 1);
+        ug_charged := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(ug, s1) c);
+        auto_cat := (SELECT f.fee_category || '/' || f.level FROM finance.fee_schedule f WHERE f.session = s1 AND f.pg_stage = '800B');
+
+        -- a stage line's level and category are the stage's; fresh and returning are postgraduate
+        BEGIN INSERT INTO finance.fee_schedule (session, item, amount, level, pg_stage) VALUES (s1, 'V651 check wrong level', 1, 700, '800B');
+        EXCEPTION WHEN check_violation THEN r_level := split_part(SQLERRM, ':', 1); END;
+        BEGIN INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, fee_category) VALUES (s1, 'V651 check wrong category', 1, '800B', 'FRESH');
+        EXCEPTION WHEN check_violation THEN r_cat := split_part(SQLERRM, ':', 1); END;
+        BEGIN INSERT INTO finance.fee_schedule (session, item, amount, level, fee_category) VALUES (s1, 'V651 check UG fresh', 1, 200, 'FRESH');
+        EXCEPTION WHEN check_violation THEN r_ug := split_part(SQLERRM, ':', 1); END;
+        -- a stage line names a postgraduate programme of the stage's qualification
+        BEGIN INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, programme_code) VALUES (s1, 'V651 check UG programme', 1, '800B', 'C00023');
+        EXCEPTION WHEN check_violation THEN r_prog := split_part(SQLERRM, ':', 1); END;
+        BEGIN INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, programme_code) VALUES (s1, 'V651 check PhD stage', 1, '900A', 'C90090');
+        EXCEPTION WHEN check_violation THEN r_qual := split_part(SQLERRM, ':', 1); END;
+
+        -- a copy keeps the stage; the reference names the stage it was raised under
+        PERFORM finance.copy_session_fees(s1, s2, true);
+        copied := (SELECT string_agg(f.pg_stage || '=' || f.amount, ',' ORDER BY f.pg_stage) FROM finance.fee_schedule f WHERE f.session = s2 AND f.pg_stage IS NOT NULL AND f.ended_at IS NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        VALUES (st, s1, 'MOAUM-FEE-V651-CHECK', 'School fees ' || s1, 62000, now() + interval '3 days');
+        SELECT c.* INTO ctx FROM finance.payment_pg_context c JOIN finance.payment_reference r ON r.id = c.reference_id WHERE r.reference = 'MOAUM-FEE-V651-CHECK';
+        RAISE EXCEPTION 'the V651 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V651: a Masters student is 800 A (fresh), 800 B, 800 C (extension), then past the maximum; a stage''s or a category''s fee line reaches only its students, alike in bulk',
+        coalesce(shape = 'PGD:700 Level/700 Extension MASTERS:800 A — Year 1/800 B — Year 2/800 C — Extension PHD:900 A — Year 1/900 B — Year 2/900 C — Year 3/900 D — Extension 1/900 E — Extension 2'
+                 AND r0.stage_code = '800A' AND r0.category = 'FRESH' AND r0.recommendation = 'NORMAL_PROGRESS' AND NOT r0.official AND r0.cycle_no = 1
+                 AND r1.stage_code = '800B' AND r1.category = 'RETURNING' AND r2.stage_code = '800C' AND r2.is_extension AND r2.recommendation = 'EXTENSION_REQUIRED'
+                 AND r3.stage_code IS NULL AND r3.beyond AND r3.recommendation = 'MAXIMUM_PERIOD_REACHED'
+                 AND charged = 62000 AND bulk = 62000 AND due = 62000 AND ug_charged = 40000 AND auto_cat = 'RETURNING/800'
+                 AND r_level = 'FEE_PG_STAGE_LEVEL' AND r_cat = 'FEE_PG_STAGE_CATEGORY' AND r_ug = 'FEE_PG_CATEGORY' AND r_prog = 'FEE_PG_STAGE_PROGRAMME' AND r_qual = 'FEE_PG_STAGE_PROGRAMME'
+                 AND copied = '800A=70000.00,800B=50000.00' AND ctx.stage_code = '800B' AND ctx.category = 'RETURNING' AND ctx.cycle_no = 1 AND NOT ctx.official, false),
+        format('shape=%s s0=%s/%s/%s/%s s1=%s/%s s2=%s/%s/%s s3=%s/%s/%s charged=%s bulk=%s due=%s ug=%s auto=%s refusals=%s/%s/%s/%s/%s copied=%s ctx=%s/%s/%s/%s',
+               shape, r0.stage_code, r0.category, r0.recommendation, r0.official, r1.stage_code, r1.category, r2.stage_code, r2.is_extension, r2.recommendation,
+               r3.stage_code, r3.beyond, r3.recommendation, charged, bulk, due, ug_charged, auto_cat, r_level, r_cat, r_ug, r_prog, r_qual, copied,
+               ctx.stage_code, ctx.category, ctx.cycle_no, ctx.official));
+END $$;
+-- ── V651. The PG School's workflows: an existing Masters student reconciled into cycle 1 (previewed, then committed by the PG
+-- Secretary); progressed to 800 B; the extension 800 C refused to the Secretary and recorded by the Dean; a stage recorded out of
+-- order refused; the cycle closed as exhausted at its last stage; a restart requested and recommended by the department, refused
+-- to the Secretary and to the officer who requested it, approved by the Dean — cycle 2 at 800 A (fresh, charged the fresh line; cycle 1 read as closed, no longer awaiting a restart),
+-- cycle 1 and its stages kept as they were; the structure changed only by the Dean. The block undoes its own writes.
+DO $$
+DECLARE st uuid := gen_random_uuid(); sec uuid := gen_random_uuid(); dean uuid := gen_random_uuid(); hod uuid := gen_random_uuid();
+        s0 text := '9861/9862'; s1 text := '9862/9863'; s2 text := '9863/9864'; s3 text := '9864/9865'; s4 text := '9865/9866';
+        scan record; com record; prog1 text; ext_sec text; ext_dean text; r_order text; closed text; v_ref text; rec text; r_sec text; r_same text;
+        dec record; c1 record; c2 record; old_stages text; at_s4 record; at_s2 record; at_s3 record; fresh_charged numeric; r_cfg text; cfg int; cfg_labels text;
+        quality text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V651 check: postgraduate workflows', true);
+        PERFORM set_config('moaum.actor_id', sec::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgsecretary', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s0, '9861-10-01', '9862-08-31'), (gen_random_uuid(), s1, '9862-10-01', '9863-08-31'),
+            (gen_random_uuid(), s2, '9863-10-01', '9864-08-31'), (gen_random_uuid(), s3, '9864-10-01', '9865-08-31'),
+            (gen_random_uuid(), s4, '9865-10-01', '9866-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (st, 'MOAUM/ADM/98/965201', 'MOAUM/PGC/98/6520', 'CHECKPGCYCLE', 'Masters Student', 'C90090', 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now());
+
+        -- reconciled: previewed, then committed
+        SELECT x.* INTO scan FROM admissions.pg_cycle_scan(s0) x WHERE x.student_id = st;
+        SELECT x.* INTO com FROM admissions.pg_cycle_commit(ARRAY[st], s0, 'Cycles recorded for the PG register') x;
+        -- progressed; the extension is the Dean's
+        prog1 := (SELECT x.outcome || ':' || x.stage_code FROM admissions.pg_progress(ARRAY[st], s1, NULL) x);
+        ext_sec := (SELECT x.outcome FROM admissions.pg_progress(ARRAY[st], s2, NULL) x);
+        PERFORM set_config('moaum.actor_id', dean::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        ext_dean := (SELECT x.outcome || ':' || x.stage_code FROM admissions.pg_progress(ARRAY[st], s2, 'Thesis outstanding: one year''s extension') x);
+        BEGIN PERFORM admissions.pg_record_stage(com.cycle_id, s3, '800A', 'CORRECTION', 'Recorded below the stage already reached');
+        EXCEPTION WHEN check_violation THEN r_order := split_part(SQLERRM, ':', 1); END;
+        closed := admissions.pg_close_cycle(com.cycle_id, 'MAXIMUM_PERIOD_EXHAUSTED', 'The extension year ended with the thesis outstanding');
+
+        -- the restart: requested and recommended by the department, decided by the Dean
+        PERFORM set_config('moaum.actor_id', hod::text, true);
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        v_ref := admissions.pg_restart_request(st, s4, 'The student asks to begin the Masters again');
+        rec := admissions.pg_restart_recommend(v_ref, true, 'The department supports a fresh start');
+        PERFORM set_config('moaum.actor_id', sec::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgsecretary', true);
+        BEGIN PERFORM * FROM admissions.pg_restart_decide(v_ref, true, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN r_sec := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', hod::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        BEGIN PERFORM * FROM admissions.pg_restart_decide(v_ref, true, NULL);
+        EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', dean::text, true);
+        SELECT x.* INTO dec FROM admissions.pg_restart_decide(v_ref, true, 'Approved by the Board of the School') x;
+        SELECT c.* INTO c1 FROM people.pg_cycle c WHERE c.student_id = st AND c.cycle_no = 1;
+        SELECT c.* INTO c2 FROM people.pg_cycle c WHERE c.student_id = st AND c.cycle_no = 2;
+        old_stages := (SELECT string_agg(cs.session || '=' || cs.stage_code || '/' || cs.source, ',' ORDER BY cs.session) FROM people.pg_cycle_stage cs WHERE cs.cycle_id = c1.id);
+        SELECT x.* INTO at_s4 FROM admissions.pg_stages_of(s4, ARRAY[st]) x;
+        SELECT x.* INTO at_s2 FROM admissions.pg_stages_of(s2, ARRAY[st]) x;
+        SELECT x.* INTO at_s3 FROM admissions.pg_stages_of(s3, ARRAY[st]) x;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, fee_category, semester) VALUES (s4, 'V651 check fresh levy', 3000, 800, 'FRESH', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, fee_category, semester) VALUES (s4, 'V651 check returning levy', 2000, 800, 'RETURNING', 1);
+        fresh_charged := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(st, s4) c);
+
+        -- the structure: the Dean's alone
+        PERFORM set_config('moaum.actor_office', 'pgsecretary', true);
+        BEGIN PERFORM admissions.pg_set_qualification('MASTERS', NULL, 2, 2, true, NULL);
+        EXCEPTION WHEN insufficient_privilege THEN r_cfg := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        cfg := admissions.pg_set_qualification('MASTERS', NULL, 2, 2, true, NULL);
+        cfg_labels := (SELECT string_agg(s.label, '/' ORDER BY s.sequence) FROM admissions.pg_stage s WHERE s.qualification = 'MASTERS' AND s.active);
+        UPDATE people.student SET current_level = 900 WHERE id = st;
+        quality := (SELECT string_agg(q.issue, ',' ORDER BY q.issue) FROM admissions.pg_data_quality(s4) q WHERE q.student_id = st);
+        RAISE EXCEPTION 'the V651 workflow check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V651: a PG cycle reconciled, progressed, extended by the Dean, closed as exhausted; a restart recommended and approved opens cycle 2 at 800 A (fresh), cycle 1 kept',
+        coalesce(scan.confidence = 'HIGH' AND scan.stage_code = '800A' AND com.outcome = 'RECORDED' AND com.cycle_status = 'ACTIVE' AND com.stage_code = '800A'
+                 AND prog1 = 'PROGRESSED:800B' AND ext_sec = 'NEEDS_APPROVAL' AND ext_dean = 'EXTENDED:800C' AND r_order = 'PG_STAGE_ORDER'
+                 AND closed = 'MAXIMUM_PERIOD_EXHAUSTED' AND v_ref ~ '^PG-RST/[0-9]{4}/[0-9]{6}$' AND rec = 'UNDER_REVIEW'
+                 AND r_sec = 'PG_NOT_PERMITTED' AND r_same = 'PG_RESTART_SAME_OFFICER'
+                 AND dec.state = 'APPROVED' AND dec.cycle_no = 2 AND dec.stage_code = '800A'
+                 AND c1.status = 'MAXIMUM_PERIOD_EXHAUSTED' AND c2.status = 'ACTIVE' AND c2.restart_of = c1.id AND c2.start_session = s4
+                 AND old_stages = s0 || '=800A/RECONCILIATION,' || s1 || '=800B/PROGRESSION,' || s2 || '=800C/EXTENSION'
+                 AND at_s4.cycle_no = 2 AND at_s4.stage_code = '800A' AND at_s4.category = 'FRESH' AND at_s4.official
+                 AND at_s2.cycle_no = 1 AND at_s2.stage_code = '800C' AND at_s2.official AND at_s3.cycle_no = 1 AND at_s3.recommendation = 'CLOSED' AND fresh_charged = 3000
+                 AND r_cfg = 'PG_NOT_PERMITTED' AND cfg = 4 AND cfg_labels = '800 A — Year 1/800 B — Year 2/800 C — Extension 1/800 D — Extension 2'
+                 AND quality = 'LEVEL_MISMATCH', false),
+        format('scan=%s/%s commit=%s/%s/%s progress=%s ext=%s/%s order=%s closed=%s ref=%s rec=%s refusals=%s/%s decided=%s/%s/%s cycles=%s/%s/%s/%s stages=%s s4=%s/%s/%s/%s s2=%s/%s/%s s3=%s/%s fresh=%s cfg=%s/%s/%s quality=%s',
+               scan.confidence, scan.stage_code, com.outcome, com.cycle_status, com.stage_code, prog1, ext_sec, ext_dean, r_order, closed, v_ref, rec, r_sec, r_same,
+               dec.state, dec.cycle_no, dec.stage_code, c1.status, c2.status, c2.restart_of = c1.id, c2.start_session, old_stages,
+               at_s4.cycle_no, at_s4.stage_code, at_s4.category, at_s4.official, at_s2.cycle_no, at_s2.stage_code, at_s2.official, at_s3.cycle_no, at_s3.recommendation, fresh_charged,
+               r_cfg, cfg, cfg_labels, quality));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -41,6 +41,9 @@ export interface Fees {
   clearsRegistration: boolean | null;
   /** V616: in spillover — charged a semester's school fees only when a course is registered in it */
   spilloverBySemester?: boolean;
+  /** V651: a postgraduate student's stage in the session — the qualification, the stage, fresh or returning, the cycle; null for another student */
+  pg?: { cycle_no: number; qualification: string | null; qualification_label: string | null; stage_code: string | null; stage_label: string | null;
+         category: "FRESH" | "RETURNING" | null; official: boolean; beyond: boolean; recommendation: string; cycle_status: string; start_session: string | null } | null;
   /** V637: the SP year, each semester's spillover fee and whether a course is registered in it, the carry-overs by semester */
   spillover?: SpilloverPanel | null;
   schemeProblem: string | null;

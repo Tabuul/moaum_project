@@ -145,6 +145,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
+          { "id": "t/pgstages", "icon": "chart", "label": "PG Stages & Restarts" },
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
         ]
@@ -2473,6 +2474,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
+          { "id": "t/pgstages", "icon": "chart", "label": "Stages & Cycles" },
           { "id": "t/pgboard", "icon": "check", "label": "School Board" },
           { "id": "t/pgscores", "icon": "doc", "label": "Course Results" },
           { "id": "t/pgexaminers", "icon": "shield", "label": "External Examiners" },
@@ -2707,6 +2709,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Academic",
         "items": [
           { "id": "t/pgcalendar", "icon": "cal", "label": "Calendar" },
+          { "id": "t/pgstages", "icon": "chart", "label": "Stages & Cycles" },
           { "id": "t/pgregistration", "icon": "book", "label": "Registration" },
           { "id": "t/pgexams", "icon": "cap", "label": "Course Examinations" },
           { "id": "t/pgseminars", "icon": "book", "label": "Research Seminars" },

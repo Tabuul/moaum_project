@@ -55,6 +55,7 @@ export const TITLES: Record<string, string> = {
   "t/pgcourses": "Postgraduate classes & course upload",
   "t/pgstudents": "Postgraduate register",
   "t/pgresearch": "Research desk",
+  "t/pgstages": "Postgraduate stages and cycles",
   "t/pgboard": "School Board & awards",
   "t/pgexaminers": "External examiners",
   "t/pgscores": "Course results",

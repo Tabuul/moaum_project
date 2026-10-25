@@ -22,6 +22,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem, toast } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
 import { PgFees } from "./PgFees";
+import { PgFeeStructure } from "./PgFeeStructure";
 import { FeeCopy } from "./FeeCopy";
 import { FeeHistory } from "./FeeHistory";
 import { FeeWatch } from "./FeeWatch";
@@ -44,7 +45,11 @@ export interface ScheduleItem { id: string; item: string; amount: number; level:
    *  versions it links, and why its level is outside the programme structure */
   dept_code?: string | null; department_name?: string | null; programme_category?: string | null; programme_faculty_name?: string | null; ended_at?: string | null;
   status?: "ACTIVE" | "ARCHIVED" | "REPLACED" | "REMOVED"; replaced_by?: string | null; replaces?: string | null; level_problem?: string | null;
-  removed_at?: string | null; removed_reason?: string | null }
+  removed_at?: string | null; removed_reason?: string | null;
+  /** V651: the postgraduate stage the line is for (800B, shown 800 B — Year 2), or FRESH / RETURNING without a stage */
+  pg_stage?: string | null; pg_stage_label?: string | null; fee_category?: string | null }
+/** V651: a postgraduate stage a line may name (GET /finance/pg-stages) */
+export interface PgStageOption { code: string; label: string; short_label: string; sequence: number; is_extension: boolean; qualification: string; qualification_label: string; level: number; category: "FRESH" | "RETURNING" }
 export interface FeeGroup { code: string; name: string; applies_category: string | null }
 export interface FeeItem { code: string; name: string }
 export interface ProgrammeOption { code: string; name: string; category: string; faculty_code: string; dept_code?: string | null; /** V648: the levels its structure has */ levels?: number[] | null }
@@ -64,7 +69,7 @@ export interface ApplicantFees {
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null, permissions = null }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; permissions?: string[] | null; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null, permissions = null, pgStages = [] }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; permissions?: string[] | null; pgStages?: PgStageOption[]; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
@@ -155,7 +160,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
   const val = (k: string, d = "") => edits[k] ?? d;
 
   const indigeneText = (i: ScheduleItem) => i.indigene === "INDIGENE" ? "Indigene" : i.indigene === "NON_INDIGENE" ? "Non-indigene" : null;
-  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, levelWords(i.level, i.spillover, i.spill_year), i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
+  const pgCategoryText = (i: ScheduleItem) => (i.fee_category && !i.pg_stage ? (i.fee_category === "FRESH" ? "Fresh PG students" : "Returning PG students") : null);
+  const appliesTo = (i: ScheduleItem) => [i.fee_group_name, i.pg_stage_label ?? levelWords(i.level, i.spillover, i.spill_year), pgCategoryText(i), i.entry_mode === "CCE" ? "CCE (part-time)" : i.entry_mode, i.faculty_name, i.programme_name, indigeneText(i), i.semester ? semesterText(i.semester) : null].filter(Boolean).join(" · ") || "Every student";
 
   const usageMap = usage && usage.key === usageKey ? usage.map : null;
   const archivedItems = wantArchived && archived?.key === archKey ? archived.items : [];
@@ -234,6 +240,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       addSession: session, semester: i.semester ? String(i.semester) : "", group: i.fee_group ?? "", kind: i.kind ?? "FEE",
       level: i.level ? String(i.level) : "", mode: i.entry_mode ?? "", faculty: i.faculty_code ?? "", progs: i.programme_code ?? "",
       spill: i.spillover ? (i.spill_year ? String(i.spill_year) : "any") : "",
+      pgStage: i.pg_stage ?? "", pgCat: i.pg_stage ? "" : i.fee_category ?? "",
     });
   }
   const [af, setAf] = useState({
@@ -553,7 +560,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <span key="f" className="sub2">{i.faculty_name ?? i.programme_faculty_name ?? "Every faculty"}</span>,
             <span key="d" className="sub2">{i.department_name ?? "—"}</span>,
             <span key="p" className="sub2">{i.programme_name ?? "Every programme"}</span>,
-            <span key="l" className="tnum">{i.level ?? "Every"}{i.level_problem ? <> <Pil kind="bad" title={i.level_problem}>Not in the structure</Pil></> : null}</span>,
+            <span key="l" className="tnum">{i.level ?? "Every"}{i.pg_stage_label ? <> <Pil kind="info" title={i.pg_stage_label}>{pgStages.find((x) => x.code === i.pg_stage)?.short_label ?? i.pg_stage}</Pil></> : null}{i.level_problem ? <> <Pil kind="bad" title={i.level_problem}>Not in the structure</Pil></> : null}</span>,
             <span key="s" className="sub2">{i.semester ? semesterText(i.semester).replace("Semester: ", "") : "Whole session"}</span>,
             <span key="m" className="tnum">{naira(i.amount)}</span>,
             <span key="t" className="row row--tight" style={{ flexWrap: "wrap" }}>
@@ -635,7 +642,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           foot={<><Btn kind="ghost" onClick={() => { setAdding(false); setEditingId(null); }}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
             const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null, kind: val("kind") || "FEE",
               /* V613: a spillover line and its year — the level is then the programme's final level */
-              spillover: !!val("spill"), spillYear: val("spill") && val("spill") !== "any" ? Number(val("spill")) : null };
+              spillover: !!val("spill"), spillYear: val("spill") && val("spill") !== "any" ? Number(val("spill")) : null,
+              /* V651: a postgraduate stage, or fresh / returning PG students without one */
+              pgStage: val("pgStage") || null, feeCategory: val("pgStage") ? null : val("pgCat") || null };
             let ok = true;
             if (editingId) {
               // V648: the one line edited — in place, or a new version beside the line invoices were made under
@@ -694,6 +703,22 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             })()}</select></Field>
             <Field id="fm" label="Entry mode" hint="Blank for every full-time mode; a CCE student is charged only CCE lines"><select id="fm" className="ctl" value={val("mode")} onChange={(e) => setEdits({ ...edits, mode: e.target.value })}><option value="">Every full-time mode</option><option>UTME</option><option>DIRECT_ENTRY</option><option>TRANSFER</option><option>POSTGRADUATE</option><option value="CCE">CCE — Centre for Continuing Education (part-time)</option></select></Field>
           </div>
+          {/* V651: a postgraduate line names a stage (800 B — Year 2) or fresh / returning students; the stage sets the level */}
+          {Number(val("level")) >= 700 || val("mode") === "POSTGRADUATE" || val("pgStage") ? (
+            <div className="grid grid--2">
+              <Field id="fpgs" label="Postgraduate stage" hint="Blank for every stage of the level; a stage line reaches only its students">
+                <select id="fpgs" className="ctl" value={val("pgStage")} onChange={(e) => { const st = pgStages.find((x) => x.code === e.target.value); setEdits({ ...edits, pgStage: e.target.value, pgCat: "", level: st ? String(st.level) : val("level"), spill: st ? "" : val("spill") }); }}>
+                  <option value="">Every stage</option>
+                  {pgStages.filter((x) => !Number(val("level")) || x.level === Number(val("level"))).map((x) => <option key={x.code} value={x.code}>{x.label} — {x.category === "FRESH" ? "fresh" : "returning"}</option>)}
+                </select>
+              </Field>
+              <Field id="fpgc" label="Fresh or returning" hint={val("pgStage") ? "Set by the stage: the first stage of a cycle is fresh, every later one returning" : "Blank for both"}>
+                <select id="fpgc" className="ctl" disabled={!!val("pgStage")} value={val("pgStage") ? (pgStages.find((x) => x.code === val("pgStage"))?.category ?? "") : val("pgCat")} onChange={(e) => setEdits({ ...edits, pgCat: e.target.value })}>
+                  <option value="">Fresh and returning</option><option value="FRESH">Fresh (the first stage of a cycle)</option><option value="RETURNING">Returning (a later stage)</option>
+                </select>
+              </Field>
+            </div>
+          ) : null}
           {/* V613: a spillover line, for any spillover year or for SP1, SP2 or SP3 alone — "400 Level (SP1) First semester" */}
           <Field id="fsp" label="Spillover" hint="A spillover line is charged to students past the programme's final year on the basis the Bursary set below; the level above then names the programme's final level">
             <select id="fsp" className="ctl" value={val("spill")} onChange={(e) => setEdits({ ...edits, spill: e.target.value })}>
@@ -809,6 +834,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         </PBody>
       </Panel>
       <PgFees session={session} />
+      {/* V651: a postgraduate stage's fee structure in one step — its components, a preview of the total */}
+      <PgFeeStructure session={session} stages={pgStages} programmes={programmes} feeItems={feeItems} may={can("CREATE_FEE_STRUCTURE")} />
       <Panel title="Deferment · application fee" right={dfMeta?.fee_updated_at ? `Stated by the Bursary · ${new Date(dfMeta.fee_updated_at).toLocaleDateString("en-GB")}` : "Default ₦10,000 until the Bursary states it"}>
         <PBody>
           <div className="sub2 mb-3">

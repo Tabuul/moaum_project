@@ -431,6 +431,16 @@ class StudentPortalRepository {
         return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
+    /** V651: a postgraduate student's stage in the session — the qualification, the stage (800 B — Year 2), fresh or returning, the
+     *  cycle, whether the stage is recorded or calculated; null for any other student */
+    Map<String, Object> pgStage(UUID student, String session) {
+        return jdbc.sql("""
+                SELECT x.cycle_no, x.qualification, q.label AS qualification_label, x.stage_code, x.stage_label, x.category, x.official, x.beyond,
+                       x.recommendation, x.cycle_status, x.start_session
+                  FROM admissions.pg_stages_of(:ses, ARRAY[CAST(:s AS uuid)]) x LEFT JOIN admissions.pg_qualification q ON q.code = x.qualification
+                """).param("s", student).param("ses", session).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
     boolean isSpillover(UUID student) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.is_spillover(:s)").param("s", student).query(Boolean.class).single());
     }

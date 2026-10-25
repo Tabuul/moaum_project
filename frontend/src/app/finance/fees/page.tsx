@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees, type FeeItem } from "./FeeSchedule";
+import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees, type FeeItem, type PgStageOption } from "./FeeSchedule";
 import type { GstFeePage } from "@/lib/gst";
 import { sessionByDate } from "@/lib/sessions";
 
@@ -33,6 +33,8 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
   const feePolicy = await api<{ policy: "CARRY" | "REFUSE" }>("/api/v1/finance/applicant-fee-policy");
   // V648: what the office may do with the fee setup — edit, remove, deactivate, read the history, export
   const feePerms = await api<{ office: string; permissions: string[] }>("/api/v1/finance/fee-setup/permissions");
+  // V651: the postgraduate stages a fee line may name
+  const pgStages = await api<PgStageOption[]>("/api/v1/finance/pg-stages");
   const sessions = sessionsRes;
   return (
     <Shell route="t/feesetup" me={me.ok ? me.data : null}>
@@ -51,6 +53,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
           sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]}
           actingOffice={me.ok ? me.data.activeOffice : null}
           permissions={feePerms.ok ? feePerms.data.permissions : null}
+          pgStages={pgStages.ok ? pgStages.data : []}
         />
       ) : <ProblemNotice problem={schedule.problem} />}
     </Shell>

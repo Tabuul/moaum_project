@@ -62,7 +62,21 @@ class FinanceController {
                        /** V288: FEE, or LATE_PAYMENT / LATE_REGISTRATION charged only in the window's late period */
                        @Pattern(regexp = "FEE|LATE_PAYMENT|LATE_REGISTRATION") String kind,
                        /** V648: why a line is edited — kept with the edit (finance.fee_line_change) */
-                       @Size(max = 400) String reason) {
+                       @Size(max = 400) String reason,
+                       /** V651: the postgraduate stage the line is for (800B), or the PG category (FRESH, RETURNING) without a stage */
+                       @Pattern(regexp = "^[789]00[A-Z]$") String pgStage,
+                       @Pattern(regexp = "FRESH|RETURNING") String feeCategory) {
+    }
+
+    /** V651: a postgraduate stage's fee structure stated in one step — its components, for a programme or every programme of the
+     *  qualification, a semester or the whole session */
+    public record PgFeeStructure(@jakarta.validation.constraints.NotBlank @Pattern(regexp = "^[789]00[A-Z]$") String pgStage,
+                                 @Size(max = 12) String programmeCode, Integer semester,
+                                 @NotNull @jakarta.validation.constraints.NotEmpty @Size(max = 30) List<@Valid PgFeeComponent> components,
+                                 @Size(max = 400) String reason) {
+    }
+
+    public record PgFeeComponent(@jakarta.validation.constraints.NotBlank @Size(max = 120) String item, @NotNull @DecimalMin("0") BigDecimal amount) {
     }
 
     /** V648: why a line is ended — the reason code and words, as for a removal (blank: ended on the fee schedule) */
@@ -411,6 +425,7 @@ class FinanceController {
                 SELECT f.id, f.item, f.amount, f.level, f.entry_mode, f.faculty_code, fa.name AS faculty_name,
                        f.programme_code, p.name AS programme_name, p.dept_code, d.name AS department_name, p.category AS programme_category, pfa.name AS programme_faculty_name,
                        f.fee_group, g.name AS fee_group_name, f.semester, f.indigene, f.ord, f.spillover, f.spill_year, f.kind, f.ended_at,
+                       f.pg_stage, pst.label AS pg_stage_label, f.fee_category,
                        CASE WHEN f.ended_at IS NULL THEN 'ACTIVE' WHEN rp.replaced_by IS NOT NULL THEN 'REPLACED' ELSE 'ARCHIVED' END AS status,
                        rp.replaced_by, pv.line_id AS replaces, lpp.problem AS level_problem
                   FROM f
@@ -419,6 +434,7 @@ class FinanceController {
                   LEFT JOIN ref.department d ON d.code = p.dept_code
                   LEFT JOIN ref.faculty pfa ON pfa.code = p.faculty_code
                   LEFT JOIN ref.fee_group g ON g.code = f.fee_group
+                  LEFT JOIN admissions.pg_stage pst ON pst.code = f.pg_stage
                   LEFT JOIN LATERAL (SELECT c.replaced_by FROM finance.fee_line_change c
                                       WHERE c.line_id = f.id AND c.replaced_by IS NOT NULL ORDER BY c.at DESC LIMIT 1) rp ON true
                   LEFT JOIN LATERAL (SELECT c.line_id FROM finance.fee_line_change c WHERE c.replaced_by = f.id ORDER BY c.at DESC LIMIT 1) pv ON true
@@ -638,8 +654,11 @@ class FinanceController {
                    AND x.faculty_code IS NOT DISTINCT FROM CAST(:f AS text) AND x.programme_code IS NOT DISTINCT FROM CAST(:p AS text)
                    AND x.fee_group IS NOT DISTINCT FROM CAST(:g AS text) AND x.semester IS NOT DISTINCT FROM CAST(:sem AS integer)
                    AND x.indigene IS NULL AND x.spillover = :sp AND x.spill_year IS NOT DISTINCT FROM CAST(:sy AS integer)
+                   AND x.pg_stage IS NOT DISTINCT FROM CAST(:pgs AS text)
+                   AND (CAST(:pgs AS text) IS NOT NULL OR x.fee_category IS NOT DISTINCT FROM CAST(:pgc AS text))
                  LIMIT 1
                 """).param("s", session).param("id", except, Types.OTHER).param("i", body.item().trim()).param("k", kind)
+                .param("pgs", blank(body.pgStage()), Types.VARCHAR).param("pgc", blank(body.feeCategory()), Types.VARCHAR)
                 .param("sp", spilloverOf(body)).param("sy", spillYearOf(body), Types.INTEGER)
                 .param("l", body.level(), Types.INTEGER).param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR).param("sem", body.semester(), Types.INTEGER)
@@ -688,12 +707,15 @@ class FinanceController {
         if (body.semester() != null && !List.of(1, 2, 3).contains(body.semester())) {
             throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
         }
+        body = withStageLevel(body);
         refuseLevelOutsideStructure(body);
         refuseDuplicateLine(s, body, null);
         jdbc.sql("""
-                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind, spillover, spill_year)
-                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o, :k, :sp, :sy)
+                INSERT INTO finance.fee_schedule (session, item, amount, level, entry_mode, faculty_code, programme_code, fee_group, semester, ord, kind, spillover, spill_year,
+                                                  pg_stage, fee_category)
+                VALUES (:s, :i, :a, :l, :m, :f, :p, :g, :sem, :o, :k, :sp, :sy, :pgs, :pgc)
                 """).param("s", s).param("k", body.kind() == null || body.kind().isBlank() ? "FEE" : body.kind()).param("i", body.item().trim()).param("a", body.amount()).param("l", body.level(), Types.INTEGER)
+                .param("pgs", blank(body.pgStage()), Types.VARCHAR).param("pgc", blank(body.pgStage()) != null ? null : blank(body.feeCategory()), Types.VARCHAR)
                 .param("sp", spilloverOf(body)).param("sy", spillYearOf(body), Types.INTEGER)
                 .param("m", blank(body.entryMode()), Types.VARCHAR).param("f", blank(body.facultyCode()), Types.VARCHAR)
                 .param("p", blank(body.programmeCode()), Types.VARCHAR).param("g", blank(body.feeGroup()), Types.VARCHAR)
@@ -809,6 +831,7 @@ class FinanceController {
     @Transactional
     Map<String, Object> editItem(@PathVariable String session, @PathVariable String year, @PathVariable UUID id, @Valid @RequestBody Item body) {
         need("EDIT_FEE_STRUCTURE");
+        body = withStageLevel(body);
         if (body.level() != null && !List.of(100, 200, 300, 400, 500, 600, 700, 800, 900).contains(body.level())) {
             throw new DomainRuleViolation("FEE_LEVEL", "A level is 100 to 900 (700–900 are postgraduate).", new DomainRuleViolation.Remedy("Leave it blank for every level.", "Bursary"));
         }
@@ -840,12 +863,87 @@ class FinanceController {
         line.put("kind", body.kind() == null || body.kind().isBlank() ? null : body.kind());
         line.put("spillover", spilloverOf(body));
         line.put("spill_year", spillYearOf(body));
+        line.put("pg_stage", blank(body.pgStage()));
+        line.put("fee_category", blank(body.pgStage()) != null ? null : blank(body.feeCategory()));
         Map<String, Object> edit = jdbc.sql("SELECT * FROM finance.edit_fee_line(:id, CAST(:j AS jsonb), :r)")
                 .param("id", id).param("j", json.writeValueAsString(line))
                 .param("r", body.reason() == null || body.reason().isBlank() ? null : body.reason().trim(), Types.VARCHAR)
                 .query().singleRow();
         Map<String, Object> out = new java.util.LinkedHashMap<>(schedule(session, year));
         out.put("edit", edit);
+        return out;
+    }
+
+    /** V651: a line for a PG stage is at the stage's level (the guard on the table refuses another), for a postgraduate programme of
+     *  the stage's qualification — said before the programme's levels are, so the officer reads why */
+    private Item withStageLevel(Item body) {
+        if (blank(body.pgStage()) != null && blank(body.programmeCode()) != null) {
+            String problem = jdbc.sql("""
+                    SELECT CASE WHEN p.code IS NULL THEN NULL
+                                WHEN p.category <> 'POST GRADUATE' AND NOT EXISTS (SELECT 1 FROM people.student x WHERE x.programme_code = p.code AND x.entry_mode = 'POSTGRADUATE')
+                                     THEN p.name || ' is not a postgraduate programme'
+                                WHEN admissions.pg_qualification_of(p.code) IS DISTINCT FROM st.qualification
+                                     THEN st.label || ' is a ' || q.label || ' stage; ' || p.name || ' is not a ' || q.label || ' programme' END
+                      FROM admissions.pg_stage st JOIN admissions.pg_qualification q ON q.code = st.qualification
+                      LEFT JOIN ref.programme p ON p.code = :p
+                     WHERE st.code = :c
+                    """).param("c", body.pgStage()).param("p", body.programmeCode().trim()).query(String.class).optional().orElse(null);
+            if (problem != null) {
+                throw new DomainRuleViolation("FEE_PG_STAGE_PROGRAMME", problem + ".",
+                        new DomainRuleViolation.Remedy("Choose a stage of the programme's qualification, or a postgraduate programme.", "Bursary"));
+            }
+        }
+        if (blank(body.pgStage()) == null || body.level() != null) {
+            return body;
+        }
+        Integer level = jdbc.sql("SELECT q.level FROM admissions.pg_stage s JOIN admissions.pg_qualification q ON q.code = s.qualification WHERE s.code = :c")
+                .param("c", body.pgStage()).query(Integer.class).optional().orElse(null);
+        return new Item(body.item(), body.amount(), level, body.entryMode(), body.facultyCode(), body.programmeCode(), body.feeGroup(), body.semester(), body.ord(),
+                body.spillover(), body.spillYear(), body.kind(), body.reason(), body.pgStage(), body.feeCategory());
+    }
+
+    /** V651: the postgraduate stages a fee line may name, with their qualification and level */
+    @GetMapping("/pg-stages")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> pgStages() {
+        return jdbc.sql("""
+                SELECT s.code, s.label, s.short_label, s.sequence, s.extension_number IS NOT NULL AS is_extension, q.code AS qualification, q.label AS qualification_label,
+                       q.level, CASE WHEN s.sequence = 1 THEN 'FRESH' ELSE 'RETURNING' END AS category
+                  FROM admissions.pg_stage s JOIN admissions.pg_qualification q ON q.code = s.qualification
+                 WHERE s.active ORDER BY q.level, s.sequence
+                """).query().listOfRows();
+    }
+
+    /** V651: a postgraduate stage's fee structure — each component a line for the stage (its level, its category), for one programme
+     *  or every programme of the qualification, a semester or the whole session; all or none, each refused if the schedule states it */
+    @PostMapping("/sessions/{session}/{year}/pg-fee-structure")
+    @PreAuthorize(FEE_SETTERS)
+    @Transactional
+    Map<String, Object> pgFeeStructure(@PathVariable String session, @PathVariable String year, @Valid @RequestBody PgFeeStructure body) {
+        need("CREATE_FEE_STRUCTURE");
+        String s = session + "/" + year;
+        if (body.semester() != null && !List.of(1, 2).contains(body.semester())) {
+            throw new DomainRuleViolation("FEE_SEMESTER", "A semester is 1 or 2.", new DomainRuleViolation.Remedy("Leave it blank for the whole session.", "Bursary"));
+        }
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (PgFeeComponent c : body.components()) {
+            if (!seen.add(c.item().trim().toLowerCase())) {
+                throw new DomainRuleViolation("FEE_COMPONENT_TWICE", c.item().trim() + " is stated twice.", new DomainRuleViolation.Remedy("State each component once.", "Bursary"));
+            }
+            Item line = withStageLevel(new Item(c.item().trim(), c.amount(), null, null, null, blank(body.programmeCode()), null, body.semester(), 0, false, null, "FEE",
+                    body.reason(), body.pgStage(), null));
+            refuseLevelOutsideStructure(line);
+            refuseDuplicateLine(s, line, null);
+            jdbc.sql("""
+                    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester, ord, kind, spillover, pg_stage)
+                    VALUES (:s, :i, :a, :l, :p, :sem, 0, 'FEE', false, :pgs)
+                    """).param("s", s).param("i", line.item()).param("a", line.amount()).param("l", line.level(), Types.INTEGER)
+                    .param("p", line.programmeCode(), Types.VARCHAR).param("sem", line.semester(), Types.INTEGER).param("pgs", line.pgStage()).update();
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>(schedule(session, year));
+        out.put("stated", body.components().size());
+        out.put("total", body.components().stream().map(PgFeeComponent::amount).reduce(BigDecimal.ZERO, BigDecimal::add));
         return out;
     }
 

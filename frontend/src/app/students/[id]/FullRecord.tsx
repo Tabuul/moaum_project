@@ -22,6 +22,7 @@ import type { Receipt } from "@/lib/student-portal";
 import { printDocument } from "@/lib/document/html";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
+import { PgHistoryPanel } from "@/components/pg/PgHistory";
 import {
   PAYMENT_WORDS, TAB_LABELS, day, levelHistory, naira, printBody, purposeOnly, resultWord, sectionTables, semesterOf, tabOf, tabsFor, timeline, words,
   type Payment, type Progression, type ResultRow, type Section, type Tab, type Table,
@@ -141,6 +142,8 @@ export function FullRecord({ studentId, name, number, overview, overviewBody, bi
       {isSection && tab !== "overview" && !d && !problem ? <Panel title={TAB_LABELS[tab]}><Empty>Reading the record…</Empty></Panel> : null}
       {d && tab === "admission" ? <AdmissionTab d={d} name={name} file={file} /> : null}
       {d && tab === "progression" ? <ProgressionTab d={d as unknown as Progression} name={name} file={file} /> : null}
+      {/* V651: a postgraduate student's cycles and the stage of each session (nothing for any other student) */}
+      {tab === "progression" ? <PgHistoryPanel studentId={studentId} /> : null}
       {d && tab === "registrations" ? <RegistrationsTab d={d} name={name} file={file} /> : null}
       {d && tab === "results" ? <ResultsTab d={d} name={name} file={file} /> : null}
       {d && tab === "finance" ? <FinanceTab d={d} name={name} file={file} swaps={swaps} onReceipt={setReceipt} /> : null}
