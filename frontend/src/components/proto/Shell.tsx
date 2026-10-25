@@ -141,6 +141,9 @@ export const ROUTES: Record<string, string> = {
   // V640: the Database Operations office
   "t/examreadiness": "/reports/exam-readiness",
   "t/masterreport": "/reports/master",
+  // V652: the course registration report and examination attendance
+  "t/courseregreport": "/reports/course-registrations",
+  "t/examattendance": "/exams/attendance",
   "t/dbquery": "/dbops/query",
   "t/dataquality": "/dbops/data-quality",
   "t/classification": "/student-query/classification",
@@ -534,6 +537,8 @@ const OVERRIDES: Record<string, string> = {
   "t/studentquery": "Student query",
   "t/examreadiness": "Examination readiness",
   "t/masterreport": "Master university report",
+  "t/courseregreport": "Course registration report",
+  "t/examattendance": "Examination attendance",
   "t/dbquery": "Database query",
   "t/dataquality": "Data quality",
   "r/dbops": "Database Operations",

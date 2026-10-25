@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 480
+\set EXPECTED 481
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25151,6 +25151,175 @@ BEGIN
                dec.state, dec.cycle_no, dec.stage_code, c1.status, c2.status, c2.restart_of = c1.id, c2.start_session, old_stages,
                at_s4.cycle_no, at_s4.stage_code, at_s4.category, at_s4.official, at_s2.cycle_no, at_s2.stage_code, at_s2.official, at_s3.cycle_no, at_s3.recommendation, fresh_charged,
                r_cfg, cfg, cfg_labels, quality));
+END $$;
+
+-- ── V652. The course registration report and examination attendance: four made-up students of two made-up programmes in different
+-- faculties — A with the examination card, B a carry-over without it, C of the other faculty with the GST & EPS permit, D registered
+-- for nothing — read one row a student and course (GST 3, departmental 2, carry-over 1, card or permit 2), counted by every dimension,
+-- the GST office's own courses, the other courses; the departmental course's sheet V1 listing A and B with the card marked, a second
+-- issue refused without a reason; C registering after the sheet; A and B marked present, D refused the list and handwritten instead
+-- (matched by the matriculation number, not registered), a number naming nobody held pending then found invalid (a note required), a
+-- name alone matched to A by the officer; the reconciliation (OK, present without the card, registered after the sheet, handwritten not
+-- registered), then B dropping the course (on the sheet, no longer registered) and V2 listing A and C with V1 kept as printed; the
+-- GST office refused the departmental course and issuing its own by faculty; an office that keeps no attendance refused. Undone after.
+DO $$
+DECLARE S text := '2652/2653'; p1 text := 'C96652'; p2 text := 'C96653'; d1 text; f1 text; d2 text; f2 text; msg text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); o uuid := gen_random_uuid();
+        oz uuid := gen_random_uuid(); og uuid := gen_random_uuid(); ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid();
+        tot record; cat_gst int; cat_dep int; dep_sum int; n_gst int; n_eps int; n_other int; n_no int; n_f int; cat_c text;
+        sh1 assessment.exam_attendance_sheet; sh2 assessment.exam_attendance_sheet; sg assessment.exam_attendance_sheet; elig1 text; r_reissue text;
+        marked int; r_list text; r_gst_mark text; man jsonb; pend jsonb; pend2 jsonb; r_note text; dec jsonb; r_again text; dec2 jsonb; a_att record;
+        rec1 text; rec2 text; rec3 text; v1_kept int; crs record; r_gst_sheet text; r_office text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V652', true);
+        PERFORM set_config('moaum.actor_id', o::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (o, 'CHK-V652-1', 'CHECKV652', 'Officer');
+        PERFORM assessment.ensure_session(S);
+        SELECT p.dept_code, p.faculty_code INTO d1, f1 FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        SELECT p.dept_code, p.faculty_code INTO d2, f2 FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' AND p.faculty_code <> f1 ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+            (p1, 'B.Sc. Attendance Check One', d1, f1, 'UNDER GRADUATE', 0, 400, 4), (p2, 'B.Sc. Attendance Check Two', d2, f2, 'UNDER GRADUATE', 0, 400, 4);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (a, 'MOAUM/ADM/00/996521', 'MOAUM/CHK/00/6521', 'CHECKV652', 'Ada Card', 'M', p1, 'UTME', S, 100, 300, 'ACTIVE', now()),
+            (b, 'MOAUM/ADM/00/996522', 'MOAUM/CHK/00/6522', 'CHECKV652', 'Bola Carry', 'F', p1, 'UTME', S, 100, 300, 'ACTIVE', now()),
+            (c, 'MOAUM/ADM/00/996523', 'MOAUM/CHK/00/6523', 'CHECKV652', 'Chi Permit', 'F', p2, 'UTME', S, 100, 300, 'ACTIVE', now()),
+            (d, 'MOAUM/ADM/00/996524', 'MOAUM/CHK/00/6524', 'CHECKV652', 'Dede Hand', 'M', p2, 'UTME', S, 100, 300, 'ACTIVE', now());
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+            ('ZZA 652', 'Check Attendance Core', 3, 1, 300, d1, 'Core', 'LIVE'), ('GST 652', 'Check Attendance General', 2, 1, 300, d1, 'GST', 'LIVE');
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (oz, 'ZZA 652', S, 1), (og, 'GST 652', S, 1);
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES
+            (ra, a, S, 1, 300, 'SUBMITTED', now()), (rb, b, S, 1, 300, 'SUBMITTED', now()), (rc, c, S, 1, 300, 'SUBMITTED', now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES
+            (ra, oz, 3, 'CURRENT'), (ra, og, 2, 'CURRENT'), (rb, oz, 3, 'CARRYOVER'), (rb, og, 2, 'CURRENT'), (rc, og, 2, 'CURRENT');
+        INSERT INTO registration.exam_card_issue (student_id, session, semester, times) VALUES (a, S, 1, 1);
+        INSERT INTO registration.gst_eps_permit (reference, student_id, session, semester, printed) VALUES ('GST-EPS/2652/000652', c, S, 1, 1);
+
+        -- the report: one row a student and course, counted once by every dimension
+        SELECT * INTO tot FROM reporting.course_registration_summary(S, 1, '{}'::jsonb) WHERE dimension = 'TOTAL';
+        cat_gst := (SELECT registrations FROM reporting.course_registration_summary(S, 1, '{}'::jsonb) WHERE dimension = 'CATEGORY' AND key = 'GST');
+        cat_dep := (SELECT registrations FROM reporting.course_registration_summary(S, 1, '{}'::jsonb) WHERE dimension = 'CATEGORY' AND key = 'DEPARTMENTAL');
+        dep_sum := (SELECT sum(registrations) FROM reporting.course_registration_summary(S, 1, '{}'::jsonb) WHERE dimension = 'DEPARTMENT');
+        n_gst := (SELECT count(*) FROM reporting.course_registration_rows(S, 1, '{"office":"GST"}'::jsonb));
+        n_eps := (SELECT count(*) FROM reporting.course_registration_rows(S, 1, '{"office":"EPS"}'::jsonb));
+        n_other := (SELECT count(*) FROM reporting.course_registration_rows(S, 1, '{"category":"OTHER_COURSES"}'::jsonb));
+        n_no := (SELECT count(*) FROM reporting.course_registration_rows(S, 1, '{"eligible":"NO"}'::jsonb));
+        n_f := (SELECT count(*) FROM reporting.course_registration_rows(S, 1, '{"sex":"F"}'::jsonb));
+
+        -- the departmental course's sheet: A and B listed, the card marked; a second issue needs a reason
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        sh1 := assessment.issue_attendance_sheet(oz, 10, NULL);
+        elig1 := (SELECT string_agg(x->>'eligibility', ',' ORDER BY x->>'matric') FROM jsonb_array_elements(sh1.list) x);
+        BEGIN
+            PERFORM assessment.issue_attendance_sheet(oz, 10, NULL);
+            r_reissue := 'issued';
+        EXCEPTION WHEN check_violation THEN
+            r_reissue := split_part(SQLERRM, ':', 1);
+        END;
+        -- C registers the course after the sheet: a course of another faculty for C
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (rc, oz, 3, 'CURRENT');
+        cat_c := (SELECT category FROM reporting.course_registration_rows(S, 1, '{}'::jsonb) WHERE student_id = c AND offering_id = oz);
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+
+        -- the list marked: A and B present; D (no registration, not listed) refused; the GST office refused a departmental course
+        marked := assessment.record_attendance(oz, jsonb_build_array(jsonb_build_object('student', a, 'status', 'PRESENT'), jsonb_build_object('student', b, 'status', 'PRESENT')),
+                                               sh1.reference, 'Check Invigilator');
+        BEGIN
+            PERFORM assessment.record_attendance(oz, jsonb_build_array(jsonb_build_object('student', d, 'status', 'PRESENT')), sh1.reference, NULL);
+            r_list := 'recorded';
+        EXCEPTION WHEN check_violation THEN
+            r_list := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        BEGIN
+            PERFORM assessment.record_attendance(oz, jsonb_build_array(jsonb_build_object('student', a, 'status', 'ABSENT')), NULL, NULL);
+            r_gst_mark := 'recorded';
+        EXCEPTION WHEN insufficient_privilege THEN
+            r_gst_mark := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+
+        -- the handwritten rows: D by matriculation number (matched, not registered); a number naming nobody (pending → invalid, a note
+        -- required, decided once); a name alone matched to A by the officer (A stays present, now verified)
+        man := assessment.manual_attendance(oz, 'MOAUM/CHK/00/6524', 'Dede Hand', NULL, '300', 'Late registration', sh1.reference, 'Check Invigilator');
+        pend := assessment.manual_attendance(oz, 'NO-SUCH-652', 'Unknown Writer', 'Chemistry', '300', 'Late school-fee payment', sh1.reference, NULL);
+        BEGIN
+            PERFORM assessment.decide_manual_attendance((pend->>'pending')::uuid, NULL, false, 'no');
+            r_note := 'decided';
+        EXCEPTION WHEN check_violation THEN
+            r_note := split_part(SQLERRM, ':', 1);
+        END;
+        dec := assessment.decide_manual_attendance((pend->>'pending')::uuid, NULL, false, 'Not a student of the class');
+        BEGIN
+            PERFORM assessment.decide_manual_attendance((pend->>'pending')::uuid, a, true, NULL);
+            r_again := 'decided';
+        EXCEPTION WHEN check_violation THEN
+            r_again := split_part(SQLERRM, ':', 1);
+        END;
+        pend2 := assessment.manual_attendance(oz, NULL, 'Ada (written)', NULL, NULL, 'Registration correction', sh1.reference, NULL);
+        dec2 := assessment.decide_manual_attendance((pend2->>'pending')::uuid, a, true, 'Identity checked at the hall');
+        SELECT status, source, verified_at IS NOT NULL AS verified INTO a_att FROM assessment.exam_attendance WHERE offering_id = oz AND student_id = a;
+
+        rec1 := (SELECT string_agg(r.other_names || '=' || x.finding, ',' ORDER BY r.other_names)
+                   FROM assessment.attendance_reconciliation(oz) x JOIN people.student r ON r.id = x.student_id);
+        -- B drops the course: on the sheet, no longer registered; then V2 lists A and C, V1 kept as printed
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = rb AND offering_id = oz;
+        rec2 := (SELECT x.finding FROM assessment.attendance_reconciliation(oz) x WHERE x.student_id = b);
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        sh2 := assessment.issue_attendance_sheet(oz, 15, 'Late registration of a student of another faculty');
+        v1_kept := (SELECT jsonb_array_length(list) FROM assessment.exam_attendance_sheet WHERE reference = sh1.reference);
+        rec3 := (SELECT string_agg(r.other_names || '=' || x.finding, ',' ORDER BY r.other_names)
+                   FROM assessment.attendance_reconciliation(oz) x JOIN people.student r ON r.id = x.student_id);
+        SELECT * INTO crs FROM reporting.course_registration_courses(S, 1, '{}'::jsonb) WHERE offering_id = oz;
+
+        -- the GST office: its own course, by faculty (C alone); a departmental course refused; an office that keeps no attendance refused
+        PERFORM set_config('moaum.actor_office', 'gst', true);
+        BEGIN
+            PERFORM assessment.issue_attendance_sheet(oz, 5, 'by the GST office');
+            r_gst_sheet := 'issued';
+        EXCEPTION WHEN insufficient_privilege THEN
+            r_gst_sheet := split_part(SQLERRM, ':', 1);
+        END;
+        sg := assessment.issue_attendance_sheet(og, 5, NULL, f2);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN
+            PERFORM assessment.issue_attendance_sheet(og, 5, NULL);
+            r_office := 'issued';
+        EXCEPTION WHEN insufficient_privilege THEN
+            r_office := split_part(SQLERRM, ':', 1);
+        END;
+        RAISE EXCEPTION 'the V652 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V652 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V652: the course registration report reads one row a student and course; the attendance sheet lists the registered with the card or permit marked, a new version only with a reason; the list marked, handwritten rows matched or held and decided, the reconciliation names what does not agree',
+        coalesce(tot.registrations = 5 AND tot.students = 3 AND tot.male = 1 AND tot.female = 2 AND tot.carry_over = 1 AND tot.eligible = 2
+                 AND cat_gst = 3 AND cat_dep = 2 AND dep_sum = 5 AND n_gst = 3 AND n_eps = 0 AND n_other = 2 AND n_no = 3 AND n_f = 3
+                 AND sh1.reference ~ '^ATT/ZZA652/2652/[0-9]{5}/V1$' AND sh1.students = 2 AND sh1.manual_lines = 10 AND elig1 = 'CARD,NO_CARD'
+                 AND r_reissue = 'ATTENDANCE_REISSUE_REASON' AND cat_c = 'OTHER'
+                 AND marked = 2 AND r_list = 'ATTENDANCE_NOT_ON_LIST' AND r_gst_mark = 'ATTENDANCE_NOT_OFFICE_COURSE'
+                 AND man->>'outcome' = 'MATCHED' AND (man->>'student')::uuid = d AND NOT (man->>'registered')::boolean
+                 AND pend->>'outcome' = 'PENDING' AND pend->>'why' = 'NO_MATCH' AND r_note = 'ATTENDANCE_INVALID_NOTE' AND dec->>'outcome' = 'INVALID'
+                 AND r_again = 'ATTENDANCE_PENDING_DECIDED' AND pend2->>'outcome' = 'PENDING' AND dec2->>'outcome' = 'MATCHED'
+                 AND a_att.status = 'PRESENT' AND a_att.source = 'LIST' AND a_att.verified
+                 AND rec1 = 'Ada Card=OK,Bola Carry=PRESENT_NOT_ELIGIBLE,Chi Permit=REGISTERED_NOT_ON_LIST,Dede Hand=MANUAL_NOT_REGISTERED'
+                 AND rec2 = 'ON_LIST_NOT_REGISTERED'
+                 AND sh2.series = sh1.series AND sh2.version = 2 AND sh2.reference = sh1.series || '/V2' AND sh2.students = 2 AND v1_kept = 2
+                 AND rec3 = 'Ada Card=OK,Bola Carry=PRESENT_NOT_REGISTERED,Chi Permit=NOT_MARKED,Dede Hand=MANUAL_NOT_REGISTERED'
+                 AND crs.students = 2 AND crs.sheets = 2 AND crs.sheet_reference = sh2.reference AND crs.present = 1 AND crs.manual_present = 1 AND crs.pending = 0
+                 AND r_gst_sheet = 'ATTENDANCE_NOT_OFFICE_COURSE' AND sg.reference ~ '^ATT/GST652/2652/[0-9]{5}/V1$' AND sg.students = 1 AND sg.scope_fac = upper(f2)
+                 AND r_office = 'ATTENDANCE_OFFICE', false),
+        format('report %s/%s/%sM/%sF co %s el %s | cat gst %s dep %s depts %s | office %s/%s other %s no %s f %s | V1 %s %s/%s %s reissue %s c %s | marked %s list %s gst %s | manual %s pend %s note %s dec %s again %s pend2 %s dec2 %s a %s/%s/%s | rec1 %s | rec2 %s | V2 %s %s/%s kept %s | rec3 %s | course %s/%s/%s/%s/%s/%s | gst sheet %s %s %s/%s office %s',
+               tot.registrations, tot.students, tot.male, tot.female, tot.carry_over, tot.eligible, cat_gst, cat_dep, dep_sum, n_gst, n_eps, n_other, n_no, n_f,
+               sh1.reference, sh1.students, sh1.manual_lines, elig1, r_reissue, cat_c, marked, r_list, r_gst_mark, man, pend, r_note, dec, r_again, pend2, dec2,
+               a_att.status, a_att.source, a_att.verified, rec1, rec2, sh2.reference, sh2.version, sh2.students, v1_kept, rec3,
+               crs.students, crs.sheets, crs.sheet_reference, crs.present, crs.manual_present, crs.pending, r_gst_sheet, sg.reference, sg.students, sg.scope_fac, r_office));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
