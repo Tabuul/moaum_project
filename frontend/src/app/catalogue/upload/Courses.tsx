@@ -45,7 +45,7 @@ const changeWord = (p: Placement) => ({
   KEPT_WITH_DEPARTMENT: "Stays with its department — an office gave it back, so the file's G is not applied",
   OTHER_OFFICE_HOLDS: `Stays the ${p.beforeOffice} office's — the file says EPS; the EPS office can ask the ${p.beforeOffice} office for it`,
 }[p.change]);
-const MAY = ["ict"];
+const MAY = ["ict", "dbops"];   // V662: and the Database Operators (one held to a faculty, department or programme for its own programmes; the API says)
 
 export function Courses({ programmes, actingOffice }: { programmes: ProgrammeOption[]; actingOffice: string | null }) {
   const may = MAY.includes(actingOffice ?? "");

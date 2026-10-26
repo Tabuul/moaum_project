@@ -107,14 +107,14 @@ public class AllocationTemplateService {
         if (pgOffice()) return new Bound(true, null, null, null);
         if (scope.actingHod()) return new Bound(false, String.valueOf(scope.actingHodDept()), null, null);
         if (scope.actingFacultyOffice()) return new Bound(false, null, String.valueOf(scope.actingFaculty()), null);
-        if (AllocationReach.agent()) return new Bound(false, null, null, reach.of(AllocationReach.BULK));
+        if (AllocationReach.heldByReach()) return new Bound(false, null, null, reach.of(AllocationReach.BULK));
         return new Bound(true, null, null, null);
     }
 
     /** the department, when the acting office reaches it; refused (403) otherwise, whatever the page or the file asked for */
     Map<String, Object> reachable(String dept) {
         Map<String, Object> d = department(dept);
-        if (AllocationReach.agent()) reach.require(AllocationReach.BULK);   // no posting carries the bulk allocation: said so, by name
+        if (AllocationReach.heldByReach()) reach.require(AllocationReach.BULK);   // no posting carries the bulk allocation: said so, by name
         if (!bound().reaches((String) d.get("code"), (String) d.get("faculty_code"))) {
             throw new AccessDeniedException("The " + d.get("name") + " course allocation template is outside your allocation scope.");
         }

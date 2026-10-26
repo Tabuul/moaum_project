@@ -36,7 +36,7 @@ class AllocationController {
      *  ICT Support Desk as well — an agent's rows held to the reach of their BULK_ALLOCATE postings (AllocationImportService); the
      *  department desk's own acts below stay the academic offices' */
     private static final String IMPORTERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super',"
-            + "'OFFICE_ict','OFFICE_helpdeskhead','OFFICE_ictagent','OFFICE_pgschool','OFFICE_pgsecretary')";   // V478: the School, its postgraduate templates only
+            + "'OFFICE_ict','OFFICE_dbops','OFFICE_helpdeskhead','OFFICE_ictagent','OFFICE_pgschool','OFFICE_pgsecretary')";   // V478: the School, its postgraduate templates only; V662: a Database Operator to its grant's reach
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;

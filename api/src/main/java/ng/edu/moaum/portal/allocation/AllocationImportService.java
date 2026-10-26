@@ -328,7 +328,7 @@ public class AllocationImportService {
         boolean facultyOffice = scope.actingFacultyOffice();
         String faculty = facultyOffice ? scope.actingFaculty() : null;
         // V408: an ICT Support Agent imports only where a posting of theirs carries the bulk import
-        AllocationReach.Reach support = AllocationReach.agent() ? reach.require(AllocationReach.BULK) : null;
+        AllocationReach.Reach support = AllocationReach.heldByReach() ? reach.require(AllocationReach.BULK) : null;
         Map<String, Integer> projected = new HashMap<>(reg.load);
         Map<String, Integer> seen = new HashMap<>();
         List<Judged> out = new ArrayList<>(rows.size());
@@ -753,7 +753,7 @@ public class AllocationImportService {
             // V478: the School sees its own imports and every postgraduate template's
             where = " WHERE (i.uploaded_by = :me OR i.programme_type = 'POSTGRADUATE')";
             params.put("me", me);
-        } else if (AllocationReach.agent()) {
+        } else if (AllocationReach.heldByReach()) {
             // V408: an agent sees their own imports and those of the departments their postings' bulk allocation reaches
             AllocationReach.Reach r = reach.of(AllocationReach.BULK);
             where = r.all() ? "" : " WHERE (i.uploaded_by = :me OR upper(i.scope_dept) = ANY (:reach_depts)"

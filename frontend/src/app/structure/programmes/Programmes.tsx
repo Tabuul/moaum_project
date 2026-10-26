@@ -16,7 +16,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Programme { code: string; name: string; faculty_code: string; faculty_name: string; dept_code: string | null; department_name: string | null; category: string; min_score: number; archived: boolean }
 export interface FacultyOption { code: string; name: string }
-const MAY = ["ict"];
+const MAY = ["ict", "dbops"];   // V662: and the Database Operators (the University's register for an operator granted over the whole University; the API says)
 
 export function Programmes({ programmes, faculties, actingOffice }: { programmes: Programme[]; faculties: FacultyOption[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -103,7 +103,7 @@ export function Programmes({ programmes, faculties, actingOffice }: { programmes
 
   return (
     <>
-      <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing programmes" />
+      <RoleLine allowed={MAY} actingOffice={actingOffice} canAct={may} action="Creating and editing programmes" />
       <Note kind="info" title="Create a programme, or upload the list">
         Code: <b>C</b> then five digits (e.g. C00101). Department optional. Faculties must exist first. Uploading again updates, never duplicates.
       </Note>

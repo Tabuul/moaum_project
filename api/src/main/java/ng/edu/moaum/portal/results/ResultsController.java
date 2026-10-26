@@ -48,20 +48,21 @@ class ResultsController {
     }
 
     private static final String MIGRATE =
-            "hasAnyAuthority('OFFICE_ict','OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_records',"
-            + "'OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_ict','OFFICE_dbops','OFFICE_exams','OFFICE_facultyexams','OFFICE_hod','OFFICE_dean','OFFICE_records',"
+            + "'OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";   // V662: a Database Operator granted over the University
 
     /**
      * Past results go onto the record as final, with no approval chain — they were approved on the old portal — so only the
      * Directorate of ICT uploads them (the University's word of 21 October 2026). The other migration steps stay with MIGRATE, and
      * so does posting results already uploaded and held for a student not yet loaded: that brings in no new result.
      */
-    private static final String PAST_RESULTS = "hasAnyAuthority('OFFICE_ict','OFFICE_super')";
+    private static final String PAST_RESULTS = "hasAnyAuthority('OFFICE_ict','OFFICE_dbops','OFFICE_super')";   // V662: and a Database Operator granted over the University
 
     /** the students exported from the old portal — the first migration step, so results and registration can match */
     @PostMapping("/legacy/students")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importStudents(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importStudents(body.rows());
     }
 
@@ -69,18 +70,21 @@ class ResultsController {
     @PostMapping("/legacy/students/preview")
     @PreAuthorize(MIGRATE)
     Map<String, Object> previewStudents(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.previewRegister("students", body.rows());
     }
 
     @PostMapping("/legacy/biodata/preview")
     @PreAuthorize(MIGRATE)
     Map<String, Object> previewBiography(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.previewRegister("biodata", body.rows());
     }
 
     @PostMapping("/legacy/pg-students/preview")
     @PreAuthorize(MIGRATE)
     Map<String, Object> previewPostgraduate(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.previewRegister("postgraduate", body.rows());
     }
 
@@ -88,6 +92,7 @@ class ResultsController {
     @PostMapping("/legacy/biodata")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importBiography(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importBiography(body.rows());
     }
 
@@ -96,6 +101,7 @@ class ResultsController {
     @PostMapping("/legacy/pg-students")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importPostgraduate(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importPostgraduate(body.rows());
     }
 
@@ -104,6 +110,7 @@ class ResultsController {
     @PostMapping("/legacy/reconcile-results")
     @PreAuthorize(MIGRATE)
     Map<String, Object> reconcileResults() {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.reconcileHolding();
     }
 
@@ -111,6 +118,7 @@ class ResultsController {
     @PostMapping("/legacy/registration")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importRegistration(body.session(), body.semester(), body.rows());
     }
 
@@ -118,6 +126,7 @@ class ResultsController {
     @PostMapping("/legacy/registration/preview")
     @PreAuthorize(MIGRATE)
     Map<String, Object> previewRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.previewLegacy(body.session(), body.semester(), body.rows(), false);
     }
 
@@ -125,6 +134,7 @@ class ResultsController {
     @PostMapping("/legacy/results/preview")
     @PreAuthorize(PAST_RESULTS)
     Map<String, Object> previewResults(@Valid @RequestBody ResultsService.MigrationIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.previewLegacy(body.session(), body.semester(), body.rows(), true);
     }
 
@@ -132,6 +142,7 @@ class ResultsController {
     @PostMapping("/legacy/results")
     @PreAuthorize(PAST_RESULTS)
     Map<String, Object> importResults(@Valid @RequestBody ResultsService.MigrationIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importResults(body.session(), body.semester(), body.rows());
     }
 
@@ -139,6 +150,7 @@ class ResultsController {
     @PostMapping("/legacy/pg-registration")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importPgRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importPgRegistration(body.session(), body.semester(), body.rows());
     }
 
@@ -146,6 +158,7 @@ class ResultsController {
     @PostMapping("/legacy/pg-results")
     @PreAuthorize(PAST_RESULTS)
     Map<String, Object> importPgResults(@Valid @RequestBody ResultsService.MigrationIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importPgResults(body.session(), body.semester(), body.rows());
     }
 
@@ -153,6 +166,7 @@ class ResultsController {
     @PostMapping("/legacy/reconcile-pg-results")
     @PreAuthorize(MIGRATE)
     Map<String, Object> reconcilePgResults() {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.reconcilePgHolding();
     }
 
@@ -160,6 +174,7 @@ class ResultsController {
     @PostMapping("/legacy/pg-research")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importPgResearch(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importPgResearch(body.rows());
     }
 
@@ -168,6 +183,7 @@ class ResultsController {
     @PostMapping("/legacy/jamb-numbers")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importJambNumbers(@Valid @RequestBody ResultsService.StudentsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importJambNumbers(body.rows());
     }
 
@@ -176,6 +192,7 @@ class ResultsController {
     @PostMapping("/legacy/passports")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importPassports(@Valid @RequestBody ResultsService.PassportsIn body) {
+        scope.requireUniversityOperator("The old-portal migration");   // V662
         return service.importPassports(body.items());
     }
 

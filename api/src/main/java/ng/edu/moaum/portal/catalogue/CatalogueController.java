@@ -32,17 +32,20 @@ class CatalogueController {
     private static final String OWNERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super')";
     /** a programme's structure is kept by the owners and, on the user's word (V460), the Director of ICT */
     private static final String STRUCTURE = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_ict','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_lecturer','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_dbops','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
     /** V471: a course itself — created, ended, restored, made live, its prerequisites — by its owners and, within StructureAccess's
      *  reach, the School of Postgraduate Studies and the ICT Support Desk (never removed outright by them). The Director of ICT
      *  keeps the structure and does not edit the course itself (V460) */
     private static final String KEEPERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead')";
 
-    /** the Director of ICT alone creates, uploads, archives or removes faculties, departments, programmes and course structures */
-    private static final String UPLOADERS = "hasAuthority('OFFICE_ict')";
-    /** opening registration for a session is not a structure upload: the offices that could before still can */
+    /** the Director of ICT creates, uploads, archives or removes faculties, departments, programmes and course structures — and,
+     *  V662, the Database Operators (the University's register by an operator granted over the whole University; a course structure
+     *  by an operator held to a faculty, department or programme for its own programmes) */
+    private static final String UPLOADERS = "hasAnyAuthority('OFFICE_ict','OFFICE_dbops')";
+    /** opening registration for a session is not a structure upload: the offices that could before still can (V662: and a
+     *  Database Operator granted over the whole University) */
     private static final String OPENERS =
-            "hasAnyAuthority('OFFICE_ict','OFFICE_super','OFFICE_admin','OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
+            "hasAnyAuthority('OFFICE_ict','OFFICE_dbops','OFFICE_super','OFFICE_admin','OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
@@ -124,6 +127,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> newFaculty(@Valid @RequestBody FacultyIn body) {
+        scope.requireUniversityOperator("Creating a faculty");
         return jdbc.sql("SELECT code, name FROM ref.upsert_faculty(:c, :n)")
                 .param("c", body.code()).param("n", body.name()).query().singleRow();
     }
@@ -132,6 +136,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> importFaculties(@Valid @RequestBody Rows body) {
+        scope.requireUniversityOperator("Uploading faculties");
         return jdbc.sql("SELECT * FROM ref.import_faculties(:j::jsonb)")
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
@@ -157,6 +162,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> newDepartment(@Valid @RequestBody DepartmentIn body) {
+        scope.requireUniversityOperator("Creating a department");
         assertHodOwns(body.code());                         // an HOD cannot create or rename another department
         return jdbc.sql("SELECT code, name, faculty_code FROM ref.upsert_department(:c, :n, :f)")
                 .param("c", body.code()).param("n", body.name()).param("f", body.faculty()).query().singleRow();
@@ -166,6 +172,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> importDepartments(@Valid @RequestBody Rows body) {
+        scope.requireUniversityOperator("Uploading departments");
         return jdbc.sql("SELECT * FROM ref.import_departments(:j::jsonb)")
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
@@ -175,6 +182,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> deleteDepartment(@PathVariable String code) {
+        scope.requireUniversityOperator("Removing a department");
         jdbc.sql("SELECT ref.delete_department(:c)").param("c", code).query().singleRow();
         return Map.of("code", code.toUpperCase(), "deleted", true);
     }
@@ -201,6 +209,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> newProgramme(@Valid @RequestBody ProgrammeIn body) {
+        scope.requireUniversityOperator("Creating a programme");
         return jdbc.sql("SELECT code, name, faculty_code, dept_code, category, min_score FROM ref.upsert_programme(:c, :n, :f, :dc, :dn, :cat, :ms)")
                 .param("c", body.code()).param("n", body.name()).param("f", body.faculty())
                 .param("dc", body.departmentCode(), java.sql.Types.VARCHAR).param("dn", body.department(), java.sql.Types.VARCHAR)
@@ -212,6 +221,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> importProgrammes(@Valid @RequestBody Rows body) {
+        scope.requireUniversityOperator("Uploading programmes");
         return jdbc.sql("SELECT * FROM ref.import_programmes(:j::jsonb)")
                 .param("j", json.writeValueAsString(body.rows())).query().singleRow();
     }
@@ -224,6 +234,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> archiveProgramme(@PathVariable String code, @Valid @RequestBody Archive body) {
+        scope.requireUniversityOperator("Archiving a programme");
         return jdbc.sql("SELECT code, name, archived FROM ref.set_programme_archived(:c, :a)")
                 .param("c", code).param("a", body.archived()).query().singleRow();
     }
@@ -233,6 +244,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> deleteProgramme(@PathVariable String code) {
+        scope.requireUniversityOperator("Removing a programme");
         jdbc.sql("SELECT ref.delete_programme(:c)").param("c", code).query().singleRow();
         return Map.of("code", code.toUpperCase(), "deleted", true);
     }
@@ -242,6 +254,7 @@ class CatalogueController {
     @PreAuthorize(UPLOADERS)
     @Transactional
     Map<String, Object> deleteFaculty(@PathVariable String code) {
+        scope.requireUniversityOperator("Removing a faculty");
         jdbc.sql("SELECT ref.delete_faculty(:c)").param("c", code).query().singleRow();
         return Map.of("code", code.toUpperCase(), "deleted", true);
     }
@@ -255,6 +268,8 @@ class CatalogueController {
             throw new ng.edu.moaum.portal.shared.DomainRuleViolation("CAT_ROWS", "The structure has no rows to read.",
                     new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Upload the department's course document.", "Directorate of ICT"));
         }
+        // V662: a Database Operator held to a faculty, department or programme uploads its own programmes' structures only
+        if (scope.actingOperator()) scope.bound(null, null, body.programme());
         Map<String, Object> out = new java.util.LinkedHashMap<>(jdbc.sql("SELECT * FROM catalogue.import_courses(:p, :j::jsonb, :curr)")
                 .param("p", body.programme()).param("j", json.writeValueAsString(body.rows()))
                 .param("curr", body.curriculum() == null || body.curriculum().isBlank() ? null : body.curriculum().trim().toUpperCase(), java.sql.Types.VARCHAR)
@@ -331,6 +346,7 @@ class CatalogueController {
     @PreAuthorize(OPENERS)
     @Transactional
     Map<String, Object> openRegistration(@RequestParam String session, @RequestParam int semester) {
+        scope.requireUniversityOperator("Opening registration for a session");
         Integer n = jdbc.sql("SELECT registration.open_course_registration(:s, :sem)")
                 .param("s", session).param("sem", semester).query(Integer.class).single();
         return Map.of("opened", n, "session", session, "semester", semester);

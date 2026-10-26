@@ -367,6 +367,21 @@ public class OfficeScope {
                 .orElse(new String[] {"institution", null});
     }
 
+    /**
+     * V662: an act that reaches the whole University — a faculty created or removed, registration opened for a session, the
+     * allocation desk, the old-portal migration — by a Database Operator needs a grant over the whole University; an operator held
+     * to a faculty, department or programme is refused. Every other office passes as before.
+     */
+    public void requireUniversityOperator(String what) {
+        if (!actingOperator()) return;
+        String[] own = operatorScope();
+        if (!"institution".equals(own[0])) {
+            throw new DomainRuleViolation("SCOPE_UNIVERSITY", what + " reaches the whole University; your Database Operator grant is held to one "
+                    + ("none".equals(own[0]) ? "scope that no longer resolves" : own[0]) + ".",
+                    new DomainRuleViolation.Remedy("A Database Operator granted over the whole University does it, or the Directorate of ICT.", "Directorate of ICT"));
+        }
+    }
+
     /** true when the acting office is bound to one faculty (Dean or Faculty Officer) */
     public boolean actingFacultyOffice() {
         return AuditContextHolder.current().map(c -> FACULTY_OFFICES.contains(c.actorOffice())).orElse(false);

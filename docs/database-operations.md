@@ -52,6 +52,21 @@ matriculation numbers, passwords, RBAC, approving payments, graduation, programm
 none of those endpoints' lists. `MANAGE_STUDENT_CLASSIFICATION` is not granted either. Deciding a classification stays with the
 Academic Office and the Registry; Database Operations finds the unclassified record and sends it to them.
 
+### The Academic menu (V662, 26 October 2026)
+
+The University asked for the Director of ICT's Academic menu on the Database Operator's too, and answered "everything ICT can".
+These six screens write, so the office now holds what the Director holds there:
+
+| Screen | What an operator does | Held to |
+|---|---|---|
+| Upload or Create Faculties, Departments, Programmes | create, upload, archive, remove | a grant over the whole University (`SCOPE_UNIVERSITY` otherwise) |
+| Upload or Create Courses | upload a programme's course structure; open registration for a session | the grant's own programmes (`OfficeScope.bound`); opening registration needs the whole University |
+| Course Allocation | the allocation desk, the bulk import and the department templates | the grant's reach (`AllocationReach`): the University, or one faculty, department or programme |
+| Migrate from Old Portal | every migration step, the past results with them, clearing the migrated list | a grant over the whole University; the database's own past-results rule (`assessment.past_results_office`) admits it too |
+
+`OfficeScope.requireUniversityOperator` refuses a bounded operator an act that reaches the whole University; every other office
+passes as before. The rest of "Not granted" above still holds: no student, payment or result is changed outside these screens.
+
 ## 3. Examination readiness
 
 `reporting.exam_readiness(session, semester, faculty, department, programme, level, programme type, course, rule)` gives one row
@@ -159,7 +174,8 @@ recommends; the change follows that office's own permissions and workflow.
 
 * **Database Operator:** a home with the students by programme type, the readiness of the semester, data quality and the quick
   actions. The menu has Student Classification (Student Query, Classification, Statistics, Spillover, Graduated), Examination
-  Readiness, Student Reporting (School Fees Report, Payments Query, Student Records), Database Query, and Data Quality.
+  Readiness, Student Reporting (School Fees Report, Payments Query, Student Records), Database Query, Data Quality and, since V662,
+  Academic (the Director of ICT's six screens).
 * **ICT:** a new Reports group with Examination Readiness, Database Query and Reports, and Data Quality. The duplicate Graduation
   Management line in ICT's menu was removed.
 * **Examination Readiness** is also on the Academic Office's, the Registry's, Records', the examinations officers', the Deans', the

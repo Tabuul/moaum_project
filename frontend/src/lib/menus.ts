@@ -958,6 +958,17 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "Academic",
+        "items": [
+          { "id": "t/facultyupload", "icon": "cap", "label": "Upload or Create Faculties" },
+          { "id": "t/programmeupload", "icon": "book", "label": "Upload or Create Programmes" },
+          { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
+          { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
+          { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
+          { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" }
+        ]
+      },
+      {
         "name": "Me",
         "items": [
           { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },

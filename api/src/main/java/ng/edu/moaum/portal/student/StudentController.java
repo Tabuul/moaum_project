@@ -118,9 +118,10 @@ class StudentController {
 
     /** Clear the migrated students at these levels who still lack a unit's word — the old portal's clearance, carried over (V231/V233). */
     @PostMapping("/students/migrated/clear")
-    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')")
+    @PreAuthorize("hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_dbops','OFFICE_super')")
     @org.springframework.transaction.annotation.Transactional
     java.util.Map<String, Object> clearMigrated(@RequestParam(defaultValue = "100") int from, @RequestParam(defaultValue = "400") int to) {
+        scope.requireUniversityOperator("Clearing the migrated students");   // V662: a Database Operator granted over the University
         java.util.Map<String, Object> done = jdbc.sql("SELECT * FROM clearance.clear_migrated(:f, :t)").param("f", from).param("t", to).query().singleRow();
         java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(done);
         java.util.Map<String, Object> now = migratedNow(from, to);   // read in this transaction: the clearing just done

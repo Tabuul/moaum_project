@@ -15,10 +15,10 @@ import { MigratedPanelLive } from "@/app/students/MigratedPanel";
 import { semesterText } from "@/lib/student-portal";
 
 type Tab = "biodata" | "pgstudents" | "students" | "registration" | "results" | "pgregistration" | "pgresults" | "pgresearch" | "jamb" | "passports" | "clearance";
-const MIGRATE = ["ict", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
+const MIGRATE = ["ict", "dbops", "exams", "facultyexams", "hod", "dean", "records", "academic", "registrar", "dregistrar", "super"];
 /** past results go onto the record as final with no approval chain (approved on the old portal), so only the Directorate of ICT
  *  uploads them — the University's word of 21 October 2026; the API holds the same rule */
-const PAST_RESULTS = ["ict", "super"];
+const PAST_RESULTS = ["ict", "dbops", "super"];   // V662: a Database Operator granted over the whole University (the API and the database say)
 const PAST_RESULT_TABS: Tab[] = ["results", "pgresults"];
 /* any institutional matriculation number: a 2–6 letter prefix (MOAU / MOAUM / BSU …) then 2–8 slash
    segments. Postgraduate numbers spell out faculty/department/programme (e.g. MOAU/AM/BSM/PGDM/MSC/25/0021),
@@ -694,7 +694,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
         then the past results. Matched on matriculation number and course code; past results import as final under a legacy minute.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the ICT Directorate, the Examinations Officer, HODs and Records">Your office may not migrate records.</Note> : null}
-      {may && !mayResults ? <Note kind="info" title="Past results are uploaded by the Directorate of ICT">They go onto the record as final, with no approval, because they were approved on the old portal.</Note> : null}
+      {may && !mayResults ? <Note kind="info" title="Past results are uploaded by the Directorate of ICT or a Database Operator">They go onto the record as final, with no approval, because they were approved on the old portal.</Note> : null}
 
       <div className="card"><PBody>
         <Tabs look="segmented" value={tab} onChange={(k) => { setTab(k); setResult(null); setProblem(null); setPResult(null); setPreview(null); setLpreview(null); }}
@@ -714,7 +714,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
           <Note kind="info" title="The last step: the students you brought over arrive cleared">
             Students migrated at 100 to 400 level arrive cleared at every unit; this clears any the upload missed. A unit may still hold them.
           </Note>
-          <MigratedPanelLive mayClear={["academic", "registrar", "dregistrar", "ict", "super"].includes(actingOffice ?? "")} />
+          <MigratedPanelLive mayClear={["academic", "registrar", "dregistrar", "ict", "dbops", "super"].includes(actingOffice ?? "")} />
         </>
       ) : null}
 

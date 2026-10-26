@@ -14,7 +14,7 @@ import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
 export interface Department { code: string; name: string; faculty_code: string; faculty_name: string; programmes: number; courses: number }
-const MAY = ["ict"];
+const MAY = ["ict", "dbops"];   // V662: and the Database Operators (the University's register for an operator granted over the whole University; the API says)
 
 export function Departments({ departments, actingOffice }: { departments: Department[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -95,7 +95,7 @@ export function Departments({ departments, actingOffice }: { departments: Depart
 
   return (
     <>
-      <RoleLine allowed={["ict"]} actingOffice={actingOffice} canAct={may} action="Creating and editing departments" />
+      <RoleLine allowed={MAY} actingOffice={actingOffice} canAct={may} action="Creating and editing departments" />
       <Note kind="info" title="Create a department, or upload the list">
         Code, name and faculty; the faculty must exist first. Uploading again updates rather than duplicates.
       </Note>

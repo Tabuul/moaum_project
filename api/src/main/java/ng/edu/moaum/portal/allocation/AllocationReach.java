@@ -20,8 +20,9 @@ import org.springframework.stereotype.Component;
  * faculties and departments of the postings that carry the capability — helpdesk.agent_scope_for, the support desk's own
  * scope rule — so a capability granted on a faculty posting never reaches past that faculty, and an agent whose postings
  * carry none reaches nothing. The academic offices keep their own bound (OfficeScope): a Head of Department their
- * department, a faculty office its faculty, the Registry the University. Every desk endpoint asks here on the server; the
- * screen's buttons only follow.
+ * department, a faculty office its faculty, the Registry the University. A Database Operator (V662) reaches what its grant holds:
+ * the University, or one faculty, department or programme. Every desk endpoint asks here on the server; the screen's buttons
+ * only follow.
  */
 @Component
 class AllocationReach {
@@ -70,6 +71,12 @@ class AllocationReach {
         return "ictagent".equals(office());
     }
 
+    /** V662: an office whose allocation reach comes from {@link #of} alone — an ICT Support Agent's postings or a Database
+     *  Operator's grant — so the bulk import and the templates hold its rows to that reach */
+    static boolean heldByReach() {
+        return agent() || "dbops".equals(office());
+    }
+
     /** where the acting office reaches with this capability */
     Reach of(String capability) {
         String office = office();
@@ -79,6 +86,28 @@ class AllocationReach {
                     .param("p", actor()).param("c", capability).query().singleRow();
             return new Reach(Boolean.TRUE.equals(r.get("global")), upper(r.get("faculties")), upper(r.get("departments")),
                     r.get("words") == null ? "" : String.valueOf(r.get("words")));
+        }
+        // V662: a Database Operator reaches the University, or the faculty, department or programme its grant is held to
+        if (scope.actingOperator()) {
+            String[] own = scope.operatorScope();
+            switch (own[0]) {
+                case "institution" -> {
+                    return new Reach(true, Set.of(), Set.of(), "The University");
+                }
+                case "faculty" -> {
+                    return new Reach(false, Set.of(own[1].toUpperCase()), Set.of(), own[1]);
+                }
+                case "department" -> {
+                    return new Reach(false, Set.of(), Set.of(own[1].toUpperCase()), own[1]);
+                }
+                case "programme" -> {
+                    String d = jdbc.sql("SELECT dept_code FROM ref.programme WHERE upper(code) = upper(:p)").param("p", own[1]).query(String.class).optional().orElse(null);
+                    return new Reach(false, Set.of(), d == null ? Set.of() : Set.of(d.toUpperCase()), d == null ? "" : d);
+                }
+                default -> {
+                    return new Reach(false, Set.of(), Set.of(), "");
+                }
+            }
         }
         if (scope.actingDepartmentOffice()) {
             String d = scope.actingDept();

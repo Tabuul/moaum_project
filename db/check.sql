@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 488
+\set EXPECTED 489
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26095,6 +26095,40 @@ BEGIN
         format('imported %s | offered %s | preview %s (movable %s, moved %s, written %s) | refused %s/%s/%s | moved %s left %s | A %s C %s B %s D %s | payment %s | paper %s | events %s | again %s',
                imp ->> 'applied', offered, pre_status, pre ->> 'movable', pre ->> 'moved', pre_written, far, no_reason, other_office,
                done ->> 'moved', done ->> 'left', a_after, c_after, b_after, d_after, pay_after, paper_after, event_n, again -> 'rows' -> 0 ->> 'status'));
+END $$;
+
+-- ── V662. Past results by a Database Operator: assessment.past_results_office admits an operator granted over the whole University
+-- (as the Directorate of ICT), refuses one held to a department and the Examinations Officer, and still admits ICT. Undone after.
+DO $$
+DECLARE msg text; uni uuid := gen_random_uuid(); dep uuid := gen_random_uuid(); d1 text;
+        r_uni text; r_dep text; r_exams text; r_ict text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V662', true);
+        PERFORM set_config('moaum.actor_id', uni::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (uni, 'CHK-V662-1', 'CHECKV662', 'University'), (dep, 'CHK-V662-2', 'CHECKV662', 'Department');
+        d1 := (SELECT d.code FROM ref.department d ORDER BY d.code LIMIT 1);
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), uni, 'dbops', 'institution', 'University', 'check V662', uni, current_date),
+            (gen_random_uuid(), dep, 'dbops', 'department', d1, 'check V662', uni, current_date);
+        -- each office in turn, its answer read
+        PERFORM set_config('moaum.actor_office', 'dbops', true);
+        BEGIN PERFORM assessment.past_results_office(); r_uni := 'ADMITTED'; EXCEPTION WHEN insufficient_privilege THEN r_uni := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', dep::text, true);
+        BEGIN PERFORM assessment.past_results_office(); r_dep := 'ADMITTED'; EXCEPTION WHEN insufficient_privilege THEN r_dep := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'exams', true);
+        BEGIN PERFORM assessment.past_results_office(); r_exams := 'ADMITTED'; EXCEPTION WHEN insufficient_privilege THEN r_exams := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        BEGIN PERFORM assessment.past_results_office(); r_ict := 'ADMITTED'; EXCEPTION WHEN insufficient_privilege THEN r_ict := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V662 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V662 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V662: past results are uploaded by the Directorate of ICT or a Database Operator granted over the whole University; one held to a department is refused',
+        coalesce(r_uni = 'ADMITTED' AND r_dep = 'PAST_RESULTS_OFFICE' AND r_exams = 'PAST_RESULTS_OFFICE' AND r_ict = 'ADMITTED', false),
+        format('operator (University) %s, operator (department) %s, exams %s, ict %s', r_uni, r_dep, r_exams, r_ict));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

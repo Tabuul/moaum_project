@@ -37,7 +37,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/allocation/desk")
 class AllocationDeskController {
 
-    static final String DESK = "hasAnyAuthority('OFFICE_ict','OFFICE_helpdeskhead','OFFICE_ictagent','OFFICE_admin','OFFICE_super')";
+    /** V662: and the Database Operators, each held to its grant's reach (AllocationReach) */
+    static final String DESK = "hasAnyAuthority('OFFICE_ict','OFFICE_dbops','OFFICE_helpdeskhead','OFFICE_ictagent','OFFICE_admin','OFFICE_super')";
     private static final int MAX_UNITS = 12;
 
     private final JdbcClient jdbc;
