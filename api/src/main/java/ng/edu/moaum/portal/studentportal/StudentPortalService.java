@@ -533,6 +533,14 @@ public class StudentPortalService {
         return registrationView(id, session, semester);
     }
 
+    /** V665: a record whose award is approved registers nothing for a session after its graduation session: the final clearance is under way */
+    private void refuseAfterApprovedAward(UUID id, String session) {
+        if (repo.awaitingFinalClearanceAfter(id, session)) {
+            throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "Course registration is unavailable: your award is approved and your final clearance is under way.",
+                    new DomainRuleViolation.Remedy("Follow your final clearance on My Clearance; your record reads GRADUATED once the Bursar confirms it.", "Academic Office"));
+        }
+    }
+
     @Transactional(readOnly = true)
     public Map<String, Object> registrationView(UUID id, String session, int semester) {
         StudentPortalRepository.Student s = student(id);
@@ -540,11 +548,17 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("semester", semester);
         out.put("level", s.currentLevel());
-        // V602: a graduated record registers nothing — no menu, no carry-over to add, the registration of the semester (if any) read as history
-        if ("GRADUATED".equals(s.status())) {
-            out.put("closed", Map.of("code", "REG_STUDENT_GRADUATED",
-                    "words", "Course registration is unavailable because this academic record has been graduated.",
-                    "remedy", "Your registrations, results and payments stay on your record; transcripts, the certificate and clearance are on Documents and Graduation."));
+        // V602: a graduated record registers nothing — no menu, no carry-over to add, the registration of the semester (if any) read as history;
+        // V665: nor, for a session after the graduation session, does one whose award is approved and whose final clearance is under way
+        boolean graduated = "GRADUATED".equals(s.status());
+        if (graduated || repo.awaitingFinalClearanceAfter(id, session)) {
+            out.put("closed", graduated
+                    ? Map.of("code", "REG_STUDENT_GRADUATED",
+                            "words", "Course registration is unavailable because this academic record has been graduated.",
+                            "remedy", "Your registrations, results and payments stay on your record; transcripts, the certificate and clearance are on Documents and Graduation.")
+                    : Map.of("code", "REG_STUDENT_AWARD_APPROVED",
+                            "words", "Course registration is unavailable: your award is approved and your final clearance is under way.",
+                            "remedy", "Follow your final clearance on My Clearance; your record reads GRADUATED once the Bursar confirms it."));
             out.put("limit", Map.of("min_units", 0, "max_units", 0, "basis", "CLOSED"));
             out.put("probation", Map.of());
             out.put("siwes", false);
@@ -710,6 +724,7 @@ public class StudentPortalService {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "Course registration is unavailable because this academic record has been graduated.",
                     new DomainRuleViolation.Remedy("Your registrations and results stay on your record; transcripts and the certificate are on Documents.", "Academic Office"));
         }
+        refuseAfterApprovedAward(id, session);
         String term = q == null ? null : q.trim().replaceAll("\\s+", " ");
         if (term != null && term.isEmpty()) term = null;
         if (term != null && term.length() > 60) term = term.substring(0, 60);
@@ -774,6 +789,7 @@ public class StudentPortalService {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "A student who is " + s.status().toLowerCase() + " does not register.",
                     new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
         }
+        refuseAfterApprovedAward(id, session);
         assertWindowOpen(id, session, semester);
         if (offering == null) {
             if (courseCode == null || courseCode.isBlank()) {
@@ -968,6 +984,7 @@ public class StudentPortalService {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "A student who is " + s.status().toLowerCase() + " does not register.",
                     new DomainRuleViolation.Remedy("Only an admitted, active or probation student may register.", "Academic Office"));
         }
+        refuseAfterApprovedAward(id, session);
         assertWindowOpen(id, session, semester);
         UUID reg = repo.draft(id, session, semester);
         repo.choose(reg, offerings == null ? List.of() : offerings);

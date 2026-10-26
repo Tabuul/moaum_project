@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,7 +27,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * V602: graduation batches — the Academic Office confirms the awards of chosen students on the Senate's minute: a preview that writes
  * nothing (each student's verdict from the register, the cohort engine, the lifecycle completion check and the degree audit), a batch
  * GRAD/YYYY/NNNNNN with its rows, then the execution one student at a time, each all or nothing through {@code records.graduate_one}
- * (the list entry approved, the status changed with its history, final clearance started, the student told), never twice. Also the
+ * (the list entry approved, final clearance started, the student told; V665: the status changes, with its history, when the Bursar
+ * confirms the final clearance), never twice. Also the
  * Registrar's correction of an erroneous graduation, the management figures and the reports. Everything reads the pieces that already
  * exist; nothing here is a second graduation, status, clearance or statistics system.
  */
@@ -167,7 +169,7 @@ public class GraduationBatchService {
         return out;
     }
 
-    /** one step of the execution: up to {@link #STEP} eligible students graduated, each in its own transaction; the rest wait for the next step */
+    /** one step of the execution: up to {@link #STEP} eligible students have the award approved (V665: graduated at the Bursar's final clearance), each in its own transaction; the rest wait for the next step */
     public Map<String, Object> execute(String ref, AuditContext ctx) {
         Map<String, Object> b = batchRow(ref);
         if (b.get("closed_at") != null) {
@@ -199,16 +201,20 @@ public class GraduationBatchService {
                             .param("a", ctx.actorId()).param("o", ctx.actorOffice()).query(String.class).single();
                     Map<String, Object> done = parse(j);
                     String outcome = String.valueOf(done.get("outcome"));
+                    // V665: the award approved and the final clearance started; the record reads GRADUATED once the Bursar confirms it
                     jdbc.sql("""
                             UPDATE records.graduation_batch_row SET outcome = :out, graduand_id = CAST(:g AS uuid),
                                    graduated_at = CASE WHEN :out = 'GRADUATED' THEN now() ELSE graduated_at END,
-                                   reason = CASE WHEN :out = 'GRADUATED' THEN 'Graduated' || coalesce('; final clearance ' || :clear, '') ELSE 'Already graduated' END
+                                   reason = CASE :out WHEN 'APPROVED' THEN 'Award approved' || coalesce('; final clearance ' || :clear, '')
+                                                      WHEN 'AWAITING_FINAL_CLEARANCE' THEN 'Award approved earlier' || coalesce('; final clearance ' || :clear, '')
+                                                      WHEN 'GRADUATED' THEN 'Graduated' || coalesce('; final clearance ' || :clear, '')
+                                                      ELSE 'Already graduated' END
                              WHERE batch_id = :b AND student_id = :s
                             """).param("out", outcome).param("g", str(done.get("graduand_id")), Types.VARCHAR).param("clear", str(done.get("clearance")), Types.VARCHAR)
                             .param("b", batchId).param("s", student).update();
                     return done;
                 });
-                if ("GRADUATED".equals(String.valueOf(r.get("outcome")))) {
+                if (Set.of("APPROVED", "GRADUATED").contains(String.valueOf(r.get("outcome")))) {
                     graduated++;
                 } else {
                     skipped++;
@@ -238,7 +244,8 @@ public class GraduationBatchService {
         });
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("batchRef", ref);
-        out.put("graduated", graduated);
+        out.put("approved", graduated);
+        out.put("graduated", graduated);   // V665: the awards this step approved (kept under its old name for the screens that read it)
         out.put("skipped", skipped);
         out.put("refused", refused);
         out.put("remaining", remaining);

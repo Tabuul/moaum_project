@@ -20,14 +20,17 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.client.RestClient;
 
 /**
- * V602: graduation batches over the API, and the graduated record closed. Three 400 Level students of a four-year programme in a
- * session of their own: one with every course passed and published, one owing a carry-over, one deferred. The preview writes
- * nothing and names the verdicts; a batch is opened on the Senate's minute, executed by the officer who opened it (another is
- * refused), graduates the eligible student only — status GRADUATED with its history, the list entry approved with the batch, final
- * clearance started — and leaves the other two with their reasons; executed again it graduates nobody twice. Afterwards the graduate
- * is refused a school-fee reference and a course registration for a later session, the register view reads closed with no menu and
- * no carry-over, the course search is refused, the old registration and results stay readable, the report counts the graduate, and
- * the Registrar's correction (refused to the Academic Office) puts the status back with the impact recorded. Needs DATABASE_URL.
+ * V602, V665: graduation batches over the API, the Bursar's final clearance, and the graduated record closed. Three 400 Level students
+ * of a four-year programme in a session of their own: one with every course passed and published, one owing a carry-over, one
+ * deferred. The preview writes nothing and names the verdicts; a batch is opened on the Senate's minute, executed by the officer who
+ * opened it (another is refused), approves the eligible student's award only — the list entry approved with the batch, the status
+ * unchanged, final clearance started, the student told — and leaves the other two with their reasons; executed again it approves
+ * nobody twice. The approved graduand is already closed to a later session's fees and registration. The Bursary's stage waits for
+ * the other offices, and is the Bursar's alone; once they clear and the session's fees are paid, the Bursar's clearance graduates the
+ * student in the same act. Afterwards the graduate is refused a school-fee reference and a course registration for a later session,
+ * the register view reads closed with no menu and no carry-over, the course search is refused, the old registration and results stay
+ * readable, the report counts the graduate, and the Registrar's correction (refused to the Academic Office) puts the status back with
+ * the impact recorded. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -46,6 +49,7 @@ class GraduationBatchIT {
     final String academic = ItSupport.token("academic");
     final String registrar = ItSupport.token("registrar");
     final String ict = ItSupport.token("ict");
+    final String bursar = ItSupport.token("bursar");
     String session, later;
     UUID eligible, owing, deferred;
 
@@ -64,7 +68,7 @@ class GraduationBatchIT {
     }
 
     @Test
-    void aBatchGraduatesTheEligibleStudentOnlyAndClosesTheRecordToNewFeesAndRegistration() {
+    void aBatchApprovesTheEligibleAwardAndTheBursarsFinalClearanceGraduatesAndClosesTheRecord() {
         int y = it.freeYear(4100, 4190, 0, 1);
         session = y + "/" + (y + 1);
         later = (y + 1) + "/" + (y + 2);
@@ -116,7 +120,7 @@ class GraduationBatchIT {
         // a batch without a minute is refused
         assertThat(it.call(academic, HttpMethod.POST, "/api/v1/graduation/batches", Map.of("session", session, "senateMinute", " ", "reason", "Integration test: the batch", "filter", filter)).getStatusCode().value()).isNotEqualTo(200);
 
-        // TEST 25: the batch opened on the minute, executed by its officer — the eligible student graduated, the others left with their reasons
+        // TEST 25: the batch opened on the minute, executed by its officer — the eligible student's award approved, the others left with their reasons
         ResponseEntity<Map> opened = it.call(academic, HttpMethod.POST, "/api/v1/graduation/batches",
                 Map.of("session", session, "senateMinute", "SEN/IT/602", "reason", "Integration test: the " + session + " graduands confirmed", "filter", filter));
         assertThat(opened.getStatusCode().value()).as(String.valueOf(opened.getBody())).isEqualTo(200);
@@ -127,23 +131,58 @@ class GraduationBatchIT {
         assertThat(it.call(registrar, HttpMethod.POST, path + "/execute", null).getBody()).containsEntry("code", "GRAD_BATCH_OWNER");
         ResponseEntity<Map> run = it.call(academic, HttpMethod.POST, path + "/execute", null);
         assertThat(run.getStatusCode().value()).as(String.valueOf(run.getBody())).isEqualTo(200);
-        assertThat(run.getBody()).containsEntry("graduated", 1).containsEntry("remaining", 0).containsEntry("done", true);
-        assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", eligible).query(String.class).single()).isEqualTo("GRADUATED");
+        assertThat(run.getBody()).containsEntry("approved", 1).containsEntry("graduated", 1).containsEntry("remaining", 0).containsEntry("done", true);
+        // V665: the award approved, the status unchanged; the final clearance started and the student told
+        assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", eligible).query(String.class).single()).isEqualTo("ACTIVE");
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", owing).query(String.class).single()).isEqualTo("ACTIVE");
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", deferred).query(String.class).single()).isEqualTo("DEFERRED");
-        Map<String, Object> g = jdbc.sql("SELECT senate_state, senate_minute, batch_ref, graduated_at IS NOT NULL AS stamped, final_level FROM records.graduand WHERE student_id = :id AND session = :s")
+        Map<String, Object> g = jdbc.sql("SELECT senate_state, senate_minute, batch_ref, graduated_at IS NOT NULL AS stamped, approved_at IS NOT NULL AS approved, final_level FROM records.graduand WHERE student_id = :id AND session = :s")
                 .param("id", eligible).param("s", session).query().singleRow();
-        assertThat(g).containsEntry("senate_state", "APPROVED").containsEntry("senate_minute", "SEN/IT/602").containsEntry("batch_ref", ref).containsEntry("stamped", true).containsEntry("final_level", 400);
-        assertThat(jdbc.sql("SELECT count(*) FROM people.status_change WHERE student_id = :id AND to_status = 'GRADUATED' AND instrument = 'SEN/IT/602'").param("id", eligible).query(Long.class).single()).isEqualTo(1L);
-        assertThat(jdbc.sql("SELECT count(*) FROM clearance.process WHERE workflow = 'FINAL' AND student_id = :id AND cancelled_at IS NULL").param("id", eligible).query(Long.class).single()).isEqualTo(1L);
-        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :id AND template_key = 'STUDENT_GRADUATED'").param("id", eligible).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
-        // TEST 56: executed again, nobody is graduated twice
+        assertThat(g).containsEntry("senate_state", "APPROVED").containsEntry("senate_minute", "SEN/IT/602").containsEntry("batch_ref", ref).containsEntry("stamped", false)
+                .containsEntry("approved", true).containsEntry("final_level", 400);
+        assertThat(jdbc.sql("SELECT count(*) FROM people.status_change WHERE student_id = :id AND to_status = 'GRADUATED'").param("id", eligible).query(Long.class).single()).isZero();
+        UUID process = jdbc.sql("SELECT id FROM clearance.process WHERE workflow = 'FINAL' AND student_id = :id AND cancelled_at IS NULL").param("id", eligible).query(UUID.class).single();
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :id AND template_key = 'STUDENT_AWARD_APPROVED'").param("id", eligible).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
+        // TEST 56: executed again, nobody's award is approved twice
         ResponseEntity<Map> again = it.call(academic, HttpMethod.POST, path + "/execute", null);
         assertThat(again.getBody()).containsEntry("graduated", 0).containsEntry("done", true);
-        assertThat(jdbc.sql("SELECT count(*) FROM people.status_change WHERE student_id = :id AND to_status = 'GRADUATED'").param("id", eligible).query(Long.class).single()).isEqualTo(1L);
         Map<String, Object> detail = it.get(academic, path).getBody();
         assertThat(detail).containsEntry("graduated", 1).containsEntry("rejected", 2);
         assertThat((List<Map<String, Object>>) detail.get("rows")).extracting(r -> r.get("verdict")).containsExactlyInAnyOrder("ELIGIBLE", "CARRY_OVER", "DEFERRED");
+
+        // V665: awaiting the final clearance, the record is already closed to a later session's fees and registration
+        assertThat(jdbc.sql("SELECT (finance.position(:id, :s)).due").param("id", eligible).param("s", later).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("0");
+        assertThat(String.valueOf(it.call(student, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", later, "amount", 100000)).getBody())).contains("SCHOOL_FEES_CLOSED_GRADUATED");
+        ResponseEntity<Map> waiting = it.get(student, "/api/v1/me/registration?session=" + later + "&semester=1");
+        assertThat((Map<String, Object>) waiting.getBody().get("closed")).containsEntry("code", "REG_STUDENT_AWARD_APPROVED");
+        assertThat(it.call(student, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", later, "semester", 1, "offerings", List.of())).getBody())
+                .containsEntry("code", "REG_STUDENT_NOT_ELIGIBLE");
+
+        // V665: the Bursary's stage waits for the other offices and is the Bursar's alone; the Bursar's clearance graduates in the same act
+        it.db(() -> {
+            jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 50000, 400, 'C00023')").param("s", session).update();
+            return jdbc.sql("""
+                    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+                    VALUES (:st, :s, :r, :p, 50000, now(), now(), gen_random_uuid(), 'Bank branch', :r)
+                    """).param("st", eligible).param("s", session).param("r", "IT-GRB-" + n).param("p", "School fees " + session).update();
+        });
+        String clr = "/api/v1/clearance/processes/" + process;
+        assertThat(it.call(bursar, HttpMethod.POST, clr + "/stages/BURSARY", Map.of("state", "CLEARED")).getBody()).containsEntry("code", "CLR_STAGE_WAITING");
+        it.db(() -> jdbc.sql("""
+                SELECT count(clearance.decide(:p, r.unit, 'CLEARED', 'IT: cleared by the Registry', NULL, NULL, true, gen_random_uuid(), 'registrar'))
+                  FROM clearance.stage_rows('CONVOCATION', :s, ARRAY[CAST(:st AS uuid)]) r WHERE r.unit <> 'BURSARY' AND r.applies AND r.required
+                """).param("p", process).param("s", session).param("st", eligible).query(Long.class).single());
+        Map<String, Object> check = it.get(bursar, clr + "/final-check").getBody();
+        assertThat(check).containsEntry("graduates", true).containsEntry("ready", true);
+        assertThat(((Number) check.get("outstanding")).intValue()).isZero();
+        assertThat(it.call(registrar, HttpMethod.POST, clr + "/stages/BURSARY", Map.of("state", "CLEARED")).getBody()).containsEntry("code", "CLR_BURSAR_ONLY");
+        ResponseEntity<Map> cleared = it.call(bursar, HttpMethod.POST, clr + "/stages/BURSARY", Map.of("state", "CLEARED"));
+        assertThat(cleared.getStatusCode().value()).as(String.valueOf(cleared.getBody())).isEqualTo(200);
+        assertThat(cleared.getBody()).containsEntry("graduated", true).containsEntry("studentStatus", "GRADUATED");
+        assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", eligible).query(String.class).single()).isEqualTo("GRADUATED");
+        assertThat(jdbc.sql("SELECT count(*) FROM people.status_change WHERE student_id = :id AND to_status = 'GRADUATED' AND instrument = 'SEN/IT/602'").param("id", eligible).query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT graduated_at IS NOT NULL FROM records.graduand WHERE student_id = :id AND session = :s").param("id", eligible).param("s", session).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :id AND template_key = 'STUDENT_GRADUATED'").param("id", eligible).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
 
         // TEST 12–16: the record is closed — no charge for the later session, no reference, no registration, no carry-over, the search refused
         assertThat(jdbc.sql("SELECT (finance.position(:id, :s)).due").param("id", eligible).param("s", later).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("0");
@@ -182,6 +221,6 @@ class GraduationBatchIT {
         assertThat(jdbc.sql("SELECT count(*) FROM records.graduation_correction WHERE student_id = :id").param("id", eligible).query(Long.class).single()).isEqualTo(1L);
         // the fee line of the later session is charged again now the record is in study
         assertThat(jdbc.sql("SELECT (finance.position(:id, :s)).due").param("id", eligible).param("s", later).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("100000");
-        it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", later).update());
+        it.db(() -> jdbc.sql("DELETE FROM finance.fee_schedule WHERE session IN (:s, :t)").param("s", later).param("t", session).update());
     }
 }

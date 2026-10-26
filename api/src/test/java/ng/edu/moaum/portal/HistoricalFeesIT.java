@@ -180,4 +180,106 @@ class HistoricalFeesIT {
         assertThat(blocker).startsWith("Not cleared — outstanding school fees");
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", st).query(String.class).single()).isEqualTo("GRADUATED");
     }
+
+    /**
+     * V665: an approved graduand's account before the Bursar's final clearance. The officer's waiver above what is owed is refused; one
+     * within it, with its evidence, awaits the Bursar, who alone approves it — the period owes less. A reconciliation run over the
+     * graduand's programme and session reads them owing. The Bursary's clearance is refused over the balance; paid in full, another
+     * Bursar officer's clearance graduates the graduand in the same act, and the student sees the waiver in their own account.
+     */
+    @Test
+    void aWaiverAndAReconciliationRunBeforeTheBursarsFinalClearanceGraduatesTheGraduand() {
+        int y = it.freeYear(7400, 7800, 0, 1);
+        String s0 = y + "/" + (y + 1);
+        it.session(s0, y);
+        sessions.add(s0);
+        String surname = it.freeSurname("ZZHFWAIVE");
+        UUID st = it.student(surname, "C00023", it.freeNumber("MOAUM/ADM/74/", 6), it.freeNumber("MOAUM/HFW/74/", 6), 400);
+        String approved = it.db(() -> {
+            jdbc.sql("UPDATE people.student SET entry_session = :e, entry_level = 400 WHERE id = :s").param("e", s0).param("s", st).update();
+            jdbc.sql("INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), :s, :a, 400)").param("s", st).param("a", s0).update();
+            jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (:a, 'V665 IT fees', 100000, 400, 'C00023', NULL)")
+                    .param("a", s0).update();
+            jdbc.sql("""
+                    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+                    VALUES (:s, :a, :r, 'School fees ' || :a, 60000, now(), now(), gen_random_uuid(), 'Bank branch', :r)
+                    """).param("s", st).param("a", s0).param("r", "MOAUM-FEE-HFW-" + y + "A").update();
+            jdbc.sql("INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet) VALUES (gen_random_uuid(), :s, :a, 3.50, 'B.Sc.', NULL)")
+                    .param("s", st).param("a", s0).update();
+            return jdbc.sql("SELECT records.graduate_one(:s, :a, 'SEN/IT/665', NULL, 'V665 IT: the award', gen_random_uuid(), 'academic')->>'outcome'")
+                    .param("s", st).param("a", s0).query(String.class).single();
+        });
+        assertThat(approved).isEqualTo("APPROVED");
+        UUID process = jdbc.sql("SELECT id FROM clearance.process WHERE workflow = 'FINAL' AND student_id = :s AND cancelled_at IS NULL").param("s", st).query(UUID.class).single();
+        String officer = ItSupport.token("studentaccounts");
+        String bursar = ItSupport.token("bursar");
+        String bursar2 = ItSupport.token("bursar");
+
+        Map<String, Object> account = it.get(bursar, PATH + "/students/" + st).getBody();
+        assertThat(account).containsEntry("awaitingFinalClearance", true);
+        assertThat(money(period((List<Map<String, Object>>) account.get("periods"), s0, 1).get("outstanding"))).isEqualByComparingTo("40000");
+
+        // the waiver: above what is owed refused; within it, with its evidence, awaiting the Bursar; the officer cannot decide it
+        Map<String, Object> waiver = new HashMap<>(Map.of("studentId", st, "session", s0, "semester", 1, "kind", "WAIVER", "amount", 50000,
+                "reason", "A Council concession on the final-year school fees", "authority", "Council minute IT/664"));
+        ResponseEntity<Map> above = it.call(officer, HttpMethod.POST, PATH + "/waivers", waiver);
+        assertThat(above.getStatusCode().value()).isEqualTo(422);
+        assertThat(above.getBody()).containsEntry("code", "HFW_AMOUNT");
+        waiver.put("amount", 15000);
+        waiver.put("evidence", Map.of("filename", "minute.png", "dataUrl", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="));
+        ResponseEntity<Map> made = it.call(officer, HttpMethod.POST, PATH + "/waivers", waiver);
+        assertThat(made.getStatusCode().value()).as(String.valueOf(made.getBody())).isEqualTo(200);
+        assertThat(made.getBody()).containsEntry("state", "PENDING_BURSAR_APPROVAL");
+        assertThat(String.valueOf(made.getBody().get("reference"))).matches("HFW/[0-9]{4}/[0-9]{6}");
+        assertThat((List<?>) made.getBody().get("evidence")).hasSize(1);
+        String wid = String.valueOf(made.getBody().get("id"));
+        assertThat((List<Map<String, Object>>) it.get(bursar, PATH + "/waivers").getBody().get("rows")).anySatisfy(r -> assertThat(r).containsEntry("id", wid));
+        assertThat(it.call(officer, HttpMethod.POST, PATH + "/waivers/" + wid + "/decide", Map.of("decision", "APPROVE")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> decided = it.call(bursar, HttpMethod.POST, PATH + "/waivers/" + wid + "/decide", Map.of("decision", "APPROVE", "note", "The Council minute seen"));
+        assertThat(decided.getStatusCode().value()).as(String.valueOf(decided.getBody())).isEqualTo(200);
+        assertThat(decided.getBody()).containsEntry("state", "APPROVED");
+        Map<String, Object> now = (Map<String, Object>) decided.getBody().get("period");
+        assertThat(money(now.get("waived"))).isEqualByComparingTo("15000");
+        assertThat(money(now.get("outstanding"))).isEqualByComparingTo("25000");
+
+        // a reconciliation run over the graduand's programme and session reads them owing
+        ResponseEntity<Map> run = it.call(officer, HttpMethod.POST, PATH + "/recon-runs", Map.of("population", "AWAITING_GRADUATION", "programme", "C00023", "graduation", s0));
+        assertThat(run.getStatusCode().value()).as(String.valueOf(run.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(((Map<String, Object>) run.getBody().get("run")).get("reference"))).matches("CLEARANCE-RECON/[0-9]{4}/[0-9]{6}");
+        assertThat((List<Map<String, Object>>) run.getBody().get("rows")).anySatisfy(r -> {
+            assertThat(r).containsEntry("student_id", st.toString()).containsEntry("status", "OWING").containsEntry("awaiting_graduation", true);
+            assertThat(money(r.get("outstanding"))).isEqualByComparingTo("25000");
+            assertThat(money(r.get("waived"))).isEqualByComparingTo("15000");
+        });
+
+        // the other offices clear (here the Registry's override); the Bursary's clearance is refused over the balance
+        it.db(() -> jdbc.sql("""
+                SELECT count(clearance.decide(:p, r.unit, 'CLEARED', 'IT: cleared by the Registry', NULL, NULL, true, gen_random_uuid(), 'registrar'))
+                  FROM clearance.stage_rows('CONVOCATION', :s, ARRAY[CAST(:st AS uuid)]) r WHERE r.unit <> 'BURSARY' AND r.applies AND r.required
+                """).param("p", process).param("s", s0).param("st", st).query(Long.class).single());
+        String clr = "/api/v1/clearance/processes/" + process;
+        Map<String, Object> check = it.get(bursar, clr + "/final-check").getBody();
+        assertThat(check).containsEntry("graduates", true).containsEntry("ready", false);
+        assertThat(money(check.get("waived"))).isEqualByComparingTo("15000");
+        assertThat(money(check.get("outstanding"))).isEqualByComparingTo("25000");
+        assertThat(it.call(bursar, HttpMethod.POST, clr + "/stages/BURSARY", Map.of("state", "CLEARED")).getBody()).containsEntry("code", "CLR_OUTSTANDING");
+
+        // paid in full, another Bursar officer's clearance graduates the graduand in the same act
+        it.db(() -> jdbc.sql("""
+                INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+                VALUES (:s, :a, :r, 'School fees ' || :a, 25000, now(), now(), gen_random_uuid(), 'Bank branch', :r)
+                """).param("s", st).param("a", s0).param("r", "MOAUM-FEE-HFW-" + y + "B").update());
+        assertThat(it.get(bursar2, clr + "/final-check").getBody()).containsEntry("ready", true);
+        ResponseEntity<Map> cleared = it.call(bursar2, HttpMethod.POST, clr + "/stages/BURSARY", Map.of("state", "CLEARED"));
+        assertThat(cleared.getStatusCode().value()).as(String.valueOf(cleared.getBody())).isEqualTo(200);
+        assertThat(cleared.getBody()).containsEntry("graduated", true);
+        assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", st).query(String.class).single()).isEqualTo("GRADUATED");
+
+        // the student sees the waiver in their own account
+        Map<String, Object> mine = it.get(TestTokens.token(st, List.of("student")), "/api/v1/me/historical-fees").getBody();
+        assertThat(mine).containsEntry("awaitingFinalClearance", false);
+        Map<String, Object> mineS1 = period((List<Map<String, Object>>) mine.get("periods"), s0, 1);
+        assertThat(money(mineS1.get("waived"))).isEqualByComparingTo("15000");
+        assertThat(money(mineS1.get("outstanding"))).isEqualByComparingTo("0");
+    }
 }

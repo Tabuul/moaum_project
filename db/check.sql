@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 492
+\set EXPECTED 493
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2248,7 +2248,8 @@ BEGIN
         format('%s rows, %s with published NULL, %s unpublished rows carrying a mark', v_total, v_unknown, v_leaked));
 END $$;
 
--- ── 104. Senate's approval of the list changes the status on the minute, tells the graduand, and the student sees it (V029) ──
+-- ── 104. Senate's approval of the list approves the award on the minute, tells the graduand, and the student sees it (V029; V665: the
+--          status follows at the Bursar's final clearance) ──
 DO $$
 DECLARE st uuid := gen_random_uuid(); n int; v_status text; v_notices int; g record;
 BEGIN
@@ -2268,13 +2269,13 @@ BEGIN
     SELECT status INTO v_status FROM people.student WHERE id = st;
     SELECT count(*) INTO v_notices FROM platform.notice WHERE about_kind = 'student' AND about_id = st;
     SELECT * INTO g FROM records.student_graduation(st);
-    PERFORM pg_temp.assert('Senate''s approval of the list changes the status on the minute, tells the graduand, and the student sees the class and the units still holding',
-        -- seven notices (V602): the award confirmed on the STUDENT_GRADUATED template by email, SMS and the portal, the change of
-        -- status on the register by email and SMS, and final clearance started by email and SMS (graduate_one starts it);
-        -- seven units holding: final clearance (V415) is not held by a hostel the graduand never had
-        n >= 1 AND v_status = 'GRADUATED' AND v_notices = 7 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
+    PERFORM pg_temp.assert('Senate''s approval of the list approves the award on the minute, tells the graduand, and the student sees the class and the units still holding; the status stays until the Bursar confirms the final clearance (V665)',
+        -- five notices (V665): the award approved on the STUDENT_AWARD_APPROVED template by email, SMS and the portal, and final
+        -- clearance started by email and SMS (graduate_one starts it); no change of status yet: the Bursar's confirmation of the final
+        -- clearance graduates; seven units holding: final clearance (V415) is not held by a hostel the graduand never had
+        n >= 1 AND v_status = 'ACTIVE' AND v_notices = 5 AND g.senate_state = 'APPROVED' AND g.senate_minute = 'CHECK SEN/9999/7'
         AND g.class_of_degree = 'Second Class Honours (Upper)' AND NOT g.cleared AND g.units_holding = 7 AND g.certificate_no IS NULL
-        AND EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED' AND instrument = 'CHECK SEN/9999/7'),
+        AND NOT EXISTS (SELECT 1 FROM people.status_change WHERE student_id = st AND to_status = 'GRADUATED'),
         format('approved=%s status=%s notices=%s state=%s class=%s cleared=%s holding=%s', n, v_status, v_notices, g.senate_state, g.class_of_degree, g.cleared, g.units_holding));
 END $$;
 
@@ -4928,14 +4929,14 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN
         NULL;
     END;
-    PERFORM pg_temp.assert('A student''s standing is computed from the register, never from the matriculation year: a cancelled session merged carries its entrants (A is ACTIVE at 400 in the merged cohort, expected to complete now, like B who entered the merged-into session), the Senate''s approved award graduates C in one counted act, D beyond the programme''s length with the record incomplete is a validated spillover student, E beyond the limit is for review, nobody is graduated by hand, a decision and a cohort correction are recorded, and every matriculation number and entry session stays',
+    PERFORM pg_temp.assert('A student''s standing is computed from the register, never from the matriculation year: a cancelled session merged carries its entrants (A is ACTIVE at 400 in the merged cohort, expected to complete now, like B who entered the merged-into session), C''s approved award is proposed as graduated but no reconciliation graduates C — the Bursar''s final clearance does (V665), D beyond the programme''s length with the record incomplete is a validated spillover student, E beyond the limit is for review, nobody is graduated by hand, a decision and a cohort correction are recorded, and every matriculation number and entry session stays',
         v_eff = '2172/2173' AND v_after = '2175/2176' AND v_elapsed = 3 AND r_cur = 'SESSION_CANCELLED' AND r_merge = 'SESSION_MERGE_CURRENT'
         AND pa.effective_cohort = '2172/2173' AND pa.cohort_source = 'MERGED' AND pa.jamb_year = 2171 AND pa.matric_year = 2071 AND pa.expected_completion = '2175/2176' AND pa.spillover_years = 0 AND pa.classification = 'ACTIVE' AND pa.rule = 'R3' AND pa.confidence = 'VALIDATED' AND pa.computed_level = 400
         AND pb.effective_cohort = '2172/2173' AND pb.cohort_source = 'ENTRY' AND pb.classification = 'ACTIVE' AND pb.expected_completion = '2175/2176'
         AND pc.classification = 'GRADUATED' AND pc.rule = 'R1' AND pc.confidence = 'VALIDATED' AND pc.proposed_status = 'GRADUATED' AND 'APPROVED_NOT_GRADUATED' = ANY(pc.issues)
         AND pd.classification = 'SPILLOVER' AND pd.spillover_years = 1 AND pd.spillover_state = 'SPILLOVER_YEAR_1' AND pd.confidence = 'VALIDATED' AND pd.proposed_status = 'ACTIVE'
         AND pe.classification = 'SPILLOVER' AND pe.spillover_years = 2 AND pe.confidence = 'LIKELY'
-        AND dry.considered = 1 AND dry.applied = 0 AND wet.applied = 1 AND c_status = 'GRADUATED'
+        AND dry.considered = 0 AND dry.applied = 0 AND wet.applied = 0 AND c_status = 'ACTIVE'
         AND r_grad = 'COHORT_GRADUATION_SENATE' AND n_dec = 1
         AND pe2.classification = 'SPILLOVER_LIMIT_REACHED' AND pe2.confidence = 'REVIEW' AND v_max = 1
         AND r.effective_cohort = '2173/2174' AND r.cohort_source = 'OVERRIDE' AND r.spillover_years = 0 AND r.expected_completion = '2176/2177'
@@ -10382,7 +10383,7 @@ BEGIN
         AND btrim(v_loan) = '1 item(s) on loan not returned'
         AND v_override = 'true/PENDING'
         AND v_overall = 'CLEARED' AND v_done AND v_told >= 6
-        AND v_gate = 'BURSARY,DEPARTMENT,FACULTY,LIBRARY,HEALTH,WORKS,ALUMNI' AND NOT v_gate_clear
+        AND v_gate = 'DEPARTMENT,FACULTY,LIBRARY,HEALTH,WORKS,ALUMNI,BURSARY' AND NOT v_gate_clear
         AND v_alumni = 'The student has not confirmed their alumni details'
         AND v_gates = 'FRESH,RETURNING',
         format('elig=%s refused=%s ref=%s stages=%s hostel=%s wait=%s owed=%s unstated=%s loan=%s reason=%s override=%s overall=%s done=%s told=%s gate=%s/%s alumni=%s gates=%s',
@@ -10691,14 +10692,15 @@ BEGIN
         SELECT c.cleared::text || '=' || clearance.is_clear(st, 'TRANSCRIPT')::text INTO v_gate FROM clearance.cleared_many('TRANSCRIPT', ARRAY[st]) c;
         -- the Department stage is signed by the Head over the student's department, not another
         SELECT string_agg(name, ',' ORDER BY name) INTO v_people FROM clearance.office_people('DEPARTMENT', st);
-        -- a deadline on the Bursary stage, already past: the Bursary is chased once, and not again within the week
-        UPDATE clearance.workflow_stage SET deadline_days = 1 WHERE workflow = 'FINAL' AND unit = 'BURSARY';
+        -- a deadline on the Department stage, already past: the Department is chased once, and not again within the week (V665: the
+        -- Bursary's stage is last, waiting on the others, so it is not open to be chased)
+        UPDATE clearance.workflow_stage SET deadline_days = 1 WHERE workflow = 'FINAL' AND unit = 'DEPARTMENT';
         UPDATE clearance.process SET started_at = now() - interval '5 days' WHERE id = pf;
         INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (gen_random_uuid(), 'CHK/V416/B', 'CHECKV416', 'Bursar', 'v416.bursar@example.test');
         INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
         SELECT gen_random_uuid(), id, 'bursar', 'institution', NULL, 'CHECK V416', who, current_date FROM iam.person WHERE staff_number = 'CHK/V416/B';
         v_first := clearance.chase_offices(7);
-        SELECT count(*) INTO v_chased FROM clearance.chase WHERE process_id = pf AND unit = 'BURSARY';
+        SELECT count(*) INTO v_chased FROM clearance.chase WHERE process_id = pf AND unit = 'DEPARTMENT';
         v_again := clearance.chase_offices(7);
         -- a student's upload to the Department stage is told to the Head, by e-mail
         PERFORM clearance.decide(pf, 'BURSARY', 'CLEARED', 'CHECK: fees settled on the old ledger', NULL, NULL, true, who, 'registrar');
@@ -21748,6 +21750,7 @@ DECLARE ug text; v_ses text; v_later text; dept text; st uuid := gen_random_uuid
         verd1 text; verd2 text; verd3 text; conf1 text; charges_before int; charges_after int; ref_err text; draft_err text; perm_err text;
         st_status text; g_state text; g_batch text; g_spill text; g_minute text; n_notice int; n_clear int; co_err text; again text;
         corr jsonb; st_after text; g_after text; n_corr int; approved int; co_graduated text; tally record; told int;
+        st_approved text; n_grad int; co_state text;
 BEGIN
     BEGIN
         PERFORM set_config('moaum.actor_id', actor::text, true);
@@ -21790,9 +21793,15 @@ BEGIN
         r := records.graduate_one(st, v_ses, 'SEN/CHK/602', v_ref, 'Graduation batch ' || v_ref, actor, 'academic');
         SELECT s.status INTO st_status FROM people.student s WHERE s.id = st;
         SELECT g.senate_state, g.batch_ref, coalesce(g.spillover_state, 'NORMAL'), g.senate_minute INTO g_state, g_batch, g_spill, g_minute FROM records.graduand g WHERE g.student_id = st;
-        n_notice := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'STUDENT_GRADUATED');
+        n_notice := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'STUDENT_AWARD_APPROVED');
         n_clear := (SELECT count(*) FROM clearance.process q WHERE q.workflow = 'FINAL' AND q.student_id = st AND q.cancelled_at IS NULL);
-        UPDATE records.graduation_batch_row SET outcome = 'GRADUATED', graduated_at = now() WHERE student_id = st;
+        UPDATE records.graduation_batch_row SET outcome = r->>'outcome' WHERE student_id = st;
+        -- V665: the status stays until the Bursar confirms the final clearance, which graduates the student
+        st_approved := st_status;
+        PERFORM records.graduate_on_final_clearance((SELECT q.id FROM clearance.process q WHERE q.workflow = 'FINAL' AND q.student_id = st AND q.cancelled_at IS NULL),
+                                                    actor, 'bursar', false);
+        SELECT s.status INTO st_status FROM people.student s WHERE s.id = st;
+        n_grad := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'STUDENT_GRADUATED');
         -- the carry-over student is refused, whatever the row says
         BEGIN
             PERFORM records.graduate_one(co, v_ses, 'SEN/CHK/602', v_ref, 'Graduation batch ' || v_ref, actor, 'academic');
@@ -21833,24 +21842,25 @@ BEGIN
         PERFORM set_config('moaum.actor_office', 'academic', true);
         approved := records.approve_awards(v_ses, 'SEN/CHK/602B');
         SELECT s.status INTO co_graduated FROM people.student s WHERE s.id = co;
+        SELECT g.senate_state INTO co_state FROM records.graduand g WHERE g.student_id = co;
         RAISE EXCEPTION 'the V602 check undoes its writes';
     EXCEPTION WHEN raise_exception THEN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
         IF msg <> 'the V602 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V602: verdicts ELIGIBLE / CARRY_OVER / DEFERRED, nothing written; a batch on the Senate minute graduates the eligible student by the one act (list entry approved with the batch, status GRADUATED, final clearance started, the student told) and refuses the owing one; a later session charges the graduate nothing, a school-fee reference and a registration draft are refused, graduating again returns ALREADY_GRADUATED, a plain status change is refused, the Registrar''s correction puts the status back with the impact; the whole-list approval graduates by the same act',
+    PERFORM pg_temp.assert('V602, V665: verdicts ELIGIBLE / CARRY_OVER / DEFERRED, nothing written; a batch on the Senate minute approves the eligible student''s award by the one act (list entry approved with the batch, the status unchanged, final clearance started, the student told) and refuses the owing one; the Bursar''s confirmation of the final clearance graduates (the student told); a later session charges the graduate nothing, a school-fee reference and a registration draft are refused, graduating again returns ALREADY_GRADUATED, a plain status change is refused, the Registrar''s correction puts the status back with the impact; the whole-list approval approves the award by the same act',
         verd1 = 'ELIGIBLE' AND verd2 = 'CARRY_OVER' AND verd3 = 'DEFERRED'
-        AND v_ref ~ '^GRAD/[0-9]{4}/[0-9]{6}$' AND r->>'outcome' = 'GRADUATED' AND st_status = 'GRADUATED'
-        AND g_state = 'APPROVED' AND g_batch = v_ref AND g_minute = 'SEN/CHK/602' AND n_notice = 1 AND n_clear = 1
+        AND v_ref ~ '^GRAD/[0-9]{4}/[0-9]{6}$' AND r->>'outcome' = 'APPROVED' AND st_approved = 'ACTIVE' AND st_status = 'GRADUATED'
+        AND g_state = 'APPROVED' AND g_batch = v_ref AND g_minute = 'SEN/CHK/602' AND n_notice = 1 AND n_clear = 1 AND n_grad = 1
         AND co_err = 'GRAD_CARRY_OVER' AND tally.selected = 3 AND tally.eligible = 1 AND tally.graduated = 1 AND tally.rejected = 2
         AND charges_before >= 1 AND charges_after = 0 AND ref_err = 'SCHOOL_FEES_CLOSED_GRADUATED' AND draft_err = 'REG_STUDENT_NOT_ELIGIBLE'
         AND again = 'ALREADY_GRADUATED' AND perm_err = 'GRAD_PERMANENT'
         AND st_after = 'ACTIVE' AND g_after = 'AWAITING' AND n_corr = 1 AND (corr->>'graduation_session') = v_ses
-        AND approved = 1 AND co_graduated = 'GRADUATED',
-        format('verdicts %s %s %s conf %s | ref %s outcome %s status %s list %s/%s/%s/%s notice %s clearance %s | owing %s tally %s/%s/%s/%s told %s | charges %s->%s ref %s draft %s again %s plain %s | corrected %s list %s rows %s session %s | approval %s owing now %s',
-               verd1, verd2, verd3, conf1, v_ref, r->>'outcome', st_status, g_state, g_batch, g_spill, g_minute, n_notice, n_clear,
+        AND approved = 1 AND co_graduated = 'ACTIVE' AND co_state = 'APPROVED',
+        format('verdicts %s %s %s conf %s | ref %s outcome %s status %s>%s list %s/%s/%s/%s notice %s/%s clearance %s | owing %s tally %s/%s/%s/%s told %s | charges %s->%s ref %s draft %s again %s plain %s | corrected %s list %s rows %s session %s | approval %s owing now %s/%s',
+               verd1, verd2, verd3, conf1, v_ref, r->>'outcome', st_approved, st_status, g_state, g_batch, g_spill, g_minute, n_notice, n_grad, n_clear,
                co_err, tally.selected, tally.eligible, tally.graduated, tally.rejected, told, charges_before, charges_after, ref_err, draft_err, again, perm_err,
-               st_after, g_after, n_corr, corr->>'graduation_session', approved, co_graduated));
+               st_after, g_after, n_corr, corr->>'graduation_session', approved, co_graduated, co_state));
 END $$;
 -- ── V604: the registration draft refused to a graduated record only ──
 -- A deferred student's draft for a semester is still made in the database (the deferment engine's academic effect makes it; the
@@ -26461,6 +26471,148 @@ BEGIN
                AND (panel_full->>'sessionOwed')::numeric = 150000 AND (panel_full->>'sessionPaid')::numeric = 150000
                AND panel_full->'semesters'->0->>'status' = 'PAID', false),
       msg);
+END $$;
+
+-- ── V665: graduation at the Bursar's final clearance, approved waivers, clearance reconciliation runs ──
+-- A made-up finalist of a made-up session with ₦100,000 of first-semester fees and ₦60,000 paid. The award approved on the
+-- minute leaves the status ACTIVE, starts the final clearance and tells the student; approved again it is awaiting final
+-- clearance, not approved twice; the record is closed to a later session's fees and registration. The Bursary's stage is last:
+-- refused while it waits; once the other offices clear (by override here), refused to the Registrar (the Bursar's alone) and to
+-- the Bursar over the ₦40,000 owed. A waiver above what is owed is refused; a Bursar officer cannot approve their own, another
+-- does: the period owes ₦25,000; an approved waiver is kept, revoked with a reason (₦40,000 again); proposed again by the Students
+-- Account Officer (whose office approves nothing) and approved by the Bursary. A reconciliation run over the made-up programme and session finds the student under payment review (an old
+-- portal outstanding-fees payment in the owing session). Paid in full, the Bursar's clearance graduates the student in the same
+-- act — GRADUATED on the award's minute, the moment on the list entry, the clearance complete, the student told — and a second
+-- word on the completed clearance is refused. The block undoes its writes.
+DO $$
+DECLARE s0 text := '9873/9874'; s1 text := '9874/9875';
+        who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); bur2 uuid := gen_random_uuid(); sao uuid := gen_random_uuid();
+        st uuid := gen_random_uuid(); g_out1 jsonb; g_out2 jsonb; pf uuid; v_status1 text; v_approved boolean; v_stamped boolean; v_told1 int;
+        v_closed boolean; r_reg text := 'accepted'; v_order text; r_wait text := 'accepted'; u text; fc jsonb; r_registrar text := 'accepted';
+        r_owed text := 'accepted'; r_above text := 'accepted'; w1 finance.historical_waiver; w2 finance.historical_waiver; r_same text := 'accepted'; r_perm text := 'accepted';
+        owed1 numeric; waived1 numeric; r_kept text := 'accepted'; owed2 numeric; owed3 numeric; run finance.clearance_recon_run; run_row record;
+        v_overall text; v_status2 text; v_graduated_at boolean; v_change int; v_told2 int; v_done boolean; r_again text := 'accepted';
+        v_awaiting boolean; v_summary text; fc2 jsonb;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V665 check: graduation at the final clearance', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (who, 'CHK/V665/R', 'CHECKV665', 'Registry'), (bur, 'CHK/V665/B1', 'CHECKV665', 'Bursar'),
+            (bur2, 'CHK/V665/B2', 'CHECKV665', 'Bursary Officer'), (sao, 'CHK/V665/S', 'CHECKV665', 'Account Officer');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s0, '9873-10-01', '9874-08-31'), (gen_random_uuid(), s1, '9874-10-01', '9875-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/98/966401', 'MOAUM/GRF/98/6641', 'CHECKV665', 'Finalist', 'C00023', 'UTME', s0, 400, 400, 'ACTIVE', now());
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, s0, 400);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.historical_set_start(s0, 'V665 check: assessed from the made-up session');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (s0, 'V665 check fees', 100000, 400, 'C00023', NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (st, s0, 'MOAUM-FEE-V665-0001', 'School fees ' || s0, 60000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V665-0001');
+        INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet, senate_state) VALUES (gen_random_uuid(), st, s0, 3.50, 'B.Sc. (Hons) CHECK', NULL, 'AWAITING');
+
+        -- the award approved on the minute: the status stays, the final clearance begins, the student is told
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        g_out1 := records.graduate_one(st, s0, 'SEN/CHK/665', NULL, 'V665 check: the award', who, 'academic');
+        v_status1 := (SELECT status FROM people.student WHERE id = st);
+        SELECT g.approved_at IS NOT NULL, g.graduated_at IS NOT NULL INTO v_approved, v_stamped FROM records.graduand g WHERE g.student_id = st AND g.session = s0;
+        pf := (SELECT q.id FROM clearance.process q WHERE q.student_id = st AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL);
+        v_told1 := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'STUDENT_AWARD_APPROVED');
+        g_out2 := records.graduate_one(st, s0, 'SEN/CHK/665', NULL, 'V665 check: the award again', who, 'academic');
+        -- closed to a later session
+        v_closed := finance.closed_for_fees(st, s1);
+        BEGIN PERFORM registration.student_draft(st, s1, 1); EXCEPTION WHEN check_violation THEN r_reg := split_part(SQLERRM, ':', 1); END;
+
+        -- the Bursary is last: it waits; the other offices clear (here by the Registry's override)
+        SELECT string_agg(r.unit, ',' ORDER BY r.ord) INTO v_order FROM clearance.stage_rows('CONVOCATION', s0, ARRAY[st]) r WHERE r.applies;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM clearance.decide(pf, 'BURSARY', 'CLEARED', NULL, NULL, NULL, false, bur, 'bursar'); EXCEPTION WHEN check_violation THEN r_wait := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        FOR u IN SELECT r.unit FROM clearance.stage_rows('CONVOCATION', s0, ARRAY[st]) r WHERE r.unit <> 'BURSARY' AND r.applies AND r.required ORDER BY r.ord LOOP
+            PERFORM clearance.decide(pf, u, 'CLEARED', 'V665 check: cleared by the Registry', NULL, NULL, true, who, 'registrar');
+        END LOOP;
+        fc := clearance.final_check(pf);
+        BEGIN PERFORM clearance.decide(pf, 'BURSARY', 'CLEARED', NULL, NULL, NULL, false, who, 'registrar'); EXCEPTION WHEN insufficient_privilege THEN r_registrar := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM clearance.decide(pf, 'BURSARY', 'CLEARED', NULL, NULL, NULL, false, bur, 'bursar'); EXCEPTION WHEN check_violation THEN r_owed := split_part(SQLERRM, ':', 1); END;
+
+        -- a waiver: above what is owed refused; the proposer cannot approve it; another Bursar officer does
+        PERFORM set_config('moaum.actor_id', sao::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        BEGIN PERFORM finance.historical_waiver_propose(st, s0, 1, 'WAIVER', 50000, 'V665 check: a Council concession on the fees', 'Council minute CHK/665');
+        EXCEPTION WHEN check_violation THEN r_above := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        w1 := finance.historical_waiver_propose(st, s0, 1, 'WAIVER', 15000, 'V665 check: a Council concession on the fees', 'Council minute CHK/665');
+        BEGIN PERFORM finance.historical_waiver_decide(w1.id, 'APPROVE', NULL); EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bur2::text, true);
+        PERFORM finance.historical_waiver_decide(w1.id, 'APPROVE', 'The Council minute seen');
+        SELECT x.outstanding, x.waived INTO owed1, waived1 FROM finance.historical_account(st) x WHERE x.session = s0 AND x.semester = 1;
+        BEGIN UPDATE finance.historical_waiver SET amount = 1 WHERE id = w1.id; EXCEPTION WHEN check_violation THEN r_kept := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM finance.historical_waiver_revoke(w1.id, 'V665 check: the concession was withdrawn by Council');
+        owed2 := (SELECT x.outstanding FROM finance.historical_account(st) x WHERE x.session = s0 AND x.semester = 1);
+        PERFORM set_config('moaum.actor_id', sao::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        w2 := finance.historical_waiver_propose(st, s0, 1, 'ADJUSTMENT', 15000, 'V665 check: the concession restored by Council', 'Council minute CHK/665A');
+        BEGIN PERFORM finance.historical_waiver_decide(w2.id, 'APPROVE', NULL); EXCEPTION WHEN insufficient_privilege THEN r_perm := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', bur2::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.historical_waiver_decide(w2.id, 'APPROVE', NULL);
+        owed3 := (SELECT x.outstanding FROM finance.historical_account(st) x WHERE x.session = s0 AND x.semester = 1);
+
+        -- a reconciliation run over the made-up programme and session: owing, with an old-portal outstanding-fees payment to look at
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (st, s0, 'MOAUM-LEG-V665-0001', 'OUTSTANDING FEES (legacy) · semester 1', 5000, now(), now(), bur, 'Legacy', 'MOAUM-LEG-V665-0001');
+        PERFORM set_config('moaum.actor_id', sao::text, true);
+        PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+        run := finance.clearance_recon_start(jsonb_build_object('population', 'AWAITING_GRADUATION', 'programme', 'C00023', 'graduation', s0));
+        SELECT * INTO run_row FROM finance.clearance_recon_row x WHERE x.run_id = run.id AND x.student_id = st;
+
+        -- paid in full: the Bursar's clearance graduates the student in the same act
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (st, s0, 'MOAUM-FEE-V665-0002', 'School fees ' || s0, 25000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V665-0002');
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        fc2 := clearance.final_check(pf);
+        v_overall := clearance.decide(pf, 'BURSARY', 'CLEARED', NULL, 'Every session settled', NULL, false, bur, 'bursar');
+        v_status2 := (SELECT status FROM people.student WHERE id = st);
+        v_graduated_at := (SELECT g.graduated_at IS NOT NULL FROM records.graduand g WHERE g.student_id = st AND g.session = s0);
+        v_change := (SELECT count(*) FROM people.status_change c WHERE c.student_id = st AND c.to_status = 'GRADUATED' AND c.instrument = 'SEN/CHK/665');
+        v_told2 := (SELECT count(*) FROM platform.notice n WHERE n.about_id = st AND n.template_key = 'STUDENT_GRADUATED');
+        v_done := (SELECT q.completed_at IS NOT NULL FROM clearance.process q WHERE q.id = pf);
+        v_awaiting := records.awaiting_final_clearance(st);
+        BEGIN PERFORM clearance.decide(pf, 'BURSARY', 'CLEARED', NULL, NULL, NULL, false, bur, 'bursar'); EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
+        PERFORM finance.historical_refresh(ARRAY[st]);
+        v_summary := (SELECT h.financial_status || '/' || h.outstanding || '/' || h.waived FROM finance.historical_summary h WHERE h.student_id = st);
+        RAISE EXCEPTION 'the V665 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V665: the award approved on the minute leaves the status and starts the final clearance; the record closed to a later session; the Bursary last and the Bursar''s alone, refused over what is owed; a waiver proposed by one officer and approved by another lowers the period, kept, revoked with a reason; a reconciliation run reads the student under payment review; paid in full, the Bursar''s clearance graduates the student in the same act',
+        g_out1->>'outcome' = 'APPROVED' AND g_out1->>'clearance' = 'started' AND v_status1 = 'ACTIVE' AND v_approved AND NOT v_stamped AND pf IS NOT NULL AND v_told1 = 1
+        AND g_out2->>'outcome' = 'AWAITING_FINAL_CLEARANCE'
+        AND v_closed AND r_reg = 'REG_STUDENT_NOT_ELIGIBLE'
+        AND v_order LIKE '%,BURSARY' AND r_wait = 'CLR_STAGE_WAITING'
+        AND (fc->>'graduates')::boolean AND NOT (fc->>'ready')::boolean AND (fc->>'outstanding')::numeric = 40000 AND jsonb_array_length(fc->'othersPending') = 0
+        AND r_registrar = 'CLR_BURSAR_ONLY' AND r_owed = 'CLR_OUTSTANDING'
+        AND r_above = 'HFW_AMOUNT' AND r_same = 'HFW_SAME_OFFICER' AND r_perm = 'HFA_NOT_PERMITTED' AND w1.reference ~ '^HFW/[0-9]{4}/[0-9]{6}$'
+        AND owed1 = 25000 AND waived1 = 15000 AND r_kept = 'HFW_KEPT' AND owed2 = 40000 AND owed3 = 25000
+        AND run.reference ~ '^CLEARANCE-RECON/[0-9]{4}/[0-9]{6}$' AND run_row.status = 'PAYMENT_REVIEW' AND run_row.outstanding = 25000 AND run_row.waived = 15000
+        AND run_row.other_payments = 1 AND run_row.awaiting_graduation
+        AND (fc2->>'ready')::boolean
+        AND v_status2 = 'GRADUATED' AND v_graduated_at AND v_change = 1 AND v_told2 = 1 AND v_done AND NOT v_awaiting
+        AND r_again = 'CLR_COMPLETED' AND v_summary = 'FINANCIALLY_CLEARED/0.00/15000.00',
+        format('out1=%s status1=%s approved=%s stamped=%s pf=%s told1=%s out2=%s closed=%s reg=%s order=%s wait=%s fc=%s registrar=%s owed=%s above=%s same=%s perm=%s w1=%s owed1=%s waived1=%s kept=%s owed2=%s owed3=%s run=%s row=%s/%s/%s/%s/%s ready2=%s status2=%s stamped2=%s change=%s told2=%s done=%s awaiting=%s again=%s summary=%s',
+               g_out1, v_status1, v_approved, v_stamped, pf IS NOT NULL, v_told1, g_out2->>'outcome', v_closed, r_reg, v_order, r_wait, left(fc::text, 300), r_registrar, r_owed,
+               r_above, r_same, r_perm, w1.reference, owed1, waived1, r_kept, owed2, owed3, run.reference, run_row.status, run_row.outstanding, run_row.waived, run_row.other_payments,
+               run_row.awaiting_graduation, fc2->>'ready', v_status2, v_graduated_at, v_change, v_told2, v_done, v_awaiting, r_again, v_summary));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

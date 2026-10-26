@@ -435,14 +435,16 @@ class StudentPortalRepository {
      *  cycle, whether the stage is recorded or calculated; null for any other student */
     /** V654: a graduate's historical school fees as the student may see them — the periods with an official amount (the fee structure or
      *  an approved assessment), a period being assessed or reviewed shown as such and never as a debt, the totals of what is official,
-     *  whether it is paid online, and the historical references still open */
+     *  whether it is paid online, and the historical references still open; V665: the approved waivers of each period, and whether the
+     *  award is approved with the final clearance still to complete */
     Map<String, Object> historicalFees(UUID student) {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         List<Map<String, Object>> periods = jdbc.sql("""
                 SELECT x.session, x.semester, x.level,
                        CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN NULL ELSE x.assessed END AS assessed,
                        x.paid, x.outstanding, x.credit,
-                       CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN 'BEING_ASSESSED' ELSE x.status END AS status
+                       CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN 'BEING_ASSESSED' ELSE x.status END AS status,
+                       x.waived
                   FROM finance.historical_account(:s) x
                 """).param("s", student).query().listOfRows();
         out.put("periods", periods);
@@ -451,6 +453,8 @@ class StudentPortalRepository {
                   FROM people.student s WHERE s.id = :s
                 """).param("s", student).query(Boolean.class).optional().orElse(false));
         out.put("graduationSession", jdbc.sql("SELECT records.graduation_session(:s)").param("s", student).query(String.class).optional().orElse(null));
+        // V665: the award approved and the final clearance under way — the record reads GRADUATED once the Bursar confirms it
+        out.put("awaitingFinalClearance", jdbc.sql("SELECT records.awaiting_final_clearance(:s)").param("s", student).query(Boolean.class).optional().orElse(false));
         out.put("onlinePayment", jdbc.sql("SELECT online_payment FROM finance.historical_setting WHERE id = 1").query(Boolean.class).optional().orElse(false));
         out.put("open", jdbc.sql("""
                 SELECT r.reference, r.session, r.amount, r.expires_at FROM finance.payment_reference r
@@ -458,6 +462,13 @@ class StudentPortalRepository {
                  ORDER BY r.generated_at DESC
                 """).param("s", student).query().listOfRows());
         return out;
+    }
+
+    /** V665: whether the student's award is approved, the record not yet GRADUATED, and the session after the graduation session */
+    boolean awaitingFinalClearanceAfter(UUID student, String session) {
+        if (session == null) return false;
+        return jdbc.sql("SELECT records.awaiting_final_clearance(:s) AND :ses > coalesce(records.graduation_session(:s), :ses)")
+                .param("s", student).param("ses", session).query(Boolean.class).optional().orElse(false);
     }
 
     /** V654: a reference for a graduate's approved historical balance of a session (the database checks the balance and the student) */

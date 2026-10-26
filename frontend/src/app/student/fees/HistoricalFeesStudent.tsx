@@ -16,6 +16,8 @@ import { PayByCard, useAct } from "../common";
 
 export interface HistoricalFees {
   periods: Period[]; graduated: boolean; graduationSession: string | null; onlinePayment: boolean;
+  /** V665: the award approved, the final clearance to complete before the record reads GRADUATED */
+  awaitingFinalClearance?: boolean;
   open: { reference: string; session: string; amount: number | string; expires_at: string }[]; reference?: string;
 }
 
@@ -34,10 +36,12 @@ export function HistoricalFeesStudent({ data }: { data: HistoricalFees }) {
   }
 
   return (
-    <Panel title="Historical school fees" right={data.graduationSession ? `Graduated ${data.graduationSession}` : undefined}>
+    <Panel title="Historical school fees" right={data.graduationSession ? `${data.awaitingFinalClearance ? "Graduating" : "Graduated"} ${data.graduationSession}` : undefined}>
       <PBody>
         <Note kind={owing.length ? "bad" : "ok"} title={owing.length ? "School fees from your sessions remain unpaid" : "No historical school fees are owed on what is assessed"}>
-          Your academic status is graduated; it does not change because of a balance. The Bursary clears you financially once every session of your record is settled.
+          {data.awaitingFinalClearance
+            ? "Your award is approved and your final clearance is under way: your record reads GRADUATED once every office has cleared you and the Bursar confirms your clearance, with nothing owed for any session."
+            : "Your academic status is graduated; it does not change because of a balance. The Bursary clears you financially once every session of your record is settled."}
           Amounts are the University&rsquo;s fees for each session at your level then, or an amount the Bursar approved for you.
         </Note>
         <HistoricalTotals periods={data.periods} />

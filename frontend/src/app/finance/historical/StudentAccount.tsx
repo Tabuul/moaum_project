@@ -5,7 +5,8 @@
  * school-fee payments with the number each was made under, the payment corrections, and the final clearance's Bursary stage. From a
  * period the officer creates an assessment (or one for a fee that was different), opens one pending, or corrects an approved one;
  * the statement prints with the official header; once the Bursary stage is cleared the financial clearance certificate prints with
- * the clearance's check code.
+ * the clearance's check code. V665: a waiver or adjustment proposed from an owing period, the waivers of the record, the payments outside
+ * school fees in an owing session, and whether the award is approved with the final clearance to complete.
  */
 import { useEffect, useState } from "react";
 import { Btn, LinkBtn, Note, Pil, Spinner } from "@/components/proto/ui";
@@ -17,9 +18,10 @@ import { printDocument } from "@/lib/document/html";
 import { docSerial } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
 import { HistoricalAccount, HistoricalTotals } from "@/components/finance/HistoricalAccount";
-import { can, naira, semesterWords, STATE_WORDS, STATEMENT_HEAD, statementRows, totals, type Assessment, type Desk, type Period, type StudentAccount as Account } from "@/lib/historical-fees";
+import { can, KIND_WORDS, naira, num, semesterWords, STATE_WORDS, STATEMENT_HEAD, statementRows, totals, WAIVER_WORDS, type Assessment, type Desk, type Period, type StudentAccount as Account } from "@/lib/historical-fees";
 import { AssessmentForm } from "./AssessmentForm";
 import { AssessmentView } from "./AssessmentView";
+import { WaiverForm, WaiverView } from "./Waivers";
 import { hfCall } from "./hf-call";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Lagos" }) : "—");
@@ -30,6 +32,8 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
   const [tick, setTick] = useState(0);
   const [making, setMaking] = useState<Period | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [waiving, setWaiving] = useState<Period | null>(null);
+  const [waiver, setWaiver] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     void hfCall<Account>(`/students/${studentId}`).then((r) => { if (!alive) return; if (r.ok) setA(r.data); else setProblem(r.problem); });
@@ -42,6 +46,11 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
       onClose={() => setMaking(null)} onSaved={(id) => { setMaking(null); setViewing(id); changed(); }} />;
   }
   if (viewing) return <AssessmentView id={viewing} desk={desk} onClose={() => setViewing(null)} onChanged={changed} />;
+  if (waiving && a) {
+    return <WaiverForm studentId={studentId} studentName={`${a.student.surname}, ${a.student.other_names}`} period={waiving}
+      onClose={() => setWaiving(null)} onSaved={(id) => { setWaiving(null); setWaiver(id); changed(); }} />;
+  }
+  if (waiver) return <WaiverView id={waiver} desk={desk} onClose={() => setWaiver(null)} onChanged={changed} />;
   if (!a) return <Modal wide title="Historical school fees" onClose={onClose}>{problem ? <ProblemNotice problem={problem} /> : <div className="row row--tight sub2"><Spinner /> Reading the account…</div>}</Modal>;
 
   const s = a.student;
@@ -56,7 +65,7 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
     logExport({ report: "Historical school fees statement", format: "PRINT", rows: a!.periods.length, meta: facts, sub: name, serial });
     void printDocument("STATEMENT", {
       title: "HISTORICAL SCHOOL FEES STATEMENT", subtitle: name, meta: facts, headers: STATEMENT_HEAD, rows: statementRows(a!.periods), reference: serial,
-      footnote: `Total assessed ${naira(t.assessed)} · total paid ${naira(t.paid)} · TOTAL HISTORICAL SCHOOL FEES OUTSTANDING ${naira(t.outstanding)}${t.review ? ` · ${t.review} semester(s) still being assessed and not owed` : ""}. Amounts are the University's historical fees for each session and level, or an assessment approved by the Bursar; payments are the confirmed school-fee payments of each session.`,
+      footnote: `Total assessed ${naira(t.assessed)}${t.waived ? ` · approved waivers and adjustments ${naira(t.waived)}` : ""} · total paid ${naira(t.paid)} · TOTAL HISTORICAL SCHOOL FEES OUTSTANDING ${naira(t.outstanding)}${t.review ? ` · ${t.review} semester(s) still being assessed and not owed` : ""}. Amounts are the University's historical fees for each session and level, or an assessment approved by the Bursar; payments are the confirmed school-fee payments of each session.`,
     });
   }
 
@@ -74,14 +83,36 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
         Assessed from {a.start ?? "the first session the fee setup holds"} to {s.graduation_session ?? "the graduation session"}, each session at the student&rsquo;s level in it
         (admitted {s.entry_session ?? "—"} at {s.entry_level ?? "—"} Level). An outstanding balance never changes the academic status.
       </Note>
+      {a.awaitingFinalClearance ? (
+        <Note kind="info" title="Award approved — awaiting final clearance">
+          The record reads GRADUATED once every office has cleared the student and the Bursar confirms the final clearance, last, with nothing owed.
+        </Note>
+      ) : null}
       <HistoricalTotals periods={a.periods} />
       <div className="mt-3"><strong>Historical school fees</strong></div>
       <HistoricalAccount periods={a.periods} actions={(p) => (
         p.pending_id ? <Btn kind="ghost" onClick={() => setViewing(p.pending_id!)}>View pending</Btn>
           : p.source === "ASSESSMENT" && p.assessment_id ? <Btn kind="ghost" onClick={() => setViewing(p.assessment_id!)}>View</Btn>
           : p.source === "NONE" && mayCreate ? <Btn kind="primary" onClick={() => setMaking(p)}>Create historical assessment</Btn>
-          : p.source === "STRUCTURE" && mayCreate ? <Btn kind="ghost" onClick={() => setMaking(p)}>Assess a different fee</Btn> : null
+          : p.source === "STRUCTURE" && mayCreate ? (
+            <span className="row row--tight">
+              <Btn kind="ghost" onClick={() => setMaking(p)}>Assess a different fee</Btn>
+              {num(p.outstanding) > 0 ? <Btn kind="ghost" onClick={() => setWaiving(p)}>Waive or adjust</Btn> : null}
+            </span>
+          ) : null
       )} />
+      {a.waivers?.length ? (
+        <>
+          <div className="mt-3"><strong>Waivers and adjustments</strong></div>
+          <DTable cols={["Reference", "Period", "Kind", "Amount|num", "Approval it rests on", "State", "Proposed by", "|num"]} rows={a.waivers.map((w) => [
+            <span key="r" className="tnum">{w.reference}</span>, <span key="p">{w.session} · {semesterWords(w.semester)}</span>, <span key="k">{KIND_WORDS[w.kind]}</span>,
+            <span key="a" className="tnum">{naira(w.amount)}</span>, <span key="au" className="sub2">{w.authority}</span>,
+            <Pil key="st" kind={WAIVER_WORDS[w.state]?.[1] ?? "grey"}>{WAIVER_WORDS[w.state]?.[0] ?? w.state}</Pil>,
+            <span key="m" className="sub2">{w.created_by_name ?? "—"} · {day(w.created_at)}</span>,
+            <Btn key="v" kind="ghost" onClick={() => setWaiver(w.id)}>View</Btn>,
+          ])} />
+        </>
+      ) : null}
       <div className="mt-3"><strong>Historical fee assessments</strong></div>
       {a.assessments.length ? (
         <DTable cols={["Reference", "Period", "Amount|num", "Source", "State", "Made by", "|num"]} rows={a.assessments.map((x: Assessment) => [
@@ -103,6 +134,17 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
               <span key="x" className="tnum sub2">{p.receipt_no ?? "—"}</span>,
             ])} />
           ) : <div className="sub2">No school-fee payment on record.</div>}
+          {a.otherPayments?.length ? (
+            <>
+              <div className="mt-2"><strong>Payments outside school fees in an owing session</strong></div>
+              <div className="sub2 mb-1">Not counted as school fees. An old-portal outstanding-fees payment is verified and credited on its own desk; one credited to the wrong student is swapped.</div>
+              <DTable cols={["Reference", "Session", "Purpose", "Amount|num", "Confirmed", "Desk"]} rows={a.otherPayments.map((o) => [
+                <span key="r" className="tnum">{o.reference}</span>, <span key="s" className="tnum">{o.session}</span>, <span key="p" className="sub2">{o.purpose}</span>,
+                <span key="a" className="tnum">{naira(o.amount)}</span>, <span key="c" className="sub2">{day(o.confirmed_at)}</span>,
+                <span key="d" className="sub2">{o.kind === "OUTSTANDING_FEES" ? (o.desk_status ? o.desk_status.toLowerCase() : "waiting on the Outstanding fees payments desk") : "—"}</span>,
+              ])} />
+            </>
+          ) : null}
           {a.reallocations?.length ? (
             <>
               <div className="mt-2"><strong>Payment reallocations</strong></div>

@@ -52,7 +52,8 @@ import org.springframework.web.bind.annotation.RestController;
  * a correction supersedes it. The lists, dashboards and reports read each graduate's summary (finance.historical_summary), worked
  * out again when a payment is confirmed or an assessment decided. The FINAL clearance's Bursary stage reads the same account (the
  * clearance desk signs it); this desk shows where each graduate stands. Every permission is checked here and again in the functions
- * (finance.historical_grant).
+ * (finance.historical_grant). V665: approved waivers and adjustments (proposed by one officer, decided by another of the Bursar's office)
+ * lower what a period owes; reconciliation runs (CLEARANCE-RECON/YYYY/NNNNNN) keep a population's financial clearance as it was found.
  */
 @RestController
 @RequestMapping("/api/v1/finance/historical")
@@ -97,6 +98,27 @@ class HistoricalFeesController {
 
     public record StartIn(@Pattern(regexp = SESSION) String session, @NotBlank @Size(max = 400) String reason) {
     }
+
+    /** V665: a waiver or adjustment of a past period, with the authority it rests on and (optionally) its evidence file */
+    public record WaiverIn(@NotNull UUID studentId, @NotBlank @Pattern(regexp = SESSION) String session, @NotNull @Min(1) @Max(3) Integer semester,
+                           @NotBlank @Pattern(regexp = "WAIVER|ADJUSTMENT") String kind, @NotNull @DecimalMin("0.01") BigDecimal amount,
+                           @NotBlank @Size(max = 2000) String reason, @NotBlank @Size(max = 300) String authority, @Valid EvidenceIn evidence) {
+    }
+
+    public record WaiverDecideIn(@NotBlank @Pattern(regexp = "APPROVE|REJECT") String decision, @Size(max = 2000) String note) {
+    }
+
+    public record ReasonIn(@NotBlank @Size(max = 2000) String reason) {
+    }
+
+    /** V665: a reconciliation run's population and filters */
+    public record ReconIn(@Pattern(regexp = "AWAITING_GRADUATION|UNDER_CLEARANCE|GRADUATES|ALL") String population, @Size(max = 12) String faculty,
+                          @Size(max = 12) String dept, @Size(max = 12) String programme, @Pattern(regexp = SESSION) String admission,
+                          @Pattern(regexp = SESSION) String graduation) {
+    }
+
+    static final Set<String> WAIVER_STATES = Set.of("PENDING_BURSAR_APPROVAL", "APPROVED", "REJECTED", "WITHDRAWN", "REVOKED");
+    static final Set<String> RECON_STATUSES = Set.of("CLEARED", "OWING", "REQUIRES_REVIEW", "PENDING_APPROVAL", "PAYMENT_REVIEW", "NO_PERIOD");
 
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
@@ -205,6 +227,17 @@ class HistoricalFeesController {
         out.put("assessments", jdbc.sql("SELECT a.state, count(*) AS n, coalesce(sum(a.amount), 0) AS amount FROM finance.historical_assessment a GROUP BY a.state")
                 .query().listOfRows());
         out.put("batchesPending", jdbc.sql("SELECT count(*) FROM finance.historical_batch WHERE state = 'PENDING_BURSAR_APPROVAL'").query(Long.class).single());
+        // V665: waivers awaiting the Bursar, the approved total, and the approved graduands whose final clearance is still to complete
+        out.put("waivers", jdbc.sql("""
+                SELECT count(*) FILTER (WHERE w.state = 'PENDING_BURSAR_APPROVAL') AS pending,
+                       coalesce(sum(w.amount) FILTER (WHERE w.state = 'PENDING_BURSAR_APPROVAL'), 0) AS pending_amount,
+                       count(*) FILTER (WHERE w.state = 'APPROVED') AS approved, coalesce(sum(w.amount) FILTER (WHERE w.state = 'APPROVED'), 0) AS approved_amount
+                  FROM finance.historical_waiver w
+                """).query().singleRow());
+        out.put("awaitingGraduation", jdbc.sql("""
+                SELECT count(*) FROM people.student s WHERE s.status <> 'GRADUATED'
+                   AND EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED')
+                """).query(Long.class).single());
         out.put("unsummarised", jdbc.sql("""
                 SELECT count(*) FROM people.student s
                  WHERE (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
@@ -328,7 +361,18 @@ class HistoricalFeesController {
                      ORDER BY r.session, r.confirmed_at NULLS LAST
                     """).param("id", id).query().listOfRows());
             out.put("reallocations", jdbc.sql("SELECT * FROM finance.payment_reallocations_of(:id)").param("id", id).query().listOfRows());
+            // V665: payments outside school fees in a session the student owes, for the Bursary to look at
+            out.put("otherPayments", jdbc.sql("SELECT o.* FROM finance.historical_other_payments(ARRAY[CAST(:id AS uuid)]) o ORDER BY o.session, o.confirmed_at")
+                    .param("id", id).query().listOfRows());
         }
+        out.put("waivers", jdbc.sql("""
+                SELECT w.id, w.reference, w.session, w.semester, w.kind, w.amount, w.reason, w.authority, w.state, w.created_at, w.created_office,
+                       helpdesk.person_name(w.created_by) AS created_by_name, w.created_by = CAST(:me AS uuid) AS mine, w.decided_at, w.decided_office,
+                       helpdesk.person_name(w.decided_by) AS decided_by_name, w.decision_note, w.revoked_at, helpdesk.person_name(w.revoked_by) AS revoked_by_name,
+                       w.revoke_reason, (SELECT count(*) FROM finance.historical_waiver_evidence e WHERE e.waiver_id = w.id) AS evidence
+                  FROM finance.historical_waiver w WHERE w.student_id = :id ORDER BY w.session, w.semester, w.created_at
+                """).param("id", id).param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER).query().listOfRows());
+        out.put("awaitingFinalClearance", jdbc.sql("SELECT records.awaiting_final_clearance(:id)").param("id", id).query(Boolean.class).single());
         out.put("clearance", jdbc.sql("""
                 SELECT q.id, q.reference, q.session, q.started_at, q.completed_at, clearance.overall(q.id) AS overall,
                        (SELECT i.state FROM clearance.item i WHERE i.process_id = q.id AND i.unit = 'BURSARY' AND i.superseded_by IS NULL ORDER BY i.decided_at DESC LIMIT 1) AS bursary,
@@ -531,6 +575,244 @@ class HistoricalFeesController {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(String.valueOf(e.get("content_type"))))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + String.valueOf(e.get("filename")).replaceAll("[^A-Za-z0-9._ -]", "_") + "\"")
                 .body(bytes);
+    }
+
+    /* ── waivers and adjustments (V665) ── */
+
+    /** a waiver or adjustment proposed — the Students Account Officer or the Bursar; another Bursar officer decides it */
+    @PostMapping("/waivers")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')")
+    @Transactional
+    Map<String, Object> proposeWaiver(@Valid @RequestBody WaiverIn body) {
+        UUID id = jdbc.sql("SELECT (finance.historical_waiver_propose(:st, :ses, :sem, :k, :amt, :r, :auth)).id")
+                .param("st", body.studentId()).param("ses", body.session()).param("sem", body.semester()).param("k", body.kind())
+                .param("amt", body.amount()).param("r", body.reason()).param("auth", body.authority()).query(UUID.class).single();
+        if (body.evidence() != null) storeWaiverEvidence(id, body.evidence());
+        return waiver(id);
+    }
+
+    @PostMapping("/waivers/{id}/evidence")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')")
+    @Transactional
+    Map<String, Object> waiverEvidence(@PathVariable UUID id, @Valid @RequestBody EvidenceIn body) {
+        need("CREATE_HISTORICAL_FEE_ASSESSMENT");
+        String state = jdbc.sql("SELECT state FROM finance.historical_waiver WHERE id = :id").param("id", id).query(String.class).optional()
+                .orElseThrow(() -> new NotFound("waiver", id));
+        if (!"PENDING_BURSAR_APPROVAL".equals(state)) {
+            throw new DomainRuleViolation("HFW_NOT_PENDING", "Evidence is added while the waiver awaits the Bursar.",
+                    new DomainRuleViolation.Remedy("A decided waiver is kept as it was.", "Bursary"));
+        }
+        storeWaiverEvidence(id, body);
+        return waiver(id);
+    }
+
+    private void storeWaiverEvidence(UUID id, EvidenceIn body) {
+        String u = body.dataUrl();
+        int comma = u.indexOf(',');
+        String meta = comma > 0 && u.startsWith("data:") ? u.substring(5, comma) : "";
+        String type = meta.contains(";") ? meta.substring(0, meta.indexOf(';')) : meta;
+        if (!EVIDENCE_TYPES.contains(type)) {
+            throw new DomainRuleViolation("HFW_EVIDENCE_TYPE", "Evidence is a PDF, JPEG or PNG file.", new DomainRuleViolation.Remedy("Scan or save it as one of those.", "You"));
+        }
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(u.substring(comma + 1).replaceAll("\\s", ""));
+        } catch (IllegalArgumentException bad) {
+            throw new DomainRuleViolation("HFW_EVIDENCE_FILE", "The file could not be read.", new DomainRuleViolation.Remedy("Choose the file again.", "You"));
+        }
+        if (bytes.length == 0 || bytes.length > 5 * 1024 * 1024) {
+            throw new DomainRuleViolation("HFW_EVIDENCE_SIZE", "Evidence is up to 5 MB.", new DomainRuleViolation.Remedy("Scan it at a lower resolution.", "You"));
+        }
+        UUID object = files.store("finance.historical_waiver_evidence", id, body.filename(), type, bytes);
+        jdbc.sql("""
+                INSERT INTO finance.historical_waiver_evidence (waiver_id, filename, content_type, size_bytes, content, object_id, added_by)
+                VALUES (:x, :f, :t, :n, :c, :o, nullif(current_setting('moaum.actor_id', true), '')::uuid)
+                """).param("x", id).param("f", body.filename().trim()).param("t", type).param("n", (long) bytes.length)
+                .param("c", object == null ? bytes : null, Types.BINARY).param("o", object, Types.OTHER).update();
+    }
+
+    @GetMapping("/waivers/{id}/evidence/{evidence}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> waiverEvidenceFile(@PathVariable UUID id, @PathVariable UUID evidence) {
+        need("VIEW_HISTORICAL_FEE_ASSESSMENT");
+        Map<String, Object> e = jdbc.sql("SELECT filename, content_type, content, object_id FROM finance.historical_waiver_evidence WHERE id = :e AND waiver_id = :x")
+                .param("e", evidence).param("x", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("evidence", evidence));
+        byte[] bytes = e.get("content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(e.get("object_id"))));
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(String.valueOf(e.get("content_type"))))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + String.valueOf(e.get("filename")).replaceAll("[^A-Za-z0-9._ -]", "_") + "\"")
+                .body(bytes);
+    }
+
+    /** the Bursar: approved (the period owes less, the student told) or rejected with a reason — never by the officer who proposed it */
+    @PostMapping("/waivers/{id}/decide")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_super')")
+    @Transactional
+    Map<String, Object> decideWaiver(@PathVariable UUID id, @Valid @RequestBody WaiverDecideIn body) {
+        jdbc.sql("SELECT finance.historical_waiver_decide(:id, :d, :n)").param("id", id).param("d", body.decision()).param("n", body.note(), Types.VARCHAR)
+                .query(String.class).single();
+        return waiver(id);
+    }
+
+    @PostMapping("/waivers/{id}/withdraw")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')")
+    @Transactional
+    Map<String, Object> withdrawWaiver(@PathVariable UUID id, @Valid @RequestBody(required = false) NoteIn body) {
+        jdbc.sql("SELECT finance.historical_waiver_withdraw(:id, :n)").param("id", id).param("n", body == null ? null : body.note(), Types.VARCHAR)
+                .query(String.class).single();
+        return waiver(id);
+    }
+
+    /** an approved waiver revoked by the Bursar with a reason: the amount owed again (a graduated student stays graduated) */
+    @PostMapping("/waivers/{id}/revoke")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_super')")
+    @Transactional
+    Map<String, Object> revokeWaiver(@PathVariable UUID id, @Valid @RequestBody ReasonIn body) {
+        jdbc.sql("SELECT finance.historical_waiver_revoke(:id, :r)").param("id", id).param("r", body.reason()).query(String.class).single();
+        return waiver(id);
+    }
+
+    /** the waivers by state — the Bursar's queue by default — each with the period's account beside it */
+    @GetMapping("/waivers")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> waivers(@RequestParam(defaultValue = "PENDING_BURSAR_APPROVAL") String state, @RequestParam(required = false) String q,
+                                @RequestParam(defaultValue = "0") int page) {
+        need("VIEW_HISTORICAL_FEE_ASSESSMENT");
+        String st = "ALL".equalsIgnoreCase(state) ? null : WAIVER_STATES.contains(state) ? state : "PENDING_BURSAR_APPROVAL";
+        String term = blank(q);
+        int p = Math.max(0, Math.min(page, 2000));
+        String where = """
+                FROM finance.historical_waiver w JOIN people.student s ON s.id = w.student_id JOIN ref.programme p ON p.code = s.programme_code
+                WHERE (CAST(:st AS text) IS NULL OR w.state = :st)
+                  AND (CAST(:q AS text) IS NULL OR w.reference ILIKE '%' || :q || '%' OR s.matric_no ILIKE '%' || :q || '%'
+                       OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """;
+        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).query(Long.class).single();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT w.id, w.reference, w.session, w.semester, w.kind, w.amount, w.reason, w.authority, w.state, w.created_at,
+                       helpdesk.person_name(w.created_by) AS created_by_name, w.created_by = CAST(:me AS uuid) AS mine, w.decided_at,
+                       s.id AS student_id, s.surname, s.other_names, s.matric_no, s.status AS student_status, p.name AS programme
+                """ + where + " ORDER BY w.created_at LIMIT :lim OFFSET :off")
+                .param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR)
+                .param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER)
+                .param("lim", PAGE).param("off", p * PAGE).query().listOfRows();
+        List<UUID> ids = rows.stream().map(r -> UUID.fromString(String.valueOf(r.get("student_id")))).distinct().toList();
+        if (!ids.isEmpty()) {
+            List<Map<String, Object>> acct = jdbc.sql("SELECT x.student_id, x.session, x.semester, x.assessed, x.paid, x.waived, x.outstanding FROM finance.historical_rows(CAST(:ids AS uuid[])) x")
+                    .param("ids", ids.stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY).query().listOfRows();
+            for (Map<String, Object> r : rows) {
+                acct.stream().filter(x -> String.valueOf(x.get("student_id")).equals(String.valueOf(r.get("student_id")))
+                                && String.valueOf(x.get("session")).equals(String.valueOf(r.get("session")))
+                                && String.valueOf(x.get("semester")).equals(String.valueOf(r.get("semester"))))
+                        .findFirst().ifPresent(x -> {
+                            r.put("assessed", x.get("assessed"));
+                            r.put("paid", x.get("paid"));
+                            r.put("waived", x.get("waived"));
+                            r.put("outstanding", x.get("outstanding"));
+                        });
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", total);
+        out.put("page", p);
+        out.put("size", PAGE);
+        out.put("rows", rows);
+        return out;
+    }
+
+    @GetMapping("/waivers/{id}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> waiver(@PathVariable UUID id) {
+        need("VIEW_HISTORICAL_FEE_ASSESSMENT");
+        Map<String, Object> w = jdbc.sql("""
+                SELECT w.id, w.reference, w.student_id, w.session, w.semester, w.kind, w.amount, w.reason, w.authority, w.state, w.created_at, w.created_office,
+                       helpdesk.person_name(w.created_by) AS created_by_name, w.created_by = CAST(:me AS uuid) AS mine, w.decided_at, w.decided_office,
+                       helpdesk.person_name(w.decided_by) AS decided_by_name, w.decision_note, w.revoked_at, helpdesk.person_name(w.revoked_by) AS revoked_by_name,
+                       w.revoke_reason, s.surname, s.other_names, s.matric_no, s.status AS student_status, p.name AS programme
+                  FROM finance.historical_waiver w JOIN people.student s ON s.id = w.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE w.id = :id
+                """).param("id", id).param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER)
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("waiver", id));
+        Map<String, Object> out = new LinkedHashMap<>(w);
+        out.put("period", jdbc.sql("SELECT x.* FROM finance.historical_account(:st) x WHERE x.session = :ses AND x.semester = :sem")
+                .param("st", w.get("student_id")).param("ses", w.get("session")).param("sem", w.get("semester")).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("evidence", jdbc.sql("""
+                SELECT e.id, e.filename, e.content_type, e.size_bytes, e.added_at, helpdesk.person_name(e.added_by) AS added_by
+                  FROM finance.historical_waiver_evidence e WHERE e.waiver_id = :id ORDER BY e.added_at
+                """).param("id", id).query().listOfRows());
+        return out;
+    }
+
+    /* ── reconciliation runs (V665) ── */
+
+    /** a run: the population's financial clearance worked out at once (CLEARANCE-RECON/YYYY/NNNNNN) and kept as it was found */
+    @PostMapping("/recon-runs")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')")
+    @Transactional
+    Map<String, Object> startRecon(@Valid @RequestBody ReconIn body) {
+        Map<String, Object> scope = new LinkedHashMap<>();
+        scope.put("population", blank(body.population()) == null ? "AWAITING_GRADUATION" : body.population());
+        if (blank(body.faculty()) != null) scope.put("faculty", body.faculty().trim());
+        if (blank(body.dept()) != null) scope.put("dept", body.dept().trim());
+        if (blank(body.programme()) != null) scope.put("programme", body.programme().trim());
+        if (blank(body.admission()) != null) scope.put("admission", body.admission().trim());
+        if (blank(body.graduation()) != null) scope.put("graduation", body.graduation().trim());
+        UUID id = jdbc.sql("SELECT (finance.clearance_recon_start(CAST(:scope AS jsonb))).id").param("scope", JSON.writeValueAsString(scope)).query(UUID.class).single();
+        return reconRun(id, null, null, 0, false);
+    }
+
+    @GetMapping("/recon-runs")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> reconRuns() {
+        need("VIEW_FINANCIAL_CLEARANCE");
+        return jdbc.sql("""
+                SELECT r.id, r.reference, r.population, r.scope::text AS scope, r.students, r.capped, r.cleared, r.owing, r.review, r.pending, r.payment_review,
+                       r.no_period, r.assessed, r.paid, r.waived, r.outstanding, r.run_at, r.run_office, helpdesk.person_name(r.run_by) AS run_by_name
+                  FROM finance.clearance_recon_run r ORDER BY r.run_at DESC LIMIT 100
+                """).query().listOfRows();
+    }
+
+    /** a run and its rows, by status, paged; export=true for the report (up to 20,000 rows) */
+    @GetMapping("/recon-runs/{id}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> reconRun(@PathVariable UUID id, @RequestParam(required = false) String status, @RequestParam(required = false) String q,
+                                 @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "false") boolean export) {
+        need("VIEW_FINANCIAL_CLEARANCE");
+        Map<String, Object> run = jdbc.sql("""
+                SELECT r.id, r.reference, r.population, r.scope::text AS scope, r.students, r.capped, r.cleared, r.owing, r.review, r.pending, r.payment_review,
+                       r.no_period, r.assessed, r.paid, r.waived, r.outstanding, r.run_at, r.finished_at, r.run_office, helpdesk.person_name(r.run_by) AS run_by_name
+                  FROM finance.clearance_recon_run r WHERE r.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("reconciliation run", id));
+        String st = blank(status) != null && RECON_STATUSES.contains(status.trim()) ? status.trim() : null;
+        String term = blank(q);
+        int p = Math.max(0, Math.min(page, 2000));
+        int size = export ? 20000 : PAGE;
+        String where = """
+                FROM finance.clearance_recon_row x JOIN people.student s ON s.id = x.student_id JOIN ref.programme p ON p.code = s.programme_code
+                LEFT JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
+                WHERE x.run_id = :id AND (CAST(:st AS text) IS NULL OR x.status = :st)
+                  AND (CAST(:q AS text) IS NULL OR s.matric_no ILIKE '%' || :q || '%' OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """;
+        long total = jdbc.sql("SELECT count(*) " + where).param("id", id).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).query(Long.class).single();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT x.student_id, s.surname || ', ' || s.other_names AS student, s.matric_no, s.jamb_reg_no, f.name AS faculty, d.name AS department,
+                       p.name AS programme, x.status, x.student_status, x.awaiting_graduation, x.graduation_session, x.periods, x.assessed, x.paid, x.waived,
+                       x.outstanding, x.credit, x.owing, x.review_periods, x.pending_periods, x.other_payments, x.other_amount, x.process_id, x.clearance_ref,
+                       x.bursary_state
+                """ + where + " ORDER BY CASE x.status WHEN 'CLEARED' THEN 9 ELSE 0 END, x.outstanding DESC, s.surname, s.other_names LIMIT :lim OFFSET :off")
+                .param("id", id).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("lim", size).param("off", export ? 0 : p * PAGE)
+                .query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("run", run);
+        out.put("total", total);
+        out.put("page", export ? 0 : p);
+        out.put("size", size);
+        out.put("rows", rows);
+        return out;
     }
 
     /* ── a cohort ── */

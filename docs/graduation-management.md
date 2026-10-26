@@ -87,6 +87,10 @@ started where none is under way (`clearance.start('FINAL', …, 'ELIGIBLE')` —
 detail). `records.approve_awards` — the Graduation screen's "Approve the awards" for a whole session — now graduates each
 audited graduand by this same act, so both doors behave alike.
 
+**Since V665** the act approves the award and starts the final clearance, telling the student on `STUDENT_AWARD_APPROVED`; the
+status stays as it is until the Bursar confirms the final clearance, last, with nothing owed — that confirmation graduates the
+student (`records.graduate_on_final_clearance`). See `graduation-at-final-clearance.md`.
+
 ## 5. The lock
 
 - `finance.closed_for_fees(student, session)`: a GRADUATED record owes nothing for a session after its graduation session

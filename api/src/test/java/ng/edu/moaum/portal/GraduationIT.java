@@ -46,7 +46,9 @@ class GraduationIT {
     void theAuditComputesTheClassAndSenateApprovesOnItsMinute() {
         UUID student = it.student("ZZGFINALIST", "C00023", null, "MOAUM/MTC/93/9001", 400);
         String status = jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", student).query(String.class).single();
-        if ("GRADUATED".equals(status)) {
+        boolean approvedBefore = jdbc.sql("SELECT EXISTS (SELECT 1 FROM records.graduand WHERE student_id = :id AND senate_state = 'APPROVED')")
+                .param("id", student).query(Boolean.class).single();
+        if ("GRADUATED".equals(status) || approvedBefore) {
             return; // an earlier run on this database took the journey
         }
 
@@ -103,8 +105,13 @@ class GraduationIT {
         ResponseEntity<Map> approved = it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/graduation/sessions/2093/2094/approve",
                 Map.of("senateMinute", "SEN/2094/02"));
         assertThat(approved.getStatusCode().value()).as(String.valueOf(approved.getBody())).isEqualTo(200);
+        // V665: the award approved on the minute and the final clearance started; the Bursar's confirmation of it graduates
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :id").param("id", student).query(String.class).single())
-                .isEqualTo("GRADUATED");
+                .isEqualTo("ACTIVE");
+        assertThat(jdbc.sql("SELECT senate_state FROM records.graduand WHERE student_id = :id AND session = :s").param("id", student).param("s", SESSION)
+                .query(String.class).single()).isEqualTo("APPROVED");
+        assertThat(jdbc.sql("SELECT count(*) FROM clearance.process WHERE student_id = :id AND workflow = 'FINAL' AND cancelled_at IS NULL").param("id", student)
+                .query(Long.class).single()).isEqualTo(1L);
     }
 
     /** V493: a postgraduate on a programme without research, registered in the session with every required course passed, is

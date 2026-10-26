@@ -24,3 +24,15 @@ test("the certificate's QR names the reference and its check code; the number sh
   assert.equal(studentNumber({ matric_no: null, admission_no: "MOAUM/ADM/26/000001" }), "MOAUM/ADM/26/000001");
   assert.equal(studentNumber({ matric_no: "MOAUM/SCI/26/0001", admission_no: "X" }), "MOAUM/SCI/26/0001");
 });
+
+// V665: the Bursary's own CLEARED on a final clearance of an approved award graduates the student, so the desk asks first
+test("the word that graduates: the Bursary's own clearance of an approved award, never an override or another office's", async () => {
+  const { graduatesOnClear } = await import("./clearance.ts");
+  const fc = { finalCheck: { graduates: true } as never };
+  assert.equal(graduatesOnClear(fc, "BURSARY", "CLEARED", false), true);
+  assert.equal(graduatesOnClear(fc, "BURSARY", "CLEARED", true), false);
+  assert.equal(graduatesOnClear(fc, "BURSARY", "NOT_CLEARED", false), false);
+  assert.equal(graduatesOnClear(fc, "LIBRARY", "CLEARED", false), false);
+  assert.equal(graduatesOnClear({ finalCheck: { graduates: false } as never }, "BURSARY", "CLEARED", false), false);
+  assert.equal(graduatesOnClear({}, "BURSARY", "CLEARED", false), false);
+});

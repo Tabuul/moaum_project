@@ -4,7 +4,8 @@
  * V654: Historical Fees & Clearance — the Bursary's desk for graduates' historical school fees. The figures (each a filter of the
  * list), the graduates found on the server, each graduate's account; the Bursar's approval queue; a cohort's assessment from a
  * preview; the reports (historical fees by period, financial clearance by graduate) to Excel and PDF; the data quality; the session
- * historical fees are assessed from. The account and every rule are the database's.
+ * historical fees are assessed from. The account and every rule are the database's. V665: the waivers and adjustments awaiting the
+ * Bursar, and the clearance reconciliation runs.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,9 +20,11 @@ import { StudentAccount } from "./StudentAccount";
 import { AssessmentView } from "./AssessmentView";
 import { Cohort } from "./Cohort";
 import { Reports } from "./Reports";
+import { WaiverQueue } from "./Waivers";
+import { ReconRuns } from "./ReconRuns";
 import { hfCall } from "./hf-call";
 
-type Tab = "overview" | "students" | "approvals" | "cohort" | "reports" | "quality" | "setting";
+type Tab = "overview" | "students" | "approvals" | "waivers" | "recon" | "cohort" | "reports" | "quality" | "setting";
 const FILTER_WORDS: Record<string, string> = {
   OUTSTANDING: "Outstanding fees", GRADUATED_OWING: "Graduated, money owed", PARTIALLY_PAID: "A semester paid in part", NO_OUTSTANDING: "No outstanding balance",
   CREDIT: "Credit / overpayment", AUTO_ASSESSED: "Every semester from the fee structure", WITH_ASSESSMENT: "With an approved assessment",
@@ -84,6 +87,8 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" }, { id: "students", label: "Students" },
     { id: "approvals", label: `Bursar approval${pending?.n ? ` (${pending.n})` : ""}` },
+    { id: "waivers", label: `Waivers and adjustments${figures?.waivers?.pending ? ` (${figures.waivers.pending})` : ""}` },
+    ...(can(desk, "VIEW_FINANCIAL_CLEARANCE") ? [{ id: "recon" as Tab, label: "Reconciliation runs" }] : []),
     ...(can(desk, "CREATE_HISTORICAL_FEE_ASSESSMENT") ? [{ id: "cohort" as Tab, label: "Cohort assessment" }] : []),
     ...(can(desk, "VIEW_HISTORICAL_FEE_REPORT") ? [{ id: "reports" as Tab, label: "Reports" }] : []),
     { id: "quality", label: "Data quality" }, { id: "setting", label: "Assessment start" },
@@ -139,6 +144,8 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
                 <Door label="Auto-assessed" n={figures.auto_assessed} sub="Every semester read from the fee structure" onClick={() => show("", "AUTO_ASSESSED")} />
                 <Door label="No outstanding balance" n={figures.no_outstanding} sub="On what is assessed" onClick={() => show("", "NO_OUTSTANDING")} />
                 <Door label="Graduated with a financial obligation" n={figures.graduated_with_obligation} sub="Academic status GRADUATED, money owed" bad onClick={() => show("", "GRADUATED_OWING")} />
+                <Door label="Awaiting final clearance" n={figures.awaitingGraduation ?? 0} sub="Award approved; the Bursar's clearance graduates them" warn onClick={() => setTab("recon")} />
+                <Door label="Waivers awaiting the Bursar" n={Number(figures.waivers?.pending ?? 0)} sub={`${naira(figures.waivers?.pending_amount)} proposed · ${naira(figures.waivers?.approved_amount)} approved in force`} warn onClick={() => setTab("waivers")} />
               </div>
               <Tiles items={[
                 ["Total historical amount assessed", naira(figures.assessed), null, "Approved assessments and historical fee structures"],
@@ -245,6 +252,16 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
         </Panel>
       ) : null}
 
+      {tab === "waivers" ? (
+        <Panel title="Waivers and adjustments">
+          <PBody>
+            <div className="sub2 mb-2">A waiver or adjustment lowers what a past period owes — never a payment, never &ldquo;marked paid&rdquo;. It is proposed from the student&rsquo;s
+              account with the reason, the approval it rests on and its evidence, and approved or rejected by another officer of the Bursar&rsquo;s office.</div>
+            <WaiverQueue desk={desk} tick={tick} onChanged={bump} />
+          </PBody>
+        </Panel>
+      ) : null}
+      {tab === "recon" ? <ReconRuns desk={desk} faculties={faculties} programmes={programmes} onOpenStudent={setOpen} /> : null}
       {tab === "cohort" ? <Cohort desk={desk} faculties={faculties} programmes={programmes} onChanged={bump} /> : null}
       {tab === "reports" ? <Reports desk={desk} faculties={faculties} programmes={programmes} /> : null}
 

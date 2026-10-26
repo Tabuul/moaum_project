@@ -24,7 +24,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * turn, the School admits — and the same password opens the student portal on the admission number. The
  * student's research runs supervisor → proposal → seminar → title → panel → draft → viva → corrections →
  * final → clearance → Board → Senate, each stage in order and each document kept by version, and the award
- * ends on the register: a graduand row and the status GRADUATED. The application's trail and the notices
+ * ends on the register: a graduand row approved and the final clearance started (V665: GRADUATED at the Bursar's confirmation of it). The application's trail and the notices
  * are checked along the way. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -177,11 +177,14 @@ class PgLifecycleIT {
         it.db(() -> jdbc.sql("UPDATE people.student SET matric_no = :m, status = 'ACTIVE', matriculated_at = now() WHERE id = :s")
                 .param("m", it.freeNumber("MOAUM/PGT/26/", 4)).param("s", student).update());
         assertThat(act(research, Map.of("action", "AWARD", "senateMinute", "SEN/TEST/" + UUID.randomUUID().toString().substring(0, 4)))).isEqualTo("AWARDED");
-        assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo("GRADUATED");
+        // V665: the award approved on the minute starts the final clearance; the record reads GRADUATED once the Bursar confirms it
+        assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", student).query(String.class).single()).isEqualTo("ACTIVE");
         assertThat(jdbc.sql("SELECT senate_state FROM records.graduand WHERE student_id = :s").param("s", student).query(String.class).single()).isEqualTo("APPROVED");
+        assertThat(jdbc.sql("SELECT count(*) FROM clearance.process WHERE workflow = 'FINAL' AND student_id = :s AND cancelled_at IS NULL").param("s", student).query(Long.class).single()).isEqualTo(1L);
+        assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :s AND template_key = 'STUDENT_AWARD_APPROVED'").param("s", student).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
         ResponseEntity<Map> summary = it.get(cand, "/api/v1/pg/coursework/summary");
         assertThat(summary.getBody().get("graduand")).isNotNull();
-        assertThat(summary.getBody().get("status")).isEqualTo("GRADUATED");
+        assertThat(summary.getBody().get("status")).isEqualTo("ACTIVE");
         // the candidate was told at each turn of the research
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'student' AND about_id = :s").param("s", student).query(Long.class).single()).isGreaterThanOrEqualTo(8);
 

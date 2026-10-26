@@ -114,7 +114,8 @@ school-fee obligation for a session after graduation (V602).
 ## Financial clearance
 
 The FINAL clearance's Bursary stage (`clearance.evidence`, `clearance.blocker`, restated) reads the historical account. It is never
-cleared while any of these stands:
+cleared while any of these stands (since V665 the stage is last, and the Bursar's clearance of an approved award graduates the
+student: see `graduation-at-final-clearance.md`):
 
 - school fees are outstanding: "Not cleared — outstanding school fees: ₦… (2021/2022 Second semester …)";
 - a period has no amount: "Historical fee review required …";
@@ -179,5 +180,6 @@ and one with nothing to pick up 15–45 ms.
 
 - The historical account reads earlier sessions on the programme the student holds now; a programme change is listed in data
   quality.
-- A waiver is not introduced: the University has no waiver architecture for school fees, and none was invented.
+- A waiver was not introduced by V654. V665 adds approved waivers and adjustments (one officer proposes, another of the Bursar's
+  office approves), netted off the account; see `graduation-at-final-clearance.md`.
 - A refunded or Interswitch-reversed payment counts as `finance.position` counts it.

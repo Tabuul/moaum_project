@@ -56,6 +56,27 @@ export interface ProcessHead {
 export interface ProcessDetail {
   process: ProcessHead; stages: Stage[]; history: HistoryRow[]; documents: ClearanceDocument[]; evidence: Record<string, Record<string, unknown>>;
   myUnits: string[]; canOverride: boolean; canCancel: boolean;
+  /** V665: on a final clearance, for the offices that read the Bursary's account */
+  finalCheck?: FinalCheck;
+}
+
+/** V665: what the Bursar's confirmation of a final clearance rests on, read afresh by the server (clearance.final_check) */
+export interface FinalCheck {
+  process: string; reference: string; workflow: string; graduates: boolean; status: string; bursaryState: string | null;
+  graduand: { session: string; award: string; minute: string; approvedAt: string | null } | null;
+  assessed: number; paid: number; waived: number; outstanding: number; credit: number; periods: number; reviewPeriods: number; pendingPeriods: number;
+  unsettled: { session: string; semester: number; level: number | null; assessed: number | null; paid: number; waived: number; outstanding: number | null; status: string }[];
+  pendingWaivers: number;
+  otherPayments: { reference: string; session: string; purpose: string; amount: number; kind: string; desk_status: string | null }[];
+  othersPending: { unit: string; label: string; state: string }[];
+  academic: { ok: boolean; completion: string | null; outstandingCourses: string | null; awaitingCourses: string | null };
+  blockers: string[]; ready: boolean;
+}
+
+/** V665: whether the word about to be given is the Bursar's confirmation that graduates the student — the Bursary's own CLEARED (never
+ *  an override) on a final clearance of an approved award not yet graduated; the screen then asks for the confirmation first */
+export function graduatesOnClear(detail: Pick<ProcessDetail, "finalCheck">, unit: string, state: string, override: boolean): boolean {
+  return !!detail.finalCheck?.graduates && unit === "BURSARY" && state === "CLEARED" && !override;
 }
 export interface OfficeFigures {
   unit: string; label: string; ord: number; applies: number; waiting: number; pending: number; under_review: number; requires_action: number;

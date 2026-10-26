@@ -219,10 +219,43 @@ class ClearanceDeskController {
             }
         }
         out.put("evidence", evidence);
+        // V665: a final clearance — what the Bursar's confirmation rests on, read afresh, and whether it graduates the student
+        if ("FINAL".equals(String.valueOf(p.get("workflow"))) && mayReadBursary(office, mine)) {
+            out.put("finalCheck", finalCheckOf(id));
+        }
         out.put("myUnits", mine);
         out.put("canOverride", OVERRIDERS.contains(office));
         out.put("canCancel", Set.of("academic", "registrar", "dregistrar").contains(office) && p.get("cancelled_at") == null);
         return out;
+    }
+
+    private static boolean mayReadBursary(String office, List<String> mine) {
+        return ClearanceDesk.ANY_UNIT.contains(office) || mine.contains("BURSARY") || Set.of("vc", "dvc", "super", "admin").contains(office);
+    }
+
+    private Map<String, Object> finalCheckOf(UUID id) {
+        String text = jdbc.sql("SELECT clearance.final_check(:p)::text").param("p", id).query(String.class).single();
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    /**
+     * V665: the Bursar's confirmation of a final clearance, said before it is given and read afresh each time — whether it graduates the
+     * student (an approved award, the record not yet GRADUATED), the school-fee account of every session and semester (assessed, paid,
+     * waived, outstanding), waivers pending, other payments in an owing session, the offices still to clear, the academic record, and
+     * the blockers in words; ready when there are none.
+     */
+    @GetMapping("/processes/{id}/final-check")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> finalCheck(@PathVariable UUID id) {
+        Map<String, Object> p = readable(id);
+        if (!"FINAL".equals(String.valueOf(p.get("workflow")))) {
+            throw new DomainRuleViolation("CLR_NOT_FINAL", "Only a final clearance has the Bursar's confirmation.", new DomainRuleViolation.Remedy("Open the student's final clearance.", "You"));
+        }
+        if (!mayReadBursary(office(), desk.unitsOf(office()))) {
+            throw new AccessDeniedException("the Bursary's account of the student is not your office's to read");
+        }
+        return finalCheckOf(id);
     }
 
     /* ── the office's word ── */
@@ -249,11 +282,26 @@ class ClearanceDeskController {
             throw new AccessDeniedException("an override is the Registrar's or the Deputy Registrar's");
         }
         AuditContext ctx = AuditContextHolder.required();
+        String before = studentStatus(id);
         String overall = jdbc.sql("SELECT clearance.decide(:p, :u, :s, :i, :n, :in, :o, :a, :off)")
                 .param("p", id).param("u", u).param("s", state).param("i", body.item(), Types.VARCHAR).param("n", body.note(), Types.VARCHAR)
                 .param("in", body.internalNote(), Types.VARCHAR).param("o", body.overriding()).param("a", ctx.actorId()).param("off", ctx.actorOffice())
                 .query(String.class).single();
-        return Map.of("process", id, "unit", u, "state", state, "overall", overall);
+        // V665: the Bursar's CLEARED on a final clearance of an approved graduand graduates the student in the same transaction
+        String after = studentStatus(id);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("process", id);
+        out.put("unit", u);
+        out.put("state", state);
+        out.put("overall", overall);
+        out.put("studentStatus", after);
+        out.put("graduated", !"GRADUATED".equals(before) && "GRADUATED".equals(after));
+        return out;
+    }
+
+    private String studentStatus(UUID process) {
+        return jdbc.sql("SELECT s.status FROM clearance.process q JOIN people.student s ON s.id = q.student_id WHERE q.id = :p")
+                .param("p", process).query(String.class).optional().orElse(null);
     }
 
     public record BulkClear(@NotNull @Size(min = 1, max = 500) List<UUID> processes, @NotBlank String unit, @Size(max = 500) String note) {

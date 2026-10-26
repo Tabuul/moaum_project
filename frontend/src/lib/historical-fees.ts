@@ -1,6 +1,7 @@
 /**
  * V654: historical school fees and the graduate's financial clearance, as /api/v1/finance/historical answers. The account is the
  * database's (finance.historical_rows); these are its types, its words, and the pure shapes the screens and exports build from it.
+ * V665: approved waivers and adjustments (waived) lower what a period owes; reconciliation runs keep a population's standing.
  */
 
 export type PeriodStatus = "CLEARED" | "PARTIALLY_PAID" | "OUTSTANDING" | "CREDIT" | "REQUIRES_REVIEW" | "PENDING_APPROVAL" | "BEING_ASSESSED";
@@ -13,9 +14,11 @@ export interface Period {
   session: string; semester: number; level: number | null; programme_code?: string; assessed: Money | null; source?: "ASSESSMENT" | "STRUCTURE" | "NONE";
   source_ref?: string | null; assessment_id?: string | null; structure_amount?: Money | null; structure_lines?: number; pending_id?: string | null;
   pending_ref?: string | null; pending_amount?: Money | null; paid: Money; outstanding: Money | null; credit: Money; status: PeriodStatus;
+  /** V665: the approved waivers and adjustments of the period */
+  waived?: Money | null;
 }
 
-export interface SessionGroup { session: string; periods: Period[]; assessed: number; paid: number; outstanding: number; credit: number; review: number }
+export interface SessionGroup { session: string; periods: Period[]; assessed: number; waived: number; paid: number; outstanding: number; credit: number; review: number }
 
 export interface Assessment {
   id: string; reference: string; session: string; semester: number; level: number | null; amount: Money; components?: string | null; source: string;
@@ -43,6 +46,83 @@ export interface StudentAccount {
     to_session: string; executed_at: string; status: string }[];
   clearance: { id: string; reference: string; session: string; started_at: string; completed_at: string | null; overall: string | null; bursary: string | null;
     bursary_at: string | null; verify_code: string } | null;
+  /** V665 */
+  waivers?: Waiver[];
+  otherPayments?: OtherPayment[];
+  awaitingFinalClearance?: boolean;
+}
+
+export type WaiverState = "PENDING_BURSAR_APPROVAL" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "REVOKED";
+export type WaiverKind = "WAIVER" | "ADJUSTMENT";
+
+/** V665: a waiver or adjustment of a past period — proposed by one officer, decided by another of the Bursar's office */
+export interface Waiver {
+  id: string; reference: string; session: string; semester: number; kind: WaiverKind; amount: Money; reason: string; authority: string; state: WaiverState;
+  created_at: string; created_office?: string | null; created_by_name: string | null; mine?: boolean; decided_at: string | null; decided_office?: string | null;
+  decided_by_name?: string | null; decision_note?: string | null; revoked_at?: string | null; revoked_by_name?: string | null; revoke_reason?: string | null;
+  evidence?: number | { id: string; filename: string; content_type: string; size_bytes: number; added_at: string; added_by: string | null }[];
+  student_id?: string; surname?: string; other_names?: string; matric_no?: string | null; student_status?: string; programme?: string;
+  assessed?: Money | null; paid?: Money; outstanding?: Money | null; period?: Period | null;
+}
+
+/** V665: a payment outside school fees in a session the student owes, for the Bursary to look at */
+export interface OtherPayment {
+  student_id: string; payment_id: string; reference: string; session: string; purpose: string; amount: Money; confirmed_at: string; channel: string | null;
+  kind: "OUTSTANDING_FEES" | "OTHER"; desk_status: string | null;
+}
+
+export const WAIVER_WORDS: Record<WaiverState, [string, Tone]> = {
+  PENDING_BURSAR_APPROVAL: ["Pending Bursar approval", "warn"], APPROVED: ["Approved — in force", "ok"], REJECTED: ["Rejected", "bad"],
+  WITHDRAWN: ["Withdrawn", "grey"], REVOKED: ["Revoked", "grey"],
+};
+export const KIND_WORDS: Record<WaiverKind, string> = { WAIVER: "Waiver", ADJUSTMENT: "Adjustment" };
+
+/** the amount a waiver may be: more than nothing and no more than the period still owes (the database decides again) */
+export function waiverAmountProblem(amount: string, outstanding: Money | null | undefined): string | null {
+  const a = Number(amount.replace(/[^0-9.]/g, ""));
+  if (!amount.trim() || !Number.isFinite(a) || a <= 0) return "Enter the amount to waive.";
+  if (a > num(outstanding)) return `At most what the period still owes (${naira(outstanding)}).`;
+  return null;
+}
+
+export type ReconStatus = "CLEARED" | "OWING" | "REQUIRES_REVIEW" | "PENDING_APPROVAL" | "PAYMENT_REVIEW" | "NO_PERIOD";
+export type ReconPopulation = "AWAITING_GRADUATION" | "UNDER_CLEARANCE" | "GRADUATES" | "ALL";
+
+export const RECON_WORDS: Record<ReconStatus, [string, Tone]> = {
+  CLEARED: ["Cleared", "ok"], OWING: ["Owing", "bad"], REQUIRES_REVIEW: ["Requires historical review", "bad"], PENDING_APPROVAL: ["Pending Bursar approval", "warn"],
+  PAYMENT_REVIEW: ["Owing — other payments to review", "warn"], NO_PERIOD: ["No historical period", "grey"],
+};
+export const POPULATION_WORDS: Record<ReconPopulation, string> = {
+  AWAITING_GRADUATION: "Approved graduands awaiting final clearance", UNDER_CLEARANCE: "Students under final clearance", GRADUATES: "Graduated students",
+  ALL: "Graduands, graduates and students under final clearance",
+};
+
+/** V665: a reconciliation run (CLEARANCE-RECON/YYYY/NNNNNN) with its totals */
+export interface ReconRun {
+  id: string; reference: string; population: ReconPopulation; scope: string | null; students: number; capped: boolean; cleared: number; owing: number; review: number;
+  pending: number; payment_review: number; no_period: number; assessed: Money; paid: Money; waived: Money; outstanding: Money; run_at: string;
+  finished_at?: string | null; run_office: string | null; run_by_name: string | null;
+}
+
+export interface ReconRow {
+  student_id: string; student: string; matric_no: string | null; jamb_reg_no: string | null; faculty: string | null; department: string | null; programme: string;
+  status: ReconStatus; student_status: string; awaiting_graduation: boolean; graduation_session: string | null; periods: number; assessed: Money; paid: Money;
+  waived: Money; outstanding: Money; credit: Money; owing: string | null; review_periods: string | null; pending_periods: string | null; other_payments: number;
+  other_amount: Money; process_id: string | null; clearance_ref: string | null; bursary_state: string | null;
+}
+
+export const RECON_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Graduation Session", "Academic Status",
+  "Assessed (₦)", "Paid (₦)", "Waived / Adjusted (₦)", "Outstanding (₦)", "Sessions Owing", "For Review", "Other Payments (₦)", "Reconciliation Status",
+  "Final Clearance", "Bursary Stage"];
+
+/** a run's rows as the report writes them: S/N first and numeric, numbers as text, amounts as numbers */
+export function reconRows(rows: ReconRow[]): (string | number)[][] {
+  return rows.map((r, i) => [
+    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, r.graduation_session ?? "",
+    r.student_status === "GRADUATED" ? "Graduated" : r.awaiting_graduation ? "Award approved — awaiting final clearance" : r.student_status.replace(/_/g, " ").toLowerCase(),
+    num(r.assessed), num(r.paid), num(r.waived), num(r.outstanding), r.owing ?? "", [r.review_periods, r.pending_periods].filter(Boolean).join("; "),
+    num(r.other_amount), RECON_WORDS[r.status]?.[0] ?? r.status, r.clearance_ref ?? "Not started", r.bursary_state ? r.bursary_state.replace(/_/g, " ").toLowerCase() : "",
+  ]);
 }
 
 export interface Setting { assess_from: string | null; start: string | null; online_payment: boolean; set_at: string | null; reason: string | null; refreshed_at: string | null; set_by: string | null }
@@ -52,6 +132,9 @@ export interface Figures {
   graduates: number; with_outstanding: number; cleared: number; requires_review: number; pending_approval: number; partially_paid: number; no_outstanding: number;
   with_credit: number; no_period: number; auto_assessed: number; graduated_with_obligation: number; assessed: Money; paid: Money; outstanding: Money; credit: Money;
   assessments: { state: AssessmentState; n: number; amount: Money }[]; batchesPending: number; unsummarised: number; refreshedAt: string | null; start: string | null;
+  /** V665 */
+  waivers?: { pending: number; pending_amount: Money; approved: number; approved_amount: Money };
+  awaitingGraduation?: number;
 }
 
 export const PERIOD_WORDS: Record<PeriodStatus, [string, Tone]> = {
@@ -89,9 +172,10 @@ export function bySession(periods: Period[]): SessionGroup[] {
   const out: SessionGroup[] = [];
   for (const p of [...periods].sort((a, b) => (a.session === b.session ? a.semester - b.semester : a.session < b.session ? -1 : 1))) {
     let g = out[out.length - 1];
-    if (!g || g.session !== p.session) { g = { session: p.session, periods: [], assessed: 0, paid: 0, outstanding: 0, credit: 0, review: 0 }; out.push(g); }
+    if (!g || g.session !== p.session) { g = { session: p.session, periods: [], assessed: 0, waived: 0, paid: 0, outstanding: 0, credit: 0, review: 0 }; out.push(g); }
     g.periods.push(p);
     g.assessed += num(p.assessed);
+    g.waived += num(p.waived);
     g.paid += num(p.paid);
     g.outstanding += num(p.outstanding);
     g.credit += num(p.credit);
@@ -100,10 +184,10 @@ export function bySession(periods: Period[]): SessionGroup[] {
   return out;
 }
 
-export function totals(periods: Period[]): { assessed: number; paid: number; outstanding: number; credit: number; review: number; owing: string[] } {
+export function totals(periods: Period[]): { assessed: number; waived: number; paid: number; outstanding: number; credit: number; review: number; owing: string[] } {
   const groups = bySession(periods);
   return {
-    assessed: groups.reduce((n, g) => n + g.assessed, 0), paid: groups.reduce((n, g) => n + g.paid, 0),
+    assessed: groups.reduce((n, g) => n + g.assessed, 0), waived: groups.reduce((n, g) => n + g.waived, 0), paid: groups.reduce((n, g) => n + g.paid, 0),
     outstanding: groups.reduce((n, g) => n + g.outstanding, 0), credit: groups.reduce((n, g) => n + g.credit, 0),
     review: groups.reduce((n, g) => n + g.review, 0),
     owing: periods.filter((p) => num(p.outstanding) > 0).map((p) => `${p.session} ${semesterWords(p.semester).toLowerCase()}`),
@@ -156,11 +240,11 @@ export function clearanceRows(rows: ClearanceRow[]): (string | number)[][] {
   ]);
 }
 
-/** the student's statement rows: session, semester, level, assessed, paid, outstanding */
+/** the student's statement rows: session, semester, level, assessed, waived or adjusted (V665), paid, outstanding */
 export function statementRows(periods: Period[]): (string | number)[][] {
   return [...periods].sort((a, b) => (a.session === b.session ? a.semester - b.semester : a.session < b.session ? -1 : 1)).map((p, i) => [
-    i + 1, p.session, semesterWords(p.semester), p.level ?? "", p.assessed == null ? "Being assessed" : num(p.assessed), num(p.paid),
+    i + 1, p.session, semesterWords(p.semester), p.level ?? "", p.assessed == null ? "Being assessed" : num(p.assessed), num(p.waived), num(p.paid),
     p.outstanding == null ? "—" : num(p.outstanding), PERIOD_WORDS[p.status]?.[0] ?? p.status,
   ]);
 }
-export const STATEMENT_HEAD = ["S/N", "Session", "Semester", "Level", "Assessed (₦)", "Paid (₦)", "Outstanding (₦)", "Status"];
+export const STATEMENT_HEAD = ["S/N", "Session", "Semester", "Level", "Assessed (₦)", "Waived / adjusted (₦)", "Paid (₦)", "Outstanding (₦)", "Status"];

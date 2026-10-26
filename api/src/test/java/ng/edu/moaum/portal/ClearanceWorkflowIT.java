@@ -274,9 +274,9 @@ class ClearanceWorkflowIT {
     @Test
     void finalClearanceIsTheConvocationGateAndNeverGraduatesAnyone() {
         UUID pf = start("FINAL", finalist, "MANUAL", null);
-        // the gate lists only the stages that apply: no hostel for a student who never had one
+        // the gate lists only the stages that apply: no hostel for a student who never had one; the Bursary's is last (V665)
         List<String> gate = jdbc.sql("SELECT unit FROM clearance.position(:s, 'CONVOCATION') ORDER BY ord").param("s", finalist).query(String.class).list();
-        assertThat(gate).containsExactly("BURSARY", "DEPARTMENT", "FACULTY", "LIBRARY", "HEALTH", "WORKS", "ALUMNI");
+        assertThat(gate).containsExactly("DEPARTMENT", "FACULTY", "LIBRARY", "HEALTH", "WORKS", "ALUMNI", "BURSARY");
         // the alumni details: confirmed only with an e-mail and a phone on the record
         String me = TestTokens.token(finalist, List.of("student"));
         assertThat(it.get(me, "/api/v1/me/clearance").getBody().get("alumni")).isNotNull();

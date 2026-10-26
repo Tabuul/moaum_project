@@ -3,7 +3,8 @@
 /** The clearance desk (V415): an office's stage of fresh or final clearance, or — for the Registry — every office. The
  *  list, its counts and its search are the server's (paged); each office decides only its own stage, only in its turn, and
  *  the server refuses a clearance the record does not support. Nothing here hides what the server would allow or allows
- *  what it would refuse: a button follows the answer. */
+ *  what it would refuse: a button follows the answer. V665: the Bursary's stage of a final clearance is last, and its
+ *  clearance of an approved award graduates the student — the Bursar confirms it in a modal that reads the account afresh. */
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -11,8 +12,8 @@ import { reasonHeader } from "@/lib/reason";
 import { useQueryNav } from "@/lib/query-nav";
 import type { Scope } from "@/lib/scope";
 import {
-  DECISIONS, OVERALL_WORD, STATE_WORD, stateKind, stateMark, stateWord, studentNumber,
-  type Desk, type DeskRow, type ProcessDetail, type Workflows,
+  DECISIONS, graduatesOnClear, OVERALL_WORD, STATE_WORD, stateKind, stateMark, stateWord, studentNumber,
+  type Desk, type DeskRow, type FinalCheck, type ProcessDetail, type Workflows,
 } from "@/lib/clearance";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { notify, notifyProblem } from "@/components/proto/Toast";
@@ -46,6 +47,7 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState(params.q);
   const [refusals, setRefusals] = useState<{ process: string; code: string; why: string }[]>([]);
+  const [bulkAsk, setBulkAsk] = useState(false);
   const office = actingOffice ?? "";
   const wf = workflows.workflows.find((w) => w.code === workflow) ?? workflows.workflows[0];
   const unitsOfWf = wf.stages.filter((s) => s.active);
@@ -185,7 +187,7 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
 
       <Panel title={unit ? `${wf.stages.find((s) => s.unit === unit)?.label ?? unit} stage` : "Every office"}
         right={<span className="row row--tight">
-          {canSignUnit ? <Btn kind="go" disabled={busy || !selected.size} onClick={() => void clearSelected()}>Clear the selected ({selected.size})</Btn> : null}
+          {canSignUnit ? <Btn kind="go" disabled={busy || !selected.size} onClick={() => (workflow === "FINAL" && unit === "BURSARY" ? setBulkAsk(true) : void clearSelected())}>Clear the selected ({selected.size})</Btn> : null}
           <Btn kind="ghost" disabled={busy || !desk?.total} onClick={() => void exportAs("xlsx")}>Export (Excel)</Btn>
           <Btn kind="ghost" disabled={busy || !desk?.total} onClick={() => void exportAs("pdf")}>PDF</Btn>
         </span>}>
@@ -225,6 +227,15 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
       </Panel>
 
       {detail ? <ProcessPanel key={`${detail.process.id}:${detail.history.length}:${detail.documents.length}`} detail={detail} busy={busy} setBusy={setBusy} call={call} onClose={close} onDone={() => router.refresh()} /> : null}
+      {bulkAsk ? (
+        <Modal title="Clear the selected students" sub={`${selected.size} student(s) · ${wf.label}`} onClose={() => setBulkAsk(false)}
+          foot={<><Btn kind="ghost" onClick={() => setBulkAsk(false)}>Cancel</Btn><span className="grow" />
+            <Btn kind="go" disabled={busy} onClick={() => { setBulkAsk(false); void clearSelected(); }}>{busy ? "Processing clearance..." : "Clear the selected"}</Btn></>}>
+          <div className="sub2">Each student is cleared on their own, against a fresh reading of their school fees for every session and semester; anyone who owes,
+            or has a period still being assessed, is refused with the reason. A student whose award is approved is graduated as the Bursar&rsquo;s clearance is given —
+            their record then reads GRADUATED. Open a student to see the full check first.</div>
+        </Modal>
+      ) : null}
     </>
   );
 }
@@ -246,7 +257,9 @@ function ProcessPanel({ detail, busy, setBusy, call, onClose, onDone }: {
   const [reviewReason, setReviewReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [confirming, setConfirming] = useState<FinalCheck | null>(null);
   const stage = detail.stages.find((s) => s.unit === unit) ?? null;
+  const graduating = graduatesOnClear(detail, unit, state, override);
   const need = DECISIONS.find((d) => d.state === state)?.needsReason ?? (override ? "The reason for the override" : null);
   const ev = unit ? detail.evidence[unit] : undefined;
   const live = !p.cancelled_at;
@@ -254,11 +267,22 @@ function ProcessPanel({ detail, busy, setBusy, call, onClose, onDone }: {
   async function decide() {
     if (!stage) return;
     setBusy(true);
-    const r = await call<{ overall: string }>(`/processes/${p.id}/stages/${unit}`, "POST",
+    const r = await call<{ overall: string; graduated?: boolean }>(`/processes/${p.id}/stages/${unit}`, "POST",
       { state: override && state === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : state, item: item.trim() || null, note: note.trim() || null, internalNote: internal.trim() || null, override },
-      `${stage.label} clearance: ${stateWord(state).toLowerCase()} for ${p.reference}`);
+      graduating ? `Final clearance confirmed and the student graduated: ${p.reference}` : `${stage.label} clearance: ${stateWord(state).toLowerCase()} for ${p.reference}`);
     setBusy(false);
-    if (r) { notify(`${stage.label}: ${stateWord(state).toLowerCase()} — the student is told`); setItem(""); setNote(""); setInternal(""); setOverride(false); onDone(); }
+    if (r) {
+      notify(r.graduated ? "Student cleared and graduation status updated successfully." : `${stage.label}: ${stateWord(state).toLowerCase()} — the student is told`);
+      setConfirming(null); setItem(""); setNote(""); setInternal(""); setOverride(false); onDone();
+    }
+  }
+
+  /** V665: the Bursar's confirmation reads the account afresh before it is given */
+  async function askToConfirm() {
+    setBusy(true);
+    const fc = await call<FinalCheck>(`/processes/${p.id}/final-check`, "GET", undefined, "Final clearance check read");
+    setBusy(false);
+    if (fc) setConfirming(fc);
   }
 
   async function reviewDoc() {
@@ -280,6 +304,12 @@ function ProcessPanel({ detail, busy, setBusy, call, onClose, onDone }: {
   return (
     <Modal title={`${p.surname}, ${p.other_names}`} sub={`${p.workflow_label} · ${p.reference} · ${p.session}`} onClose={onClose} wide
       foot={<>{detail.canCancel && live ? <Btn kind="ghost" onClick={() => setCancelling(true)}>Cancel this clearance</Btn> : null}<span className="grow" /><Btn kind="ghost" onClick={onClose}>Close</Btn></>}>
+      {detail.finalCheck?.graduates && detail.finalCheck.graduand ? (
+        <Note kind="info" title="Award approved — awaiting final clearance">
+          {detail.finalCheck.graduand.award} approved under Senate minute {detail.finalCheck.graduand.minute} ({detail.finalCheck.graduand.session}). The record reads
+          {" "}{detail.finalCheck.status}; it reads GRADUATED once every office has cleared the student and the Bursar confirms the clearance, last.
+        </Note>
+      ) : null}
       <div className="row row--tight" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
         <Pil kind={stateKind(p.overall)}>{stateWord(p.overall)}</Pil>
         <span className="sub2">{studentNumber(p)} · {p.programme ?? "—"} · {p.department ?? "—"}, {p.faculty ?? "—"} · {p.level ?? "—"} level · {entryWord(p.entry_mode)}</span>
@@ -332,7 +362,7 @@ function ProcessPanel({ detail, busy, setBusy, call, onClose, onDone }: {
                   <span className="sub2">Override the engine&rsquo;s check (a stage not yet open, an obligation outstanding) — kept as an override with its reason</span></label>
               ) : null}
               <Btn kind={state === "CLEARED" ? "go" : "primary"} disabled={busy || !stage || (!!need && !item.trim()) || ((override || state === "NOT_APPLICABLE") && !item.trim())}
-                onClick={() => void decide()}>{state === "CLEARED" ? "Clear" : DECISIONS.find((d) => d.state === state)?.label ?? "Save"}</Btn>
+                onClick={() => void (graduating ? askToConfirm() : decide())}>{graduating ? "Clear student…" : state === "CLEARED" ? "Clear" : DECISIONS.find((d) => d.state === state)?.label ?? "Save"}</Btn>
             </>
           ) : <Note kind="info" title="Read only">Your office gives no word on this clearance{live ? "" : " — it was cancelled"}.</Note>}
         </div>
@@ -386,6 +416,8 @@ function ProcessPanel({ detail, busy, setBusy, call, onClose, onDone }: {
           ) : <div className="sub2">The document is approved for the stage.</div>}
         </Modal>
       ) : null}
+      {confirming ? <ConfirmGraduation fc={confirming} name={`${p.surname}, ${p.other_names}`} number={studentNumber(p)} busy={busy}
+        onCancel={() => setConfirming(null)} onConfirm={() => void decide()} /> : null}
       {cancelling ? (
         <Modal title="Cancel this clearance" sub={p.reference} onClose={() => setCancelling(false)}
           foot={<><Btn kind="ghost" onClick={() => setCancelling(false)}>Keep it</Btn><span className="grow" />
@@ -401,6 +433,50 @@ function ProcessPanel({ detail, busy, setBusy, call, onClose, onDone }: {
 
 const naira = (n: unknown) => `₦${Number(n ?? 0).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
 
+/** V665: the Bursar's confirmation — the account of every session and semester and every other check, read afresh; the button
+ *  waits for nothing to be in the way, and the server checks it all again in the same transaction that graduates the student */
+function ConfirmGraduation({ fc, name, number, busy, onCancel, onConfirm }: {
+  fc: FinalCheck; name: string; number: string; busy: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+  const line = (k: string, v: ReactNode, bad = false) => <div key={k} className="row row--tight"><span className="sub2" style={{ minWidth: 190 }}>{k}</span><b className={bad ? "ink-red" : undefined}>{v}</b></div>;
+  return (
+    <Modal title="Confirm clearance & graduate" sub={`${name} · ${number} · ${fc.reference}`} onClose={onCancel} wide
+      foot={<><Btn kind="ghost" onClick={onCancel}>Cancel</Btn><span className="grow" />
+        <Btn kind="go" disabled={busy || !fc.ready} onClick={onConfirm}>{busy ? "Processing clearance..." : "CONFIRM CLEARANCE & GRADUATE"}</Btn></>}>
+      <div className="sub2 mb-2">Clearing the Bursary&rsquo;s stage completes the final clearance and changes the record to GRADUATED in the same act. Nothing is marked paid:
+        the amounts are the University&rsquo;s fees for each session and semester, the confirmed payments and any approved waiver.</div>
+      <div className="card card--quiet mb-2" style={{ padding: "var(--s-2)" }}>
+        {fc.graduand ? line("Award", `${fc.graduand.award} · Senate minute ${fc.graduand.minute} · ${fc.graduand.session}`) : null}
+        {line("Academic status now", fc.status)}
+        {line("Sessions and semesters read", String(fc.periods))}
+        {line("Assessed", naira(fc.assessed))}
+        {line("Paid (verified)", naira(fc.paid))}
+        {Number(fc.waived) > 0 ? line("Waived or adjusted (approved)", naira(fc.waived)) : null}
+        {line("Outstanding", naira(fc.outstanding), Number(fc.outstanding) > 0)}
+        {fc.pendingWaivers ? line("Waivers awaiting the Bursar", String(fc.pendingWaivers), true) : null}
+        {line("Other offices", fc.othersPending.length ? `Still to clear: ${fc.othersPending.map((o) => o.label).join(", ")}` : "Every other office has cleared", fc.othersPending.length > 0)}
+        {line("Academic record", fc.academic.ok ? "No carry-over owed, no result awaited" : fc.academic.outstandingCourses ?? fc.academic.awaitingCourses ?? "Not complete", !fc.academic.ok)}
+      </div>
+      {fc.unsettled.length ? (
+        <DTable pageSize={0} cols={["Session", "Semester", "Assessed|num", "Waived|num", "Paid|num", "Outstanding|num", "Status"]}
+          rows={fc.unsettled.map((u) => [<span key="s" className="tnum">{u.session}</span>, <span key="m">{u.semester}</span>,
+            <span key="a" className="tnum">{u.assessed == null ? "—" : naira(u.assessed)}</span>, <span key="w" className="tnum">{naira(u.waived)}</span>,
+            <span key="p" className="tnum">{naira(u.paid)}</span>, <span key="o" className="tnum ink-red">{u.outstanding == null ? "—" : naira(u.outstanding)}</span>,
+            <span key="t" className="sub2">{u.status.replace(/_/g, " ").toLowerCase()}</span>])} />
+      ) : null}
+      {fc.otherPayments.length ? (
+        <Note kind="info" title="Payments outside school fees in an owing session">
+          {fc.otherPayments.map((o) => `${o.reference} · ${o.session} · ${o.purpose} · ${naira(o.amount)}${o.desk_status ? ` (${o.desk_status.toLowerCase()})` : ""}`).join("; ")}.
+          They are not counted as school fees; settle them on their own desks first.
+        </Note>
+      ) : null}
+      {fc.blockers.length ? (
+        <Note kind="bad" title="The clearance cannot be confirmed yet">{fc.blockers.join(" · ")}</Note>
+      ) : <Note kind="ok" title="Every check holds">Confirming clears the Bursary&rsquo;s stage, completes the final clearance and graduates the student.</Note>}
+    </Modal>
+  );
+}
+
 /** what the record says for the office's stage, in the office's words */
 function Evidence({ unit, ev }: { unit: string; ev: Record<string, unknown> }) {
   const line = (k: string, v: string, bad = false) => <div key={k} className="row row--tight"><span className="sub2" style={{ minWidth: 150 }}>{k}</span><b className={bad ? "ink-red" : undefined}>{v}</b></div>;
@@ -409,12 +485,13 @@ function Evidence({ unit, ev }: { unit: string; ev: Record<string, unknown> }) {
     if (Array.isArray(ev.periods)) {
       // V654: a final clearance reads the historical account — each session and semester at the fees of the period
       out.push(line("Outstanding school fees", naira(ev.outstanding), Number(ev.outstanding) > 0));
+      if (Number(ev.waived) > 0) out.push(line("Waived or adjusted (approved)", naira(ev.waived)));
       if (Number(ev.review) > 0) out.push(line("Requires historical review", String(ev.reviewPeriods ?? ev.review), true));
       if (Number(ev.pending) > 0) out.push(line("Awaiting the Bursar's approval", String(ev.pendingPeriods ?? ev.pending), true));
       if (Number(ev.credit) >= 1) out.push(line("Paid beyond what is assessed", naira(ev.credit)));
-      for (const s of ev.periods as { session: string; semester: number; level: number | null; assessed: number | null; paid: number; outstanding: number | null; status: string }[]) {
+      for (const s of ev.periods as { session: string; semester: number; level: number | null; assessed: number | null; paid: number; outstanding: number | null; status: string; waived?: number }[]) {
         out.push(line(`${s.session} S${s.semester}`, s.assessed == null ? `${s.status === "PENDING_APPROVAL" ? "assessment pending" : "no fee structure — review"} · paid ${naira(s.paid)}`
-          : `${s.level ?? "—"} Level · ${naira(s.assessed)} assessed · paid ${naira(s.paid)} · owed ${naira(s.outstanding)}`, s.assessed == null || Number(s.outstanding) > 0));
+          : `${s.level ?? "—"} Level · ${naira(s.assessed)} assessed${Number(s.waived) > 0 ? ` · ${naira(s.waived)} waived` : ""} · paid ${naira(s.paid)} · owed ${naira(s.outstanding)}`, s.assessed == null || Number(s.outstanding) > 0));
       }
     } else if (Array.isArray(ev.sessions)) {
       out.push(line("Outstanding (sessions stated)", naira(ev.outstanding), Number(ev.outstanding) > 0));

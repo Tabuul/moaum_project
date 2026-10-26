@@ -70,7 +70,7 @@ function RegisterClosed({ v }: { v: RegistrationView }) {
   const reg = v.registration;
   return (
     <>
-      <Note kind="info" title={v.closed!.code === "REG_STUDENT_GRADUATED" ? "You have graduated" : "Course registration is closed"}
+      <Note kind="info" title={v.closed!.code === "REG_STUDENT_GRADUATED" ? "You have graduated" : v.closed!.code === "REG_STUDENT_AWARD_APPROVED" ? "Your award is approved" : "Course registration is closed"}
         action={<div className="row"><LinkBtn kind="ghost" href="/student/graduation">Graduation & clearance</LinkBtn><LinkBtn kind="ghost" href="/student/registration-history">Registration history</LinkBtn></div>}>
         {v.closed!.words} {v.closed!.remedy}
       </Note>
