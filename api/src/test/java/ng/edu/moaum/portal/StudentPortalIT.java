@@ -379,8 +379,15 @@ class StudentPortalIT {
     @Test
     @SuppressWarnings("unchecked")
     void eachSemestersResultsAreReleasedOnceTheFeesUpToItArePaid() {
-        final String ses = "2095/2096";
-        it.session(ses, 2095);
+        // a session no other test files anything under (CredentialsIT and DefermentIT use 2095/2096 and open its semesters their way),
+        // both its semesters open, so the session's charge is both semesters' lines
+        final int y = it.freeYear(2300, 2900);
+        final String ses = y + "/" + (y + 1);
+        it.session(ses, y);
+        it.db(() -> jdbc.sql("""
+                INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), :s, 1, 'OPEN'), (gen_random_uuid(), :s, 2, 'OPEN')
+                ON CONFLICT (session, number) DO UPDATE SET state = excluded.state
+                """).param("s", ses).update());
         int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/GTS/95/" + k, "MOAUM/ADM/95/00" + k, "ITGATS" + k));
         String matric = "MOAUM/GTS/95/" + n;
         UUID student = it.student("ITGATS" + n, "C00061", "MOAUM/ADM/95/00" + n, matric, 100);
