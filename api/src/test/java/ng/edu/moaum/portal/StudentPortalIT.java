@@ -372,6 +372,99 @@ class StudentPortalIT {
     }
 
     /**
+     * V667: results are released by the semester paid for. With RESULTS on payment in full and the session charged by semester, a
+     * student who paid the first semester sees its results while the second's are withheld — named with what is outstanding on it —
+     * and the second's are released the moment it is paid.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void eachSemestersResultsAreReleasedOnceTheFeesUpToItArePaid() {
+        final String ses = "2095/2096";
+        it.session(ses, 2095);
+        int n = it.freeDraw(1000, 10000, k -> List.of("MOAUM/GTS/95/" + k, "MOAUM/ADM/95/00" + k, "ITGATS" + k));
+        String matric = "MOAUM/GTS/95/" + n;
+        UUID student = it.student("ITGATS" + n, "C00061", "MOAUM/ADM/95/00" + n, matric, 100);
+
+        // published results in both semesters, and the session charged by semester (₦60,000 and ₦40,000)
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('GTS 101', 'Semester Gate One', 3, 1, 100, :d, 'Core', 'LIVE'), ('GTS 102', 'Semester Gate Two', 3, 2, 100, :d, 'Core', 'LIVE') ON CONFLICT (code) DO NOTHING")
+                    .param("d", dept).update();
+            for (int sem = 1; sem <= 2; sem++) {
+                jdbc.sql("SELECT * FROM assessment.import_legacy_semester(:s, :sem, :rows::jsonb, true)")
+                        .param("s", ses).param("sem", sem)
+                        .param("rows", "[{\"matric\":\"" + matric + "\",\"course\":\"GTS 10" + sem + "\",\"total\":\"" + (sem == 1 ? 70 : 65) + "\"}]")
+                        .query().listOfRows();
+            }
+            jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, semester) VALUES (:s, 'School fees (semester 1)', 60000, 100, 1), (:s, 'School fees (semester 2)', 40000, 100, 2)")
+                    .param("s", ses).update();
+            return null;
+        });
+        String token = TestTokens.token(student, List.of("student"));
+        // results on payment in full for this test's span, whichever scheme is in force (another test may have left one): put back after
+        String[] resultsRule = {null};
+        try {
+            it.db(() -> {
+                jdbc.sql("""
+                        INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+                        SELECT gen_random_uuid(), 'clearance', 'UNIVERSITY',
+                               daterange(current_date, (SELECT min(lower(validity)) FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date)),
+                               'BUR/GATE/95', 'bursar'
+                         WHERE policy.in_force('clearance', 'UNIVERSITY', current_date) IS NULL
+                        """).update();
+                jdbc.sql("INSERT INTO policy.clearance_scheme SELECT id, true FROM policy.version WHERE instrument = 'BUR/GATE/95' ON CONFLICT DO NOTHING").update();
+                jdbc.sql("""
+                        INSERT INTO policy.clearance_rule SELECT v.id, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED'
+                            WHEN 'REGISTRATION' THEN 'INSTALMENT_1' WHEN 'ID_CARD' THEN 'INSTALMENT_1' WHEN 'LIBRARY' THEN 'INSTALMENT_1' ELSE 'PAID_IN_FULL' END
+                          FROM policy.version v, ref.clearance_purpose p WHERE v.instrument = 'BUR/GATE/95' ON CONFLICT DO NOTHING
+                        """).update();
+                resultsRule[0] = jdbc.sql("SELECT releases_at FROM policy.clearance_rule WHERE version_id = policy.in_force('clearance', 'UNIVERSITY', current_date) AND purpose = 'RESULTS'")
+                        .query(String.class).single();
+                jdbc.sql("UPDATE policy.clearance_rule SET releases_at = 'PAID_IN_FULL' WHERE version_id = policy.in_force('clearance', 'UNIVERSITY', current_date) AND purpose = 'RESULTS'").update();
+                return null;
+            });
+            // the first semester paid (₦60,000): its results released, the second's withheld with ₦40,000 outstanding
+            Map<String, Object> ref = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", ses, "amount", 60000)).getBody();
+            assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + ref.get("reference") + "/confirm", Map.of("channel", "Bank transfer")).getStatusCode().value()).isEqualTo(200);
+            Map<String, Object> part = it.get(token, "/api/v1/me/results").getBody();
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) part.get("rows");
+            Map<String, Object> first = rows.stream().filter(r -> "GTS 101".equals(r.get("course_code"))).findFirst().orElseThrow();
+            Map<String, Object> second = rows.stream().filter(r -> "GTS 102".equals(r.get("course_code"))).findFirst().orElseThrow();
+            assertThat(first).containsEntry("withheld", false);
+            assertThat(first.get("grade")).isNotNull();
+            assertThat(second).containsEntry("withheld", true);
+            assertThat(second.get("grade")).isNull();
+            assertThat(part.get("clearsResults")).isEqualTo(false);
+            List<Map<String, Object>> held = (List<Map<String, Object>>) part.get("withheldSemesters");
+            assertThat(held).hasSize(1);
+            assertThat(held.get(0)).containsEntry("session", ses).containsEntry("semester", 2);
+            assertThat(((Number) held.get(0).get("outstanding")).intValue()).isEqualTo(40000);
+            assertThat(part.get("cgpa")).isNotNull();
+
+            // the second semester paid: everything released
+            ref = it.call(token, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("session", ses, "amount", 40000)).getBody();
+            assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + ref.get("reference") + "/confirm", Map.of("channel", "Bank transfer")).getStatusCode().value()).isEqualTo(200);
+            Map<String, Object> all = it.get(token, "/api/v1/me/results").getBody();
+            assertThat((List<Map<String, Object>>) all.get("rows")).allSatisfy(r -> assertThat(r.get("withheld")).isEqualTo(false));
+            assertThat(all.get("clearsResults")).isEqualTo(true);
+            assertThat((List<Object>) all.get("withheldSemesters")).isEmpty();
+        } finally {
+            it.db(() -> {
+                if (resultsRule[0] != null) {
+                    jdbc.sql("UPDATE policy.clearance_rule SET releases_at = :r WHERE version_id = policy.in_force('clearance', 'UNIVERSITY', current_date) AND purpose = 'RESULTS'")
+                            .param("r", resultsRule[0]).update();
+                }
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE session = :s").param("s", ses).update();
+                jdbc.sql("DELETE FROM finance.fee_schedule WHERE session = :s").param("s", ses).update();
+                jdbc.sql("DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/GATE/95')").update();
+                jdbc.sql("DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = 'BUR/GATE/95')").update();
+                jdbc.sql("DELETE FROM policy.version WHERE instrument = 'BUR/GATE/95'").update();
+                return null;
+            });
+        }
+    }
+
+    /**
      * An entrant admitted for a session that is still planned (the register is built before the session
      * opens) stands in that session, not the University's current one: the dashboard, the fees and a
      * reference without a session named all open on the entry session, where the Bursar's charge is.

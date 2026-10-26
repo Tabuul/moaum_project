@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 493
+\set EXPECTED 494
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26613,6 +26613,80 @@ BEGIN
                g_out1, v_status1, v_approved, v_stamped, pf IS NOT NULL, v_told1, g_out2->>'outcome', v_closed, r_reg, v_order, r_wait, left(fc::text, 300), r_registrar, r_owed,
                r_above, r_same, r_perm, w1.reference, owed1, waived1, r_kept, owed2, owed3, run.reference, run_row.status, run_row.outstanding, run_row.waived, run_row.other_payments,
                run_row.awaiting_graduation, fc2->>'ready', v_status2, v_graduated_at, v_change, v_told2, v_done, v_awaiting, r_again, v_summary));
+END $$;
+
+-- ── V667. Results are released by the semester paid for. Under the Bursar's rule "results on payment in full" with arrears blocking
+--          everything: a made-up 300 Level student who paid the first semester (₦66,745) and ₦14,000 of the second (₦28,605) has the
+--          session's rule refusing, yet the first semester's results released and the second's withheld with ₦14,605.00 outstanding;
+--          paid, the second is released too; an earlier session paid for is released; a student with a balance carried from an earlier
+--          session has nothing released, as before. The block undoes its writes ──
+DO $$
+DECLARE
+    S0 constant text := '9664/9665'; S constant text := '9665/9666'; v_dept text; v_fac text; prog text; ver uuid; ins uuid := gen_random_uuid();
+    st uuid := gen_random_uuid(); st2 uuid := gen_random_uuid(); bursar uuid := gen_random_uuid();
+    rule_before boolean; r1 boolean; r2 boolean; out2 numeric; r2_paid boolean; r_prev boolean; a1 boolean; a_rule boolean; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', bursar::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V667', true);
+    -- the Bursar's rule as on the live portal: results on payment in full, arrears blocking everything
+    ver := policy.in_force('clearance', 'UNIVERSITY', current_date);
+    IF ver IS NULL THEN
+        ver := ins;
+        INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+        VALUES (ver, 'clearance', 'UNIVERSITY',
+                daterange(current_date, (SELECT min(lower(validity)) FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date)),
+                'CHECK V667', 'bursar');
+        INSERT INTO policy.clearance_scheme VALUES (ver, true);
+        INSERT INTO policy.clearance_rule SELECT ver, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END FROM ref.clearance_purpose p;
+    END IF;
+    UPDATE policy.clearance_rule SET releases_at = 'PAID_IN_FULL' WHERE version_id = ver AND purpose = 'RESULTS';
+    UPDATE policy.clearance_scheme SET arrears_block_all = true WHERE version_id = ver;
+
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, date '9664-10-01', date '9665-09-30', 'PLANNED'), (gen_random_uuid(), S, date '9665-10-01', date '9666-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN'), (gen_random_uuid(), S, 2, 'OPEN')
+    ON CONFLICT (session, number) DO NOTHING;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.A. CHECK V667', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (st, 'MOAUM/ADM/23/665001', 'MOAUM/ZZR/23/6651', 'CHECKV667', 'Paid', prog, 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (st2, 'MOAUM/ADM/23/665002', 'MOAUM/ZZR/23/6652', 'CHECKV667', 'Arrears', prog, 'UTME', S0, 100, 300, 'ACTIVE', now());
+    -- the earlier session (one ₦50,000 line of the programme) and the session's two semesters
+    INSERT INTO finance.fee_schedule (session, item, amount, programme_code, semester) VALUES
+        (S0, 'CHECK V667 school fees', 50000, prog, NULL),
+        (S, 'CHECK V667 school fees (semester 1)', 66745, prog, 1), (S, 'CHECK V667 school fees (semester 2)', 28605, prog, 2);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (st, S0, 'MOAUM-FEE-V667-0000', 'School fees ' || S0, 50000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V667-0000'),
+        (st, S, 'MOAUM-FEE-V667-0001', 'School fees ' || S || ' · first semester', 66745, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V667-0001'),
+        (st, S, 'MOAUM-FEE-V667-0002', 'School fees ' || S || ' · second semester', 14000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V667-0002'),
+        -- the second student paid the session in full, but nothing of the earlier one
+        (st2, S, 'MOAUM-FEE-V667-0003', 'School fees ' || S, 95350, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V667-0003');
+
+    rule_before := finance.clears(st, S, 'RESULTS');
+    r1 := finance.results_cleared(st, S, 1);
+    r2 := finance.results_cleared(st, S, 2);
+    SELECT outstanding INTO out2 FROM finance.semester_position(st, S, 2, false);
+    r_prev := finance.results_cleared(st, S0, 1);
+    a1 := finance.results_cleared(st2, S, 1);
+    a_rule := finance.clears(st2, S, 'RESULTS');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (st, S, 'MOAUM-FEE-V667-0004', 'School fees ' || S || ' · second semester', 14605, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V667-0004');
+    r2_paid := finance.results_cleared(st, S, 2);
+    msg := format('session rule %s | first %s second %s (outstanding %s) | paid %s | earlier session %s | arrears: first %s, rule %s',
+                  rule_before, r1, r2, out2, r2_paid, r_prev, a1, a_rule);
+    RAISE EXCEPTION 'the V667 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V667 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V667: results are released by the semester paid for — the session''s rule refusing, the first semester paid is released and the second withheld with ₦14,605.00 outstanding until paid; an earlier session paid for is released; a balance carried from an earlier session still blocks everything',
+      coalesce(NOT rule_before AND r1 AND NOT r2 AND out2 = 14605 AND r2_paid AND r_prev AND NOT a1 AND NOT a_rule, false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -23,11 +23,14 @@ export async function GET() {
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   if (!res.ok) return NextResponse.json(res.problem, { status: res.problem.status });
   const s = me.data, r = res.data;
-  if (r.clearsResults === false) return NextResponse.json({ status: 409, title: "Withheld", detail: "Results are withheld until the fees are settled." }, { status: 409 });
+  // V667: results are withheld semester by semester — the broadsheet prints the semesters released; a withheld one is left out
+  if (!r.rows.some((x) => x.published && !x.withheld) && (r.withheldSemesters ?? []).length) {
+    return NextResponse.json({ status: 409, title: "Withheld", detail: "Results are withheld until the school fees of their semesters are paid." }, { status: 409 });
+  }
 
   // group published rows by session+semester
   const groups: { session: string; semester: number; rows: ResultRow[] }[] = [];
-  for (const row of r.rows.filter((x) => x.published)) {
+  for (const row of r.rows.filter((x) => x.published && !x.withheld)) {
     let g = groups.find((x) => x.session === row.session && x.semester === row.semester);
     if (!g) { g = { session: row.session, semester: row.semester, rows: [] }; groups.push(g); }
     g.rows.push(row);

@@ -5,6 +5,7 @@
  */
 
 import type { SpilloverPanel } from "./spillover";
+import type { WithheldSemester } from "./results-withheld";
 import type { StudentOverpayment } from "@/lib/overpayment";
 import type { GstEpsEligibility } from "@/lib/gst";
 
@@ -56,7 +57,9 @@ export interface Fees {
 export interface Semester { session: string; semester: number; units: number; gpa: number | null; cgpa: number | null; published_count: number; registered_count: number;
   cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null;
   /** the level the student was at in that semester (V330), not today's */
-  level?: number }
+  level?: number;
+  /** V667: its GPA and CGPA withheld until the fees up to the semester are paid */
+  withheld?: boolean }
 export interface Carryover { course_code: string; title: string; units: number; failed_in: string }
 export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; basis?: string; lecturer?: string | null; courseSemester?: number;
   /** V504: the category the University orders by (registration.entry_category), what a course the student added beside the
@@ -170,10 +173,16 @@ export interface ResultRow {
   lecturer?: string | null;
   /** the level the student was at in that semester (V330) */
   level?: number;
+  /** V667: its marks withheld (redacted on the server) until the fees up to its semester are paid */
+  withheld?: boolean;
 }
 export interface Results {
   name: string; matricNo: string; programme: string; level: number; rows: ResultRow[]; semesters: Semester[];
-  cgpa: number | null; standing: string | null; carryovers: Carryover[]; clearsResults: boolean | null;
+  cgpa: number | null; standing: string | null; carryovers: Carryover[];
+  /** V667: true when no published result is withheld (null with no clearance scheme in force) */
+  clearsResults: boolean | null;
+  /** V667: each semester whose published results are withheld, with what is still to pay for it */
+  withheldSemesters?: WithheldSemester[];
 }
 export interface Notice { id: string; channel: string; recipient: string; subject: string; body: string; created_at: string; state: string; sent_at: string | null }
 export interface AcademicContext {

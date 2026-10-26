@@ -323,6 +323,18 @@ class StudentPortalRepository {
                 .query(Boolean.class).single());
     }
 
+    /** V667: whether a semester's results are released — the session's rule, or else the fees up to that semester paid */
+    boolean resultsCleared(UUID student, String session, int semester) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT finance.results_cleared(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester)
+                .query(Boolean.class).single());
+    }
+
+    /** V667: what is still to pay for a semester's fees to be cleared — the figure a withheld semester is named with */
+    BigDecimal semesterOutstanding(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT outstanding FROM finance.semester_position(:s, :ses, :sem, false)").param("s", student).param("ses", session).param("sem", semester)
+                .query(BigDecimal.class).optional().orElse(BigDecimal.ZERO);
+    }
+
     /** the portal window's state now (V288): school fees payment for the session, or course registration for a semester */
     Map<String, Object> windowState(String type, String session, Integer semester) {
         return jdbc.sql("SELECT configured, state, phase, opens_at, closes_at, late_until, late_fee_enabled, reason FROM policy.window_state(:t, :s, :sem)")

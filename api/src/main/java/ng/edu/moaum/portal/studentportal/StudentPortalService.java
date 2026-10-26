@@ -1022,33 +1022,52 @@ public class StudentPortalService {
         List<Map<String, Object>> rows = repo.results(id);
         List<Map<String, Object>> gpa = repo.gpa(id);
 
-        // the fee gate: a semester's marks are withheld until that session's fees clear (RESULTS).
-        // Redacted here on the server, not just hidden on the screen, so an unpaid student cannot read
-        // the marks through the raw endpoint. No scheme in force means no gate.
+        // the fee gate: a semester's marks are withheld until its fees clear — V667: semester by semester (finance.results_cleared:
+        // the session's RESULTS rule, or else the fees up to that semester paid), so a balance on one semester never hides the results
+        // of the semesters paid for. Redacted here on the server, not just hidden on the screen, so an unpaid student cannot read the
+        // marks through the raw endpoint. No scheme in force means no gate.
         boolean scheme = repo.schemeInForce();
-        Map<String, Boolean> clearedBySession = new java.util.HashMap<>();
-        java.util.function.Function<String, Boolean> cleared = ses ->
-                !scheme || clearedBySession.computeIfAbsent(ses, x -> repo.clears(id, x, "RESULTS"));
+        Map<String, Boolean> clearedBySemester = new java.util.HashMap<>();
+        java.util.function.BiFunction<String, Object, Boolean> cleared = (ses, sem) -> {
+            int m = sem == null ? 1 : ((Number) sem).intValue();
+            return !scheme || clearedBySemester.computeIfAbsent(ses + "|" + m, k -> repo.resultsCleared(id, ses, m));
+        };
         List<String> withheld = new java.util.ArrayList<>();
+        List<Map<String, Object>> withheldSemesters = new java.util.ArrayList<>();
         for (Map<String, Object> row : rows) {
             String ses = String.valueOf(row.get("session"));
-            if (!Boolean.TRUE.equals(cleared.apply(ses))) {
+            if (!Boolean.TRUE.equals(cleared.apply(ses, row.get("semester")))) {
                 row.put("ca", null); row.put("exam", null); row.put("total", null);
                 row.put("grade", null); row.put("points", null);
                 row.put("withheld", true);
                 if (!withheld.contains(ses)) {
                     withheld.add(ses);
                 }
+                int m = row.get("semester") == null ? 1 : ((Number) row.get("semester")).intValue();
+                // named only where something is published — a semester still in the approval chain holds nothing back
+                if (Boolean.TRUE.equals(row.get("published"))
+                        && withheldSemesters.stream().noneMatch(w -> ses.equals(w.get("session")) && Integer.valueOf(m).equals(w.get("semester")))) {
+                    Map<String, Object> w = new LinkedHashMap<>();
+                    w.put("session", ses);
+                    w.put("semester", m);
+                    w.put("outstanding", repo.semesterOutstanding(id, ses, m));
+                    withheldSemesters.add(w);
+                }
             } else {
                 row.put("withheld", false);
             }
         }
+        BigDecimal cgpa = null;
         for (Map<String, Object> g : gpa) {
-            if (!Boolean.TRUE.equals(cleared.apply(String.valueOf(g.get("session"))))) {
+            if (!Boolean.TRUE.equals(cleared.apply(String.valueOf(g.get("session")), g.get("semester")))) {
                 g.put("gpa", null); g.put("cgpa", null);
+                g.put("withheld", true);
+            } else {
+                g.put("withheld", false);
+                // the cumulative as of the last semester released
+                if (g.get("cgpa") != null) cgpa = (BigDecimal) g.get("cgpa");
             }
         }
-        BigDecimal cgpa = gpa.isEmpty() ? null : (BigDecimal) gpa.get(gpa.size() - 1).get("cgpa");
         // the level the student held in each semester (V330), so a past statement reads at its own level, not today's
         Map<String, Integer> levels = new java.util.HashMap<>();
         java.util.function.BiFunction<String, Object, Integer> levelOf = (ses, sem) -> {
@@ -1068,9 +1087,10 @@ public class StudentPortalService {
         out.put("cgpa", cgpa);
         out.put("standing", repo.classOf(cgpa));
         out.put("carryovers", repo.carryovers(id));
-        Boolean resultsCleared = scheme ? repo.clears(id, session(), "RESULTS") : null;
-        out.put("clearsResults", resultsCleared);
+        // V667: true when no published result is withheld; the semesters withheld are named with what is outstanding on each
+        out.put("clearsResults", scheme ? withheldSemesters.isEmpty() : null);
         out.put("withheldSessions", withheld);
+        out.put("withheldSemesters", withheldSemesters);
         return out;
     }
 

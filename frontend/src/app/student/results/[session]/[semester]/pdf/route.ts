@@ -9,6 +9,7 @@ import { qrMatrix, resultVerifyPath, studentCheckCode } from "@/lib/qr";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
 import { shownCode } from "@/lib/course-code";
+import { withheldLine, withheldOf } from "@/lib/results-withheld";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   const r = await api<Results>("/api/v1/me/results");
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   const x = r.data;
-  if (x.clearsResults === false) return NextResponse.json({ status: 409, title: "Withheld", detail: "Results are withheld until the fees are settled." }, { status: 409 });
+  // V667: withheld semester by semester, until the fees up to the semester are paid
+  const held = withheldOf(x.withheldSemesters, session, semester);
+  if (held) return NextResponse.json({ status: 409, title: "Withheld", detail: withheldLine(held) }, { status: 409 });
   const rows = x.rows.filter((c) => c.session === session && c.semester === semester && c.published);
   if (!rows.length) return NextResponse.json({ status: 409, title: "Nothing published", detail: "No result is published for this semester." }, { status: 409 });
   const sem = x.semesters.find((s) => s.session === session && s.semester === semester);

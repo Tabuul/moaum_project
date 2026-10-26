@@ -13,6 +13,7 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles, Two } from "@/compo
 import { DTable } from "@/components/proto/DTable";
 import { onDay } from "./common";
 import { shownCode } from "@/lib/course-code";
+import { withheldLine, withheldNote, withheldOf } from "@/lib/results-withheld";
 
 /** V422: how an outcome other than a grade reads to the student */
 const OUTCOME_WORD: Record<string, string> = { ABSENT: "ABS", WITHHELD: "Withheld", INCOMPLETE: "Incomplete", MALPRACTICE: "Malpractice case", EXEMPTED: "Exempted" };
@@ -34,11 +35,15 @@ export function ResultsScreen({ r }: { r: Results }) {
   const live = latest ? latest.rows.filter((x) => x.published) : [];
   const waiting = latest ? latest.rows.filter((x) => !x.published) : [];
   const sem = latest ? r.semesters.find((s) => s.session === latest.session && s.semester === latest.semester) : undefined;
+  // V667: results are withheld semester by semester — the semesters paid for show, a withheld one is named with what is outstanding
+  const held = withheldNote(r.withheldSemesters);
+  const latestHeld = latest ? withheldOf(r.withheldSemesters, latest.session, latest.semester) : null;
   return (
     <>
-      {r.clearsResults === false ? (
-        <Note kind="bad" title="Your results are withheld until your fees are settled">Semester results are released on payment in full.</Note>
-      ) : !latest ? (
+      {held ? (
+        <Note kind="bad" title={held.title} action={<LinkBtn kind="urgent" href="/student/fees">Fees &amp; payments</LinkBtn>}>{held.body}</Note>
+      ) : null}
+      {latestHeld ? null : !latest ? (
         <Note kind="info" title="Nothing is registered against you yet">Results follow an approved course registration.</Note>
       ) : live.length === 0 ? (
         <Note kind="info" title={`Your ${latest.session} ${semesterName(latest.semester).toLowerCase()}-semester results are not published yet`}>
@@ -53,7 +58,6 @@ export function ResultsScreen({ r }: { r: Results }) {
           Released {onDay(live[0]?.published_at)}. Your semester results are available below.
         </Note>
       )}
-      {r.clearsResults !== false ? (
         <>
           <Tiles items={[
             ["This semester", sem?.gpa != null ? String(sem.gpa) : "—", sem?.gpa != null ? "var(--green-ink)" : "var(--faint)", sem?.gpa != null ? `GPA on ${sem.units} units released` : "No course released yet"],
@@ -67,12 +71,14 @@ export function ResultsScreen({ r }: { r: Results }) {
                 const st = STAGE_LABEL[c.stage] ?? [c.stage, ""];
                 const taught = <span className="sub2" key="h">{c.lecturer || "—"}</span>;
                 if (!c.published) return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="info" key="w">{st[0]}</Pil>, taught];
+                // V667: published, but withheld until the semester's fees are paid
+                if (c.withheld) return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="bad" key="w">Withheld · fees</Pil>, taught];
                 // V422: an absence is an F; withheld, incomplete and malpractice are held for the Senate (not counted, not owed); an exemption is neither
                 if (c.outcome !== "GRADED") return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <Pil kind={c.outcome === "ABSENT" ? "bad" : c.outcome === "EXEMPTED" ? "grey" : "warn"} key="s">{OUTCOME_WORD[c.outcome ?? ""] ?? c.outcome}</Pil>, <b key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] ?? "var(--ink)" : undefined }}>{c.grade ?? "—"}</b>, <span className="tnum" key="p">{c.points ?? "—"}</span>, HELD_OUTCOMES.includes(c.outcome ?? "") ? <Pil kind="warn" key="w">Held for the Senate</Pil> : <Pil kind="ok" key="w">Published</Pil>, taught];
                 return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <b className="tnum" key="s">{c.total}</b>, <b key="g" style={{ color: GRADE_COLOUR[c.grade ?? ""] ?? "var(--ink)" }}>{c.grade}</b>, <span className="tnum" key="p">{c.points}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
               })} />
               <div className="row" style={{ padding: "0 var(--s-4) var(--s-4)" }}>
-                {live.length ? <LinkBtn kind="primary" size="md" href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`}>Semester Results</LinkBtn> : null}
+                {live.length && !latestHeld ? <LinkBtn kind="primary" size="md" href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`}>Semester Results</LinkBtn> : null}
                 <Btn kind="ghost" disabled title="Arrives with the credentials module">Official transcript</Btn>
               </div>
             </Panel>
@@ -84,7 +90,8 @@ export function ResultsScreen({ r }: { r: Results }) {
               <b className="tnum" key="g">{h.gpa ?? "—"}</b>,
               <span className="tnum" key="tcr">{h.tcr}</span>, <span className="tnum" key="tce">{h.tce}</span>, <span className="tnum" key="twgp">{h.twgp}</span>,
               <span className="tnum sub2" key="l">{h.lcgpa ?? "—"}</span>, <b className="tnum" key="c">{h.cgpa ?? "—"}</b>,
-              h.published_count ? <LinkBtn key="a" kind="ghost" href={`/student/results/${encodeURIComponent(h.session)}/${h.semester}`}>Open</LinkBtn> : <span className="sub2" key="a">—</span>,
+              h.withheld && h.published_count ? <Pil key="a" kind="bad">Withheld · fees</Pil>
+                : h.published_count ? <LinkBtn key="a" kind="ghost" href={`/student/results/${encodeURIComponent(h.session)}/${h.semester}`}>Open</LinkBtn> : <span className="sub2" key="a">—</span>,
             ])} />
             {!r.semesters.length ? <PBody><div className="sub2">No semester has a published result yet.</div></PBody> : (
               <PBody><div className="sub2">CUR units registered · CUE earned · WGP weighted grade points · TCR/TCE/TWGP running totals · LCGPA previous CGPA. Full broadsheet: <Link href="/student/broadsheet">Result broadsheet</Link>.</div></PBody>
@@ -96,7 +103,6 @@ export function ResultsScreen({ r }: { r: Results }) {
             </Note>
           ) : null}
         </>
-      ) : null}
     </>
   );
 }
@@ -104,8 +110,12 @@ export function ResultsScreen({ r }: { r: Results }) {
 export function Slip({ r, session, semester }: { r: Results; session: string; semester: number }) {
   const rows = r.rows.filter((x) => x.session === session && x.semester === semester && x.published);
   const sem = r.semesters.find((s) => s.session === session && s.semester === semester);
-  if (!rows.length || r.clearsResults === false) {
-    return <Note kind="info" title="No statement for this semester">{r.clearsResults === false ? "Results are withheld until your fees are settled." : "Nothing is published for this semester yet."}</Note>;
+  const held = withheldOf(r.withheldSemesters, session, semester);
+  if (held) {
+    return <Note kind="bad" title="This semester's results are withheld" action={<LinkBtn kind="urgent" href="/student/fees">Fees &amp; payments</LinkBtn>}>{withheldLine(held)}</Note>;
+  }
+  if (!rows.length) {
+    return <Note kind="info" title="No statement for this semester">Nothing is published for this semester yet.</Note>;
   }
   const passed = rows.filter((x) => x.outcome === "GRADED" && (x.points ?? 0) > 0).reduce((n, x) => n + x.units, 0);
   const registered = rows.reduce((n, x) => n + x.units, 0);
@@ -142,13 +152,13 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
 /** s/broadsheet — the student's own results as a broadsheet: each semester's courses, then its
  *  summary line (CUR·CUE·WGP·GPA this semester; TCR·TCE·TWGP·LCGPA·CGPA cumulative). */
 export function Broadsheet({ r }: { r: Results }) {
-  if (r.clearsResults === false) {
-    return <Note kind="bad" title="Your results are withheld until your fees are settled"><LinkBtn kind="urgent" href="/student/fees">Fees &amp; payments</LinkBtn></Note>;
-  }
+  // V667: a withheld semester is named with what is outstanding; every semester paid for shows
+  const held = withheldNote(r.withheldSemesters);
   const groups = group(r.rows.filter((x) => x.published));
   const semOf = (s: string, n: number) => r.semesters.find((x) => x.session === s && x.semester === n);
   return (
     <>
+      {held ? <Note kind="bad" title={held.title} action={<LinkBtn kind="urgent" href="/student/fees">Fees &amp; payments</LinkBtn>}>{held.body}</Note> : null}
       <Tiles items={[
         ["Name", r.name, null, `${r.matricNo} · ${r.programme}`],
         ["Level", `${r.level} Level`, null, "Current"],
@@ -157,6 +167,12 @@ export function Broadsheet({ r }: { r: Results }) {
       ]} />
       {groups.length ? groups.map((g) => {
         const sm = semOf(g.session, g.semester);
+        const w = withheldOf(r.withheldSemesters, g.session, g.semester);
+        if (w) return (
+          <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`} right={<Pil kind="bad">Withheld · fees</Pil>}>
+            <PBody><div className="sub2">{g.rows.length} course{g.rows.length === 1 ? "" : "s"} published. {withheldLine(w)}</div></PBody>
+          </Panel>
+        );
         return (
           <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`}
             right={sm ? `GPA ${sm.gpa ?? "—"} · CGPA ${sm.cgpa ?? "—"}` : undefined}>
