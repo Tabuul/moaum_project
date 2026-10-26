@@ -183,6 +183,12 @@ class MeController {
         return portal.carryOverCandidates(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester);
     }
 
+    /** V666: the carry-overs owed now (once each) and every attempt behind them — the carry-over page's history */
+    @GetMapping("/carryovers/history")
+    Map<String, Object> carryoverHistory(Authentication auth) {
+        return portal.carryoverHistory(id(auth));
+    }
+
     /** V663: the carry-overs ticked, by course id — each judged and added by the engine, each answered */
     public record CarryOversIn(@NotBlank String session, @Min(1) @Max(3) int semester,
                                @jakarta.validation.constraints.NotEmpty @Size(max = 60) List<@jakarta.validation.constraints.NotNull UUID> courses) {

@@ -21,6 +21,7 @@ import { CardActions, PermitActions } from "./exams/CardActions";
 import { permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
 import { examCardStatusLabel, examCardSummary, type ExamCardState } from "@/lib/exam-card";
 import { shownCode } from "@/lib/course-code";
+import { RESULT_KIND, attemptWord, attemptsWords, historyByCourse, type CarryHistory, type OwedCourse } from "@/lib/carry-over";
 
 /* ── result query ── */
 
@@ -79,8 +80,11 @@ export function Query({ q }: { q: Queries }) {
 
 /* ── carryover ── */
 
-export function Carryover({ r }: { r: Results }) {
+export function Carryover({ r, history = null }: { r: Results; history?: CarryHistory | null }) {
   const units = r.carryovers.reduce((n, c) => n + c.units, 0);
+  // V666: each course once, however often it was failed; every attempt behind it, and the courses cleared since
+  const owed = r.carryovers as OwedCourse[];
+  const byCourse = historyByCourse(history?.history ?? []);
   return (
     <>
       {r.carryovers.length ? (
@@ -102,12 +106,25 @@ export function Carryover({ r }: { r: Results }) {
         ["Standing", r.standing ?? "—", null, r.cgpa != null ? `CGPA ${r.cgpa}` : "Nothing published yet"],
         ["Registration", "Automatic", "var(--chrome)", "Added to the next form; cannot be removed"],
       ]} />
-      <Panel title="What you are carrying" right="Each with the semester it failed in">
-        <DTable cols={["Course", "Units|mid", "Failed in", "Note"]} rows={r.carryovers.map((c) => [
-          <Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>,
-          <span className="sub2 tnum" key="f">{c.failed_in}</span>, <span className="sub2" key="n">Registered before a new course, not after; every attempt appears on the transcript</span>,
-        ])} />
+      <Panel title="What you are carrying" right="Each course once, with every attempt behind it">
+        <DTable cols={["Course", "Units|mid", "Failed", "Previous attempts"]} rows={owed.map((c) => {
+          const tried = byCourse.find((x) => x.course_code === c.course_code)?.attempts ?? [];
+          return [
+            <Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>,
+            <span className="sub2 tnum" key="f">{attemptsWords(c)}</span>,
+            tried.length ? <span key="n" className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>{tried.map((h) => <Pil key={`${h.session}|${h.semester}`} kind={RESULT_KIND[h.result]}>{attemptWord(h)}</Pil>)}</span>
+              : <span className="sub2" key="n">Every attempt appears on the transcript</span>,
+          ];
+        })} />
       </Panel>
+      {byCourse.some((c) => !c.owed) ? (
+        <Panel title="Cleared since" right="Failed before, passed since: no longer a carry-over">
+          <DTable cols={["Course", "Attempts"]} rows={byCourse.filter((c) => !c.owed).map((c) => [
+            <Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />,
+            <span key="a" className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>{c.attempts.map((h) => <Pil key={`${h.session}|${h.semester}`} kind={RESULT_KIND[h.result]}>{attemptWord(h)}</Pil>)}</span>,
+          ])} />
+        </Panel>
+      ) : null}
       <Panel title="How a repeat is scored" right="The rule">
         <PBody><KvGrid cls="grid--2" pairs={[["The attempt is recorded", "Every attempt appears on the transcript, including the failure"], ["The pass mark", "40, the same as any other attempt"], ["Units", "Counted once toward the degree, however many attempts"], ["Registration", "A carryover is registered before a new course, not after"]]} /></PBody>
       </Panel>

@@ -308,6 +308,7 @@ class StudentFullRecordController {
                     'results', (SELECT coalesce(json_agg(x), '[]'::json) FROM assessment.student_results(:s) x),
                     'semesters', (SELECT coalesce(json_agg(x ORDER BY x.session, x.semester), '[]'::json) FROM assessment.student_gpa(:s) x),
                     'owed', (SELECT coalesce(json_agg(x ORDER BY x.course_code), '[]'::json) FROM registration.carryovers(:s) x),
+                    'carryHistory', (SELECT coalesce(json_agg(x), '[]'::json) FROM registration.carryover_history(:s) x),
                     'standing', (SELECT row_to_json(x) FROM assessment.student_standing(:s) x LIMIT 1)
                 )::text
                 """, id);

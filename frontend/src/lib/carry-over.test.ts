@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_FILTER, carrySummary, filterRows, groupRows, levelsOf, openingView, outcomeWords, selection, type CarryRow } from "./carry-over.ts";
+import { NO_FILTER, attemptWord, attemptsWords, carrySummary, filterRows, groupRows, historyByCourse, levelsOf, openingView, outcomeWords, RESULT_WORD, selection, type CarryRow, type HistoryRow } from "./carry-over.ts";
 
 const row = (code: string, level: number, sem: number, status: CarryRow["status"], extra: Partial<CarryRow> = {}): CarryRow => ({
   course_id: `id-${code}`, course_code: code, shown_code: code, title: `Title ${code}`, units: 3, level, course_semester: sem, both_semesters: false,
@@ -57,4 +57,29 @@ test("an add answered: all added, some refused, none added", () => {
 
 test("the carry-over summary counts, adds the units and reads the levels", () => {
   assert.deepEqual(carrySummary([{ units: 3, level: 100 }, { units: 3, level: 100 }, { units: 2, level: 200 }]), { count: 3, units: 8, byLevel: [[100, 2], [200, 1]] });
+});
+
+const history: HistoryRow[] = [
+  { course_code: "CSC 301", title: "Database Systems", session: "2024/2025", semester: 1, grade: "F", result: "FAILED", owed: true },
+  { course_code: "CSC 301", title: "Database Systems", session: "2025/2026", semester: 1, grade: "F", result: "FAILED", owed: true },
+  { course_code: "CSC 301", title: "Database Systems", session: "2026/2027", semester: 1, grade: null, result: "REGISTERED", owed: true },
+  { course_code: "MTH 302", title: "Real Analysis", session: "2024/2025", semester: 2, grade: "F", result: "FAILED", owed: false },
+  { course_code: "MTH 302", title: "Real Analysis", session: "2025/2026", semester: 2, grade: "C", result: "PASSED", owed: false },
+];
+
+test("V666: a course owed once, its attempts in words — once failed, or failed again", () => {
+  assert.equal(attemptsWords({ course_code: "CSC 301", title: "", units: 3, failed_in: "2024/2025 semester 1", attempts: 1, first_failed_in: "2024/2025 semester 1" }),
+    "Failed in 2024/2025 semester 1");
+  assert.equal(attemptsWords({ course_code: "CSC 301", title: "", units: 3, failed_in: "2025/2026 semester 1", attempts: 2, first_failed_in: "2024/2025 semester 1" }),
+    "Failed 2 times: first 2024/2025 semester 1, last 2025/2026 semester 1");
+  // an answer from before V666 (no attempts) reads as one failure
+  assert.equal(attemptsWords({ course_code: "CSC 301", title: "", units: 3, failed_in: "2024/2025 semester 1" }), "Failed in 2024/2025 semester 1");
+});
+
+test("V666: the history by course — every attempt kept, a course owed or cleared, each attempt in words", () => {
+  const g = historyByCourse(history);
+  assert.deepEqual(g.map((c) => [c.course_code, c.owed, c.attempts.length]), [["CSC 301", true, 3], ["MTH 302", false, 2]]);
+  assert.deepEqual(g[0].attempts.map(attemptWord), ["2024/2025 semester 1 — F", "2025/2026 semester 1 — F", "2026/2027 semester 1 — Registered, no result yet"]);
+  assert.equal(attemptWord(g[1].attempts[1]), "2025/2026 semester 2 — C");
+  assert.equal(RESULT_WORD.AWAITED, "Result awaited");
 });

@@ -876,6 +876,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM registration.carryovers(:s)").param("s", student).query().listOfRows();
     }
 
+    /** V666: every attempt of each course the student has failed on a published result, and whether it is owed now */
+    List<Map<String, Object>> carryoverHistory(UUID student) {
+        return jdbc.sql("SELECT * FROM registration.carryover_history(:s)").param("s", student).query().listOfRows();
+    }
+
     /** V597: the kind of load the semester's registration carries — NORMAL (a current course of the programme, which the minimum binds),
      *  CARRY_OVER (carry-overs and deferred courses alone) or GST_EPS (GST/EPS courses alone); null without a registration */
     String loadKind(UUID student, String session, int semester) {

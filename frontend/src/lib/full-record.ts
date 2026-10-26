@@ -2,6 +2,8 @@
  *  values are shown in, and the tables the print and the downloads take. Every figure is the one a module holds: nothing here
  *  computes a level, a result or a payment the record does not carry, and a missing result is never a zero. */
 
+import { RESULT_WORD, type HistoryRow } from "./carry-over.ts";
+
 export type Section = "overview" | "admission" | "progression" | "registrations" | "results" | "finance" | "hostel" | "clearance" | "documents"
   | "support" | "audit";
 /** the tabs: the record's sections as the server reads them, with the biodata and the notifications the page already holds */
@@ -164,8 +166,13 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
         { title: "Grade point averages", headers: ["S/N", "Session", "Semester", "Units", "GPA", "CGPA", "Published", "Registered"],
           rows: n(a("semesters").map((g) => [String(g.session), semWord(g.semester), Number(g.units ?? 0), g.gpa == null ? "" : Number(g.gpa).toFixed(2),
             g.cgpa == null ? "" : Number(g.cgpa).toFixed(2), Number(g.published_count ?? 0), Number(g.registered_count ?? 0)])) },
-        { title: "Courses still owed", headers: ["S/N", "Course", "Title", "Units", "Failed in"],
-          rows: n(a("owed").map((c) => [String(c.course_code), String(c.title ?? ""), Number(c.units ?? 0), String(c.failed_in ?? "")])) },
+        // V666: each course once, with the failed attempts behind it; every attempt in the history
+        { title: "Courses still owed", headers: ["S/N", "Course", "Title", "Units", "Failed in", "Attempts", "First failed in"],
+          rows: n(a("owed").map((c) => [String(c.course_code), String(c.title ?? ""), Number(c.units ?? 0), String(c.failed_in ?? ""),
+            Number(c.attempts ?? 1), String(c.first_failed_in ?? c.failed_in ?? "")])) },
+        { title: "Carry-over history", headers: ["S/N", "Course", "Title", "Session", "Semester", "Grade", "Result", "Now"],
+          rows: n((a("carryHistory") as unknown as HistoryRow[]).map((h) => [h.course_code, h.title, h.session, semWord(h.semester), h.grade ?? "",
+            RESULT_WORD[h.result] ?? h.result, h.owed ? "Carry-over" : "Cleared"])) },
       ];
     case "finance":
       return [

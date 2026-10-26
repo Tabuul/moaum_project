@@ -826,6 +826,17 @@ public class StudentPortalService {
         return out;
     }
 
+    /** V666: the carry-overs owed now, once each (registration.carryovers), and every attempt behind them and behind the courses
+     *  cleared since (registration.carryover_history) */
+    @Transactional(readOnly = true)
+    public Map<String, Object> carryoverHistory(UUID id) {
+        student(id);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("owed", repo.carryovers(id));
+        out.put("history", repo.carryoverHistory(id));
+        return out;
+    }
+
     /** V663: the carry-over picker — every earlier course of the student, with what it is now (registration.carry_over_candidates):
      *  outstanding, no result, no record, awaited, cleared, already registered; selectable only as a carry-over the engine allows */
     @Transactional(readOnly = true)

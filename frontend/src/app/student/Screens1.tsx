@@ -19,6 +19,7 @@ import { naira, onDay, useAct, when } from "./common";
 import { SpilloverCard } from "./SpilloverCard";
 import { gstPayState } from "@/lib/gst-payable";
 import { PasswordInput } from "@/components/PasswordInput";
+import type { OwedCourse } from "@/lib/carry-over";
 
 /** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
  *  (personal, origin, contact, family, next-of-kin) is read from /me/biodata; the JAMB registration
@@ -324,7 +325,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
                 <span>Outstanding Carry-Overs: <b className="tnum">{s.carryovers.length}</b></span>
                 {registeredCarry ? <a className="lnk" href="/student/register#registered-courses">Registered Carry-Overs: <b className="tnum">{registeredCarry}</b></a> : null}
               </div>
-              {s.carryovers.length ? <div className="sub2 mt-1">{s.carryovers.map((c) => `${c.course_code} (${c.failed_in})`).join(", ")} — failed on a published result.</div> : null}
+              {s.carryovers.length ? <div className="sub2 mt-1">{(s.carryovers as OwedCourse[]).map((c) => `${c.course_code} (${c.failed_in}${(c.attempts ?? 1) > 1 ? `, failed ${c.attempts} times` : ""})`).join(", ")} — failed on a published result.</div> : null}
               <div className="sub2 mt-1">Select courses from previous levels that you have not cleared.</div>
             </PBody>
           </Panel>

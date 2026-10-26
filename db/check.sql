@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 494
+\set EXPECTED 495
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26471,6 +26471,106 @@ BEGIN
                AND (panel_full->>'sessionOwed')::numeric = 150000 AND (panel_full->>'sessionPaid')::numeric = 150000
                AND panel_full->'semesters'->0->>'status' = 'PAID', false),
       msg);
+END $$;
+
+-- ── V666. A carry-over once per course, its attempts kept: a made-up student who failed ZDV 101 in two sessions, failed ZDV 102 and
+-- passed it after, failed ZDV 103 and sat it again on a sheet not yet published, failed ZDV 104 in the second semester, failed ZDV 105
+-- whose result is corrected to a pass and back, and failed two separate courses under one code (ZDV 106, ZDV 106 BMAS). ZDV 101 is owed
+-- once with its two attempts and the last failure; the passed one is not owed; a sheet not yet published clears nothing, published it
+-- clears; a correction to a pass clears and back to a fail owes it once again; the semesters and the two courses of one code stay
+-- apart; every attempt stays in the history; the registration menu and the completion count read each course once. Undone after.
+DO $$
+DECLARE e1 text := '2666/2667'; e2 text := '2667/2668'; cur text := '2668/2669'; prog text := 'C96666'; dept text; fac text;
+        st uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); r1b uuid := gen_random_uuid(); r2 uuid := gen_random_uuid(); msg text;
+        owed_before text; attempts_101 int; hist text; owed_103_unpublished int; owed_103_published int; hist_103 text;
+        owed_105_pass int; owed_105_fail text; menu_101 int; completion int; owed_after text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V666', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), e1, DATE '2666-10-01', DATE '2667-08-31'), (gen_random_uuid(), e2, DATE '2667-10-01', DATE '2668-08-31'),
+            (gen_random_uuid(), cur, DATE '2668-10-01', DATE '2669-08-31');
+        SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+        VALUES (prog, 'B.Sc. Carry-Over Once Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office)
+        SELECT c, 'Check ' || c, 3, CASE c WHEN 'ZDV 104' THEN 2 ELSE 1 END, 100, dept, 'Core', 'LIVE', NULL
+          FROM unnest(ARRAY['ZDV 101', 'ZDV 102', 'ZDV 103', 'ZDV 104', 'ZDV 105', 'ZDV 106', 'ZDV 106 BMAS']) c;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis)
+        SELECT c, prog, 100, 'Core' FROM unnest(ARRAY['ZDV 101', 'ZDV 102', 'ZDV 103', 'ZDV 104', 'ZDV 105', 'ZDV 106', 'ZDV 106 BMAS']) c;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/66/996661', 'MOAUM/CHK/66/6661', 'CHECKV666', 'Carry Once', 'F', prog, 'UTME', e1, 100, 300, 'ACTIVE', now());
+        -- the classes: the first session's six first-semester courses and the second-semester one; the second session's three attempts
+        INSERT INTO catalogue.offering (id, course_code, session, semester)
+        SELECT gen_random_uuid(), c, e1, 1 FROM unnest(ARRAY['ZDV 101', 'ZDV 102', 'ZDV 103', 'ZDV 105', 'ZDV 106', 'ZDV 106 BMAS']) c
+        UNION ALL SELECT gen_random_uuid(), 'ZDV 104', e1, 2
+        UNION ALL SELECT gen_random_uuid(), c, e2, 1 FROM unnest(ARRAY['ZDV 101', 'ZDV 102', 'ZDV 103']) c;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+            (r1, st, e1, 1, 100, 'APPROVED', now(), now()), (r1b, st, e1, 2, 100, 'APPROVED', now(), now()), (r2, st, e2, 1, 200, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT CASE WHEN o.session = e2 THEN r2 WHEN o.semester = 2 THEN r1b ELSE r1 END, o.id, 3,
+               CASE WHEN o.session = e2 THEN 'CARRYOVER' ELSE 'CURRENT' END, 'APPROVED'
+          FROM catalogue.offering o WHERE o.course_code LIKE 'ZDV %' AND o.session IN (e1, e2);
+        -- every class has a sheet; the marks: F in every first attempt, F again for ZDV 101, a pass for ZDV 102 and ZDV 103 after
+        INSERT INTO assessment.score_sheet (id, offering_id) SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.course_code LIKE 'ZDV %' AND o.session IN (e1, e2);
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam)
+        SELECT sh.id, st, CASE WHEN o.session = e2 AND o.course_code IN ('ZDV 102', 'ZDV 103') THEN 25 ELSE 10 END,
+                          CASE WHEN o.session = e2 AND o.course_code IN ('ZDV 102', 'ZDV 103') THEN 40 ELSE 15 END
+          FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code LIKE 'ZDV %' AND o.session IN (e1, e2);
+        -- published: all but ZDV 103's second attempt
+        PERFORM set_config('moaum.maintenance', 'on', true);
+        UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V666'
+          FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code LIKE 'ZDV %' AND o.session IN (e1, e2)
+           AND NOT (o.session = e2 AND o.course_code = 'ZDV 103');
+        PERFORM set_config('moaum.maintenance', '', true);
+
+        owed_before := (SELECT string_agg(c.course_code || '=' || c.attempts || ':' || c.failed_in || '<' || c.first_failed_in, ',' ORDER BY c.course_code)
+                          FROM registration.carryovers(st) c);
+        attempts_101 := (SELECT count(*) FROM registration.carryover_attempts(st) a WHERE a.course_code = 'ZDV 101');
+        hist := (SELECT string_agg(h.course_code || '@' || h.session || ':' || h.semester || '=' || coalesce(h.grade, '-') || '/' || h.result || '/' || h.owed,
+                                   ',' ORDER BY h.course_code, h.session) FROM registration.carryover_history(st) h WHERE h.course_code IN ('ZDV 101', 'ZDV 102', 'ZDV 103'));
+        owed_103_unpublished := (SELECT count(*) FROM registration.carryovers(st) c WHERE c.course_code = 'ZDV 103');
+        -- ZDV 103's second attempt published: a pass, and it clears
+        PERFORM set_config('moaum.maintenance', 'on', true);
+        UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V666'
+          FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.session = e2 AND o.course_code = 'ZDV 103';
+        PERFORM set_config('moaum.maintenance', '', true);
+        owed_103_published := (SELECT count(*) FROM registration.carryovers(st) c WHERE c.course_code = 'ZDV 103');
+        hist_103 := (SELECT string_agg(h.result || '/' || h.owed, ',' ORDER BY h.session) FROM registration.carryover_history(st) h WHERE h.course_code = 'ZDV 103');
+        -- ZDV 105 corrected to a pass (a new version of the published score), then back to a fail
+        INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, reason)
+        SELECT sh.id, st, 2, 25, 40, 'CHECK V666: marking error' FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+         WHERE o.session = e1 AND o.course_code = 'ZDV 105';
+        owed_105_pass := (SELECT count(*) FROM registration.carryovers(st) c WHERE c.course_code = 'ZDV 105');
+        INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, reason)
+        SELECT sh.id, st, 3, 10, 15, 'CHECK V666: corrected again' FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+         WHERE o.session = e1 AND o.course_code = 'ZDV 105';
+        owed_105_fail := (SELECT string_agg(c.course_code || '=' || c.attempts, ',') FROM registration.carryovers(st) c WHERE c.course_code = 'ZDV 105');
+        -- this session's class of ZDV 101: the registration menu offers it once, and the completion check counts each course once
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZDV 101', cur, 1);
+        menu_101 := (SELECT count(*) FROM registration.student_menu(st, cur, 1) m WHERE m.course_code = 'ZDV 101' AND m.carryover);
+        completion := (SELECT x.outstanding FROM people.lifecycle_completion_rows(ARRAY[st]) x);
+        owed_after := (SELECT string_agg(c.course_code, ',' ORDER BY c.course_code) FROM registration.carryovers(st) c);
+        RAISE EXCEPTION 'the V666 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V666 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V666: a course failed in two sessions is owed once with both attempts kept; a pass clears it once published; a corrected result clears and owes again; semesters and the courses of one code apart; the menu and the completion count read each course once',
+        coalesce(owed_before = 'ZDV 101=2:2667/2668 semester 1<2666/2667 semester 1,ZDV 103=1:2666/2667 semester 1<2666/2667 semester 1,'
+                            || 'ZDV 104=1:2666/2667 semester 2<2666/2667 semester 2,ZDV 105=1:2666/2667 semester 1<2666/2667 semester 1,'
+                            || 'ZDV 106=1:2666/2667 semester 1<2666/2667 semester 1,ZDV 106 BMAS=1:2666/2667 semester 1<2666/2667 semester 1'
+                 AND attempts_101 = 2
+                 AND hist = 'ZDV 101@2666/2667:1=F/FAILED/true,ZDV 101@2667/2668:1=F/FAILED/true,ZDV 102@2666/2667:1=F/FAILED/false,'
+                         || 'ZDV 102@2667/2668:1=B/PASSED/false,ZDV 103@2666/2667:1=F/FAILED/true,ZDV 103@2667/2668:1=-/AWAITED/true'
+                 AND owed_103_unpublished = 1 AND owed_103_published = 0 AND hist_103 = 'FAILED/false,PASSED/false'
+                 AND owed_105_pass = 0 AND owed_105_fail = 'ZDV 105=1'
+                 AND menu_101 = 1 AND completion = 5 AND owed_after = 'ZDV 101,ZDV 104,ZDV 105,ZDV 106,ZDV 106 BMAS', false),
+        format('owed %s | attempts of 101 %s | history %s | 103 unpublished %s, published %s (%s) | 105 corrected to a pass %s, back to a fail %s | menu 101 %s | completion %s | owed after %s',
+               owed_before, attempts_101, hist, owed_103_unpublished, owed_103_published, hist_103, owed_105_pass, owed_105_fail, menu_101, completion, owed_after));
 END $$;
 
 -- ── V665: graduation at the Bursar's final clearance, approved waivers, clearance reconciliation runs ──

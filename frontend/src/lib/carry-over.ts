@@ -96,3 +96,48 @@ export function carrySummary(entries: { units: number; level?: number | null; se
     byLevel: levels.map((l) => [l, entries.filter((e) => e.level === l).length] as [number, number]),
   };
 }
+
+/* ── V666: a carry-over once per course, every attempt kept ── */
+
+/** a course owed now, as registration.carryovers gives it: once each, its last failure, how many failed attempts are owed, the first */
+export interface OwedCourse { course_code: string; title: string; units: number; failed_in: string; attempts?: number | null; first_failed_in?: string | null }
+
+export type AttemptResult = "PASSED" | "FAILED" | "AWAITED" | "NO_RESULT" | "REGISTERED";
+
+/** one attempt of a course the student has failed on a published result (registration.carryover_history) */
+export interface HistoryRow { course_code: string; title: string; session: string; semester: number; grade: string | null; result: AttemptResult; owed: boolean }
+
+/** what GET /api/v1/me/carryovers/history answers */
+export interface CarryHistory { owed: OwedCourse[]; history: HistoryRow[] }
+
+export const RESULT_WORD: Record<AttemptResult, string> = {
+  PASSED: "Passed", FAILED: "Failed", AWAITED: "Result awaited", NO_RESULT: "No result on the portal", REGISTERED: "Registered, no result yet",
+};
+
+export const RESULT_KIND: Record<AttemptResult, "ok" | "bad" | "info" | "warn" | "grey"> = {
+  PASSED: "ok", FAILED: "bad", AWAITED: "info", NO_RESULT: "warn", REGISTERED: "grey",
+};
+
+/** "Failed in 2024/2025 semester 1", or "Failed 2 times: first 2024/2025 semester 1, last 2025/2026 semester 1" */
+export function attemptsWords(c: OwedCourse): string {
+  const n = c.attempts ?? 1;
+  if (n <= 1 || !c.first_failed_in || c.first_failed_in === c.failed_in) return `Failed in ${c.failed_in}`;
+  return `Failed ${n} times: first ${c.first_failed_in}, last ${c.failed_in}`;
+}
+
+/** an attempt in a few words: "2024/2025 semester 1 — F" or "2026/2027 semester 1 — Registered, no result yet" */
+export function attemptWord(h: HistoryRow): string {
+  return `${h.session} semester ${h.semester} — ${h.result === "FAILED" || h.result === "PASSED" ? (h.grade ?? RESULT_WORD[h.result]) : RESULT_WORD[h.result]}`;
+}
+
+/** the history by course, in the order given: each course with every attempt, owed now or cleared */
+export function historyByCourse(rows: HistoryRow[]): { course_code: string; title: string; owed: boolean; attempts: HistoryRow[] }[] {
+  const out = new Map<string, { course_code: string; title: string; owed: boolean; attempts: HistoryRow[] }>();
+  for (const r of rows) {
+    const c = out.get(r.course_code) ?? { course_code: r.course_code, title: r.title, owed: r.owed, attempts: [] };
+    c.attempts.push(r);
+    c.owed = c.owed || r.owed;
+    out.set(r.course_code, c);
+  }
+  return [...out.values()];
+}

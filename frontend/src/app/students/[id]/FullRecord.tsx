@@ -24,6 +24,7 @@ import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
 import { PgHistoryPanel } from "@/components/pg/PgHistory";
 import { HistoricalFeesPanel } from "@/components/finance/HistoricalFeesPanel";
+import { RESULT_KIND, attemptWord, attemptsWords, historyByCourse, type HistoryRow, type OwedCourse } from "@/lib/carry-over";
 import {
   PAYMENT_WORDS, TAB_LABELS, day, levelHistory, naira, printBody, purposeOnly, resultWord, sectionTables, semesterOf, tabOf, tabsFor, timeline, words,
   type Payment, type Progression, type ResultRow, type Section, type Tab, type Table,
@@ -362,6 +363,7 @@ export function RegistrationsTab({ d, name, file }: { d: Data; name: string; fil
 function ResultsTab({ d, name, file }: { d: Data; name: string; file: string }) {
   const t = sectionTables("results", d);
   const results = (d.results ?? []) as unknown as ResultRow[], gpas = (d.semesters ?? []) as Row[], owed = (d.owed ?? []) as Row[];
+  const history = (d.carryHistory ?? []) as unknown as HistoryRow[];
   const standing = d.standing as Row | null;
   const groups = Array.from(new Map(results.map((r) => [`${r.session}|${r.semester}`, [] as ResultRow[]])).keys()).map((k) => ({ k, rows: results.filter((r) => `${r.session}|${r.semester}` === k) }));
   return (
@@ -384,8 +386,21 @@ function ResultsTab({ d, name, file }: { d: Data; name: string; file: string }) 
         <PBody><div className="sub2">A course whose sheet is not yet published reads &ldquo;Not yet submitted&rdquo; or &ldquo;Awaiting approval&rdquo;, and a published sheet without the student reads &ldquo;No result&rdquo; — never a zero or a fail.</div></PBody>
       </Panel>
       <Panel title="Courses still owed" right={<ExcelBtn table={t[2]} name={name} file={file} />}>
-        {owed.length ? <DTable pageSize={0} cols={["Course", "Title", "Units|num", "Failed in"]} rows={owed.map((c) => [s(c.course_code), s(c.title), s(c.units), s(c.failed_in)])} />
+        {owed.length ? <DTable pageSize={0} cols={["Course", "Title", "Units|num", "Failed in", "Attempts|num"]}
+          rows={owed.map((c) => [s(c.course_code), s(c.title), s(c.units), s(c.failed_in), <span key="a" className="tnum" title={attemptsWords(c as unknown as OwedCourse)}>{s(c.attempts ?? 1)}</span>])} />
           : <Empty>No course is owed on the published results.</Empty>}
+      </Panel>
+      {/* V666: every attempt of each course failed on a published result — owed now once, however often it was failed */}
+      <Panel title="Carry-over history" right={<ExcelBtn table={t[3]} name={name} file={file} />}>
+        {history.length ? historyByCourse(history).map((c) => (
+          <PBody key={c.course_code}>
+            <div className="row row--between"><span><b className="tnum">{c.course_code}</b> <span className="sub2">{c.title}</span></span>
+              <Pil kind={c.owed ? "bad" : "ok"}>{c.owed ? "CARRY-OVER" : "CLEARED"}</Pil></div>
+            <div className="row mt-1" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
+              {c.attempts.map((h) => <Pil key={`${h.session}|${h.semester}`} kind={RESULT_KIND[h.result]}>{attemptWord(h)}</Pil>)}
+            </div>
+          </PBody>
+        )) : <Empty>No course has been failed on a published result.</Empty>}
       </Panel>
     </>
   );

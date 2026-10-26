@@ -154,7 +154,9 @@ class ReportsController {
     Map<String, Object> carryovers(@RequestParam String session) {
         String cte = """
                 WITH attempts AS (
-                    SELECT r.student_id, c.code AS course, c.title, e.units, r.session AS ses, r.semester AS sem, ls.points,
+                    SELECT r.student_id, c.code AS course, c.title, e.units, r.session AS ses, r.semester AS sem,
+                           -- V422, V666: a recorded absence is an F, as registration.carryovers reads it
+                           CASE WHEN ls.outcome = 'ABSENT' THEN 0 ELSE ls.points END AS points,
                            p.name AS programme, f.name AS faculty
                       FROM registration.course_registration r
                       JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')
@@ -164,7 +166,7 @@ class ReportsController {
                       JOIN people.student s ON s.id = r.student_id AND s.status IN ('ACTIVE','PROBATION')
                       JOIN ref.programme p ON p.code = s.programme_code
                       JOIN ref.faculty f ON f.code = p.faculty_code
-                     WHERE r.status IN ('APPROVED','LOCKED') AND ls.outcome = 'GRADED'
+                     WHERE r.status IN ('APPROVED','LOCKED') AND ls.outcome IN ('GRADED', 'ABSENT')
                 ),
                 latest AS (
                     SELECT DISTINCT ON (student_id, course) student_id, course, title, units, points, programme, faculty
@@ -175,14 +177,14 @@ class ReportsController {
         String scopeWhere = sc == null ? "" : sc.departmentName() != null ? " AND programme = ANY(:progs::text[])" : " AND faculty = :fac";
         var rowsQ = jdbc.sql(cte + """
                 SELECT faculty, programme, course, title, max(units) AS units, count(*) AS students
-                  FROM latest WHERE points = 0""" + scopeWhere + """
+                  FROM latest WHERE points = 0 AND NOT registration.is_elective_for(student_id, course)""" + scopeWhere + """
 
                  GROUP BY faculty, programme, course, title
                  ORDER BY faculty, programme, course
                 """);
         var tallyQ = jdbc.sql(cte + """
                 SELECT count(*) AS carried, count(DISTINCT student_id) AS students
-                  FROM latest WHERE points = 0""" + scopeWhere);
+                  FROM latest WHERE points = 0 AND NOT registration.is_elective_for(student_id, course)""" + scopeWhere);
         if (sc != null && sc.departmentName() != null) {
             // a Postgres array literal, each name quoted (a programme name may carry a comma)
             String progs = sc.programmeNames().stream()
