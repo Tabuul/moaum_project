@@ -200,8 +200,12 @@ class MasterReportController {
         return m;
     }
 
-    private void generic() {
-        jdbc.sql("SELECT set_config('plan_cache_mode', 'force_generic_plan', true)").query().singleRow();
+    /** the report's functions are SQL the planner folds into each statement; a plan made for unknown values cannot drop the "no
+     *  faculty, department or programme chosen" branches. Measured on the live-shaped copy over the whole University: the summary
+     *  65 s generic against 7 s for the request's own values, the students 72 s against 16 s, the period's payments 15 s against
+     *  4 s; a faculty and a programme as fast or faster. Transaction-local. */
+    private void plan() {
+        jdbc.sql("SELECT set_config('plan_cache_mode', 'force_custom_plan', true)").query().singleRow();
     }
 
     /** the period a report reads when none is chosen and what there is to choose from */
@@ -248,11 +252,16 @@ class MasterReportController {
     }
 
     private Report compute(F f, boolean withSemesters, boolean withQuality) {
-        generic();
+        return compute(f, withSemesters, withQuality, false);
+    }
+
+    /** paymentsKept: the period's payments are in pg_temp.master_t (materialisePayments), read once for the figures and every list */
+    private Report compute(F f, boolean withSemesters, boolean withQuality, boolean paymentsKept) {
+        plan();
         String money = money();
         List<Map<String, Object>> rows = shape(jdbc.sql("SELECT * FROM reporting.master_summary(:s, :sem, CAST(:f AS jsonb))")
                 .param("s", f.session()).param("sem", f.semester()).param("f", Operations.json(f.json())).query().listOfRows(), money);
-        Map<String, Object> tx = "NONE".equals(money) ? null : transactionFigures(f);
+        Map<String, Object> tx = "NONE".equals(money) ? null : transactionFigures(f, paymentsKept);
         List<Map<String, Object>> rec = reconcile(rows, tx);
         List<Map<String, Object>> sems = null;
         if (withSemesters) {
@@ -266,15 +275,11 @@ class MasterReportController {
                 sems.add(m);
             }
         }
-        // the data quality figures need a plan made for the request's own values (DatabaseOperationsController.customPlan); the lists after
-        // them go back to the generic plan the student positions are read with
-        if (withQuality) jdbc.sql("SELECT set_config('plan_cache_mode', 'force_custom_plan', true)").query().singleRow();
         List<Map<String, Object>> quality = withQuality
                 ? jdbc.sql("SELECT kind, label, area, n FROM reporting.data_quality(CAST(:fac AS text), CAST(:dept AS text), CAST(:prog AS text), CAST(:s AS text), CAST(:sem AS int))")
                         .param("s", f.session()).param("sem", f.semester()).param("fac", f.bound().fac(), Types.VARCHAR)
                         .param("dept", f.bound().dept(), Types.VARCHAR).param("prog", f.bound().prog(), Types.VARCHAR).query().listOfRows()
                 : null;
-        if (withQuality) generic();
         return new Report(f, money, rows, tx, rec, sems, quality, MasterSections.summary(rows, tx, sems, quality, rec, money));
     }
 
@@ -307,7 +312,8 @@ class MasterReportController {
     @Transactional
     Map<String, Object> pack(@RequestParam Map<String, String> q) {
         F f = filters(q);
-        Report r = compute(f, "true".equals(q.get("semesters")), true);
+        boolean kept = materialisePayments(f);
+        Report r = compute(f, "true".equals(q.get("semesters")), true, kept);
         materialise(f);
         List<Map<String, Object>> sections = new ArrayList<>();
         for (MasterSections.Section s : r.sections()) {
@@ -343,7 +349,8 @@ class MasterReportController {
     @Transactional
     void workbook(@RequestParam Map<String, String> q, HttpServletResponse response) throws IOException {
         F f = filters(q);
-        Report r = compute(f, "true".equals(q.get("semesters")), true);
+        boolean kept = materialisePayments(f);
+        Report r = compute(f, "true".equals(q.get("semesters")), true, kept);
         materialise(f);
         String reference = q.get("reference") != null && q.get("reference").matches("RPT/[0-9]{4}/[0-9]{6}") ? q.get("reference") : null;
         String who = jdbc.sql("SELECT helpdesk.person_name(nullif(current_setting('moaum.actor_id', true), '')::uuid)").query(String.class).optional().orElse("");
@@ -455,9 +462,11 @@ class MasterReportController {
                                e.course_code, e.title, e.units, e.registered, CASE WHEN :o = 'GST' THEN m.gst_status ELSE m.eps_status END AS payment_status,
                                m.gst_reference AS payment_reference, count(*) OVER () AS total_rows
                           FROM pg_temp.master_m m
-                          JOIN finance.gst_eps_rows_all(:s) e ON e.student_id = m.student_id AND e.office = :o AND (e.counts OR e.registered)
+                          JOIN pg_temp.master_g e ON e.student_id = m.student_id AND e.office = :o AND (e.counts OR e.registered)
                          ORDER BY m.surname, m.other_names, m.matric_no, e.course_code LIMIT :cap""";
-                p.addValue("o", "gst_courses".equals(key) ? "GST" : "EPS").addValue("s", f.session());
+                p.addValue("o", "gst_courses".equals(key) ? "GST" : "EPS");
+                // the session's GST and EPS rows, read once for both lists
+                jdbc.sql("CREATE TEMP TABLE IF NOT EXISTS master_g ON COMMIT DROP AS SELECT * FROM finance.gst_eps_rows_all(:s)").param("s", f.session()).update();
             }
             default -> {
                 // the transactions: the period's, the GST or the EPS fee's
@@ -465,7 +474,7 @@ class MasterReportController {
                 String only = "gst_payments".equals(key) ? "GST_FEE" : "eps_payments".equals(key) ? "EPS_FEE" : null;
                 sql = """
                         SELECT t.*, count(*) OVER () AS total_rows
-                          FROM reporting.master_payments(CAST(:s AS text), CAST(:d1 AS date), CAST(:d2 AS date), CAST(:f AS jsonb)) t
+                          FROM pg_temp.master_t t
                          WHERE (CAST(:pin AS text[]) IS NULL OR t.purpose_code = ANY (CAST(:pin AS text[])))
                            AND (CAST(:only AS text) IS NULL OR t.purpose_code = :only)
                          ORDER BY coalesce(t.confirmed_at, t.generated_at) DESC, t.reference LIMIT :cap""";
@@ -485,10 +494,25 @@ class MasterReportController {
 
     /* ── the transactions' figures and the reconciliation ───────────────────────────────────────────────────────────── */
 
-    private static final String PAYMENTS = """
-            FROM reporting.master_payments(CAST(:s AS text), CAST(:d1 AS date), CAST(:d2 AS date), CAST(:f AS jsonb)) t
-            WHERE (CAST(:pin AS text[]) IS NULL OR t.purpose_code = ANY (CAST(:pin AS text[])))
-            """;
+    private static final String PAYMENTS = paymentsFrom(false);
+
+    /** the period's payments: read now, or from the request's own table (pg_temp.master_t) when the package or workbook made it */
+    private static String paymentsFrom(boolean kept) {
+        return (kept ? "FROM pg_temp.master_t t\n"
+                     : "FROM reporting.master_payments(CAST(:s AS text), CAST(:d1 AS date), CAST(:d2 AS date), CAST(:f AS jsonb)) t\n")
+                + "WHERE (CAST(:pin AS text[]) IS NULL OR t.purpose_code = ANY (CAST(:pin AS text[])))\n";
+    }
+
+    /** the period's payments read once into the request's table, for the figures and the three lists; false where the office reads no
+     *  money (nothing is listed then) */
+    private boolean materialisePayments(F f) {
+        if ("NONE".equals(money())) return false;
+        plan();
+        jdbc.sql("DROP TABLE IF EXISTS pg_temp.master_t").update();
+        jdbc.sql("CREATE TEMP TABLE master_t ON COMMIT DROP AS SELECT * FROM reporting.master_payments(CAST(:s AS text), CAST(:d1 AS date), CAST(:d2 AS date), CAST(:f AS jsonb))")
+                .param("s", f.session()).param("d1", f.from(), Types.DATE).param("d2", f.to(), Types.DATE).param("f", Operations.json(f.json())).update();
+        return true;
+    }
 
     private JdbcClient.StatementSpec bindPayments(JdbcClient.StatementSpec q, F f) {
         Object pin = f.json().get("purposeIn");
@@ -498,10 +522,10 @@ class MasterReportController {
     }
 
     /** the transactions of the period: totals by status (transactions, unique students, amount, net), by purpose, day, semester, faculty */
-    private Map<String, Object> transactionFigures(F f) {
+    private Map<String, Object> transactionFigures(F f, boolean kept) {
         if ("GST".equals(money()) && f.json().get("purpose") == null) f.json().put("purposeIn", List.of("GST_FEE", "EPS_FEE"));
         String json = bindPayments(jdbc.sql("""
-                WITH t AS MATERIALIZED (SELECT t.* """ + PAYMENTS + """
+                WITH t AS MATERIALIZED (SELECT t.* """ + paymentsFrom(kept) + """
                 )
                 SELECT json_build_object(
                   'byStatus', (SELECT coalesce(json_agg(x ORDER BY x.status), '[]') FROM (
@@ -610,7 +634,7 @@ class MasterReportController {
     @Transactional(readOnly = true)
     Map<String, Object> students(@RequestParam Map<String, String> q) {
         F f = filters(q);
-        generic();
+        plan();
         Integer size = integer(q.get("size"), 1, 500);
         Integer page = integer(q.get("page"), 1, 9999);
         int sz = size == null ? 50 : size;
@@ -649,7 +673,7 @@ class MasterReportController {
         }
         F f = filters(q);
         if ("GST".equals(money()) && f.json().get("purpose") == null) f.json().put("purposeIn", List.of("GST_FEE", "EPS_FEE"));
-        generic();
+        plan();
         Integer size = integer(q.get("size"), 1, 500);
         Integer page = integer(q.get("page"), 1, 9999);
         int sz = size == null ? 50 : size;

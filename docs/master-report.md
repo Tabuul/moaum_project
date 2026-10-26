@@ -110,8 +110,33 @@ portal cannot see a printer); a permit is "printed" when its own record counts a
 
 ## Speed
 
-On the live-shaped copy (48,325 students): the summary over the whole University 6–11 seconds; one session's transactions about
-1.2 seconds. The page shows the scope bar and filters at once and streams the figures in when they are read.
+The report's functions are SQL the planner folds into each statement, so every read runs with a plan made for the request's own
+values (`plan_cache_mode = force_custom_plan`, transaction-local). A plan made for unknown values cannot drop the "no faculty,
+department or programme chosen" branches. Over the whole University it took the summary to 65 s, the students to 72 s and each
+read of the payments to 15 s, and the data quality figures past ten minutes, so the PDF never finished.
+
+For the PDF and the Excel, the period's payments are read once into the request's own table (`pg_temp.master_t`) and the session's
+GST and EPS course rows once (`pg_temp.master_g`); the figures and every list read from them.
+
+On the live-shaped copy (48,325 students, 97,457 transactions), each heavy read on a fresh connection, as the live server runs it:
+
+| Read | Time |
+|---|---|
+| Summary | 10.8 s |
+| Students, materialised | 7.7 s |
+| Data quality | 2.8 s |
+| Payments, read once | 1.7 s |
+| GST and EPS rows, read once | 1.1 s |
+
+Through the local API (whose pooled connections run about four times slower on this Windows scratch database), whole University:
+
+| Request | Before | After |
+|---|---|---|
+| PDF package | 207 s | 64 s |
+| Excel workbook (32.6 MB) | — | 74 s |
+| One faculty's PDF package | — | 37 s |
+
+The page shows the scope bar and filters at once and streams the figures in when they are read.
 
 ## Checked by
 
