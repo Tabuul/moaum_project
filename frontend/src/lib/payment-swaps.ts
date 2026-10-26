@@ -5,7 +5,22 @@
 
 export type SwapStatus = "PENDING_APPROVAL" | "COMPLETED" | "REJECTED" | "CANCELLED" | "FAILED" | "REVERSED";
 
-export interface SwapAccount { due: number; paid: number; balance: number; clearsRegistration?: boolean | null; clearsExamination?: boolean | null }
+export interface SwapAccount {
+  due: number; paid: number; balance: number; clearsRegistration?: boolean | null; clearsExamination?: boolean | null;
+  /** V660: the old portal's outstanding-fees payments credited to the student in the session */
+  outstandingPaid?: number | null;
+}
+
+/** V660: what a swap moves — a school-fees payment, or one of the old portal's OUTSTANDING FEES payments (never counted against the
+ *  session's school fees: it moves the outstanding-fees payments, not the school fees paid) */
+export type SwapKind = "SCHOOL_FEES" | "OUTSTANDING_FEES";
+export function isOutstanding(p: { kind?: string | null; purpose?: string | null }): boolean {
+  // a payment's kind says it; a swap row's own kind (SWAP, REVERSAL) does not, so its purpose does
+  if (p.kind === "OUTSTANDING_FEES") return true;
+  if (p.kind === "SCHOOL_FEES") return false;
+  return /^\s*outstanding/i.test(p.purpose ?? "");
+}
+export const KIND_WORDS: Record<SwapKind, string> = { SCHOOL_FEES: "School fees", OUTSTANDING_FEES: "Old-portal outstanding fees" };
 
 /** a clearance as said: null (the API omits it) where no clearance scheme is in force */
 export function clearsWord(v: boolean | null | undefined): string {
@@ -20,6 +35,7 @@ export interface SwapProfile {
 export interface SwapPayment {
   id: string; reference: string; amount: number; session: string; purpose: string; channel?: string | null; receiptNo?: string | null;
   confirmedAt?: string | null; generatedAt?: string | null; note?: string | null; legacy?: boolean; legacyPayref?: string | null;
+  kind?: SwapKind | null; outstandingStatus?: string | null;
 }
 
 export interface SwapCheck {
@@ -31,6 +47,7 @@ export interface SwapCheck {
 export interface FoundPayment {
   id: string; reference: string; amount: number; session: string; purpose: string; channel?: string | null; receipt_no?: string | null;
   confirmed_at?: string | null; student_id: string; matric_no?: string | null; name: string; eligible: boolean; refusals: string[];
+  kind?: SwapKind | null;
 }
 
 export interface FoundStudent {

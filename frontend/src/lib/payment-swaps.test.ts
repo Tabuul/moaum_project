@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evidenceRefusal, readSwapFilters, reasonOk, refusalParts, swapQuery, EMPTY_SWAP_FILTERS } from "./payment-swaps.ts";
+import { evidenceRefusal, isOutstanding, readSwapFilters, reasonOk, refusalParts, swapQuery, EMPTY_SWAP_FILTERS, KIND_WORDS } from "./payment-swaps.ts";
+
+test("an old-portal outstanding-fees payment is told apart from school fees (V660)", () => {
+  assert.equal(isOutstanding({ kind: "OUTSTANDING_FEES" }), true);
+  assert.equal(isOutstanding({ kind: "SCHOOL_FEES", purpose: "OUTSTANDING FEES (legacy) · semester 2" }), false);
+  // a swap row has no kind: its purpose says it
+  assert.equal(isOutstanding({ purpose: "OUTSTANDING FEES (legacy) · semester 2" }), true);
+  assert.equal(isOutstanding({ purpose: "School fees (legacy) · semester 2" }), false);
+  assert.equal(isOutstanding({}), false);
+  // a swap row's kind is the swap's (SWAP or REVERSAL): its purpose decides
+  assert.equal(isOutstanding({ kind: "SWAP", purpose: "OUTSTANDING FEES (legacy) · semester 2" }), true);
+  assert.equal(isOutstanding({ kind: "REVERSAL", purpose: "School fees 2025/2026" }), false);
+  assert.equal(KIND_WORDS.OUTSTANDING_FEES, "Old-portal outstanding fees");
+});
 
 test("a refusal is read as its code and its words", () => {
   assert.deepEqual(refusalParts("SWAP_SAME_STUDENT: Original and target student cannot be the same."), { code: "SWAP_SAME_STUDENT", words: "Original and target student cannot be the same." });

@@ -156,4 +156,56 @@ class PaymentSwapIT {
             });
         }
     }
+
+    /** V660: one of the old portal's OUTSTANDING FEES payments credited to A is found, checked (B has no school fees stated, and need
+     *  not), initiated and approved, and moves with the outstanding-fees payments — A's down and B's up by the amount — and no school-fee
+     *  flag; the swap says what it moved */
+    @Test
+    void anOldPortalOutstandingFeesPaymentIsSwappedToItsOwnerOnItsOwnFigures() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        int y = it.freeYear(3100, 3800);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        UUID a = it.student(it.freeSurname("ZZSWAPOA"), "C00023", it.freeNumber("MOAUM/ADM/26/8", 5), it.freeNumber("MOAU/SC/CSC/26/8", 5), 100);
+        UUID b = it.student(it.freeSurname("ZZSWAPOB"), "C00023", it.freeNumber("MOAUM/ADM/26/8", 5), it.freeNumber("MOAU/SC/CSC/26/8", 5), 100);
+        String ref = "MOAUM-LEG-ZZIT660-" + y + "-S2-OUTSTANDINGFEES";
+        UUID officer = it.person(it.freeNumber("ZZ-SWAPO-", 6), "ZZSWAPOSAO");
+        UUID payment = it.db(() -> jdbc.sql("""
+                INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                VALUES (:a, :s, :r, 'OUTSTANDING FEES (legacy) · semester 2', 6709, now(), now(), :by, 'Legacy', :r, 'IT V660 old ref')
+                RETURNING id
+                """).param("a", a).param("s", session).param("r", ref).param("by", officer).query(UUID.class).single());
+        String sao = TestTokens.token(officer, List.of("studentaccounts"));
+        String bur = TestTokens.token(it.person(it.freeNumber("ZZ-SWAPO-", 6), "ZZSWAPOBURSAR"), List.of("bursar"));
+        try {
+            // found as an outstanding-fees payment and free to swap
+            List<Map> found = it.getList(sao, BASE + "/payments?q=" + ref).getBody();
+            assertThat(found).singleElement().satisfies(p -> {
+                assertThat(p).containsEntry("kind", "OUTSTANDING_FEES").containsEntry("eligible", true);
+            });
+            ResponseEntity<Map> check = it.get(sao, BASE + "/check?payment=" + payment + "&to=" + b);
+            assertThat(check.getBody()).as(String.valueOf(check.getBody())).containsEntry("ok", true);
+            assertThat((Map) check.getBody().get("payment")).containsEntry("kind", "OUTSTANDING_FEES").containsEntry("outstandingStatus", "WAITING");
+            assertThat(((Number) ((Map) check.getBody().get("fromAccount")).get("outstandingPaid")).doubleValue()).isEqualTo(6709);
+            assertThat(((Number) ((Map) check.getBody().get("toAccount")).get("outstandingPaid")).doubleValue()).isEqualTo(0);
+
+            // initiated by the Students Account Officer, approved by a Bursar officer: it moves whole, on its own figures
+            Map swap = (Map) it.call(sao, HttpMethod.POST, BASE, Map.of("payment", payment, "to", b,
+                    "reason", "The outstanding fees were paid on A's number for B; the old portal statement shows it", "confirmed", true)).getBody().get("swap");
+            assertThat(swap).as(String.valueOf(swap)).containsEntry("status", "PENDING_APPROVAL");
+            ResponseEntity<Map> done = it.call(bur, HttpMethod.POST, BASE + "/" + swap.get("id") + "/decide", Map.of("approve", true, "confirmed", true, "note", "Checked"));
+            assertThat((Map) done.getBody().get("result")).as(String.valueOf(done.getBody())).containsEntry("status", "COMPLETED").containsEntry("kind", "OUTSTANDING_FEES");
+            assertThat(jdbc.sql("SELECT student_id FROM finance.payment_reference WHERE id = :p").param("p", payment).query(UUID.class).single()).isEqualTo(b);
+            assertThat(jdbc.sql("SELECT finance.payment_swap_outstanding(:s, :ses)").param("s", a).param("ses", session).query(Double.class).single()).isZero();
+            assertThat(jdbc.sql("SELECT finance.payment_swap_outstanding(:s, :ses)").param("s", b).param("ses", session).query(Double.class).single()).isEqualTo(6709);
+            assertThat(jdbc.sql("SELECT cardinality(flags) FROM finance.payment_swap WHERE id = :w").param("w", UUID.fromString(String.valueOf(swap.get("id"))))
+                    .query(Integer.class).single()).isZero();
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM finance.payment_swap WHERE payment_id = :p").param("p", payment).update();
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE id = :p").param("p", payment).update();
+                return null;
+            });
+        }
+    }
 }

@@ -14,11 +14,13 @@ import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { formatDocDateTime } from "@/lib/document/institution";
-import { EVENT_WORDS, FLAG_WORDS, clearsWord, STATUS_WORDS, evidenceRefusal, reasonOk, refusalParts, studentLine, type SwapAccount, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
+import { EVENT_WORDS, FLAG_WORDS, clearsWord, STATUS_WORDS, evidenceRefusal, isOutstanding, reasonOk, refusalParts, studentLine, type SwapAccount, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
 import { SWAPS, fileAsDataUrl, swapPost } from "./swap-call";
 
-function Side({ title, profile, now, before, after }: { title: string; profile: SwapProfile; now: SwapAccount; before?: SwapAccount; after?: SwapAccount }) {
+function Side({ title, profile, now, before, after, outstanding }: { title: string; profile: SwapProfile; now: SwapAccount; before?: SwapAccount; after?: SwapAccount; outstanding?: boolean }) {
   const rows: [string, (a: SwapAccount) => React.ReactNode][] = [
+    // V660: an outstanding-fees swap moves the old portal's outstanding-fees payments, not the school fees paid
+    ...(outstanding ? [["Outstanding-fees payments", (a: SwapAccount) => <b>{a.outstandingPaid == null ? "—" : money(Number(a.outstandingPaid))}</b>]] as [string, (a: SwapAccount) => React.ReactNode][] : []),
     ["School fees due", (a) => money(Number(a.due))],
     ["Paid", (a) => money(Number(a.paid))],
     ["Balance", (a) => <b>{money(Number(a.balance))}</b>],
@@ -132,7 +134,7 @@ export function SwapView({ detail, office, onClose, onChanged }: { detail: SwapD
       <table className="tbl tbl--data">
         <tbody>
           <tr><td>Payment reference</td><td className="tnum">{s.reference}{s.legacy ? <> <Pil kind="grey">Old portal</Pil></> : null}</td></tr>
-          <tr><td>Purpose</td><td>{s.purpose}</td></tr>
+          <tr><td>Purpose</td><td>{s.purpose}{isOutstanding(s) ? <> <Pil kind="info">Old-portal outstanding fees</Pil></> : null}</td></tr>
           <tr><td>Amount</td><td className="tnum"><b>{money(Number(s.amount))}</b> — the whole payment</td></tr>
           <tr><td>Channel · receipt</td><td>{s.channel ?? "—"}{s.receipt_no ? ` · ${s.receipt_no}` : ""}</td></tr>
           <tr><td>Payment confirmed</td><td>{formatDocDateTime(s.payment_confirmed_at)} (unchanged by the swap)</td></tr>
@@ -147,8 +149,8 @@ export function SwapView({ detail, office, onClose, onChanged }: { detail: SwapD
       </table>
 
       <div className="grid grid--2" style={{ marginTop: 10 }}>
-        <Side title="From — credited in error" profile={detail.from} now={detail.fromAccount} before={before?.from} after={after?.from} />
-        <Side title="To — the student it belongs to" profile={detail.to} now={detail.toAccount} before={before?.to} after={after?.to} />
+        <Side title="From — credited in error" profile={detail.from} now={detail.fromAccount} before={before?.from} after={after?.from} outstanding={isOutstanding(s)} />
+        <Side title="To — the student it belongs to" profile={detail.to} now={detail.toAccount} before={before?.to} after={after?.to} outstanding={isOutstanding(s)} />
       </div>
 
       <div className="eyebrow" style={{ marginTop: 12 }}>Timeline</div>

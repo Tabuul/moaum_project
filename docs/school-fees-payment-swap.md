@@ -64,7 +64,7 @@ The API checks offices with `@PreAuthorize` before the database is reached. The 
 A payment may be swapped only when all of these hold. Each refusal has its own code:
 
 - it is on record (`SWAP_NOT_FOUND`)
-- it is school fees (`SWAP_NOT_SCHOOL_FEES`)
+- it is school fees, or one of the old portal's OUTSTANDING FEES payments (V660; `SWAP_NOT_SCHOOL_FEES` otherwise)
 - it is confirmed; pending, failed and expired payments are refused (`SWAP_NOT_VERIFIED`)
 - no refund stands against it (`SWAP_REFUNDED`)
 - Interswitch has not reported it reversed (`SWAP_REVERSED`)
@@ -75,9 +75,29 @@ A payment may be swapped only when all of these hold. Each refusal has its own c
 - the target is a real student (`SWAP_TARGET_UNKNOWN`)
 - the target is a different student (`SWAP_SAME_STUDENT`, "Original and target student cannot be the same.")
 - the target is not a merged record (`SWAP_TARGET_MERGED`)
-- the target has school fees stated for the session (`SWAP_TARGET_FEES_NOT_STATED`)
+- the target has school fees stated for the session (`SWAP_TARGET_FEES_NOT_STATED`) — school fees only
 
 The whole payment is swapped. A payment is never split.
+
+## Outstanding-fees payments (V660, 26 October 2026)
+
+The University's word: "add Outstanding Fee to swap too … because the OUTSTANDING fee too most of them wrongly went to other students
+account too". The old portal's OUTSTANDING FEES payments (channel `Legacy`, purpose `OUTSTANDING FEES (legacy) · semester N`, V631) are
+swapped through the same screen, the same two officers and the same reversal. They differ from school fees in three ways:
+
+- **What they count against.** They are never counted against a session's school fees. So the target needs no school fees stated for
+  the session, an overpayment decision on school fees is no reason to refuse, and no school-fee flag is raised.
+- **How they reconcile.** The swap reconciles on the outstanding-fees payments (`finance.payment_swap_outstanding`): the session's
+  total of them is unchanged, the credited student's goes down and the owner's goes up by exactly the amount, or nothing changes. The
+  accounts on the screen show "Outstanding-fees payments" before and after; the school fees paid stay as they were.
+- **The wallet desk.** Once the Bursary has acted on the payment for the wallet (Outstanding fees payments, V631) it is refused:
+  `SWAP_OUTSTANDING_CREDITED` when it is credited to the wallet of the student it is on (the money is in that wallet), and
+  `SWAP_OUTSTANDING_VERIFIED` when it is verified for crediting (the Bursary returns it on that desk first). A payment returned or
+  rejected there may be swapped, and its desk record follows it to the student it belongs to.
+
+`finance.payment_swap_kind(payment)` says which a payment is (`SCHOOL_FEES`, `OUTSTANDING_FEES`); the check returns it as
+`payment.kind` with `payment.outstandingStatus` (WAITING, RETURNED, REJECTED, VERIFIED, CREDITED), the search returns `kind`, and a
+completed swap's before and after states name the kind.
 
 ## The workflow
 

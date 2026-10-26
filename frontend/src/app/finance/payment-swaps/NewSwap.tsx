@@ -13,10 +13,10 @@ import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notifyProblem } from "@/components/proto/Toast";
 import { formatDocDateTime } from "@/lib/document/institution";
-import { clearsWord, evidenceRefusal, reasonOk, refusalParts, studentLine, type FoundPayment, type FoundStudent, type SwapAccount, type SwapCheck, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
+import { clearsWord, evidenceRefusal, isOutstanding, reasonOk, refusalParts, studentLine, type FoundPayment, type FoundStudent, type SwapAccount, type SwapCheck, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
 import { fileAsDataUrl, swapGet, swapPost } from "./swap-call";
 
-function Account({ title, profile, account, after }: { title: string; profile?: SwapProfile; account?: SwapAccount; after?: number | null }) {
+function Account({ title, profile, account, after, outstanding }: { title: string; profile?: SwapProfile; account?: SwapAccount; after?: number | null; outstanding?: boolean }) {
   if (!profile || !account) return null;
   return (
     <div className="card" style={{ padding: 12, minWidth: 0 }}>
@@ -27,10 +27,12 @@ function Account({ title, profile, account, after }: { title: string; profile?: 
       <div className="sub2">{profile.current_level ? `${profile.current_level} level · ` : ""}{profile.status ?? ""}{profile.merged ? " · merged record" : ""}</div>
       <table className="tbl tbl--data" style={{ marginTop: 8 }}>
         <tbody>
+          {outstanding ? <tr><td>Outstanding-fees payments</td><td className="num tnum"><b>{money(Number(account.outstandingPaid ?? 0))}</b></td></tr> : null}
+          {outstanding && after != null ? <tr><td>Outstanding-fees payments after the swap</td><td className="num tnum"><b>{money(after)}</b></td></tr> : null}
           <tr><td>School fees due</td><td className="num tnum">{money(Number(account.due))}</td></tr>
-          <tr><td>Paid</td><td className="num tnum">{money(Number(account.paid))}</td></tr>
+          <tr><td>{outstanding ? "School fees paid (unchanged by the swap)" : "Paid"}</td><td className="num tnum">{money(Number(account.paid))}</td></tr>
           <tr><td>Balance</td><td className="num tnum"><b>{money(Number(account.balance))}</b></td></tr>
-          {after != null ? <tr><td>Paid after the swap</td><td className="num tnum"><b>{money(after)}</b></td></tr> : null}
+          {!outstanding && after != null ? <tr><td>Paid after the swap</td><td className="num tnum"><b>{money(after)}</b></td></tr> : null}
           <tr><td>Clears registration</td><td className="num"><Pil kind={account.clearsRegistration ? "ok" : account.clearsRegistration == null ? "grey" : "warn"}>{clearsWord(account.clearsRegistration)}</Pil></td></tr>
           <tr><td>Clears examination</td><td className="num"><Pil kind={account.clearsExamination ? "ok" : account.clearsExamination == null ? "grey" : "warn"}>{clearsWord(account.clearsExamination)}</Pil></td></tr>
         </tbody>
@@ -41,10 +43,13 @@ function Account({ title, profile, account, after }: { title: string; profile?: 
 
 export function SwapAccounts({ check }: { check: SwapCheck }) {
   const amount = Number(check.payment?.amount ?? 0);
+  // V660: an outstanding-fees payment moves the outstanding-fees payments; a school-fees payment the school fees paid
+  const out = !!check.payment && isOutstanding(check.payment);
+  const figure = (a: SwapAccount) => Number(out ? a.outstandingPaid ?? 0 : a.paid);
   return (
     <div className="grid grid--2">
-      <Account title="Credited to (wrong student)" profile={check.fromProfile} account={check.fromAccount} after={check.fromAccount ? Number(check.fromAccount.paid) - amount : null} />
-      <Account title="Belongs to (correct student)" profile={check.toProfile} account={check.toAccount} after={check.toAccount ? Number(check.toAccount.paid) + amount : null} />
+      <Account title="Credited to (wrong student)" profile={check.fromProfile} account={check.fromAccount} outstanding={out} after={check.fromAccount ? figure(check.fromAccount) - amount : null} />
+      <Account title="Belongs to (correct student)" profile={check.toProfile} account={check.toAccount} outstanding={out} after={check.toAccount ? figure(check.toAccount) + amount : null} />
     </div>
   );
 }
@@ -113,7 +118,7 @@ export function NewSwap({ onClose, onDone }: { onClose: () => void; onDone: (d: 
   const ready = !!check?.ok && reasonOk(reason) && confirmed && !fileProblem;
 
   return (
-    <Modal wide title="New school fees payment swap" sub="The whole payment moves to the student it belongs to, once a Bursar officer other than you approves it" onClose={onClose}
+    <Modal wide title="New payment swap" sub="A school-fees or old-portal outstanding-fees payment: the whole payment moves to the student it belongs to, once a Bursar officer other than you approves it" onClose={onClose}
       foot={<><Btn kind="ghost" onClick={onClose}>Cancel</Btn><span className="grow" />
         <Btn kind="primary" size="md" disabled={!ready} busy={stage === "submit"} busyLabel="Submitting for Review..." onClick={submit}>Submit for review</Btn></>}>
       {err ? <ProblemNotice problem={err} /> : null}
@@ -132,7 +137,8 @@ export function NewSwap({ onClose, onDone }: { onClose: () => void; onDone: (d: 
             <tbody>
               {payments.map((p) => (
                 <tr key={p.id}>
-                  <td className="tnum">{p.reference}{p.receipt_no ? <div className="sub2">receipt {p.receipt_no}</div> : null}<div className="sub2">{p.purpose}{p.channel ? ` · ${p.channel}` : ""}</div></td>
+                  <td className="tnum">{p.reference}{p.receipt_no ? <div className="sub2">receipt {p.receipt_no}</div> : null}<div className="sub2">{p.purpose}{p.channel ? ` · ${p.channel}` : ""}</div>
+                    {isOutstanding(p) ? <Pil kind="info">Old-portal outstanding fees</Pil> : null}</td>
                   <td>{studentLine(p)}</td>
                   <td className="num tnum">{money(Number(p.amount))}</td>
                   <td>{p.session}</td>
@@ -145,12 +151,13 @@ export function NewSwap({ onClose, onDone }: { onClose: () => void; onDone: (d: 
               ))}
             </tbody>
           </table>
-        ) : <Note kind="info" title="No school-fees payment matches">Search by the payment reference, the receipt, or the credited student&apos;s number.</Note>
+        ) : <Note kind="info" title="No school-fees or outstanding-fees payment matches">Search by the payment reference, the receipt, or the credited student&apos;s number.</Note>
       ) : null}
       {payment ? (
         <Note kind="ok" title={`${payment.reference} · ${money(Number(payment.amount))} · ${payment.session}`}
           action={<Btn kind="ghost" onClick={() => { setPayment(null); setCheck(null); setStudents(null); }}>Change</Btn>}>
           {payment.purpose}, credited to {studentLine(payment)}{payment.confirmed_at ? `, confirmed ${formatDocDateTime(payment.confirmed_at)}` : ""}. The whole payment is swapped, never part of it.
+          {isOutstanding(payment) ? " An old-portal outstanding-fees payment: it moves with the outstanding-fees payments, never against the session's school fees; once the Bursary has verified or credited it for the wallet it is not swapped." : ""}
         </Note>
       ) : null}
 
@@ -197,7 +204,7 @@ export function NewSwap({ onClose, onDone }: { onClose: () => void; onDone: (d: 
             </Note>
           )}
           <SwapAccounts check={check} />
-          {check.ok && check.toAccount && check.payment && Number(check.toAccount.paid) + Number(check.payment.amount) > Number(check.toAccount.due) ? (
+          {check.ok && check.toAccount && check.payment && !isOutstanding(check.payment) && Number(check.toAccount.paid) + Number(check.payment.amount) > Number(check.toAccount.due) ? (
             <Note kind="info" title="The student it belongs to will have paid more than this session's fees">
               After the swap {studentLine(check.toProfile)} will have paid {money(Number(check.toAccount.paid) + Number(check.payment.amount) - Number(check.toAccount.due))} more
               than is due for {check.payment.session}. The swap is still the whole payment; the excess is an overpayment for the Bursary to carry forward or refund.

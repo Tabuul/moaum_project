@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 489
+\set EXPECTED 490
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26129,6 +26129,95 @@ BEGIN
     PERFORM pg_temp.assert('V662: past results are uploaded by the Directorate of ICT or a Database Operator granted over the whole University; one held to a department is refused',
         coalesce(r_uni = 'ADMITTED' AND r_dep = 'PAST_RESULTS_OFFICE' AND r_exams = 'PAST_RESULTS_OFFICE' AND r_ict = 'ADMITTED', false),
         format('operator (University) %s, operator (department) %s, exams %s, ict %s', r_uni, r_dep, r_exams, r_ict));
+END $$;
+
+-- ── V660. Outstanding-fees payments swapped: a made-up student credited with four of the old portal's OUTSTANDING FEES payments
+--          and an acceptance fee — one waiting, one verified for the wallet, one credited to the wallet, one verified and returned —
+--          and another student it belongs to, with no school fees stated. The waiting one may be swapped (no school fees needed), the
+--          verified and the credited ones and the acceptance fee may not; swapped by the Students Account Officer and decided by a
+--          Bursar officer, it moves whole, the outstanding-fees payments of the two reconciled and no school-fee flag raised, the desk
+--          listing it under its owner; the returned one swapped carries its desk record with it; the Bursar's reversal brings the
+--          first back. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9660/9661'; v_prog text; v_entry text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
+    a_off uuid := gen_random_uuid(); b_off uuid := gen_random_uuid(); p_out uuid; p_ver uuid; p_cred uuid; p_ret uuid; p_acc uuid;
+    c_out jsonb; c_ver jsonb; c_cred jsonb; c_acc jsonb; w1 uuid; d1 jsonb; w2 uuid; d2 jsonb; w3 uuid; d3 jsonb; msg text;
+    out_owner text; s1_out numeric; s2_out numeric; listed_s2 int; ret_desk text; back_owner text; flags1 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V660', true);
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    SELECT code INTO v_prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT name INTO v_entry FROM policy.academic_session ORDER BY starts_on DESC LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (s1, 'MOAUM/ADM/99/660001', 'MOAUM/ZZS/99/6601', 'CHECKV660', 'Credited in error', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now()),
+           (s2, 'MOAUM/ADM/99/660002', 'MOAUM/ZZS/99/6602', 'CHECKV660', 'It belongs to', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (s1, ses, 'MOAUM-LEG-CHECKV660-9660-9661-S2-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 2', 6709, now(), now(), a_off, 'Legacy', 'LEG-CHECKV660-1', 'old ref PR660000001'),
+           (s1, ses, 'MOAUM-LEG-CHECKV660-9660-9661-S1-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 1', 5000, now(), now(), a_off, 'Legacy', 'LEG-CHECKV660-2', 'old ref PR660000002'),
+           (s1, ses, 'MOAUM-LEG-CHECKV660-9660-9661-S3-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 1', 4000, now(), now(), a_off, 'Legacy', 'LEG-CHECKV660-3', 'old ref PR660000003'),
+           (s1, ses, 'MOAUM-LEG-CHECKV660-9660-9661-S4-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 2', 3000, now(), now(), a_off, 'Legacy', 'LEG-CHECKV660-4', 'old ref PR660000004'),
+           (s1, ses, 'MOAUM-CHECKV660-ACCEPTANCE', 'Acceptance fee', 20000, now(), now(), a_off, 'Interswitch', 'CHECKV660-5', NULL);
+    SELECT id INTO p_out FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHECKV660-9660-9661-S2-OUTSTANDINGFEES';
+    SELECT id INTO p_ver FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHECKV660-9660-9661-S1-OUTSTANDINGFEES';
+    SELECT id INTO p_cred FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHECKV660-9660-9661-S3-OUTSTANDINGFEES';
+    SELECT id INTO p_ret FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHECKV660-9660-9661-S4-OUTSTANDINGFEES';
+    SELECT id INTO p_acc FROM finance.payment_reference WHERE reference = 'MOAUM-CHECKV660-ACCEPTANCE';
+    -- the wallet desk (V631): three verified by the Students Account Officer; one credited and one returned by a Bursar officer
+    PERFORM finance.legacy_outstanding_payment_verify(ARRAY[p_ver, p_cred, p_ret], 'checked against the old portal statement');
+    PERFORM set_config('moaum.actor_id', b_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.legacy_outstanding_payment_credit(ARRAY[p_cred], 'CHECK V660');
+    PERFORM finance.legacy_outstanding_payment_decide(p_ret, 'RETURN', 'the payment is on the wrong student: to be swapped first');
+
+    -- what may be swapped
+    c_out := finance.payment_swap_check(p_out, s2);
+    c_ver := finance.payment_swap_check(p_ver, s2);
+    c_cred := finance.payment_swap_check(p_cred, s2);
+    c_acc := finance.payment_swap_check(p_acc, s2);
+
+    -- the waiting one: initiated by the Students Account Officer, decided by a Bursar officer
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    w1 := finance.initiate_payment_swap(p_out, s2, 'The parent paid the outstanding fees on the wrong matriculation number; the teller confirms it', NULL, true);
+    PERFORM set_config('moaum.actor_id', b_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    d1 := finance.decide_payment_swap(w1, true, 'Verified against the old portal statement', true);
+    out_owner := (SELECT CASE student_id WHEN s2 THEN 'S2' WHEN s1 THEN 'S1' END FROM finance.payment_reference WHERE id = p_out);
+    s1_out := finance.payment_swap_outstanding(s1, ses);
+    s2_out := finance.payment_swap_outstanding(s2, ses);
+    flags1 := (SELECT array_to_string(flags, ',') FROM finance.payment_swap WHERE id = w1);
+    listed_s2 := (SELECT count(*) FROM finance.legacy_outstanding_payment_rows(NULL, ses, NULL, NULL, NULL, 50, s2) r);
+
+    -- the returned one: swapped, its desk record follows it
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    w2 := finance.initiate_payment_swap(p_ret, s2, 'Returned on the wallet desk: the payment belongs to the other student, per the old portal', NULL, true);
+    PERFORM set_config('moaum.actor_id', b_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    d2 := finance.decide_payment_swap(w2, true, 'Confirmed with the student it belongs to', true);
+    ret_desk := (SELECT x.status || '/' || CASE x.student_id WHEN s2 THEN 'S2' ELSE 'S1' END FROM finance.legacy_outstanding_payment x WHERE x.payment_id = p_ret);
+
+    -- the Bursar's reversal of the first, decided by another Bursar officer
+    w3 := finance.initiate_payment_swap(NULL, NULL, 'Reversed: the teller was for the first student after all, per the bank', NULL, true, w1);
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    d3 := finance.decide_payment_swap(w3, true, 'The bank statement settles it', true);
+    back_owner := (SELECT CASE student_id WHEN s2 THEN 'S2' WHEN s1 THEN 'S1' END FROM finance.payment_reference WHERE id = p_out);
+
+    msg := format('waiting %s %s %s %s | verified %s | credited %s | acceptance %s | swap %s %s flags [%s] owner %s, outstanding %s/%s, desk under owner %s | returned %s, desk %s | reversal %s owner %s',
+                  c_out->>'ok', c_out->'payment'->>'kind', c_out->'payment'->>'outstandingStatus', c_out->'refusals',
+                  split_part(c_ver->'refusals'->>0, ':', 1), split_part(c_cred->'refusals'->>0, ':', 1), split_part(c_acc->'refusals'->>0, ':', 1),
+                  d1->>'status', d1->>'kind', flags1, out_owner, s1_out, s2_out, listed_s2, d2->>'status', ret_desk, d3->>'status', back_owner);
+    RAISE EXCEPTION 'the V660 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V660 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V660: the old portal''s outstanding-fees payments are swapped to the student they belong to, reconciled on those payments',
+      coalesce(msg = 'waiting true OUTSTANDING_FEES WAITING [] | verified SWAP_OUTSTANDING_VERIFIED | credited SWAP_OUTSTANDING_CREDITED | acceptance SWAP_NOT_SCHOOL_FEES'
+               || ' | swap COMPLETED OUTSTANDING_FEES flags [] owner S2, outstanding 12000.00/6709.00, desk under owner 1 | returned COMPLETED, desk RETURNED/S2 | reversal COMPLETED owner S1', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

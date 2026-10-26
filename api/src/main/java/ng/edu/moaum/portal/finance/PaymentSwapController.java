@@ -34,7 +34,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * School fees payment swap (V527): a verified school-fees payment credited to the wrong student is moved to the student it belongs
- * to as a controlled correction. The Students Account Officer (or the Bursar) finds the payment and the student it belongs to,
+ * to as a controlled correction — and since V660 the old portal's OUTSTANDING FEES payments too (reconciled on those payments, and
+ * not once the Bursary has verified or credited them for the wallet). The Students Account Officer (or the Bursar) finds the payment and the student it belongs to,
  * gives the reason, the evidence and the confirmation; a Bursar officer — never the one who
  * initiated it — rejects it, or approves it and it is executed at once in the database (finance.decide_payment_swap: the payment
  * locked and checked again, its student changed and nothing else, the accounts reconciled, or nothing). Internal Audit reads. The
@@ -95,7 +96,8 @@ class PaymentSwapController {
         return json(jdbc.sql("SELECT finance.payment_swap_account(:s, :ses)::text").param("s", student).param("ses", session).query(String.class).single());
     }
 
-    /** the school-fees payments a search finds — by the payment's reference, receipt or old-portal number, or the student's number or name */
+    /** the payments a swap moves — school fees, and the old portal's outstanding fees (V660) — that a search finds, by the payment's
+     *  reference, receipt or old-portal number, or the student's number or name */
     @GetMapping("/payments")
     @PreAuthorize(INITIATORS)
     @Transactional(readOnly = true)
@@ -113,9 +115,9 @@ class PaymentSwapController {
                            WHERE upper(s.matric_no) = upper(:t) OR upper(s.jamb_reg_no) = upper(:t) OR upper(s.admission_no) = upper(:t)
                               OR (length(:t) >= 4 AND (s.surname || ' ' || s.other_names) ILIKE '%' || :t || '%'))
                 SELECT r.id, r.reference, r.amount, r.session, r.purpose, r.channel, r.receipt_no, r.confirmed_at, s.id AS student_id,
-                       s.matric_no, s.surname || ', ' || s.other_names AS name
+                       s.matric_no, s.surname || ', ' || s.other_names AS name, finance.payment_swap_kind(r.id) AS kind
                   FROM hit JOIN finance.payment_reference r ON r.id = hit.id JOIN people.student s ON s.id = r.student_id
-                 WHERE r.purpose LIKE 'School fees%'
+                 WHERE r.purpose LIKE 'School fees%' OR (r.channel = 'Legacy' AND r.purpose ~* '^outstanding')
                  ORDER BY r.confirmed_at DESC NULLS LAST, r.reference LIMIT 30
                 """).param("t", t).query().listOfRows();
         List<Map<String, Object>> out = new ArrayList<>();

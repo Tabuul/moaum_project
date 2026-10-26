@@ -97,7 +97,7 @@ export function PaymentSwaps({ filters, list, office, initial }: { filters: Swap
 
   return (
     <>
-      <Note kind="info" title="A payment swap moves a verified school-fees payment to the student it belongs to">
+      <Note kind="info" title="A payment swap moves a verified school-fees or old-portal outstanding-fees payment to the student it belongs to">
         The whole payment moves; its reference, amount, date, receipt and gateway record never change, and it is never deleted or paid twice.
         A Bursar officer other than the one who initiated the swap approves it, and it is executed at once with both accounts reconciled — or nothing changes.
       </Note>
