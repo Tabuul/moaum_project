@@ -9,7 +9,7 @@
  * Head of Department has approved.
  */
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { Me, RegistrationView } from "@/lib/student-portal";
 import { semesterName, semesterText } from "@/lib/student-portal";
 import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
@@ -92,8 +92,20 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const [askReset, setAskReset] = useState(false);
   const [adding, setAdding] = useState(false);
   // V611, V663: the carry-over picker — every earlier course, ticked and added at once; opened from the dashboard by ?carry=1
+  // and the side menu's Add Carry-Over: opened each time the link is followed (the page may already be showing), the link taken off
+  // the address when the picker closes so that the next click opens it again
   const params = useSearchParams();
-  const [addingCarry, setAddingCarry] = useState(() => params.get("carry") === "1" && !v.siwes);
+  const router = useRouter();
+  const carryAsked = params.get("carry") === "1" && !v.siwes;
+  const [addingCarry, setAddingCarry] = useState(carryAsked);
+  const [carrySeen, setCarrySeen] = useState(carryAsked);
+  if (carryAsked !== carrySeen) { setCarrySeen(carryAsked); if (carryAsked) setAddingCarry(true); }
+  const closeCarry = () => {
+    setAddingCarry(false);
+    if (!params.has("carry")) return;
+    const rest = new URLSearchParams(params.toString()); rest.delete("carry");
+    router.replace(`/student/register${rest.toString() ? `?${rest}` : ""}`, { scroll: false });
+  };
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
   // the carry-overs and deferred courses the menu puts on are not the student's choice; a carry-over the student added (V611: one
   // declared, its result not on the portal) is
@@ -576,7 +588,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       {addingCarry && !v.siwes && (!locked || v.addDropOpen) ? (
         <CarryOverPicker session={v.session} semester={v.semester}
           onAdded={(ids) => { if (!locked) setChosen((c) => { const n = new Set(c); ids.forEach((id) => n.add(id)); return n; }); }}
-          onClose={() => setAddingCarry(false)}
+          onClose={closeCarry}
           onViewRegistered={() => document.getElementById("registered-courses")?.scrollIntoView({ behavior: "smooth", block: "start" })} />
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}

@@ -211,6 +211,7 @@ export const ROUTES: Record<string, string> = {
   "s/notifications": "/student/notifications",
   "s/query": "/student/query",
   "s/carryover": "/student/carryover",
+  "s/addcarry": "/student/register?carry=1",
   "s/reghistory": "/student/registration-history",
   "s/transcript": "/student/transcript",
   "s/documents": "/student/documents",
@@ -874,7 +875,7 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
                         const isCurrent = current === it.id ? "page" : undefined;
                         const to = href(it.id);
                         return to ? (
-                          <Link key={it.id} href={to} className="nav__item" aria-current={isCurrent}>
+                          <Link key={it.id} href={to} className={it.tone === "urgent" ? "nav__item nav__item--urgent" : "nav__item"} aria-current={isCurrent}>
                             {inner}
                           </Link>
                         ) : (
