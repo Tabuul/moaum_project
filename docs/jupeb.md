@@ -110,6 +110,15 @@ copies of them.
   each student can also be emailed a seven-day link to set their own password. Nothing else is announced while the records
   are written; no fee reminder reaches them (what they paid on the old portal is the Bursary's), and the Payments tab says
   so. Their programme is set by the combination they register.
+- **An upload filed under the wrong session (V659).** JUPEB → Old-Portal Students → *Uploaded into the wrong session* lists every
+  old-portal upload with the sessions its students are now in. *Move…* asks for the session they belong to (one of the same list
+  as the upload) and a reason, and *Check the students* judges each before anything is written: a student moves with the subjects
+  registered and the payments of the session left (references and amounts unchanged), leaves that session's class (to be placed in
+  one of the new session's) and has any paper stating the old session revoked, to be printed again; the move and its reason go on the
+  student's timeline (`SESSION_MOVED`). A student who applied on this portal, is withdrawn, is registered with the Board, has
+  results, CA scores or attendance in the old session, or whose login already has a record in the session asked stays where they
+  are, and the page says why. `jupeb.move_old_portal_students`, `jupeb.old_portal_sessions`; `GET /office/old-portal-students/batches`,
+  `POST /office/old-portal-students/move` (the JUPEB Office and the platform). Nothing is announced to the students.
 - **The list for examination numbers (V345).** JUPEB → Examination Numbers → *List for the Board*: the active students whose
   three subjects are registered (without a number, or everyone), downloadable in **Excel** (columns Application Number,
   Surname, …, JUPEB Examination Number — the very columns the examination-number upload reads, so the Board's returned list

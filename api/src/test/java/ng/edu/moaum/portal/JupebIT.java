@@ -598,6 +598,31 @@ class JupebIT {
         assertThat(again.get(1).get("status")).isEqualTo("EXISTS");
         assertThat(jdbc.sql("SELECT count(*) FROM jupeb.due_reminders(now() + interval '60 days') d WHERE d.application_id = :a AND d.kind = 'SCHOOL_FEE_UNPAID'")
                 .param("a", created).query(Integer.class).single()).isZero();
+
+        // filed under the wrong session (V659): the upload is listed with the session its students are in; the office checks them (nothing
+        // written), a move needs a reason, the Bursary is refused, and they move with the timeline saying so — and back the same way
+        String batchRef = jdbc.sql("SELECT legacy_batch FROM jupeb.application WHERE id = :a").param("a", created).query(String.class).single();
+        List<Map<String, Object>> uploads = (List<Map<String, Object>>) ok(it.get(office, "/api/v1/jupeb/office/old-portal-students/batches")).get("batches");
+        assertThat(uploads).anySatisfy((b) -> assertThat(b.get("ref")).isEqualTo(batchRef));
+        String other = jdbc.sql("SELECT x FROM jupeb.old_portal_sessions() x WHERE x <> :s ORDER BY x DESC LIMIT 1").param("s", session)
+                .query(String.class).optional().orElse(null);
+        if (other != null) {
+            Map<String, Object> move = new LinkedHashMap<>(Map.of("batch", batchRef, "to", other, "commit", false));
+            List<Map<String, Object>> judgedMove = (List<Map<String, Object>>) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/move", move)).get("rows");
+            assertThat(judgedMove).singleElement().satisfies((r) -> assertThat(r.get("status")).isEqualTo("MOVE"));
+            assertThat(jdbc.sql("SELECT session FROM jupeb.application WHERE id = :a").param("a", created).query(String.class).single()).isEqualTo(session);
+            move.put("commit", true);
+            assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/move", move))).isEqualTo("JUPEB_REASON");
+            move.put("reason", "Uploaded into the wrong session");
+            assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/move", move))).isEqualTo(403);
+            assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/move", move)).get("moved")).intValue()).isEqualTo(1);
+            assertThat(jdbc.sql("SELECT session FROM jupeb.application WHERE id = :a").param("a", created).query(String.class).single()).isEqualTo(other);
+            assertThat(jdbc.sql("SELECT count(*) FROM jupeb.application_event WHERE application_id = :a AND kind = 'SESSION_MOVED'").param("a", created)
+                    .query(Integer.class).single()).isEqualTo(1);
+            move.put("to", session);
+            assertThat(((Number) ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/move", move)).get("moved")).intValue()).isEqualTo(1);
+            assertThat(jdbc.sql("SELECT session FROM jupeb.application WHERE id = :a").param("a", created).query(String.class).single()).isEqualTo(session);
+        }
     }
 
     /** the old portal's passport photographs, each named by the App No however it is punctuated: an old-portal student's

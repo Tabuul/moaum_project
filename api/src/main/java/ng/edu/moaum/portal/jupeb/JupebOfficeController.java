@@ -156,11 +156,7 @@ class JupebOfficeController {
     private List<Map<String, Object>> oldPortalSessions() {
         return jdbc.sql("""
                 SELECT x.session, (SELECT count(*) FROM jupeb.application a WHERE a.session = x.session) AS applications
-                  FROM (SELECT s.name AS session FROM policy.academic_session s
-                         WHERE s.state <> 'CANCELLED' AND s.merged_into IS NULL AND s.name <= jupeb.current_session()
-                        UNION SELECT DISTINCT session FROM jupeb.application
-                        UNION SELECT jupeb.current_session()) x
-                 WHERE x.session IS NOT NULL ORDER BY x.session DESC
+                  FROM jupeb.old_portal_sessions() x(session)
                 """).query().listOfRows();
     }
 
@@ -976,6 +972,62 @@ class JupebOfficeController {
         }
         out.remove("created");
         out.put("credentials", credentials);
+        return out;
+    }
+
+    /* ── old-portal students uploaded into the wrong session, moved (V659) ── */
+
+    /** each upload of the old portal's students, newest first, with how many of its students each session now holds */
+    @GetMapping("/old-portal-students/batches")
+    @PreAuthorize(READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> oldPortalBatches() {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT b.ref, b.file_name, b.imported_at, b.applied,
+                       coalesce((SELECT jsonb_agg(jsonb_build_object('session', x.session, 'students', x.n) ORDER BY x.session DESC)
+                                   FROM (SELECT a.session, count(*) AS n FROM jupeb.application a WHERE a.legacy_batch = b.ref GROUP BY a.session) x),
+                                '[]'::jsonb)::text AS sessions
+                  FROM jupeb.import_batch b
+                 WHERE b.kind = 'OLD_PORTAL_STUDENTS'
+                 ORDER BY b.imported_at DESC
+                 LIMIT 200
+                """).query().listOfRows().stream().map((r) -> {
+                    Map<String, Object> m = new LinkedHashMap<>(r);
+                    m.put("sessions", json.readValue(String.valueOf(r.get("sessions")), List.class));
+                    return m;
+                }).toList();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("batches", rows);
+        out.put("sessions", oldPortalSessions());
+        return out;
+    }
+
+    public record MoveIn(@Size(max = 60) String batch, @Size(max = 5000) List<UUID> ids, @NotBlank @Size(max = 9) String to, @Size(max = 1000) String reason,
+                         boolean commit) {
+    }
+
+    /**
+     * Old-portal students filed under another session — an upload's students (batch) or the ones named (ids): each judged, and
+     * without commit nothing written; with it the students free to move are filed under the session asked with their subjects and
+     * payments, their class left and the papers stating the old session revoked, the move on each timeline (jupeb.move_old_portal_students).
+     */
+    @PostMapping("/old-portal-students/move")
+    @PreAuthorize(WRITE)
+    @Transactional
+    Map<String, Object> moveOldPortal(@Valid @RequestBody MoveIn body) {
+        List<UUID> ids = body.ids() != null && !body.ids().isEmpty() ? body.ids()
+                : body.batch() == null || body.batch().isBlank() ? List.of()
+                : jdbc.sql("SELECT id FROM jupeb.application WHERE legacy_batch = :b ORDER BY surname, first_name").param("b", body.batch().trim())
+                        .query(UUID.class).list();
+        if (ids.isEmpty()) {
+            throw new DomainRuleViolation("JUPEB_MOVE_NONE", "Choose the upload or the students to move.",
+                    new DomainRuleViolation.Remedy("Pick an upload from the list.", "You"));
+        }
+        String done = jdbc.sql("SELECT jupeb.move_old_portal_students(:ids, :to, :why, :c)::text")
+                .param("ids", ids.toArray(new UUID[0])).param("to", body.to().trim()).param("why", body.reason(), Types.VARCHAR).param("c", body.commit())
+                .query(String.class).single();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = json.readValue(done, Map.class);
         return out;
     }
 

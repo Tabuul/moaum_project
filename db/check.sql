@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 487
+\set EXPECTED 488
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26008,6 +26008,93 @@ BEGIN
                r1.desk_code, r1.owner_person = lk, r1.compliance_review, r1.risk_level, r1.flags, r1.budget, r2.desk_code, r2.owner_person IS NULL, r2.flags, r2.risk_level,
                e_accept, see_dean_a, see_dean_b, see_hod, see_reg, see_vc, conf_dean, conf_vc, e_review_b, after_answer, e_dd, e_approve,
                ag_ref, e_clear, e_agr_approve, e_exec, ag_status, alerts, final1, final2, outcome_n, figs));
+END $$;
+
+-- ── V659. JUPEB old-portal students moved to another session: JUPEB's current session 2026/2027; three made-up students uploaded
+-- from the old portal into it (one with a school-fee payment, an ID card stating 2026/2027 and a 2026/2027 class; one with a
+-- result; one with nothing more) and one who applied on this portal. The preview writes nothing; a session beyond JUPEB's current
+-- one, a move with no reason and another office are refused; moved to 2025/2026, the two free to move go with their payment
+-- (reference and amount unchanged), their class left and their paper revoked, the move on their timeline; the one with a result
+-- and the portal applicant stay; asked again, already there. The block undoes its writes.
+DO $$
+DECLARE o uuid := gen_random_uuid(); s_from text := '2026/2027'; s_to text := '2025/2026';
+        a uuid; b uuid; c uuid; d uuid; acc uuid; cls uuid; subj uuid; imp jsonb; pre jsonb; done jsonb; again jsonb; msg text;
+        pre_status text; pre_written text; far text; no_reason text; other_office text; a_after text; c_after text; b_after text; d_after text;
+        pay_after text; paper_after text; event_n int; offered text; hash text := '$2a$12$' || repeat('a', 53);
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V659', true);
+        PERFORM set_config('moaum.actor_id', o::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (o, 'CHK-V659-1', 'CHECKV659', 'JUPEB Officer');
+        UPDATE jupeb.setting SET current_session = s_from WHERE session = '*';
+        IF NOT EXISTS (SELECT 1 FROM policy.academic_session WHERE name = s_to) THEN
+            INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s_to, DATE '2025-10-01', DATE '2026-08-31');
+        END IF;
+        imp := jupeb.import_old_portal_students(jsonb_build_array(
+            jsonb_build_object('row', 2, 'appNo', 'ZZV659-0001', 'firstName', 'Ada', 'surname', 'CHECKV659', 'email', 'zzv659.a@example.com', 'passwordHash', hash),
+            jsonb_build_object('row', 3, 'appNo', 'ZZV659-0002', 'firstName', 'Bem', 'surname', 'CHECKV659', 'email', 'zzv659.b@example.com', 'passwordHash', hash),
+            jsonb_build_object('row', 4, 'appNo', 'ZZV659-0003', 'firstName', 'Chi', 'surname', 'CHECKV659', 'email', 'zzv659.c@example.com', 'passwordHash', hash)),
+            s_from, true, true, 'check-v659.xlsx', o);
+        SELECT id INTO a FROM jupeb.application WHERE application_no = 'ZZV659-0001';
+        SELECT id INTO b FROM jupeb.application WHERE application_no = 'ZZV659-0002';
+        SELECT id INTO c FROM jupeb.application WHERE application_no = 'ZZV659-0003';
+        -- A: an old-portal payment, an ID card stating 2026/2027 and a 2026/2027 class
+        INSERT INTO jupeb.fee_reference (application_id, kind, reference, amount, session, expires_at, confirmed_at, channel)
+        VALUES (a, 'SCHOOL_FULL', 'ZZV659-PAY-0001', 150000, s_from, now() + interval '1 day', now(), 'Old portal');
+        INSERT INTO jupeb.paper (code, application_id, kind, facts, fingerprint)
+        VALUES ('ZZZZ-ZZZZ-ZV59', a, 'ID_CARD', jsonb_build_object('session', s_from), md5('check V659'));
+        INSERT INTO jupeb.class (session, name) VALUES (s_from, 'Check V659 class') RETURNING id INTO cls;
+        UPDATE jupeb.application SET class_id = cls WHERE id = a;
+        -- B: a result recorded
+        SELECT id INTO subj FROM jupeb.subject ORDER BY code LIMIT 1;
+        INSERT INTO jupeb.result (application_id, subject_id, grade, points) VALUES (b, subj, 'A', 5);
+        -- D: applied on this portal
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zzv659.d@example.com', hash) RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state)
+        VALUES (acc, s_from, 'ZZV659-PORTAL', 'CHECKV659', 'Dan', 'zzv659.d@example.com', 'DRAFT') RETURNING id INTO d;
+
+        offered := (SELECT string_agg(x, ',') FROM jupeb.old_portal_sessions() x WHERE x IN (s_from, s_to));
+        -- the preview writes nothing
+        pre := jupeb.move_old_portal_students(ARRAY[a, b, c, d], s_to, NULL, false);
+        pre_status := (SELECT string_agg((r ->> 'name') || '=' || (r ->> 'status'), ' ' ORDER BY r ->> 'name') FROM jsonb_array_elements(pre -> 'rows') r);
+        pre_written := (SELECT session FROM jupeb.application WHERE id = a) || '/' || (SELECT session FROM jupeb.fee_reference WHERE reference = 'ZZV659-PAY-0001');
+        -- refused: beyond JUPEB's current session, no reason, another office
+        BEGIN PERFORM jupeb.move_old_portal_students(ARRAY[a], '2099/2100', 'Uploaded into the wrong session', true);
+        EXCEPTION WHEN OTHERS THEN far := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM jupeb.move_old_portal_students(ARRAY[a], s_to, ' ', true);
+        EXCEPTION WHEN OTHERS THEN no_reason := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN PERFORM jupeb.move_old_portal_students(ARRAY[a], s_to, 'Uploaded into the wrong session', false);
+        EXCEPTION WHEN OTHERS THEN other_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        -- moved
+        done := jupeb.move_old_portal_students(ARRAY[a, b, c, d], s_to, 'Uploaded into 2026/2027 by mistake; their session is 2025/2026', true);
+        a_after := (SELECT session || '/' || coalesce(class_id::text, 'no class') FROM jupeb.application WHERE id = a);
+        c_after := (SELECT session FROM jupeb.application WHERE id = c);
+        b_after := (SELECT session FROM jupeb.application WHERE id = b);
+        d_after := (SELECT session FROM jupeb.application WHERE id = d);
+        pay_after := (SELECT session || '/' || reference || '/' || amount::int FROM jupeb.fee_reference WHERE application_id = a);
+        paper_after := (SELECT (revoked_at IS NOT NULL)::text || '/' || (revoked_reason LIKE 'Moved from 2026/2027 to 2025/2026%')::text FROM jupeb.paper WHERE application_id = a);
+        event_n := (SELECT count(*) FROM jupeb.application_event WHERE application_id IN (a, c) AND kind = 'SESSION_MOVED' AND note LIKE '%their session is 2025/2026%');
+        again := jupeb.move_old_portal_students(ARRAY[a], s_to, NULL, false);
+        RAISE EXCEPTION 'the V659 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V659 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V659: old-portal students uploaded into the wrong session are moved with their payments, their class left and their papers revoked',
+        coalesce((imp ->> 'applied')::int = 3 AND offered = '2026/2027,2025/2026'
+                 AND pre_status = 'CHECKV659, Ada=MOVE CHECKV659, Bem=RESULTS CHECKV659, Chi=MOVE CHECKV659, Dan=NOT_OLD_PORTAL'
+                 AND (pre ->> 'movable')::int = 2 AND (pre ->> 'moved')::int = 0 AND pre_written = '2026/2027/2026/2027'
+                 AND far = 'JUPEB_SESSION' AND no_reason = 'JUPEB_REASON' AND other_office = 'JUPEB_NOT_PERMITTED'
+                 AND (done ->> 'moved')::int = 2 AND (done ->> 'left')::int = 2
+                 AND a_after = '2025/2026/no class' AND c_after = '2025/2026' AND b_after = '2026/2027' AND d_after = '2026/2027'
+                 AND pay_after = '2025/2026/ZZV659-PAY-0001/150000' AND paper_after = 'true/true' AND event_n = 2
+                 AND (again -> 'rows' -> 0 ->> 'status') = 'SAME_SESSION', false),
+        format('imported %s | offered %s | preview %s (movable %s, moved %s, written %s) | refused %s/%s/%s | moved %s left %s | A %s C %s B %s D %s | payment %s | paper %s | events %s | again %s',
+               imp ->> 'applied', offered, pre_status, pre ->> 'movable', pre ->> 'moved', pre_written, far, no_reason, other_office,
+               done ->> 'moved', done ->> 'left', a_after, c_after, b_after, d_after, pay_after, paper_after, event_n, again -> 'rows' -> 0 ->> 'status'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
