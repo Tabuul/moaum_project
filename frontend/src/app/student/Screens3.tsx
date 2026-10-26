@@ -24,6 +24,7 @@ import { loadKind, loadSummary, minimumBinds, waivedWords, type LoadKind } from 
 import { AddOtherCourse } from "./AddOtherCourse";
 import { CarryOverPicker } from "./CarryOverPicker";
 import { carrySummary } from "@/lib/carry-over";
+import { SEMESTER_STATUS_WORDS, registeringWords, semesterWord as spilloverSemesterWord } from "@/lib/spillover";
 import { OverloadRequest } from "./OverloadRequest";
 import { codeVariant, courseLabel, shownCode } from "@/lib/course-code";
 
@@ -202,6 +203,9 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const cleared = v.clears ?? (fees.clearsRegistration === true);
   /* V616: a spillover student's choice of courses is what makes the semester's fee due; the submission waits for it */
   const spillPays = fees.spilloverBySemester === true;
+  // V664: the semester being registered, as the server reads it — its own spillover fee, paid, outstanding, and where it stands
+  const spillSem = spillPays ? fees.spillover?.semesters.find((x) => x.semester === v.semester) ?? null : null;
+  const spillWords = spillSem?.status ? registeringWords(spillSem) : null;
 
   // the student may register any semester up to the open one; an earlier semester never
   // registered can still be registered (its fees are covered by a full-session payment)
@@ -240,7 +244,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
     );
   }
   const lateNote = lateReg ? <Note kind="info" title="LATE REGISTRATION">The normal registration window closed on {new Date(lateReg.closes_at ?? "").toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" })}; late registration runs until {new Date(lateReg.late_until ?? "").toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos" })}{lateReg.late_fee_enabled ? ", and the late registration fee the Bursar stated is in your charge on Fees & payments" : ""}.</Note> : null;
-  if (!cleared && !locked) {
+  if (!cleared && !locked && !(spillWords && fees.stated !== false)) {
     return (
       <>
         {switcher}
@@ -317,7 +321,20 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
     <>
       {lateNote}
       {switcher}
-      {spillPays ? (
+      {spillWords && spillSem ? (
+        // V664: this semester's spillover fee on its own — a payment for another semester never opens it
+        <Note kind={spillWords.pay ? "bad" : spillSem.status === "PAID" ? "ok" : "info"} title={spillWords.title}
+          action={spillWords.pay ? <LinkBtn kind="urgent" href="/student/fees">PAY NOW {naira(spillWords.amount)}</LinkBtn> : <Pil kind={SEMESTER_STATUS_WORDS[spillSem.status!][1]}>{SEMESTER_STATUS_WORDS[spillSem.status!][0]}</Pil>}>
+          {spillWords.body}
+          {spillSem.registered ? (
+            <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
+              <span className="tnum"><span className="sub2">{spilloverSemesterWord(v.semester)} spillover fee</span> <b>{naira(spillSem.owed ?? spillSem.fee)}</b></span>
+              <span className="tnum"><span className="sub2">Paid</span> <b className="ink-green">{naira(spillSem.paid ?? 0)}</b></span>
+              <span className="tnum"><span className="sub2">Outstanding</span> <b className={Number(spillSem.outstanding ?? 0) >= 1 ? "ink-red" : ""}>{naira(spillSem.outstanding ?? 0)}</b></span>
+            </div>
+          ) : null}
+        </Note>
+      ) : spillPays ? (
         <Note kind="info" title="In spillover, you pay for the semesters you register">
           Choosing a course here makes this semester&rsquo;s school fees due{cleared ? "; they are paid, so the registration can be submitted." : "; the registration is submitted once they are paid."}
         </Note>

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 491
+\set EXPECTED 492
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26309,6 +26309,158 @@ BEGIN
                  AND rep_carry = 2 AND rep_current = 0 AND rep_gst_carry = 0 AND de = 'ZCW 202', false),
         format('before %s | ctx %s | 201 %s/%s/%s (without declaring %s/%s) | after %s | entries %s | load %s | report carry %s current %s gst+carry %s | direct entry %s',
                before, ctx.carry, k201.category, k201.added_as, k201.why, k201_plain.category, k201_plain.added_as, after, types, kind, rep_carry, rep_current, rep_gst_carry, de));
+END $$;
+
+-- ── V664. A spillover student's registration is held to the fee of the semester it is for. A made-up student at 500 Level on a
+--          four-year programme (SP1 by the level) with first- and second-semester spillover lines (₦70,000, ₦60,000) registers and pays
+--          the first semester; the second semester, approved empty as the hole left it, takes no course until its own fee is paid —
+--          the course is refused with the figures (₦60,000.00 outstanding of ₦130,000.00 due up to the second semester, ₦70,000.00
+--          paid; a GST payment counts for nothing), the offices' preview says the same, the gate's setting is put back; an empty
+--          registration is not submitted; a second-semester draft is refused with the same figures, part paid it reads PART_PAID and
+--          ₦30,000.00 outstanding, paid it clears and the course is added; the panel reads each semester's own fee, paid, outstanding
+--          and state; a whole-session line paid once covers both semesters. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9664/9665'; v_dept text; v_fac text; prog text; prog2 text; bursar uuid := gen_random_uuid();
+    s1 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); reg1 uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid(); reg3 uuid := gen_random_uuid();
+    o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid(); o3 uuid := gen_random_uuid();
+    leak_before boolean; pos_reg record; pos_plain record; e_add text; e_add_code text; g_after text; fee_rule record; fee_rule_paid record;
+    e_empty text; e_draft text; e_part text; panel1 jsonb; panel2 jsonb; panel3 jsonb; panel4 jsonb; added_status text; sem2_cleared boolean;
+    full1 boolean; full2 boolean; full_reg2 record; panel_full jsonb; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', bursar::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V664', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), S, date '9664-10-01', date '9665-09-30', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN'), (gen_random_uuid(), S, 2, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V664', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog2 FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog2, 'B.Sc. CHECK V664 SESSION', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/16/664001', 'MOAUM/ZZW/16/6641', 'CHECKV664', 'Semester', prog, 'UTME', S, 100, 500, 'ACTIVE', now()),
+        (s3, 'MOAUM/ADM/16/664003', 'MOAUM/ZZW/16/6643', 'CHECKV664', 'Session', prog2, 'UTME', S, 100, 500, 'ACTIVE', now());
+    PERFORM finance.add_fee_lines(S, jsonb_build_array(
+        jsonb_build_object('programmeCode', prog, 'level', '400', 'spillover', 'SP1', 'semester', '1', 'amount', '70000'),
+        jsonb_build_object('programmeCode', prog, 'level', '400', 'spillover', 'SP1', 'semester', '2', 'amount', '60000'),
+        jsonb_build_object('programmeCode', prog2, 'level', '400', 'spillover', 'SP1', 'semester', '', 'amount', '150000')));
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZW 641', 'Check V664 One', 3, 1, 500, v_dept, 'Core', 'LIVE'), ('ZZW 642', 'Check V664 Two', 3, 2, 500, v_dept, 'Core', 'LIVE'),
+        ('ZZW 643', 'Check V664 Three', 2, 2, 500, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZW 641', prog, 500, 'Core'), ('ZZW 642', prog, 500, 'Core'), ('ZZW 643', prog, 500, 'Core'), ('ZZW 641', prog2, 500, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZZW 641', S, 1), (o2, 'ZZW 642', S, 2), (o3, 'ZZW 643', S, 2);
+
+    -- the first semester registered and paid (₦70,000)
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg1, s1, S, 1, 500, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (reg1, o1, 3, 'CURRENT', 'REGISTERED');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (s1, S, 'MOAUM-FEE-V664-0001', 'School fees ' || S || ' · spillover (SP1) · first semester', 70000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V664-0001'),
+        -- a GST payment is not school fees: every figure below reads ₦70,000.00 paid
+        (s1, S, 'MOAUM-GST-V664-0001', 'GST fee ' || S, 60000, now(), now(), bursar, 'Bank branch', 'MOAUM-GST-V664-0001');
+    UPDATE registration.course_registration SET status = 'APPROVED', submitted_at = now(), approved_at = now() WHERE id = reg1;
+    UPDATE registration.entry SET status = 'APPROVED' WHERE registration_id = reg1;
+    panel1 := finance.spillover_panel(s1, S);
+
+    -- the second semester approved with no course on it, as the hole left it: read without the course it is cleared (nothing of it
+    -- owed); read with it, ₦60,000.00 is outstanding; a course added is refused with the figures; the offices' preview agrees
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (reg2, s1, S, 2, 500, 'APPROVED', now(), now());
+    leak_before := finance.semester_cleared(s1, S, 2);
+    SELECT * INTO pos_reg FROM finance.semester_position(s1, S, 2, true);
+    SELECT * INTO pos_plain FROM finance.semester_position(s1, S, 2, false);
+    BEGIN
+        PERFORM registration.student_add(s1, S, 2, o2);
+        e_add := 'added';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS e_add = MESSAGE_TEXT;
+    END;
+    e_add_code := split_part(e_add, ':', 1);
+    g_after := coalesce(current_setting('moaum.registering', true), '');
+    SELECT * INTO fee_rule FROM registration.support_add_checks(s1, S, 2, o2) k WHERE k.rule = 'FEES';
+
+    -- an empty registration is not submitted; a second-semester draft with a course is refused with the figures
+    UPDATE registration.course_registration SET status = 'DRAFT', submitted_at = NULL, approved_at = NULL WHERE id = reg2;
+    BEGIN
+        PERFORM registration.submit_checks(reg2);
+        e_empty := 'passed';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS e_empty = MESSAGE_TEXT;
+    END;
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (reg2, o2, 3, 'CURRENT', 'REGISTERED');
+    BEGIN
+        PERFORM registration.submit_checks(reg2);
+        e_draft := 'passed';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS e_draft = MESSAGE_TEXT;
+    END;
+    panel2 := finance.spillover_panel(s1, S);
+    -- part paid (₦30,000): PART_PAID, ₦30,000.00 outstanding
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (s1, S, 'MOAUM-FEE-V664-0002', 'School fees ' || S || ' · spillover (SP1) · second semester', 30000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V664-0002');
+    BEGIN
+        PERFORM registration.submit_checks(reg2);
+        e_part := 'passed';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS e_part = MESSAGE_TEXT;
+    END;
+    panel3 := finance.spillover_panel(s1, S);
+    -- paid in full: cleared; approved, a further course is added at once
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (s1, S, 'MOAUM-FEE-V664-0003', 'School fees ' || S || ' · spillover (SP1) · second semester', 30000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V664-0003');
+    sem2_cleared := finance.semester_cleared(s1, S, 2);
+    UPDATE registration.course_registration SET status = 'APPROVED', submitted_at = now(), approved_at = now() WHERE id = reg2;
+    SELECT * INTO fee_rule_paid FROM registration.support_add_checks(s1, S, 2, o3) k WHERE k.rule = 'FEES';
+    PERFORM registration.student_add(s1, S, 2, o3);
+    SELECT e.status INTO added_status FROM registration.entry e WHERE e.registration_id = reg2 AND e.offering_id = o3;
+    panel4 := finance.spillover_panel(s1, S);
+
+    -- a whole-session spillover line (₦150,000), paid once, covers both semesters
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg3, s3, S, 1, 500, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (reg3, o1, 3, 'CURRENT', 'REGISTERED');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (s3, S, 'MOAUM-FEE-V664-0004', 'School fees ' || S || ' · spillover (SP1) · both semesters', 150000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V664-0004');
+    full1 := finance.semester_cleared(s3, S, 1);
+    SELECT * INTO full_reg2 FROM finance.semester_position(s3, S, 2, true);
+    full2 := full_reg2.cleared;
+    panel_full := finance.spillover_panel(s3, S);
+
+    msg := format('leak-before %s | reg %s/%s/%s/%s plain %s/%s | add %s | gate after "%s" | rule %s %s | empty %s | draft %s | part %s | sem2 %s | rule-paid %s | added %s | p1 %s | p2 %s | p3 %s | p4 %s | full %s/%s (%s) %s',
+                  leak_before, pos_reg.due, pos_reg.paid, pos_reg.outstanding, pos_reg.cleared, pos_plain.due, pos_plain.cleared, e_add, g_after,
+                  fee_rule.passed, fee_rule.message, e_empty, e_draft, e_part, sem2_cleared, fee_rule_paid.passed, added_status,
+                  panel1->'semesters', panel2->'semesters', panel3->'semesters', panel4->'semesters', full1, full2, full_reg2.due, panel_full);
+    RAISE EXCEPTION 'the V664 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V664 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V664: a spillover student''s registration is held to the fee of the semester it is for — the second semester approved empty takes no course until its own fee is paid (the figures said, the offices'' preview agreeing, the gate''s setting put back), an empty registration is not submitted, a draft is refused with the figures, part paid it reads PART_PAID, paid it clears and the course is added; the panel reads each semester''s fee, paid, outstanding and state; a whole-session line paid once covers both semesters',
+      coalesce(leak_before
+               AND pos_reg.due = 130000 AND pos_reg.paid = 70000 AND pos_reg.outstanding = 60000 AND NOT pos_reg.cleared
+               AND pos_plain.due = 70000 AND pos_plain.cleared
+               AND e_add_code = 'REG_SEMESTER_FEES_DUE'
+               AND e_add LIKE 'REG_SEMESTER_FEES_DUE: Second semester registration requires payment of the second semester spillover fee for 9664/9665: ₦60,000.00 outstanding (₦130,000.00 due up to the second semester, ₦70,000.00 paid). A payment for another semester does not cover it'
+               AND g_after = ''
+               AND NOT fee_rule.passed AND fee_rule.message LIKE 'The second semester''s spillover fee is not paid: ₦60,000.00 outstanding (₦130,000.00 due up to the second semester, ₦70,000.00 paid)%'
+               AND e_empty LIKE 'REG_NO_COURSES: there is no course on this second semester registration to submit'
+               AND e_draft LIKE 'REG_SEMESTER_FEES_DUE: the second semester school fees for 9664/9665 are not fully paid: ₦60,000.00 outstanding (₦130,000.00 due up to the second semester, ₦70,000.00 paid). Second semester registration requires payment of the second semester spillover fee; a payment for another semester does not cover it'
+               AND e_part LIKE 'REG_SEMESTER_FEES_DUE: the second semester school fees for 9664/9665 are not fully paid: ₦30,000.00 outstanding (₦130,000.00 due up to the second semester, ₦100,000.00 paid)%'
+               AND sem2_cleared AND fee_rule_paid.passed AND added_status = 'APPROVED'
+               AND panel1->'semesters'->0->>'status' = 'PAID' AND (panel1->'semesters'->0->>'owed')::numeric = 70000 AND (panel1->'semesters'->0->>'paid')::numeric = 70000
+               AND panel1->'semesters'->1->>'status' = 'NOTHING_OWED' AND (panel1->'semesters'->1->>'fee')::numeric = 60000
+               AND panel2->'semesters'->1->>'status' = 'PAYMENT_REQUIRED' AND (panel2->'semesters'->1->>'owed')::numeric = 60000
+               AND (panel2->'semesters'->1->>'paid')::numeric = 0 AND (panel2->'semesters'->1->>'outstanding')::numeric = 60000 AND (panel2->'semesters'->1->>'toClear')::numeric = 60000
+               AND panel2->'semesters'->0->>'status' = 'PAID'
+               AND panel3->'semesters'->1->>'status' = 'PART_PAID' AND (panel3->'semesters'->1->>'paid')::numeric = 30000 AND (panel3->'semesters'->1->>'outstanding')::numeric = 30000
+               AND panel4->'semesters'->1->>'status' = 'PAID' AND (panel4->'semesters'->1->>'outstanding')::numeric = 0
+               AND full1 AND full2 AND full_reg2.due = 150000
+               AND (panel_full->>'sessionOwed')::numeric = 150000 AND (panel_full->>'sessionPaid')::numeric = 150000
+               AND panel_full->'semesters'->0->>'status' = 'PAID', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
