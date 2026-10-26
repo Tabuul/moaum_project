@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bandLines, blockRows, parseFeeFlat, parseFeeMatrix, readBand, readFeeBlocks, readFeeWorkbook, suggestTargets, type Grid, type Target } from "./fee-matrix.ts";
+import { amountText, bandLines, blockRows, parseFeeFlat, parseFeeMatrix, readBand, readFeeBlocks, readFeeWorkbook, suggestTargets, type Grid, type Target } from "./fee-matrix.ts";
 
 /** the College of Health Sciences' PAGE 1 as the .xlsx reader gives it: strings, blank cells "", empty rows left out */
 const head = ["", "", "", "", "", "", "", "", "", "", "", "", ""];
@@ -141,4 +141,44 @@ test("the workbook's layout: the College's pages are blocks, a breakdown sheet i
   assert.equal(f.layout, "FLAT");
   // the faculty's code is read where the sheet gives it, so the name the sheet spells its own way does not matter
   assert.deepEqual(parseFeeFlat(flat)[1], { amount: "65700", faculty: "BAMS", programmeCode: "C00061", semester: "1", indigene: "Indigene", spillover: "true" });
+});
+
+test("an amount as a sheet types it: commas, the naira sign, dots between the thousands, a decimal comma", () => {
+  assert.equal(amountText(113998.5), "113998.5");
+  assert.equal(amountText("113,998.50"), "113998.50");
+  assert.equal(amountText("₦ 113,998.50"), "113998.50");
+  assert.equal(amountText("113.998.50"), "113998.50");     // the PG sheet of 26 October 2026: the database refused the whole upload on it
+  assert.equal(amountText("206.829.00"), "206829.00");
+  assert.equal(amountText("113.998,50"), "113998.50");
+  assert.equal(amountText("1.234.567"), "1234567");
+  assert.equal(amountText("71,001"), "71001");
+  assert.equal(amountText("1500.5"), "1500.5");            // a lone dot stays the decimal point
+  assert.equal(amountText(".5"), "0.5");
+  assert.equal(amountText(""), null);
+  assert.equal(amountText("nil"), null);
+});
+
+test("a one-row-per-fee sheet with an amount typed 113.998.50 reads it as 113,998.50, and the cross-tab no longer drops it", () => {
+  const flat: Grid = [
+    ["Programme", "Faculty code", "Level", "Entry mode", "Semester", "Indigeneship", "Item", "Fee group", "Amount"],
+    ["MASTER OF BUSINESS ADMINISTRATION (MANAGEMENT)", "MS", "800", "Postgraduate", "2", "Non-indigene", "Postgraduate school fees (2nd semester)", "PG", "113.998.50"],
+    ["MASTER OF BUSINESS ADMINISTRATION (MANAGEMENT)", "MS", "800", "Postgraduate", "1", "Non-indigene", "Postgraduate school fees (1st semester)", "PG", "195473.25"],
+  ];
+  const rows = parseFeeFlat(flat);
+  assert.deepEqual(rows.map((r) => r.amount), ["113998.50", "195473.25"]);
+});
+
+test("a sheet with both a P- Code and a Programme column is read by the code, whichever comes first", () => {
+  const codeFirst: Grid = [
+    ["S/N", "P- Code", "Programme", "Faculty code", "Level", "Semester", "Indigeneship", "Item", "Amount"],
+    ["1", "C00217", "Ph.D.  ENGLISH LANGUAGE", "AR", "900", "1", "Indigene", "Postgraduate school fees (1st semester)", "125244"],
+  ];
+  assert.equal(parseFeeFlat(codeFirst)[0].programmeCode, "C00217");
+  const nameFirst: Grid = [
+    ["Programme", "Prog. code", "Faculty code", "Level", "Amount"],
+    ["Ph.D.  ENGLISH LANGUAGE", "C00217", "AR", "900", "125244"],
+  ];
+  assert.equal(parseFeeFlat(nameFirst)[0].programmeCode, "C00217");
+  const nameOnly: Grid = [["Programme", "Faculty code", "Level", "Amount"], ["Ph.D.  ENGLISH LANGUAGE", "AR", "900", "125244"]];
+  assert.equal(parseFeeFlat(nameOnly)[0].programmeCode, "Ph.D. ENGLISH LANGUAGE");   // the name, spaces collapsed
 });

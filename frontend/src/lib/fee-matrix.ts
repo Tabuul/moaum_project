@@ -21,10 +21,34 @@ export type Cell = string | number | null | undefined;
 export type Grid = Cell[][];
 
 const norm = (v: Cell) => String(v ?? "").replace(/\s+/g, " ").trim();
+
+/**
+ * An amount as a sheet writes it, to plain digits: 113998.5, "113,998.50", "₦113,998.50", "113.998.50" (dots between the thousands and
+ * before the kobo), "113.998,50", "1.234.567". The separator written last is the decimal point when one or two digits follow it; every
+ * other separator groups thousands. A lone dot stays a decimal point and lone commas group thousands, as the sheets have always read.
+ * Null when no number can be read. (A sheet typed "113.998.50" for ₦113,998.50; the database refused the whole upload on it.)
+ */
+export function amountText(v: Cell): string | null {
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : null;
+  const s = norm(v).replace(/[^0-9.,]/g, "");
+  if (!/\d/.test(s)) return null;
+  const dots = (s.match(/\./g) ?? []).length, commas = (s.match(/,/g) ?? []).length;
+  let out: string;
+  if (!dots && !commas) out = s;
+  else if (!dots) out = s.replace(/,/g, "");
+  else if (!commas && dots === 1) out = s;
+  else {
+    const last = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
+    const tail = s.slice(last + 1);
+    out = /^\d{1,2}$/.test(tail) ? s.slice(0, last).replace(/[.,]/g, "") + "." + tail : s.replace(/[.,]/g, "");
+  }
+  out = out.replace(/^\./, "0.");
+  return /^\d+(\.\d+)?$/.test(out) && Number.isFinite(Number(out)) ? out : null;
+}
+
 const num = (v: Cell): number | null => {
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  const s = norm(v).replace(/[^0-9.]/g, "");
-  return s && Number.isFinite(Number(s)) ? Number(s) : null;
+  const s = amountText(v);
+  return s === null ? null : Number(s);
 };
 /** to the kobo, half up */
 export const kobo = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -241,7 +265,9 @@ export function parseFeeFlat(grid: Grid, cce = false): StructureRow[] {
     facultyCode: find(/faculty code/), faculty: find(/^facult(y|ies)?$|^faculty name$/), facultyAny: find(/facult/), level: find(/level/), mode: find(/entry|mode/),
     semester: find(/semester|(^|\b)sem(\b|$)/), indigene: find(/indigen|origin|state/),
     amount: find(/(^|\s)amount\b|^fees?$/), item: find(/item|descrip|charge|purpose/),
-    spill: find(/spill/), programme: find(/programme code|^programme$|^program|course/),
+    // the programme by its code wherever the sheet gives one ("Programme code", "P- Code", "Prog. code"), else by its name: a name is
+    // the register's spelling only by chance (the PG sheet of 26 October 2026 named 118 programmes the register spells otherwise)
+    spill: find(/spill/), programme: (() => { const c = find(/programme code|^p\W*code$|^prog\w*\W*code$/); return c >= 0 ? c : find(/^programme$|^program|course/); })(),
     kind: find(/^kind|fee kind|^type/), group: find(/group/), ord: find(/^ord(er)?$|^order/),
     /* V653: the PG stage and fresh or returning */
     stage: find(/stage/), category: find(/fresh|returning|^category$|fee category/),
@@ -252,7 +278,7 @@ export function parseFeeFlat(grid: Grid, cce = false): StructureRow[] {
   for (let i = hIdx + 1; i < grid.length; i++) {
     const r = grid[i].map(norm);
     const cell = (c: number) => (c >= 0 ? (r[c] ?? "") : "");
-    const amt = cell(col.amount).replace(/[^0-9.]/g, "");
+    const amt = amountText(cell(col.amount)) ?? "";
     if (!amt || Number(amt) <= 0) continue;
     // "All faculties" / "All programmes" (the download writes them for a University-wide line) are no faculty and no programme
     const every = (v: string) => (/^(all|every)\b/i.test(v) ? "" : v);
