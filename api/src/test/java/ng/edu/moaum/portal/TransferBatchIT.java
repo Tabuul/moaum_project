@@ -73,7 +73,9 @@ class TransferBatchIT {
         Map<String, Object> wrongOld = new HashMap<>(row(m2, from, to, "200"));
         wrongOld.put("old_dept", to.get("dept_code"));
         Map<String, Object> noSuch = new HashMap<>(row(m3, from, to, "200"));
-        noSuch.put("new_programme", "C99999");
+        // a code no programme can carry: C99999 was drawn now and then by ProgrammeMergeIT's made-up codes (C98000–C99999, archived), and
+        // the row then read as that programme's mismatches instead of an unknown one (CI run 40331401323, 26 Oct 2026)
+        noSuch.put("new_programme", "ZZNOPROG" + n);
         List<Map<String, Object>> rows = List.of(row(m1, from, to, "200"), wrongOld, noSuch);
         Map<String, Object> check = it.call(preparer, HttpMethod.POST, BASE + "/validate", Map.of("rows", rows)).getBody();
         assertThat(check).containsEntry("total", 3).containsEntry("invalid", 2);
