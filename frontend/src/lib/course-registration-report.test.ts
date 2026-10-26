@@ -23,6 +23,11 @@ test("the filters read only what is well formed", () => {
 test("the query carries the scope and only the filters set; every semester leaves the semester out", () => {
   const q = regQuery({ session: "2025/2026", sem: "0", fac: "SCI", dept: "", prog: "", level: "300" }, { ...NO_FILTERS, category: "CARRY_OVER", dropped: true });
   assert.equal(q.toString(), "session=2025%2F2026&fac=SCI&level=300&category=CARRY_OVER&dropped=true");
+  // V663: the type beside the category — CARRY-OVER + GST
+  assert.equal(regQuery({ session: "2025/2026", sem: "1", fac: "", dept: "", prog: "", level: "" }, { ...NO_FILTERS, category: "GST", type: "CARRY_OVER" }).toString(),
+    "session=2025%2F2026&semester=1&category=GST&type=CARRY_OVER");
+  assert.equal(readFilters({ type: "carry-over" }).type, "CARRY_OVER");
+  assert.equal(readFilters({ type: "LATE" }).type, "");
   assert.equal(regQuery({ session: "", sem: "1", fac: "", dept: "CSC", prog: "", level: "" }, NO_FILTERS).toString(), "semester=1&dept=CSC");
 });
 

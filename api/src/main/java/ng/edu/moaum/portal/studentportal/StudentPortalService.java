@@ -760,6 +760,15 @@ public class StudentPortalService {
      *  so an add refused afterwards (the GST fee, the unit ceiling) leaves no class behind */
     @Transactional
     public Map<String, Object> addOtherCourse(UUID id, String session, int semester, UUID offering, String courseCode) {
+        Map<String, Object> one = addOne(id, session, semester, offering, courseCode);
+        Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
+        out.put("added", one.get("added"));
+        out.put("offering", one.get("offering"));   // V655: the class the course was added by, opened now or not
+        return out;
+    }
+
+    /** the add itself, in the caller's transaction (V663: shared by Add Other Course and the carry-over picker) */
+    private Map<String, Object> addOne(UUID id, String session, int semester, UUID offering, String courseCode) {
         StudentPortalRepository.Student s = student(id);
         if (!List.of("ADMITTED", "ACTIVE", "PROBATION").contains(s.status())) {
             throw new DomainRuleViolation("REG_STUDENT_NOT_ELIGIBLE", "A student who is " + s.status().toLowerCase() + " does not register.",
@@ -795,10 +804,129 @@ public class StudentPortalService {
             }
             throw e;
         }
-        Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
+        Map<String, Object> out = new LinkedHashMap<>();
         out.put("added", added);
-        out.put("offering", offering);   // V655: the class the course was added by, opened now or not
+        out.put("offering", offering);
         return out;
+    }
+
+    /** V663: the carry-over picker — every earlier course of the student, with what it is now (registration.carry_over_candidates):
+     *  outstanding, no result, no record, awaited, cleared, already registered; selectable only as a carry-over the engine allows */
+    @Transactional(readOnly = true)
+    public Map<String, Object> carryOverCandidates(UUID id, String session, int semester) {
+        StudentPortalRepository.Student s = student(id);
+        Map<String, Object> who = new LinkedHashMap<>();
+        who.put("name", (s.surname() == null ? "" : s.surname().toUpperCase()) + (s.otherNames() == null || s.otherNames().isBlank() ? "" : ", " + s.otherNames()));
+        who.put("matricNo", s.matricNo() != null ? s.matricNo() : s.admissionNo());
+        who.put("programme", s.programme());
+        who.put("level", s.currentLevel());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("student", who);
+        out.put("session", session);
+        out.put("semester", semester);
+        out.put("rows", repo.carryOverCandidates(id, session, semester));
+        return out;
+    }
+
+    /** V663: the carry-overs the student ticked, added one by one by course id — each judged again by the engine and added in its own
+     *  transaction, so one refused (the GST fee, the unit ceiling, the window) leaves the others added and is answered with its reason.
+     *  A course the student does not owe, one cleared or already registered, is refused here before the engine is asked: the course
+     *  is the server's to judge, never the screen's. Nothing earlier on the record is touched. */
+    public Map<String, Object> addCarryOvers(UUID id, String session, int semester, List<UUID> courses) {
+        TransactionTemplate read = new TransactionTemplate(ownTransaction.getTransactionManager());
+        read.setReadOnly(true);
+        List<Map<String, Object>> first = read.execute(t -> repo.carryOverCandidates(id, session, semester));
+        // the semester's draft first, made as the page makes it: a carry-over a published result shows, taught this semester, is placed on
+        // it by the draft itself — answered as added, never refused as "already added"
+        boolean drafting = read.execute(t -> repo.registration(id, session, semester))
+                .map(r -> !List.of("SUBMITTED", "APPROVED", "LOCKED").contains(String.valueOf(r.get("status")))).orElse(true);
+        if (drafting) {
+            try {
+                ownTransaction.executeWithoutResult(t -> {
+                    assertWindowOpen(id, session, semester);
+                    repo.draft(id, session, semester);
+                });
+            } catch (RuntimeException e) {
+                // the window or the student's standing: each course is refused below with the reason
+            }
+        }
+        List<Map<String, Object>> rows = read.execute(t -> repo.carryOverCandidates(id, session, semester));
+        Map<String, Map<String, Object>> before = new java.util.HashMap<>();
+        for (Map<String, Object> r : first) before.put(String.valueOf(r.get("course_id")), r);
+        Map<String, Map<String, Object>> byId = new java.util.HashMap<>();
+        for (Map<String, Object> r : rows) byId.put(String.valueOf(r.get("course_id")), r);
+        List<Map<String, Object>> results = new java.util.ArrayList<>();
+        int added = 0;
+        for (UUID c : new java.util.LinkedHashSet<>(courses)) {
+            Map<String, Object> row = byId.get(c.toString());
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("courseId", c);
+            if (row == null) {
+                r.put("added", false);
+                r.put("code", "CARRY_NOT_YOURS");
+                r.put("message", "This course is not among your earlier courses.");
+                results.add(r);
+                continue;
+            }
+            r.put("courseCode", row.get("shown_code"));
+            r.put("title", row.get("title"));
+            r.put("units", row.get("units"));
+            r.put("level", row.get("level"));
+            Map<String, Object> was = before.get(c.toString());
+            if (was != null && Boolean.TRUE.equals(was.get("selectable")) && "ALREADY_REGISTERED".equals(row.get("status"))) {
+                r.put("added", true);   // placed on the registration as its draft was made
+                r.put("offering", row.get("offering_id"));
+                added++;
+                results.add(r);
+                continue;
+            }
+            if (!Boolean.TRUE.equals(row.get("selectable"))) {
+                r.put("added", false);
+                r.put("code", "CARRY_" + row.get("status"));
+                r.put("message", row.get("reason"));
+                results.add(r);
+                continue;
+            }
+            String code = String.valueOf(row.get("course_code"));
+            String why = "Carry-over " + code + " added by the student" + (row.get("origin_session") == null ? "" : " (last registered " + row.get("origin_session") + ")")
+                    + " — " + row.get("status");
+            try {
+                Map<String, Object> one = ownTransaction.execute(t -> {
+                    repo.reason(why);
+                    repo.declareCarryOvers();   // a no-record course of the programme comes as a declared carry-over here, nowhere else
+                    return addOne(id, session, semester, null, code);
+                });
+                r.put("added", true);
+                r.put("offering", one == null ? null : one.get("offering"));   // the class it was added by: the draft's selection keeps it
+                added++;
+            } catch (RuntimeException e) {
+                String[] refusal = refusalOf(e);
+                r.put("added", false);
+                r.put("code", refusal[0]);
+                r.put("message", refusal[1]);
+            }
+            results.add(r);
+        }
+        Map<String, Object> out = new LinkedHashMap<>(read.execute(t -> registrationView(id, session, semester)));
+        out.put("results", results);
+        out.put("addedCount", added);
+        out.put("refusedCount", results.size() - added);
+        return out;
+    }
+
+    /** a refusal in words: a rule's own code and message (DomainRuleViolation), or the database's "CODE: message", whatever wraps it */
+    static String[] refusalOf(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof DomainRuleViolation d) return new String[] {d.code(), d.getMessage()};
+        }
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.sql.SQLException q && q.getMessage() != null) {
+                String m = q.getMessage().replaceFirst("^ERROR:\\s*", "").split("\\R", 2)[0].trim();
+                java.util.regex.Matcher k = java.util.regex.Pattern.compile("^([A-Z][A-Z0-9_]{3,60}): (.+)$").matcher(m);
+                return k.matches() ? new String[] {k.group(1), k.group(2)} : new String[] {"REFUSED", m};
+            }
+        }
+        return new String[] {"REFUSED", e.getMessage() == null ? "The course could not be added." : e.getMessage()};
     }
 
     private void logGstCourse(UUID id, String session, int semester, String code, boolean carry, String what) {

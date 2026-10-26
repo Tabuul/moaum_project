@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 490
+\set EXPECTED 491
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26218,6 +26218,97 @@ BEGIN
       coalesce(msg = 'waiting true OUTSTANDING_FEES WAITING [] | verified SWAP_OUTSTANDING_VERIFIED | credited SWAP_OUTSTANDING_CREDITED | acceptance SWAP_NOT_SCHOOL_FEES'
                || ' | swap COMPLETED OUTSTANDING_FEES flags [] owner S2, outstanding 12000.00/6709.00, desk under owner 1 | returned COMPLETED, desk RETURNED/S2 | reversal COMPLETED owner S1', false),
       msg);
+END $$;
+
+-- ── V663. Flexible carry-over selection: a made-up student at 300 Level who entered at 100, with a 100 Level course failed on a
+-- published sheet, one passed, one registered with no result, and the programme's 100 and 200 Level courses never taken here (a GST
+-- course, a first- and a second-semester core, an elective). The picker reads each — outstanding, cleared, no result, no record, the
+-- second-semester one not this semester, the elective not listed — the no-record course is owed where the picker declares it and judged
+-- a declared carry-over ("no record of your taking"), a course of another level elsewhere (V504), added at once with the failed one as carry-overs, read then as already registered; the registration
+-- of carry-overs alone is a carry-over load (the minimum does not bind); the report reads it by type; a direct-entry student owes
+-- nothing below the level they entered at. Undone after.
+DO $$
+DECLARE e1 text := '2663/2664'; cur text := '2665/2666'; prog text := 'C96663'; dept text; fac text; st uuid := gen_random_uuid(); msg text;
+        reg_e uuid := gen_random_uuid(); ctx record; plain record; k201 record; k201_plain record; before text; after text; types text; kind text; rep_carry int; rep_current int;
+        rep_gst_carry int; de text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V663', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), e1, DATE '2663-10-01', DATE '2664-08-31'), (gen_random_uuid(), '2664/2665', DATE '2664-10-01', DATE '2665-08-31'),
+            (gen_random_uuid(), cur, DATE '2665-10-01', DATE '2666-08-31');
+        SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+        VALUES (prog, 'B.Sc. Carry-Over Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+            ('ZCW 101', 'Check Failed', 3, 1, 100, dept, 'Core', 'LIVE', NULL), ('ZCW 102', 'Check Passed', 3, 1, 100, dept, 'Core', 'LIVE', NULL),
+            ('ZCW 103', 'Check No Result', 2, 1, 100, dept, 'Core', 'LIVE', NULL), ('GST 953', 'Check General Studies', 2, 1, 100, dept, 'GST', 'LIVE', 'GST'),
+            ('ZCW 201', 'Check No Record', 3, 1, 200, dept, 'Core', 'LIVE', NULL), ('ZCW 202', 'Check No Record Second', 3, 2, 200, dept, 'Core', 'LIVE', NULL),
+            ('ZCW 203', 'Check Elective Not Taken', 2, 1, 200, dept, 'Elective', 'LIVE', NULL), ('ZCW 301', 'Check Current Level', 3, 1, 300, dept, 'Core', 'LIVE', NULL);
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('ZCW 101', prog, 100, 'Core'), ('ZCW 102', prog, 100, 'Core'), ('ZCW 103', prog, 100, 'Core'), ('GST 953', prog, 100, 'GST'),
+            ('ZCW 201', prog, 200, 'Core'), ('ZCW 202', prog, 200, 'Core'), ('ZCW 203', prog, 200, 'Elective'), ('ZCW 301', prog, 300, 'Core');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/63/996631', 'MOAUM/CHK/63/6631', 'CHECKV663', 'Carry', 'F', prog, 'UTME', e1, 100, 300, 'ACTIVE', now());
+        INSERT INTO catalogue.offering (id, course_code, session, semester) SELECT gen_random_uuid(), c, e1, 1 FROM unnest(ARRAY['ZCW 101', 'ZCW 102', 'ZCW 103']) c;
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZCW 301', cur, 1);   -- the session's classes are open
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (reg_e, st, e1, 1, 100, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT reg_e, o.id, 3, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.session = e1 AND o.course_code IN ('ZCW 101', 'ZCW 102', 'ZCW 103');
+        -- ZCW 101 failed and ZCW 102 passed, on published sheets; ZCW 103 has none
+        INSERT INTO assessment.score_sheet (id, offering_id) SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.session = e1 AND o.course_code IN ('ZCW 101', 'ZCW 102');
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam)
+        SELECT sh.id, st, CASE o.course_code WHEN 'ZCW 101' THEN 10 ELSE 30 END, CASE o.course_code WHEN 'ZCW 101' THEN 15 ELSE 40 END
+          FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.session = e1;
+        PERFORM set_config('moaum.maintenance', 'on', true);
+        UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V663'
+          FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.session = e1;
+        PERFORM set_config('moaum.maintenance', '', true);
+
+        SELECT * INTO ctx FROM registration.course_context(st, cur, 1, true);   -- as the picker reads it
+        SELECT * INTO plain FROM registration.course_context(st, cur, 1);         -- as every other engine function reads it (no declare)
+        before := (SELECT string_agg(c.course_code || '=' || c.status || ':' || c.selectable, ',' ORDER BY c.course_code)
+                     FROM registration.carry_over_candidates(st, cur, 1) c);
+        SELECT * INTO k201 FROM registration.course_check(st, cur, 1, 'ZCW 201', ctx.passed, ctx.awaited, ctx.carry, ctx.other_semester);
+        SELECT * INTO k201_plain FROM registration.course_check(st, cur, 1, 'ZCW 201', plain.passed, plain.awaited, plain.carry, plain.other_semester);
+        -- the failed course and the no-record course added at once, as the picker adds them
+        PERFORM set_config('moaum.actor_id', st::text, true);
+        PERFORM set_config('moaum.actor_office', 'student', true);
+        PERFORM registration.student_draft(st, cur, 1);   -- the semester's draft, made first as the service makes it
+        PERFORM set_config('moaum.carry_declare', 'on', true);   -- the picker's add, as the API makes it
+        PERFORM registration.student_add_other(st, cur, 1, registration.class_to_add(st, cur, 1, 'ZCW 101'));
+        PERFORM registration.student_add_other(st, cur, 1, registration.class_to_add(st, cur, 1, 'ZCW 201'));
+        after := (SELECT string_agg(c.course_code || '=' || c.status, ',' ORDER BY c.course_code)
+                    FROM registration.carry_over_candidates(st, cur, 1) c WHERE c.course_code IN ('ZCW 101', 'ZCW 201'));
+        types := (SELECT string_agg(o.course_code || '=' || e.entry_type || ':' || coalesce(e.added_as, '-'), ',' ORDER BY o.course_code)
+                    FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+                   WHERE r.student_id = st AND r.session = cur AND r.semester = 1);
+        kind := (SELECT registration.load_kind(r.id) FROM registration.course_registration r WHERE r.student_id = st AND r.session = cur AND r.semester = 1);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        rep_carry := (SELECT count(*) FROM reporting.course_registration_rows(cur, 1, jsonb_build_object('prog', prog, 'type', 'CARRY_OVER')));
+        rep_current := (SELECT count(*) FROM reporting.course_registration_rows(cur, 1, jsonb_build_object('prog', prog, 'type', 'CURRENT')));
+        rep_gst_carry := (SELECT count(*) FROM reporting.course_registration_rows(cur, 1, jsonb_build_object('prog', prog, 'type', 'CARRY_OVER', 'category', 'GST')));
+        -- a direct-entry student at 300 owes nothing below 200
+        UPDATE people.student SET entry_level = 200 WHERE id = st;
+        de := (SELECT string_agg(c.course_code, ',' ORDER BY c.course_code) FROM registration.carry_over_candidates(st, cur, 1) c WHERE c.status = 'NO_RECORD');
+        RAISE EXCEPTION 'the V663 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V663 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V663: every earlier course read for the carry-over picker; a course of the programme below the level with no record on the portal is a declared carry-over; several added at once as carry-overs, a load of carry-overs alone; the report reads the type',
+        coalesce(before = 'GST 953=NO_RECORD:true,ZCW 101=OUTSTANDING:true,ZCW 102=CLEARED:false,ZCW 103=NO_RESULT:true,ZCW 201=NO_RECORD:true,ZCW 202=NO_RECORD:false'
+                 AND 'ZCW 201' = ANY (ctx.carry) AND 'GST 953' = ANY (ctx.carry) AND NOT 'ZCW 203' = ANY (ctx.carry) AND NOT 'ZCW 102' = ANY (ctx.carry)
+                 AND k201.category = 'CARRY_OVER' AND k201.added_as = 'CARRY_OVER_DECLARED' AND k201.why LIKE '%no record of your taking ZCW 201'
+                 AND NOT 'ZCW 201' = ANY (plain.carry) AND k201_plain.category = 'CORE' AND k201_plain.added_as = 'PROGRAMME_OTHER_LEVEL'
+                 AND after = 'ZCW 101=ALREADY_REGISTERED,ZCW 201=ALREADY_REGISTERED'
+                 AND types = 'ZCW 101=CARRYOVER:-,ZCW 201=CARRYOVER:CARRY_OVER_DECLARED' AND kind = 'CARRY_OVER'
+                 AND rep_carry = 2 AND rep_current = 0 AND rep_gst_carry = 0 AND de = 'ZCW 202', false),
+        format('before %s | ctx %s | 201 %s/%s/%s (without declaring %s/%s) | after %s | entries %s | load %s | report carry %s current %s gst+carry %s | direct entry %s',
+               before, ctx.carry, k201.category, k201.added_as, k201.why, k201_plain.category, k201_plain.added_as, after, types, kind, rep_carry, rep_current, rep_gst_carry, de));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

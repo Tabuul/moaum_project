@@ -620,6 +620,23 @@ class StudentPortalRepository {
                 .param("s", student).param("ses", session).param("sem", semester).param("c", course).query(UUID.class).single();
     }
 
+    /** V663: every earlier course of the student for the carry-over picker, with what it is now and whether it may be added */
+    List<Map<String, Object>> carryOverCandidates(UUID student, String session, int semester) {
+        return jdbc.sql("SELECT * FROM registration.carry_over_candidates(:s, :ses, :sem)")
+                .param("s", student).param("ses", session).param("sem", semester).query().listOfRows();
+    }
+
+    /** V663: in this transaction the engine owes, beside the published fail and the declared, a course of the programme below the
+     *  student's level with no record on the portal — the carry-over picker's add only (registration.course_context reads it) */
+    void declareCarryOvers() {
+        jdbc.sql("SELECT set_config('moaum.carry_declare', 'on', true)").query().singleRow();
+    }
+
+    /** V663: the reason the audit trail records for what this transaction writes next */
+    void reason(String why) {
+        jdbc.sql("SELECT set_config('moaum.reason', :r, true)").param("r", why.length() > 500 ? why.substring(0, 500) : why).query().singleRow();
+    }
+
     /** V504: the student adds one course to the semester's draft (made if there is none); the engine refuses what it does not allow */
     String addOther(UUID student, String session, int semester, UUID offering) {
         return jdbc.sql("SELECT registration.student_add_other(:s, :ses, :sem, :o)::text")

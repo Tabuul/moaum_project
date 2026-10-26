@@ -30,9 +30,11 @@ export interface CourseRow {
 
 export interface RegFilters {
   category: string; curriculum: string; sex: string; reg: string; eligible: string; course: string; offering: string; q: string; from: string; to: string; dropped: boolean;
+  /** V663: CURRENT or CARRY_OVER, beside the category (CARRY-OVER + GST) */
+  type: string;
 }
 
-export const NO_FILTERS: RegFilters = { category: "", curriculum: "", sex: "", reg: "", eligible: "", course: "", offering: "", q: "", from: "", to: "", dropped: false };
+export const NO_FILTERS: RegFilters = { category: "", curriculum: "", sex: "", reg: "", eligible: "", course: "", offering: "", q: "", from: "", to: "", dropped: false, type: "" };
 
 export const CATEGORIES: [string, string, string][] = [
   ["GST", "GST courses", "General Studies courses, kept by the GST office"],
@@ -79,6 +81,7 @@ export function readFilters(params: Record<string, string | string[] | undefined
     from: date(s("from")),
     to: date(s("to")),
     dropped: s("dropped") === "1",
+    type: pick(s("type").replace("-", "_"), ["CURRENT", "CARRY_OVER"]),
   };
 }
 
@@ -95,6 +98,7 @@ export function regQuery(scope: { session: string; sem: string; fac: string; dep
   if (f.curriculum) p.set("curriculum", f.curriculum);
   if (f.sex) p.set("sex", f.sex);
   if (f.reg) p.set("reg", f.reg);
+  if (f.type) p.set("type", f.type);
   if (f.eligible) p.set("eligible", f.eligible);
   if (f.course) p.set("course", f.course);
   if (f.offering) p.set("offering", f.offering);
@@ -109,6 +113,7 @@ export function regQuery(scope: { session: string; sem: string; fac: string; dep
 export function filterLines(f: RegFilters): [string, string][] {
   const out: [string, string][] = [];
   if (f.category) out.push(["Category", CATEGORY_WORD[f.category] ?? f.category]);
+  if (f.type) out.push(["Type", f.type === "CARRY_OVER" ? "Carry-over" : "Current"]);
   if (f.curriculum) out.push(["Curriculum", f.curriculum]);
   if (f.sex) out.push(["Sex", SEX_WORD[f.sex] ?? f.sex]);
   if (f.reg) out.push(["Registration", words(f.reg)]);
@@ -145,7 +150,7 @@ export const ROW_COLUMNS: [string, (r: RegRow) => string | number][] = [
   ["Course Type", (r) => r.course_kind ?? ""],
   ["Category", (r) => CATEGORY_WORD[r.category] ?? words(r.category)],
   ["Curriculum", (r) => r.curriculum ?? ""],
-  ["Carry-over", (r) => (r.carry_over ? "Yes" : "No")],
+  ["Type", (r) => (r.carry_over ? "CARRY-OVER" : "CURRENT")],
   ["Registration Status", (r) => words(r.registration_status)],
   ["Submitted", (r) => (r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "")],
   ["Approved", (r) => (r.approved_at ? new Date(r.approved_at).toLocaleDateString("en-GB") : "")],

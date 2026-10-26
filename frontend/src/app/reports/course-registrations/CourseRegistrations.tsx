@@ -169,6 +169,11 @@ export function CourseRegistrations({ scope, structure, sessions, ceiling, filte
                 {CATEGORIES.map(([k, w]) => <option key={k} value={k}>{w}</option>)}
               </select>
             </Field>
+            <Field id="cr-type" label="Type">
+              <select id="cr-type" className="ctl" value={filters.type} onChange={(e) => go({ type: e.target.value })}>
+                <option value="">Current and carry-over</option><option value="CURRENT">Current</option><option value="CARRY_OVER">Carry-over</option>
+              </select>
+            </Field>
             <Field id="cr-cur" label="Curriculum">
               <select id="cr-cur" className="ctl" value={filters.curriculum} onChange={(e) => go({ curriculum: e.target.value })}>
                 <option value="">BMAS and CCMAS</option><option value="BMAS">BMAS</option><option value="CCMAS">CCMAS</option>
@@ -338,7 +343,7 @@ export function CourseRegistrations({ scope, structure, sessions, ceiling, filte
                   <span key="l" className="tnum">{r.level ?? ""}</span>,
                   <Two key="c" a={<b className="tnum">{r.shown_code}</b>} b={r.course_title} />,
                   <span key="u" className="tnum">{r.units}</span>,
-                  <span key="g">{CATEGORY_WORD[r.category] ?? words(r.category)}{r.carry_over ? <> <Pil kind="warn">Carry-over</Pil></> : null}</span>,
+                  <span key="g">{CATEGORY_WORD[r.category] ?? words(r.category)}{r.carry_over ? <> <Pil kind="bad">CARRY-OVER</Pil></> : null}</span>,
                   <Pil key="r" kind={r.registration_status === "APPROVED" || r.registration_status === "LOCKED" ? "ok" : r.registration_status === "SUBMITTED" ? "info" : "grey"}>{words(r.registration_status)}</Pil>,
                   <Pil key="e" kind={r.eligible ? "ok" : "warn"}>{eligibilityWord(r)}</Pil>,
                   r.fees_paid == null ? <span key="f" className="sub2">—</span> : <Pil key="f" kind={r.fees_paid ? "ok" : "bad"}>{r.fees_paid ? "Paid" : "Not paid"}</Pil>,

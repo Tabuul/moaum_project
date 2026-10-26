@@ -313,11 +313,23 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
         <Quick icon="book" title="Course form" sub={reg && (reg.status === "APPROVED" || reg.status === "LOCKED") ? "Ready to print" : "After approval"} href={reg && (reg.status === "APPROVED" || reg.status === "LOCKED") ? "/student/form" : null} />
       </div>
 
-      {s.carryovers.length ? (
-        <Note kind="bad" title={`${s.carryovers.length} carryover${s.carryovers.length === 1 ? "" : "s"}`}>
-          {s.carryovers.map((c) => `${c.course_code} (${c.failed_in})`).join(", ")} — added to your next registration automatically.
-        </Note>
-      ) : null}
+      {/* V663: the carry-overs — those a published result shows outstanding, those on this registration, and ADD CARRY-OVER */}
+      {(() => {
+        const registeredCarry = (reg?.entries ?? []).filter((e) => e.entryType === "CARRYOVER" && e.status !== "DROPPED").length;
+        return (
+          <Panel title={<span className="ink-red">CARRY-OVER COURSES</span>}
+            right={<LinkBtn kind="urgent" href="/student/register?carry=1">ADD CARRY-OVER</LinkBtn>}>
+            <PBody>
+              <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-4)" }}>
+                <span>Outstanding Carry-Overs: <b className="tnum">{s.carryovers.length}</b></span>
+                {registeredCarry ? <a className="lnk" href="/student/register#registered-courses">Registered Carry-Overs: <b className="tnum">{registeredCarry}</b></a> : null}
+              </div>
+              {s.carryovers.length ? <div className="sub2 mt-1">{s.carryovers.map((c) => `${c.course_code} (${c.failed_in})`).join(", ")} — failed on a published result.</div> : null}
+              <div className="sub2 mt-1">Select courses from previous levels that you have not cleared.</div>
+            </PBody>
+          </Panel>
+        );
+      })()}
 
       <Panel title="Notices sent to you" right={s.notices.length ? `${s.notices.length} · email and SMS` : "none yet"}>
         {s.notices.length ? (

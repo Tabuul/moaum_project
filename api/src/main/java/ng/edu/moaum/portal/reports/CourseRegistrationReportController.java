@@ -69,7 +69,7 @@ class CourseRegistrationReportController {
 
     /** the filters as the database reads them — each value checked, the faculty, department and programme held to the office's bound */
     Map<String, Object> filters(String fac, String dept, String prog, Integer level, String course, UUID offering, String category,
-                                String curriculum, String sex, String reg, String eligible, java.time.LocalDate from, java.time.LocalDate to,
+                                String curriculum, String sex, String reg, String type, String eligible, java.time.LocalDate from, java.time.LocalDate to,
                                 String q, Boolean dropped) {
         OfficeScope.Bound b = scope.bound(blank(fac), blank(dept), blank(prog));
         Map<String, Object> f = new LinkedHashMap<>();
@@ -106,6 +106,12 @@ class CourseRegistrationReportController {
             if (!rs.toUpperCase().matches("^[A-Z_]{3,20}$")) throw new DomainRuleViolation("REPORT_STATUS", "A registration status is named in capitals, e.g. APPROVED.");
             f.put("reg", rs.toUpperCase());
         }
+        // V663: the registration type — CURRENT or CARRY_OVER — beside the category, so CARRY-OVER + GST reads
+        String ty = blank(type);
+        if (ty != null) {
+            if (!Set.of("CURRENT", "CARRY_OVER").contains(ty.toUpperCase().replace('-', '_'))) throw new DomainRuleViolation("REPORT_TYPE", "A type is CURRENT or CARRY_OVER.");
+            f.put("type", ty.toUpperCase().replace('-', '_'));
+        }
         String el = blank(eligible);
         if (el != null) {
             if (!Set.of("YES", "NO").contains(el.toUpperCase())) throw new DomainRuleViolation("REPORT_ELIGIBLE", "Eligible is YES or NO.");
@@ -140,13 +146,13 @@ class CourseRegistrationReportController {
                              @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                              @RequestParam(required = false) Integer level, @RequestParam(required = false) String course, @RequestParam(required = false) UUID offering,
                              @RequestParam(required = false) String category, @RequestParam(required = false) String curriculum, @RequestParam(required = false) String sex,
-                             @RequestParam(required = false) String reg, @RequestParam(required = false) String eligible,
+                             @RequestParam(required = false) String reg, @RequestParam(required = false) String type, @RequestParam(required = false) String eligible,
                              @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to,
                              @RequestParam(required = false) String q, @RequestParam(required = false) Boolean dropped,
                              @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "50") int size) {
         String s = sessionOf(session);
         Integer sem = semesterOf(semester);
-        Map<String, Object> f = filters(fac, dept, prog, level, course, offering, category, curriculum, sex, reg, eligible, from, to, q, dropped);
+        Map<String, Object> f = filters(fac, dept, prog, level, course, offering, category, curriculum, sex, reg, type, eligible, from, to, q, dropped);
         int sz = Math.max(1, Math.min(size, PAGE_MAX));
         int pg = Math.max(1, page);
         List<Map<String, Object>> rows = jdbc.sql("""
@@ -196,12 +202,12 @@ class CourseRegistrationReportController {
                                 @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                 @RequestParam(required = false) Integer level, @RequestParam(required = false) String course, @RequestParam(required = false) UUID offering,
                                 @RequestParam(required = false) String category, @RequestParam(required = false) String curriculum, @RequestParam(required = false) String sex,
-                                @RequestParam(required = false) String reg, @RequestParam(required = false) String eligible,
+                                @RequestParam(required = false) String reg, @RequestParam(required = false) String type, @RequestParam(required = false) String eligible,
                                 @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to,
                                 @RequestParam(required = false) String q, @RequestParam(required = false) Boolean dropped) {
         String s = sessionOf(session);
         Integer sem = semesterOf(semester);
-        Map<String, Object> f = filters(fac, dept, prog, level, course, offering, category, curriculum, sex, reg, eligible, from, to, q, dropped);
+        Map<String, Object> f = filters(fac, dept, prog, level, course, offering, category, curriculum, sex, reg, type, eligible, from, to, q, dropped);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("session", s);
         body.put("semester", sem);
@@ -219,10 +225,10 @@ class CourseRegistrationReportController {
                                 @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                 @RequestParam(required = false) Integer level, @RequestParam(required = false) String course,
                                 @RequestParam(required = false) String category, @RequestParam(required = false) String curriculum, @RequestParam(required = false) String sex,
-                                @RequestParam(required = false) String reg, @RequestParam(required = false) String q) {
+                                @RequestParam(required = false) String reg, @RequestParam(required = false) String type, @RequestParam(required = false) String q) {
         String s = sessionOf(session);
         Integer sem = semesterOf(semester);
-        Map<String, Object> f = filters(fac, dept, prog, level, course, null, category, curriculum, sex, reg, null, null, null, q, null);
+        Map<String, Object> f = filters(fac, dept, prog, level, course, null, category, curriculum, sex, reg, type, null, null, null, q, null);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("session", s);
         body.put("semester", sem);
@@ -240,13 +246,13 @@ class CourseRegistrationReportController {
                                @RequestParam(required = false) String fac, @RequestParam(required = false) String dept, @RequestParam(required = false) String prog,
                                @RequestParam(required = false) Integer level, @RequestParam(required = false) String course, @RequestParam(required = false) UUID offering,
                                @RequestParam(required = false) String category, @RequestParam(required = false) String curriculum, @RequestParam(required = false) String sex,
-                               @RequestParam(required = false) String reg, @RequestParam(required = false) String eligible,
+                               @RequestParam(required = false) String reg, @RequestParam(required = false) String type, @RequestParam(required = false) String eligible,
                                @RequestParam(required = false) java.time.LocalDate from, @RequestParam(required = false) java.time.LocalDate to,
                                @RequestParam(required = false) String q, @RequestParam(required = false) Boolean dropped,
                                @RequestParam(defaultValue = "Course registration report") String title) {
         String s = sessionOf(session);
         Integer sem = semesterOf(semester);
-        Map<String, Object> f = filters(fac, dept, prog, level, course, offering, category, curriculum, sex, reg, eligible, from, to, q, dropped);
+        Map<String, Object> f = filters(fac, dept, prog, level, course, offering, category, curriculum, sex, reg, type, eligible, from, to, q, dropped);
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.* FROM reporting.course_registration_rows(:s, :sem, CAST(:f AS jsonb)) r
                  ORDER BY r.faculty, r.department, r.programme, r.level, r.shown_code, r.course_code, r.full_name

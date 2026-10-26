@@ -176,6 +176,23 @@ class MeController {
         return portal.addOtherCourse(id(auth), body.session(), body.semester(), body.offering(), body.courseCode());
     }
 
+    /** V663: the carry-over picker — every earlier course of the signed-in student, with what it is now */
+    @GetMapping("/registration/carry-overs")
+    Map<String, Object> carryOvers(Authentication auth, @RequestParam(required = false) String session, @RequestParam(defaultValue = "1") int semester) {
+        if (semester < 1 || semester > 3) semester = 1;
+        return portal.carryOverCandidates(id(auth), session == null || session.isBlank() ? portal.sessionFor(id(auth)) : session, semester);
+    }
+
+    /** V663: the carry-overs ticked, by course id — each judged and added by the engine, each answered */
+    public record CarryOversIn(@NotBlank String session, @Min(1) @Max(3) int semester,
+                               @jakarta.validation.constraints.NotEmpty @Size(max = 60) List<@jakarta.validation.constraints.NotNull UUID> courses) {
+    }
+
+    @PostMapping("/registration/carry-overs")
+    Map<String, Object> addCarryOvers(Authentication auth, @Valid @RequestBody CarryOversIn body) {
+        return portal.addCarryOvers(id(auth), body.session(), body.semester(), body.courses());
+    }
+
     /** drop a non-carryover course from a registration during the add/drop window */
     @PostMapping("/registration/drop")
     Map<String, Object> dropCourse(Authentication auth, @Valid @RequestBody AddDrop body) {

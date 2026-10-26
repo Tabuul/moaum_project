@@ -99,7 +99,7 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice, a
           <span key="t">{e.title}</span>,
           <span className="tnum" key="u">{e.units}</span>,
           <span className="sub2" key="k">{e.kind ?? "—"}</span>,
-          <span key="b">{e.type === "CARRYOVER" ? <Pil kind="warn">Carryover</Pil> : <span className="sub2">{e.type === "REGISTERED" || e.type === "NORMAL" ? "Normal" : e.type}</span>}</span>,
+          <span key="b">{e.type === "CARRYOVER" ? <Pil kind="bad">CARRY-OVER</Pil> : <span className="sub2">{e.type === "REGISTERED" || e.type === "NORMAL" ? "Normal" : e.type}</span>}</span>,
         ])} />
         <div className="sub2 row row--between mt-2">
           <span><b className="tnum">{open.entries?.length ?? 0}</b> course{(open.entries?.length ?? 0) === 1 ? "" : "s"}</span>
