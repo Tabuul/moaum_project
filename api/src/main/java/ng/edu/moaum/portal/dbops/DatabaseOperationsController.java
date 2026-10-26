@@ -114,6 +114,7 @@ class DatabaseOperationsController {
                        NULL, NULL, NULL, 'CARD', 'all')
                 """).param("s", session).param("sem", semester).param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR)
                 .param("p", b.prog(), Types.VARCHAR).query().listOfRows().stream().findFirst().orElse(null));
+        customPlan();
         out.put("quality", jdbc.sql("SELECT * FROM reporting.data_quality(CAST(:f AS text), CAST(:d AS text), CAST(:p AS text), CAST(:s AS text), CAST(:sem AS int))")
                 .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
                 .param("s", session).param("sem", semester).query().listOfRows());
@@ -454,6 +455,13 @@ class DatabaseOperationsController {
         return Map.of("logged", true);
     }
 
+    /** the data quality figures are SQL functions the planner folds into one statement: a plan made for unknown values cannot drop
+     *  the "no faculty chosen" branches, and over the live register it ran past ten minutes (the screen failed to load); a plan
+     *  made for the request's own values reads the whole University in seconds. Transaction-local, as the generic setting is. */
+    private void customPlan() {
+        jdbc.sql("SELECT set_config('plan_cache_mode', 'force_custom_plan', true)").query().singleRow();
+    }
+
     /* ── data quality ─────────────────────────────────────────────────────────────────────────────────────────────────── */
 
     @GetMapping("/data-quality")
@@ -466,7 +474,7 @@ class DatabaseOperationsController {
         Map<String, Object> p = period();
         String s = session != null && session.matches("[0-9]{4}/[0-9]{4}") ? session : (String) p.get("session");
         int sem = semester != null && semester >= 1 && semester <= 3 ? semester : ((Number) p.get("semester")).intValue();
-        jdbc.sql("SELECT set_config('plan_cache_mode', 'force_generic_plan', true)").query().singleRow();
+        customPlan();
         List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM reporting.data_quality(CAST(:f AS text), CAST(:d AS text), CAST(:p AS text), CAST(:s AS text), CAST(:sem AS int))")
                 .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
                 .param("s", s).param("sem", sem).query().listOfRows();
@@ -495,22 +503,31 @@ class DatabaseOperationsController {
         int sem = semester != null && semester >= 1 && semester <= 3 ? semester : ((Number) p.get("semester")).intValue();
         int sz = Math.max(1, Math.min(size, 50000));
         int pg = Math.max(1, page);
-        jdbc.sql("SELECT set_config('plan_cache_mode', 'force_generic_plan', true)").query().singleRow();
-        List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT st.id AS student_id, st.surname, st.other_names, st.matric_no, st.jamb_reg_no AS jamb_no, st.status, st.current_level AS level,
-                       st.entry_session, pr.name AS programme, d.name AS department, f.name AS faculty, q.detail, count(*) OVER () AS total_rows
+        customPlan();
+        // two reads, never one join: the planner cannot estimate how many records a finding holds, and joined to the register in one
+        // statement it compared every student with every finding (29,000 × 54,000 on the live register; the list never came)
+        Map<UUID, String> found = new LinkedHashMap<>();
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT q.student_id, q.detail
                   FROM reporting.data_quality_rows(CAST(:f AS text), CAST(:d AS text), CAST(:p AS text), CAST(:s AS text), CAST(:sem AS int)) q
-                  JOIN people.student st ON st.id = q.student_id
+                 WHERE q.kind = :k
+                """).param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
+                .param("s", s).param("sem", sem).param("k", k).query().listOfRows()) {
+            found.putIfAbsent((UUID) r.get("student_id"), (String) r.get("detail"));
+        }
+        long total = found.size();
+        List<Map<String, Object>> rows = found.isEmpty() ? new java.util.ArrayList<>() : jdbc.sql("""
+                SELECT st.id AS student_id, st.surname, st.other_names, st.matric_no, st.jamb_reg_no AS jamb_no, st.status, st.current_level AS level,
+                       st.entry_session, pr.name AS programme, d.name AS department, f.name AS faculty
+                  FROM people.student st
                   LEFT JOIN ref.programme pr ON pr.code = st.programme_code
                   LEFT JOIN ref.department d ON d.code = pr.dept_code
                   LEFT JOIN ref.faculty f ON f.code = pr.faculty_code
-                 WHERE q.kind = :k
+                 WHERE st.id = ANY (:ids)
                  ORDER BY st.surname, st.other_names, st.matric_no
                  LIMIT :n OFFSET :o
-                """).param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
-                .param("s", s).param("sem", sem).param("k", k).param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
-        long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
-        rows.forEach(r -> r.remove("total_rows"));
+                """).param("ids", found.keySet().toArray(UUID[]::new)).param("n", sz).param("o", (pg - 1) * sz).query().listOfRows();
+        rows.forEach(r -> r.put("detail", found.get((UUID) r.get("student_id"))));
         if (pg == 1) ops.log("RUN", "DATA_QUALITY", "Data quality: " + k, Map.of("kind", k, "session", s, "semester", sem), ops.words(b), (int) total, null, "SCREEN", null);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("kind", k);

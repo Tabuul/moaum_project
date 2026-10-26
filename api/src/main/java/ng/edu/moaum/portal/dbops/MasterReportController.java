@@ -266,11 +266,15 @@ class MasterReportController {
                 sems.add(m);
             }
         }
+        // the data quality figures need a plan made for the request's own values (DatabaseOperationsController.customPlan); the lists after
+        // them go back to the generic plan the student positions are read with
+        if (withQuality) jdbc.sql("SELECT set_config('plan_cache_mode', 'force_custom_plan', true)").query().singleRow();
         List<Map<String, Object>> quality = withQuality
                 ? jdbc.sql("SELECT kind, label, area, n FROM reporting.data_quality(CAST(:fac AS text), CAST(:dept AS text), CAST(:prog AS text), CAST(:s AS text), CAST(:sem AS int))")
                         .param("s", f.session()).param("sem", f.semester()).param("fac", f.bound().fac(), Types.VARCHAR)
                         .param("dept", f.bound().dept(), Types.VARCHAR).param("prog", f.bound().prog(), Types.VARCHAR).query().listOfRows()
                 : null;
+        if (withQuality) generic();
         return new Report(f, money, rows, tx, rec, sems, quality, MasterSections.summary(rows, tx, sems, quality, rec, money));
     }
 
