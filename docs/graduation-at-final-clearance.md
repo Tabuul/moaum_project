@@ -181,3 +181,18 @@ The word of 26 October 2026 after V665, with the University's answers on the oth
   transaction, a reconciliation run over all of them took about 15 s; the queue over 2,000 waiting on the Bursary about 3 s (a search, 36 ms).
 - Tests: `check.sql` V668 (the Board's award, the queue's order, the student's reading, both graduations); ReadyToGraduateIT;
   `lib/clearance.test.ts` (the student's words).
+
+## 10. V671: telling people when only the Bursary remains
+
+Each morning with the clearance reminders (08:40 Lagos):
+
+- **The student** whose award is approved and whose final clearance waits only on the Bursary is told once (event key
+  `bursary-turn:<process>`), in the words of their case: nothing owed — the Bursary will confirm and that graduates them
+  (`STUDENT_BURSARY_TURN`); school fees owed — the amount, each session and semester owed and where to pay
+  (`STUDENT_BURSARY_TURN:OWING`); a past semester still being assessed — that nothing is owed for it until an amount is approved
+  (`STUDENT_BURSARY_TURN:ASSESSING`). By e-mail, SMS and the portal (`clearance.tell_bursary_turn`).
+- **The Bursar's office**: every person holding it is told of the students newly ready to graduate — nothing owed, nothing being
+  assessed — since the last notice, with how many are ready in all, up to twenty names and the link to Ready to Graduate
+  (`BURSAR_READY_TO_GRADUATE`; `clearance.tell_bursar_ready`, which keeps who was announced in `clearance.ready_seen`). Nothing
+  is sent on a morning when nobody became ready.
+- Tests: `check.sql` V671 (the three cases told once each; the Bursar told of the ready one, not again, then of the one who paid).

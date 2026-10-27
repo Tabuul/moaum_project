@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 499
+\set EXPECTED 500
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27204,6 +27204,88 @@ BEGIN
          WHERE c.relkind IN ('v', 'm') AND pg_get_viewdef(c.oid) ~ 'finance\.payment_reference\M' AND pg_get_viewdef(c.oid) !~ 'archived_at') x;
     PERFORM pg_temp.assert('V670: every reader of confirmed student payments leaves an archived payment out (a function or view that counts a confirmed payment also reads archived_at)',
                            n = 0, coalesce(lst, 'none'));
+END $$;
+
+-- ── V671: the student told when only the Bursary remains; the Bursar told of the students newly ready ──
+-- Three made-up graduands of a made-up session, their awards approved and every office but the Bursary cleared: one paid in full,
+-- one owing ₦30,000, one at a level the session's fees do not reach (its semesters being assessed). Each is told once, in the words
+-- of their case (ready, OWING with the amount and the period, ASSESSING); told again, nobody is told twice. A made-up Bursar is
+-- told of the one ready student; told again, nothing; the owing one pays, and the Bursar is told of that one alone. The block
+-- undoes its writes.
+DO $$
+DECLARE s0 text := '9879/9880'; who uuid := gen_random_uuid(); bur uuid := gen_random_uuid();
+        ready uuid := gen_random_uuid(); owe uuid := gen_random_uuid(); asg uuid := gen_random_uuid(); st uuid; u text;
+        k_ready text; k_owe text; k_asg text; owe_body text; asg_body text; again int; n1 int; d1 text; n2 int; n3 int; d3 text; seen int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V671 check: graduation notices', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (who, 'CHK/V671/R', 'CHECKV671', 'Registry', NULL), (bur, 'CHK/V671/B', 'CHECKV671', 'Bursar', 'v671.bursar@example.test');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), bur, 'bursar', 'institution', NULL, 'CHECK V671', who, current_date);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9879-10-01', '9880-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (ready, 'MOAUM/ADM/98/967101', 'MOAUM/GRN/98/6711', 'CHECKV671', 'Ready', 'C00023', 'UTME', s0, 400, 400, 'ACTIVE', now()),
+            (owe, 'MOAUM/ADM/98/967102', 'MOAUM/GRN/98/6712', 'CHECKV671', 'Owing', 'C00023', 'UTME', s0, 400, 400, 'ACTIVE', now()),
+            (asg, 'MOAUM/ADM/98/967103', 'MOAUM/GRN/98/6713', 'CHECKV671', 'Assessing', 'C00023', 'UTME', s0, 300, 300, 'ACTIVE', now());
+        INSERT INTO people.student_contact (student_id, email) VALUES (ready, 'v671.ready@example.test'), (owe, 'v671.owing@example.test'), (asg, 'v671.assessing@example.test');
+        INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), ready, s0, 400), (gen_random_uuid(), owe, s0, 400), (gen_random_uuid(), asg, s0, 300);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.historical_set_start(s0, 'V671 check: assessed from the made-up session');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (s0, 'V671 check fees', 100000, 400, 'C00023', NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (ready, s0, 'MOAUM-FEE-V671-0001', 'School fees ' || s0, 100000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V671-0001'),
+            (owe, s0, 'MOAUM-FEE-V671-0002', 'School fees ' || s0, 70000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V671-0002');
+        INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet, senate_state)
+        SELECT gen_random_uuid(), x, s0, 3.10, 'B.Sc. (Hons) CHECK', NULL, 'AWAITING' FROM unnest(ARRAY[ready, owe, asg]) x;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM records.graduate_one(x, s0, 'SEN/CHK/671', NULL, 'V671 check: the award', who, 'academic') FROM unnest(ARRAY[ready, owe, asg]) x;
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        FOR st IN SELECT x FROM unnest(ARRAY[ready, owe, asg]) x LOOP
+            FOR u IN SELECT r.unit FROM clearance.process q CROSS JOIN LATERAL clearance.stage_rows('CONVOCATION', q.session, ARRAY[q.student_id]) r
+                      WHERE q.student_id = st AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL AND r.unit <> 'BURSARY' AND r.applies AND r.required LOOP
+                PERFORM clearance.decide((SELECT q.id FROM clearance.process q WHERE q.student_id = st AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL),
+                                         u, 'CLEARED', 'V671 check: cleared by the Registry', NULL, NULL, true, who, 'registrar');
+            END LOOP;
+        END LOOP;
+
+        -- each student told once, in the words of their case
+        PERFORM clearance.tell_bursary_turn(5000);
+        k_ready := (SELECT string_agg(DISTINCT n.template_key, ',') FROM platform.notice n WHERE n.about_id = ready AND n.event_key LIKE 'bursary-turn:%');
+        k_owe := (SELECT string_agg(DISTINCT n.template_key, ',') FROM platform.notice n WHERE n.about_id = owe AND n.event_key LIKE 'bursary-turn:%');
+        k_asg := (SELECT string_agg(DISTINCT n.template_key, ',') FROM platform.notice n WHERE n.about_id = asg AND n.event_key LIKE 'bursary-turn:%');
+        owe_body := (SELECT n.body FROM platform.notice n WHERE n.about_id = owe AND n.event_key LIKE 'bursary-turn:%' AND n.channel = 'EMAIL' LIMIT 1);
+        asg_body := (SELECT n.body FROM platform.notice n WHERE n.about_id = asg AND n.event_key LIKE 'bursary-turn:%' AND n.channel = 'EMAIL' LIMIT 1);
+        PERFORM clearance.tell_bursary_turn(5000);
+        again := (SELECT count(*) FROM platform.notice n WHERE n.about_id IN (ready, owe, asg) AND n.event_key LIKE 'bursary-turn:%' AND n.channel = 'EMAIL');
+
+        -- the Bursar told of the ready one; not again; the owing one pays and the Bursar is told of that one alone
+        PERFORM clearance.tell_bursar_ready();
+        n1 := (SELECT count(*) FROM platform.notice n WHERE n.about_id = bur AND n.template_key = 'BURSAR_READY_TO_GRADUATE' AND n.channel = 'EMAIL');
+        d1 := (SELECT n.body FROM platform.notice n WHERE n.about_id = bur AND n.template_key = 'BURSAR_READY_TO_GRADUATE' AND n.channel = 'EMAIL' LIMIT 1);
+        PERFORM clearance.tell_bursar_ready();
+        n2 := (SELECT count(*) FROM platform.notice n WHERE n.about_id = bur AND n.template_key = 'BURSAR_READY_TO_GRADUATE' AND n.channel = 'EMAIL');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (owe, s0, 'MOAUM-FEE-V671-0003', 'School fees ' || s0, 30000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V671-0003');
+        PERFORM clearance.tell_bursar_ready();
+        n3 := (SELECT count(*) FROM platform.notice n WHERE n.about_id = bur AND n.template_key = 'BURSAR_READY_TO_GRADUATE' AND n.channel = 'EMAIL');
+        d3 := (SELECT n.body FROM platform.notice n WHERE n.about_id = bur AND n.template_key = 'BURSAR_READY_TO_GRADUATE' AND n.channel = 'EMAIL' AND n.body IS DISTINCT FROM d1 LIMIT 1);
+        seen := (SELECT count(*) FROM clearance.ready_seen s JOIN clearance.process q ON q.id = s.process_id WHERE q.student_id IN (ready, owe, asg));
+        RAISE EXCEPTION 'the V671 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V671: a student whose final clearance waits only on the Bursary is told once, in the words of their case (nothing owed, owing with the amount and period, being assessed); the Bursar is told of the students newly ready, once each',
+        k_ready = 'STUDENT_BURSARY_TURN' AND k_owe = 'STUDENT_BURSARY_TURN:OWING' AND k_asg = 'STUDENT_BURSARY_TURN:ASSESSING'
+        AND owe_body LIKE '%₦30,000%' AND owe_body LIKE '%9879/9880, first semester%' AND asg_body LIKE '%2 semesters of your record are still being assessed%'
+        AND again = 3
+        AND n1 = 1 AND d1 LIKE '%1 student(s) became ready%' AND d1 LIKE '%CHECKV671, Ready%' AND d1 NOT LIKE '%CHECKV671, Owing%'
+        AND n2 = 1 AND n3 = 2 AND d3 LIKE '%CHECKV671, Owing%' AND d3 NOT LIKE '%CHECKV671, Ready%' AND seen = 2,
+        format('keys=%s/%s/%s owe=%s asg=%s again=%s n=%s/%s/%s d1=%s d3=%s seen=%s', k_ready, k_owe, k_asg, left(owe_body, 400), left(asg_body, 300), again,
+               n1, n2, n3, left(d1, 300), left(d3, 300), seen));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
