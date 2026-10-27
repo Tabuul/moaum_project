@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 504
+\set EXPECTED 505
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27580,6 +27580,163 @@ BEGIN
       format('levels A %s B %s C %s D %s | A registrations %s, courses %s | decisions %s | run %s (sp %s, reg %s, ar %s; raised %s, carried %s) again %s',
              la, lb, lc, ld, regs, types, rules, run1.students, run1.spillover, run1.registration, run1.arithmetic, run1.registrations_raised,
              run1.entries_carried, run2.students));
+END $$;
+
+-- ── V675: old-portal postgraduate applicants migrated — the old number kept beside the new, the admitted kept admitted ──
+-- Made-up applicants of a made-up session and programme. The applicants' file: a new applicant with a verified application fee,
+-- the same old number again, a new applicant whose fee is only claimed, a programme the old portal named otherwise (mapped by
+-- the School, then read), one admitted (refused: the admitted template carries it), an applicant already on this portal (found
+-- by email, never made twice), one with no email. The admitted file: one accepted on a verified payment and cleared at
+-- screening (admitted to the register, once), one whose acceptance fee is only claimed (verified later by another officer, not
+-- the uploader), a student already on the register (linked), the claimed applicant again (moved forward to the offer). Both
+-- numbers find the same applicant; the same file again changes nothing; the history is not deleted. The block undoes its writes.
+DO $$
+DECLARE s0 text := '9877/9878'; who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); prog text := 'C96731';
+        v_dept text; v_fac text; b1 uuid; b2 uuid; b3 uuid; j jsonb; rows1 jsonb; rows2 jsonb; app_ex uuid; st_ex uuid; v_err text;
+        k_created int; k_dup text; k_claim text; k_unmapped text; k_after_map text; k_admitted_in text; k_existing text; k_noemail text;
+        a_new admissions.pg_application; a_claim admissions.pg_application; a_c admissions.pg_application; a_d admissions.pg_application;
+        n_app_email int; n_students_c int; posted int; under_review text; refused text; found_old text; found_new text;
+        r_link text; bio text; recon_state text; same_officer text; verified_state text; chk_paid boolean; again text; apps_before int; apps_after int;
+        told int; trail_told int; del_refused text; figures jsonb; screening_src text; n_admits int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V675 check: PG migration', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (who, 'CHK/V675/S', 'CHECKMIGPG', 'School', NULL), (bur, 'CHK/V675/B', 'CHECKMIGPG', 'Bursar', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9877-10-01', '9878-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT d.code, d.faculty_code INTO v_dept, v_fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research)
+        VALUES (prog, 'M.Sc. Check Migration Studies', v_dept, v_fac, 'POST GRADUATE', 0, 'MSC', false);
+        -- an applicant already on this portal (applied here), and a student already on the register (loaded from the old portal)
+        SELECT x.application_id INTO app_ex FROM admissions.pg_apply(jsonb_build_object('session', s0, 'programme', prog, 'surname', 'CHECKMIGPG', 'otherNames', 'Existing Here',
+               'email', 'pgmig.existing@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (gen_random_uuid(), 'CHK/PG/673/0010', 'CHECKMIGPG', 'Already Student', prog, 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()) RETURNING id INTO st_ex;
+
+        -- ── the applicants' file ──
+        rows1 := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0001', 'lastName', 'CHECKMIGPG', 'firstName', 'New', 'email', 'pgmig.new@example.test', 'phone', '+234 803 000 6731',
+                               'session', '9877-78', 'programme', 'M.Sc. Check Migration Studies', 'applicationStatus', 'Submitted', 'applicationFeeStatus', 'Verified',
+                               'applicationFeeReference', 'OLD-APP-6731', 'applicationFeeAmount', '₦20,000', 'applicationFeeDate', '05/01/2026',
+                               'firstDegreeInstitution', 'A Check University', 'firstDegreeQualification', 'B.Sc.', 'docTranscript', 'old-doc-1.pdf'),
+            jsonb_build_object('legacyApplicationNo', 'oldpg/9877/0001', 'lastName', 'CHECKMIGPG', 'firstName', 'New', 'email', 'pgmig.new2@example.test', 'session', s0, 'programme', prog),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0003', 'lastName', 'CHECKMIGPG', 'firstName', 'Claimed', 'email', 'pgmig.claimed@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-6733', 'applicationFeeAmount', '20000'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0004', 'lastName', 'CHECKMIGPG', 'firstName', 'Mapped', 'email', 'pgmig.mapped@example.test', 'session', s0,
+                               'programme', 'Masters in Check Migration (Old Portal)'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0005', 'lastName', 'CHECKMIGPG', 'firstName', 'Admitted', 'email', 'pgmig.admitted@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationStatus', 'Admitted'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0006', 'lastName', 'CHECKMIGPG', 'firstName', 'Existing', 'email', 'PgMig.Existing@example.test', 'session', s0, 'programmeCode', prog),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0007', 'lastName', 'CHECKMIGPG', 'firstName', 'NoEmail', 'session', s0, 'programmeCode', prog));
+        b1 := (admissions.pg_migration_open('APPLICANTS', 'C:\fakepath\pg applicants.xlsx', repeat('a', 64), 7, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b1, 1, rows1);
+        PERFORM admissions.pg_migration_check(b1, 1, 7);
+        SELECT string_agg(r.verdict, ',' ORDER BY r.row_no) INTO k_dup FROM admissions.pg_migration_row r WHERE r.batch_id = b1;
+        k_unmapped := (SELECT r.verdict || ':' || (r.problems->0->>'code') FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 4);
+        PERFORM admissions.pg_legacy_map_programme(NULL, 'Masters in Check Migration (Old Portal)', prog, NULL, 'V675 check: the old portal''s name for it');
+        PERFORM admissions.pg_migration_check(b1, 1, 7);
+        k_after_map := (SELECT r.verdict || ':' || r.programme_code FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 4);
+        k_admitted_in := (SELECT r.verdict || ':' || (SELECT e->>'code' FROM jsonb_array_elements(r.problems) e WHERE e->>'level' = 'error' LIMIT 1) FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 5);
+        k_existing := (SELECT r.match || ':' || r.action || ':' || (r.application_id = app_ex) FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 6);
+        k_noemail := (SELECT r.verdict || ':' || (r.problems->0->>'code') FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 7);
+        PERFORM admissions.pg_migration_import(b1, 1, 7);
+        PERFORM admissions.pg_migration_finish(b1);
+        k_created := (SELECT count(*) FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.result = 'CREATED');
+        SELECT a.* INTO a_new FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9877/0001';
+        SELECT a.* INTO a_claim FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9877/0003';
+        n_app_email := (SELECT count(*) FROM admissions.pg_applicant p WHERE lower(p.email) = 'pgmig.existing@example.test');
+        posted := (SELECT count(*) FROM admissions.pg_fee_reference fr WHERE fr.reference = 'OLD-APP-6731' AND fr.confirmed_at IS NOT NULL AND fr.channel = 'Old portal' AND fr.application_id = a_new.id);
+        under_review := (SELECT f.state FROM admissions.pg_legacy_fee f WHERE f.legacy_reference = 'OLD-APP-6733');
+        BEGIN
+            PERFORM admissions.pg_new_fee_reference(a_claim.id, 'APPLICATION');
+            refused := 'issued';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1);
+        END;
+        SELECT string_agg(f.application_no, ',') INTO found_old FROM admissions.pg_legacy_find('oldpg/9877/0001') f;
+        SELECT string_agg(f.legacy_application_no, ',') INTO found_new FROM admissions.pg_legacy_find(a_new.application_no) f;
+        told := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'pg-migrated:%' AND n.channel = 'EMAIL'
+                  AND n.about_id IN (a_new.id, a_claim.id, app_ex));
+        trail_told := (SELECT count(*) FROM platform.notice n WHERE n.about_id IN (a_new.id, a_claim.id) AND n.subject LIKE 'Your MOAUM postgraduate application%');
+
+        -- ── the admitted file ──
+        rows2 := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0011', 'lastName', 'CHECKMIGPG', 'firstName', 'Cleared', 'email', 'pgmig.cleared@example.test', 'session', s0,
+                               'programmeCode', prog, 'admissionStatus', 'Admitted', 'admissionDate', '01/03/9878', 'admissionReference', 'ADM-LIST-1',
+                               'acceptanceStatus', 'Accepted', 'acceptanceFeeReference', 'OLD-ACC-6731', 'acceptanceFeeAmount', '50000', 'acceptanceVerification', 'Verified',
+                               'screeningDecision', 'Cleared', 'screeningDate', '10/03/9878', 'schoolFeesReference', 'OLD-SCH-6731', 'schoolFeesAmount', '150000'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0012', 'lastName', 'CHECKMIGPG', 'firstName', 'Unverified', 'email', 'pgmig.unverified@example.test', 'session', s0,
+                               'programmeCode', prog, 'admissionStatus', 'Admitted', 'acceptanceStatus', 'Accepted', 'acceptanceFeeReference', 'OLD-ACC-6732',
+                               'acceptanceFeeAmount', '50000', 'acceptanceVerification', 'Paid', 'screeningDecision', 'Cleared'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0010', 'matricNo', 'chk/pg/673/0010', 'lastName', 'CHECKMIGPG', 'firstName', 'Already', 'session', s0,
+                               'programmeCode', prog, 'admissionStatus', 'Admitted'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0003', 'lastName', 'CHECKMIGPG', 'firstName', 'Claimed', 'email', 'pgmig.claimed@example.test', 'session', s0,
+                               'programmeCode', prog, 'admissionStatus', 'Offered', 'admissionReference', 'ADM-LIST-2'));
+        b2 := (admissions.pg_migration_open('ADMITTED', 'admitted.xlsx', NULL, 4, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b2, 1, rows2);
+        PERFORM admissions.pg_migration_check(b2, 1, 4);
+        PERFORM admissions.pg_migration_import(b2, 1, 4);
+        PERFORM admissions.pg_migration_finish(b2);
+        SELECT a.* INTO a_c FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9877/0011';
+        SELECT a.* INTO a_d FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9877/0012';
+        n_students_c := (SELECT count(*) FROM people.student s WHERE s.surname = 'CHECKMIGPG' AND s.other_names = 'Cleared');
+        screening_src := (SELECT sc.state || ':' || sc.source FROM admissions.pg_screening sc WHERE sc.application_id = a_c.id);
+        r_link := (SELECT r.result || ':' || (r.student_id = st_ex) FROM admissions.pg_migration_row r WHERE r.batch_id = b2 AND r.row_no = 3);
+        bio := (SELECT b.value FROM people.biodata b WHERE b.student_id = st_ex AND b.field = 'legacy_appno');
+        recon_state := (SELECT r.result || ':' || a.state FROM admissions.pg_migration_row r JOIN admissions.pg_application a ON a.id = r.application_id
+                         WHERE r.batch_id = b2 AND r.row_no = 4);
+        SELECT (x).paid INTO chk_paid FROM (SELECT admissions.pg_status_checking(a_d.id) x) y;
+        -- the uploader does not verify; another officer of the Bursary does, and the old portal's screening then admits
+        BEGIN
+            PERFORM set_config('moaum.actor_office', 'pgsecretary', true);
+            PERFORM admissions.pg_legacy_fee_decide((SELECT f.id FROM admissions.pg_legacy_fee f WHERE f.legacy_reference = 'OLD-ACC-6732'), true, 'V675 check: seen on the statement');
+            same_officer := 'decided';
+        EXCEPTION WHEN check_violation THEN same_officer := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.pg_legacy_fee_decide((SELECT f.id FROM admissions.pg_legacy_fee f WHERE f.legacy_reference = 'OLD-ACC-6732'), true, 'V675 check: seen on the statement');
+        verified_state := (SELECT a.state || ':' || (a.student_id IS NOT NULL) FROM admissions.pg_application a WHERE a.id = a_d.id);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+
+        -- ── the same applicants' file again: nothing twice ──
+        apps_before := (SELECT count(*) FROM admissions.pg_application) + (SELECT count(*) FROM people.student) + (SELECT count(*) FROM admissions.pg_fee_reference);
+        n_admits := (SELECT count(*) FROM admissions.pg_application_event e WHERE e.application_id = a_c.id AND e.kind = 'ADMITTED');
+        b3 := (admissions.pg_migration_open('APPLICANTS', 'pg applicants.xlsx', repeat('a', 64), 7, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b3, 1, rows1);
+        PERFORM admissions.pg_migration_check(b3, 1, 7);
+        PERFORM admissions.pg_migration_import(b3, 1, 7);
+        SELECT string_agg(r.result, ',' ORDER BY r.row_no) INTO again FROM admissions.pg_migration_row r WHERE r.batch_id = b3;
+        apps_after := (SELECT count(*) FROM admissions.pg_application) + (SELECT count(*) FROM people.student) + (SELECT count(*) FROM admissions.pg_fee_reference);
+        BEGIN
+            DELETE FROM admissions.pg_migration_batch WHERE id = b1;
+            del_refused := 'deleted';
+        EXCEPTION WHEN check_violation THEN del_refused := split_part(SQLERRM, ':', 1);
+        END;
+        figures := admissions.pg_legacy_figures();
+        RAISE EXCEPTION 'the V675 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V675 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V675: old-portal PG applicants are migrated, not re-applied — the old number kept beside a new one of this portal''s series and both find the applicant; duplicates, unmapped programmes and missing data held back; nobody, no admission, no student and no payment twice; a verified fee posted, an unverified one held (not asked again) until another officer verifies it; the admitted come in admitted, the screened onto the register once, a student linked; the same file again changes nothing; the history kept',
+        v_err IS NULL
+        AND k_dup LIKE 'READY,DUPLICATE_IN_FILE,%' AND k_unmapped = 'REQUIRES_REVIEW:PROGRAMME_NOT_MAPPED' AND k_after_map = 'READY:' || prog
+        AND k_admitted_in = 'ERROR:ADMITTED_IN_APPLICANT_FILE' AND k_existing = 'EXISTING_APPLICANT:UPDATE:true' AND k_noemail = 'ERROR:EMAIL_MISSING'
+        AND k_created = 3 AND a_new.application_no ~ '^PG/77/[0-9]{6}$' AND a_new.state = 'SUBMITTED' AND a_new.fee_confirmed_at IS NOT NULL
+        AND n_app_email = 1 AND posted = 1 AND under_review = 'REQUIRES_REVIEW' AND refused = 'PG_FEE_UNDER_REVIEW' AND a_claim.fee_confirmed_at IS NULL
+        AND found_old = a_new.application_no AND found_new = 'OLDPG/9877/0001' AND told = 3 AND trail_told = 0
+        AND a_c.state = 'ADMITTED' AND a_c.student_id IS NOT NULL AND n_students_c = 1 AND screening_src = 'CLEARED:OLD_PORTAL'
+        AND a_d.state = 'OFFERED' AND chk_paid AND same_officer = 'PGMIG_SAME_OFFICER' AND verified_state = 'ADMITTED:true'
+        AND r_link = 'LINKED:true' AND bio = 'OLDPG/9877/0010' AND recon_state = 'RECONCILED:OFFERED'
+        AND again = 'UNCHANGED,SKIPPED,UNCHANGED,UNCHANGED,SKIPPED,UNCHANGED,SKIPPED' AND apps_after = apps_before AND n_admits = 1
+        AND del_refused = 'PGMIG_KEPT' AND (figures->>'migrated')::int >= 6,
+        format('err=%s | dup=%s unmapped=%s mapped=%s admittedIn=%s existing=%s noemail=%s | created=%s no=%s state=%s fee=%s | email=%s posted=%s review=%s refused=%s claimfee=%s | old=%s new=%s told=%s trail=%s | C=%s/%s students=%s scr=%s | D=%s paid=%s same=%s verified=%s | link=%s bio=%s recon=%s | again=%s %s/%s admits=%s | del=%s fig=%s',
+               v_err, k_dup, k_unmapped, k_after_map, k_admitted_in, k_existing, k_noemail, k_created, a_new.application_no, a_new.state, a_new.fee_confirmed_at IS NOT NULL,
+               n_app_email, posted, under_review, refused, a_claim.fee_confirmed_at, found_old, found_new, told, trail_told,
+               a_c.state, a_c.student_id IS NOT NULL, n_students_c, screening_src, a_d.state, chk_paid, same_officer, verified_state, r_link, bio, recon_state,
+               again, apps_before, apps_after, n_admits, del_refused, left(figures::text, 300)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

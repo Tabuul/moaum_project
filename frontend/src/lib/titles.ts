@@ -249,6 +249,7 @@ export const TITLES: Record<string, string> = {
   "t/screening": "Screening register",
   "t/de-screening": "Direct Entry screening",
   "t/pgadmissions": "Postgraduate admissions",
+  "t/pgmigration": "PG legacy migration",
   "t/transcripts": "Transcript requests",
   "t/certificates": "Certificates",
   "t/graduation": "Graduation",

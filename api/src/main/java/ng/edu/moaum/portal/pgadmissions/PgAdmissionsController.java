@@ -150,6 +150,7 @@ class PgAdmissionsController {
                        a.submitted_at, a.dept_decided_at, a.fac_decided_at, a.spgs_decided_at,
                        a.accepted_at, a.admitted_at, a.student_id, a.return_note, a.returned_at, a.returned_to,
                        (SELECT ps.name FROM catalogue.programme_specialisation ps WHERE ps.id = a.specialisation_id) AS specialisation,   -- V488
+                       (SELECT l.legacy_application_no FROM admissions.pg_legacy_application l WHERE l.application_id = a.id) AS legacy_application_no,   -- V675
                        (SELECT sc.state FROM admissions.pg_screening sc WHERE sc.application_id = a.id) AS screening_state,
                        (SELECT count(*) FROM admissions.pg_document x WHERE x.application_id = a.id AND x.kind <> 'PASSPORT') AS documents,
                        (SELECT count(*) FROM admissions.pg_referee x WHERE x.application_id = a.id AND x.submitted_at IS NOT NULL) AS references_in
@@ -537,6 +538,40 @@ class PgAdmissionsController {
             out.put("student", jdbc.sql("SELECT admission_no, matric_no, status FROM people.student WHERE id = :s")
                     .param("s", app.get("student_id")).query().listOfRows().stream().findFirst().orElse(null));
         }
+        out.put("legacy", legacyOf(id));
+        return out;
+    }
+
+    /** V675: an application migrated from the old portal — its old number and source, the batch that brought it, what the old portal
+     *  decided, where the migration left it, and the old portal's fees and documents; null for an application made here */
+    private Map<String, Object> legacyOf(UUID id) {
+        Map<String, Object> l = jdbc.sql("""
+                SELECT l.legacy_application_no, l.legacy_source, l.legacy_session, b.reference AS batch_reference, b.kind AS batch_kind, l.migrated_at,
+                       (SELECT x.surname || ', ' || x.given_names FROM iam.person x WHERE x.id = l.migrated_by) AS migrated_by,
+                       l.admission_session, l.admission_reference, l.admitted_on, l.admission_type, l.admission_decision, l.decided_on_old_portal,
+                       l.accepted_on, l.screening_decision, l.screened_on, l.screening_reference, l.screening_remarks, l.told_at,
+                       CASE WHEN a.student_id IS NOT NULL THEN 'MIGRATED_AND_STUDENT'
+                            WHEN EXISTS (SELECT 1 FROM admissions.pg_screening sc WHERE sc.application_id = a.id AND sc.state = 'CLEARED') THEN 'MIGRATED_AND_SCREENED'
+                            WHEN a.state = 'ACCEPTED' THEN 'MIGRATED_AND_ACCEPTED'
+                            WHEN a.state = 'OFFERED' THEN 'MIGRATED_AND_ADMITTED'
+                            ELSE 'MIGRATED_AND_PENDING' END AS migration_status
+                  FROM admissions.pg_legacy_application l JOIN admissions.pg_migration_batch b ON b.id = l.batch_id
+                  JOIN admissions.pg_application a ON a.id = l.application_id
+                 WHERE l.application_id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElse(null);
+        if (l == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>(l);
+        out.put("fees", jdbc.sql("""
+                SELECT f.id, f.kind, f.legacy_reference, f.amount, f.paid_on, f.state, f.stated_status, f.decided_at, f.decision_note
+                  FROM admissions.pg_legacy_fee f WHERE f.application_id = :id ORDER BY f.created_at
+                """).param("id", id).query().listOfRows());
+        out.put("documents", jdbc.sql("""
+                SELECT d.id, d.kind, d.label, d.legacy_ref, d.document_id, d.attached_at,
+                       d.document_id IS NULL AS missing
+                  FROM admissions.pg_legacy_document d WHERE d.application_id = :id ORDER BY d.label
+                """).param("id", id).query().listOfRows());
         return out;
     }
 

@@ -98,7 +98,9 @@ public class PasswordResetService {
         var pg = jdbc.sql("""
                 SELECT p.id, p.email, p.phone FROM admissions.pg_applicant p
                   JOIN admissions.pg_application ap ON ap.applicant_id = p.id
+                  LEFT JOIN admissions.pg_legacy_application l ON l.application_id = ap.id
                  WHERE lower(p.email) = :e OR upper(ap.application_no) = :k
+                    OR upper(btrim(l.legacy_application_no)) = :k   -- V675: the old portal's application number too
                  LIMIT 1
                 """).param("k", upper).param("e", lower).query().listOfRows();
         if (!pg.isEmpty()) {

@@ -7,6 +7,7 @@ import { StudentTypeCards } from "@/components/stats/StudentTypeCards";
 import { FinancePanel } from "@/components/stats/FinancePanel";
 import { PgStructurePanel } from "@/components/catalogue/PgStructurePanel";
 import { PgStagePanel } from "@/components/pg/PgStagePanel";
+import { PgLegacyPanel } from "@/components/pg/PgLegacyPanel";
 
 export interface PgHome {
   session: string;
@@ -82,6 +83,7 @@ export function PgSchoolDashboard({ home }: { me: Me | null; home: PgHome | null
 
       <PgStagePanel />
       <PgStructurePanel />
+      <PgLegacyPanel />
       <Tiles items={[
         ["Applications", String(c.total), null, home.session, desk],
         ["Awaiting the School", String(awaitingSchool), awaitingSchool ? "var(--chrome)" : null, "Recommended by a faculty", desk],
@@ -168,6 +170,7 @@ export function PgSecretaryDashboard({ home }: { me: Me | null; home: PgSecHome 
 
       <PgStagePanel />
       <PgStructurePanel />
+      <PgLegacyPanel />
       <Tiles items={[
         ["To register", String(c.toRegister), Number(c.toRegister) ? "var(--chrome)" : null, "PG students yet to register this session", register],
         ["Fees to confirm", String(c.feesToConfirm), Number(c.feesToConfirm) ? "var(--chrome)" : null, "Live references awaiting confirmation", admissions],

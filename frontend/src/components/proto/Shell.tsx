@@ -97,6 +97,7 @@ export const ROUTES: Record<string, string> = {
   "t/offers": "/admissions/offers",
   "t/de-screening": "/admissions/de-screening",
   "t/pgadmissions": "/admissions/postgraduate",
+  "t/pgmigration": "/admissions/postgraduate/migration",
   "t/pgcourses": "/admissions/postgraduate/courses",
   "t/pgcalendar": "/admissions/postgraduate/calendar",
   "t/pgstudents": "/admissions/postgraduate/students",

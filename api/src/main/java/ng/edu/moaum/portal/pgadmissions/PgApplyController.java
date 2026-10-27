@@ -195,7 +195,10 @@ class PgApplyController {
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
                   CROSS JOIN LATERAL admissions.pg_status_checking(a.id) c
-                 WHERE a.application_no = :no AND lower(p.email) = lower(:email)
+                 WHERE (a.application_no = upper(:no)
+                        -- V675: the old portal's application number finds a migrated application too
+                        OR EXISTS (SELECT 1 FROM admissions.pg_legacy_application l WHERE l.application_id = a.id AND upper(btrim(l.legacy_application_no)) = upper(:no)))
+                   AND lower(p.email) = lower(:email)
                 """).param("no", applicationNo.trim()).param("email", email.trim()).query().listOfRows();
         return rows.isEmpty() ? Map.of("found", false) : Map.of("found", true, "application", rows.get(0));
     }

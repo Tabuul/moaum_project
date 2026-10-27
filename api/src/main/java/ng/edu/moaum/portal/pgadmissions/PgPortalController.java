@@ -113,6 +113,8 @@ class PgPortalController {
                   FROM admissions.pg_applicant p
                  WHERE lower(p.email) = lower(:id)
                     OR EXISTS (SELECT 1 FROM admissions.pg_application ap WHERE ap.applicant_id = p.id AND ap.application_no = upper(:id))
+                    OR EXISTS (SELECT 1 FROM admissions.pg_application ap JOIN admissions.pg_legacy_application l ON l.application_id = ap.id
+                                WHERE ap.applicant_id = p.id AND upper(btrim(l.legacy_application_no)) = upper(btrim(:id)))   -- V675: the old portal's number too
                  LIMIT 1
                 """).param("id", id).query().listOfRows());
         if (a == null) {
@@ -250,7 +252,10 @@ class PgPortalController {
                         new DomainRuleViolation.Remedy("You are told by email when the School releases admission status.", "Directorate of ICT"));
             }
         }
-        if ("ACCEPTANCE".equals(k) && !(("OFFERED".equals(app.get("state")) || "ACCEPTED".equals(app.get("state")) || "ADMITTED".equals(app.get("state"))) && app.get("checking_confirmed_at") != null)) {
+        // V675: the decision is read once checking is paid here — or the admission was decided on the old portal, which needs no checking fee
+        boolean decisionRead = app.get("checking_confirmed_at") != null || Boolean.TRUE.equals(jdbc.sql("SELECT paid FROM admissions.pg_status_checking(:app)")
+                .param("app", app.get("id")).query(Boolean.class).optional().orElse(false));
+        if ("ACCEPTANCE".equals(k) && !(("OFFERED".equals(app.get("state")) || "ACCEPTED".equals(app.get("state")) || "ADMITTED".equals(app.get("state"))) && decisionRead)) {
             throw new DomainRuleViolation("PG_FEE_NOT_YET", "The acceptance fee is paid once a place is offered and the decision has been read.",
                     new DomainRuleViolation.Remedy("Pay the checking fee to read the decision; the acceptance fee follows an offer.", "School of Postgraduate Studies"));
         }
@@ -324,6 +329,11 @@ class PgPortalController {
                 """).param("me", me).query().listOfRows());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("applicationNo", a.get("application_no"));
+        // V675: an application migrated from the old portal keeps its old number beside this one
+        out.put("legacyApplicationNo", jdbc.sql("SELECT legacy_application_no FROM admissions.pg_legacy_application WHERE application_id = :app")
+                .param("app", a.get("application_id")).query(String.class).optional().orElse(null));
+        out.put("oldPortalFeesUnderReview", jdbc.sql("SELECT kind FROM admissions.pg_legacy_fee WHERE application_id = :app AND state = 'REQUIRES_REVIEW' ORDER BY kind")
+                .param("app", a.get("application_id")).query(String.class).list());
         out.put("session", a.get("session"));
         out.put("name", a.get("surname") + ", " + a.get("other_names"));
         out.put("surname", a.get("surname"));

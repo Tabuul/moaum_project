@@ -25,6 +25,8 @@ interface DocMeta { id: string; kind: string; filename: string; content_type: st
 interface Me {
   applicationNo: string; session: string; name: string; surname: string; otherNames: string;
   email: string; phone: string | null;
+  /** V675: the old portal's application number, for an application migrated from it, and its fees still being verified */
+  legacyApplicationNo?: string | null; oldPortalFeesUnderReview?: string[];
   state: string; entryLevel: number; programme: string; programmeCode: string; award: string | null; research: boolean;
   faculty: string; department: string; submittedAt: string | null; createdAt: string | null; feeConfirmedAt: string | null;
   applicationFee: number | null; acceptanceFee: number | null; checkingFee: number | null; liveReference: string | null;
@@ -283,11 +285,17 @@ export function PgPortal() {
       `}</style>
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      <Note kind={paid ? "ok" : "info"} title={`${me.name} · ${me.applicationNo}`}>
+      <Note kind={paid ? "ok" : "info"} title={`${me.name} · ${me.applicationNo}${me.legacyApplicationNo ? ` (old portal: ${me.legacyApplicationNo})` : ""}`}>
         Your postgraduate application is <b>{STATE_LABEL[me.state] ?? me.state}</b>.
         {me.state === "OFFERED" ? " You have an offer of admission." : ""}
-        {!paid ? " Pay the application fee below to have it screened." : ""}
+        {!paid && !(me.oldPortalFeesUnderReview ?? []).includes("APPLICATION") ? " Pay the application fee below to have it screened." : ""}
       </Note>
+      {(me.oldPortalFeesUnderReview ?? []).length ? (
+        <Note kind="info" title="A fee you paid on the old portal is being verified">
+          The {(me.oldPortalFeesUnderReview ?? []).map((k) => (k === "ACCEPTANCE" ? "acceptance fee" : "application fee")).join(" and ")} you paid on the University&rsquo;s old portal
+          is being verified by the Bursary. You do not pay it again; you are told by email once it is verified.
+        </Note>
+      ) : null}
 
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates once the payment reaches the University.</Note> : null}
 
@@ -452,7 +460,8 @@ export function PgPortal() {
         <Panel title="Application">
           <PBody>
             <KvGrid cls="grid--1" pairs={[
-              ["Application number", me.applicationNo], ["Session", me.session], ["Programme", me.programme],
+              ["Application number", me.applicationNo], ...(me.legacyApplicationNo ? [["Old application number", me.legacyApplicationNo] as [string, string]] : []),
+              ["Session", me.session], ["Programme", me.programme],
               ["Award", me.award ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
               ["Faculty", me.faculty], ["Department", me.department], ["Date applied", fmtDate(me.submittedAt)],
             ]} />

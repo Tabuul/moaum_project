@@ -698,6 +698,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/offers", "icon": "cal", "label": "Offers & Waiting List" },
           { "id": "t/de-screening", "icon": "chart", "label": "Direct Entry Screening" },
           { "id": "t/pgadmissions", "icon": "cap", "label": "Postgraduate Admissions" },
+          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
@@ -788,6 +789,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
+          { "id": "t/pgmigration", "icon": "swap", "label": "Old PG Application Fees" },
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
           { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },
@@ -2565,7 +2567,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" }
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
+          { "id": "t/pgmigration", "icon": "box", "label": "Legacy Migration" }
         ]
       },
       {
@@ -2803,7 +2806,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Admissions",
         "items": [
-          { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" }
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
+          { "id": "t/pgmigration", "icon": "box", "label": "Legacy Migration" }
         ]
       },
       {

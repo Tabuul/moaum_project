@@ -28,6 +28,17 @@ export interface PgRow {
   return_note?: string | null; returned_at?: string | null; returned_to?: string | null; screening_state?: string | null;
   /** V488: the specialisation applied for (the student's own once admitted) */
   specialisation?: string | null; specialisation_id?: string | null;
+  /** V675: the old portal's application number, for an application migrated from it */
+  legacy_application_no?: string | null;
+}
+/** V675: an application migrated from the old portal — its old number, the upload, what the old portal decided, its fees and documents */
+interface Legacy {
+  legacy_application_no: string; legacy_source: string; legacy_session: string | null; batch_reference: string; batch_kind: string; migrated_at: string;
+  migrated_by: string | null; admission_session: string | null; admission_reference: string | null; admitted_on: string | null; admission_type: string | null;
+  admission_decision: string | null; decided_on_old_portal: boolean; accepted_on: string | null; screening_decision: string | null; screened_on: string | null;
+  screening_reference: string | null; screening_remarks: string | null; migration_status: string;
+  fees: { id: string; kind: string; legacy_reference: string; amount: number; paid_on: string | null; state: string; stated_status: string | null; decision_note: string | null }[];
+  documents: { id: string; kind: string; label: string; legacy_ref: string; missing: boolean }[];
 }
 export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; faculty: number; offered: number; accepted: number; admitted: number; not_recommended?: number; returned?: number; not_offered?: number; unpaid?: number }; rows: PgRow[] }
 interface Screening { state: string; venue: string | null; scheduled_for: string | null; verified_documents: string[] | null; missing_documents: string[] | null; issues: string | null; remarks: string | null; reason: string | null; decided_at: string | null; officer: string | null; officer_office: string | null }
@@ -38,7 +49,7 @@ interface PriorQual { kind: string; institution: string | null; award: string | 
 interface HistoryRow { kind: string; note: string | null; at: string; actor: string | null; actor_office: string | null }
 interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; nationality?: string | null; contact_address?: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null; checking_confirmed_at?: string | null; acceptance_confirmed_at?: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[]; screening?: Screening | null; screeningRequired?: boolean; student?: { admission_no: string; matric_no: string | null; status: string } | null;
   /** V488: the programme's running specialisations, for the School before admission */
-  specialisations?: { id: string; code: string; name: string }[] }
+  specialisations?: { id: string; code: string; name: string }[]; legacy?: Legacy | null }
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Application opened", SUBMITTED: "Submitted", APPLICATION_FEE_CONFIRMED: "Application fee confirmed", REFERENCE_RECEIVED: "Reference received",
   DEPT_RECOMMENDED: "Department recommended", DEPT_DECLINED: "Department declined", FAC_RECOMMENDED: "Faculty recommended", FAC_DECLINED: "Faculty declined",
@@ -47,14 +58,21 @@ const EVENT_LABEL: Record<string, string> = {
   RETURNED: "Returned to the applicant for correction", RESUBMITTED: "Resubmitted after correction", RETURNED_TO_DEPARTMENT: "Returned to the department by the School",
   SCREENING_PENDING: "Physical screening opened", SCREENING_SCHEDULED: "Physical screening scheduled", SCREENING_IN_PROGRESS: "Physical screening in progress",
   SCREENING_CLEARED: "Cleared at physical screening", SCREENING_NOT_CLEARED: "Not cleared at physical screening", SCREENING_CORRECTION_REQUIRED: "Correction required at screening",
+  MIGRATED: "Migrated from the old portal", OLD_PORTAL_FEE_VERIFIED: "Old-portal fee verified", OLD_PORTAL_FEE_REJECTED: "Old-portal fee not verified",
+  OLD_PORTAL_DOCUMENT_ATTACHED: "Old-portal document attached",
 };
+const MIGRATION_WORD: Record<string, string> = {
+  MIGRATED_AND_PENDING: "Migrated · pending", MIGRATED_AND_ADMITTED: "Migrated · admitted", MIGRATED_AND_ACCEPTED: "Migrated · accepted",
+  MIGRATED_AND_SCREENED: "Migrated · screened", MIGRATED_AND_STUDENT: "Migrated · student",
+};
+const FEE_STATE: Record<string, string> = { POSTED: "Posted (verified)", REQUIRES_REVIEW: "Requires review", REJECTED: "Not verified", FOR_BURSARY: "For the Bursary's upload" };
 const fmtWhen = (v: string) => new Date(v).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /** the applications on the desk as a branded workbook: S/N first, names A–Z as the desk lists them */
 async function exportRows(rows: PgRow[], session: string) {
-  const headers = ["S/N", "Application number", "Applicant", "Programme", "Award", "Specialisation", "Department", "Faculty", "Level", "Session", "Application fee", "Application status", "Submitted"];
+  const headers = ["S/N", "Application number", "Old application number", "Applicant", "Programme", "Award", "Specialisation", "Department", "Faculty", "Level", "Session", "Application fee", "Application status", "Submitted"];
   const body = rows.map((r, i) => [
-    i + 1, r.application_no, `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.specialisation ?? "", r.department_name ?? "", r.faculty_name ?? "",
+    i + 1, r.application_no, r.legacy_application_no ?? "", `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.specialisation ?? "", r.department_name ?? "", r.faculty_name ?? "",
     r.entry_level, session, r.fee_confirmed_at ? "Paid" : "Unpaid", stageOf(r).label, r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "",
   ]);
   const blob = await brandedXlsx("Postgraduate applications", headers, body, { sheetName: "Applications", serial: docSerial("PGAPP"), sub: session });
@@ -430,6 +448,32 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
           onAct={(path, label, body) => act(path, label, body)} />
       ) : null}
 
+      {d.legacy ? (
+        <Section title="Legacy application">
+          <div className="grid grid--3" style={{ gap: 8 }}>
+            <Two a={d.legacy.legacy_application_no} b={`Old application number · ${d.legacy.legacy_source === "OLD_PORTAL" ? "old portal" : d.legacy.legacy_source}${d.legacy.legacy_session ? ` · ${d.legacy.legacy_session}` : ""}`} />
+            <Two a={MIGRATION_WORD[d.legacy.migration_status] ?? d.legacy.migration_status} b={`${d.legacy.batch_reference} · ${fmtWhen(d.legacy.migrated_at)}${d.legacy.migrated_by ? ` · ${d.legacy.migrated_by}` : ""}`} />
+            {d.legacy.decided_on_old_portal || d.legacy.admission_reference ? (
+              <Two a={`Admitted on the old portal${d.legacy.admitted_on ? ` · ${d.legacy.admitted_on}` : ""}`}
+                b={[d.legacy.admission_reference, d.legacy.admission_type, d.legacy.admission_session, d.legacy.admission_decision].filter(Boolean).join(" · ") || "—"} />
+            ) : null}
+            {d.legacy.screening_decision ? (
+              <Two a={`Screening on the old portal: ${d.legacy.screening_decision.toLowerCase().replace(/_/g, " ")}`} b={[d.legacy.screened_on, d.legacy.screening_reference, d.legacy.screening_remarks].filter(Boolean).join(" · ") || "Historical, completed"} />
+            ) : null}
+          </div>
+          {d.legacy.fees.length ? (
+            <ul className="plain sub2" style={{ marginTop: 8 }}>
+              {d.legacy.fees.map((f) => <li key={f.id}>{f.kind === "APPLICATION" ? "Application fee" : f.kind === "ACCEPTANCE" ? "Acceptance fee" : "School fees"} {f.legacy_reference} · ₦{Number(f.amount).toLocaleString("en-GB")}{f.paid_on ? ` · ${f.paid_on}` : ""} · {FEE_STATE[f.state] ?? f.state}{f.decision_note ? ` — ${f.decision_note}` : ""}</li>)}
+            </ul>
+          ) : null}
+          {d.legacy.documents.length ? (
+            <ul className="plain sub2" style={{ marginTop: 8 }}>
+              {d.legacy.documents.map((x) => <li key={x.id}>{x.label}: {x.legacy_ref} · {x.missing ? <b>MIGRATION_DOCUMENT_MISSING</b> : "attached"}</li>)}
+            </ul>
+          ) : null}
+        </Section>
+      ) : null}
+
       {d.history && d.history.length ? (
         <Section title="History">
           <ol className="plain" style={{ display: "grid", gap: 6 }}>
@@ -541,7 +585,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
                   const st = stageOf(r);
                   return [
                     <span key="sn" className="tnum sub2">{i + 1}</span>,
-                    <Two key="n" a={`${r.surname}, ${r.other_names}`} b={r.application_no} />,
+                    <Two key="n" a={`${r.surname}, ${r.other_names}`} b={r.legacy_application_no ? `${r.application_no} · old ${r.legacy_application_no}` : r.application_no} />,
                     <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}{r.pg_research ? " · research" : ""}{r.specialisation ? ` · ${r.specialisation}` : ""}</div></span>,
                     <span className="tnum" key="l">{r.entry_level}</span>,
                     <span className="sub2" key="d">{r.prior_award ?? "—"}{r.prior_class ? ` · ${r.prior_class}` : ""}</span>,
@@ -549,7 +593,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
                     <LinkBtn kind="ghost" key="a" href={detailHref(r.id)}>Details</LinkBtn>,
                   ];
                 })}
-                texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.programme_name} ${r.state}`)}
+                texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.legacy_application_no ?? ""} ${r.programme_name} ${r.state}`)}
               />
             ) : <PBody><div className="sub2">No postgraduate application has been submitted for {session} yet.</div></PBody>}
           </Panel> : null}
