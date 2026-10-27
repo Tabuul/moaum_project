@@ -355,7 +355,7 @@ export function moaumTranscriptPdf(s: Statement, t: Template | null, verifyUrl: 
   const keyH = 48 + keyRows * 10;
   const sigH = 108;
   if (y - keyH - sigH - 40 < BOTTOM - 20) { newPage(); }
-  const C1 = L + 132, C2 = L + 278;
+  const C1 = L + 132, C2 = L + 304;
   p.box(L, y - keyH, R - L, keyH, 0);
   p.rule(C1, y, C1, y - keyH, 0.6, 0);
   p.rule(C2, y, C2, y - keyH, 0.6, 0);
@@ -373,7 +373,7 @@ export function moaumTranscriptPdf(s: Statement, t: Template | null, verifyUrl: 
   p.textStyled(g1 + 3, y - 34, "GRADE", 6.5, { font: "F4" });
   p.textStyled(g2 + 3, y - 27, "GRADE", 6.5, { font: "F4" });
   p.textStyled(g2 + 3, y - 34, "POINT", 6.5, { font: "F4" });
-  const b1 = C1 + 64;
+  const b1 = C1 + 54;
   p.rule(b1, y - 38, b1, y - keyH, 0.4, 0);
   scale.forEach((g, i) => {
     const yy = y - 48 - i * 10;
@@ -384,7 +384,7 @@ export function moaumTranscriptPdf(s: Statement, t: Template | null, verifyUrl: 
   bands.forEach((b, i) => {
     const yy = y - 48 - i * 10;
     p.textStyled(C1 + 6, yy, `${num(b.low)} - ${num(b.high)}`, 7.5, { font: "F4" });
-    p.textStyled(b1 + 4, yy, fit(clean(b.class), 7.5, C2 - b1 - 6), 7.5, { font: "F4" });
+    p.textStyled(b1 + 4, yy, fit(clean(b.class), 7, C2 - b1 - 6), 7, { font: "F4" });
   });
   const abbr: [string, string][] = [["TCR", "Total Credits Registered"], ["TCE", "Total Credits Earned"], ["TWGP", "Total Weighted Grade Point"], ["CGPA", "Cumulative Grade Point Average"]];
   abbr.forEach(([k, v], i) => {

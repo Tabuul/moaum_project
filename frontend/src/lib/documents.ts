@@ -85,6 +85,8 @@ export const DESTINATIONS: [string, string][] = [["SELF", "Myself"], ["INSTITUTI
 export const EVENT_WORDS: Record<string, string> = {
   REQUESTED: "Request submitted", PAID: "Payment confirmed", VALIDATED: "Academic validation", GENERATED: "Document generated", QUALITY_CHECK: "Quality check", RELEASED: "Approved and released", DELIVERY: "Delivery", DELIVERED: "Delivered", COMPLETED: "Completed",
   CANCELLED: "Cancelled", ISSUED: "Document issued", REVOKED: "Revoked", REPLACED: "Replaced by a new version", FLAGGED: "Flagged for review", FLAG_CLEARED: "Review closed", LINK_MADE: "Secure link made",
+  // V668: a request made without a portal account
+  PUBLIC_REQUEST: "Asked without a portal account", IDENTITY: "Identity checked", CONSENT: "Graduate's consent",
 };
 
 export const dayOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");

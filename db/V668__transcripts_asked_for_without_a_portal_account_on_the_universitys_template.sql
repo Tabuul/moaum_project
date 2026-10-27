@@ -422,7 +422,7 @@ BEGIN
         'identityState', pr.identity_state, 'consentState', pr.consent_state, 'consentExpiresAt', pr.consent_expires_at,
         'requestedAt', t.requested_at, 'slaDueOn', t.sla_due_on,
         'timeline', (SELECT jsonb_agg(jsonb_build_object('at', e.at, 'action', e.action, 'stage', credentials.public_stage_words(e.to_state)) ORDER BY e.at)
-                       FROM credentials.event e WHERE e.request_id = t.id AND e.action IN ('REQUESTED','PUBLIC_REQUEST','PAID','IDENTITY','CONSENT','RELEASED','DELIVERED','COMPLETED','CANCELLED'))));
+                       FROM credentials.event e WHERE e.request_id = t.id AND e.action IN ('REQUESTED','PAID','IDENTITY','CONSENT','RELEASED','DELIVERED','COMPLETED','CANCELLED'))));
 END $$;
 
 /* the payment reference made payable again from the private link, as the student's own reference is (V635) */
@@ -611,7 +611,7 @@ RETURNS jsonb LANGUAGE sql STABLE AS $$
         'body', replace(replace(replace(l.body, '[HOLDER]', initcap(lower(btrim(s.other_names))) || ' ' || initcap(lower(btrim(s.surname)))), '[MATRIC]', s.matric_no),
                         '[PURPOSE]', coalesce(nullif(btrim(coalesce(t.purpose, '')), ''), 'admission/employment')),
         'closing', l.closing,
-        'signatoryName', coalesce(l.signatory_name, CASE WHEN t.produced_by IS NOT NULL THEN helpdesk.person_name(t.produced_by) END),
+        'signatoryName', coalesce(l.signatory_name, (SELECT btrim(coalesce(p.given_names, '') || ' ' || p.surname) FROM iam.person p WHERE p.id = t.produced_by)),
         'signatoryTitle', l.signatory_title, 'onBehalfOf', l.on_behalf_of))
       FROM credentials.transcript_request t
       JOIN people.student s ON s.id = t.student_id

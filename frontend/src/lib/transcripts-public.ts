@@ -37,6 +37,6 @@ export const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).t
 export const RECIPIENTS: [string, string][] = [["INSTITUTION", "A university or other institution"], ["EMPLOYER", "An employer"], ["EMBASSY", "An embassy"], ["PROFESSIONAL_BODY", "A professional body"], ["OTHER", "Another organisation"]];
 export const DELIVERIES: [string, string][] = [["DIGITAL", "By email (a secure link)"], ["PHYSICAL", "Printed and posted"], ["BOTH", "Both"]];
 export const TIMELINE_WORDS: Record<string, string> = {
-  REQUESTED: "Request received", PUBLIC_REQUEST: "Request received", PAID: "Payment confirmed", IDENTITY: "Identity checked", CONSENT: "Graduate's consent",
+  REQUESTED: "Request received", PAID: "Payment confirmed", IDENTITY: "Identity checked", CONSENT: "Graduate's consent",
   RELEASED: "Transcript issued", DELIVERED: "Delivered", COMPLETED: "Completed", CANCELLED: "Cancelled",
 };
