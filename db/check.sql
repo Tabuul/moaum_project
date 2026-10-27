@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 501
+\set EXPECTED 502
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27373,6 +27373,70 @@ BEGIN
         AND n2 = 1 AND n3 = 2 AND d3 LIKE '%CHECKV671, Owing%' AND d3 NOT LIKE '%CHECKV671, Ready%' AND seen = 2,
         format('keys=%s/%s/%s owe=%s asg=%s again=%s n=%s/%s/%s d1=%s d3=%s seen=%s', k_ready, k_owe, k_asg, left(owe_body, 400), left(asg_body, 300), again,
                n1, n2, n3, left(d1, 300), left(d3, 300), seen));
+END $$;
+
+-- ── V673. The current session's course registrations below the level on the record are raised to it, with the session's
+--    enrolment at the same level; a registration above the record, an earlier session, a later session enrolled and a level a
+--    progression this session reached are left as they are, and the receipt of a progressed student keeps the level before;
+--    a second run raises nothing ──
+DO $$
+DECLARE
+    v_prog text; v_err text; run1 record; run2 record;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid();
+    a_regs text; a_enr int; b_reg int; c_reg int; d_reg int; d_receipt int; e_reg int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V673', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+      (gen_random_uuid(), '9682/9683', '9682-10-01', '9683-09-30', 'CLOSED'),
+      (gen_random_uuid(), '9683/9684', '9683-10-01', '9684-09-30', 'PLANNED'),
+      (gen_random_uuid(), '9684/9685', '9684-10-01', '9685-09-30', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9683/01' WHERE name = '9683/9684';
+    SELECT p.code INTO v_prog FROM ref.programme p
+     WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND p.final_level >= 400 ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+      (a, 'MOAUM/ADM/73/673001', 'MOAUM/ZZW/73/6731', 'CHECKV673', 'Below', v_prog, 'UTME', '9682/9683', 200, 300, 'ACTIVE', now()),
+      (b, 'MOAUM/ADM/73/673002', 'MOAUM/ZZW/73/6732', 'CHECKV673', 'Above', v_prog, 'UTME', '9682/9683', 100, 100, 'ACTIVE', now()),
+      (c, 'MOAUM/ADM/73/673003', 'MOAUM/ZZW/73/6733', 'CHECKV673', 'Earlier', v_prog, 'UTME', '9682/9683', 200, 300, 'ACTIVE', now()),
+      (d, 'MOAUM/ADM/73/673004', 'MOAUM/ZZW/73/6734', 'CHECKV673', 'Progressed', v_prog, 'UTME', '9682/9683', 100, 200, 'ACTIVE', now()),
+      (e, 'MOAUM/ADM/73/673005', 'MOAUM/ZZW/73/6735', 'CHECKV673', 'Rolled', v_prog, 'UTME', '9682/9683', 200, 400, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+      (gen_random_uuid(), a, '9683/9684', 1, 200, 'SUBMITTED'),
+      (gen_random_uuid(), a, '9683/9684', 2, 200, 'SUBMITTED'),
+      (gen_random_uuid(), b, '9683/9684', 1, 400, 'SUBMITTED'),
+      (gen_random_uuid(), c, '9682/9683', 1, 200, 'SUBMITTED'),
+      (gen_random_uuid(), d, '9683/9684', 1, 100, 'SUBMITTED'),
+      (gen_random_uuid(), e, '9683/9684', 1, 300, 'SUBMITTED');
+    INSERT INTO people.enrolment (id, student_id, session, level) VALUES
+      (gen_random_uuid(), a, '9683/9684', 200),
+      (gen_random_uuid(), e, '9684/9685', 400);
+    -- D: progressed from 100 to 200 at the level desk this session
+    INSERT INTO people.cohort_decision (student_id, previous_status, final_status, previous_level, new_level, rule, reason, session)
+    VALUES (d, 'ACTIVE', 'ACTIVE', 100, 200, 'LEVEL_PROGRESS', 'CHECK V673: promoted after the Senate''s decision', '9683/9684');
+
+    SELECT * INTO run1 FROM people.raise_registrations_to_record();
+    SELECT * INTO run2 FROM people.raise_registrations_to_record();
+    SELECT string_agg(r.semester || ':' || r.level, ',' ORDER BY r.semester) INTO a_regs FROM registration.course_registration r WHERE r.student_id = a;
+    SELECT e2.level INTO a_enr FROM people.enrolment e2 WHERE e2.student_id = a AND e2.session = '9683/9684';
+    SELECT r.level INTO b_reg FROM registration.course_registration r WHERE r.student_id = b;
+    SELECT r.level INTO c_reg FROM registration.course_registration r WHERE r.student_id = c;
+    SELECT r.level INTO d_reg FROM registration.course_registration r WHERE r.student_id = d;
+    SELECT r.level INTO e_reg FROM registration.course_registration r WHERE r.student_id = e;
+    d_receipt := people.receipt_level(d, '9683/9684');
+    RAISE EXCEPTION 'the V673 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V673 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V673: the current session''s registrations below the record''s level are raised to it with the session''s enrolment; one above the record, an earlier session, a later session enrolled and a progression this session are left, the progressed student''s receipt keeping the level before; a second run raises nothing',
+      coalesce(a_regs = '1:300,2:300' AND a_enr = 300 AND b_reg = 400 AND c_reg = 200 AND d_reg = 100 AND d_receipt = 100 AND e_reg = 300
+           AND run1.registrations >= 2 AND run1.enrolments >= 1 AND run2.registrations = 0 AND run2.enrolments = 0, false),
+      format('A %s enrolment %s | B %s | C %s | D %s receipt %s | E %s | run %s/%s/%s again %s/%s/%s',
+             a_regs, a_enr, b_reg, c_reg, d_reg, d_receipt, e_reg, run1.students, run1.registrations, run1.enrolments,
+             run2.students, run2.registrations, run2.enrolments));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
