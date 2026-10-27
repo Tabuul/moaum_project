@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
-import { xlsx, type Cell } from "@/lib/xlsx-write";
+import { xlsx, zipStored, type Cell, type XlsxLogo } from "@/lib/xlsx-write";
 import { buildXlsx, loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
@@ -135,7 +135,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
     return j as Template;
   }
-  /** the whole session: one workbook from every programme's own template, so each count, quota and criterion is the programme's and the sheets add up */
+  /** the whole session's summary (since 27 October 2026, beside a workbook of each programme's own): every programme's own template added up, so each count, quota and criterion is the programme's and the totals agree */
   function mergeTemplates(parts: Template[]): Template {
     const sum = (k: string) => parts.reduce<number | null>((a, p) => (p.summary[k] === null || p.summary[k] === undefined ? a : (a ?? 0) + Number(p.summary[k])), null);
     const summary: Record<string, number | null> = {};
@@ -159,101 +159,127 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     };
   }
 
-  async function exportTemplate(programme: string) {
-    setExporting(true);
-    setExportProgress(null);
-    setProblem(null);
-    try {
-      let t: Template | null;
-      if (programme) {
-        t = await fetchTemplate(programme);
-      } else {
-        // every programme, three at a time: a whole session in one request ran for minutes and could be cut off at the gateway
-        const names = programmes;
-        const parts: (Template | null)[] = new Array(names.length).fill(null);
-        let next = 0, done = 0, failed = false;
-        const worker = async () => {
-          while (!failed) {
-            const i = next++;
-            if (i >= names.length) return;
-            const p = await fetchTemplate(names[i]);
-            if (!p) { failed = true; return; }
-            parts[i] = p;
-            setExportProgress(`${++done} of ${names.length}`);
-          }
-        };
-        await Promise.all([worker(), worker(), worker()]);
-        if (failed) return;
-        t = mergeTemplates(parts as Template[]);
-      }
-      if (!t) return;
-      // a letterhead in the seven rows the template reserves above the data: the
-      // school name and title at the top-left (column B, beside the floating crest),
-      // then blank rows so the "SN" column header still lands on row 8
-      const head = (title: string): Cell[][] => [
-        [null, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI"],
-        [null, `${t.session} UTME MERIT ADMISSION SUMMARY${t.programme ? ` FOR ${t.programme}` : ""}`],
-        [null, `${title} AS AT ${t.asAt}`],
-        [], [], [], [],
-      ];
-      const BASIS_LABEL: Record<string, string> = { NM: "National Merit", SM: "State Merit", ELG: "Equality of LG", LOCALITY: "Locality", PLWD: "PLWD", OTHER: "Other" };
-      const cols = ["SN", "REG_NO", "NAME", "GENDER", "STATE", "LGA", "ENG", "SUBJ2", "SUBJ2 SCORE", "SUBJ3", "SUBJ3 SCORE", "SUBJ4", "SUBJ4 SCORE", "UTME SCORE", "ENG GRADE", "ENG POINT", "MATHS GRADE", "MATHS POINT", "SUBJ3", "SUBJ3 GRADE", "SUBJ3 POINT", "SUBJ4", "SUBJ4 GRADE", "SUBJ4 POINT", "SUBJ5", "SUBJ5 GRADE", "SUBJ5 POINT", "SITINGS", "OL/TEST TOTAL SCORE", "NO OF SITTINGS POINTS", "TOTAL O/L SCORE", "OL/TEST SCORE RATIO (_%)", "UTME SCORE RATIO (_%)", "TOTAL SCORE (100%)", "GENERAL REMARKS"];
-      const line = (x: Record<string, unknown>, i: number, extra: Cell[] = []): Cell[] => {
-        const us = (x.utmeSubjects as { subject: string; score: string }[]) ?? [];
-        const eng = us.find((u) => u.subject.toLowerCase().startsWith("eng"));
-        const rest = us.filter((u) => u !== eng);
-        const o = (x.others as { subject: string; grade: string; points: number }[]) ?? [];
-        const num = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
-        return [i + 1, String(x.regNo ?? ""), String(x.name ?? ""), String(x.gender ?? ""), String(x.state ?? ""), String(x.lga ?? ""),
-          eng ? num(eng.score) : null, rest[0]?.subject ?? null, rest[0] ? num(rest[0].score) : null, rest[1]?.subject ?? null, rest[1] ? num(rest[1].score) : null, rest[2]?.subject ?? null, rest[2] ? num(rest[2].score) : null,
-          num(x.utmeScore), (x.engGrade as string) ?? null, num(x.engPoint), (x.mathsGrade as string) ?? null, num(x.mathsPoint),
-          o[0]?.subject ?? null, o[0]?.grade ?? null, o[0] ? num(o[0].points) : null, o[1]?.subject ?? null, o[1]?.grade ?? null, o[1] ? num(o[1].points) : null, o[2]?.subject ?? null, o[2]?.grade ?? null, o[2] ? num(o[2].points) : null,
-          num(x.sittings), num(x.cbtScore) ?? 0, num(x.sittingPoints), num(x.olevelTotal), num(x.olevelRatio), num(x.utmeRatio), num(x.total),
-          (x.decisionBasis ? (BASIS_LABEL[x.decisionBasis as string] ?? (x.decisionBasis as string)) : null) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
-      };
-      const remarks = (x: Record<string, unknown>): Cell[] => [
-        (x.utmeRemark as string) ?? "Correct Combination",
-        (x.olRemark as string) ?? "",
-      ];
-      const merit = t.rows.filter((x) => x.decision === "OFFERED");
-      const other = t.rows.filter((x) => x.decision === "WAITING");
-      const non = t.rows.filter((x) => x.decision === "NOT_OFFERED");
-      const s = t.summary;
-      const summary: Cell[][] = [...head("SUMMARY OF UTME ADMISSION"), ["SN", "ITEM", "COUNT"],
-        [1, "Total Applicants", s.totalApplicants], [2, "Registered Applicants", s.registeredApplicants], [3, "Qualified Cases", s.qualifiedCases],
-        [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Total Quota (100%)", s.totalQuota], [6, "UTME Quota (80%)", s.utmeQuota], [7, "Number On Merit List", s.numberOnMeritList]];
-      if (t.quotaDistribution.length) {
-        summary.push([], [null, "QUOTA DISTRIBUTION"], ["SN", "ADMISSION CRITERIA", "(%)", "QUOTA", "ADMITTED", "S/FALLS", "REMARK"]);
-        t.quotaDistribution.forEach((q, i) => summary.push([i + 1, q.criterion, q.percent, q.quota, q.admitted || "", q.shortfall, q.shortfall ? `${q.admitted} of ${q.quota}` : ""]));
-      }
-      if (t.lgaAnalysis.length) {
-        summary.push([], [null, "NATIONAL/STATE/LOCAL GOVERNMENT ANALYSIS"], ["SN", "LGA NAME", "ELG", "SM", "NM", "TOTAL"]);
-        t.lgaAnalysis.forEach((l, i) => summary.push([i + 1, l.lga, l.elg, l.sm, l.nm, l.total]));
-        summary.push([null, t.lgaTotal.lga, t.lgaTotal.elg, t.lgaTotal.sm, t.lgaTotal.nm, t.lgaTotal.total]);
-      }
-      const nonCols = [...cols, "UTME REMARKS", "OL REMARKS"];
-      const logo = await loadCrest();
-      const sheets: [string, Cell[][]][] = [["Admission_Summary", summary]];
-      if (t.perProgramme?.length) {
-        // the whole session: each programme's own figures on one sheet, in the merit list's order of programmes
-        sheets.push(["Programme_Summary", [...head("SUMMARY BY PROGRAMME"),
-          ["SN", "PROGRAMME", "TOTAL APPLICANTS", "REGISTERED", "QUALIFIED", "NON-QUALIFIED", "TOTAL QUOTA", "UTME QUOTA", "ON MERIT LIST"],
-          ...t.perProgramme.map((p, i) => [i + 1, p.programme, p.summary.totalApplicants, p.summary.registeredApplicants, p.summary.qualifiedCases, p.summary.nonQualifiedCases, p.summary.totalQuota, p.summary.utmeQuota, p.summary.numberOnMeritList] as Cell[])]]);
-      }
+  /** a programme's file name, as the workbook and the ZIP name it */
+  const fileName = (t: Template) => `ADMISSION TEMPLATE ${t.programme ? t.programme.replace(/[^A-Za-z0-9]+/g, " ").trim() : "ALL PROGRAMMES"} ${t.session.replace("/", "-")}.xlsx`;
+
+  /** one programme's workbook (or, with summaryOnly, the session's summary by programme): the letterhead, the summary, the merit
+   *  list, the other qualified and the non-qualified cases, and the ranked sheet */
+  function buildBook(t: Template, logo: XlsxLogo | null, summaryOnly = false): Uint8Array {
+    // a letterhead in the seven rows the template reserves above the data: the
+    // school name and title at the top-left (column B, beside the floating crest),
+    // then blank rows so the "SN" column header still lands on row 8
+    const head = (title: string): Cell[][] => [
+      [null, "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI"],
+      [null, `${t.session} UTME MERIT ADMISSION SUMMARY${t.programme ? ` FOR ${t.programme}` : ""}`],
+      [null, `${title} AS AT ${t.asAt}`],
+      [], [], [], [],
+    ];
+    const BASIS_LABEL: Record<string, string> = { NM: "National Merit", SM: "State Merit", ELG: "Equality of LG", LOCALITY: "Locality", PLWD: "PLWD", OTHER: "Other" };
+    // the University's word of 27 October 2026: the CBT score is the PUTME SCORE (was "OL/TEST TOTAL SCORE")
+    const cols = ["SN", "REG_NO", "NAME", "GENDER", "STATE", "LGA", "ENG", "SUBJ2", "SUBJ2 SCORE", "SUBJ3", "SUBJ3 SCORE", "SUBJ4", "SUBJ4 SCORE", "UTME SCORE", "ENG GRADE", "ENG POINT", "MATHS GRADE", "MATHS POINT", "SUBJ3", "SUBJ3 GRADE", "SUBJ3 POINT", "SUBJ4", "SUBJ4 GRADE", "SUBJ4 POINT", "SUBJ5", "SUBJ5 GRADE", "SUBJ5 POINT", "SITINGS", "PUTME SCORE", "NO OF SITTINGS POINTS", "TOTAL O/L SCORE", "OL/TEST SCORE RATIO (_%)", "UTME SCORE RATIO (_%)", "TOTAL SCORE (100%)", "GENERAL REMARKS"];
+    const line = (x: Record<string, unknown>, i: number, extra: Cell[] = []): Cell[] => {
+      const us = (x.utmeSubjects as { subject: string; score: string }[]) ?? [];
+      const eng = us.find((u) => u.subject.toLowerCase().startsWith("eng"));
+      const rest = us.filter((u) => u !== eng);
+      const o = (x.others as { subject: string; grade: string; points: number }[]) ?? [];
+      const num = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number(v));
+      return [i + 1, String(x.regNo ?? ""), String(x.name ?? ""), String(x.gender ?? ""), String(x.state ?? ""), String(x.lga ?? ""),
+        eng ? num(eng.score) : null, rest[0]?.subject ?? null, rest[0] ? num(rest[0].score) : null, rest[1]?.subject ?? null, rest[1] ? num(rest[1].score) : null, rest[2]?.subject ?? null, rest[2] ? num(rest[2].score) : null,
+        num(x.utmeScore), (x.engGrade as string) ?? null, num(x.engPoint), (x.mathsGrade as string) ?? null, num(x.mathsPoint),
+        o[0]?.subject ?? null, o[0]?.grade ?? null, o[0] ? num(o[0].points) : null, o[1]?.subject ?? null, o[1]?.grade ?? null, o[1] ? num(o[1].points) : null, o[2]?.subject ?? null, o[2]?.grade ?? null, o[2] ? num(o[2].points) : null,
+        num(x.sittings), num(x.cbtScore) ?? 0, num(x.sittingPoints), num(x.olevelTotal), num(x.olevelRatio), num(x.utmeRatio), num(x.total),
+        (x.decisionBasis ? (BASIS_LABEL[x.decisionBasis as string] ?? (x.decisionBasis as string)) : null) || (x.decisionNote as string) || (x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : x.decision === "NOT_OFFERED" ? "Not recommended" : "Undecided"), ...extra];
+    };
+    // the University's word of 27 October 2026: the O'Level suggestion column (OL REMARKS) is left out; GENERAL REMARKS says why
+    const remarks = (x: Record<string, unknown>): Cell[] => [(x.utmeRemark as string) ?? "Correct Combination"];
+    const merit = t.rows.filter((x) => x.decision === "OFFERED");
+    const other = t.rows.filter((x) => x.decision === "WAITING");
+    const non = t.rows.filter((x) => x.decision === "NOT_OFFERED");
+    const s = t.summary;
+    const summary: Cell[][] = [...head("SUMMARY OF UTME ADMISSION"), ["SN", "ITEM", "COUNT"],
+      [1, "Total Applicants", s.totalApplicants], [2, "Registered Applicants", s.registeredApplicants], [3, "Qualified Cases", s.qualifiedCases],
+      [4, "Non-Qualified Cases", s.nonQualifiedCases], [5, "Total Quota (100%)", s.totalQuota], [6, "UTME Quota (80%)", s.utmeQuota], [7, "Number On Merit List", s.numberOnMeritList]];
+    if (t.quotaDistribution.length) {
+      summary.push([], [null, "QUOTA DISTRIBUTION"], ["SN", "ADMISSION CRITERIA", "(%)", "QUOTA", "ADMITTED", "S/FALLS", "REMARK"]);
+      t.quotaDistribution.forEach((q, i) => summary.push([i + 1, q.criterion, q.percent, q.quota, q.admitted || "", q.shortfall, q.shortfall ? `${q.admitted} of ${q.quota}` : ""]));
+    }
+    if (t.lgaAnalysis.length) {
+      summary.push([], [null, "NATIONAL/STATE/LOCAL GOVERNMENT ANALYSIS"], ["SN", "LGA NAME", "ELG", "SM", "NM", "TOTAL"]);
+      t.lgaAnalysis.forEach((l, i) => summary.push([i + 1, l.lga, l.elg, l.sm, l.nm, l.total]));
+      summary.push([null, t.lgaTotal.lga, t.lgaTotal.elg, t.lgaTotal.sm, t.lgaTotal.nm, t.lgaTotal.total]);
+    }
+    const nonCols = [...cols, "UTME REMARKS"];
+    const sheets: [string, Cell[][]][] = [["Admission_Summary", summary]];
+    if (t.perProgramme?.length) {
+      // the whole session: each programme's own figures on one sheet, in the merit list's order of programmes
+      sheets.push(["Programme_Summary", [...head("SUMMARY BY PROGRAMME"),
+        ["SN", "PROGRAMME", "TOTAL APPLICANTS", "REGISTERED", "QUALIFIED", "NON-QUALIFIED", "TOTAL QUOTA", "UTME QUOTA", "ON MERIT LIST"],
+        ...t.perProgramme.map((p, i) => [i + 1, p.programme, p.summary.totalApplicants, p.summary.registeredApplicants, p.summary.qualifiedCases, p.summary.nonQualifiedCases, p.summary.totalQuota, p.summary.utmeQuota, p.summary.numberOnMeritList] as Cell[])]]);
+    }
+    if (!summaryOnly) {
       sheets.push(
         ["Merit_List", [...head("MERIT LIST"), cols, ...merit.map((x, i) => line(x, i))]],
         ["Other_Qualified_Cases", [...head("OTHER QUALIFIED CASES"), cols, ...other.map((x, i) => line(x, i))]],
         ["Non_Qualified_Cases", [...head("NON-QUALIFIED CASES"), nonCols, ...non.map((x, i) => line(x, i, remarks(x)))]],
         ["Ranked_sheet", [...head("RANKED SHEET"), nonCols, ...t.rows.map((x, i) => line(x, i, remarks(x)))]],
       );
-      const book = xlsx(sheets, { logo: logo ?? undefined });
-      const blob = new Blob([book.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `ADMISSION TEMPLATE ${t.programme ? t.programme.replace(/[^A-Za-z0-9]+/g, " ").trim() : "ALL PROGRAMMES"} ${t.session.replace("/", "-")}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
+    }
+    return xlsx(sheets, { logo: logo ?? undefined });
+  }
+
+  function save(bytes: Uint8Array, name: string, type: string) {
+    const blob = new Blob([bytes.buffer as ArrayBuffer], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportTemplate(programme: string) {
+    setExporting(true);
+    setExportProgress(null);
+    setProblem(null);
+    try {
+      const logo = await loadCrest();
+      if (programme) {
+        const t = await fetchTemplate(programme);
+        if (!t) return;
+        save(buildBook(t, logo), fileName(t), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return;
+      }
+      // every programme, three at a time: a whole session in one request ran for minutes and could be cut off at the gateway
+      const names = programmes;
+      const parts: (Template | null)[] = new Array(names.length).fill(null);
+      let next = 0, done = 0, failed = false;
+      const worker = async () => {
+        while (!failed) {
+          const i = next++;
+          if (i >= names.length) return;
+          const p = await fetchTemplate(names[i]);
+          if (!p) { failed = true; return; }
+          parts[i] = p;
+          setExportProgress(`${++done} of ${names.length}`);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (failed) return;
+      // the University's word of 27 October 2026: each programme on a workbook of its own, every one at once — in one ZIP (a browser
+      // stops a page saving dozens of files one after another), with the session's summary by programme beside them
+      const all = parts as Template[];
+      const merged = mergeTemplates(all);
+      const session = merged.session.replace("/", "-");
+      const used = new Set<string>();
+      const entries: [string, Uint8Array][] = [[`ADMISSION SUMMARY ALL PROGRAMMES ${session}.xlsx`, buildBook(merged, logo, true)]];
+      for (const t of all) {
+        let name = fileName(t);
+        for (let k = 2; used.has(name); k++) name = fileName(t).replace(/\.xlsx$/, ` (${k}).xlsx`);
+        used.add(name);
+        entries.push([name, buildBook(t, logo)]);
+      }
+      save(zipStored(entries), `ADMISSION TEMPLATES EVERY PROGRAMME ${session}.zip`, "application/zip");
+      notify(`${all.length} programme workbooks and the session's summary, in one ZIP`);
     } finally {
       setExporting(false);
       setExportProgress(null);
@@ -407,7 +433,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         <PBody>
           <div className="sub2">Admission summary, merit list, other qualified and non-qualified cases, per programme.</div>
           <div className="row mt-2">
-            <SearchSelect value={val("export", "")} onChange={(v) => setEdits({ ...edits, export: v })} allLabel="Every programme in one workbook" placeholder="Every programme in one workbook" options={programmes.map((p) => ({ value: p, label: p }))} />
+            <SearchSelect value={val("export", "")} onChange={(v) => setEdits({ ...edits, export: v })} allLabel="Every programme, a workbook each (ZIP)" placeholder="Every programme, a workbook each (ZIP)" options={programmes.map((p) => ({ value: p, label: p }))} />
             <Btn kind="primary" disabled={exporting || !rows.length} onClick={() => void exportTemplate(val("export", ""))}>{exporting ? (exportProgress ? `Building ${exportProgress}…` : "Building…") : "Download for JAMB"}</Btn>
           </div>
         </PBody>
