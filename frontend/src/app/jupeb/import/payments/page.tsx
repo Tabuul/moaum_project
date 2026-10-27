@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 export default async function Page() {
   const me = await api<Me>("/api/v1/iam/me");
   const office = me.ok ? me.data.activeOffice : null;
-  const canWrite = office === "jupeb" || office === "super";
+  // V680: the Director of ICT and the Database Operators too (an operator over the whole University; the server holds the scope)
+  const canWrite = office === "jupeb" || office === "ict" || office === "dbops" || office === "super";
   return (
     <Shell route="jupeb/oldpayments" me={me.ok ? me.data : null}>
-      <JupebOldPayments canWrite={canWrite} />
+      <JupebOldPayments canWrite={canWrite} jupebDesk={office === "jupeb" || office === "super"} />
     </Shell>
   );
 }

@@ -562,6 +562,30 @@ class JupebIT {
         assertThat(offered).containsAll(calendar).contains(jdbc.sql("SELECT jupeb.current_session()").query(String.class).single())
                 .noneMatch(never::contains);
         assertThat(status(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in))).isEqualTo(403);
+        // V680 (27 Oct 2026): the Director of ICT and a Database Operator over the whole University upload them too, from the upload's
+        // own list of sessions; an operator held to a department is refused (SCOPE_UNIVERSITY), and ICT Support is not one of them
+        String operator = it.officer("dbops", "institution", "University");
+        String heldOperator = it.officer("dbops", "department", jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single());
+        String support = it.officer("ictagent", "institution", "University");
+        List<String> uploadOffers = ((List<Map<String, Object>>) ok(it.get(ict, "/api/v1/jupeb/office/old-portal-students/sessions")).get("oldPortalSessions"))
+                .stream().map(r -> String.valueOf(r.get("session"))).toList();
+        assertThat(uploadOffers).containsAll(calendar);
+        assertThat(((List<Map<String, Object>>) ok(it.call(ict, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in)).get("rows"))).hasSize(2);
+        assertThat(((List<Map<String, Object>>) ok(it.call(operator, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in)).get("rows"))).hasSize(2);
+        assertThat(code(it.call(heldOperator, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in))).isEqualTo("SCOPE_UNIVERSITY");
+        assertThat(status(it.call(support, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in))).isEqualTo(403);
+        assertThat(status(it.get(operator, "/api/v1/jupeb/office/old-portal-students/batches"))).isEqualTo(200);
+        // and their old-portal payments: read and previewed by them too, refused to an operator held to a department and to ICT Support
+        Map<String, Object> pay = new LinkedHashMap<>();
+        pay.put("rows", List.of(Map.of("row", 2, "appNo", app2, "reference", "ZZOLDPAY" + tag, "purpose", "Application fee", "amount", "15000", "date", "1/9/2025", "status", "Successful")));
+        pay.put("dayFirst", true);
+        pay.put("commit", false);
+        pay.put("fileName", "old-payments.xlsx");
+        assertThat(status(it.getList(ict, "/api/v1/jupeb/office/old-portal-payments"))).isEqualTo(200);
+        assertThat(ok(it.call(ict, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay))).containsKey("rows");
+        assertThat(ok(it.call(operator, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay))).containsKey("rows");
+        assertThat(code(it.call(heldOperator, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay))).isEqualTo("SCOPE_UNIVERSITY");
+        assertThat(status(it.call(support, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-payments/import", pay))).isEqualTo(403);
         Map<String, Object> preview = ok(it.call(office, HttpMethod.POST, "/api/v1/jupeb/office/old-portal-students/import", in));
         List<Map<String, Object>> judged = (List<Map<String, Object>>) preview.get("rows");
         assertThat(judged.get(0).get("status")).isEqualTo("INVALID");

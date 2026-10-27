@@ -125,6 +125,13 @@ copies of them.
   results, CA scores or attendance in the old session, or whose login already has a record in the session asked stays where they
   are, and the page says why. `jupeb.move_old_portal_students`, `jupeb.old_portal_sessions`; `GET /office/old-portal-students/batches`,
   `POST /office/old-portal-students/move` (the JUPEB Office and the platform). Nothing is announced to the students.
+- **The Director of ICT and the Database Operators too (V680, 27 October 2026).** The Old-Portal Students page — the upload with
+  logins, the passport photographs and the move between sessions — and the Old-Portal Payments page are also in the Director of
+  ICT's and the Database Operators' Academic menus (*JUPEB Old-Portal Students*, *JUPEB Old-Portal Payments*), the students' upload
+  among the Database Operators' quick actions. A Database Operator works them only on a grant over the whole University
+  (`SCOPE_UNIVERSITY` otherwise); `jupeb.move_old_portal_students` takes `ict` and `dbops` beside `jupeb`; the upload reads its
+  sessions from `GET /office/old-portal-students/sessions`, not the JUPEB Office's dashboard; the students' names on the payments
+  page open their applications for the JUPEB Office alone. The rest of the JUPEB desk stays the JUPEB Office's.
 - **The list for examination numbers (V345).** JUPEB → Examination Numbers → *List for the Board*: the active students whose
   three subjects are registered (without a number, or everyone), downloadable in **Excel** (columns Application Number,
   Surname, …, JUPEB Examination Number — the very columns the examination-number upload reads, so the Board's returned list

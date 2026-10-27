@@ -21,6 +21,7 @@ import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -48,20 +49,33 @@ class JupebOfficeController {
 
     static final String READ = "hasAnyAuthority('OFFICE_jupeb','OFFICE_super','OFFICE_admin')";
     static final String WRITE = "hasAnyAuthority('OFFICE_jupeb','OFFICE_super')";
+    /* V680 (27 Oct 2026, "add it to ict director and database operators too", "add the old portal payments too"): the old portal's
+       students — the upload with their logins, their passports, an upload moved to its session — and their old-portal payments are
+       also the Director of ICT's and a Database Operator's (one over the whole University: oldPortalOperator) */
+    static final String OLD_PORTAL = "hasAnyAuthority('OFFICE_jupeb','OFFICE_ict','OFFICE_dbops','OFFICE_super')";
+    static final String OLD_PORTAL_READ = "hasAnyAuthority('OFFICE_jupeb','OFFICE_ict','OFFICE_dbops','OFFICE_super','OFFICE_admin')";
 
     private final JdbcClient jdbc;
     private final JupebView view;
     private final FileObjects files;
     private final String portalUrl;
     private final tools.jackson.databind.ObjectMapper json;
+    private final OfficeScope scope;
 
-    JupebOfficeController(JdbcClient jdbc, JupebView view, FileObjects files, tools.jackson.databind.ObjectMapper json,
+    JupebOfficeController(JdbcClient jdbc, JupebView view, FileObjects files, tools.jackson.databind.ObjectMapper json, OfficeScope scope,
                           @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
         this.view = view;
         this.files = files;
         this.json = json;
+        this.scope = scope;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
+    }
+
+    /** V680: the old portal's JUPEB students reach the whole programme, so a Database Operator works them only on a grant over the
+     *  whole University (SCOPE_UNIVERSITY otherwise); every other office passes */
+    private void oldPortalOperator() {
+        scope.requireUniversityOperator("The old portal's JUPEB students");
     }
 
     private static UUID actor() {
@@ -696,7 +710,7 @@ class JupebOfficeController {
     }
 
     @GetMapping("/combinations")
-    @PreAuthorize(READ)
+    @PreAuthorize(OLD_PORTAL_READ)   // V680: the old-portal upload's template lists the codes
     @Transactional(readOnly = true)
     List<Map<String, Object>> combinations() {
         return view.combinations(false);
@@ -909,9 +923,10 @@ class JupebOfficeController {
      * already on the portal is skipped; a row to correct is listed and skipped.
      */
     @PostMapping("/old-portal-students/import")
-    @PreAuthorize(WRITE)
+    @PreAuthorize(OLD_PORTAL)
     @Transactional
     Map<String, Object> importOldPortal(@Valid @RequestBody OldPortalIn body) {
+        oldPortalOperator();
         String session = body.session().trim();
         String judged = jdbc.sql("SELECT jupeb.import_old_portal_students(:r::jsonb, :s, :d, false, :f, :by)::text")
                 .param("r", json.writeValueAsString(body.rows())).param("s", session).param("d", body.dayFirst()).param("f", body.fileName(), Types.VARCHAR)
@@ -975,13 +990,27 @@ class JupebOfficeController {
         return out;
     }
 
+    /** V680: the sessions the old portal's students may be uploaded into, and JUPEB's current one — what the upload asks, without the
+     *  JUPEB Office's whole dashboard */
+    @GetMapping("/old-portal-students/sessions")
+    @PreAuthorize(OLD_PORTAL_READ)
+    @Transactional(readOnly = true)
+    Map<String, Object> oldPortalSessionList() {
+        oldPortalOperator();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", sessionOr(null));
+        out.put("oldPortalSessions", oldPortalSessions());
+        return out;
+    }
+
     /* ── old-portal students uploaded into the wrong session, moved (V659) ── */
 
     /** each upload of the old portal's students, newest first, with how many of its students each session now holds */
     @GetMapping("/old-portal-students/batches")
-    @PreAuthorize(READ)
+    @PreAuthorize(OLD_PORTAL_READ)
     @Transactional(readOnly = true)
     Map<String, Object> oldPortalBatches() {
+        oldPortalOperator();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT b.ref, b.file_name, b.imported_at, b.applied,
                        coalesce((SELECT jsonb_agg(jsonb_build_object('session', x.session, 'students', x.n) ORDER BY x.session DESC)
@@ -1012,9 +1041,10 @@ class JupebOfficeController {
      * payments, their class left and the papers stating the old session revoked, the move on each timeline (jupeb.move_old_portal_students).
      */
     @PostMapping("/old-portal-students/move")
-    @PreAuthorize(WRITE)
+    @PreAuthorize(OLD_PORTAL)
     @Transactional
     Map<String, Object> moveOldPortal(@Valid @RequestBody MoveIn body) {
+        oldPortalOperator();
         List<UUID> ids = body.ids() != null && !body.ids().isEmpty() ? body.ids()
                 : body.batch() == null || body.batch().isBlank() ? List.of()
                 : jdbc.sql("SELECT id FROM jupeb.application WHERE legacy_batch = :b ORDER BY surname, first_name").param("b", body.batch().trim())
@@ -1048,9 +1078,10 @@ class JupebOfficeController {
      * again changes nothing. Each file is answered on its own, so one bad file never refuses the rest.
      */
     @PostMapping("/old-portal-passports")
-    @PreAuthorize(WRITE)
+    @PreAuthorize(OLD_PORTAL)
     @Transactional
     Map<String, Object> importOldPassports(@Valid @RequestBody OldPassportsIn body) {
+        oldPortalOperator();
         List<Map<String, Object>> rows = new java.util.ArrayList<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
         UUID by = actor();
@@ -1163,9 +1194,10 @@ class JupebOfficeController {
 
     /** the old portal's payment export judged row by row (a preview writes nothing); on the upload each matched, successful, new payment is a confirmed fee */
     @PostMapping("/old-portal-payments/import")
-    @PreAuthorize(WRITE)
+    @PreAuthorize(OLD_PORTAL)   // V680: the Director of ICT and a Database Operator over the whole University too
     @Transactional
     Map<String, Object> importOldPayments(@Valid @RequestBody OldPaymentsIn body) {
+        oldPortalOperator();
         String out = jdbc.sql("SELECT jupeb.import_old_portal_payments(:r::jsonb, :d, :c, :f, :by)::text")
                 .param("r", json.writeValueAsString(body.rows())).param("d", body.dayFirst()).param("c", body.commit())
                 .param("f", body.fileName(), Types.VARCHAR).param("by", actor()).query(String.class).single();
@@ -1173,9 +1205,10 @@ class JupebOfficeController {
     }
 
     @GetMapping("/old-portal-payments")
-    @PreAuthorize(READ)
+    @PreAuthorize(OLD_PORTAL_READ)
     @Transactional(readOnly = true)
     List<Map<String, Object>> oldPayments(@RequestParam(required = false) String session) {
+        oldPortalOperator();
         return jdbc.sql("""
                 SELECT l.batch_ref, l.old_reference, l.app_no, l.kind, l.purpose, l.amount, l.paid_on, l.imported_at, f.reference,
                        a.id AS application_id, a.surname || ', ' || a.first_name AS name, a.session

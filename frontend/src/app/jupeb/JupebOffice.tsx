@@ -1748,7 +1748,9 @@ const PASS_MAX = 5 * 1024 * 1024;   // the API's limit for a JUPEB document
 const PASS_CHUNK = 4;               // photographs a request carries
 
 /** /jupeb/import — the old portal's export uploaded: judged first, then each student given an account and a temporary password */
-export function JupebOldPortalImport() {
+/** V680: the JUPEB Office's, and the Director of ICT's and a Database Operator's (office: who is acting — the JUPEB applications link shown to that office alone) */
+export function JupebOldPortalImport({ office }: { office?: string | null } = {}) {
+  const jupebDesk = !office || office === "jupeb" || office === "super";
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [session, setSession] = useState("");
   const [dayFirst, setDayFirst] = useState(true);
@@ -1761,7 +1763,8 @@ export function JupebOldPortalImport() {
   useEffect(() => {
     let live = true;
     // every session of the calendar up to JUPEB's current one: old-portal students may belong to a past session (2025/2026)
-    void jcall<Dash>("/api/v1/jupeb/office/dashboard").then((r) => { if (live && r.ok) { setSessions(r.data.oldPortalSessions ?? r.data.sessions); setSession((s) => s || r.data.session); } });
+    // V680: its own short read (the JUPEB Office's whole dashboard is the office's alone)
+    void jcall<{ session: string; oldPortalSessions: SessionRow[] }>("/api/v1/jupeb/office/old-portal-students/sessions").then((r) => { if (live && r.ok) { setSessions(r.data.oldPortalSessions); setSession((s) => s || r.data.session); } });
     return () => { live = false; };
   }, []);
   async function judge(list: Record<string, string | number>[], name: string | null) {
@@ -1877,7 +1880,7 @@ export function JupebOldPortalImport() {
   const ready = preview ? preview.valid + preview.review : 0;
   return (
     <>
-      <PageHead title="Upload students from the old portal" eyebrow={<Link href="/jupeb/applications">← JUPEB applications</Link>}
+      <PageHead title="Upload students from the old portal" eyebrow={jupebDesk ? <Link href="/jupeb/applications">← JUPEB applications</Link> : undefined}
         actions={<LinkBtn kind="ghost" href="/jupeb/import/payments">Their old-portal payments →</LinkBtn>}
         description="Students registered on the old portal, uploaded from its export. Each gets a login: the old App No as username and a temporary password changed at first sign-in." />
       {done ? (

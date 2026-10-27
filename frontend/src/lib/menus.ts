@@ -974,7 +974,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
-          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" }
+          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
+          { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
+          { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" }
         ]
       },
       {
@@ -1662,7 +1664,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
-          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" }
+          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
+          { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
+          { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" }
         ]
       },
       {

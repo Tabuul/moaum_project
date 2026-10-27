@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 507
+\set EXPECTED 508
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27816,6 +27816,33 @@ BEGIN
     END;
     PERFORM pg_temp.assert('V679: the Director of ICT and the Database Operators migrate old-portal PG applicants beside the School, its Secretary and the Academic Office; ICT Support and the Registry are refused, and a migration is made by a person',
         v_err IS NULL AND got = 'ict=ok dbops=ok pgschool=ok ictagent=PGMIG_OFFICE registrar=PGMIG_OFFICE noperson=PGMIG_ACTOR',
+        format('err=%s got=%s', v_err, got));
+END $$;
+
+-- ── V680: the old portal's JUPEB students — the wrong-session move by the Director of ICT and the Database Operators too ──
+-- jupeb.move_old_portal_students judges (nothing named, nothing moved) for the JUPEB Office, the Director of ICT and a Database
+-- Operator; ICT Support and the Registry are refused JUPEB_NOT_PERMITTED. (The upload itself, the passports and an operator held to
+-- a faculty, department or programme, SCOPE_UNIVERSITY, are the API's: JupebIT.)
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_err text; got text := ''; o text; ses text := jupeb.current_session(); r jsonb;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V680 check: JUPEB old-portal offices', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        FOREACH o IN ARRAY ARRAY['jupeb', 'ict', 'dbops', 'ictagent', 'registrar'] LOOP
+            PERFORM set_config('moaum.actor_office', o, true);
+            BEGIN
+                r := jupeb.move_old_portal_students('{}'::uuid[], ses, NULL, false);
+                got := got || o || '=' || CASE WHEN (r->>'movable')::int = 0 AND r->>'to' = ses THEN 'ok' ELSE r::text END || ' ';
+            EXCEPTION WHEN insufficient_privilege THEN got := got || o || '=' || split_part(SQLERRM, ':', 1) || ' ';
+            END;
+        END LOOP;
+        RAISE EXCEPTION 'the V680 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V680 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V680: the Director of ICT and the Database Operators move old-portal JUPEB students between sessions beside the JUPEB Office; ICT Support and the Registry are refused',
+        v_err IS NULL AND got = 'jupeb=ok ict=ok dbops=ok ictagent=JUPEB_NOT_PERMITTED registrar=JUPEB_NOT_PERMITTED ',
         format('err=%s got=%s', v_err, got));
 END $$;
 

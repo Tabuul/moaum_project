@@ -33,7 +33,8 @@ const STATUS: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = {
   VALID: ["Ready", "ok"], REVIEW: ["Purpose unclear", "warn"], INVALID: ["Not posted", "bad"], UNMATCHED: ["No such student", "bad"], DUPLICATE: ["Repeated in the file", "grey"], EXISTS: ["Already on the record", "grey"],
 };
 
-export function JupebOldPayments({ canWrite }: { canWrite: boolean }) {
+/** V680: jupebDesk — the JUPEB Office (or super), whose applications the students' names open; the Director of ICT and a Database Operator read the names only */
+export function JupebOldPayments({ canWrite, jupebDesk = true }: { canWrite: boolean; jupebDesk?: boolean }) {
   const [dayFirst, setDayFirst] = useState(true);
   const [file, setFile] = useState<string | null>(null);
   const [rows, setRows] = useState<Record<string, string | number>[]>([]);
@@ -152,7 +153,7 @@ export function JupebOldPayments({ canWrite }: { canWrite: boolean }) {
           {!posted ? <p className="sub2">Loading…</p> : !posted.length ? <p className="sub2">No payment from the old portal is on the record yet.</p> : (
             <DTable pageSize={25} cols={["Session", "App No", "Student", "Fee", "Old reference", "Amount|num", "Paid on", "Upload"]}
               texts={posted.map((p) => `${p.app_no} ${p.name} ${p.old_reference} ${p.reference}`)}
-              rows={posted.map((p) => [p.session, p.app_no, <Link key="n" href={`/jupeb/applications/${p.application_id}`}>{p.name}</Link>, FEE_KIND[p.kind] ?? p.kind, p.old_reference,
+              rows={posted.map((p) => [p.session, p.app_no, jupebDesk ? <Link key="n" href={`/jupeb/applications/${p.application_id}`}>{p.name}</Link> : <span key="n">{p.name}</span>, FEE_KIND[p.kind] ?? p.kind, p.old_reference,
                 naira(p.amount), day(p.paid_on), p.batch_ref])} />
           )}
         </PBody>

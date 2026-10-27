@@ -78,6 +78,7 @@ export async function DatabaseOperationsDashboard() {
             <LinkBtn kind="secondary" href="/reports/exam-readiness?view=courses">GENERATE COURSE REPORT</LinkBtn>
             <LinkBtn kind="secondary" href="/dbops/data-quality">VIEW DATA QUALITY</LinkBtn>
             <LinkBtn kind="secondary" href="/admissions/postgraduate/migration">MIGRATE OLD-PORTAL PG APPLICANTS</LinkBtn>
+            <LinkBtn kind="secondary" href="/jupeb/import">UPLOAD OLD-PORTAL JUPEB STUDENTS</LinkBtn>
           </div>
         </PBody>
       </Panel>
