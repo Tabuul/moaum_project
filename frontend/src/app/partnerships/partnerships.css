@@ -64,3 +64,51 @@
   .ptn-progress { grid-template-columns: repeat(8, 1fr); }
   .ptn-nav { flex-direction: column-reverse; align-items: stretch; }
 }
+
+/* the public form's page (27 Oct 2026): two columns — what the form is for, on the University's navy card where the crest stood,
+   and the form on white beside it; one column on a narrow screen, the narrative first */
+.ptn-page { min-height: 100vh; background: #f8fafc; color: #1e293b; padding: 16px; }
+@media (min-width: 640px) { .ptn-page { padding: 24px; } }
+.ptn-page__inner { max-width: 1320px; margin: 0 auto; }
+.ptn-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (min-width: 1024px) { .ptn-cols { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; } }
+
+.ptn-info {
+  position: relative; overflow: hidden; border-radius: 20px; padding: 28px 22px 24px;
+  display: flex; flex-direction: column; gap: 16px;
+  color: #cbd5e1; background: linear-gradient(160deg, #131b2b 0%, #243250 55%, #2f3f63 100%);
+  box-shadow: 0 20px 45px -20px rgba(15, 23, 42, 0.45);
+}
+.ptn-info::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px; background: linear-gradient(90deg, #c51e28, #fbbf24, #c51e28); }
+@media (min-width: 640px) { .ptn-info { padding: 32px 28px 28px; } }
+/* on a wide screen the narrative stays in view beside the form */
+@media (min-width: 1024px) {
+  .ptn-info { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; scrollbar-color: rgba(203, 213, 225, 0.35) transparent; }
+}
+.ptn-info section { display: flex; flex-direction: column; gap: 6px; }
+.ptn-info p, .ptn-info li { margin: 0; line-height: 1.6; font-size: 0.95rem; }
+.ptn-info h3 { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #fcd34d; }
+.ptn-info strong { color: #fff; }
+.ptn-info a { color: #fff; text-decoration: underline; text-decoration-color: rgba(251, 191, 36, 0.6); text-underline-offset: 3px; }
+.ptn-info a:hover, .ptn-info a:focus-visible { text-decoration-color: #fbbf24; }
+.ptn-eyebrow { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #fca5a5; }
+.ptn-eyebrow svg { width: 16px; height: 16px; flex: none; }
+.ptn-info__title { margin: 0; font-size: clamp(1.4rem, 1.15rem + 1vw, 1.9rem); line-height: 1.2; color: #fff; }
+.ptn-lede { font-size: 1.05rem !important; color: #e2e8f0; }
+.ptn-steps { margin: 0; padding: 0; list-style: none; counter-reset: ptn-step; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+@media (min-width: 640px) { .ptn-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ptn-steps li { counter-increment: ptn-step; display: flex; gap: 10px; align-items: flex-start; }
+.ptn-steps li::before {
+  content: counter(ptn-step); flex: none; width: 22px; height: 22px; border-radius: 50%; margin-top: 1px;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #131b2b; background: #fbbf24;
+}
+.ptn-small { font-size: 0.85rem !important; color: #94a3b8; }
+.ptn-pledge { border-left: 3px solid #fbbf24; background: rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px 12px; color: #f1f5f9; }
+
+.ptn-formcol { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.ptn-formcard {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 22px 18px;
+  box-shadow: 0 20px 45px -28px rgba(15, 23, 42, 0.35);
+}
+@media (min-width: 640px) { .ptn-formcard { padding: 28px 28px; } }
+.ptn-formcard .ptn-h1 { font-size: clamp(1.35rem, 1.15rem + 0.8vw, 1.75rem); color: #0f172a; }
