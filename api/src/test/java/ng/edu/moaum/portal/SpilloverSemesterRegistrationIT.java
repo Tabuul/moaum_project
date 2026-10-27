@@ -223,4 +223,39 @@ class SpilloverSemesterRegistrationIT {
         assertThat(registration(sp, 2)).isEqualTo(reg2);
         assertThat(jdbc.sql("SELECT count(*) FROM finance.registrations_without_fees(:ses) WHERE student_id = :s").param("ses", session).param("s", sp).query(Long.class).single()).isZero();
     }
+
+    /** V674: a spillover student registers carry-overs only — the registration page says so (carryOnly), the carry-over picker lists the
+     *  courses of the student's own level, and every course on the registration is a carry-over the student declared, whether added
+     *  through the picker or chosen on the draft; the Fees page counts the semester's courses */
+    @Test
+    @SuppressWarnings("unchecked")
+    void aSpilloverStudentRegistersCarryOversOnly() {
+        UUID sp = it.student("ZZSPR" + tag, prog4, "MOAUM/ADM/16/" + tag + "64", "MOAUM/SPR/16/" + tag + "4", 500);
+        String token = TestTokens.token(sp, List.of("student"));
+        List<Map<String, Object>> lines = List.of(Map.of("programmeCode", prog4, "level", "400", "spillover", "SP1", "semester", "1", "amount", "70000"));
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + session + "/fee-lines", Map.of("rows", lines)));
+
+        Map<String, Object> view = ok(it.get(token, u -> u.path("/api/v1/me/registration").queryParam("session", session).queryParam("semester", 1).build()));
+        assertThat(view).containsEntry("carryOnly", true);
+        // the picker lists the 500 Level courses the student is at, selectable as carry-overs they declare
+        Map<String, Object> listed = ok(it.get(token, u -> u.path("/api/v1/me/registration/carry-overs").queryParam("session", session).queryParam("semester", 1).build()));
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) listed.get("rows");
+        Map<String, Object> one = rows.stream().filter(r -> "ZQS 511".equals(r.get("course_code"))).findFirst().orElseThrow();
+        assertThat(one).containsEntry("status", "NO_RECORD").containsEntry("selectable", true).containsEntry("level", 500);
+        Map<String, Object> added = ok(it.call(token, HttpMethod.POST, "/api/v1/me/registration/carry-overs",
+                Map.of("session", session, "semester", 1, "courses", List.of(one.get("course_id")))));
+        assertThat(added).containsEntry("addedCount", 1);
+
+        // a course of the student's level chosen on the draft is a carry-over too, never a current course
+        ok(it.call(token, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 1, "offerings", List.of(offering("ZQS 511", 1), offering("ZQS 512", 1)))));
+        List<String> types = jdbc.sql("""
+                SELECT o.course_code || ':' || e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.entry e
+                  JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = :r AND e.status NOT IN ('DROPPED', 'WITHDRAWN') ORDER BY o.course_code
+                """).param("r", registration(sp, 1)).query(String.class).list();
+        assertThat(types).containsExactly("ZQS 511:CARRYOVER/CARRY_OVER_DECLARED", "ZQS 512:CARRYOVER/CARRY_OVER_DECLARED");
+        Map<String, Object> first = semester(token, 1);
+        assertThat(num(first.get("registeredCourses"))).isEqualTo(2);
+        assertThat(first).containsEntry("registered", true).containsEntry("status", "PAYMENT_REQUIRED");
+        assertThat(num(first.get("owed"))).isEqualTo(70000);
+    }
 }

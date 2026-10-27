@@ -116,6 +116,8 @@ export interface RegistrationView {
   loadKind?: import("./registration-load").LoadKind | null;
   /** V615: the cohort engine's spillover state (SPILLOVER_YEAR_1 …): a student in spillover is not held to the minimum */
   spilloverState?: string | null;
+  /** V674: a spillover student's registration: every course on it is a carry-over (the server enters it so); no fresh course is offered */
+  carryOnly?: boolean;
   /** V491: how the semester's registration is approved, whether the student may reset it (and why not), what holds it for review */
   approval?: import("./registration-approval").ApprovalRule;
   reset?: import("./registration-approval").ResetState;

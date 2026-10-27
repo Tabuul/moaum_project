@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 502
+\set EXPECTED 503
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27437,6 +27437,81 @@ BEGIN
       format('A %s enrolment %s | B %s | C %s | D %s receipt %s | E %s | run %s/%s/%s again %s/%s/%s',
              a_regs, a_enr, b_reg, c_reg, d_reg, d_receipt, e_reg, run1.students, run1.registrations, run1.enrolments,
              run2.students, run2.registrations, run2.enrolments));
+END $$;
+
+-- ── V674. A spillover student registers carry-overs only. A made-up student at 500 Level on a four-year programme (SP1 by the
+--    level) chooses a course of their own level on the draft, adds another, and one is entered for them: each is a carry-over the
+--    student declared, never a current course; the carry-over picker lists the courses of their own level (selectable, no record)
+--    beside the earlier ones; the session before is left as registered; a student at 300 Level of the same programme registers a
+--    current course as before and is offered no 300 Level course as a carry-over; the spillover panel counts the semester's courses;
+--    the support desk drops a declared carry-over as the student does. The block undoes its writes ──
+DO $$
+DECLARE
+    v_dept text; v_fac text; prog text; v_err text; cur text := '9744/9745'; past text := '9743/9744';
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); r0 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid();
+    o501 uuid := gen_random_uuid(); o502 uuid := gen_random_uuid(); o503 uuid := gen_random_uuid(); o301 uuid := gen_random_uuid(); o501p uuid := gen_random_uuid();
+    only1 boolean; only_past boolean; only2 boolean; t_choose text; t_add text; t_direct text; t_past text; t_s2 text;
+    cand502 text; cand_s2 int; panel jsonb; drop_ok boolean;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V674', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+      (gen_random_uuid(), past, '9743-10-01', '9744-09-30', 'CLOSED'),
+      (gen_random_uuid(), cur, '9744-10-01', '9745-09-30', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9744/01' WHERE name = cur;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), cur, 1, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V674', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/17/674001', 'MOAUM/ZZK/17/6741', 'CHECKV674', 'Spillover', prog, 'UTME', past, 100, 500, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/17/674002', 'MOAUM/ZZK/17/6742', 'CHECKV674', 'Current', prog, 'UTME', past, 100, 300, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZK 501', 'Check V674 One', 3, 1, 500, v_dept, 'Core', 'LIVE'), ('ZZK 502', 'Check V674 Two', 3, 1, 500, v_dept, 'Core', 'LIVE'),
+        ('ZZK 503', 'Check V674 Three', 2, 1, 500, v_dept, 'Core', 'LIVE'), ('ZZK 301', 'Check V674 Level Three', 2, 1, 300, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZK 501', prog, 500, 'Core'), ('ZZK 502', prog, 500, 'Core'), ('ZZK 503', prog, 500, 'Core'), ('ZZK 301', prog, 300, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES
+        (o501, 'ZZK 501', cur, 1), (o502, 'ZZK 502', cur, 1), (o503, 'ZZK 503', cur, 1), (o301, 'ZZK 301', cur, 1), (o501p, 'ZZK 501', past, 1);
+    only1 := registration.spillover_registration(s1, cur);
+    only_past := registration.spillover_registration(s1, past);
+    only2 := registration.spillover_registration(s2, cur);
+    -- the picker, before anything is registered: ZZK 502 (500 Level, the student's own) listed and selectable; nothing at 300 Level for S2
+    SELECT c.status || '/' || c.selectable INTO cand502 FROM registration.carry_over_candidates(s1, cur, 1) c WHERE c.course_code = 'ZZK 502';
+    SELECT count(*) INTO cand_s2 FROM registration.carry_over_candidates(s2, cur, 1) c WHERE c.course_code = 'ZZK 301';
+
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+        (r1, s1, cur, 1, 500, 'DRAFT'), (r0, s1, past, 1, 500, 'DRAFT'), (r2, s2, cur, 1, 300, 'DRAFT');
+    -- chosen on the draft (ZZK 501, on the student's menu), added (ZZK 502), entered for them (ZZK 503)
+    PERFORM registration.student_choose(r1, ARRAY[o501]);
+    PERFORM registration.student_add(s1, cur, 1, o502);
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r1, o503, 2, 'CURRENT', 'REGISTERED');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r0, o501p, 3, 'CURRENT', 'REGISTERED');
+    PERFORM registration.student_choose(r2, ARRAY[o301]);
+    SELECT e.entry_type || '/' || coalesce(e.added_as, '-') INTO t_choose FROM registration.entry e WHERE e.registration_id = r1 AND e.offering_id = o501;
+    SELECT e.entry_type || '/' || coalesce(e.added_as, '-') INTO t_add FROM registration.entry e WHERE e.registration_id = r1 AND e.offering_id = o502;
+    SELECT e.entry_type || '/' || coalesce(e.added_as, '-') INTO t_direct FROM registration.entry e WHERE e.registration_id = r1 AND e.offering_id = o503;
+    SELECT e.entry_type INTO t_past FROM registration.entry e WHERE e.registration_id = r0;
+    SELECT e.entry_type INTO t_s2 FROM registration.entry e WHERE e.registration_id = r2;
+    panel := finance.spillover_panel(s1, cur);
+    SELECT k.passed INTO drop_ok FROM registration.support_drop_checks(s1, cur, 1, o501) k WHERE k.rule = 'NOT_CARRYOVER';
+    RAISE EXCEPTION 'the V674 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V674 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V674: every course a spillover student registers in their current session is a carry-over they declared — chosen, added or entered for them — the picker lists their own level; an earlier session and a student not in spillover are as before; the panel counts the courses; the desk drops a declared carry-over',
+      coalesce(only1 AND NOT only_past AND NOT only2 AND cand502 = 'NO_RECORD/true' AND cand_s2 = 0
+           AND t_choose = 'CARRYOVER/CARRY_OVER_DECLARED' AND t_add = 'CARRYOVER/CARRY_OVER_DECLARED' AND t_direct = 'CARRYOVER/CARRY_OVER_DECLARED'
+           AND t_past = 'CURRENT' AND t_s2 = 'CURRENT'
+           AND (panel->'semesters'->0->>'registeredCourses')::int = 3 AND drop_ok, false),
+      format('only %s/%s/%s | picker ZZK 502 %s, S2 300 Level %s | chosen %s added %s entered %s | past %s S2 %s | panel %s | drop %s',
+             only1, only_past, only2, cand502, cand_s2, t_choose, t_add, t_direct, t_past, t_s2, panel->'semesters'->0->>'registeredCourses', drop_ok));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

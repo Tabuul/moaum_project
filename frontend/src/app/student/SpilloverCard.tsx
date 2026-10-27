@@ -24,16 +24,17 @@ export function SpilloverCard({ sp, compact = false }: { sp: SpilloverPanel; com
         <div className="sub2">
           You are in spillover ({sp.label}) for {sp.session}. You pay a semester&rsquo;s spillover fee only for a semester you register a course in &mdash; never
           the whole session&rsquo;s school fees because you are in spillover. Each semester is paid for itself: a first semester payment does not open
-          the second semester.{carry ? ` You have ${carry} carry-over course${carry === 1 ? "" : "s"} to register.` : ""}
+          the second semester. Every course you register in spillover is a carry-over: add the courses you still owe with Add carry-over.{carry ? ` Your published results state ${carry} carry-over course${carry === 1 ? "" : "s"}.` : ""}
         </div>
       </PBody>
       {perSemester ? (
-        <DTable pageSize={0} cols={["Semester", "Carry-over courses|num", "Spillover fee|num", "Paid|num", "Outstanding|num", "Status"]}
+        <DTable pageSize={0} cols={["Semester", "Carry-overs on results|num", "Courses registered|num", "Spillover fee|num", "Paid|num", "Outstanding|num", "Status"]}
           rows={sp.semesters.map((s) => {
             const [word, tone] = SEMESTER_STATUS_WORDS[s.status ?? "NOTHING_OWED"];
             return [
               <b key="s">{semesterWord(s.semester)}</b>,
               <span key="c" className="tnum">{s.carryovers}</span>,
+              <span key="r" className="tnum">{s.registeredCourses ?? 0}</span>,
               <span key="f" className="tnum">{Number(s.fee) > 0 ? naira(s.fee) : "Not stated"}</span>,
               <span key="p" className="tnum ink-green">{s.registered ? naira(s.paid ?? 0) : "—"}</span>,
               <span key="o" className={`tnum${Number(s.outstanding ?? 0) >= 1 ? " ink-red b600" : ""}`}>{s.registered ? naira(s.outstanding ?? 0) : "—"}</span>,
@@ -41,10 +42,11 @@ export function SpilloverCard({ sp, compact = false }: { sp: SpilloverPanel; com
             ];
           })} />
       ) : (
-        <DTable pageSize={0} cols={["Semester", "Carry-over courses|num", "Spillover fee|num", "This session"]}
+        <DTable pageSize={0} cols={["Semester", "Carry-overs on results|num", "Courses registered|num", "Spillover fee|num", "This session"]}
           rows={sp.semesters.map((s) => [
             <b key="s">{semesterWord(s.semester)}</b>,
             <span key="c" className="tnum">{s.carryovers}</span>,
+            <span key="r" className="tnum">{s.registeredCourses ?? 0}</span>,
             <span key="f" className="tnum">{Number(s.fee) > 0 ? naira(s.fee) : "Not stated"}</span>,
             <span key="w" className="sub2">{s.registered ? <Pil kind="info">Registered</Pil> : null} {semesterLine(s)}</span>,
           ])} />
@@ -68,7 +70,7 @@ export function SpilloverCard({ sp, compact = false }: { sp: SpilloverPanel; com
               ? <LinkBtn kind="primary" href={compact ? "/student/fees" : "#pay"}>Pay {semesterWord(owing[0].semester).toLowerCase()} fee {naira(owing[0].toClear ?? owing[0].outstanding ?? sp.balance)}</LinkBtn>
               : <LinkBtn kind="primary" href={compact ? "/student/fees" : "#pay"}>Pay spillover fee {naira(sp.balance)}</LinkBtn>
           ) : null}
-          <LinkBtn kind={status === "PAYMENT_REQUIRED" ? "ghost" : "primary"} href="/student/register">Add carry-over</LinkBtn>
+          <LinkBtn kind={status === "PAYMENT_REQUIRED" ? "ghost" : "primary"} href="/student/register?carry=1">Add carry-over</LinkBtn>
           {compact ? <LinkBtn kind="ghost" href="/student/fees">Fees &amp; payments</LinkBtn> : null}
         </div>
         {status === "NOT_STATED" ? <div className="mt-2"><Note kind="info" title="Your spillover fee is not yet stated">The Bursary states the spillover fee for your programme; it is shown here once stated, and your registration waits for it.</Note></div> : null}

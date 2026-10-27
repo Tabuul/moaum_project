@@ -20,8 +20,10 @@ import {
   type CarryFilter, type CarryList, type CarryResult,
 } from "@/lib/carry-over";
 
-export function CarryOverPicker({ session, semester, onAdded, onClose, onViewRegistered }: {
+export function CarryOverPicker({ session, semester, onAdded, onClose, onViewRegistered, spillover = false }: {
   session: string; semester: number;
+  /** V674: a spillover student: the courses of their own level are listed with the earlier ones, and every course they add is a carry-over */
+  spillover?: boolean;
   /** the classes the courses were added by: the draft's selection keeps them */
   onAdded: (offerings: string[]) => void;
   onClose: () => void;
@@ -125,9 +127,11 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
       {!list && !problem ? <div className="sub2">Reading your earlier courses…</div> : null}
       {list ? (
         <>
-          <div className="sub2 mb-2">Select courses from previous levels that you have not cleared.</div>
+          <div className="sub2 mb-2">{spillover
+            ? "In spillover you register only the courses you still owe — of your level and the levels before it. Each course you add is registered as a carry-over, and the semester's spillover fee is then owed."
+            : "Select courses from previous levels that you have not cleared."}</div>
           <Tabs label="Which courses" value={f.view} onChange={(v) => setF({ ...f, view: v })}
-            items={[{ id: "OUTSTANDING", label: "ONLY OUTSTANDING", count: owedCount }, { id: "ALL", label: "ALL PREVIOUS COURSES", count: rows.length }]} />
+            items={[{ id: "OUTSTANDING", label: "ONLY OUTSTANDING", count: owedCount }, { id: "ALL", label: spillover ? "ALL YOUR COURSES" : "ALL PREVIOUS COURSES", count: rows.length }]} />
           <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
             <Field id="co-q" label="Search" style={{ flex: "1 1 220px" }}>
               <input id="co-q" className="ctl" value={f.q} maxLength={60} placeholder="Course code, title, level or semester" onChange={(e) => setF({ ...f, q: e.target.value })} />

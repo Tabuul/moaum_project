@@ -500,6 +500,12 @@ class StudentPortalRepository {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.is_spillover(:s)").param("s", student).query(Boolean.class).single());
     }
 
+    /** V674: a spillover student's registration of their current session (or a later one) — every course on it is a carry-over */
+    boolean carryOnly(UUID student, String session) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT registration.spillover_registration(:s, :ses)").param("s", student).param("ses", session)
+                .query(Boolean.class).single());
+    }
+
     boolean semesterCleared(UUID student, String session, int semester) {
         return Boolean.TRUE.equals(jdbc.sql("SELECT finance.semester_cleared(:s, :ses, :sem)")
                 .param("s", student).param("ses", session).param("sem", semester).query(Boolean.class).single());

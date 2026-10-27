@@ -628,6 +628,8 @@ public class StudentPortalService {
         // V615: so is a spillover student's, whatever it holds (the cohort engine's spillover state, for the screen's meter)
         out.put("loadKind", repo.loadKind(id, session, semester));
         out.put("spilloverState", repo.academicPosition(id).map(p -> p.get("spillover_state")).orElse(null));
+        // V674: a spillover student registers carry-overs only — the server enters every course of theirs as one; the page offers no fresh course
+        out.put("carryOnly", repo.carryOnly(id, session));
         out.put("fees", fees(id, session));
         out.put("status", s.status());
         out.put("addDropOpen", repo.addDropOpen(id, session, semester));

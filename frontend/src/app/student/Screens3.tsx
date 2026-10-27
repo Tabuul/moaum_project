@@ -88,6 +88,10 @@ function RegisterClosed({ v }: { v: RegistrationView }) {
 function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
+  // V674: a spillover student registers carry-overs only: the level's courses are not offered as fresh courses — every course is added
+  // through ADD CARRY-OVER, and the server enters any course of theirs as a carry-over
+  const carryOnly = v.carryOnly === true;
+  const menu = carryOnly ? v.menu.filter((m) => m.carryover) : v.menu;
   // V491: where the Head's approval is suspended, a registration that passes the rules is approved on submission
   const auto = v.approval?.mode === "AUTO_APPROVAL";
   const [askReset, setAskReset] = useState(false);
@@ -110,10 +114,10 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
   // the carry-overs and deferred courses the menu puts on are not the student's choice; a carry-over the student added (V611: one
   // declared, its result not on the portal) is
-  const chosenNow = new Set((reg?.entries ?? []).filter((e) => (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED") || e.studentAdded).map((e) => e.offeringId));
+  const chosenNow = new Set((reg?.entries ?? []).filter((e) => (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED") || e.studentAdded || e.addedAs === "CARRY_OVER_DECLARED").map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
-  const carry = v.menu.filter((m) => m.carryover && !m.deferred);
-  const deferredCourses = v.menu.filter((m) => m.deferred);
+  const carry = menu.filter((m) => m.carryover && !m.deferred);
+  const deferredCourses = menu.filter((m) => m.deferred);
   // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Core for
   // its own department yet Elective for this programme (course_offer.basis). GST (General Studies) is a University requirement.
   // V504: GST, core and elective in the University's order, each from the programme's own setup (registration.entry_category)
@@ -123,17 +127,17 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const menuCategory = (m: RegistrationView["menu"][number]) => { const e = entryOf.get(m.offering_id); return e ? courseCategory(e) : courseCategory({ basis: m.basis, kind: m.kind }); };
   const menuUnits = (m: RegistrationView["menu"][number]) => entryOf.get(m.offering_id)?.units ?? m.units;
   // V389: a postgraduate programme's research and deficiency courses are neither core nor electives
-  const special = v.menu.filter((m) => !m.carryover && (m.basis === "Research" || m.basis === "Deficiency"));
-  const gstCourses = v.menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "GST");
-  const core = v.menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "CORE");
-  const elec = v.menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "ELECTIVE");
+  const special = menu.filter((m) => !m.carryover && (m.basis === "Research" || m.basis === "Deficiency"));
+  const gstCourses = menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "GST");
+  const core = menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "CORE");
+  const elec = menu.filter((m) => !m.carryover && !special.includes(m) && menuCategory(m) === "ELECTIVE");
   // V504: the courses the student added beside the recommended list (the engine judged each; saving judges them again)
-  const menuIds = new Set(v.menu.map((m) => m.offering_id));
+  const menuIds = new Set(menu.map((m) => m.offering_id));
   // V620: and a course registered under a binding since changed or removed — on no menu now, kept as registered
-  const extras = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && !menuIds.has(e.offeringId) && (e.studentAdded || (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED"))));
+  const extras = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && !menuIds.has(e.offeringId) && (e.studentAdded || e.addedAs === "CARRY_OVER_DECLARED" || (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED"))));
   // V504: the carry-overs the published results state that are not on this semester's list, and why
-  const away = (v.outstanding ?? []).filter((o) => !v.menu.some((m) => m.carryover && m.course_code === o.course_code));
-  const chosenMenu = v.menu.filter((m) => !m.carryover && chosen.has(m.offering_id));
+  const away = (v.outstanding ?? []).filter((o) => !menu.some((m) => m.carryover && m.course_code === o.course_code));
+  const chosenMenu = menu.filter((m) => !m.carryover && chosen.has(m.offering_id));
   const chosenExtras = extras.filter((e) => chosen.has(e.offeringId));
   // V512: a GST/EPS carry-over the GST fee holds is not on the registration until the fee is paid: listed, not counted
   const onReg = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
@@ -142,7 +146,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
     + chosenMenu.reduce((n, m) => n + menuUnits(m), 0) + chosenExtras.reduce((n, e) => n + e.units, 0);
   // V504: the selection as it will be registered, in the University's order, numbered on
   const selected = byOrder<{ key: string; code: string; title: string; units: number; category: string; note: string | null }>([
-    ...v.menu.filter((m) => (m.carryover && !heldCarry(m)) || chosen.has(m.offering_id)).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: menuUnits(m),
+    ...menu.filter((m) => (m.carryover && !heldCarry(m)) || chosen.has(m.offering_id)).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: menuUnits(m),
       category: m.carryover ? courseCategory({ basis: m.deferred ? "Deferred" : "Carryover", kind: m.kind }) : menuCategory(m),
       note: m.deferred ? "Deferred" : m.carryover ? (m.kind === "GST" ? `Carry-over · ${gstOffice(m.course_code)}` : "Carry-over") : null })),
     ...chosenExtras.map((e) => ({ key: e.offeringId, code: e.courseCode, title: e.title, units: e.units, category: courseCategory(e), note: addedAsLabel(e.addedAs) ?? (e.studentAdded ? "Added by you" : "Registered before your programme's structure changed; kept as registered") })),
@@ -339,6 +343,12 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
           Choosing a course here makes this semester&rsquo;s school fees due{cleared ? "; they are paid, so the registration can be submitted." : "; the registration is submitted once they are paid."}
         </Note>
       ) : null}
+      {carryOnly ? (
+        <Note kind="info" title="IN SPILLOVER, EVERY COURSE YOU REGISTER IS A CARRY-OVER">
+          You have completed your programme&rsquo;s years, so you register only the courses you still owe &mdash; of your level and the levels before it.
+          Add them with ADD CARRY-OVER: each is registered as a carry-over, never as a fresh course, and this semester&rsquo;s spillover fee is then owed.
+        </Note>
+      ) : null}
       {v.siwes ? (
         <Note kind="info" title="Industrial training (SIWES) semester">
           Register only the SIWES / industrial training course ({max} units) this semester — no other course and no carryover.
@@ -416,7 +426,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
         // V611: a carry-over the student declared is dropped as it was added; one the results state is repeated
         const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && (e.entryType !== "CARRYOVER" || e.addedAs === "CARRY_OVER_DECLARED") && e.entryType !== "DEFERRED"));
-        const addable = v.menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
+        const addable = menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
         return (
           <Panel title="Add or drop courses" right="the add/drop window is open">
             <PBody>
@@ -445,11 +455,11 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
               {!droppable.length && !addable.length ? <div className="sub2">Nothing to add or drop.</div> : null}
               {!v.siwes ? (
                 <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
-                  <span className="sub2 grow">Select courses from previous levels that you have not cleared.</span>
+                  <span className="sub2 grow">{carryOnly ? "Select the courses you still owe, of your level and the levels before it." : "Select courses from previous levels that you have not cleared."}</span>
                   <Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn>
                 </div>
               ) : null}
-              {v.flex?.allow_other_courses !== false ? (
+              {v.flex?.allow_other_courses !== false && !carryOnly ? (
                 <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
                   <span className="sub2 grow">A course not listed here — of your programme at another level, or a University GST/EPS course?</span>
                   <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn>
@@ -517,19 +527,19 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       {v.codeFamily ? (
         <div className="sub2 mb-2">Your cohort registers <b>{v.codeFamily}-</b> course codes{v.codeFamily === "BSU" ? " until you graduate; a carry-over keeps the code it was failed under" : ""}. Where a course is listed under one code only, that is the one to take.</div>
       ) : null}
-      {v.gst && !locked && v.gst.stated && !v.gst.entitled && Number(v.gst.fee) > 0 && v.menu.some((m) => m.gstLocked) ? (
+      {v.gst && !locked && v.gst.stated && !v.gst.entitled && Number(v.gst.fee) > 0 && menu.some((m) => m.gstLocked) ? (
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
           Pay the GST fee of <b className="tnum">{naira(Number(v.gst.fee))}</b> for {v.session} to register GST/EPS courses. One payment covers GST and EPS.
           {v.gst.state === "PENDING" ? " A reference is open; the courses unlock when it is confirmed." : ""}
         </Note>
       ) : null}
-      {!locked && v.menu.some((m) => m.prerequisiteLocked) ? (
+      {!locked && menu.some((m) => m.prerequisiteLocked) ? (
         <Note kind="info" title="Prerequisites not yet passed">
           A course marked &ldquo;Needs&rdquo; is locked until a pass in the course it names is published on your record. If you passed it and the result
           is not yet published, or you were exempted, ask your department; ICT Support can add the course on your ticket.
         </Note>
       ) : null}
-      {!locked ? (<>
+      {!locked && !carryOnly ? (<>
       {gstCourses.length ? (
         <Panel title="GST COURSES" right="University requirement">
           <PBody>{gstCourses.map((m) => pick(m, false, chosen.has(m.offering_id)))}</PBody></Panel>
@@ -548,7 +558,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       {!locked && !v.siwes ? (
         <Panel title={<span className="ink-red">CARRY-OVER COURSES</span>} right={<Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn>}>
           <PBody>
-            <div className="sub2">Select courses from previous levels that you have not cleared.</div>
+            <div className="sub2">{carryOnly ? "Every course you register in spillover is a carry-over: select the courses you still owe, of your level and the levels before it." : "Select courses from previous levels that you have not cleared."}</div>
             {carryOn.count ? (
               <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
                 <span><b className="tnum">{carryOn.count}</b> carry-over course{carryOn.count === 1 ? "" : "s"}</span>
@@ -562,7 +572,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
           </PBody>
         </Panel>
       ) : null}
-      {!locked && !v.siwes ? (
+      {!locked && !v.siwes && !carryOnly ? (
         <Panel title="ADD OTHER COURSES" right={v.flex?.allow_other_courses !== false ? <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn> : "closed for now"}>
           <PBody>
             <div className="sub2">{v.flex?.allow_other_courses !== false
@@ -603,7 +613,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       ) : null}
       {/* only where a course can still be added: before submission, or in add and drop (the dashboard's ?carry=1 included) */}
       {addingCarry && !v.siwes && (!locked || v.addDropOpen) ? (
-        <CarryOverPicker session={v.session} semester={v.semester}
+        <CarryOverPicker session={v.session} semester={v.semester} spillover={carryOnly}
           onAdded={(ids) => { if (!locked) setChosen((c) => { const n = new Set(c); ids.forEach((id) => n.add(id)); return n; }); }}
           onClose={closeCarry}
           onViewRegistered={() => document.getElementById("registered-courses")?.scrollIntoView({ behavior: "smooth", block: "start" })} />

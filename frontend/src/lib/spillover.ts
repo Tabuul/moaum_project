@@ -8,6 +8,8 @@ export interface SpilloverCourse { code: string; title: string; units: number; s
 export type SemesterFeeStatus = "PAID" | "PART_PAID" | "PAYMENT_REQUIRED" | "NOT_STATED" | "NOT_REGISTERED" | "NOTHING_OWED";
 export interface SpilloverSemester {
   semester: number; fee: number | string; registered: boolean; carryovers: number; courses: SpilloverCourse[];
+  /** V674: the courses on the semester's registration this session — every course a spillover student registers is a carry-over */
+  registeredCourses?: number;
   owed?: number | string; paid?: number | string; outstanding?: number | string; status?: SemesterFeeStatus; cleared?: boolean;
   /** what is still to pay for the semester to be cleared — anything earlier left unpaid, and its own */
   toClear?: number | string;
@@ -89,7 +91,10 @@ export function registeringWords(s: SpilloverSemester): { title: string; body: s
         body: `No spillover fee is stated for the ${which} for your programme yet; the Bursary states it, and the registration waits for it.` };
     case "NOTHING_OWED":
       return { title: `NOTHING OWED FOR THE ${which.toUpperCase()} YET`, pay: false, amount,
-        body: `You have no carry-over course from the ${which}. Nothing is owed for it unless you register a course in it.` };
+        // V674: every course a spillover student registers is a carry-over — the fee follows the first course saved, whatever the results state
+        body: `Nothing is owed for the ${which} until you register a course in it`
+          + (num(s.fee) > 0 ? `; its spillover fee of ${nairaWords(s.fee)} is then payable.` : ".")
+          + " Every course you register in spillover is a carry-over." };
     default:
       return { title: `IN SPILLOVER, YOU PAY FOR THE SEMESTERS YOU REGISTER`, pay: false, amount,
         body: `${s.carryovers ? `You have ${s.carryovers} ${which} carry-over course${s.carryovers === 1 ? "" : "s"}. ` : ""}Nothing is owed for the ${which} until a course of it is saved on your registration`

@@ -62,6 +62,8 @@ test("V664: nothing is charged for a semester with nothing registered", () => {
   const none = registeringWords(sem(2, { status: "NOTHING_OWED" }));
   assert.equal(none.title, "NOTHING OWED FOR THE SECOND SEMESTER YET");
   assert.equal(none.pay, false);
+  // V674: no talk of "no carry-over course": every course a spillover student registers is one
+  assert.equal(none.body, "Nothing is owed for the second semester until you register a course in it; its spillover fee of ₦60,000.00 is then payable. Every course you register in spillover is a carry-over.");
   const toRegister = registeringWords(sem(2, { status: "NOT_REGISTERED", carryovers: 2 }));
   assert.equal(toRegister.pay, false);
   assert.equal(toRegister.body, "You have 2 second semester carry-over courses. Nothing is owed for the second semester until a course of it is saved on your registration; its spillover fee of ₦60,000.00 is then payable, and the registration is submitted once it is paid. A payment for another semester does not cover it.");
