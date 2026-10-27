@@ -160,6 +160,15 @@ class FeeSetupIT {
         ResponseEntity<Map> twice = it.call(bursar, HttpMethod.PUT, path + "/schedule/" + l200, body("School fees", 95000, 400, 1));
         assertThat(twice.getBody()).containsEntry("code", "FEE_LINE_DUPLICATE");
         assertThat(it.call(ItSupport.token("registrar"), HttpMethod.PUT, path + "/schedule/" + l400, body("School fees", 1000, 400, 1)).getStatusCode().value()).isEqualTo(403);
+        // 27 Oct 2026: an amount the screen could not read ("150,000" sent as null) is refused naming the field — the portal's own
+        // answer, not Spring Boot's bare "Invalid request content."
+        Map<String, Object> noAmount = body("School fees", 0, 400, 1);
+        noAmount.put("amount", null);
+        ResponseEntity<Map> unread = it.call(bursar, HttpMethod.PUT, path + "/schedule/" + l400, noAmount);
+        assertThat(unread.getStatusCode().value()).isEqualTo(400);
+        assertThat(unread.getBody()).containsEntry("code", "VALIDATION_FAILED").containsEntry("title", "Please check the form")
+                .containsEntry("detail", "Not accepted as entered: amount.");
+        assertThat((List<Map<String, Object>>) unread.getBody().get("violations")).extracting(v -> v.get("field")).containsExactly("amount");
 
         // a line with an invoice: ₦200,000 to ₦220,000 versioned — the invoice keeps ₦200,000, the corrected line charges
         UUID lUsed = line(session, "Development levy", 200000, 300);

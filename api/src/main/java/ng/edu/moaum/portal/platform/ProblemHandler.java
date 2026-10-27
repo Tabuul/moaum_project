@@ -13,6 +13,8 @@ import ng.edu.moaum.portal.shared.Throttle;
 
 import org.postgresql.util.PSQLException;
 import org.postgresql.util.ServerErrorMessage;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -33,8 +35,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * kind of refusal wearing a different SQLSTATE — two academic sessions
  * overlapping, two policy versions in force at once — and is answered the
  * same way: it is a rule a person can do something about, not a fault.
+ *
+ * <p>Ordered first (27 October 2026): Spring Boot's own problem handler
+ * (spring.mvc.problemdetails.enabled) is ordered 0 and also answers a body
+ * that fails its checks, with a bare "Bad Request — Invalid request content."
+ * that names no field; this answer, which names them, is the one sent. Only
+ * the exceptions handled here are affected; every other one still reaches
+ * Spring Boot's handler.
  */
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 class ProblemHandler {
 
     private static final String PROBLEM_BASE = "https://api.moaum.edu.ng/problems/";
@@ -78,7 +88,12 @@ class ProblemHandler {
                 .map(f -> Map.<String, Object>of("field", f.getField(), "code", "INVALID",
                         "message", f.getDefaultMessage() == null ? "invalid" : f.getDefaultMessage()))
                 .toList();
-        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "The request did not validate.", request);
+        // the fields named in words ("programmeCode" → "programme code"), so the toast says what to correct
+        String fields = e.getBindingResult().getFieldErrors().stream().map(f -> fieldWords(f.getField())).distinct()
+                .collect(java.util.stream.Collectors.joining(", "));
+        ProblemDetail problem = problem(HttpStatus.BAD_REQUEST,
+                fields.isEmpty() ? "The request did not validate." : "Not accepted as entered: " + fields + ".", request);
+        problem.setTitle("Please check the form");
         problem.setProperty("code", "VALIDATION_FAILED");
         problem.setProperty("violations", violations);
         return problem;
@@ -235,6 +250,13 @@ class ProblemHandler {
             Map.entry("PSW_SESSION", "Not a session"), Map.entry("PSW_KIND", "Say what the swap is"), Map.entry("PSW_CHANGE_REQUESTED", "A change is requested at admissions"),
             Map.entry("PSW_EVIDENCE_TYPE", "PDF, JPEG or PNG only"), Map.entry("PSW_EVIDENCE_SIZE", "File too large"), Map.entry("PSW_NOT_FOUND", "No such swap"),
             Map.entry("PSW_REVIEW_STATUS", "Not a review status"), Map.entry("PSW_CHANGED", "The record changed; prepare again"));
+
+    /** a request field as a person reads it: "programmeCode" → "programme code", "rows[2].amount" → "amount" */
+    static String fieldWords(String field) {
+        if (field == null || field.isBlank()) return "a field";
+        String last = field.substring(field.lastIndexOf('.') + 1).replaceAll("\\[.*?]", "");
+        return last.replaceAll("([a-z0-9])([A-Z])", "$1 $2").replace('_', ' ').toLowerCase(java.util.Locale.ROOT).trim();
+    }
 
     static String titleOf(String code) {
         if (code == null || code.isBlank()) return "The request was refused";

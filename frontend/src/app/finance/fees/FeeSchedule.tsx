@@ -652,7 +652,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
         return (
         <Modal title={editingId ? "Edit the charge item" : "An item of the charge"} sub={`${addSession} · applies where every filter it carries matches, or is blank`} onClose={() => { setAdding(false); setEditingId(null); }}
           foot={<><Btn kind="ghost" onClick={() => { setAdding(false); setEditingId(null); }}>Cancel</Btn><span className="grow" /><Btn kind="primary" disabled={!itemName || !val("amount") || busy !== null} onClick={async () => {
-            const shared = { item: itemName, amount: Number(val("amount")), level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null, kind: val("kind") || "FEE",
+            // 27 Oct 2026: "150,000" or "₦150,000" was sent as no amount at all, and the API answered "Invalid request content"
+            const amount = Number(val("amount").replace(/[^0-9.]/g, ""));
+            if (!Number.isFinite(amount) || amount < 0) {
+              const p = { status: 400, title: "Please check the amount", detail: "Enter the amount in naira as a number, for example 150000." };
+              setProblem(p); notifyProblem(p);
+              return;
+            }
+            const shared = { item: itemName, amount, level: val("level") ? Number(val("level")) : null, entryMode: val("mode") || null, feeGroup: val("group") || null, semester: val("semester") ? Number(val("semester")) : null, ord: Number(val("ord") || "0"), facultyCode: val("faculty") || null, kind: val("kind") || "FEE",
               /* V613: a spillover line and its year — the level is then the programme's final level */
               spillover: !!val("spill"), spillYear: val("spill") && val("spill") !== "any" ? Number(val("spill")) : null,
               /* V651: a postgraduate stage, or fresh / returning PG students without one */
@@ -680,7 +687,7 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
                 <option value="__other__">Other (type a name)…</option>
               </select>
             </Field>
-            <Field id="fa" label="Amount" hint="In naira"><input id="fa" className="ctl tnum" value={val("amount")} inputMode="numeric" onChange={(e) => setEdits({ ...edits, amount: e.target.value })} /></Field>
+            <Field id="fa" label="Amount" hint="In naira"><input id="fa" className="ctl tnum" value={val("amount")} inputMode="decimal" placeholder="150000" onChange={(e) => setEdits({ ...edits, amount: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
           </div>
           {editingId ? (
             <Field id="fre" label="Reason for the change" hint="Kept with the change and in the audit trail; a line invoices were made under is kept as it was and the corrected line stated beside it">
