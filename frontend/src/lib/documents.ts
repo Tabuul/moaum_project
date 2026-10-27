@@ -18,6 +18,19 @@ export interface Statement {
   kind: string; number: string; version: number; templateVersion?: number; issuedOn: string; issuingAuthority?: string;
   /** V381: how the holder studied — "Part-time" through the Centre for Continuing Education (route, centre, the CCE programme length) */
   studyMode?: string; route?: string | null; centre?: string | null; durationYears?: number | null;
+  /** V668: the University's transcript names the date of birth, the sex and the session the holder left */
+  dateOfBirth?: string | null; sex?: string | null; leftSession?: string | null;
+}
+/** V668: the Transcript Desk's covering letter to a recipient (none for the holder's own copy) */
+export interface CoverLetter {
+  ref: string; requestRef: string; date: string; recipientName?: string; organisation?: string; department?: string; address?: string; recipientReference?: string;
+  holder: string; holderUpper: string; matricNo: string; body: string; closing: string; signatoryName?: string; signatoryTitle: string; onBehalfOf?: string;
+}
+/** V668: who asked without a portal account, as the desk is shown it */
+export interface PublicSide {
+  requestedBy: "GRADUATE" | "INSTITUTION"; requesterName: string; organisation?: string; email: string; phone?: string;
+  identityState: "CONFIRMED" | "AWAITING_REVIEW" | "ACCEPTED" | "REFUSED" | "NOT_REQUIRED"; idFilename?: string; idContentType?: string;
+  reviewedAt?: string; reviewedBy?: string; reviewNote?: string; cleared: boolean; createdAt?: string; consentState: "NOT_REQUIRED" | "AWAITING" | "GIVEN" | "REFUSED" | "EXPIRED"; consentAt?: string; consentNote?: string; consentExpiresAt?: string;
 }
 export interface Template { id?: string; kind: string; version: number; title: string; subtitle: string | null; signatory_name: string; signatory_title: string; second_name: string | null; second_title: string | null; footer: string | null; remarks: string | null; active?: boolean; created_at?: string }
 export interface DocumentRow {
@@ -37,7 +50,7 @@ export interface DocEvent { action: string; from_state: string | null; to_state:
 export interface Delivery { id: string; kind: string; state: string; recipient: string | null; email: string | null; address?: string | null; courier: string | null; tracking_no: string | null; dispatched_on: string | null; delivered_on: string | null; note: string | null; updated_at: string; token?: string | null; expires_at?: string | null; uses?: number; max_uses?: number }
 export interface RequestFull extends RequestRow {
   recipient_department: string | null; recipient_name: string | null; recipient_address: string | null; recipient_reference: string | null; purpose: string | null; international: boolean; validation: string | null; qc_note: string | null;
-  produced_by: string | null; released_by: string | null; qc_by: string | null; events: DocEvent[]; deliveries: Delivery[]; preview: string; document?: DocumentFull; versions: { id: string; number: string; version: number; verification_code: string; issued_on: string; status: string }[];
+  produced_by: string | null; released_by: string | null; qc_by: string | null; publicSide?: string | null; coverLetter?: string | null; events: DocEvent[]; deliveries: Delivery[]; preview: string; document?: DocumentFull; versions: { id: string; number: string; version: number; verification_code: string; issued_on: string; status: string }[];
 }
 export interface Policy {
   kind: string; label: string; billable: boolean; fee: number | null; urgent_fee: number; physical_fee: number; international_fee: number; currency: string; self_service: boolean; sla_days: number; urgent_sla_days: number;

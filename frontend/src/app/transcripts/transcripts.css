@@ -1,0 +1,22 @@
+/* V668: the public transcript request, status and consent pages; the portal's tokens only */
+.trn-public { display: flex; flex-direction: column; gap: 12px; }
+.trn-public p { margin: 0; line-height: 1.55; }
+.trn-h1 { font-size: 1.45rem; margin: 0; line-height: 1.25; }
+.trn-h2 { font-size: 1.1rem; margin: 14px 0 0; }
+.trn-list { margin: 0; padding-left: 1.25rem; line-height: 1.7; }
+.trn-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+/* the honeypot: off the screen, not display:none (which some robots skip) */
+.trn-hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.trn-form { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.trn-who { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.trn-who button { text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--card, transparent); padding: 12px 14px; cursor: pointer; color: inherit; font: inherit; line-height: 1.45; }
+.trn-who button:hover, .trn-who button:focus-visible { border-color: var(--link); }
+.trn-who strong { display: block; margin-bottom: 2px; }
+.trn-code { letter-spacing: .3em; font-variant-numeric: tabular-nums; font-size: 1.2rem; max-width: 12ch; }
+.trn-kv { display: grid; grid-template-columns: minmax(140px, max-content) 1fr; gap: 6px 16px; margin: 0; }
+.trn-kv dt { color: var(--muted); }
+.trn-kv dd { margin: 0; }
+.trn-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.trn-steps li { display: flex; gap: 12px; }
+.trn-steps time { color: var(--muted); min-width: 150px; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .trn-kv { grid-template-columns: 1fr; } .trn-kv dt { margin-top: 6px; } .trn-steps li { flex-direction: column; gap: 0; } }

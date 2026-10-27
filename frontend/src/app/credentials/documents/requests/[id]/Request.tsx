@@ -2,7 +2,8 @@
 
 /** One document request (V262): the student and what was asked; payment; the academic validation with its findings; the statement
  *  the document will carry, previewed course by course; generation as a versioned document; the quality check — approve, ask for a
- *  correction, reject; the Registrar's release; the deliveries recorded; the timeline. */
+ *  correction, reject; the Registrar's release; the deliveries recorded; the timeline. V668: a request made without a portal account
+ *  shows who asked, the identity document to accept or refuse, the graduate's consent to an institution's request, and the covering letter. */
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,15 @@ import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/compo
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, Steps } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { DELIVERY_STATE, EVENT_WORDS, PAYMENT, STAGE, callDocs, dayOf, naira, parseStatement, semesterName, verifyPathFor, whenAt, type RequestFull, type Validation } from "@/lib/documents";
+import { DELIVERY_STATE, EVENT_WORDS, PAYMENT, STAGE, callDocs, dayOf, naira, parseStatement, semesterName, verifyPathFor, whenAt, type PilKind, type PublicSide, type RequestFull, type Validation } from "@/lib/documents";
+
+const IDENTITY: Record<string, [string, PilKind]> = {
+  CONFIRMED: ["Confirmed by a code to the contact on record", "ok"], AWAITING_REVIEW: ["Identity document to check", "warn"], ACCEPTED: ["Identity document accepted", "ok"],
+  REFUSED: ["Identity document refused", "bad"], NOT_REQUIRED: ["Not required", "grey"],
+};
+const CONSENT: Record<string, [string, PilKind]> = {
+  NOT_REQUIRED: ["Not required", "grey"], AWAITING: ["Awaiting the graduate's consent", "warn"], GIVEN: ["Given by the graduate", "ok"], REFUSED: ["Refused by the graduate", "bad"], EXPIRED: ["Expired without an answer", "bad"],
+};
 
 const OFFICE = ["academic", "registrar", "dregistrar", "records"];
 const SIGNERS = ["registrar", "dregistrar", "academic"];
@@ -20,12 +29,13 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
   const may = !!office && OFFICE.includes(office);
   const signer = !!office && SIGNERS.includes(office);
   const [busy, setBusy] = useState(false);
-  const [ask, setAsk] = useState<"qc" | "cancel" | "delivery" | null>(null);
+  const [ask, setAsk] = useState<"qc" | "cancel" | "delivery" | "refuse-id" | null>(null);
   const [decision, setDecision] = useState("APPROVED");
   const [note, setNote] = useState("");
   const [dl, setDl] = useState<{ id: string; state: string; courier: string; tracking: string; note: string } | null>(null);
   const validation = r.validation ? (JSON.parse(r.validation) as Validation) : null;
   const preview = parseStatement(r.document?.statement ?? r.preview);
+  const side = r.publicSide ? (JSON.parse(r.publicSide) as PublicSide) : null;
   const stageAt = ["AWAITING_PAYMENT", "READY", "PROCESSING", "GENERATED", "VERIFIED", "RELEASED", "DELIVERED", "COMPLETED"].indexOf(r.stage === "HELD_AT_CLEARANCE" ? "READY" : r.stage === "CORRECTION" ? "PROCESSING" : r.stage);
   const st = (i: number) => (r.stage === "REJECTED" || r.stage === "CANCELLED" ? (i < stageAt ? "done" : "todo") : i < stageAt ? "done" : i === stageAt ? "now" : "todo");
 
@@ -40,6 +50,7 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
   const cancel = () => run(callDocs("POST", `/documents/requests/${r.id}/cancel`, { reason: note || null }, `Cancel ${r.ref}`), "Request cancelled");
   const complete = () => run(callDocs("POST", `/documents/requests/${r.id}/complete`, {}, `Complete ${r.ref}`), "Request completed");
   const saveDelivery = () => { if (!dl) return; return run(callDocs("POST", `/documents/deliveries/${dl.id}`, { state: dl.state, courier: dl.courier || null, tracking: dl.tracking || null, note: dl.note || null }, `Delivery ${dl.state.toLowerCase()} for ${r.ref}`), "Delivery updated"); };
+  const reviewId = (accept: boolean) => { if (!accept && !note.trim()) { notifyProblem({ status: 422, title: "Say why the document is refused; the requester is told." }); return; } return run(callDocs("POST", `/documents/requests/${r.id}/identity`, { accept, note: note || null }, `${accept ? "Accept" : "Refuse"} the identity document for ${r.ref}`), accept ? "Identity accepted; the requester is told" : "Identity refused; the request is rejected and the requester told"); };
   const resend = (id: string) => run(callDocs("POST", `/documents/deliveries/${id}/resend`, {}, `Resend the secure link for ${r.ref}`), "Link resent");
 
   return (
@@ -54,11 +65,13 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
           {may && ["RELEASED", "DELIVERED"].includes(r.stage) ? <Btn kind="secondary" onClick={() => void complete()} disabled={busy}>Mark completed</Btn> : null}
           {may && ["AWAITING_PAYMENT", "READY", "HELD_AT_CLEARANCE"].includes(r.stage) ? <Btn kind="ghost" onClick={() => { setNote(""); setAsk("cancel"); }}>Cancel</Btn> : null}
           {r.issued_id && r.document_status === "ACTIVE" ? <a className="btn btn--ghost btn--sm" href={`/credentials/documents/register/${r.issued_id}/pdf`} target="_blank" rel="noopener">Document PDF</a> : null}
+          {r.coverLetter ? <a className="btn btn--ghost btn--sm" href={`/credentials/documents/requests/${r.id}/letter`} target="_blank" rel="noopener">Covering letter</a> : null}
           <LinkBtn kind="ghost" href={`/students/${r.student_id}`}>Student record</LinkBtn>
         </>} />
 
       <Steps list={[[st(0), "Payment", r.paid_at ? whenAt(r.paid_at) : r.fee ? naira(r.fee) : "No fee"], [st(1), "Ready", r.stage === "HELD_AT_CLEARANCE" ? "Held at clearance" : ""], [st(2), "Validation", r.validated_at ? whenAt(r.validated_at) : ""], [st(3), "Generated", r.produced_at ? whenAt(r.produced_at) : ""], [st(4), "Quality check", r.qc_at ? whenAt(r.qc_at) : ""], [st(5), "Released", r.released_at ? whenAt(r.released_at) : ""], [st(6), "Delivered", r.delivered_at ? whenAt(r.delivered_at) : ""], [st(7), "Completed", r.completed_at ? whenAt(r.completed_at) : ""]]} />
 
+      {side && !side.cleared && !["REJECTED", "CANCELLED"].includes(r.stage) ? <Note kind="bad" title={side.identityState === "AWAITING_REVIEW" ? "The identity document is to be checked before anything is produced" : "The graduate's consent is awaited before anything is produced"}>This request was made without a portal account; the portal refuses to process it until {side.identityState === "AWAITING_REVIEW" ? "the identity document below is accepted" : "the graduate consents at the link sent to them"}.</Note> : null}
       {r.stage === "AWAITING_PAYMENT" ? <Note kind="info" title={`Awaiting payment of ${naira(r.fee)}`}>Reference {r.reference ?? "—"}; processing begins when the Bursary or the gateway confirms it.</Note> : null}
       {r.stage === "HELD_AT_CLEARANCE" ? <Note kind="bad" title="Held at clearance">The transcript is generated once every unit clears.</Note> : null}
       {r.stage === "CORRECTION" ? <Note kind="bad" title="Correction asked at the quality check">{r.qc_note}. Put the record right, validate again, and generate a new version.</Note> : null}
@@ -82,6 +95,25 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
           </PBody>
         </Panel>
       </div>
+
+      {side ? (
+        <Panel title="Asked without a portal account" right={side.requestedBy === "INSTITUTION" ? "By an institution" : "By the graduate"}>
+          <PBody>
+            <KvGrid cls="grid--2" pairs={[["Requester", [side.requesterName, side.organisation].filter(Boolean).join(" · ")], ["Contact", [side.email, side.phone].filter(Boolean).join(" · ")],
+              ["Identity", <span key="i"><Pil kind={IDENTITY[side.identityState]?.[1] ?? "grey"}>{IDENTITY[side.identityState]?.[0] ?? side.identityState}</Pil>{side.reviewedAt ? <span className="sub2"> · {side.reviewedBy ?? ""} {whenAt(side.reviewedAt)}{side.reviewNote ? ` · ${side.reviewNote}` : ""}</span> : null}</span>],
+              ["Consent", <span key="c"><Pil kind={CONSENT[side.consentState]?.[1] ?? "grey"}>{CONSENT[side.consentState]?.[0] ?? side.consentState}</Pil>{side.consentAt ? <span className="sub2"> · {whenAt(side.consentAt)}{side.consentNote ? ` · ${side.consentNote}` : ""}</span> : side.consentState === "AWAITING" && side.consentExpiresAt ? <span className="sub2"> · until {dayOf(side.consentExpiresAt)}</span> : null}</span>]]} />
+            {side.idFilename ? (
+              <div className="row row--tight" style={{ marginTop: 10 }}>
+                <a className="btn btn--ghost btn--sm" href={`/api/bff/api/v1/documents/requests/${r.id}/identity`} target="_blank" rel="noopener">Open the identity document ({side.idFilename})</a>
+                {may && side.identityState === "AWAITING_REVIEW" ? <>
+                  <Btn kind="primary" onClick={() => void reviewId(true)} disabled={busy}>Accept: it is the graduate</Btn>
+                  <Btn kind="ghost" onClick={() => { setNote(""); setAsk("refuse-id"); }} disabled={busy}>Refuse</Btn>
+                </> : null}
+              </div>
+            ) : null}
+          </PBody>
+        </Panel>
+      ) : null}
 
       {preview ? (
         <Panel title={r.document ? "The generated statement, for the quality check" : "Preview of the record"} right={`${preview.holder} · ${preview.matricNo}`}>
@@ -111,6 +143,10 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
         <Modal title="Quality check" sub="Verify the name, ID, programme, courses, grades, GPA, CGPA, classification and graduation above" onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Cancel</Btn><Btn kind={decision === "REJECTED" ? "urgent" : "primary"} onClick={() => void qc()} disabled={busy}>Record</Btn></>}>
           <Field id="qc-d" label="Decision"><select id="qc-d" className="ctl" value={decision} onChange={(e) => setDecision(e.target.value)}><option value="APPROVED">Approve — send for the Registrar&rsquo;s release</option><option value="CORRECTION">Request correction — regenerate after the record is put right</option><option value="REJECTED">Reject the request</option></select></Field>
           <Field id="qc-n" label={decision === "APPROVED" ? "Note" : "Reason"} required={decision !== "APPROVED"} full><textarea id="qc-n" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        </Modal>
+      ) : ask === "refuse-id" ? (
+        <Modal title="Refuse the identity document" sub="The request is rejected and the requester is told why; a fee already paid is refunded through the Bursary" onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Keep it</Btn><Btn kind="urgent" onClick={() => void reviewId(false)} disabled={busy}>Refuse</Btn></>}>
+          <Field id="rid-n" label="Reason" required full><textarea id="rid-n" className="ctl" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. the name on the document does not match the record" /></Field>
         </Modal>
       ) : ask === "cancel" ? (
         <Modal title={`Cancel ${r.ref}`} onClose={() => setAsk(null)} foot={<><Btn kind="ghost" onClick={() => setAsk(null)}>Keep it</Btn><Btn kind="urgent" onClick={() => void cancel()} disabled={busy}>Cancel the request</Btn></>}>

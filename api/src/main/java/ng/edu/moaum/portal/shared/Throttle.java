@@ -57,7 +57,14 @@ public class Throttle {
         /* V658: an enquiry's private link asked for again by its reference and e-mail, counted every request, so references cannot be walked */
         PARTNERSHIP_LINK(5, "PTN_SLOW_DOWN", "Too many link requests from this connection", "Wait; a new link already sent replaces the earlier one."),
         /* V658: an enquiry followed by its private link, counted every look */
-        PARTNERSHIP_STATUS(120, "PTN_SLOW_DOWN", "Too many look-ups from this connection", "Wait a few minutes and open the link again.");
+        PARTNERSHIP_STATUS(120, "PTN_SLOW_DOWN", "Too many look-ups from this connection", "Wait a few minutes and open the link again."),
+        /* V668: a transcript asked for without a portal account — a code sent to the contact on record, counted every request, so the register
+           cannot be walked by matriculation number and date of birth */
+        TRANSCRIPT_CODE(10, "TRN_SLOW_DOWN", "Too many codes asked for from this connection", "Use the latest code sent to you, or wait."),
+        /* V668: a code typed, an institution's or a document's request made, counted every request */
+        TRANSCRIPT_FORM(30, "TRN_SLOW_DOWN", "Too many transcript requests from this connection", "Wait a few minutes; a request made is followed at its link."),
+        /* V668: a request followed, or consent given, by its private link, counted every look */
+        TRANSCRIPT_STATUS(120, "TRN_SLOW_DOWN", "Too many look-ups from this connection", "Wait a few minutes and open the link again.");
 
         final int limit;
         final String code;

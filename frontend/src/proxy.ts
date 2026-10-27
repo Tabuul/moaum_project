@@ -35,7 +35,10 @@ const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/ap
   "/cce/apply",
   /* the collaboration enquiry (V658): the public form, the applicant's secure status page (its token in the address) and their
      API doors, for an organisation with no account; the API limits each connection. The desk at /partnerships stays signed-in. */
-  "/partnerships/collaboration", "/partnerships/status/", "/api/bff/api/v1/public/partnerships/"];
+  "/partnerships/collaboration", "/partnerships/status/", "/api/bff/api/v1/public/partnerships/",
+  /* a transcript asked for without a portal account (V668): the request form, the requester's status page and the graduate's
+     consent page (each token in the address), and their API doors; the API limits each connection */
+  "/transcripts/request", "/transcripts/status/", "/transcripts/consent/", "/api/bff/api/v1/public/transcripts/"];
 /* the public postgraduate endpoints, matched exactly so the prefix does not also open the
    authenticated PG desks that share the /api/v1/pg base (e.g. /pg/applications) */
 const OPEN_EXACT = new Set([

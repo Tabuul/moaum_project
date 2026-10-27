@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 495
+\set EXPECTED 497
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26786,6 +26786,105 @@ BEGIN
   END;
   PERFORM pg_temp.assert('V667: results are released by the semester paid for — the session''s rule refusing, the first semester paid is released and the second withheld with ₦14,605.00 outstanding until paid; an earlier session paid for is released; a balance carried from an earlier session still blocks everything',
       coalesce(NOT rule_before AND r1 AND NOT r2 AND out2 = 14605 AND r2_paid AND r_prev AND NOT a1 AND NOT a_rule, false),
+      msg);
+END $$;
+
+-- ── V668. A transcript asked for without a portal account. A made-up graduate with a date of birth and a contact on record: a wrong
+-- date of birth is refused in the same words as a wrong number; the code sent to the contact proves them (a wrong code is not), and its
+-- pass makes a request that is followed by its private link; an institution's request waits for the graduate's consent — production
+-- refused until it is given, and a refusal cancels a second one; a request made with an identity document waits for the desk, which
+-- the code's anonymous actor cannot be; the statement carries the date of birth, the sex; the cover letter is made for a recipient and
+-- not for the graduate's own copy; and the graduate's secure link is e-mailed to them at release. Undone after.
+DO $$
+DECLARE prog text; v_dept text; v_fac text; st uuid := gen_random_uuid(); msg text; v_err text;
+        not_matched text; wrong_code boolean; right_code boolean; pass_student boolean; v_code text; ch record;
+        g record; g_state text; g_status jsonb; inst record; gate_refused text; consent_to text; gate_after text;
+        inst2 record; refused_stage text; doc record; doc_gate text; anon_review text; review_to text;
+        stmt jsonb; letter_inst jsonb; letter_self jsonb; issued uuid; mailed int; deliv_email text;
+        pass text := repeat('p', 40); tok1 text := repeat('a', 40); tok2 text := repeat('b', 40); tok3 text := repeat('c', 40);
+        tok4 text := repeat('d', 40); con1 text := repeat('e', 40); con2 text := repeat('f', 40);
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'check V668', true);
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V668', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, date_of_birth, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'MOAUM/ADM/17/668001', 'BSU/MS/ACC/17/66801', 'CHECKV668', 'Maureen Mwuese', 'F', DATE '1994-06-06', prog, 'UTME', '2017/2018', 100, 400, 'ACTIVE', now());
+    INSERT INTO people.student_contact (student_id, email, phone) VALUES (st, 'maureen.v668@example.com', '08030006680');
+
+    -- the graduate: a wrong date of birth, then the code
+    BEGIN PERFORM credentials.public_code_send('BSU/MS/ACC/17/66801', DATE '1994-06-07', 'check');
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS not_matched = MESSAGE_TEXT; END;
+    SELECT * INTO ch FROM credentials.public_code_send(' bsu/ms/acc/17/66801 ', DATE '1994-06-06', 'check');
+    v_code := (SELECT substring(n.subject FROM '([0-9]{6})$') FROM platform.notice n WHERE n.channel = 'EMAIL' AND n.recipient = 'maureen.v668@example.com'
+              AND n.subject LIKE 'Your transcript request code:%' ORDER BY n.created_at DESC LIMIT 1);
+    wrong_code := credentials.public_code_check(ch.challenge, CASE WHEN v_code = '000000' THEN '111111' ELSE '000000' END, pass);
+    right_code := credentials.public_code_check(ch.challenge, v_code, pass);
+    pass_student := credentials.public_pass_student(pass) = st;
+    SELECT * INTO g FROM credentials.public_request_graduate(pass, tok1, NULL, NULL, NULL, 'TRANSCRIPT', 'SELF', NULL, NULL, NULL, NULL, NULL, NULL, 'Employment',
+                                                             'DIGITAL', false, false, 1, 'check', 'https://portal.example/transcripts/status/' || tok1);
+    g_state := (SELECT identity_state || '/' || consent_state || '/' || email FROM credentials.public_request WHERE request_id = g.id);
+    g_status := credentials.public_status(tok1);
+
+    -- an institution: the graduate's consent before anything is produced
+    SELECT * INTO inst FROM credentials.public_request_institution('BSU/MS/ACC/17/66801', 'checkv668', tok2, con1, 'Studyvisa International Limited', 'Admissions Officer',
+        'admissions@studyvisa.example', NULL, 'INSTITUTION', NULL, NULL, NULL, '12, Sule Abuja Street, Ikeja, Lagos', 'SV/2026/14', 'admission',
+        'BOTH', false, false, 1, 'check', 'https://portal.example/transcripts/status/' || tok2, 'https://portal.example/transcripts/consent/' || con1);
+    BEGIN UPDATE credentials.transcript_request SET stage = 'PROCESSING' WHERE id = inst.id;
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS gate_refused = MESSAGE_TEXT; END;
+    consent_to := credentials.public_consent(con1, true, NULL);
+    UPDATE credentials.transcript_request SET stage = 'PROCESSING' WHERE id = inst.id;
+    gate_after := (SELECT stage FROM credentials.transcript_request WHERE id = inst.id);
+    SELECT * INTO inst2 FROM credentials.public_request_institution('BSU/MS/ACC/17/66801', 'CHECKV668', tok3, con2, 'Another Employer Ltd', 'HR',
+        'hr@employer.example', NULL, 'EMPLOYER', NULL, NULL, NULL, NULL, NULL, 'employment', 'DIGITAL', false, false, 1, 'check', 'x', 'y');
+    PERFORM credentials.public_consent(con2, false, 'I did not apply there');
+    refused_stage := (SELECT stage FROM credentials.transcript_request WHERE id = inst2.id);
+
+    -- a graduate without the contact on record: the desk checks the document, and the code's anonymous actor cannot
+    SELECT * INTO doc FROM credentials.public_request_with_document('BSU/MS/ACC/17/66801', DATE '1994-06-06', tok4, 'Maureen Gyila', 'new.v668@example.com', NULL,
+        'passport.pdf', 'application/pdf', '\x255044462d'::bytea, NULL, digest('x', 'sha256'),
+        'TRANSCRIPT', 'EMPLOYER', 'Acme Nigeria Ltd', NULL, 'HR', 'hr@acme.example', NULL, NULL, 'employment', 'DIGITAL', false, false, 1, 'check', 'z');
+    BEGIN UPDATE credentials.transcript_request SET stage = 'PROCESSING' WHERE id = doc.id;
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS doc_gate = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.review_identity(doc.id, true, NULL);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS anon_review = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-00000000c0de', true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    review_to := credentials.review_identity(doc.id, true, 'Passport matches the record');
+
+    -- the statement, the cover letter, and the graduate's link at release
+    stmt := credentials.build_statement(st, 'TRANSCRIPT', NULL, NULL);
+    letter_inst := credentials.cover_letter_for(inst.id);
+    letter_self := credentials.cover_letter_for(g.id);
+    issued := credentials.issue(st, 'TRANSCRIPT', g.id, NULL, NULL, NULL, 'check V668');
+    UPDATE credentials.transcript_request SET issued_id = issued WHERE id = g.id;
+    PERFORM credentials.open_delivery(g.id);
+    deliv_email := (SELECT string_agg(coalesce(d.email, '-') || ':' || d.state, ',') FROM credentials.delivery d WHERE d.request_id = g.id);
+    mailed := (SELECT count(*) FROM platform.notice n WHERE n.recipient = 'maureen.v668@example.com' AND n.subject LIKE 'Your transcript % is ready' AND n.body LIKE '%/documents/d/%');
+
+    msg := format('not matched %s | codes: wrong %s right %s pass %s | graduate %s %s (%s) | institution gate %s; consent %s; then %s | refused -> %s | document gate %s; anonymous %s; desk %s',
+                  not_matched, wrong_code, right_code, pass_student, g.ref, g_state, g_status->>'stageWords', gate_refused, consent_to, gate_after, refused_stage,
+                  doc_gate, anon_review, review_to)
+        || format(' || statement %s %s | letter %s / self %s | delivery %s mailed %s', stmt->>'dateOfBirth', stmt->>'sex', letter_inst->>'body', coalesce(letter_self::text, 'none'), deliv_email, mailed);
+    RAISE EXCEPTION 'the V668 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V668 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V668: a graduate without a portal account is proved by a code to the contact on record (never by a wrong date of birth or a wrong code); an institution''s request is produced only with the graduate''s consent and cancelled by a refusal; an identity document waits for a person at the desk',
+      coalesce(not_matched LIKE 'TRN_NOT_MATCHED%' AND NOT wrong_code AND right_code AND pass_student
+               AND g_state = 'CONFIRMED/NOT_REQUIRED/maureen.v668@example.com' AND g_status->>'stage' = 'AWAITING_PAYMENT' AND (g_status->>'fee')::numeric > 0
+               AND gate_refused LIKE 'TRN_CONSENT_PENDING%' AND consent_to = 'GIVEN' AND gate_after = 'PROCESSING' AND refused_stage = 'CANCELLED'
+               AND doc_gate LIKE 'TRN_IDENTITY_PENDING%' AND anon_review LIKE 'an identity document is checked by a person%' AND review_to = 'ACCEPTED', false),
+      msg);
+  PERFORM pg_temp.assert('V668: the transcript statement carries the date of birth and the sex; the cover letter is made for a recipient and not for the graduate''s own copy; a graduate who asked publicly is e-mailed the secure link at release',
+      coalesce(stmt->>'dateOfBirth' = '1994-06-06' AND stmt->>'sex' = 'Female'
+               AND letter_inst->>'body' LIKE 'At the request of Maureen Mwuese Checkv668 (BSU/MS/ACC/17/66801)%application for admission.' AND letter_inst->>'signatoryTitle' = 'Desk Officer Transcript'
+               AND letter_self IS NULL AND deliv_email = 'maureen.v668@example.com:SENT' AND mailed = 1, false),
       msg);
 END $$;
 

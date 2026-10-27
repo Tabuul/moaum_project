@@ -17,8 +17,12 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -51,10 +55,12 @@ class DocumentsController {
     private static final long VERIFY_WINDOW_MS = 15 * 60_000L;
 
     private final JdbcClient jdbc;
+    private final FileObjects files;
     private final ConcurrentHashMap<String, long[]> hits = new ConcurrentHashMap<>();
 
-    DocumentsController(JdbcClient jdbc) {
+    DocumentsController(JdbcClient jdbc, FileObjects files) {
         this.jdbc = jdbc;
+        this.files = files;
     }
 
     private static UUID student(Authentication auth) {
@@ -230,6 +236,11 @@ class DocumentsController {
                 SELECT row_to_json(x)::text FROM (SELECT tp.* FROM credentials.document_template tp JOIN credentials.download_token dt ON dt.token = :t JOIN credentials.issued i ON i.id = dt.issued_id
                   WHERE tp.kind = i.kind AND tp.version = coalesce(i.template_version, (SELECT max(version) FROM credentials.document_template WHERE kind = i.kind))) x
                 """).param("t", t).query(String.class).optional().orElse(null));
+        // V668: a recipient's copy opens with the Transcript Desk's covering letter
+        out.put("letter", jdbc.sql("""
+                SELECT credentials.cover_letter_for(i.request_id)::text AS letter FROM credentials.download_token dt JOIN credentials.issued i ON i.id = dt.issued_id
+                 WHERE dt.token = :t AND dt.for_kind = 'RECIPIENT' AND i.request_id IS NOT NULL
+                """).param("t", t).query().listOfRows().stream().findFirst().map(x -> x.get("letter")).orElse(null));
         return out;
     }
 
@@ -311,7 +322,51 @@ class DocumentsController {
         out.put("preview", jdbc.sql("SELECT credentials.build_statement(:s, :k, :ses, :sem)::text").param("s", r.get("student_id")).param("k", r.get("kind")).param("ses", r.get("session"), Types.VARCHAR).param("sem", r.get("semester"), Types.INTEGER).query(String.class).single());
         if (r.get("issued_id") != null) out.put("document", document((UUID) r.get("issued_id")));
         out.put("versions", jdbc.sql("SELECT id, number, version, verification_code, issued_on, credentials.document_status(id) AS status FROM credentials.issued WHERE request_id = :id ORDER BY version").param("id", id).query().listOfRows());
+        // V668: who asked without a portal account, the identity and consent states, and the covering letter
+        Map<String, Object> pub = jdbc.sql("SELECT credentials.public_side(:id)::text AS side, credentials.cover_letter_for(:id)::text AS letter").param("id", id).query().singleRow();
+        out.put("publicSide", pub.get("side"));
+        out.put("coverLetter", pub.get("letter"));
         return out;
+    }
+
+    /* ── V668: requests made without a portal account ── */
+
+    /** the identity documents waiting for a person at the desk to look at them */
+    @GetMapping("/api/v1/documents/identity-reviews")
+    @PreAuthorize(OFFICE)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> identityReviews() {
+        return jdbc.sql("""
+                SELECT r.id, r.ref, r.kind, r.student_name, r.student_number, r.stage, r.payment_status, r.requested_at, pr.requester_name, pr.email, pr.id_filename
+                  FROM credentials.public_request pr JOIN credentials.request_rows(NULL) r ON r.id = pr.request_id
+                 WHERE pr.identity_state = 'AWAITING_REVIEW' AND r.stage NOT IN ('COMPLETED','REJECTED','CANCELLED')
+                 ORDER BY r.requested_at
+                """).query().listOfRows();
+    }
+
+    @GetMapping("/api/v1/documents/requests/{id}/identity")
+    @PreAuthorize(OFFICE)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> identityDocument(@PathVariable UUID id) {
+        Map<String, Object> e = jdbc.sql("SELECT id_filename, id_content_type, id_content, id_object FROM credentials.public_request WHERE request_id = :id AND id_filename IS NOT NULL")
+                .param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("identity document", id));
+        byte[] bytes = e.get("id_content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(e.get("id_object"))));
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(String.valueOf(e.get("id_content_type"))))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + String.valueOf(e.get("id_filename")).replaceAll("[^A-Za-z0-9._ -]", "_") + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(bytes);
+    }
+
+    public record IdentityIn(@NotNull Boolean accept, @Size(max = 600) String note) {
+    }
+
+    /** the desk accepts the identity document, or refuses it with a reason; the requester is told either way */
+    @PostMapping("/api/v1/documents/requests/{id}/identity")
+    @PreAuthorize(OFFICE)
+    @Transactional
+    Map<String, Object> reviewIdentity(@PathVariable UUID id, @Valid @RequestBody IdentityIn body) {
+        String state = jdbc.sql("SELECT credentials.review_identity(:id, :a, :n)").param("id", id).param("a", body.accept()).param("n", blank(body.note()), Types.VARCHAR).query(String.class).single();
+        return Map.of("identityState", state);
     }
 
     @PostMapping("/api/v1/documents/requests/{id}/start")
