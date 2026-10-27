@@ -58,7 +58,17 @@ F, New; Returning, R, Old, Continuing). A stage sets the line's level and its ca
 no programme (every programme of the qualification), or "All faculties". Every postgraduate row is checked before anything
 changes, as the table's guard would check it (`finance.pg_fee_line_problem`): a stage at another level, a stage on a spillover line,
 a stage on an undergraduate programme or one of another qualification, a category the stage contradicts — the upload is refused
-naming the rows (`FEE_STRUCTURE_PG`). The preview pairs lines by stage and category too, names the stage of each amount that
+naming the rows (`FEE_STRUCTURE_PG`). V681: the refusal names every programme at once (V653 named the first 12 rows, so a file
+with faults in several programmes took an attempt for each): one entry a programme, faculty or "every faculty", in the order of
+the file, with its code and name, its rows as ranges, the stages its rows name, what is wrong and, where a stage is not of the
+programme's qualification, what its name reads as — the portal takes a postgraduate programme's qualification from the start of
+its name (`people.pg_level_of`), so "MSC/PH.D MANAGEMENT" reads as a Masters:
+
+> the postgraduate rows do not agree with their stages (24 rows of 2 programmes) — C12916 MSC/PH.D MANAGEMENT (its name reads as
+> Masters) — rows 641–652 (900 C, 900 D, 900 E): these are not stages of the programme's qualification; C93757 … — rows 669–680 …;
+> nothing was changed
+
+The upload window lists the entries one a line (`lib/problem-list.ts`). The preview pairs lines by stage and category too, names the stage of each amount that
 changes, and says how many stage lines would end. The "fees to state" sheet reads the same columns, and a line already stated
 for the stage is not added twice.
 

@@ -218,6 +218,19 @@ class PgAcademicIT {
         assertThat(ugStage.getBody()).containsEntry("code", "FEE_STRUCTURE_PG");
         assertThat(String.valueOf(ugStage.getBody().get("detail"))).contains("row 1").contains("not a postgraduate programme");
 
+        // V681: more than twelve rows wrong, in two programmes — both named at once, each with its rows and stages; nothing changed
+        List<Map<String, Object>> wrong = new java.util.ArrayList<>();
+        for (int i = 0; i < 13; i++) wrong.add(Map.of("programmeCode", "C90090", "pgStage", i % 2 == 0 ? "900 C" : "900 D", "semester", String.valueOf(1 + i % 2), "amount", "1"));
+        wrong.add(Map.of("programmeCode", ugProgramme(), "pgStage", "800B", "amount", "1"));
+        ResponseEntity<Map> many = it.call(bursar, HttpMethod.POST, path + "/fee-structure/preview", Map.of("rows", wrong, "scope", "LISTED"));
+        assertThat(many.getStatusCode().value()).as(String.valueOf(many.getBody())).isEqualTo(422);
+        assertThat(many.getBody()).containsEntry("code", "FEE_STRUCTURE_PG");
+        assertThat(String.valueOf(many.getBody().get("detail")))
+                .contains("(14 rows of 2 programmes)")
+                .contains("C90090 ").contains("— rows 1–13 (900 C, 900 D): these are not stages of the programme's qualification")
+                .contains(ugProgramme() + " ").contains("— row 14 (800B): " + ugProgramme() + " is not a postgraduate programme")
+                .endsWith("nothing was changed");
+
         // the preview of a new 800 B amount pairs it with the line it replaces, by stage
         ResponseEntity<Map> change = it.call(bursar, HttpMethod.POST, path + "/fee-structure/preview",
                 Map.of("rows", List.of(Map.of("pgStage", "800B", "item", "Tuition", "amount", "60000", "semester", "1")), "scope", "LISTED"));

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 508
+\set EXPECTED 509
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25415,7 +25415,7 @@ BEGIN
                  AND pg_after = '*:800A/FRESH/800=70000.00,*:800B/RETURNING/800=55000.00,C90090:800B/RETURNING/800=12000.00'
                  AND charged_ret = 67000 AND charged_fr = 70000
                  AND parsed = '900D,700B,700A,800C,none,RETURNING,FRESH,none'
-                 AND r_unknown LIKE 'FEE_STRUCTURE_UNKNOWN:%PG stage 800 Z%' AND r_prog LIKE 'FEE_STRUCTURE_PG:%row 1 (C90090, 900A)%qualification%'
+                 AND r_unknown LIKE 'FEE_STRUCTURE_UNKNOWN:%PG stage 800 Z%' AND r_prog LIKE 'FEE_STRUCTURE_PG:%C90090 % — row 1 (900A): %qualification%'
                  AND r_level LIKE 'FEE_STRUCTURE_PG:%800 B — Year 2 is a 800 Level stage, not 700 Level%'
                  AND r_partial LIKE 'FEE_STRUCTURE_PARTIAL:%the postgraduate stages (2 lines)%' AND unchanged = 0
                  AND (eff->'totals'->>'changed')::int = 1 AND (eff->'totals'->>'same')::int = 1 AND (eff->'totals'->>'new')::int = 0 AND (eff->'totals'->>'ended')::int = 0
@@ -27844,6 +27844,47 @@ BEGIN
     PERFORM pg_temp.assert('V680: the Director of ICT and the Database Operators move old-portal JUPEB students between sessions beside the JUPEB Office; ICT Support and the Registry are refused',
         v_err IS NULL AND got = 'jupeb=ok ict=ok dbops=ok ictagent=JUPEB_NOT_PERMITTED registrar=JUPEB_NOT_PERMITTED ',
         format('err=%s got=%s', v_err, got));
+END $$;
+
+-- ── V681: a fee upload refused for its PG rows names every programme at once. Fourteen rows of C90090 (a Masters) at Ph.D. stages,
+-- a row that is right, two rows of C90091 (a Ph.D.) at a Masters stage, an undergraduate programme at 800 B and a University-wide
+-- 800 B row at 700 Level: the refusal counts the rows and programmes and names all four once each, in the order of the file — the
+-- rows as ranges, the stages, what is wrong and what a programme's name reads as — and nothing is written. ──
+DO $$
+DECLARE rows jsonb := '[]'; i int; m text; before int; ses text := policy.university_current_session();
+        -- an undergraduate programme no postgraduate student is on (finance.pg_fee_line_problem takes such a programme as postgraduate)
+        ug text := (SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived
+                       AND NOT EXISTS (SELECT 1 FROM people.student x WHERE x.programme_code = p.code AND x.entry_mode = 'POSTGRADUATE') ORDER BY p.code LIMIT 1);
+        q_m text := (SELECT q.label FROM admissions.pg_qualification q WHERE q.code = admissions.pg_qualification_of('C90090'));
+        q_p text := (SELECT q.label FROM admissions.pg_qualification q WHERE q.code = admissions.pg_qualification_of('C90091'));
+        st_c text := (SELECT s.label FROM admissions.pg_stage s WHERE s.code = '800C');
+        st_b text := (SELECT s.label FROM admissions.pg_stage s WHERE s.code = '800B');
+BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'V681 check: a PG refusal names every programme', true);
+    FOR i IN 1..14 LOOP
+        rows := rows || jsonb_build_object('amount', '1000', 'programmeCode', 'C90090', 'pgStage', (ARRAY['900 C', '900 D'])[1 + i % 2], 'semester', 1 + i % 2);
+    END LOOP;
+    rows := rows || '{"amount": "1000", "programmeCode": "C90090", "pgStage": "800 C"}'::jsonb
+                 || '{"amount": "1000", "programmeCode": "C90091", "pgStage": "800 C"}'::jsonb
+                 || '{"amount": "1000", "programmeCode": "C90091", "pgStage": "800 C", "semester": "2"}'::jsonb
+                 || jsonb_build_object('amount', '1000', 'programmeCode', ug, 'pgStage', '800B')
+                 || '{"amount": "1000", "pgStage": "800B", "level": "700"}'::jsonb;
+    before := (SELECT count(*) FROM finance.fee_schedule f WHERE f.session = ses);
+    BEGIN
+        PERFORM finance.import_fee_structure(ses, rows, 'LISTED', false);
+    EXCEPTION WHEN check_violation THEN m := SQLERRM;
+    END;
+    PERFORM pg_temp.assert('V681: a fee upload refused for its PG rows names every programme once, in the order of the file — its rows as ranges, its stages, what is wrong and what its name reads as — not the first 12 rows; nothing is written',
+        coalesce(m LIKE 'FEE_STRUCTURE_PG: the postgraduate rows do not agree with their stages (18 rows of 4 programmes or faculties) — '
+                        || 'C90090 % (its name reads as ' || q_m || ') — rows 1–14 (900 D, 900 C): these are not stages of the programme''s qualification; '
+                        || 'C90091 % (its name reads as ' || q_p || ') — rows 16–17 (800 C): ' || st_c || ' is not a stage of the programme''s qualification; '
+                        || ug || ' % — row 18 (800B): ' || ug || ' is not a postgraduate programme; '
+                        || 'every faculty — row 19 (800B): ' || st_b || ' is a 800 Level stage, not 700 Level; nothing was changed'
+                 AND q_m IS DISTINCT FROM q_p
+                 AND (SELECT count(*) FROM finance.fee_schedule f WHERE f.session = ses) = before, false),
+        format('msg=%s', m));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

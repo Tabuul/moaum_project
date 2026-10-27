@@ -1,6 +1,7 @@
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { humanTitle } from "@/lib/problem-title";
+import { LISTED_PROBLEMS, listedProblem } from "@/lib/problem-list";
 import Link from "next/link";
 
 /**
@@ -9,9 +10,19 @@ import Link from "next/link";
  * person sees.
  */
 export function ProblemNotice({ problem }: { problem: Problem }) {
+  // V681: a refusal naming many programmes at once is listed, one a line
+  const listed = problem.code && LISTED_PROBLEMS.has(problem.code) ? listedProblem(problem.detail) : null;
   return (
     <Note kind="bad" title={humanTitle(problem.title)}>
-      {problem.detail}
+      {listed ? (
+        <>
+          {listed.lead}:
+          <ul className="mt-1 mb-1" style={{ paddingLeft: "1.2em", listStyle: "disc" }}>
+            {listed.items.map((it, i) => <li key={i}>{it}</li>)}
+          </ul>
+          {listed.tail ? <>{listed.tail[0].toUpperCase() + listed.tail.slice(1)}.</> : null}
+        </>
+      ) : problem.detail}
       {problem.remedy && (
         <>
           {" "}
