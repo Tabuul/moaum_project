@@ -178,8 +178,10 @@ class DoubleChargeIT {
         assertThat(approved.getStatusCode().value()).as(String.valueOf(approved.getBody())).isEqualTo(200);
         assertThat(approved.getBody()).containsEntry("state", "APPROVED");
 
-        // withdrawn: gone from the record, kept on the withdrawn list, its number remembered, the student told and no longer overpaid
-        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE reference = :r").param("r", recN.get(1)).query(Long.class).single()).isZero();
+        // withdrawn: kept archived for good (V670: a payment is never deleted) and counted nowhere, kept on the withdrawn list, its number
+        // remembered, the student told and no longer overpaid
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE reference = :r AND archived_at IS NULL").param("r", recN.get(1)).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_archive WHERE reference = :r").param("r", recN.get(1)).query(String.class).single()).isEqualTo("NOT_RECEIVED");
         assertThat(jdbc.sql("SELECT double_kind || ':' || kept_reference FROM finance.old_payment_withdrawn WHERE reference = :r").param("r", recN.get(1)).query(String.class).single())
                 .isEqualTo("NOT_RECEIVED:" + recN.get(0));
         assertThat(jdbc.sql("SELECT count(*) FROM finance.legacy_payref_withdrawn WHERE reference = :r").param("r", recN.get(1)).query(Long.class).single()).isEqualTo(1);
@@ -204,7 +206,7 @@ class DoubleChargeIT {
         ResponseEntity<Map> again = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees", Map.of("rows", List.of(row)));
         assertThat(again.getStatusCode().value()).as(String.valueOf(again.getBody())).isEqualTo(200);
         assertThat(again.getBody()).containsEntry("duplicates", 1);
-        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE student_id = :s AND session = :a").param("s", notReceived).param("a", a)
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE student_id = :s AND session = :a AND archived_at IS NULL").param("s", notReceived).param("a", a)
                 .query(Long.class).single()).isEqualTo(1);
 
         // a portal payment is not withdrawn here; a withdrawal is cancelled only by the one who raised it

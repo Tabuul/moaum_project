@@ -96,7 +96,7 @@ class RecordsRepository {
                             WHEN coalesce(pd.paid, 0) > 0 THEN 'PART_PAID' ELSE 'UNPAID' END AS "state"
                 """ + STUDENT_FROM + charges + """
                   LEFT JOIN LATERAL (SELECT sum(r.amount) AS paid FROM finance.payment_reference r
-                                      WHERE r.student_id = s.id AND r.session = CAST(:session AS text) AND r.confirmed_at IS NOT NULL
+                                      WHERE r.student_id = s.id AND r.session = CAST(:session AS text) AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
                                         AND r.purpose LIKE 'School fees%') pd ON true
                 """ + STUDENT_WHERE + " ORDER BY s.surname, s.other_names", scope);
     }

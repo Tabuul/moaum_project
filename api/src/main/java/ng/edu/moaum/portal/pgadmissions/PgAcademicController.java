@@ -231,7 +231,7 @@ class PgAcademicController {
                 SELECT x.*, st.matric_no, st.admission_no, st.surname, st.other_names, st.sex, st.current_level, st.entry_session, st.status,
                        p.name AS programme, d.name AS department,
                        EXISTS (SELECT 1 FROM registration.course_registration cr WHERE cr.student_id = st.id AND cr.session = :s) AS registered,
-                       EXISTS (SELECT 1 FROM finance.payment_reference pr WHERE pr.student_id = st.id AND pr.session = :s AND pr.confirmed_at IS NOT NULL
+                       EXISTS (SELECT 1 FROM finance.payment_reference pr WHERE pr.student_id = st.id AND pr.session = :s AND pr.confirmed_at IS NOT NULL AND pr.archived_at IS NULL
                                   AND pr.purpose LIKE 'School fees%') AS paid,
                        (SELECT r.reference || ' ' || r.state FROM people.pg_restart_request r WHERE r.student_id = st.id AND r.state IN ('REQUESTED', 'UNDER_REVIEW') LIMIT 1) AS open_restart
                 """ + where + " ORDER BY st.surname, st.other_names LIMIT :lim OFFSET :off2"), s, qualification, stage, category, recommendation, official, qq)
@@ -291,7 +291,7 @@ class PgAcademicController {
                   FROM people.pg_restart_request r WHERE r.student_id = :id ORDER BY r.requested_at
                 """).param("id", id).query().listOfRows());
         out.put("payments", jdbc.sql("""
-                SELECT r.reference, r.session, r.amount, r.confirmed_at IS NOT NULL AS paid, c.cycle_no, c.stage_code, st.label AS stage_label, c.category, c.official
+                SELECT r.reference, r.session, r.amount, r.confirmed_at IS NOT NULL AND r.archived_at IS NULL AS paid, r.archived_at IS NOT NULL AS archived, c.cycle_no, c.stage_code, st.label AS stage_label, c.category, c.official
                   FROM finance.payment_pg_context c JOIN finance.payment_reference r ON r.id = c.reference_id LEFT JOIN admissions.pg_stage st ON st.code = c.stage_code
                  WHERE c.student_id = :id ORDER BY r.generated_at DESC LIMIT 200
                 """).param("id", id).query().listOfRows());

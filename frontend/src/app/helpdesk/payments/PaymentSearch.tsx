@@ -11,7 +11,7 @@ import { PAY_WORD, type PaymentRow } from "@/lib/support";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 const naira = (v: unknown) => (v == null || v === "" ? "—" : `₦${Number(v).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`);
-const STATE: Record<string, ["ok" | "warn" | "grey", string]> = { CONFIRMED: ["ok", "Confirmed"], PENDING: ["warn", "Pending"], EXPIRED: ["grey", "Expired"] };
+const STATE: Record<string, ["ok" | "warn" | "grey", string]> = { CONFIRMED: ["ok", "Confirmed"], PENDING: ["warn", "Pending"], EXPIRED: ["grey", "Expired"], ARCHIVED: ["warn", "Archived for review"] };
 
 export function PaymentSearch({ q, state, ticket, page, list }: { q: string; state: string; ticket: string; page: number; list: { total: number; page: number; size: number; rows: PaymentRow[] } | null }) {
   const go = useQueryNav();
@@ -35,7 +35,7 @@ export function PaymentSearch({ q, state, ticket, page, list }: { q: string; sta
               <input id="ps-q" name="q" className="ctl" type="search" defaultValue={q} placeholder="MOAUM-FEE-…, RCT-…, gateway or transaction reference, matric, JAMB or application number, surname" autoFocus />
             </Field>
             <Field id="ps-state" label="State" style={{ flex: "1 1 160px" }}>
-              <select id="ps-state" name="state" className="ctl" defaultValue={state}><option value="">Any</option><option value="PENDING">Pending</option><option value="CONFIRMED">Confirmed</option><option value="EXPIRED">Expired</option></select>
+              <select id="ps-state" name="state" className="ctl" defaultValue={state}><option value="">Any</option><option value="PENDING">Pending</option><option value="CONFIRMED">Confirmed</option><option value="EXPIRED">Expired</option><option value="ARCHIVED">Archived for review</option></select>
             </Field>
             <button type="submit" className="btn btn--primary btn--sm">Search</button>
           </form>

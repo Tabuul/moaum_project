@@ -83,6 +83,7 @@ class VerifyController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT pr.reference, pr.receipt_no, pr.amount, pr.purpose, pr.session, pr.channel, pr.confirmed_at,
                        finance.payment_term(pr.id) AS term, pr.confirmed_at < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover,
+                       (SELECT a.state FROM finance.payment_archive a WHERE a.payment_id = pr.id AND a.state <> 'RECONCILED' ORDER BY a.archived_at DESC LIMIT 1) AS archived_state,
                        trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
                        coalesce(
                          (SELECT e.level FROM people.enrolment e WHERE e.student_id = pr.student_id AND e.session = pr.session LIMIT 1),
@@ -143,6 +144,11 @@ class VerifyController {
         out.put("channel", row.get("channel"));
         out.put("confirmedOn", row.get("confirmed_at"));
         out.put("receiptNo", row.get("receipt_no"));
+        // V670: a payment archived for review is a genuine record, but not counted until the Bursary verifies it
+        if (row.get("archived_state") != null) {
+            out.put("archived", true);
+            out.put("archivedState", row.get("archived_state"));
+        }
         out.put("passport", files.dataUrl((String) row.get("passport"),
                 (UUID) (row.get("passport_object") != null ? row.get("passport_object") : row.get("jamb_object"))));
         return out;

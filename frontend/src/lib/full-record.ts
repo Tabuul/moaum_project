@@ -105,12 +105,13 @@ export function resultWord(r: Pick<ResultRow, "published" | "stage" | "grade" | 
 }
 
 export interface Payment { id: string; session: string | null; reference: string; purpose: string | null; amount: number | string; generated_at: string; expires_at: string | null;
-  confirmed_at: string | null; channel: string | null; receipt_no: string | null; term: string | null; status: "PAID" | "PENDING" | "EXPIRED"; school_fees: boolean;
+  confirmed_at: string | null; channel: string | null; receipt_no: string | null; term: string | null; status: "PAID" | "PENDING" | "EXPIRED" | "ARCHIVED"; school_fees: boolean;
   gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null; note?: string | null;
   /** V647: the number the payment was made under before matriculation (a JAMB registration number, say), when it was not the matriculation number */
   original_identifier?: string | null; original_identifier_type?: string | null; match_method?: string | null }
 
-export const PAYMENT_WORDS: Record<Payment["status"], string> = { PAID: "Paid", PENDING: "Pending", EXPIRED: "Expired, not paid" };
+// V670: an archived payment is kept on the record but never counted as paid until the Bursary settles it
+export const PAYMENT_WORDS: Record<Payment["status"], string> = { PAID: "Paid", PENDING: "Pending", EXPIRED: "Expired, not paid", ARCHIVED: "Archived for review — not counted" };
 
 /** a payment's purpose without the semester it names ("School fees (legacy) · semester 1" → "School fees (legacy)"): the semester has
  *  its own column */
@@ -183,6 +184,10 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
           rows: n(a("schoolFees").map((s) => [String(s.session), Number(s.payable ?? 0), Number(s.paid ?? 0), Number(s.outstanding ?? 0), words(s.status)])) },
         { title: "Refunds", headers: ["S/N", "Reference", "Amount (₦)", "State", "Raised", "Paid", "Reason"],
           rows: n(a("refunds").map((f) => [String(f.reference ?? ""), Number(f.amount ?? 0), words(f.state), day(f.created_at), day(f.paid_at), String(f.reason ?? "")])) },
+        // V670: the archived payments, apart from the verified ones
+        { title: "Archived / under review payments", headers: ["S/N", "Paid", "Reference", "Amount (₦)", "Purpose", "Session", "Status", "Reason", "Archive reference", "Counts"],
+          rows: n(a("archives").map((x) => [day(x.paid_at), String(x.reference ?? ""), Number(x.amount ?? 0), String(x.purpose ?? ""), String(x.session ?? ""), words(x.state),
+            String(x.reason ?? ""), String(x.archive_ref ?? ""), x.counts ? "Yes (settled)" : "No"])) },
       ];
     case "admission":
       return [

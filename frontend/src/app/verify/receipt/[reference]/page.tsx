@@ -10,6 +10,8 @@ interface VerifyResult {
   name?: string; matricNo?: string | null; programme?: string | null; level?: number | null;
   amount?: number; purpose?: string; session?: string; term?: string | null; channel?: string | null;
   confirmedOn?: string | null; receiptNo?: string | null; passport?: string | null;
+  /** V670: the payment is archived for review by the Bursary: a record on the ledger, but not counted until verified */
+  archived?: boolean; archivedState?: string | null;
   /** an applicant's fee receipt (the Post-UTME application fee, admission checking, acceptance): the application, not a matriculation number */
   holder?: "APPLICANT"; applicationNo?: string | null; feeKind?: string | null; route?: string | null; reference?: string | null;
 }
@@ -59,6 +61,13 @@ export default async function Page({ params, searchParams }: {
               ? "Check that the payer, amount and date below match the receipt in hand."
               : "No confirmed receipt matches this code. A receipt is real only if it appears here — check the reference, or treat it as not genuine."}
           </Note>
+          {ok && v.archived ? (
+            <Note kind="bad" title={v.archivedState === "DUPLICATE_CONFIRMED" ? "Not counted — a duplicate record" : v.archivedState === "NOT_RECEIVED" ? "Not counted — the money was never received" : "Under review by the Bursary"}>
+              {v.archivedState === "DUPLICATE_CONFIRMED" || v.archivedState === "NOT_RECEIVED"
+                ? "The Bursary has found that this record does not stand for money received; it is kept on the ledger but counts for nothing."
+                : "This payment is archived for review: it is not counted as paid, and grants nothing, until the Bursary verifies it."}
+            </Note>
+          ) : null}
 
           {ok ? (
            <>

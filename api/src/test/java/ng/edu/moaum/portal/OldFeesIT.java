@@ -136,10 +136,12 @@ class OldFeesIT {
                 Map.of("reason", "recorded by both upload screens", "limit", 20000));
         assertThat(withdrawn.getStatusCode().value()).as(String.valueOf(withdrawn.getBody())).isEqualTo(200);
         assertThat(((Number) withdrawn.getBody().get("withdrawn")).intValue()).isGreaterThanOrEqualTo(1);
-        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE reference = :r").param("r", double1).query(Long.class).single()).isZero();
+        // V670: the double is kept, archived for good, and counted nowhere
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE reference = :r AND archived_at IS NULL").param("r", double1).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_archive WHERE reference = :r").param("r", double1).query(String.class).single()).isEqualTo("DUPLICATE_CONFIRMED");
         assertThat(jdbc.sql("SELECT kept_reference FROM finance.old_payment_withdrawn WHERE reference = :r").param("r", double1).query(String.class).single())
                 .isEqualTo(makeUp);
-        assertThat(jdbc.sql("SELECT sum(amount) FROM finance.payment_reference WHERE student_id = :s AND session = :ses AND confirmed_at IS NOT NULL")
+        assertThat(jdbc.sql("SELECT sum(amount) FROM finance.payment_reference WHERE student_id = :s AND session = :ses AND confirmed_at IS NOT NULL AND archived_at IS NULL")
                 .param("s", student).param("ses", ses).query(java.math.BigDecimal.class).single().intValue()).as("each payment once").isEqualTo(120000);
 
         // an earlier upload recorded the second semester under the old portal's item code: not counted until put right

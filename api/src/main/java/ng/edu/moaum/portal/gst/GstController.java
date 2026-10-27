@@ -105,7 +105,7 @@ class GstController {
         out.put("history", rules(s, true));
         out.put("paid", jdbc.sql("""
                 SELECT count(DISTINCT r.student_id) AS students, coalesce(sum(r.amount), 0) AS amount
-                  FROM finance.payment_reference r WHERE r.session = :s AND r.purpose LIKE 'GST fee %' AND r.confirmed_at IS NOT NULL
+                  FROM finance.payment_reference r WHERE r.session = :s AND r.purpose LIKE 'GST fee %' AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
                 """).param("s", s).query().singleRow());
         // V366: the Bursary's standing — who owes the fee because a GST/EPS course requires it, and who does not; "not applicable" is never "unpaid"
         out.put("standing", jdbc.sql("""
@@ -151,7 +151,7 @@ class GstController {
                        (SELECT coalesce(json_agg(json_build_object('reference', r.reference, 'amount', r.amount - finance.gst_refunded(r.reference), 'paid_at', r.confirmed_at)
                                                  ORDER BY r.confirmed_at)::text, '[]')
                           FROM finance.payment_reference r
-                         WHERE r.student_id = p.student_id AND r.session = :s AND r.purpose LIKE 'GST fee %' AND r.confirmed_at IS NOT NULL
+                         WHERE r.student_id = p.student_id AND r.session = :s AND r.purpose LIKE 'GST fee %' AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
                            AND r.amount > finance.gst_refunded(r.reference)
                            AND NOT EXISTS (SELECT 1 FROM finance.gst_payment_review d LEFT JOIN finance.refund rf ON rf.id = d.refund_id
                                             WHERE d.reference = r.reference AND (d.decision = 'KEEP' OR rf.state <> 'REJECTED'))) AS payments
@@ -520,7 +520,7 @@ class GstController {
         // V366: "why is this student paying GST/EPS?" — the eligibility, its reasons and every GST/EPS course that concerns them
         out.put("explain", GstEpsExplain.read(jdbc, id, s));
         out.put("payments", jdbc.sql("""
-                SELECT r.reference, r.receipt_no, r.amount, r.generated_at, r.confirmed_at, r.channel, r.expires_at, r.purpose
+                SELECT r.reference, r.receipt_no, r.amount, r.generated_at, r.confirmed_at, r.channel, r.expires_at, r.purpose, r.archived_at IS NOT NULL AS archived
                   FROM finance.payment_reference r WHERE r.student_id = :id AND r.purpose LIKE 'GST fee %' ORDER BY r.generated_at DESC
                 """).param("id", id).query().listOfRows());
         out.put("courses", jdbc.sql("""

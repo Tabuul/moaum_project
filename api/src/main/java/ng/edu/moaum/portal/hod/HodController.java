@@ -222,7 +222,7 @@ class HodController {
         return jdbc.sql("""
                 SELECT st.matric_no, st.surname, st.other_names, p.name AS programme, st.current_level AS level, st.status,
                        coalesce(ch.total, 0) AS charged,
-                       coalesce((SELECT sum(r.amount) FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL), 0) AS paid
+                       coalesce((SELECT sum(r.amount) FROM finance.payment_reference r WHERE r.student_id = st.id AND r.session = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL), 0) AS paid
                   FROM people.student st JOIN ref.programme p ON p.code = st.programme_code
                   -- V565: clearance worked out for the department's students only (finance.session_clears_for), not the University's
                   JOIN finance.session_clears_for(:s, 'REGISTRATION', ARRAY(SELECT x.id FROM people.student x JOIN ref.programme xp ON xp.code = x.programme_code

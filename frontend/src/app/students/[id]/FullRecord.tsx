@@ -421,7 +421,9 @@ export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name:
   const [kind, setKind] = useState<"ALL" | "SCHOOL" | "OTHER">("ALL");
   const [ses, setSes] = useState("");
   const sessions = Array.from(new Set(payments.map((p) => p.session).filter((x): x is string => !!x))).sort().reverse();
-  const shown = payments.filter((p) => (kind === "ALL" || (kind === "SCHOOL") === p.school_fees) && (!ses || p.session === ses));
+  // V670: the verified payments here; the archived ones in their own panel, never in what is paid
+  const archives = (d.archives ?? []) as Row[];
+  const shown = payments.filter((p) => p.status !== "ARCHIVED" && (kind === "ALL" || (kind === "SCHOOL") === p.school_fees) && (!ses || p.session === ses));
   return (
     <>
       <Tiles items={[
@@ -429,6 +431,7 @@ export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name:
         ["Amount paid", naira(sum.amountPaid), null, "Every confirmed payment, all purposes"],
         ["School fees paid", naira(sum.schoolFeesPaid), null, "Confirmed school-fees payments, every session"],
         ["Refunds", s(refunds.length), refunds.length ? "var(--amber-ink)" : null, refunds.length ? naira(refunds.reduce((a, f) => a + Number(f.amount ?? 0), 0)) : "None"],
+        ["Archived / under review", s(sum.archived ?? 0), Number(sum.archived ?? 0) ? "var(--amber-ink)" : null, Number(sum.archived ?? 0) ? `${naira(sum.amountArchived)} not counted as paid` : "None"],
       ]} />
       {swaps && swaps.length ? <PaymentCorrections items={swaps} staff /> : null}
       <Panel title="School fees by session" right={<ExcelBtn table={t[1]} name={name} file={file} />}>
@@ -459,6 +462,15 @@ export function FinanceTab({ d, name, file, swaps, onReceipt }: { d: Data; name:
             p.status === "PAID" && p.receipt_no ? <Btn key="v" kind="ghost" size="sm" onClick={() => onReceipt(p.reference)}>View receipt</Btn> : <span key="v" className="sub2">—</span>])} />
           : <Empty>No payment of this kind on record.</Empty>}
       </Panel>
+      {archives.length ? (
+        <Panel title="Archived / under review payments" right={<ExcelBtn table={t[3]} name={name} file={file} />}>
+          <DTable pageSize={0} cols={["Paid", "Reference", "Amount|num", "Purpose", "Status", "Reason", "Archive", "Counts"]}
+            rows={archives.map((x) => [day(x.paid_at), <span key="r" className="tnum">{s(x.reference)}</span>, <span key="a" className="tnum">{naira(x.amount)}</span>, s(x.purpose),
+              <Pil key="s" kind={pillOf(x.state)}>{words(x.state)}</Pil>, s(x.reason), <span key="x" className="tnum">{s(x.archive_ref)}</span>,
+              x.counts ? "Yes (settled)" : <b key="c">No</b>])} />
+          <PBody><div className="sub2">Kept as received and never deleted. An archived payment is not in the amount paid, the school fees by session or any entitlement until the Bursary settles it on Archived payments.</div></PBody>
+        </Panel>
+      ) : null}
       {refunds.length ? (
         <Panel title="Refunds" right={<ExcelBtn table={t[2]} name={name} file={file} />}>
           <DTable pageSize={0} cols={["Reference", "Amount|num", "State", "Raised", "Approved", "Paid", "Account", "Reason"]}

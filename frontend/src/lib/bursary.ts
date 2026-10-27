@@ -99,7 +99,9 @@ export const DESK_HOW: Record<string, [string, "ok" | "warn" | "bad" | "grey" | 
 export interface DayBookRow { reference: string; confirmed_at: string; payer: string; number: string; purpose: string; amount: number; channel: string; receipt_no: string | null; note: string | null; session: string }
 export interface BursaryView {
   session: string;
-  tiles: { fees_collected: number; today: number; today_count: number; references_open: number; credits_open: number; credits_open_amount: number; gateway_exceptions: number; hanging: number; scheme_in_force: boolean; schedule_items: number };
+  tiles: { fees_collected: number; today: number; today_count: number; references_open: number; credits_open: number; credits_open_amount: number; gateway_exceptions: number; hanging: number; scheme_in_force: boolean; schedule_items: number;
+    /** V670: payments archived for review — open, their amount, and those waiting for the Bursar */
+    archived_open?: number; archived_open_amount?: number; archived_waiting?: number };
   byFaculty: { faculty_code: string; faculty_name: string; students: number; paid_students: number; collected: number; due: number }[];
   recent: DayBookRow[];
 }

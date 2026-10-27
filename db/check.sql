@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 497
+\set EXPECTED 499
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12710,21 +12710,23 @@ BEGIN
                               jsonb_build_object('account', v_income, 'credit', 112735, 'narration', 'CHECK', 'session', v_ses)));
         pairs_before := (SELECT count(*) FROM finance.legacy_duplicate_pairs() p WHERE p.student_id IN (x, y, z, w));
         SELECT * INTO r FROM finance.withdraw_legacy_duplicates('CHECK V449');
-        gone := NOT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999');
+        -- V670: withdrawn is archived for good: kept, counted nowhere
+        gone := NOT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999' AND archived_at IS NULL)
+                AND EXISTS (SELECT 1 FROM finance.payment_archive WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999' AND state = 'DUPLICATE_CONFIRMED');
         kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999-S1');
         SELECT * INTO reg FROM finance.legacy_duplicate_withdrawn WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999';
         j_status := (SELECT status FROM finance.gl_journal WHERE id = v_journal);
         other_kept := (SELECT count(*) FROM finance.payment_reference WHERE student_id = y AND session = v_ses);
         linked_kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984493-9998-9999');
         day_kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984494-9998-9999');
-        paid_after := (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE student_id = x AND session = v_ses AND confirmed_at IS NOT NULL);
+        paid_after := (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE student_id = x AND session = v_ses AND confirmed_at IS NOT NULL AND archived_at IS NULL);
         -- the importer: the same payment without a semester is a duplicate; another amount is recorded
         SELECT * INTO imp FROM finance.import_legacy_payments(jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/CHK/98/4491', 'session', v_ses, 'amount', '112735', 'paidOn', '9998-11-13', 'purpose', 'SCHOOL FEES')));
-        n_whole := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999');
+        n_whole := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999' AND archived_at IS NULL);
         SELECT * INTO imp2 FROM finance.import_legacy_payments(jsonb_build_array(
             jsonb_build_object('matric', 'MOAUM/CHK/98/4491', 'session', v_ses, 'amount', '48315', 'paidOn', '9999-03-02', 'purpose', 'SCHOOL FEES')));
-        n_new := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-MOAUMCHK984491-9998-9999');
+        n_new := (SELECT count(*) FROM finance.payment_reference WHERE reference LIKE 'MOAUM-LEG-MOAUMCHK984491-9998-9999%' AND reference NOT LIKE '%-S_' AND archived_at IS NULL);
         RAISE EXCEPTION 'the V449 check undoes its writes';
     EXCEPTION WHEN raise_exception THEN
         NULL;
@@ -15625,8 +15627,8 @@ BEGIN
         SELECT * INTO first FROM finance.put_right_legacy_items('CHECK V498: recorded under the old portal''s codes');
         again_left := (SELECT count(*) FROM finance.legacy_mislabelled() x WHERE x.student_id = m AND x.action <> 'UNKNOWN_CODE');
         m_refs := (SELECT string_agg(replace(reference, mb, '') || '=' || amount::int || ':' || purpose, ',' ORDER BY reference)
-                     FROM finance.payment_reference WHERE student_id = m AND reference LIKE 'MOAUM-LEG-%');
-        paid_m := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = m AND purpose LIKE 'School fees%' AND confirmed_at IS NOT NULL);
+                     FROM finance.payment_reference WHERE student_id = m AND reference LIKE 'MOAUM-LEG-%' AND archived_at IS NULL);
+        paid_m := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = m AND purpose LIKE 'School fees%' AND confirmed_at IS NOT NULL AND archived_at IS NULL);
         corrected := (SELECT string_agg(replace(c.old_reference, mb, '') || '>' || replace(c.new_reference, mb, '') || ':' || c.action, ',' ORDER BY c.old_reference)
                         FROM finance.legacy_item_corrected c WHERE c.old_reference LIKE mb || '%');
         withdrawn := (SELECT string_agg(replace(o.reference, mb, '') || '>' || replace(o.kept_reference, mb, ''), ',' ORDER BY o.reference)
@@ -19102,7 +19104,7 @@ BEGIN
     EXCEPTION WHEN insufficient_privilege THEN v_same := split_part(SQLERRM, ':', 1); END;
     PERFORM set_config('moaum.actor_id', b2::text, true);
     v_state := finance.decide_not_received(v_ref, true, 'CHECK V561 statement seen');
-    SELECT count(*) INTO left_n FROM finance.payment_reference WHERE student_id = st;
+    SELECT count(*) INTO left_n FROM finance.payment_reference WHERE student_id = st AND archived_at IS NULL;   -- V670: the record kept, archived
     SELECT double_kind INTO kind FROM finance.old_payment_withdrawn WHERE reference = r2;
     SELECT count(*) INTO remembered FROM finance.legacy_payref_withdrawn WHERE payref = 'PR21881123062528751';
     SELECT count(*) INTO told FROM platform.notice WHERE template_key = 'PAYMENT_NOT_RECEIVED_REMOVED' AND about_id = st;
@@ -26990,6 +26992,218 @@ BEGIN
         format('mismatch before %s | check %s %s | restored %s %s | record %s | application %s | prior %s | history %s | plain swap %s | upload %s | conflict %s → %s | recorded only %s, listed after %s | again %s | bulk %s %s | applications %s',
                before_s2, chk->>'ok', chk->'warnings', res->>'swapRef', res->>'transferApplicationsCreated', after, app, prior, hist, plain, upload, conflict, kept,
                rec->>'recordOnly', after_s2, again, bulk, bulk_s3, apps));
+END $$;
+
+-- ── V670. Payments archived for review. Made-up students of a made-up session with a ₦100,000 school-fees line: A holds ₦100,000
+--          paid by B and ₦40,000 of their own; C holds ₦60,000 recorded twice under one gateway reference, ₦5,000 the bank never
+--          received, and ₦20,000 twice with nothing but the amount, the day and the student in common. Archived, a payment counts
+--          nowhere — not in A's fees, the registration gate, the reports or the day book — its posting reclassified to 2400, the
+--          record kept as it stood (no change, no delete, no swap, correction or refund on it), A told. Reallocated to B on strong
+--          evidence only, through the payment swap, decided on the archive (not on the swap desk) by a Bursar officer other than the
+--          proposer: B's fees count it, A's do not, the income back from 2400. Restored after a return for correction: A's fees count
+--          it again. A duplicate is confirmed on the gateway reference the two share — never on the amount, the day and the student
+--          alone — and a payment never received on a bank statement: both kept, excluded for good, their postings reversed. The
+--          figures put the archived money apart from verified active revenue. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9670/9671'; v_dept text; v_fac text; prog text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+    o1 uuid := gen_random_uuid(); b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid();
+    pa uuid := gen_random_uuid(); pa2 uuid := gen_random_uuid(); pc1 uuid := gen_random_uuid(); pc2 uuid := gen_random_uuid();
+    pc3 uuid := gen_random_uuid(); pc4 uuid := gen_random_uuid(); pc5 uuid := gen_random_uuid();
+    j_pa uuid; j_pc2 uuid; x1 uuid; x2 uuid; x3 uuid; x4 uuid; x5 uuid; res jsonb; fig jsonb; arow finance.payment_archive;
+    paid_a0 numeric; paid_a1 numeric; paid_a2 numeric; paid_b2 numeric; paid_a3 numeric; paid_c numeric; in_report int; in_book int;
+    out_lines text; settle_lines text; g2400 numeric; e_change text := 'none'; e_delete text := 'none'; e_mark text := 'none'; e_again text := 'none';
+    e_swap text := 'none'; e_realloc text; e_refund text := 'none'; e_weak text := 'none'; e_swapdesk text := 'none'; e_office text := 'none';
+    e_same text := 'none'; e_proof text := 'none'; e_related text := 'none'; e_settled text := 'none'; e_twice text := 'none';
+    st_a text; owner_now uuid; swap_status text; told int; st_r text; st_r2 text; st_dup text; dup_kept boolean; dup_rev text; arch_rev text;
+    st_nr text; sig jsonb; acct jsonb; msg text; v_err text; ok boolean;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V670', true);
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), S, date '9670-10-01', date '9671-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN'), (gen_random_uuid(), S, 2, 'OPEN')
+    ON CONFLICT (session, number) DO NOTHING;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V670', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/24/670001', 'MOAUM/ZZP/24/6701', 'CHECKV670', 'Holder', prog, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/24/670002', 'MOAUM/ZZP/24/6702', 'CHECKV670', 'Owner', prog, 'UTME', S, 100, 100, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/24/670003', 'MOAUM/ZZP/24/6703', 'CHECKV670', 'Twice', prog, 'UTME', S, 100, 100, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, programme_code, semester) VALUES (S, 'CHECK V670 school fees', 100000, prog, NULL);
+    INSERT INTO finance.payment_reference (id, student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (pa, a, S, 'MOAUM-FEE-V670-0001', 'School fees ' || S, 100000, now(), now(), b1, 'Bank branch', 'RCT-V670-0001'),
+        (pa2, a, S, 'MOAUM-FEE-V670-0002', 'School fees ' || S, 40000, now(), now(), b1, 'Bank branch', 'RCT-V670-0002'),
+        (pc1, c, S, 'MOAUM-FEE-V670-0003', 'School fees ' || S, 60000, now(), now(), b1, 'Interswitch', 'RCT-V670-0003'),
+        (pc2, c, S, 'MOAUM-FEE-V670-0004', 'School fees ' || S, 60000, now(), now(), b1, 'Interswitch', 'RCT-V670-0004'),
+        (pc3, c, S, 'MOAUM-FEE-V670-0005', 'School fees ' || S, 5000, now(), now(), b1, 'Bank branch', 'RCT-V670-0005'),
+        (pc4, c, S, 'MOAUM-FEE-V670-0006', 'School fees ' || S, 20000, now(), now(), b1, 'Bank branch', 'RCT-V670-0006'),
+        (pc5, c, S, 'MOAUM-FEE-V670-0007', 'School fees ' || S, 20000, now(), now(), b1, 'Bank branch', 'RCT-V670-0007');
+    -- the two records of C's ₦60,000 carry the one gateway reference
+    INSERT INTO finance.gateway_event (gateway, source, reference, gateway_ref, amount, status, signature_ok, outcome) VALUES
+        ('interswitch', 'WEBHOOK', 'MOAUM-FEE-V670-0003', 'FBN-CHK-V670-778899', 60000, '00', true, 'SETTLED'),
+        ('interswitch', 'VERIFY', 'MOAUM-FEE-V670-0004', 'FBN-CHK-V670-778899', 60000, '00', true, 'SETTLED');
+    -- A's ₦100,000 and C's second ₦60,000 are on the ledger
+    j_pa := finance.gl_post(current_date, 'Fee receipt MOAUM-FEE-V670-0001', 'AUTO', 'PAYMENT', 'MOAUM-FEE-V670-0001',
+        jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 100000, 'narration', 'CHECK', 'session', S),
+                          jsonb_build_object('account', '4010', 'credit', 100000, 'narration', 'CHECK', 'session', S)));
+    j_pc2 := finance.gl_post(current_date, 'Fee receipt MOAUM-FEE-V670-0004', 'AUTO', 'PAYMENT', 'MOAUM-FEE-V670-0004',
+        jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 60000, 'narration', 'CHECK', 'session', S),
+                          jsonb_build_object('account', '4010', 'credit', 60000, 'narration', 'CHECK', 'session', S)));
+    SELECT paid INTO paid_a0 FROM finance.position(a, S);
+
+    -- 1 · archived by the Students Account Officer: counts nowhere, kept as it stood
+    PERFORM set_config('moaum.actor_id', o1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    x1 := finance.archive_payment(pa, 'WRONG_STUDENT', NULL, 'The gateway payer is CHECKV670 Owner, not the student it stands on', true);
+    SELECT paid INTO paid_a1 FROM finance.position(a, S);
+    in_report := (SELECT count(*) FROM reporting.payments WHERE reference = 'MOAUM-FEE-V670-0001');
+    in_book := (SELECT count(*) FROM finance.day_book(current_date, current_date) d WHERE d.reference = 'MOAUM-FEE-V670-0001');
+    acct := finance.payment_archive_account(a, S);
+    SELECT string_agg(p.account || ':' || p.debit::int || '/' || p.credit::int, ',' ORDER BY p.line) INTO out_lines
+      FROM finance.payment_archive x JOIN finance.gl_posting p ON p.journal_id = x.archive_journal WHERE x.id = x1;
+    told := (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'PAYMENT_UNDER_REVIEW' AND n.about_id = a);
+    BEGIN UPDATE finance.payment_reference SET amount = 1 WHERE id = pa; EXCEPTION WHEN check_violation THEN e_change := split_part(SQLERRM, ':', 1); END;
+    BEGIN DELETE FROM finance.payment_reference WHERE id = pa; EXCEPTION WHEN check_violation THEN e_delete := split_part(SQLERRM, ':', 1); END;
+    BEGIN UPDATE finance.payment_reference SET archived_at = NULL WHERE id = pa; EXCEPTION WHEN check_violation THEN e_mark := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.archive_payment(pa, 'OTHER', NULL, 'archived again for the same payment record', true);
+    EXCEPTION WHEN check_violation THEN e_again := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.initiate_payment_swap(pa, b, 'the payment belongs to the other student entirely', NULL, true);
+    EXCEPTION WHEN check_violation THEN e_swap := split_part(SQLERRM, ':', 1); END;
+    e_realloc := split_part(finance.payment_reallocation_check(pa, 'SCHOOL_FEES', S, 1, NULL, NULL)->'refusals'->>0, ':', 1);
+    BEGIN PERFORM finance.propose_refund(a, 'CHECKV670 Holder', 'refund of the archived payment', 1000, NULL, NULL, NULL, 'MOAUM-FEE-V670-0001');
+    EXCEPTION WHEN check_violation THEN e_refund := split_part(SQLERRM, ':', 1); END;
+
+    -- 2 · reallocated to its owner: strong evidence only, through the swap, decided on the archive by another officer
+    BEGIN PERFORM finance.payment_archive_propose(x1, 'REALLOCATE', b, 'The payer named on the slip is the other student, by name',
+                                                  '[{"kind": "NAME", "value": "CHECKV670 Owner"}]'::jsonb, true);
+    EXCEPTION WHEN check_violation THEN e_weak := split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.payment_archive_propose(x1, 'REALLOCATE', b, 'The gateway''s payer record names the owner and the reference generated',
+                                            '[{"kind": "GATEWAY_PAYER", "value": "Payer MOAUM/ZZP/24/6702 on the gateway''s record"}]'::jsonb, true);
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.decide_payment_swap((SELECT swap_id FROM finance.payment_archive WHERE id = x1), true, 'approved on the swap desk', true);
+    EXCEPTION WHEN check_violation THEN e_swapdesk := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    BEGIN PERFORM finance.payment_archive_decide(x1, 'APPROVE', 'approved', true);
+    EXCEPTION WHEN insufficient_privilege THEN e_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    res := finance.payment_archive_decide(x1, 'APPROVE', 'The payer record is the owner''s', true);
+    st_a := res->>'state';
+    owner_now := (SELECT student_id FROM finance.payment_reference WHERE id = pa);
+    swap_status := (SELECT w.status FROM finance.payment_swap w JOIN finance.payment_archive x ON x.swap_id = w.id WHERE x.id = x1);
+    SELECT paid INTO paid_a2 FROM finance.position(a, S);
+    SELECT paid INTO paid_b2 FROM finance.position(b, S);
+    SELECT string_agg(p.account || ':' || p.debit::int || '/' || p.credit::int, ',' ORDER BY p.line) INTO settle_lines
+      FROM finance.payment_archive x JOIN finance.gl_posting p ON p.journal_id = x.settle_journal WHERE x.id = x1;
+
+    -- 3 · restored after a return for correction: proposed by one Bursar officer, decided by another
+    x2 := finance.archive_payment(pa2, 'UNVERIFIED_PAYMENT', NULL, 'The bank branch slip was not matched on the statement yet', true);
+    PERFORM finance.payment_archive_record(x2, 'Statement of 3 October read; the credit is there', '[{"kind": "BANK_STATEMENT", "value": "Credit of 40,000 on 3 Oct"}]'::jsonb);
+    PERFORM finance.payment_archive_propose(x2, 'RESTORE', NULL, 'The credit is on the bank statement; the payment is the student''s', NULL, true);
+    BEGIN PERFORM finance.payment_archive_decide(x2, 'APPROVE', 'approved', true);
+    EXCEPTION WHEN insufficient_privilege THEN e_same := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', b2::text, true);
+    st_r := finance.payment_archive_decide(x2, 'RETURN', 'Attach the statement page to the archive', false)->>'state';
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM finance.payment_archive_propose(x2, 'RESTORE', NULL, 'The statement page is attached; the payment is the student''s', NULL, true);
+    PERFORM set_config('moaum.actor_id', b2::text, true);
+    st_r2 := finance.payment_archive_decide(x2, 'APPROVE', 'Statement seen', true)->>'state';
+    SELECT paid INTO paid_a3 FROM finance.position(a, S);
+    BEGIN PERFORM finance.payment_archive_decide(x2, 'APPROVE', 'again', true);
+    EXCEPTION WHEN check_violation THEN e_twice := split_part(SQLERRM, ':', 1); END;
+
+    -- 4 · a duplicate: on the gateway reference the two records share; never on the amount, the day and the student alone
+    PERFORM set_config('moaum.actor_id', o1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    BEGIN PERFORM finance.archive_payment(pc2, 'DUPLICATE_PAYMENT', NULL, 'The same Interswitch payment is recorded twice', true);
+    EXCEPTION WHEN check_violation THEN e_related := split_part(SQLERRM, ':', 1); END;
+    x3 := finance.archive_payment(pc2, 'DUPLICATE_PAYMENT', pc1, 'The same Interswitch payment is recorded twice', true);
+    sig := (SELECT signals FROM finance.payment_archive WHERE id = x3);
+    PERFORM finance.payment_archive_propose(x3, 'DUPLICATE', NULL, 'One gateway payment, two records: the second is the repeat', NULL, true);
+    x5 := finance.archive_payment(pc5, 'DUPLICATE_PAYMENT', pc4, 'The same amount on the same day for the same student', true);
+    BEGIN PERFORM finance.payment_archive_propose(x5, 'DUPLICATE', NULL, 'Same amount, same day, same student: looks the same payment', NULL, true);
+    EXCEPTION WHEN check_violation THEN e_proof := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    st_dup := finance.payment_archive_decide(x3, 'APPROVE', 'One payment on the gateway', true)->>'state';
+    dup_kept := EXISTS (SELECT 1 FROM finance.payment_reference WHERE id = pc2 AND archived_at IS NOT NULL);
+    dup_rev := (SELECT status FROM finance.gl_journal WHERE id = j_pc2);
+    arch_rev := (SELECT g.status FROM finance.payment_archive x JOIN finance.gl_journal g ON g.id = x.archive_journal WHERE x.id = x3);
+
+    -- 5 · never received, on a bank statement: excluded for good
+    PERFORM set_config('moaum.actor_id', o1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    x4 := finance.archive_payment(pc3, 'UNVERIFIED_PAYMENT', NULL, 'The branch slip has no credit on the statement', true);
+    PERFORM finance.payment_archive_propose(x4, 'NOT_RECEIVED', NULL, 'No credit of 5,000 on the statement for the month',
+                                            '[{"kind": "BANK_STATEMENT", "value": "October statement, no credit of 5,000"}]'::jsonb, true);
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    st_nr := finance.payment_archive_decide(x4, 'APPROVE', 'Statement read', true)->>'state';
+    BEGIN UPDATE finance.payment_archive SET state = 'RECONCILED' WHERE id = x4; EXCEPTION WHEN check_violation THEN e_settled := split_part(SQLERRM, ':', 1); END;
+    SELECT paid INTO paid_c FROM finance.position(c, S);
+    -- what 2400 holds of these two: reclassified out and back (A's), out and reversed (C's duplicate) — nothing left
+    g2400 := (SELECT coalesce(sum(p.credit - p.debit), 0) FROM finance.gl_posting p
+               WHERE p.account = '2400' AND p.journal_id IN (SELECT unnest(ARRAY[x.archive_journal, x.settle_journal]) FROM finance.payment_archive x WHERE x.id IN (x1, x3)));
+    fig := finance.payment_archive_figures(S);
+
+    msg := format('paid A %s → %s archived (report %s, day book %s, account archived %s) | ledger out %s | told %s | change %s delete %s mark %s again %s swap %s correction %s refund %s'
+                  || ' | weak %s swap desk %s office %s → %s owner B %s swap %s | A %s B %s | ledger back %s'
+                  || ' | same %s return %s → %s A %s twice %s | related %s signals %s proof %s duplicate %s kept %s posting %s reclass %s'
+                  || ' | never received %s settled %s C %s | 2400 net %s | figures recorded %s archived %s active %s open %s duplicates %s reconciled %s reallocated %s notReceived %s',
+                  paid_a0, paid_a1, in_report, in_book, acct->>'archived', out_lines, told, e_change, e_delete, e_mark, e_again, e_swap, e_realloc, e_refund,
+                  e_weak, e_swapdesk, e_office, st_a, owner_now = b, swap_status, paid_a2, paid_b2, settle_lines,
+                  e_same, st_r, st_r2, paid_a3, e_twice, e_related, sig->'authoritative', e_proof, st_dup, dup_kept, dup_rev, arch_rev,
+                  st_nr, e_settled, paid_c, g2400, fig->>'recordedAmount', fig->>'archivedAmount', fig->>'activeAmount', fig->>'open', fig->>'duplicates',
+                  fig->>'reconciled', fig->>'reallocated', fig->>'notReceived');
+    ok := paid_a0 = 140000 AND paid_a1 = 40000 AND in_report = 0 AND in_book = 0 AND (acct->>'archived')::numeric = 100000
+          AND out_lines = '4010:100000/0,2400:0/100000' AND told >= 1
+          AND e_change = 'PAYMENT_ARCHIVED' AND e_delete = 'PAYMENT_ARCHIVE_KEPT' AND e_mark = 'PAYMENT_ARCHIVE_DESK' AND e_again = 'PAR_ALREADY'
+          AND e_swap = 'SWAP_ARCHIVED' AND e_realloc = 'REALLOC_ARCHIVED' AND e_refund = 'REFUND_ARCHIVED'
+          AND e_weak = 'PAR_EVIDENCE_STRONG' AND e_swapdesk = 'SWAP_ARCHIVE_LINKED' AND e_office = 'PAR_OFFICE' AND st_a = 'RECONCILED' AND owner_now = b
+          AND swap_status = 'COMPLETED' AND paid_a2 = 40000 AND paid_b2 = 100000 AND settle_lines = '2400:100000/0,4010:0/100000'
+          AND e_same = 'PAR_SAME_OFFICER' AND st_r = 'RETURNED' AND st_r2 = 'RECONCILED' AND paid_a3 = 40000 AND e_twice = 'PAR_DECIDED'
+          AND e_related = 'PAR_RELATED' AND sig->'authoritative' ? 'SAME_GATEWAY_REFERENCE' AND e_proof = 'PAR_DUPLICATE_PROOF'
+          AND st_dup = 'DUPLICATE_CONFIRMED' AND dup_kept AND dup_rev = 'REVERSED' AND arch_rev = 'REVERSED'
+          AND st_nr = 'NOT_RECEIVED' AND e_settled = 'PAR_SETTLED' AND paid_c = 80000 AND g2400 = 0
+          AND (fig->>'recordedAmount')::numeric = 305000 AND (fig->>'archivedAmount')::numeric = 85000 AND (fig->>'activeAmount')::numeric = 220000
+          AND (fig->>'open')::int = 1 AND (fig->>'reconciled')::int = 2 AND (fig->>'reallocated')::int = 1 AND (fig->>'notReceived')::int = 1;
+    RAISE EXCEPTION 'the V670 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V670 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V670: an archived payment is kept as it stood and counts nowhere until the Bursary settles it — reallocated to its owner on strong evidence through the swap, restored, or excluded for good as a duplicate (on an authoritative identifier) or never received; decided by a Bursar officer other than the proposer; the archived money apart from verified active revenue',
+      coalesce(ok, false), msg);
+END $$;
+
+-- ── V670. Every reader of confirmed student payments reads those that count. Computed from the catalogue: a function that reads
+--          finance.payment_reference and takes "confirmed_at IS NOT NULL" as paid also reads archived_at — or is one of the few
+--          that ask only the gateway's state of a reference (already paid, already confirmed) or a fee line's use; a view over
+--          the payments the same. A later restatement that drops the rule fails here the day it is made ──
+DO $$
+DECLARE lst text; n int;
+BEGIN
+    SELECT count(*), string_agg(f, ', ' ORDER BY f) INTO n, lst FROM (
+        SELECT n.nspname || '.' || p.proname AS f
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE p.prokind IN ('f', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_temp')
+           AND p.prosrc ~ 'finance\.payment_reference\M' AND p.prosrc ~* 'confirmed_at IS NOT NULL'
+           AND p.prosrc !~ 'archived_at|payment_archive_withdrawn'
+           AND n.nspname || '.' || p.proname NOT IN ('finance.confirm_payment', 'finance.fee_line_usage', 'finance.paydirect_claim_mark', 'finance.paydirect_claims',
+                                                     'finance.paydirect_customer', 'finance.payment_duplicate_signals', 'finance.renew_reference',
+                                                     'finance.withdraw_gateway_test_reference')
+        UNION ALL
+        SELECT n.nspname || '.' || c.relname
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind IN ('v', 'm') AND pg_get_viewdef(c.oid) ~ 'finance\.payment_reference\M' AND pg_get_viewdef(c.oid) !~ 'archived_at') x;
+    PERFORM pg_temp.assert('V670: every reader of confirmed student payments leaves an archived payment out (a function or view that counts a confirmed payment also reads archived_at)',
+                           n = 0, coalesce(lst, 'none'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

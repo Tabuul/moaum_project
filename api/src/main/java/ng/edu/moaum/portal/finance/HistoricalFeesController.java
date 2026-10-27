@@ -360,7 +360,7 @@ class HistoricalFeesController {
                     SELECT r.reference, r.session, r.purpose, r.amount, r.generated_at, r.confirmed_at, r.channel, r.receipt_no,
                            (SELECT i.original_identifier_type || ' ' || i.original_identifier FROM finance.payment_identity i WHERE i.payment_id = r.id LIMIT 1) AS paid_as
                       FROM finance.payment_reference r
-                     WHERE r.student_id = :id AND r.purpose LIKE 'School fees%' AND (r.confirmed_at IS NOT NULL OR r.expires_at > now())
+                     WHERE r.student_id = :id AND r.purpose LIKE 'School fees%' AND (r.confirmed_at IS NOT NULL OR r.expires_at > now()) AND r.archived_at IS NULL
                      ORDER BY r.session, r.confirmed_at NULLS LAST
                     """).param("id", id).query().listOfRows());
             out.put("reallocations", jdbc.sql("SELECT * FROM finance.payment_reallocations_of(:id)").param("id", id).query().listOfRows());

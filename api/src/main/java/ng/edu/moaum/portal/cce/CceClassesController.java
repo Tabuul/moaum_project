@@ -686,7 +686,7 @@ class CceClassesController {
                 SELECT 'STUDENT' AS payer, CASE WHEN r.purpose LIKE 'School fees%' THEN 'School fees' ELSE r.purpose END AS purpose,
                        count(*) AS payments, sum(r.amount) AS amount
                   FROM finance.payment_reference r JOIN people.student st ON st.id = r.student_id AND st.entry_mode = 'CCE'
-                 WHERE r.session = :s AND r.confirmed_at IS NOT NULL
+                 WHERE r.session = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
                  GROUP BY 2
                 UNION ALL
                 SELECT 'APPLICANT', initcap(lower(replace(f.kind, '_', ' '))) || ' fee', count(*), sum(f.amount)

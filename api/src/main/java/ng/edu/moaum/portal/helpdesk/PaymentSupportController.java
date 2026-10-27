@@ -94,7 +94,7 @@ class PaymentSupportController {
                               OR s.candidate_id = (SELECT x.candidate_id FROM admissions.application x WHERE x.application_no = :qu)
                               OR (length(:q) >= 3 AND upper(s.surname) LIKE :qp))
                 SELECT count(*) OVER () AS total, r.reference, r.purpose, r.session, r.amount, r.generated_at, r.expires_at, r.confirmed_at, r.channel, r.receipt_no,
-                       CASE WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS state,
+                       CASE WHEN r.archived_at IS NOT NULL THEN 'ARCHIVED' WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS state,
                        s.id AS student_id, s.surname || ', ' || s.other_names AS student, coalesce(s.matric_no, s.admission_no) AS number, s.jamb_reg_no, p.name AS programme,
                        ge.gateway, ge.gateway_ref, ge.outcome AS gateway_outcome, ge.received_at AS gateway_at
                   FROM hit JOIN finance.payment_reference r ON r.id = hit.id
@@ -103,7 +103,7 @@ class PaymentSupportController {
                   LEFT JOIN LATERAL (SELECT e.gateway, e.gateway_ref, e.outcome, e.received_at FROM finance.gateway_event e
                                       WHERE e.reference = r.reference ORDER BY e.received_at DESC LIMIT 1) ge ON true
                  WHERE (:head OR EXISTS (SELECT 1 FROM sc WHERE sc.global OR p.faculty_code = ANY(sc.faculties) OR p.dept_code = ANY(sc.departments)))
-                   AND (:st::text IS NULL OR CASE WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END = :st)
+                   AND (:st::text IS NULL OR CASE WHEN r.archived_at IS NOT NULL THEN 'ARCHIVED' WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END = :st)
                  ORDER BY r.generated_at DESC LIMIT :n OFFSET :o
                 """;
         List<Map<String, Object>> rows = jdbc.sql(sql).param("me", a.agent()).param("head", a.head()).param("q", term).param("qu", term.toUpperCase())
@@ -123,6 +123,7 @@ class PaymentSupportController {
         String ref = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
         return jdbc.sql("""
                 SELECT r.id, r.reference, r.student_id, r.session, r.purpose, r.amount, r.generated_at, r.expires_at, r.confirmed_at, r.channel, r.note, r.receipt_no,
+                       r.archived_at, (SELECT a.archive_ref FROM finance.payment_archive a WHERE a.payment_id = r.id AND a.state <> 'RECONCILED' ORDER BY a.archived_at DESC LIMIT 1) AS archive_ref,
                        s.surname || ', ' || s.other_names AS student, coalesce(s.matric_no, s.admission_no) AS number, p.name AS programme
                   FROM finance.payment_reference r JOIN people.student s ON s.id = r.student_id JOIN ref.programme p ON p.code = s.programme_code
                  WHERE r.reference = :r OR r.receipt_no = :r
@@ -229,7 +230,10 @@ class PaymentSupportController {
         List<Map<String, Object>> advice = new ArrayList<>();
         java.util.function.BiConsumer<String, String[]> say = (code, words) -> advice.add(Map.of("code", code, "words", words[0], "action", words[1]));
         long otherConfirmed = siblings.stream().filter(x -> x.get("confirmed_at") != null).count();
-        if (!confirmed) {
+        if (r.get("archived_at") != null) {
+            // V670: archived for review — kept, counted nowhere, granting nothing — settled by the Bursary alone
+            say.accept("ARCHIVED_FOR_REVIEW", new String[] {"The payment is archived for review by the Bursary (" + r.get("archive_ref") + "): it counts nowhere and grants nothing until it is settled on Archived payments. Nothing is refreshed or confirmed here.", "ESCALATE_BURSARY"});
+        } else if (!confirmed) {
             if ("SUCCESS".equals(gateway)) say.accept("GATEWAY_PAID_PORTAL_NOT", new String[] {"The gateway reports the payment successful but the portal has not settled it. Verify with the gateway to settle this reference.", "VERIFY"});
             else if ("SHORT_PAID".equals(gateway)) say.accept("SHORT_PAID", new String[] {"The gateway settled less than this reference's amount; a short payment is never confirmed. Escalate to the Bursary with the evidence.", "ESCALATE_BURSARY"});
             else if ("FAILED".equals(gateway)) say.accept("FAILED", new String[] {"The gateway reports the payment failed. If the student was debited, escalate to the Bursary with the evidence.", "ESCALATE_BURSARY"});

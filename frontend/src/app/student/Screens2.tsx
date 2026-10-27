@@ -234,9 +234,11 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
           <span key="pt">{r.programme_type_label ?? "—"}</span>,
           <span className="tnum" key="ss">{r.session}</span>,
           <span className="tnum" key="a">{naira(r.amount)}</span>,
-          r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
+          r.archived ? <Pil kind="warn" key="s">Under review</Pil> : r.confirmed_at ? <Pil kind="ok" key="s">Paid</Pil> : new Date(r.expires_at).getTime() > now ? <Pil kind="info" key="s">Awaiting confirmation</Pil> : <Pil kind="grey" key="s">Expired</Pil>,
           // V635: a paid reference has its receipt; an open one is paid here; an expired one is regenerated here and then paid
-          r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn>
+          // V670: a payment archived for review has no receipt until the Bursary verifies it
+          r.archived ? <span key="x" className="sub2">With the Bursary</span>
+            : r.receipt_no ? <LinkBtn key="x" kind="ghost" href={`/student/receipt/${encodeURIComponent(r.reference)}`}>Receipt</LinkBtn>
             : r.confirmed_at ? <span key="x" />
             : new Date(r.expires_at).getTime() > now ? <PayFromHistory key="x" reference={r.reference} amount={Number(r.amount)} purpose={r.purpose_label ?? r.purpose} />
             // Oct 2026: an expired GST reference is paid from GST & EPS, which says whether the fee is still owed and why

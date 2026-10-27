@@ -93,7 +93,7 @@ public class AdmissionDocuments {
         // 4 · the school-fees receipts, once the person is on the register and has paid
         List<Map<String, Object>> receipts = a.get("student_id") == null ? List.of() : jdbc.sql("""
                 SELECT reference, receipt_no, amount, confirmed_at, session, purpose FROM finance.payment_reference
-                 WHERE student_id = :s AND confirmed_at IS NOT NULL ORDER BY confirmed_at
+                 WHERE student_id = :s AND confirmed_at IS NOT NULL AND archived_at IS NULL ORDER BY confirmed_at
                 """).param("s", a.get("student_id"), Types.OTHER).query().listOfRows();
         if (receipts.isEmpty()) {
             if (offered) rows.add(row("SCHOOL_FEES_RECEIPT", "FEES", "School fees receipt", "PENDING", "after school fees", null, null, null));

@@ -211,7 +211,7 @@ class ReportsController {
                   FROM (
                         SELECT r.purpose AS category, r.amount
                           FROM finance.payment_reference r
-                         WHERE r.session = :s AND r.confirmed_at IS NOT NULL
+                         WHERE r.session = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
                         UNION ALL
                         SELECT CASE fr.kind
                                    WHEN 'APPLICATION' THEN 'Application & Post-UTME'
@@ -229,7 +229,7 @@ class ReportsController {
                 SELECT count(*) AS payments, coalesce(sum(t.amount), 0) AS amount
                   FROM (
                         SELECT r.amount FROM finance.payment_reference r
-                         WHERE r.session = :s AND r.confirmed_at IS NOT NULL
+                         WHERE r.session = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
                         UNION ALL
                         SELECT fr.amount FROM admissions.fee_reference fr
                           JOIN admissions.application a ON a.id = fr.application_id
@@ -442,7 +442,7 @@ class ReportsController {
                        (SELECT count(*) FROM admissions.candidate c WHERE c.session = n.name AND c.offer_state = 'ACCEPTED') AS accepted,
                        (SELECT count(*) FROM admissions.pg_application a WHERE a.session = n.name AND a.state <> 'DRAFT') AS pg_applications,
                        (SELECT count(*) FROM admissions.pg_application a WHERE a.session = n.name AND a.state IN ('OFFERED','ACCEPTED','ADMITTED')) AS pg_offered,
-                       (SELECT coalesce(sum(r.amount), 0) FROM finance.payment_reference r WHERE r.session = n.name AND r.confirmed_at IS NOT NULL) AS fees_confirmed
+                       (SELECT coalesce(sum(r.amount), 0) FROM finance.payment_reference r WHERE r.session = n.name AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL) AS fees_confirmed
                   FROM last3 n ORDER BY n.name
                 """).query().listOfRows();
         List<Map<String, Object>> months = jdbc.sql("""
@@ -452,9 +452,9 @@ class ReportsController {
                 )
                 SELECT to_char(m.month, 'YYYY-MM') AS month, to_char(m.month, 'Mon YYYY') AS label,
                        (SELECT coalesce(sum(r.amount), 0) FROM finance.payment_reference r
-                         WHERE r.confirmed_at >= m.month AND r.confirmed_at < m.month + interval '1 month') AS fees,
+                         WHERE r.confirmed_at >= m.month AND r.confirmed_at < m.month + interval '1 month' AND r.archived_at IS NULL) AS fees,
                        (SELECT count(*) FROM finance.payment_reference r
-                         WHERE r.confirmed_at >= m.month AND r.confirmed_at < m.month + interval '1 month') AS payments,
+                         WHERE r.confirmed_at >= m.month AND r.confirmed_at < m.month + interval '1 month' AND r.archived_at IS NULL) AS payments,
                        (SELECT coalesce(sum(v.amount), 0) FROM expenditure.voucher v
                          WHERE v.paid_at >= m.month AND v.paid_at < m.month + interval '1 month') AS paid,
                        (SELECT coalesce(sum(v.amount), 0) FROM expenditure.voucher v

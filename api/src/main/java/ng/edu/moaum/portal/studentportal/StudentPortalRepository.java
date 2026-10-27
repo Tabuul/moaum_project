@@ -508,6 +508,7 @@ class StudentPortalRepository {
     List<Map<String, Object>> references(UUID student) {
         return jdbc.sql("""
                 SELECT pr.id, pr.session, pr.reference, pr.purpose, pr.amount, pr.generated_at, pr.expires_at, pr.confirmed_at, pr.channel, pr.note, pr.receipt_no,
+                       pr.archived_at IS NOT NULL AS archived,   -- V670: under review by the Bursary, or excluded for good: never paid
                        CASE WHEN pr.confirmed_at IS NOT NULL THEN finance.payment_term(pr.id) END AS term,
                        """ + CLASSIFIED + """
                   FROM finance.payment_reference pr""" + LEDGER + """
@@ -518,6 +519,8 @@ class StudentPortalRepository {
     Optional<Map<String, Object>> reference(UUID student, String reference) {
         return jdbc.sql("""
                 SELECT pr.id, pr.session, pr.reference, pr.purpose, pr.amount, pr.generated_at, pr.expires_at, pr.confirmed_at, pr.channel, pr.note, pr.receipt_no,
+                       pr.archived_at IS NOT NULL AS archived,
+                       (SELECT a.archive_ref FROM finance.payment_archive a WHERE a.payment_id = pr.id AND a.state <> 'RECONCILED' ORDER BY a.archived_at DESC LIMIT 1) AS archive_ref,
                        CASE WHEN pr.confirmed_at IS NOT NULL THEN finance.payment_term(pr.id) END AS term,
                        """ + CLASSIFIED + """
                        , (SELECT e.gateway_ref FROM finance.gateway_event e WHERE e.reference = pr.reference AND e.outcome IN ('SETTLED', 'ALREADY_SETTLED')

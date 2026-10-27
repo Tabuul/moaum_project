@@ -67,6 +67,9 @@ export async function BursarDashboard({ session }: { session: string }) {
         ["Collected today", money(Number(t.today)), null, `${t.today_count} confirmation${Number(t.today_count) === 1 ? "" : "s"}`],
         ["Exceptions open", String(exceptions), exceptions ? "var(--red-ink)" : null, `${t.hanging} hanging at a gateway`],
         ["Gateways live", `${on.length}`, on.length ? "var(--green-ink)" : "var(--red-ink)", on.length ? on.map((g) => `${g.gateway} (${g.mode.toLowerCase()})`).join(", ") : "None wired yet"],
+        // V670: payments archived for review — received, kept apart, never income until settled
+        ["Archived / under review", money(Number(t.archived_open_amount ?? 0)), Number(t.archived_open ?? 0) ? "var(--amber-ink)" : null,
+          `${t.archived_open ?? 0} payment${Number(t.archived_open ?? 0) === 1 ? "" : "s"}, not income; ${t.archived_waiting ?? 0} waiting for your decision`],
       ]} />
       {op ? (
         <Panel title="Old-portal outstanding fees payments" right={<LinkBtn kind={op.verified ? "primary" : "ghost"} href="/finance/legacy-reconciliation?tab=payments&status=VERIFIED">{op.verified ? `Credit ${op.verified} to the wallets` : "Open the list"}</LinkBtn>}>

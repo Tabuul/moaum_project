@@ -97,7 +97,7 @@ class LegacyReconciliationController {
     List<String> sessions() {
         return jdbc.sql("""
                 SELECT DISTINCT r.session FROM finance.payment_reference r
-                 WHERE r.channel = 'Legacy' AND r.confirmed_at IS NOT NULL AND r.purpose LIKE 'School fees%'
+                 WHERE r.channel = 'Legacy' AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL AND r.purpose LIKE 'School fees%'
                  ORDER BY r.session DESC
                 """).query(String.class).list();
     }
@@ -162,7 +162,7 @@ class LegacyReconciliationController {
                   FROM (SELECT r.session, count(*) FILTER (WHERE r.channel = 'Legacy')::int AS legacy_payments,
                                coalesce(sum(r.amount) FILTER (WHERE r.channel = 'Legacy'), 0) AS legacy_amount
                           FROM finance.payment_reference r
-                         WHERE r.student_id = :s AND r.confirmed_at IS NOT NULL AND r.purpose LIKE 'School fees%'
+                         WHERE r.student_id = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL AND r.purpose LIKE 'School fees%'
                          GROUP BY r.session) x
                   CROSS JOIN LATERAL finance.position(:s, x.session) pos
                   LEFT JOIN LATERAL finance.overpayment_settled(:s, x.session) d ON true
@@ -172,7 +172,7 @@ class LegacyReconciliationController {
                 SELECT r.reference, r.session, r.purpose, r.amount, r.confirmed_at, r.channel, r.receipt_no, lp.payref AS legacy_payref, r.note
                   FROM finance.payment_reference r
                   LEFT JOIN finance.legacy_payref lp ON lp.reference = r.reference
-                 WHERE r.student_id = :s AND r.confirmed_at IS NOT NULL AND r.purpose LIKE 'School fees%'
+                 WHERE r.student_id = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL AND r.purpose LIKE 'School fees%'
                  ORDER BY r.session DESC, r.confirmed_at
                 """).param("s", id).query().listOfRows());
         out.put("requests", jdbc.sql("SELECT * FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 5000) r WHERE r.student_id = :s ORDER BY r.initiated_at DESC")

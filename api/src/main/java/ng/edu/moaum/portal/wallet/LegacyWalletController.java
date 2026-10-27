@@ -102,7 +102,7 @@ class LegacyWalletController {
                 SELECT pr.reference, pr.session, pr.purpose, pr.amount, pr.confirmed_at, finance.legacy_wallet_method(pr.note) AS method, pr.note,
                        finance.legacy_wallet_is_topup(pr.purpose) AS topup
                   FROM finance.payment_reference pr
-                 WHERE pr.student_id = :s AND pr.channel = 'Legacy' AND pr.confirmed_at IS NOT NULL
+                 WHERE pr.student_id = :s AND pr.channel = 'Legacy' AND pr.confirmed_at IS NOT NULL AND pr.archived_at IS NULL
                    AND (finance.legacy_wallet_is_topup(pr.purpose) OR finance.legacy_wallet_method(pr.note) = 'E-Wallet')
                  ORDER BY pr.confirmed_at
                 """).param("s", id).query().listOfRows());

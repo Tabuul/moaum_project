@@ -325,8 +325,10 @@ class StudentFullRecordController {
         return read("""
                 WITH refs AS MATERIALIZED (
                     SELECT r.id, r.session, r.reference, r.purpose, r.amount, r.generated_at, r.expires_at, r.confirmed_at, r.channel, r.receipt_no, r.note,
-                           CASE WHEN r.confirmed_at IS NOT NULL THEN finance.payment_term(r.id) END AS term,
-                           CASE WHEN r.confirmed_at IS NOT NULL THEN 'PAID' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS status,
+                           CASE WHEN r.confirmed_at IS NOT NULL AND r.archived_at IS NULL THEN finance.payment_term(r.id) END AS term,
+                           -- V670: an archived payment is apart: kept on the record, never in what is paid
+                           CASE WHEN r.archived_at IS NOT NULL THEN 'ARCHIVED' WHEN r.confirmed_at IS NOT NULL THEN 'PAID' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS status,
+                           r.archived_at,
                            r.purpose LIKE 'School fees%' AS school_fees,
                            ge.gateway, ge.gateway_ref, ge.outcome AS gateway_outcome,
                            -- V647: paid under another number before matriculation (a JAMB registration number, say): the number as paid
@@ -343,6 +345,8 @@ class StudentFullRecordController {
                     'summary', (SELECT json_build_object(
                                     'count', count(*), 'paid', count(*) FILTER (WHERE status = 'PAID'), 'pending', count(*) FILTER (WHERE status = 'PENDING'),
                                     'expired', count(*) FILTER (WHERE status = 'EXPIRED'),
+                                    'archived', count(*) FILTER (WHERE status = 'ARCHIVED'),
+                                    'amountArchived', coalesce(sum(amount) FILTER (WHERE status = 'ARCHIVED'), 0),
                                     'amountPaid', coalesce(sum(amount) FILTER (WHERE status = 'PAID'), 0),
                                     'schoolFeesPaid', coalesce(sum(amount) FILTER (WHERE status = 'PAID' AND school_fees), 0)) FROM refs),
                     'schoolFees', (SELECT coalesce(json_agg(x ORDER BY x.session DESC), '[]'::json) FROM (
@@ -356,7 +360,10 @@ class StudentFullRecordController {
                           FROM finance.overpayment_decision o WHERE o.student_id = :s) x),
                     'withdrawn', (SELECT coalesce(json_agg(x ORDER BY x.withdrawn_at DESC), '[]'::json) FROM (
                         SELECT w.reference, w.double_kind, w.kept_reference, w.session, w.purpose, w.amount, w.confirmed_at, w.withdrawn_at, w.reason
-                          FROM finance.old_payment_withdrawn w WHERE w.student_id = :s) x),
+                          FROM finance.old_payment_withdrawn w WHERE w.student_id = :s
+                           AND NOT EXISTS (SELECT 1 FROM finance.payment_archive pa WHERE pa.payment_id = w.id)) x),
+                    -- V670: the archived payments — under review, excluded for good, or settled back — apart from the verified ones
+                    'archives', (SELECT coalesce(json_agg(x ORDER BY x.archived_at DESC), '[]'::json) FROM finance.payment_archives_of(:s) x),
                     'wallet', (SELECT coalesce(json_agg(x ORDER BY x.at DESC), '[]'::json) FROM (
                         SELECT we.kind, we.amount, we.session, we.reference, we.source_code, we.note, we.at FROM finance.wallet_entry we WHERE we.student_id = :s) x),
                     -- V583: the old portal's e-wallet — what it held, what is posted to the wallet, applied and left

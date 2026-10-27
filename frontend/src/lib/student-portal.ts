@@ -13,6 +13,8 @@ export interface Charge { id: string; item: string; amount: number; ord: number 
 export interface PaymentRef {
   id: string; session: string; reference: string; purpose: string; amount: number; generated_at: string; expires_at: string;
   confirmed_at: string | null; channel: string | null; note: string | null; receipt_no: string | null;
+  /** V670: archived for review by the Bursary (under review, or excluded for good): never counted as paid */
+  archived?: boolean | null;
   /** V409: the payment's classification on the one ledger, and the gateway's own reference */
   programme_type?: string | null; programme_type_label?: string | null; purpose_code?: string | null; purpose_label?: string | null;
   source_module?: string | null; responsible_office?: string | null; responsible_office_label?: string | null; ledger_semester?: number | null; gateway_reference?: string | null;

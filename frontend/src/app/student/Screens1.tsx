@@ -141,7 +141,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
   // before matriculation (V282): the fees paid make the person a student awaiting their number; the JAMB number stays the sign-in
   const feesPaidStage = ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING"].includes(s.lifecycle ?? "");
   const preMatric = !s.matricNo && s.entryMode !== "POSTGRADUATE";
-  const lastPaid = [...f.references].filter((r) => r.confirmed_at && r.session === f.session).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
+  const lastPaid = [...f.references].filter((r) => r.confirmed_at && !r.archived && r.session === f.session).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
   return (
     <>
       {preMatric ? (

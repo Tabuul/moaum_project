@@ -449,7 +449,7 @@ class FinanceController {
                   FROM policy.version v WHERE v.kind = 'clearance' AND v.scope = 'UNIVERSITY' AND v.validity @> current_date
                 """).query().listOfRows().stream().findFirst().orElse(null);
         Map<String, Object> position = jdbc.sql("""
-                SELECT count(DISTINCT r.student_id) AS students_paying, coalesce(sum(r.amount) FILTER (WHERE r.confirmed_at IS NOT NULL), 0) AS confirmed,
+                SELECT count(DISTINCT r.student_id) AS students_paying, coalesce(sum(r.amount) FILTER (WHERE r.confirmed_at IS NOT NULL AND r.archived_at IS NULL), 0) AS confirmed,
                        count(*) FILTER (WHERE r.confirmed_at IS NULL AND r.expires_at > now()) AS references_open
                   FROM finance.payment_reference r WHERE r.session = :s
                 """).param("s", s).query().singleRow();
@@ -1138,11 +1138,12 @@ class FinanceController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> references(@RequestParam(required = false) String session, @RequestParam(defaultValue = "open") String state) {
         return jdbc.sql("""
-                SELECT r.id, r.reference, r.session, r.purpose, r.amount, r.generated_at, r.expires_at, r.confirmed_at, r.channel, r.note, r.receipt_no,
+                SELECT r.id, r.reference, r.session, r.purpose, r.amount, r.generated_at, r.expires_at, r.confirmed_at, r.channel, r.note, r.receipt_no, r.archived_at,
                        s.matric_no, s.admission_no, s.surname, s.other_names, p.name AS programme, s.current_level
                   FROM finance.payment_reference r JOIN people.student s ON s.id = r.student_id JOIN ref.programme p ON p.code = s.programme_code
                  WHERE (:s::text IS NULL OR r.session = :s)
-                   AND CASE :st WHEN 'open' THEN r.confirmed_at IS NULL AND r.expires_at > now() WHEN 'confirmed' THEN r.confirmed_at IS NOT NULL ELSE true END
+                   AND CASE :st WHEN 'open' THEN r.confirmed_at IS NULL AND r.expires_at > now() WHEN 'confirmed' THEN r.confirmed_at IS NOT NULL AND r.archived_at IS NULL
+                            WHEN 'archived' THEN r.archived_at IS NOT NULL ELSE true END
                  ORDER BY r.generated_at DESC LIMIT 500
                 """).param("s", session, Types.VARCHAR).param("st", state).query().listOfRows();
     }
@@ -1180,9 +1181,13 @@ class FinanceController {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("session", s);
         out.put("tiles", jdbc.sql("""
-                SELECT (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE session = :s AND confirmed_at IS NOT NULL AND purpose LIKE 'School fees%') AS fees_collected,
-                       (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE confirmed_at::date = current_date) AS today,
-                       (SELECT count(*) FROM finance.payment_reference WHERE confirmed_at::date = current_date) AS today_count,
+                SELECT (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE session = :s AND confirmed_at IS NOT NULL AND archived_at IS NULL AND purpose LIKE 'School fees%') AS fees_collected,
+                       (SELECT coalesce(sum(amount), 0) FROM finance.payment_reference WHERE confirmed_at::date = current_date AND archived_at IS NULL) AS today,
+                       (SELECT count(*) FROM finance.payment_reference WHERE confirmed_at::date = current_date AND archived_at IS NULL) AS today_count,
+                       -- V670: payments archived for review: received, kept apart, not income until the Bursary settles them
+                       (SELECT count(*) FROM finance.payment_archive WHERE state IN ('ARCHIVED', 'UNDER_REVIEW', 'PENDING_BURSAR_APPROVAL', 'RETURNED')) AS archived_open,
+                       (SELECT coalesce(sum(amount), 0) FROM finance.payment_archive WHERE state IN ('ARCHIVED', 'UNDER_REVIEW', 'PENDING_BURSAR_APPROVAL', 'RETURNED')) AS archived_open_amount,
+                       (SELECT count(*) FROM finance.payment_archive WHERE state = 'PENDING_BURSAR_APPROVAL') AS archived_waiting,
                        (SELECT count(*) FROM finance.payment_reference WHERE confirmed_at IS NULL AND expires_at > now()) AS references_open,
                        (SELECT count(*) FROM finance.bank_credit WHERE state IN ('UNMATCHED','PROPOSED')) AS credits_open,
                        (SELECT coalesce(sum(amount), 0) FROM finance.bank_credit WHERE state IN ('UNMATCHED','PROPOSED')) AS credits_open_amount,

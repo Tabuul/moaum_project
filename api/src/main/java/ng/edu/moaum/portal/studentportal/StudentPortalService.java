@@ -505,6 +505,12 @@ public class StudentPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> receipt(UUID id, String reference) {
         Map<String, Object> r = repo.reference(id, reference).orElseThrow(() -> new NotFound("payment reference", reference));
+        // V670: a payment archived for review has no receipt to print until the Bursary verifies it
+        if (Boolean.TRUE.equals(r.get("archived"))) {
+            throw new DomainRuleViolation("PAYMENT_UNDER_REVIEW", "Payment " + r.get("reference") + " is under review by the Bursary"
+                    + (r.get("archive_ref") == null ? "" : " (" + r.get("archive_ref") + ")") + " and is not counted in your verified payments; its receipt is available again once it is verified.",
+                    new DomainRuleViolation.Remedy("If you made this payment, keep your bank or gateway receipt; the Bursary may ask for it.", "Bursary"));
+        }
         StudentPortalRepository.Student s = student(id);
         Map<String, Object> out = new LinkedHashMap<>(r);
         out.put("name", s.surname().toUpperCase() + ", " + s.otherNames());

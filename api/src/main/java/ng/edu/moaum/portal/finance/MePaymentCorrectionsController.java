@@ -42,4 +42,16 @@ class MePaymentCorrectionsController {
                  ORDER BY executed_at DESC
                 """).param("me", UUID.fromString(auth.getName())).query().listOfRows();
     }
+
+    /** V670: the payments on the student's account archived for review by the Bursary — under review, excluded for good, or verified and
+     *  counted again — apart from the verified ones; nothing of another student */
+    @GetMapping("/payment-archives")
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> archives(Authentication auth) {
+        return jdbc.sql("""
+                SELECT archive_ref, reference, amount, purpose, session, paid_at, state, outcome, archived_at, settled_at, counts
+                  FROM finance.payment_archives_of(:me) WHERE on_account
+                 ORDER BY archived_at DESC
+                """).param("me", UUID.fromString(auth.getName())).query().listOfRows();
+    }
 }

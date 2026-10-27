@@ -1036,7 +1036,7 @@ class StudentSupportController {
         out.put("references", jdbc.sql("""
                 SELECT r.id, r.session, r.reference, r.purpose, r.amount, r.generated_at, r.expires_at, r.confirmed_at, r.channel, r.receipt_no,
                        CASE WHEN r.confirmed_at IS NOT NULL THEN finance.payment_term(r.id) END AS term,
-                       CASE WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS status,
+                       CASE WHEN r.archived_at IS NOT NULL THEN 'ARCHIVED' WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' WHEN r.expires_at < now() THEN 'EXPIRED' ELSE 'PENDING' END AS status,
                        ge.gateway, ge.gateway_ref, ge.outcome AS gateway_outcome, ge.received_at AS gateway_at
                   FROM finance.payment_reference r
                   LEFT JOIN LATERAL (SELECT e.gateway, e.gateway_ref, e.outcome, e.received_at FROM finance.gateway_event e
@@ -1065,7 +1065,7 @@ class StudentSupportController {
                 """).param("s", id).query().listOfRows());
         out.put("receipts", jdbc.sql("""
                 SELECT id, session, reference, purpose, amount, confirmed_at, channel, receipt_no
-                  FROM finance.payment_reference WHERE student_id = :s AND receipt_no IS NOT NULL ORDER BY confirmed_at DESC LIMIT 100
+                  FROM finance.payment_reference WHERE student_id = :s AND receipt_no IS NOT NULL AND archived_at IS NULL ORDER BY confirmed_at DESC LIMIT 100
                 """).param("s", id).query().listOfRows());
         return out;
     }

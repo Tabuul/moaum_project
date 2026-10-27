@@ -67,6 +67,7 @@ export const ROUTES: Record<string, string> = {
   "t/refunds": "/finance/refunds",
   "t/paymentswaps": "/finance/payment-swaps",
   "t/paymentrealloc": "/finance/payment-reallocations",
+  "t/paymentarchive": "/finance/payment-archive",
   "t/historicalfees": "/finance/historical",   // V654
   "t/pv": "/vouchers",
   "t/prepayment": "/vouchers",
