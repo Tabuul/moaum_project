@@ -75,7 +75,8 @@ class PgFeeReferenceIT {
         assertThat(two.getStatusCode().value()).as(String.valueOf(two.getBody())).isEqualTo(200);
         String drawn = String.valueOf(two.getBody().get("reference"));
         assertThat(drawn).isNotEqualTo(issued);
-        long top = jdbc.sql("SELECT max(substring(reference FROM '-([0-9]+)$')::bigint) FROM admissions.pg_fee_reference WHERE reference <> :r")
+        // the portal's own series only, as pg_new_fee_reference reads it: an old-portal reference (V675) is no number of it
+        long top = jdbc.sql("SELECT max(substring(reference FROM '-([0-9]+)$')::bigint) FROM admissions.pg_fee_reference WHERE reference <> :r AND reference ~ '^MOAUM-PG(APP|CHK|ACC)-[0-9]+$'")
                 .param("r", drawn).query(Long.class).single();
         assertThat(Long.parseLong(drawn.substring("MOAUM-PGAPP-".length()))).isGreaterThan(top);
 
