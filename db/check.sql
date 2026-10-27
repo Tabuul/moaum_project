@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 505
+\set EXPECTED 506
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27737,6 +27737,53 @@ BEGIN
                n_app_email, posted, under_review, refused, a_claim.fee_confirmed_at, found_old, found_new, told, trail_told,
                a_c.state, a_c.student_id IS NOT NULL, n_students_c, screening_src, a_d.state, chk_paid, same_officer, verified_state, r_link, bio, recon_state,
                again, apps_before, apps_after, n_admits, del_refused, left(figures::text, 300)));
+END $$;
+
+-- ── V678: the JUPEB application fee is paid before the rest of the application ──
+-- A made-up candidate's draft: the guided application opens on the fee, which is the first step; every other step is refused
+-- (JUPEB_FEE_FIRST) until the fee is confirmed, what was entered before kept; once paid the next incomplete step opens. A
+-- returned application with no confirmed fee is held the same way; a submitted one is not the portal's to edit at all and is
+-- not asked. The fee is listed once among what is missing. The block undoes its writes.
+DO $$
+DECLARE who uuid := gen_random_uuid(); acc uuid; app uuid; ses text := jupeb.current_session(); v_err text;
+        first_step text; cur_unpaid text; r_unpaid text; r_returned text; r_paid text; r_submitted text; cur_paid text; fee_msgs int; review_ok boolean; kept text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V678 check: JUPEB fee first', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'ZZCHECK', 'Fee First');
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.v678@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, sex, date_of_birth, nin, phone, contact_address, state)
+        VALUES (acc, ses, 'JUPEB/APP/2091/900678', 'CHECKFEE', 'Candidate', 'zz.check.v678@example.com', 'M', '2007-01-01', '12345678901', '08012345678', '1 Started Road', 'DRAFT')
+        RETURNING id INTO app;
+        first_step := (jupeb.step_status(app)->'steps'->0->>'step');
+        cur_unpaid := jupeb.step_status(app)->>'current';
+        fee_msgs := (SELECT count(*) FROM unnest(jupeb.missing(app)) m WHERE m = 'The application fee is not yet paid');
+        review_ok := (SELECT (st->>'ok')::boolean FROM jsonb_array_elements(jupeb.step_status(app)->'steps') st WHERE st->>'step' = 'REVIEW');
+        BEGIN PERFORM jupeb.require_fee_first(app); r_unpaid := 'open';
+        EXCEPTION WHEN check_violation THEN r_unpaid := split_part(SQLERRM, ':', 1); END;
+        UPDATE jupeb.application SET state = 'RETURNED' WHERE id = app;
+        BEGIN PERFORM jupeb.require_fee_first(app); r_returned := 'open';
+        EXCEPTION WHEN check_violation THEN r_returned := split_part(SQLERRM, ':', 1); END;
+        UPDATE jupeb.application SET state = 'DRAFT', fee_confirmed_at = now() WHERE id = app;
+        BEGIN PERFORM jupeb.require_fee_first(app); r_paid := 'open';
+        EXCEPTION WHEN check_violation THEN r_paid := split_part(SQLERRM, ':', 1); END;
+        cur_paid := jupeb.step_status(app)->>'current';
+        kept := (SELECT contact_address FROM jupeb.application WHERE id = app);
+        UPDATE jupeb.application SET state = 'SUBMITTED', fee_confirmed_at = NULL WHERE id = app;
+        BEGIN PERFORM jupeb.require_fee_first(app); r_submitted := 'open';
+        EXCEPTION WHEN check_violation THEN r_submitted := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'the V678 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V678 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V678: the JUPEB application fee comes first — the guided application opens on it, every other step is refused (JUPEB_FEE_FIRST) for a draft or a returned application until the fee is confirmed, what was entered before is kept, and once paid the next incomplete step opens',
+        v_err IS NULL AND first_step = 'FEE' AND cur_unpaid = 'FEE' AND fee_msgs = 1 AND review_ok
+        AND r_unpaid = 'JUPEB_FEE_FIRST' AND r_returned = 'JUPEB_FEE_FIRST' AND r_paid = 'open' AND r_submitted = 'open'
+        AND cur_paid = 'PERSONAL' AND kept = '1 Started Road',
+        format('err=%s first=%s cur=%s feemsgs=%s review=%s | unpaid=%s returned=%s paid=%s submitted=%s | after=%s kept=%s',
+               v_err, first_step, cur_unpaid, fee_msgs, review_ok, r_unpaid, r_returned, r_paid, r_submitted, cur_paid, kept));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

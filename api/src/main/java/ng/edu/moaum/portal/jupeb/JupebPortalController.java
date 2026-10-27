@@ -89,13 +89,15 @@ class JupebPortalController {
         return jdbc.sql("SELECT state FROM jupeb.application WHERE id = :id").param("id", app).query(String.class).single();
     }
 
-    /** the record under review does not change beneath the JUPEB Office: it is edited while a draft, or once returned for correction */
+    /** the record under review does not change beneath the JUPEB Office: it is edited while a draft, or once returned for correction —
+     *  and (V678) only once the application fee is confirmed: the fee comes first, before any other step of the application */
     private void requireEditable(UUID app) {
         String s = state(app);
         if (!"DRAFT".equals(s) && !"RETURNED".equals(s)) {
             throw new DomainRuleViolation("JUPEB_NOT_EDITABLE", "Your application is with the JUPEB Office, so it cannot be changed now.",
                     new DomainRuleViolation.Remedy("If something must be corrected, the JUPEB Office returns the application to you and says what. Otherwise raise a support ticket.", "JUPEB Office"));
         }
+        jdbc.sql("SELECT jupeb.require_fee_first(:a)").param("a", app).query().listOfRows();
     }
 
     @GetMapping

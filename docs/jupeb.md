@@ -6,7 +6,7 @@ copies of them.
 
 | Who | Where | What they do |
 |---|---|---|
-| Applicant / student | `/jupeb/apply`, then `/jupeb/portal` | Apply, sign in, complete the guided application (personal, O'Level, documents, programme and subject combination, review and submit), pay the application fee, check the admission status, accept, pay school fees, register subjects, see attendance, the exam number and results, download documents, raise support tickets |
+| Applicant / student | `/jupeb/apply`, then `/jupeb/portal` | Apply, sign in, pay the application fee, complete the guided application (personal, O'Level, documents, programme and subject combination, review and submit), check the admission status, accept, pay school fees, register subjects, see attendance, the exam number and results, download documents, raise support tickets |
 | JUPEB Office (office `jupeb`) | `/jupeb` and its menu | Review, return, decide eligibility, admit (one or in bulk after a preview), screening, classes, subjects and combinations (disable and reactivate what the University does not offer), course units, examination numbers, results, attendance (registers, instructors, minimum), settings, payments (read only) |
 | Lecturer | Lecturer menu → JUPEB Attendance | Take attendance for the JUPEB subjects and classes the JUPEB Office assigned them, and nothing else |
 | Bursary | `/finance/jupeb-fees`, `/jupeb/payments` | Set every JUPEB fee (application, status checking, acceptance, school fees); confirm a bank payment from the teller |
@@ -47,9 +47,15 @@ copies of them.
 - **Application.** Accepted only while the window is open. The short form asks for names, sex, date of birth, NIN,
   email, phone, password, and the programme: **Science or Non-Science** (V341 wrote Arts; V342 carried those over). The
   number `JUPEB/APP/<year>/<6 digits>` is permanent.
-- **The guided application (V342).** Five steps — personal information, O'Level, documents, programme and subject
-  combination, review and submit — judged by `jupeb.step_status`, field by field. Save & Continue saves the step and
-  moves on only when it is complete; the candidate resumes at the first incomplete step.
+- **The guided application (V342, V678).** Six steps — the application fee, personal information, O'Level, documents,
+  programme and subject combination, review and submit — judged by `jupeb.step_status`, field by field. Save & Continue
+  saves the step and moves on only when it is complete; the candidate resumes at the first incomplete step.
+- **The application fee first (V678, 27 October 2026).** Nothing of the application is taken until the fee is confirmed:
+  the portal opens on the fee step and keeps the others locked, and the server refuses a step's save
+  (`jupeb.require_fee_first`, `JUPEB_FEE_FIRST`) for a draft, or an application returned for correction, with no
+  confirmed fee. A candidate who started before V678 without paying keeps what they entered and continues from it once the
+  fee is confirmed. The password, profile, announcements and support stay open. A JUPEB (or postgraduate) candidate who
+  reaches an `/applicant` address is sent to their own portal instead of "application account … not found".
 - **O'Level sittings.** The candidate declares one or two sittings. Each sitting has its examination body, number and
   year; the same result is not entered twice; combined, five credits (A1–C6) with English and Mathematics. **Each sitting's
   result is its own document, and both are required.**

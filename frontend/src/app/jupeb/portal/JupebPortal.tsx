@@ -3,11 +3,11 @@
 /**
  * The JUPEB candidate's dashboard (V339–V342), applicant to student to result, in the portal's own shell.
  *
- * While the application is a draft (or returned for correction) it is a guided application of five steps — personal
- * information, O'Level (one or two sittings), documents (each sitting's result its own), the programme (Science or
- * Non-Science, and a subject combination the University offers for it), and the review with the application fee and the
- * submission. "Save & Continue" saves the step and moves on when the server finds it complete; otherwise it stays, with each
- * field to correct marked. The candidate resumes at the first incomplete step.
+ * While the application is a draft (or returned for correction) it is a guided application of six steps — the application
+ * fee first (V678: nothing else is taken until the University confirms it), personal information, O'Level (one or two
+ * sittings), documents (each sitting's result its own), the programme (Science or Non-Science, and a subject combination the
+ * University offers for it), and the review and the submission. "Save & Continue" saves the step and moves on when the server
+ * finds it complete; otherwise it stays, with each field to correct marked. The candidate resumes at the first incomplete step.
  *
  * Once submitted: admission status checking (the Bursary's fee, once, while the Directorate of ICT has checking open), the
  * acceptance fee and letter, screening, the school fees, the subjects, attendance, results, the document centre and support.
@@ -54,8 +54,9 @@ interface TicketDetail extends Ticket { description: string; resolution_summary:
 interface Support { categories: { code: string; name: string; fields: string }[]; tickets: Ticket[] }
 
 const ADMITTED = new Set(["ADMITTED", "STUDENT", "COMPLETED"]);
-const STEP_ORDER = ["PERSONAL", "OLEVEL", "DOCUMENTS", "PROGRAMME", "REVIEW"] as const;
-const STEP_TITLE: Record<string, string> = { PERSONAL: "Personal information", OLEVEL: "O’Level", DOCUMENTS: "Documents", PROGRAMME: "Programme", REVIEW: "Review & submit" };
+/* V678: the application fee is the first step — the rest of the application opens once it is confirmed */
+const STEP_ORDER = ["FEE", "PERSONAL", "OLEVEL", "DOCUMENTS", "PROGRAMME", "REVIEW"] as const;
+const STEP_TITLE: Record<string, string> = { FEE: "Application fee", PERSONAL: "Personal information", OLEVEL: "O’Level", DOCUMENTS: "Documents", PROGRAMME: "Programme", REVIEW: "Review & submit" };
 const PHOTO = "/api/bff/api/v1/jupeb/me/documents/PASSPORT/content?format=jpeg";
 
 /** the offered combinations that suit a programme (the server marks each one Science and/or Non-Science) */
@@ -160,7 +161,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       case "announcements": return <Announcements onRead={() => void load()} />;
       default: break;
     }
-    if (guided) return <><Profile me={me} /><Guided me={me} act={act} /></>;
+    if (guided) return <><Profile me={me} /><Guided me={me} act={act} reload={load} /></>;
     switch (tab) {
       case "admission": return <Admission me={me} reload={load} />;
       case "payments": return <Payments me={me} reload={load} act={act} />;
@@ -461,9 +462,12 @@ function Profile({ me }: { me: Candidate }) {
 
 /* ── the guided application ─────────────────────────────────────────────────────────────────────── */
 
-function Guided({ me, act }: { me: Candidate; act: Act }) {
-  const startAt = Math.max(0, STEP_ORDER.indexOf((me.steps?.current ?? "PERSONAL") as (typeof STEP_ORDER)[number]));
+function Guided({ me, act, reload }: { me: Candidate; act: Act; reload: () => Promise<void> }) {
+  const startAt = Math.max(0, STEP_ORDER.indexOf((me.steps?.current ?? "FEE") as (typeof STEP_ORDER)[number]));
   const [step, setStep] = useState<number>(startAt);
+  /* V678: while the fee is unpaid only the fee step is open; the server refuses the others too (JUPEB_FEE_FIRST) */
+  const feeDue = !me.fee_confirmed_at;
+  const shownStep = feeDue ? 0 : step;
   const [shown, setShown] = useState<StepProblem[]>([]);
   const status = (n: number) => me.steps.steps.find((s) => s.step === STEP_ORDER[n]);
 
@@ -488,10 +492,12 @@ function Guided({ me, act }: { me: Candidate; act: Act }) {
       {me.state === "RETURNED" && me.return_note ? <Note kind="bad" title="The JUPEB Office returned your application">{me.return_note} Correct it below and submit again.</Note> : null}
       <div style={{ display: "flex", gap: "var(--s-2)" }} role="list" aria-label="Application steps">
         {STEP_ORDER.map((k, i) => {
-          const done = status(i)?.ok, cur = step === i;
+          /* the review is the last step and never "done" here (the submission leaves the guided application) */
+          const done = k !== "REVIEW" && status(i)?.ok, cur = shownStep === i, locked = feeDue && i > 0;
           return (
-            <button key={k} type="button" role="listitem" aria-current={cur ? "step" : undefined} onClick={() => { setShown([]); setStep(i); }}
-              style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+            <button key={k} type="button" role="listitem" aria-current={cur ? "step" : undefined} disabled={locked} title={locked ? "Pay the application fee first" : undefined}
+              onClick={() => { setShown([]); setStep(i); }}
+              style={{ flex: 1, textAlign: "left", background: "none", border: "none", padding: 0, cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.55 : 1 }}>
               <div style={{ height: 5, borderRadius: "var(--r-sm)", background: done ? "var(--green-ink)" : cur ? "var(--chrome)" : "var(--line-2)" }} />
               <div className="sub2 mt-2" style={{ fontWeight: cur ? 700 : 500, color: cur || done ? "var(--ink)" : "var(--chrome)" }}>{i + 1}. {STEP_TITLE[k]}{done ? " ✓" : ""}</div>
             </button>
@@ -499,11 +505,12 @@ function Guided({ me, act }: { me: Candidate; act: Act }) {
         })}
       </div>
       {shown.length ? <Note kind="bad" title="Please correct the following">{shown.map((p) => p.message).join(" · ")}</Note> : null}
-      {step === 0 ? <PersonalStep me={me} act={act} errors={errors} onSaved={(f) => advance(f, 0)} /> : null}
-      {step === 1 ? <OlevelStep me={me} act={act} errors={errors} onSaved={(f) => advance(f, 1)} onBack={back} /> : null}
-      {step === 2 ? <DocumentsStep me={me} act={act} errors={errors} onContinue={() => advance(me, 2)} onBack={back} /> : null}
-      {step === 3 ? <ProgrammeStep me={me} act={act} errors={errors} onSaved={(f) => advance(f, 3)} onBack={back} /> : null}
-      {step === 4 ? <ReviewStep me={me} act={act} onBack={back} onGo={(n) => { setShown([]); setStep(n); }} /> : null}
+      {shownStep === 0 ? <FeeStep me={me} reload={reload} onContinue={() => advance(me, 0)} /> : null}
+      {shownStep === 1 ? <PersonalStep me={me} act={act} errors={errors} onSaved={(f) => advance(f, 1)} onBack={back} /> : null}
+      {shownStep === 2 ? <OlevelStep me={me} act={act} errors={errors} onSaved={(f) => advance(f, 2)} onBack={back} /> : null}
+      {shownStep === 3 ? <DocumentsStep me={me} act={act} errors={errors} onContinue={() => advance(me, 3)} onBack={back} /> : null}
+      {shownStep === 4 ? <ProgrammeStep me={me} act={act} errors={errors} onSaved={(f) => advance(f, 4)} onBack={back} /> : null}
+      {shownStep === 5 ? <ReviewStep me={me} act={act} onBack={back} onGo={(n) => { setShown([]); setStep(n); }} /> : null}
     </>
   );
 }
@@ -518,7 +525,32 @@ function StepFoot({ onBack, children }: { onBack?: () => void; children: ReactNo
   );
 }
 
-function PersonalStep({ me, act, errors, onSaved }: { me: Candidate; act: Act; errors: Record<string, string>; onSaved: (c: Candidate | null) => void }) {
+/* V678: the first step — the application fee, paid before anything else of the application is taken */
+function FeeStep({ me, reload, onContinue }: { me: Candidate; reload: () => Promise<void>; onContinue: () => void }) {
+  const paid = !!me.fee_confirmed_at;
+  /* what only the later steps ask (the application form already took the names, sex, date of birth, NIN and programme) */
+  const started = !!(me.contact_address || me.next_of_kin_name || me.olevel.length || me.documents.some((d) => d.filename));
+  return (
+    <div className="stack">
+      <Panel title="Step 1 · Application fee" right={paid ? <Pil kind="ok">Paid</Pil> : <Pil kind="warn">Unpaid</Pil>}>
+        <PBody>
+          {paid ? (
+            <Note kind="ok" title={`Application fee paid${me.fee_confirmed_at ? ` on ${day(me.fee_confirmed_at)}` : ""}`}>Continue with your application.</Note>
+          ) : (
+            <Note kind="info" title="Pay the application fee first">
+              {`Your JUPEB application opens once the University confirms your application fee of ${naira(me.application_fee)}.`}
+              {started ? " What you entered before is kept: you continue from where you stopped once the fee is confirmed." : ""}
+            </Note>
+          )}
+          {!paid ? <div className="mt-3"><PayBox kind="APPLICATION" amount={Number(me.application_fee)} me={me} reload={reload} label="Pay the application fee" /></div> : null}
+        </PBody>
+      </Panel>
+      {paid ? <StepFoot><Btn kind="primary" size="md" onClick={onContinue}>Continue</Btn></StepFoot> : null}
+    </div>
+  );
+}
+
+function PersonalStep({ me, act, errors, onSaved, onBack }: { me: Candidate; act: Act; errors: Record<string, string>; onSaved: (c: Candidate | null) => void; onBack: () => void }) {
   const [f, setF] = useState<Record<string, string>>(() => ({
     middleName: me.middle_name ?? "", sex: me.sex ?? "", dob: me.date_of_birth ?? "", nin: me.nin ?? "", phone: me.phone ?? "",
     nationality: me.nationality ?? "Nigerian", stateOfOrigin: me.state_of_origin ?? "", lga: me.lga ?? "", contactAddress: me.contact_address ?? "",
@@ -541,7 +573,7 @@ function PersonalStep({ me, act, errors, onSaved }: { me: Candidate; act: Act; e
     </Field>
   );
   return (
-    <Panel title="Step 1 · Personal information">
+    <Panel title="Step 2 · Personal information">
       <PBody>
         <KvGrid pairs={[["Surname", me.surname], ["First name", me.first_name], ["Email", me.email], ["Application number", me.application_no]]} />
         <div className="grid grid--3 mt-3">
@@ -575,7 +607,7 @@ function PersonalStep({ me, act, errors, onSaved }: { me: Candidate; act: Act; e
         <div className="grid grid--3">{input("guardianName", "Name")}{input("guardianPhone", "Phone", { max: 11 })}{input("guardianAddress", "Address", { max: 300 })}</div>
         <div className="eyebrow mt-3">Next of kin</div>
         <div className="grid grid--3">{input("nextOfKinName", "Name", { required: true })}{input("nextOfKinPhone", "Phone", { max: 11, required: true })}{input("nextOfKinRelationship", "Relationship", { max: 60 })}</div>
-        <StepFoot><Btn kind="primary" size="md" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save & Continue"}</Btn></StepFoot>
+        <StepFoot onBack={onBack}><Btn kind="primary" size="md" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save & Continue"}</Btn></StepFoot>
       </PBody>
     </Panel>
   );
@@ -607,7 +639,7 @@ function OlevelStep({ me, act, errors, onSaved, onBack }: { me: Candidate; act: 
   const c = me.olevelCheck;
   return (
     <div className="stack">
-      <Panel title="Step 2 · O’Level results">
+      <Panel title="Step 3 · O’Level results">
         <PBody>
           <p className="sub2">At least five credits including English Language and Mathematics, in no more than two sittings. Enter each sitting separately.</p>
           <Field id="o-count" label="Number of sittings" required error={errors.olevelSittings}>
@@ -707,7 +739,7 @@ function DocumentRows({ me, act, editable, errors }: { me: Candidate; act: Act; 
 
 function DocumentsStep({ me, act, errors, onContinue, onBack }: { me: Candidate; act: Act; errors: Record<string, string>; onContinue: () => void; onBack: () => void }) {
   return (
-    <Panel title="Step 3 · Documents" right={<span className="sub2">PDF, JPEG or PNG · at most 5 MB · the passport photograph is an image</span>}>
+    <Panel title="Step 4 · Documents" right={<span className="sub2">PDF, JPEG or PNG · at most 5 MB · the passport photograph is an image</span>}>
       <PBody>
         {(me.olevel_sittings ?? 1) === 2 ? <Note kind="info" title="Two sittings">Upload each sitting&rsquo;s O&rsquo;Level result on its own line — both are required.</Note> : null}
         <DocumentRows me={me} act={act} editable errors={errors} />
@@ -751,7 +783,7 @@ function ProgrammeStep({ me, act, errors, onSaved, onBack }: { me: Candidate; ac
     try { onSaved(await act("/api/v1/jupeb/me/choice", "PUT", { stream, combination: combination || null })); } finally { setBusy(false); }
   }
   return (
-    <Panel title="Step 4 · Programme and subject combination">
+    <Panel title="Step 5 · Programme and subject combination">
       <PBody>
         <Field id="g-stream" label="Programme" required error={errors.stream}>
           <select id="g-stream" className="ctl" style={{ maxWidth: 320 }} value={stream}
@@ -786,7 +818,7 @@ function ReviewStep({ me, act, onBack, onGo }: { me: Candidate; act: Act; onBack
   }
   return (
     <div className="stack">
-      <Panel title="Step 5 · Review your application">
+      <Panel title="Step 6 · Review your application">
         <PBody>
           {incomplete.length ? <Note kind="bad" title="Not ready to submit">{incomplete.map((s) => (
             <span key={s.step}><a href="#" onClick={(e) => { e.preventDefault(); onGo(STEP_ORDER.indexOf(s.step)); }}>{STEP_TITLE[s.step]}</a>: {s.problems.map((p) => p.message).join("; ")}. </span>

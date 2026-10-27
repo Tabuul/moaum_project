@@ -14,6 +14,13 @@ export async function loadApplication(): Promise<{ me: Me; app: Application } | 
   if (who.ok && who.data.activeOffice !== "applicant") redirect("/");
   if (!mine.ok) {
     if (mine.problem.status === 401) redirect("/login");
+    /* 27 Oct 2026: a JUPEB candidate or a postgraduate applicant signs in as an applicant too, and an address here answered them
+       "application account … not found" — each is sent to their own portal (where the JUPEB application fee is paid) */
+    if (mine.problem.status === 404) {
+      const [jupeb, pg] = await Promise.all([api("/api/v1/jupeb/me"), api("/api/v1/pg/me")]);
+      if (jupeb.ok) redirect("/jupeb/portal");
+      if (pg.ok) redirect("/pg/portal");
+    }
     return { me: who.ok ? who.data : null, app: null, problem: mine.problem };
   }
   const me: Me = {

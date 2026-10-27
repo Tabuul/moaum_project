@@ -208,9 +208,16 @@ class JupebIT {
         Map<String, Object> mine = ok(it.get(me, "/api/v1/jupeb/me"));
         assertThat(mine.get("state")).isEqualTo("DRAFT");
         assertThat((List<String>) mine.get("missing")).anyMatch(m -> m.contains("application fee"));
-        // the guided application starts on the first incomplete step
-        assertThat(((Map<String, Object>) mine.get("steps")).get("current")).isEqualTo("PERSONAL");
+        // the guided application starts on the first incomplete step — V678: the application fee, before anything else
+        assertThat(((Map<String, Object>) mine.get("steps")).get("current")).isEqualTo("FEE");
         assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/submit", null))).isEqualTo("JUPEB_INCOMPLETE");
+        // V678 (27 Oct 2026): no step of the application is taken until the fee is confirmed
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/biodata", Map.of("contactAddress", "No. 1 Test Road, Makurdi")))).isEqualTo("JUPEB_FEE_FIRST");
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/olevel", Map.of("sittings", 1, "grades", List.of(grade(1, "English Language", "C5")))))).isEqualTo("JUPEB_FEE_FIRST");
+        assertThat(code(it.call(me, HttpMethod.PUT, "/api/v1/jupeb/me/choice", Map.of("stream", "SCIENCE", "combination", comb)))).isEqualTo("JUPEB_FEE_FIRST");
+        assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/documents/NIN", doc("nin.pdf", "application/pdf", PDF)))).isEqualTo("JUPEB_FEE_FIRST");
+        assertThat(jdbc.sql("SELECT contact_address IS NULL AND NOT EXISTS (SELECT 1 FROM jupeb.document d WHERE d.application_id = a.id) FROM jupeb.application a WHERE a.id = :a")
+                .param("a", app).query(Boolean.class).single()).as("nothing of the refused steps written").isTrue();
 
         // the application fee: the same live reference, confirmed by the Bursar from the teller — never by the JUPEB Office
         Map<String, Object> ref = ok(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=APPLICATION", null));
@@ -220,6 +227,8 @@ class JupebIT {
         assertThat(ok(it.call(bursar, HttpMethod.POST, "/api/v1/jupeb/fees/payments/" + ref.get("reference") + "/confirm", teller)).get("outcome")).isEqualTo("confirmed");
         assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=APPLICATION", null))).isEqualTo("JUPEB_FEE_PAID");
         assertThat(code(it.call(me, HttpMethod.POST, "/api/v1/jupeb/me/fee-reference?kind=SCHOOL_FIRST", null))).isEqualTo("JUPEB_FEES_NOT_YET");
+        // paid: the application opens, on its next incomplete step
+        assertThat(((Map<String, Object>) ok(it.get(me, "/api/v1/jupeb/me")).get("steps")).get("current")).isEqualTo("PERSONAL");
 
         // ── the biodata continued on the dashboard ──
         Map<String, Object> bio = new LinkedHashMap<>();
