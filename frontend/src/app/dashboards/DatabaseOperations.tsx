@@ -5,6 +5,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RefreshFigures } from "./RefreshFigures";
 import type { ReadinessFigures } from "@/lib/exam-readiness";
+import { PgLegacyPanel } from "@/components/pg/PgLegacyPanel";
 
 interface Home {
   students: { programme_type: string; label: string; current: number; graduated: number; spillover: number; total: number }[];
@@ -76,9 +77,12 @@ export async function DatabaseOperationsDashboard() {
             <LinkBtn kind="secondary" href="/reports/exam-readiness">GENERATE EXAMINATION REPORT</LinkBtn>
             <LinkBtn kind="secondary" href="/reports/exam-readiness?view=courses">GENERATE COURSE REPORT</LinkBtn>
             <LinkBtn kind="secondary" href="/dbops/data-quality">VIEW DATA QUALITY</LinkBtn>
+            <LinkBtn kind="secondary" href="/admissions/postgraduate/migration">MIGRATE OLD-PORTAL PG APPLICANTS</LinkBtn>
           </div>
         </PBody>
       </Panel>
+      {/* V679: the old-portal PG migration's figures, each opening its records on the desk (27 Oct 2026) */}
+      <PgLegacyPanel />
       <Panel title="Official reports issued" right={<Link className="lnk" href="/dbops/query?tab=reports">All official reports</Link>}>
         {h.reports.length ? (
           <DTable pageSize={0} noPrint cols={["Reference", "Report", "Scope", "Rows|num", "Issued"]}

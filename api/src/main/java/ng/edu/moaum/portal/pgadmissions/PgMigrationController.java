@@ -19,11 +19,13 @@ import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,11 +43,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/pg/migration")
 class PgMigrationController {
 
-    /* who reads the migration: the School, its Secretary, the Academic Office, the Registry and the Bursary (for the fees) */
+    /* who reads the migration: the School, its Secretary, the Academic Office, the Registry and the Bursary (for the fees);
+       V679: and the Director of ICT and the Database Operators */
     private static final String READERS =
-            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_bursar','OFFICE_super')";
-    /* who migrates: the School of Postgraduate Studies, its Secretary and the Academic Office — never ICT Support */
-    private static final String MIGRATORS = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_bursar','OFFICE_ict','OFFICE_dbops','OFFICE_super')";
+    /* who migrates: the School of Postgraduate Studies, its Secretary and the Academic Office; V679: the Director of ICT and a Database
+       Operator over the whole University (27 Oct 2026, "all this should be on ict director and database operators dashboard") —
+       never ICT Support */
+    private static final String MIGRATORS = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_ict','OFFICE_dbops','OFFICE_super')";
     /* who verifies a fee paid on the old portal: the Bursary or the PG Secretary (the database refuses the officer who uploaded it) */
     private static final String FEE_DECIDERS = "hasAnyAuthority('OFFICE_pgsecretary','OFFICE_bursar','OFFICE_super')";
 
@@ -56,11 +61,20 @@ class PgMigrationController {
     private final JdbcClient jdbc;
     private final FileObjects files;
     private final tools.jackson.databind.ObjectMapper mapper;
+    private final OfficeScope scope;
 
-    PgMigrationController(JdbcClient jdbc, FileObjects files, tools.jackson.databind.ObjectMapper mapper) {
+    PgMigrationController(JdbcClient jdbc, FileObjects files, tools.jackson.databind.ObjectMapper mapper, OfficeScope scope) {
         this.jdbc = jdbc;
         this.files = files;
         this.mapper = mapper;
+        this.scope = scope;
+    }
+
+    /** V679: the migration reaches every PG programme of the University, so a Database Operator works it only on a grant over the
+     *  whole University (SCOPE_UNIVERSITY for one held to a faculty, department or programme); asked before every request here */
+    @ModelAttribute
+    void universityOperatorOnly() {
+        scope.requireUniversityOperator("The old-portal PG migration");
     }
 
     private Object parse(String text) {

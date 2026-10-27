@@ -973,7 +973,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
-          { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" }
+          { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
+          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" }
         ]
       },
       {
@@ -1660,7 +1661,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/departmentupload", "icon": "cap", "label": "Upload or Create Departments" },
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
-          { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" }
+          { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
+          { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" }
         ]
       },
       {

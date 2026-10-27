@@ -81,10 +81,25 @@ class PgMigrationIT {
                 """).param("c", code).param("n", name).update());
         String school = it.officer("pgschool", "institution", "University");
         String bursar = it.officer("bursar", "institution", "University");
+        String support = it.officer("ictagent", "institution", "University");
+        // V679 (27 Oct 2026): the Director of ICT and a Database Operator over the whole University migrate too; one held to a
+        // department is refused (SCOPE_UNIVERSITY), and ICT Support is not a migrator
         String ict = it.officer("ict", "institution", "University");
+        String operator = it.officer("dbops", "institution", "University");
+        String dept = it.db(() -> jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :c").param("c", code).query(String.class).single());
+        String heldOperator = it.officer("dbops", "department", dept);
 
         // ICT Support is not a migrator; the School reads the template built from the real fields and this portal's lists
-        assertThat(it.get(ict, M + "/template?kind=ADMITTED").getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(support, M + "/template?kind=ADMITTED").getStatusCode().value()).isEqualTo(403);
+        assertThat(ok(it.get(ict, M + "/template?kind=ADMITTED")).get("columns")).isNotNull();
+        assertThat(ok(it.get(operator, M + "/template?kind=ADMITTED")).get("columns")).isNotNull();
+        assertThat(ok(it.get(operator, M + "/figures"))).containsKey("migrated");
+        ResponseEntity<Map> held = it.get(heldOperator, M + "/template?kind=ADMITTED");
+        assertThat(held.getStatusCode().value()).isEqualTo(422);
+        assertThat(held.getBody().get("code")).isEqualTo("SCOPE_UNIVERSITY");
+        // the database's own door (admissions.pg_mig_writer): the Director of ICT opens a batch and sets it aside
+        Map<String, Object> byIct = ok(it.call(ict, HttpMethod.POST, M + "/batches", Map.of("kind", "APPLICANTS", "fileName", "ict.xlsx", "rows", 1, "tell", false)));
+        ok(it.call(ict, HttpMethod.POST, M + "/batches/" + byIct.get("id") + "/abandon", Map.of("reason", "IT: the Director of ICT may open a batch")));
         Map<String, Object> t = ok(it.get(school, M + "/template?kind=ADMITTED"));
         assertThat((List<Map<String, Object>>) t.get("columns")).extracting(c -> c.get("key")).contains("legacyApplicationNo", "admissionStatus", "acceptanceVerification", "screeningDecision");
         assertThat((List<Map<String, Object>>) t.get("programmes")).extracting(p -> p.get("code")).contains(code);

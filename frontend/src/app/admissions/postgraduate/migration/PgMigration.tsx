@@ -30,7 +30,8 @@ export interface Figures {
 }
 export interface ListPage { view: string; total: number; limit: number; offset: number; rows: Record<string, unknown>[] }
 
-const MIGRATORS = ["pgschool", "pgsecretary", "academic", "super"];
+/* V679: and the Director of ICT and the Database Operators (an operator over the whole University; the server holds the scope) */
+const MIGRATORS = ["pgschool", "pgsecretary", "academic", "ict", "dbops", "super"];
 const FEE_DECIDERS = ["pgsecretary", "bursar", "super"];
 const HOME = "/admissions/postgraduate/migration";
 const SCHOOL = "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI";
@@ -52,7 +53,7 @@ export function PgMigration({ office, figures, problem, batches, batch, view, li
     [label, String(value ?? 0), warn && n(value) ? "var(--chrome)" : null, caption, `${HOME}?view=${v}`];
   return (
     <>
-      <RoleLine allowed={["pgschool", "pgsecretary", "academic", "registrar", "dregistrar", "bursar"]} actingOffice={office}
+      <RoleLine allowed={["pgschool", "pgsecretary", "academic", "ict", "dbops", "registrar", "dregistrar", "bursar"]} actingOffice={office}
         action="Migrating old-portal PG applicants" />
       <Note kind="info" title="Old applicants are migrated, never made to apply again">
         Each keeps the old portal&rsquo;s application number beside this portal&rsquo;s own, and both find them. An applicant admitted on the old portal

@@ -14,9 +14,15 @@ register goes through `admissions.pg_admit`. A student already on the register, 
 
 **Legacy Migration** at `/admissions/postgraduate/migration` (route `t/pgmigration`):
 
-- **Migrate:** the Dean and the Secretary of the School, and the Academic Office (`pgschool`, `pgsecretary`, `academic`; `super`).
+- **Migrate:** the Dean and the Secretary of the School, the Academic Office, and (V679, 27 October 2026) the Director of ICT and
+  the Database Operators (`pgschool`, `pgsecretary`, `academic`, `ict`, `dbops`; `super`). A Database Operator works the desk only
+  on a grant over the whole University; one held to a faculty, department or programme is refused (`SCOPE_UNIVERSITY`).
 - **Read:** those offices, plus `registrar`, `dregistrar` and `bursar`.
-- **ICT Support** has no access.
+- **Where:** the School's, the Secretary's and the Academic Office's Admissions menus; the Director of ICT's and the Database
+  Operators' Academic menus (PG Legacy Migration), with the Legacy PG migration figures on their dashboards and a button among
+  the Database Operators' quick actions; the Bursar's Finance menu (Old PG Application Fees).
+- **Fees** paid on the old portal are verified by the Bursary or the PG Secretary only, never by the officer who uploaded them.
+- **ICT Support** (`ictagent`) has no access.
 
 | Step | What happens |
 |---|---|

@@ -8,6 +8,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { officeLabel } from "@/lib/offices";
 import { ResetData } from "./ResetData";
+import { PgLegacyPanel } from "@/components/pg/PgLegacyPanel";
 
 interface Status {
   service: string;
@@ -104,6 +105,8 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
           </Note>
         </>
       ) : null}
+      {/* V679: the old-portal PG migration's figures, each opening its records on the desk (27 Oct 2026) */}
+      <PgLegacyPanel />
       {canManagePeople ? (
         <Panel title="People and access" right={persons.ok ? `${people.length} people · ${withAccount} with an account` : "not answering"}>
           <PBody>

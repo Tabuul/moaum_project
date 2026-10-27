@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 506
+\set EXPECTED 507
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27784,6 +27784,39 @@ BEGIN
         AND cur_paid = 'PERSONAL' AND kept = '1 Started Road',
         format('err=%s first=%s cur=%s feemsgs=%s review=%s | unpaid=%s returned=%s paid=%s submitted=%s | after=%s kept=%s',
                v_err, first_step, cur_unpaid, fee_msgs, review_ok, r_unpaid, r_returned, r_paid, r_submitted, cur_paid, kept));
+END $$;
+
+-- ── V679: the old-portal PG migration desk opened to the Director of ICT and the Database Operators ──
+-- admissions.pg_mig_writer, which every migration write asks: the Director of ICT and a Database Operator pass beside the School,
+-- its Secretary and the Academic Office; ICT Support and the Registry are still refused; a person is still needed. (A Database
+-- Operator held to a faculty, department or programme is refused by the API, SCOPE_UNIVERSITY: PgMigrationIT.)
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_err text; got text := ''; o text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V679 check: PG migration offices', true);
+        FOREACH o IN ARRAY ARRAY['ict', 'dbops', 'pgschool', 'ictagent', 'registrar'] LOOP
+            PERFORM set_config('moaum.actor_office', o, true);
+            PERFORM set_config('moaum.actor_id', who::text, true);
+            BEGIN
+                got := got || o || '=' || CASE WHEN admissions.pg_mig_writer() = who THEN 'ok' ELSE 'other' END || ' ';
+            EXCEPTION WHEN insufficient_privilege THEN got := got || o || '=' || split_part(SQLERRM, ':', 1) || ' ';
+            END;
+        END LOOP;
+        PERFORM set_config('moaum.actor_id', '', true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        BEGIN
+            PERFORM admissions.pg_mig_writer();
+            got := got || 'noperson=ok';
+        EXCEPTION WHEN check_violation THEN got := got || 'noperson=' || split_part(SQLERRM, ':', 1);
+        END;
+        RAISE EXCEPTION 'the V679 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V679 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V679: the Director of ICT and the Database Operators migrate old-portal PG applicants beside the School, its Secretary and the Academic Office; ICT Support and the Registry are refused, and a migration is made by a person',
+        v_err IS NULL AND got = 'ict=ok dbops=ok pgschool=ok ictagent=PGMIG_OFFICE registrar=PGMIG_OFFICE noperson=PGMIG_ACTOR',
+        format('err=%s got=%s', v_err, got));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
