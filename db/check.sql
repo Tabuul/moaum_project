@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 503
+\set EXPECTED 504
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27512,6 +27512,74 @@ BEGIN
            AND (panel->'semesters'->0->>'registeredCourses')::int = 3 AND drop_ok, false),
       format('only %s/%s/%s | picker ZZK 502 %s, S2 300 Level %s | chosen %s added %s entered %s | past %s S2 %s | panel %s | drop %s',
              only1, only_past, only2, cand502, cand_s2, t_choose, t_add, t_direct, t_past, t_s2, panel->'semesters'->0->>'registeredCourses', drop_ok));
+END $$;
+
+-- ── V676. The records left at 100 Level corrected to the level the cohort engine computes: a student entered five sessions ago, in
+--    SP2 at 100 Level, is put at the programme's final level (400) on the spillover basis, the current session's registrations below
+--    it raised (one at 100 by the carry, one at 200 by V673) and its courses made carry-overs (V674); one entered two sessions ago is put
+--    at 300 by the count of sessions; a fresh student stays at 100, and a record at 200 is not this correction's; each change is on the
+--    cohort decision history under the batch; a second run corrects nothing ──
+DO $$
+DECLARE
+    y int := 2296; v_prog text; v_dept text; v_fac text; v_err text; cur text; run1 record; run2 record;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    ra1 uuid := gen_random_uuid(); ra2 uuid := gen_random_uuid(); o1 uuid := gen_random_uuid(); o2 uuid := gen_random_uuid();
+    la int; lb int; lc int; ld int; regs text; types text; rules text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V676', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    cur := format('%s/%s', y, y + 1);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y) x
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2296/01' WHERE name = cur;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V676', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/76/676001', 'MOAUM/ZZE/76/6761', 'CHECKV676', 'Spillover', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 100, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/76/676002', 'MOAUM/ZZE/76/6762', 'CHECKV676', 'Counted', v_prog, 'UTME', format('%s/%s', y - 2, y - 1), 100, 100, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/76/676003', 'MOAUM/ZZE/76/6763', 'CHECKV676', 'Fresh', v_prog, 'UTME', cur, 100, 100, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/76/676004', 'MOAUM/ZZE/76/6764', 'CHECKV676', 'At 200', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 200, 'ACTIVE', now());
+    -- A's registrations this session, made while the record read 100: one at 100, one at 200 (as an upload made it), a current course on each
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZE 761', 'Check V676 One', 3, 1, 400, v_dept, 'Core', 'LIVE'), ('ZZE 762', 'Check V676 Two', 3, 2, 400, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o1, 'ZZE 761', cur, 1), (o2, 'ZZE 762', cur, 2);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+        (ra1, a, cur, 1, 100, 'DRAFT'), (ra2, a, cur, 2, 200, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES
+        (ra1, o1, 3, 'CURRENT', 'REGISTERED'), (ra2, o2, 3, 'CURRENT', 'REGISTERED');
+
+    SELECT * INTO run1 FROM people.correct_levels_from(100, 'CHECK V676: migrated at 100 Level', 'CHK-676');
+    SELECT * INTO run2 FROM people.correct_levels_from(100, 'CHECK V676: again', 'CHK-676-AGAIN');
+    SELECT current_level INTO la FROM people.student WHERE id = a;
+    SELECT current_level INTO lb FROM people.student WHERE id = b;
+    SELECT current_level INTO lc FROM people.student WHERE id = c;
+    SELECT current_level INTO ld FROM people.student WHERE id = d;
+    SELECT string_agg(r.semester || ':' || r.level, ',' ORDER BY r.semester) INTO regs FROM registration.course_registration r WHERE r.student_id = a;
+    SELECT string_agg(e.entry_type || '/' || coalesce(e.added_as, '-'), ',' ORDER BY r.semester) INTO types
+      FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id WHERE r.student_id = a;
+    SELECT string_agg(x.who || ':' || x.rule, ',' ORDER BY x.who) INTO rules
+      FROM (SELECT CASE dd.student_id WHEN a THEN 'A' WHEN b THEN 'B' WHEN c THEN 'C' ELSE 'D' END AS who, dd.rule
+              FROM people.cohort_decision dd WHERE dd.batch_ref = 'CHK-676' AND dd.student_id IN (a, b, c, d)) x;
+    RAISE EXCEPTION 'the V676 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V676 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V676: the records left at 100 Level are put at the level the cohort engine computes — spillover at the final level, the count of sessions otherwise — the current session''s registrations raised and a spillover student''s courses made carry-overs; a fresh student and a record at another level left; each on the decision history; a second run corrects nothing',
+      coalesce(la = 400 AND lb = 300 AND lc = 100 AND ld = 200 AND regs = '1:400,2:400'
+           AND types = 'CARRYOVER/CARRY_OVER_DECLARED,CARRYOVER/CARRY_OVER_DECLARED' AND rules = 'A:LEVEL_SPILLOVER,B:LEVEL_ARITHMETIC'
+           AND run1.students >= 2 AND run1.spillover >= 1 AND run1.arithmetic >= 1 AND run1.registrations_raised >= 1 AND run1.entries_carried >= 2
+           AND run2.students = 0, false),
+      format('levels A %s B %s C %s D %s | A registrations %s, courses %s | decisions %s | run %s (sp %s, reg %s, ar %s; raised %s, carried %s) again %s',
+             la, lb, lc, ld, regs, types, rules, run1.students, run1.spillover, run1.registration, run1.arithmetic, run1.registrations_raised,
+             run1.entries_carried, run2.students));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
