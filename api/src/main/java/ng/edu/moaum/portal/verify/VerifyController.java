@@ -85,11 +85,7 @@ class VerifyController {
                        finance.payment_term(pr.id) AS term, pr.confirmed_at < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover,
                        (SELECT a.state FROM finance.payment_archive a WHERE a.payment_id = pr.id AND a.state <> 'RECONCILED' ORDER BY a.archived_at DESC LIMIT 1) AS archived_state,
                        trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, pg.name AS programme,
-                       coalesce(
-                         (SELECT e.level FROM people.enrolment e WHERE e.student_id = pr.student_id AND e.session = pr.session LIMIT 1),
-                         CASE WHEN pr.session ~ '^[0-9]{4}/[0-9]{4}$' AND NOT people.is_postgraduate(s.entry_mode, pg.category)   -- V455: a postgraduate's level is their own
-                              THEN least(600, greatest(100, s.entry_level + (left(pr.session, 4)::int - left(s.entry_session, 4)::int) * 100))
-                              ELSE s.current_level END) AS level,
+                       people.receipt_level(pr.student_id, pr.session) AS level,   -- V672: the level the receipt itself prints
                        coalesce(
                          (SELECT 'data:' || coalesce(nullif(btrim(d.content_type), ''), 'image/jpeg') || ';base64,' || encode(b.content, 'base64')
                             FROM admissions.application_document d

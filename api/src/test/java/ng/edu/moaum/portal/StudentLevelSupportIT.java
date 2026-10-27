@@ -288,4 +288,49 @@ class StudentLevelSupportIT {
         assertThat(third.getStatusCode().value()).isEqualTo(422);
         assertThat(third.getBody().get("code")).isEqualTo("LEVEL_SPILLOVER_YEAR");
     }
+
+    /** V672: a receipt of the session the student is in now prints the level the record holds, whatever level the session's
+     *  registration carries (the University's report of a 300 Level student whose 2025/2026 receipt read 200 from a registration
+     *  the old-portal upload made at a carry-over's level) — on the receipt and on its verification page alike; a receipt of an
+     *  earlier session prints the level the student was at then */
+    @Test
+    void aReceiptOfTheCurrentSessionPrintsTheLevelOnRecord() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        String tag = UUID.randomUUID().toString().substring(0, 4).toUpperCase().replaceAll("[^A-Z0-9]", "Q");
+        int n = it.freeDraw(1000, 9999, k -> List.of("MOAUM/ITR/26/" + k, "MOAUM/ADM/26/53" + k));
+        String programme = jdbc.sql("""
+                SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1
+                """).query(String.class).single();
+        UUID student = it.student("ZZLVRCPT" + tag, programme, "MOAUM/ADM/26/53" + n, "MOAUM/ITR/26/" + n, 300);
+        String studentTok = TestTokens.token(student, List.of("student"));
+        String session = String.valueOf(it.get(studentTok, "/api/v1/me").getBody().get("session"));
+        it.session(session, Integer.parseInt(session.substring(0, 4)));
+        String earlier = (Integer.parseInt(session.substring(0, 4)) - 1) + "/" + session.substring(0, 4);
+        it.session(earlier, Integer.parseInt(earlier.substring(0, 4)));
+        String now = "MOAUM-FEE-" + n + "-0672", then = "MOAUM-FEE-" + n + "-0671";
+        it.db(() -> {
+            // this session's registration at 200, as an old-portal upload made it from a carry-over; 200 Level the session before
+            for (String ses : List.of(session, earlier)) {
+                jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), :s, :ses, 2, 200, 'SUBMITTED')")
+                        .param("s", student).param("ses", ses).update();
+            }
+            for (String[] p : List.of(new String[] {now, session}, new String[] {then, earlier})) {
+                jdbc.sql("""
+                        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                        VALUES (:s, :ses, :r, 'School fees', 28605, now() + interval '1 day', now(), gen_random_uuid(), 'INTERSWITCH', 'RCT-' || :r, 'V672 test')
+                        """).param("s", student).param("ses", p[1]).param("r", p[0]).update();
+            }
+            return null;
+        });
+
+        Map<String, Object> receipt = it.get(studentTok, "/api/v1/me/fees/receipts/" + now).getBody();
+        assertThat(receipt).containsEntry("session", session).containsEntry("level", 300);
+        Map<String, Object> verified = it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + now + "?c=" + receipt.get("checkCode"), null).getBody();
+        assertThat(verified).containsEntry("genuine", true).containsEntry("level", 300);
+
+        Map<String, Object> earlierReceipt = it.get(studentTok, "/api/v1/me/fees/receipts/" + then).getBody();
+        assertThat(earlierReceipt).containsEntry("session", earlier).containsEntry("level", 200);
+        assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + then + "?c=" + earlierReceipt.get("checkCode"), null).getBody())
+                .containsEntry("genuine", true).containsEntry("level", 200);
+    }
 }

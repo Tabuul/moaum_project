@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 500
+\set EXPECTED 501
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27204,6 +27204,93 @@ BEGIN
          WHERE c.relkind IN ('v', 'm') AND pg_get_viewdef(c.oid) ~ 'finance\.payment_reference\M' AND pg_get_viewdef(c.oid) !~ 'archived_at') x;
     PERFORM pg_temp.assert('V670: every reader of confirmed student payments leaves an archived payment out (a function or view that counts a confirmed payment also reads archived_at)',
                            n = 0, coalesce(lst, 'none'));
+END $$;
+
+-- ── V672. A receipt of the session the student is in now never prints a level below the record's: a 300 Level student whose
+--    session's registration an old-portal upload made at a carry-over's 200 Level prints 300, while a registration above a record
+--    left at 100 stands; an earlier session prints the level then, and once a later session is enrolled today's level no longer
+--    stands for the session; the upload never registers a student below the record's level in the current session (the file and
+--    the course saying 200 for a 300 Level student), nor at it when the course says more (a record left at 100), in an earlier
+--    session takes the session's enrolment before the course's own level, and gives the course's units as before ──
+DO $$
+DECLARE
+    v_prog text; v_dept text; v_err text; up1 jsonb; up2 jsonb; up3 jsonb; cur text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    e uuid := gen_random_uuid(); f uuid := gen_random_uuid();
+    r_a_cur int; r_a_past int; r_a_chain int; r_b_cur int; r_c_cur int; r_e_cur int;
+    c_reg int; c_enr int; c_units int; d_reg int; f_reg int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM set_config('moaum.reason', 'CHECK V672', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+      (gen_random_uuid(), '9672/9673', '9672-10-01', '9673-09-30', 'CLOSED'),
+      (gen_random_uuid(), '9673/9674', '9673-10-01', '9674-09-30', 'PLANNED'),
+      (gen_random_uuid(), '9674/9675', '9674-10-01', '9675-09-30', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9673/01' WHERE name = '9673/9674';
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p
+     WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND p.final_level >= 400 ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+      (a, 'MOAUM/ADM/72/672001', 'MOAUM/ZZV/72/6721', 'CHECKV672', 'Receipt', v_prog, 'UTME', '9672/9673', 200, 300, 'ACTIVE', now()),
+      (b, 'MOAUM/ADM/72/672002', 'MOAUM/ZZV/72/6722', 'CHECKV672', 'Rolled', v_prog, 'UTME', '9672/9673', 200, 400, 'ACTIVE', now()),
+      (c, 'MOAUM/ADM/72/672003', 'MOAUM/ZZV/72/6723', 'CHECKV672', 'Loaded', v_prog, 'UTME', '9672/9673', 200, 300, 'ACTIVE', now()),
+      (d, 'MOAUM/ADM/72/672004', 'MOAUM/ZZV/72/6724', 'CHECKV672', 'Earlier', v_prog, 'UTME', '9672/9673', 200, 300, 'ACTIVE', now()),
+      (e, 'MOAUM/ADM/72/672005', 'MOAUM/ZZV/72/6725', 'CHECKV672', 'Stale', v_prog, 'UTME', '9672/9673', 100, 100, 'ACTIVE', now()),
+      (f, 'MOAUM/ADM/72/672006', 'MOAUM/ZZV/72/6726', 'CHECKV672', 'Stale load', v_prog, 'UTME', '9672/9673', 100, 100, 'ACTIVE', now());
+    cur := people.student_current_session(a);
+    -- A: 300 Level, the current session's registration at 200 as an upload made it, and 200 Level the session before;
+    -- E: a record left at 100, registered at 400 this session
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+      (gen_random_uuid(), a, '9673/9674', 2, 200, 'SUBMITTED'),
+      (gen_random_uuid(), a, '9672/9673', 1, 200, 'SUBMITTED'),
+      (gen_random_uuid(), b, '9673/9674', 1, 300, 'SUBMITTED'),
+      (gen_random_uuid(), e, '9673/9674', 1, 400, 'SUBMITTED');
+    -- B: rolled over into the next session at 400 — the record's level is that session's, not this one's
+    INSERT INTO people.enrolment (id, student_id, session, level) VALUES
+      (gen_random_uuid(), b, '9674/9675', 400),
+      (gen_random_uuid(), d, '9672/9673', 200);
+    r_a_cur := people.receipt_level(a, '9673/9674');
+    r_a_past := people.receipt_level(a, '9672/9673');
+    r_b_cur := people.receipt_level(b, '9673/9674');
+    r_e_cur := people.receipt_level(e, '9673/9674');
+    -- what the receipt read before (V641): the session's registration first
+    SELECT r.level INTO r_a_chain FROM registration.course_registration r WHERE r.student_id = a AND r.session = '9673/9674' ORDER BY r.semester LIMIT 1;
+
+    -- the upload: C (300 Level) in the current session, the first row a 200 Level course with the file saying 200; D in the session
+    -- before, enrolled at 200 then, a 100 Level course with no level in the file
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZV 201', 'Check V672 carry-over', 3, 1, 200, v_dept, 'Core', 'LIVE'),
+        ('ZZV 202', 'Check V672 two', 2, 1, 200, v_dept, 'Core', 'LIVE'),
+        ('ZZV 101', 'Check V672 one', 2, 1, 100, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, units) VALUES ('ZZV 201', v_prog, 200, 4);
+    up1 := assessment.legacy_semester_load('9673/9674', 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZV/72/6723', 'course', 'ZZV 202', 'level', '200'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZZV/72/6723', 'course', 'ZZV 201')), false, false);
+    SELECT r.level INTO c_reg FROM registration.course_registration r WHERE r.student_id = c AND r.session = '9673/9674' AND r.semester = 1;
+    SELECT e.level INTO c_enr FROM people.enrolment e WHERE e.student_id = c AND e.session = '9673/9674';
+    SELECT e.units INTO c_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+      JOIN catalogue.offering o ON o.id = e.offering_id WHERE r.student_id = c AND o.course_code = 'ZZV 201';
+    r_c_cur := people.receipt_level(c, '9673/9674');
+    up2 := assessment.legacy_semester_load('9672/9673', 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZV/72/6724', 'course', 'ZZV 101')), false, false);
+    SELECT r.level INTO d_reg FROM registration.course_registration r WHERE r.student_id = d AND r.session = '9672/9673' AND r.semester = 1;
+    -- F: a record left at 100, a 200 Level course this session with no level in the file
+    up3 := assessment.legacy_semester_load('9673/9674', 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZZV/72/6726', 'course', 'ZZV 201')), false, false);
+    SELECT r.level INTO f_reg FROM registration.course_registration r WHERE r.student_id = f AND r.session = '9673/9674' AND r.semester = 1;
+    RAISE EXCEPTION 'the V672 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V672 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V672: a receipt of the session the student is in now never prints a level below the record''s, a registration above it standing; an earlier session prints the level then, and today''s level stops standing once a later session is enrolled; an old-portal upload never registers a student below the record''s level in the current session, takes the course''s level above it, the enrolment before the course''s level in an earlier session, the units as before',
+      coalesce(cur = '9673/9674' AND r_a_chain = 200 AND r_a_cur = 300 AND r_a_past = 200 AND r_b_cur = 300 AND r_e_cur = 400
+           AND (up1->>'registrations')::int = 1 AND c_reg = 300 AND c_enr = 300 AND c_units = 4 AND r_c_cur = 300
+           AND (up2->>'registrations')::int = 1 AND d_reg = 200 AND (up3->>'registrations')::int = 1 AND f_reg = 200, false),
+      format('current %s | A: registration %s, receipt %s, before %s | B %s | E %s | C: registrations %s, level %s, enrolment %s, units %s, receipt %s | D: registrations %s, level %s | F: registrations %s, level %s',
+             cur, r_a_chain, r_a_cur, r_a_past, r_b_cur, r_e_cur, up1->>'registrations', c_reg, c_enr, c_units, r_c_cur, up2->>'registrations', d_reg, up3->>'registrations', f_reg));
 END $$;
 
 -- ── V671: the student told when only the Bursary remains; the Bursar told of the students newly ready ──

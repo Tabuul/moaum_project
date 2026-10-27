@@ -553,23 +553,12 @@ class StudentPortalRepository {
               LEFT JOIN ref.office ro ON ro.code = v.responsible_office
             """;
 
-    /** the level the student was at during a session — for a receipt, the level when they paid, not
-     *  today's. V641: first the session's course registration, as the examination card and the GST & EPS permit print it (an
-     *  approved one first, as people.level_in reads it), so a corrected level carried into the session reads the same on
-     *  every document; then the enrolment for that session; otherwise derived from the entry level and how many sessions
-     *  have passed (a non-dated 'LEGACY' session falls back to the current level). A postgraduate's level is their own
-     *  (V455): never advanced a level a session and capped at 600. */
-    int levelForSession(UUID student, String session) {
-        return jdbc.sql("""
-                SELECT coalesce(
-                    (SELECT r.level FROM registration.course_registration r WHERE r.student_id = :s AND r.session = :ses
-                      ORDER BY (r.status IN ('APPROVED', 'LOCKED')) DESC, r.semester LIMIT 1),
-                    (SELECT e.level FROM people.enrolment e WHERE e.student_id = :s AND e.session = :ses LIMIT 1),
-                    (SELECT CASE WHEN :ses ~ '^[0-9]{4}/[0-9]{4}$' AND NOT people.is_postgraduate(st.entry_mode, p.category)
-                                 THEN least(600, greatest(100, st.entry_level + (left(:ses, 4)::int - left(st.entry_session, 4)::int) * 100))
-                                 ELSE st.current_level END
-                       FROM people.student st JOIN ref.programme p ON p.code = st.programme_code WHERE st.id = :s))
-                """).param("s", student).param("ses", session).query(Integer.class).single();
+    /** the level a receipt of the session prints (V672, people.receipt_level): the level the student was at in the session —
+     *  the session's course registration (V641), the enrolment, the arithmetic from the entry session (a postgraduate's level
+     *  their own, V455) — never below the level the record holds in the session the student is in now (a 300 Level student's
+     *  2025/2026 receipt read 200 from a registration the old-portal upload made at a carry-over's level) */
+    Integer levelForSession(UUID student, String session) {
+        return jdbc.sql("SELECT people.receipt_level(:s, :ses)").param("s", student).param("ses", session).query(Integer.class).single();
     }
 
     /** V635: finance.renew_reference — the reference payable again (REOPENED), a new one for what is owed now (NEW), or the one still open (OPEN) */
