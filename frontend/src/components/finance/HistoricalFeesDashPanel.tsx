@@ -34,6 +34,7 @@ export function HistoricalFeesDashPanel({ officer = false }: { officer?: boolean
           ["Pending Bursar approval", v(pending), null, "Submitted, awaiting the Bursar", `${LINK}?tab=approvals`],
           ["Students with outstanding fees", v(f?.with_outstanding), f?.with_outstanding ? "var(--red-ink)" : null, f ? naira(f.outstanding) : "…", `${LINK}?filter=OUTSTANDING`],
         ] : [
+          ["Ready to graduate", v(f?.readyToGraduate?.ready), f?.readyToGraduate?.ready ? "var(--green-ink)" : null, `${v(f?.readyToGraduate?.waiting)} waiting on the Bursary's confirmation`, "/clearance/ready"],
           ["Total graduated students", v(f?.graduates), null, "Graduates and approved graduands", `${LINK}?tab=students`],
           ["Students with outstanding fees", v(f?.with_outstanding), f?.with_outstanding ? "var(--red-ink)" : null, f ? naira(f.outstanding) : "…", `${LINK}?filter=OUTSTANDING`],
           ["Students fully cleared", v(f?.cleared), "var(--green-ink)", "Nothing owed, nothing to assess", `${LINK}?financial=FINANCIALLY_CLEARED`],

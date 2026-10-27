@@ -135,6 +135,8 @@ export interface Figures {
   /** V665 */
   waivers?: { pending: number; pending_amount: Money; approved: number; approved_amount: Money };
   awaitingGraduation?: number;
+  /** V668: the final clearances waiting only on the Bursary, and how many are ready */
+  readyToGraduate?: { ready: number; waiting: number };
 }
 
 export const PERIOD_WORDS: Record<PeriodStatus, [string, Tone]> = {

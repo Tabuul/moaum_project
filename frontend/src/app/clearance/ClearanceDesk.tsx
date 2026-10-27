@@ -133,6 +133,7 @@ export function ClearanceDesk({ workflows, workflow, session, desk, detail, scop
         <Tabs label="Clearance" value={workflow} onChange={(v) => go({ wf: v, unit: "", status: "" })}
           items={workflows.workflows.filter((w) => w.active).map((w) => ({ id: w.code, label: w.label }))} />
         <span className="grow" />
+        {office === "bursar" || ANY_UNIT.has(office) ? <LinkBtn href="/clearance/ready">Ready to graduate</LinkBtn> : null}
         {MANAGERS.has(office) ? <LinkBtn href="/clearance/manage">Clearance management</LinkBtn> : null}
         <LinkBtn href="/clearance/units">Gate clearances by unit</LinkBtn>
       </div>

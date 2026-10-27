@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 495
+\set EXPECTED 496
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26787,6 +26787,103 @@ BEGIN
   PERFORM pg_temp.assert('V667: results are released by the semester paid for — the session''s rule refusing, the first semester paid is released and the second withheld with ₦14,605.00 outstanding until paid; an earlier session paid for is released; a balance carried from an earlier session still blocks everything',
       coalesce(NOT rule_before AND r1 AND NOT r2 AND out2 = 14605 AND r2_paid AND r_prev AND NOT a1 AND NOT a_rule, false),
       msg);
+END $$;
+
+-- ── V668: the Bursar's ready-to-graduate queue, the student's final clearance, the College Board's graduates through it ──
+-- Three made-up graduands of a made-up session, their awards approved: one paid in full and every other office cleared (ready),
+-- one owing with every other office cleared (in the queue, not ready), one with offices still to clear (not in the queue). A
+-- made-up MBBS student at 600 Level whose Final MBBS the College Board confirms: the award approved on the Board's minute with no
+-- CGPA (basis COLLEGE_BOARD), the status unchanged, the final clearance started, the student told. The student's own reading names
+-- what is owed by session and semester and the offices still to clear. The Bursar's clearance graduates the ready graduand (who
+-- leaves the queue) and, the offices cleared and the MBBS fees paid, the MBBS graduate — read on the Board's decision, not the
+-- course record. The block undoes its writes.
+DO $$
+DECLARE s0 text := '9877/9878'; who uuid := gen_random_uuid(); bur uuid := gen_random_uuid();
+        ready uuid := gen_random_uuid(); owe uuid := gen_random_uuid(); wait uuid := gen_random_uuid(); mb uuid := gen_random_uuid();
+        u text; st uuid; n_conf int; mb_status text; mb_basis text; mb_cgpa numeric; mb_proc uuid; mb_told int; q_rows text; q_ready_n int;
+        pos_owe jsonb; pos_wait jsonb; pos_none jsonb; fc_mb jsonb; v_ready_after text; mb_after text; q_after text; ready_after text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V668 check: the ready-to-graduate queue', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V668/R', 'CHECKV668', 'Registry'), (bur, 'CHK/V668/B', 'CHECKV668', 'Bursar');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9877-10-01', '9878-08-31') ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (ready, 'MOAUM/ADM/98/966801', 'MOAUM/GRQ/98/6681', 'CHECKV668', 'Ready', 'C00023', 'UTME', s0, 400, 400, 'ACTIVE', now()),
+            (owe, 'MOAUM/ADM/98/966802', 'MOAUM/GRQ/98/6682', 'CHECKV668', 'Owing', 'C00023', 'UTME', s0, 400, 400, 'ACTIVE', now()),
+            (wait, 'MOAUM/ADM/98/966803', 'MOAUM/GRQ/98/6683', 'CHECKV668', 'Waiting', 'C00023', 'UTME', s0, 400, 400, 'ACTIVE', now()),
+            (mb, 'MOAUM/ADM/98/966804', 'MOAUM/GRQ/98/6684', 'CHECKV668', 'Medic', 'C00061', 'UTME', s0, 600, 600, 'ACTIVE', now());
+        INSERT INTO people.enrolment (id, student_id, session, level)
+        SELECT gen_random_uuid(), x, s0, CASE WHEN x = mb THEN 600 ELSE 400 END FROM unnest(ARRAY[ready, owe, wait, mb]) x;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM finance.historical_set_start(s0, 'V668 check: assessed from the made-up session');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+            (s0, 'V668 check fees', 100000, 400, 'C00023', NULL), (s0, 'V668 check MBBS fees', 150000, 600, 'C00061', NULL);
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (ready, s0, 'MOAUM-FEE-V668-0001', 'School fees ' || s0, 100000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V668-0001'),
+            (owe, s0, 'MOAUM-FEE-V668-0002', 'School fees ' || s0, 70000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V668-0002');
+        INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet, senate_state)
+        SELECT gen_random_uuid(), x, s0, 3.20, 'B.Sc. (Hons) CHECK', NULL, 'AWAITING' FROM unnest(ARRAY[ready, owe, wait]) x;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM records.graduate_one(x, s0, 'SEN/CHK/668', NULL, 'V668 check: the award', who, 'academic') FROM unnest(ARRAY[ready, owe, wait]) x;
+
+        -- the College Board confirms the Final MBBS: the award approved, no CGPA, the status unchanged, the final clearance started
+        PERFORM set_config('moaum.actor_office', 'collegesecretary', true);
+        INSERT INTO college.progression_decision (student_id, from_level, session, outcome, state) VALUES (mb, 600, s0, 'GRADUATE', 'PROVISIONAL');
+        n_conf := college.confirm_decisions('PE4', s0, 'CAB/CHK/668');
+        mb_status := (SELECT status FROM people.student WHERE id = mb);
+        SELECT g.basis, g.cgpa INTO mb_basis, mb_cgpa FROM records.graduand g WHERE g.student_id = mb AND g.senate_state = 'APPROVED';
+        mb_proc := (SELECT q.id FROM clearance.process q WHERE q.student_id = mb AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL);
+        mb_told := (SELECT count(*) FROM platform.notice n WHERE n.about_id = mb AND n.template_key = 'STUDENT_AWARD_APPROVED');
+
+        -- every office but the Bursary clears the ready, the owing and the MBBS student (the Registry's override); the waiting one stays
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        FOR st IN SELECT x FROM unnest(ARRAY[ready, owe, mb]) x LOOP
+            FOR u IN SELECT r.unit FROM clearance.process q CROSS JOIN LATERAL clearance.stage_rows('CONVOCATION', q.session, ARRAY[q.student_id]) r
+                      WHERE q.student_id = st AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL AND r.unit <> 'BURSARY' AND r.applies AND r.required LOOP
+                PERFORM clearance.decide((SELECT q.id FROM clearance.process q WHERE q.student_id = st AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL),
+                                         u, 'CLEARED', 'V668 check: cleared by the Registry', NULL, NULL, true, who, 'registrar');
+            END LOOP;
+        END LOOP;
+
+        -- the queue: the ready one first and ready, the owing one not ready, the waiting one absent
+        SELECT string_agg(r.other_names || ':' || r.ready || ':' || r.outstanding, ',' ORDER BY r.ready DESC, r.other_names), count(*) FILTER (WHERE r.ready)
+          INTO q_rows, q_ready_n FROM clearance.ready_to_graduate(NULL, NULL, NULL, 'CHECKV668', 500) r;
+        -- what the students read
+        pos_owe := clearance.student_final_position(owe);
+        pos_wait := clearance.student_final_position(wait);
+        pos_none := clearance.student_final_position((SELECT id FROM people.student WHERE id NOT IN (ready, owe, wait, mb)
+                                                        AND NOT EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = people.student.id)
+                                                        AND NOT EXISTS (SELECT 1 FROM clearance.process q WHERE q.student_id = people.student.id) LIMIT 1));
+        -- the MBBS student's final check reads the Board's decision; paid in full, the Bursar graduates both
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+            (mb, s0, 'MOAUM-FEE-V668-0004', 'School fees ' || s0, 150000, now(), now(), bur, 'Bank branch', 'MOAUM-FEE-V668-0004');
+        fc_mb := clearance.final_check(mb_proc);
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM clearance.decide((SELECT q.id FROM clearance.process q WHERE q.student_id = ready AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL),
+                                 'BURSARY', 'CLEARED', NULL, NULL, NULL, false, bur, 'bursar');
+        PERFORM clearance.decide(mb_proc, 'BURSARY', 'CLEARED', NULL, NULL, NULL, false, bur, 'bursar');
+        ready_after := (SELECT status FROM people.student WHERE id = ready);
+        mb_after := (SELECT status FROM people.student WHERE id = mb);
+        SELECT string_agg(r.other_names, ',' ORDER BY r.other_names) INTO q_after FROM clearance.ready_to_graduate(NULL, NULL, NULL, 'CHECKV668', 500) r;
+        RAISE EXCEPTION 'the V668 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V668: the College Board''s Final MBBS approves the award (no CGPA, basis COLLEGE_BOARD) and starts the final clearance, the status unchanged; the Bursar''s queue lists the final clearances waiting only on the Bursary, ready first; the student reads what is owed and the offices still to clear; the Bursar''s clearance graduates the ready graduand and the MBBS graduate, read on the Board''s decision',
+        n_conf = 1 AND mb_status = 'ACTIVE' AND mb_basis = 'COLLEGE_BOARD' AND mb_cgpa IS NULL AND mb_proc IS NOT NULL AND mb_told = 1
+        AND q_rows = 'Ready:true:0,Medic:false:150000.00,Owing:false:30000.00' AND q_ready_n = 1
+        AND (pos_owe->>'awaiting')::boolean AND (pos_owe->>'outstanding')::numeric = 30000 AND jsonb_array_length(pos_owe->'owing') = 1
+        AND jsonb_array_length(pos_owe->'othersPending') = 0 AND pos_owe->>'bursaryState' = 'PENDING'
+        AND jsonb_array_length(pos_wait->'othersPending') > 0 AND pos_none IS NULL
+        AND (fc_mb->'academic'->>'ok')::boolean AND (fc_mb->>'ready')::boolean AND (fc_mb->>'graduates')::boolean
+        AND ready_after = 'GRADUATED' AND mb_after = 'GRADUATED' AND q_after = 'Owing',
+        format('conf=%s mb=%s/%s/%s proc=%s told=%s queue=%s ready=%s owe=%s wait=%s none=%s fc_mb=%s after=%s/%s queue_after=%s',
+               n_conf, mb_status, mb_basis, mb_cgpa, mb_proc IS NOT NULL, mb_told, q_rows, q_ready_n, left(pos_owe::text, 300), left(pos_wait::text, 160),
+               pos_none, left(fc_mb::text, 300), ready_after, mb_after, q_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

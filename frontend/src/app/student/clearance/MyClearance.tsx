@@ -1,14 +1,17 @@
 "use client";
 
 /** My Clearance (V415): each office, its word and the date; an office that asks for something says what, and the document
- *  is uploaded here; the alumni details for final clearance; the certificate once every office has cleared. */
+ *  is uploaded here; the alumni details for final clearance; the certificate once every office has cleared. V668: for a final
+ *  clearance, where it stands in the student's words — the offices still to clear, the Bursary last, and the school fees owed by
+ *  session and semester with the way to pay them. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { EMPLOYMENT, stateKind, stateWord, type AlumniDetails, type MyClearance, type MyProcess, type Stage } from "@/lib/clearance";
+import { EMPLOYMENT, finalWords, stateKind, stateWord, type AlumniDetails, type MyClearance, type MyFinal, type MyProcess, type Stage } from "@/lib/clearance";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -25,6 +28,7 @@ export function MyClearanceScreen({ data }: { data: MyClearance }) {
   }
   return (
     <>
+      {data.final ? <FinalPosition f={data.final} /> : null}
       {live.map((p) => <ProcessCard key={p.id} p={p} />)}
       {data.alumni && live.some((p) => p.stages.some((s) => s.unit === "ALUMNI" && s.applies)) ? <AlumniForm a={data.alumni} /> : null}
       {past.length ? (
@@ -33,6 +37,35 @@ export function MyClearanceScreen({ data }: { data: MyClearance }) {
         </Panel>
       ) : null}
     </>
+  );
+}
+
+const naira = (n: unknown) => `₦${Number(n ?? 0).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
+const semesterWord = (n: number) => (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : `Semester ${n}`);
+
+/** V668: the final clearance in the student's words — what is next, and the school fees owed by session and semester */
+function FinalPosition({ f }: { f: MyFinal }) {
+  const w = finalWords(f);
+  const owed = Number(f.outstanding) >= 1;
+  return (
+    <Panel title="Your graduation" right={f.award ? <span className="sub2">{f.award}{f.minute ? ` · ${f.basis === "COLLEGE_BOARD" ? "College Board" : "Senate"} minute ${f.minute}` : ""}</span> : undefined}>
+      <PBody>
+        <Note kind={w.kind} title={w.title} action={owed && f.onlinePayment ? <LinkBtn kind="urgent" href="/student/fees">Pay outstanding school fees</LinkBtn> : undefined}>{w.body}</Note>
+        {!f.graduated ? (
+          <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
+            <span className="tnum"><span className="sub2">School fees assessed</span> <b>{naira(f.assessed)}</b></span>
+            {Number(f.waived) >= 1 ? <span className="tnum"><span className="sub2">Waived or adjusted</span> <b>{naira(f.waived)}</b></span> : null}
+            <span className="tnum"><span className="sub2">Paid</span> <b className="ink-green">{naira(f.paid)}</b></span>
+            <span className="tnum"><span className="sub2">Outstanding</span> <b className={owed ? "ink-red" : ""}>{naira(f.outstanding)}</b></span>
+            {f.beingAssessed ? <span className="sub2">{f.beingAssessed} semester{f.beingAssessed === 1 ? "" : "s"} being assessed by the Bursary</span> : null}
+          </div>
+        ) : null}
+      </PBody>
+      {owed ? (
+        <DTable pageSize={0} cols={["Session", "Semester", "Outstanding|num"]} rows={f.owing.map((o) => [
+          <span key="s" className="tnum">{o.session}</span>, <span key="m">{semesterWord(o.semester)}</span>, <span key="o" className="tnum ink-red">{naira(o.outstanding)}</span>])} />
+      ) : null}
+    </Panel>
   );
 }
 

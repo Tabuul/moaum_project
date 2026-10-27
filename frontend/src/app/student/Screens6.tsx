@@ -25,7 +25,9 @@ export function GraduationScreen({ g }: { g: Graduation }) {
   const steps: ["done" | "now" | "todo", string, string][] = [
     [g.audited ? "done" : g.finalist ? "now" : "todo", "The degree audit", g.audited ? (g.unmet ? `Run for ${g.session}: ${g.unmet}` : `Run for ${g.session}: every requirement met, CGPA ${g.cgpa}`) : g.finalist ? "Computed by the Academic Office from the published record at the end of the session" : `Runs in your final year (${g.final_level} Level)`],
     [approved ? "done" : g.audited && !g.unmet ? "now" : "todo", "Senate approves the award", approved ? `Minute ${g.senate_minute} · ${g.award} · ${g.class_of_degree ?? "Pass"}` : g.senate_state === "REFERRED" ? "Referred by Senate" : "On the Registrar's minute, and not before"],
-    [approved && g.cleared ? "done" : approved ? "now" : "todo", "Cleared for convocation by every unit", approved ? (g.cleared ? "All eight units have cleared you" : `${g.units_holding} unit${g.units_holding === 1 ? "" : "s"} still holding — named below`) : "Bursary, department, faculty, library, health, hostel, works, alumni"],
+    [approved && g.cleared ? "done" : approved ? "now" : "todo", "Cleared for convocation by every unit", approved ? (g.cleared ? "All eight units have cleared you" : `${g.units_holding} unit${g.units_holding === 1 ? "" : "s"} still holding — named below`) : "Department, faculty, library, health, hostel, works, alumni, and the Bursary last"],
+    // V668: since V665 the Bursary's clearance, last, graduates the student
+    [graduated ? "done" : approved ? "now" : "todo", "Graduated on the register", graduated ? "Your record reads GRADUATED" : approved ? "When the Bursary clears you, last, with nothing owed for any session" : "After the final clearance"],
     [printed ? "done" : approved && g.cleared ? "now" : "todo", "The certificate is printed", printed ? `${g.certificate_no} · ${g.convocation} · printed ${onDay(g.printed_on)}` : "Printed by the Academic Office against a cleared record"],
     [collected ? "done" : printed ? "now" : "todo", "Collected, and verifiable", collected ? `Collected ${onDay(g.collected_on)}${g.verification_code ? ` · code ${g.verification_code}` : ""}` : held ? `Held: ${g.held_reason}` : "Handed over by the Academic Office; the verification code answers anybody who asks"],
   ];
@@ -39,6 +41,11 @@ export function GraduationScreen({ g }: { g: Graduation }) {
       ) : graduated ? (
         <Note kind="ok" title={`Senate approved your award under ${g.senate_minute}`}>
           {g.award} — {g.class_of_degree ?? "Pass"}, CGPA {g.cgpa}. {printed ? (collected ? "Your certificate has been collected." : held ? `Your certificate is printed but held: ${g.held_reason}.` : "Your certificate is printed and waits for you at the Academic Office.") : g.cleared ? "Every unit has cleared you; the certificate is printed next." : `${g.units_holding} unit${g.units_holding === 1 ? "" : "s"} still hold${g.units_holding === 1 ? "s" : ""} your clearance for convocation — the table below names each and what it wants.`}
+        </Note>
+      ) : approved ? (
+        <Note kind="info" title={`Your award is approved under ${g.senate_minute}`} action={<LinkBtn kind="ghost" href="/student/clearance">My clearance</LinkBtn>}>
+          {g.award} — {g.class_of_degree ?? "Pass"}{g.cgpa === null ? "" : `, CGPA ${g.cgpa}`}. Your final clearance is under way: each office clears you, and the Bursary clears you last against
+          your school fees for every session. Its clearance graduates you, and your record then reads GRADUATED.
         </Note>
       ) : g.audited && g.unmet ? (
         <Note kind="bad" title="The degree audit found a requirement unmet">

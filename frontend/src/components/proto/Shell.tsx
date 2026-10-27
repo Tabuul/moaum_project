@@ -176,6 +176,7 @@ export const ROUTES: Record<string, string> = {
   "t/clearance": "/clearance",
   "t/clearancemanage": "/clearance/manage",
   "t/clearanceunits": "/clearance/units",
+  "t/readytograduate": "/clearance/ready",   // V668
   "t/transcripts": "/credentials/transcripts",
   "t/documents": "/credentials/documents",
   "t/documents-requests": "/credentials/documents/requests",

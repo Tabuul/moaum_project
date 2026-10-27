@@ -121,6 +121,10 @@ class CredentialsIT {
         for (String unit : List.of("BURSARY", "DEPARTMENT", "FACULTY", "LIBRARY", "HEALTH", "HOSTEL", "WORKS", "ALUMNI")) {
             it.call(registrar, HttpMethod.POST, "/api/v1/clearance/students/" + student + "/" + unit + "/clear", Map.of("purpose", "CONVOCATION"));
         }
+        // V668: cleared, but the record does not read GRADUATED yet — the certificate waits for the graduation
+        assertThat(it.call(academic, HttpMethod.POST, "/api/v1/credentials/certificates", Map.of("studentId", student.toString()))
+                .getBody().get("code")).isEqualTo("CRED_NOT_GRADUATED");
+        it.db(() -> jdbc.sql("SELECT people.change_status(:s, 'GRADUATED', 'SEN/2096/01', current_date, 'IT: graduated')").param("s", student).query().listOfRows());
         String batchName = "ZZB-" + UUID.randomUUID().toString().substring(0, 8);
         ResponseEntity<Map> batch = it.call(academic, HttpMethod.POST, "/api/v1/credentials/stationery",
                 Map.of("batch", batchName, "serialFrom", 1, "serialTo", 50, "receivedOn", "2095-09-01"));

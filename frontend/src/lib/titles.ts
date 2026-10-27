@@ -200,6 +200,7 @@ export const TITLES: Record<string, string> = {
   "t/clearance": "Student clearance",
   "t/clearancemanage": "Clearance management",
   "t/clearanceunits": "Clearance by unit",
+  "t/readytograduate": "Ready to graduate",
   "r/admin": "Administrator",
   "r/lecturer": "Lecturer dashboard",
   "r/hod": "Head of Department",

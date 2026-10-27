@@ -39,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAuthority('OFFICE_student')")
 class MyClearanceController {
 
+    private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
     private static final Set<String> EMPLOYMENT = Set.of("EMPLOYED", "SELF_EMPLOYED", "SEEKING", "FURTHER_STUDY", "NATIONAL_SERVICE", "OTHER");
 
     private final ClearanceDesk desk;
@@ -92,6 +93,9 @@ class MyClearanceController {
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("processes", out);
         r.put("alumni", alumni ? alumni(student) : null);
+        // V668: the award approved and the final clearance — the offices still to clear and the school fees owed by session and semester
+        String fin = jdbc.sql("SELECT clearance.student_final_position(:s)::text").param("s", student).query(String.class).optional().orElse(null);
+        r.put("final", fin == null ? null : JSON.readValue(fin, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
         return r;
     }
 

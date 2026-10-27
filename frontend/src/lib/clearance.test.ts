@@ -36,3 +36,16 @@ test("the word that graduates: the Bursary's own clearance of an approved award,
   assert.equal(graduatesOnClear({ finalCheck: { graduates: false } as never }, "BURSARY", "CLEARED", false), false);
   assert.equal(graduatesOnClear({}, "BURSARY", "CLEARED", false), false);
 });
+
+// V668: the student's own words for where the final clearance stands
+test("the final clearance in the student's words: graduated, owing, being assessed, or under way", async () => {
+  const { finalWords } = await import("./clearance.ts");
+  const base = { awaiting: true, graduated: false, status: "ACTIVE", award: "B.Sc.", minute: "SEN/1", awardSession: "2025/2026", basis: "SENATE", process: "p", reference: "FCLR/2026/000001",
+    othersPending: [], bursaryState: "PENDING", assessed: 100000, paid: 100000, waived: 0, outstanding: 0, beingAssessed: 0, owing: [], onlinePayment: true };
+  assert.equal(finalWords({ ...base, graduated: true }).title, "You have graduated");
+  const owing = finalWords({ ...base, outstanding: 25000, othersPending: [{ unit: "LIBRARY", label: "Library", state: "PENDING" }] });
+  assert.equal(owing.kind, "bad");
+  assert.match(owing.body, /^Still to clear you: Library\. /);
+  assert.equal(finalWords({ ...base, beingAssessed: 1 }).title, "The Bursary is assessing a past semester");
+  assert.match(finalWords(base).body, /^Every other office has cleared you\. The Bursary clears you last/);
+});

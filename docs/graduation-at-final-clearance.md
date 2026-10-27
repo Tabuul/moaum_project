@@ -1,4 +1,4 @@
-# Graduation at the Bursar's final clearance, approved waivers, and clearance reconciliation runs (V665, 26 October 2026)
+# Graduation at the Bursar's final clearance, approved waivers, and clearance reconciliation runs (V665, V668; 26 October 2026)
 
 The University's master prompt of 26 October 2026, "Comprehensive graduation clearance, school fees reconciliation and outstanding
 balance engine", with its two answers:
@@ -145,8 +145,39 @@ net figure; the account shows the waiver in its own **Adjustment** column.
 - Unit: `lib/clearance.test.ts` (which word graduates), `lib/historical-fees.test.ts` (waived totals, the statement's column, the
   amount a waiver may be, a run's rows).
 
-## 8. Not changed
+## 8. Left as it was
 
-- The College of Health's progression (V606), the status reconciliation of students outside the maximum period (V638) and the
-  Registrar's student edit still set GRADUATED by their own acts; none rests on a Senate award.
+- The status reconciliation of students outside the maximum period (V638) still sets GRADUATED by its own act (V668: by the
+  University's answer — they finished long ago and hold no award on the portal; any balance stays owed on their historical school
+  fees and holds their Bursary clearance).
+- The student lifecycle reconciliation (V558) may still change a record past the maximum spillover to GRADUATED in its batches —
+  the same students and the same answer as V638.
 - The cohort engine still proposes GRADUATED for an approved award (R1); only the act is refused.
+
+## 9. V668: the Bursar's queue, the student's view, the College Board
+
+The word of 26 October 2026 after V665, with the University's answers on the other routes to GRADUATED.
+
+- **Ready to graduate** (`/clearance/ready`, on the Bursar's menu; `clearance.ready_to_graduate`): every final clearance whose award
+  is approved and which waits only on the Bursary — every other office cleared, the Bursary's stage open — with the school-fee
+  account read afresh, ready first (nothing owed, for review or pending). The Bursar selects students (or every ready one) and
+  confirms; each is confirmed on its own through `clearance.decide`, read again, and graduated or refused with the reason
+  (`POST /api/v1/clearance/ready-to-graduate/confirm`, the Bursar only). The Students Account Officer and the Registry read the
+  queue. Excel and PDF. The Bursar's dashboard shows "Ready to graduate" and how many wait on the Bursary.
+- **The student's view**: My Clearance opens with "Your graduation" — where the final clearance stands in the student's words
+  (the offices still to clear, the Bursary last), the school fees assessed, waived, paid and outstanding, each session and semester
+  owed, and **Pay outstanding school fees** (`clearance.student_final_position`; official amounts only). The graduation page says
+  "Your award is approved" between Senate's approval and the graduation, and its steps end with "Graduated on the register".
+- **The College Academic Board** (`college.confirm_decisions`, V606 restated): a confirmed GRADUATE after the Final MBBS approves the
+  award on the Board's minute (`records.college_award`: the programme's award, with Honours where found, no CGPA,
+  `records.graduand.basis = 'COLLEGE_BOARD'`), starts the final clearance and tells the student; the Bursar's confirmation graduates
+  them like everyone else. The final check and the graduation read a College Board award on the Board's decision, not the course
+  record.
+- **The Registry's general change of status** refuses GRADUATED (`STU_STATUS_GRADUATION`), as the student edit page already did.
+- **The physical degree certificate** is printed only for a record that reads GRADUATED (`CRED_NOT_GRADUATED`); the digital one
+  already required it.
+- **Measured on the live-shaped copy** (54,575 students, as of 22 October; no graduand, no clearance started, so nothing waits on
+  day one): V665 itself applies in 0.6 s. With 5,000 final-year students given made-up approved awards inside a rolled-back
+  transaction, a reconciliation run over all of them took about 15 s; the queue over 2,000 waiting on the Bursary about 3 s (a search, 36 ms).
+- Tests: `check.sql` V668 (the Board's award, the queue's order, the student's reading, both graduations); ReadyToGraduateIT;
+  `lib/clearance.test.ts` (the student's words).

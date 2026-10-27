@@ -234,6 +234,9 @@ class HistoricalFeesController {
                        count(*) FILTER (WHERE w.state = 'APPROVED') AS approved, coalesce(sum(w.amount) FILTER (WHERE w.state = 'APPROVED'), 0) AS approved_amount
                   FROM finance.historical_waiver w
                 """).query().singleRow());
+        // V668: the final clearances waiting only on the Bursary, and how many are ready (nothing owed, for review or pending)
+        out.put("readyToGraduate", jdbc.sql("SELECT count(*) FILTER (WHERE r.ready) AS ready, count(*) AS waiting FROM clearance.ready_to_graduate(NULL, NULL, NULL, NULL, 5000) r")
+                .query().singleRow());
         out.put("awaitingGraduation", jdbc.sql("""
                 SELECT count(*) FROM people.student s WHERE s.status <> 'GRADUATED'
                    AND EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED')

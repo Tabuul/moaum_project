@@ -96,7 +96,43 @@ export interface AlumniDetails {
   employment_status: string | null; employer: string | null; occupation: string | null; linkedin: string | null; association_member: boolean;
   membership_no: string | null; confirmed_at: string | null; verified_at: string | null;
 }
-export interface MyClearance { processes: MyProcess[]; alumni: AlumniDetails | null }
+export interface MyClearance { processes: MyProcess[]; alumni: AlumniDetails | null; final?: MyFinal | null }
+
+/** V668: what the student is told of their final clearance — the award approved and awaiting it, the offices still to clear, the
+ *  Bursary's stage, and the school fees owed by session and semester (official amounts only) */
+export interface MyFinal {
+  awaiting: boolean; graduated: boolean; status: string; award: string | null; minute: string | null; awardSession: string | null; basis: string | null;
+  process: string | null; reference: string | null; othersPending: { unit: string; label: string; state: string }[]; bursaryState: string | null;
+  assessed: number; paid: number; waived: number; outstanding: number; beingAssessed: number; owing: { session: string; semester: number; outstanding: number }[];
+  onlinePayment: boolean;
+}
+
+/** V668: a final clearance waiting only on the Bursary's confirmation, with the account read afresh */
+export interface ReadyRow {
+  process_id: string; reference: string; session: string; student_id: string; surname: string; other_names: string; matric_no: string | null;
+  programme: string | null; department: string | null; faculty: string | null; award: string | null; minute: string | null; award_session: string | null;
+  basis: string | null; bursary_state: string | null; assessed: number | string; paid: number | string; waived: number | string; outstanding: number | string;
+  review_periods: number; pending_periods: number; owing: string | null; ready: boolean;
+}
+export interface ReadyQueue { rows: ReadyRow[]; total: number; ready: number; canConfirm: boolean }
+
+/** V668: where the student's final clearance stands, in their words: the next step, and whether money stands in the way */
+export function finalWords(f: MyFinal): { title: string; body: string; kind: "ok" | "bad" | "info" } {
+  if (f.graduated) return { kind: "ok", title: "You have graduated", body: "Every office has cleared you and the Bursar confirmed your final clearance." };
+  const owed = Number(f.outstanding) >= 1;
+  const offices = f.othersPending.map((o) => o.label);
+  const next = offices.length ? `Still to clear you: ${offices.join(", ")}. ` : "Every other office has cleared you. ";
+  if (owed) {
+    return { kind: "bad", title: "School fees stand between you and graduation",
+      body: `${next}The Bursary clears you last, and its clearance graduates you; it cannot while school fees are owed for any session.` };
+  }
+  if (f.beingAssessed > 0) {
+    return { kind: "info", title: "The Bursary is assessing a past semester",
+      body: `${next}A semester of your record is being assessed; nothing is owed for it until the Bursar approves an amount.` };
+  }
+  return { kind: "info", title: "Your award is approved — final clearance under way",
+    body: `${next}${offices.length ? "Then the Bursary" : "The Bursary"} clears you last; its clearance graduates you and your record reads GRADUATED.` };
+}
 
 /** a stage's word as a person reads it */
 export const STATE_WORD: Record<string, string> = {

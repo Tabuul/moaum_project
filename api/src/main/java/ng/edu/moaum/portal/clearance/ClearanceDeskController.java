@@ -258,6 +258,68 @@ class ClearanceDeskController {
         return finalCheckOf(id);
     }
 
+    /**
+     * V668: the Bursar's queue — every final clearance whose award is approved and which waits only on the Bursary (every other office
+     * cleared), within the office's bound, the school-fee account read afresh, ready first (nothing owed, for review or pending).
+     */
+    @GetMapping("/ready-to-graduate")
+    @PreAuthorize(READERS + " or hasAuthority('OFFICE_studentaccounts')")
+    @Transactional(readOnly = true)
+    Map<String, Object> readyToGraduate(@RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                                        @RequestParam(required = false) String prog, @RequestParam(required = false) String q) {
+        if (!"studentaccounts".equals(office()) && !mayReadBursary(office(), desk.unitsOf(office()))) {
+            throw new AccessDeniedException("the Bursary's account of the student is not your office's to read");
+        }
+        OfficeScope.Bound b = scope.bound(fac, dept, prog);
+        String term = blank(q);
+        if (term != null && term.length() > 80) term = term.substring(0, 80);
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM clearance.ready_to_graduate(:f, :d, :p, :q, 2000)")
+                .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR).param("q", term, Types.VARCHAR)
+                .query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("total", rows.size());
+        out.put("ready", rows.stream().filter(r -> Boolean.TRUE.equals(r.get("ready"))).count());
+        out.put("canConfirm", "bursar".equals(office()));
+        return out;
+    }
+
+    public record ConfirmMany(@NotNull @Size(min = 1, max = 500) List<UUID> processes, @Size(max = 500) String note) {
+    }
+
+    /**
+     * V668: the Bursar confirms the final clearance of the students chosen — each on its own, through clearance.decide, against a fresh
+     * reading of their account (the database graduates each in the same transaction, or refuses it with the reason).
+     */
+    @PostMapping("/ready-to-graduate/confirm")
+    @PreAuthorize("hasAuthority('OFFICE_bursar')")
+    Map<String, Object> confirmMany(@Valid @RequestBody ConfirmMany body) {
+        AuditContext ctx = AuditContextHolder.required();
+        int graduated = 0;
+        int cleared = 0;
+        List<Map<String, Object>> refused = new ArrayList<>();
+        for (UUID id : body.processes()) {
+            try {
+                Boolean g = tx.execute(s -> {
+                    readable(id);
+                    String before = studentStatus(id);
+                    jdbc.sql("SELECT clearance.decide(:p, 'BURSARY', 'CLEARED', NULL, :n, NULL, false, :a, :off)")
+                            .param("p", id).param("n", blank(body.note()), Types.VARCHAR).param("a", ctx.actorId()).param("off", ctx.actorOffice())
+                            .query(String.class).single();
+                    return !"GRADUATED".equals(before) && "GRADUATED".equals(studentStatus(id));
+                });
+                cleared++;
+                if (Boolean.TRUE.equals(g)) graduated++;
+            } catch (DataAccessException | NotFound e) {
+                String m = String.valueOf(e instanceof DataAccessException d && d.getMostSpecificCause() != null ? d.getMostSpecificCause().getMessage() : e.getMessage());
+                Matcher c = CODED.matcher(m);
+                boolean coded = c.find();
+                refused.add(Map.of("process", id, "code", coded ? c.group(1) : "CLR_REFUSED", "why", coded ? c.group(2).trim() : "Refused"));
+            }
+        }
+        return Map.of("cleared", cleared, "graduated", graduated, "refused", refused);
+    }
+
     /* ── the office's word ── */
 
     public record Decision(@NotBlank String state, @Size(max = 500) String item, @Size(max = 500) String note,

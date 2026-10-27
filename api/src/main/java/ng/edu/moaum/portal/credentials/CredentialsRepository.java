@@ -160,6 +160,11 @@ class CredentialsRepository {
                 """).query(Credentials.Graduand.class).list();
     }
 
+    /** V668: whether the record reads GRADUATED */
+    boolean graduated(UUID student) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM people.student WHERE id = :s AND status = 'GRADUATED')").param("s", student).query(Boolean.class).single();
+    }
+
     long approvedGraduands(String session) {
         return jdbc.sql("SELECT count(*) FROM records.graduand WHERE senate_state = 'APPROVED' AND (:s::text IS NULL OR session = :s)")
                 .param("s", session).query(Long.class).single();

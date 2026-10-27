@@ -99,6 +99,11 @@ public class StudentService {
     @Transactional
     StudentRecord changeStatus(UUID id, StatusIn in, String session) {
         students.student(id).orElseThrow(() -> new NotFound("student", id));
+        // V668: GRADUATED is graduation's own — the Bursar's confirmation of the final clearance, or the status reconciliation (V638)
+        if ("GRADUATED".equalsIgnoreCase(in.to().trim())) {
+            throw new DomainRuleViolation("STU_STATUS_GRADUATION", "A student becomes GRADUATED when the Bursar confirms the final clearance, not by a change of status.",
+                    new DomainRuleViolation.Remedy("Approve the award (Graduation Management) and follow the student's final clearance; a student past the maximum period is reconciled there.", "Academic Office"));
+        }
         students.changeStatus(id, in.to().trim(), in.instrument().trim(),
                 in.effectiveOn() == null ? LocalDate.now() : in.effectiveOn(), blankToNull(in.reason()));
         return record(id, session);

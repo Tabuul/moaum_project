@@ -167,6 +167,11 @@ public class CredentialsService {
             throw new DomainRuleViolation("CRED_NOT_CLEARED", "The candidate is held by a unit.",
                     new DomainRuleViolation.Remedy("The student's clearance screen names the unit.", "The unit holding"));
         }
+        // V668: since V665 the award is approved first and the record reads GRADUATED at the Bursar's final clearance
+        if (!repo.graduated(in.studentId())) {
+            throw new DomainRuleViolation("CRED_NOT_GRADUATED", "The record does not read GRADUATED yet: the Bursar confirms the final clearance first.",
+                    new DomainRuleViolation.Remedy("Follow the student's final clearance; the Bursary's clearance, last, graduates the student.", "Bursary"));
+        }
         Integer serial = null;
         if (in.batchId() != null) {
             repo.batch(in.batchId()).orElseThrow(() -> new NotFound("stationery batch", in.batchId()));
