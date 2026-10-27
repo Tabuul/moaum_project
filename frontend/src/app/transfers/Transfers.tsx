@@ -4,12 +4,13 @@
  *  four desks, each a single Approve: the current department, the new department, the Registrar, and the
  *  Academic office. Every office sees the whole pipeline; the Approve button shows only on the row and to
  *  the office whose turn it is (the server decides). Once approved, the student pays the Bursary-set fee
- *  and the registry effects the change. */
+ *  and the registry effects the change. V669: a transfer the OLD portal approved is never recorded here again — it is restored on
+ *  the programme swap (Restore a transfer approved on the old portal): no application, fee or approval, the number unchanged. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -42,6 +43,10 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
   const router = useRouter();
   const o = actingOffice ?? "";
   const mayRecord = ["academic", "registrar", "dregistrar", "super"].includes(o);
+  // V669: the offices that restore a transfer approved on the old portal (the programme swap's)
+  const mayRestore = ["academic", "registrar", "dregistrar", "ict", "super"].includes(o);
+  const [findNo, setFindNo] = useState("");
+  const [finding, setFinding] = useState(false);
 
   const [tab, setTab] = useState("APPLIED");
   const [rec, setRec] = useState({ number: "", programme: "", reason: "", utme: "" });
@@ -64,6 +69,18 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
       return j as Record<string, unknown>;
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function openRestore() {
+    setFinding(true);
+    try {
+      const r = await fetch(`/api/bff/api/v1/programme-swaps/find?number=${encodeURIComponent(findNo.trim())}`);
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.id) { notifyProblem(j ?? { status: r.status, title: "No student with that number" }); return; }
+      router.push(`/programme-swap/${j.id}?restore=1`);
+    } finally {
+      setFinding(false);
     }
   }
 
@@ -107,8 +124,27 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
         ) : <PBody><div className="sub2">No application in this stage.</div></PBody>}
       </Panel>
 
+      {/* V669: a transfer the old portal approved is restored, never recorded again as an application */}
+      {mayRestore ? (
+        <Panel title="Restore a transfer approved on the old portal" right="No new application, fee or approval">
+          <PBody>
+            <div className="sub2">For a student whose transfer the old portal approved and whom the migration placed back in the department they left. The student is
+              put on the approved programme and level directly, the old portal&rsquo;s transfer is recorded in the history, and an application left in this queue for the
+              same programme is withdrawn. The matriculation number never changes.</div>
+            <div className="row mt-2" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+              <Field id="tr-find" label="Matriculation, JAMB or admission number">
+                <input id="tr-find" className="ctl tnum" value={findNo} onChange={(e) => setFindNo(e.target.value)} placeholder="MOAU/SC/MCB/24/75807"
+                  onKeyDown={(e) => { if (e.key === "Enter" && findNo.trim()) void openRestore(); }} />
+              </Field>
+              <Btn kind="primary" busy={finding} busyLabel="Finding the student…" disabled={!findNo.trim()} onClick={() => void openRestore()}>Open the student</Btn>
+              <LinkBtn kind="ghost" href="/transfers/bulk?restore=1">Many students: restore in bulk</LinkBtn>
+            </div>
+          </PBody>
+        </Panel>
+      ) : null}
+
       {mayRecord ? (
-        <Panel title="Record an application" right="For a case brought to the office on paper">
+        <Panel title="Record a new transfer application" right="A new request on paper: it starts the transfer at the first desk">
           <PBody>
             <div className="grid grid--2">
               <Field id="tr-num" label="Student number"><input id="tr-num" className="ctl tnum" value={rec.number} onChange={(e) => setRec({ ...rec, number: e.target.value })} placeholder="MOAUM/CSC/23/0001" /></Field>

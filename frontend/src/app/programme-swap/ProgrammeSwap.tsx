@@ -18,26 +18,30 @@ import { StudentOpen } from "@/components/StudentModal";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import {
-  CLASS_WORDS, KIND_WORDS, MISMATCH_HEADERS, REPORT_HEADERS, REVIEW_CHOICES, REVIEW_WORDS, STATUS_WORDS, changeWords, mismatchRows, reportRows,
-  signalWords, swapsHref, type Classification, type Faculty, type Mismatch, type ReviewStatus, type Swap, type SwapKind, type SwapStatus,
+  CLASS_WORDS, KIND_WORDS, MISMATCH_HEADERS, PLAIN_KINDS, REPORT_HEADERS, REVIEW_CHOICES, REVIEW_WORDS, STATUS_WORDS, changeWords, mismatchRows, reportRows,
+  signalWords, swapsHref, type Classification, type Faculty, type Mismatch, type PlacementConflict, type ReviewStatus, type Swap, type SwapKind, type SwapStatus,
 } from "@/lib/programme-swap";
 import { swapPost } from "./swap-call";
 import { SwapDetail } from "./SwapDetail";
 import { TargetPicker, type Target } from "./TargetPicker";
+import { PlacementConflicts } from "./PlacementConflicts";
 
 export interface Summary {
   requiring: number; confirmed: number; possible: number; requiresReview: number; swapRequired: number; noAction: number;
   pending: number; completed: number; rejected: number; failed: number; recent: number; asOf: string; refreshing: boolean; prepares: boolean; decides: boolean;
+  /** V669: upload conflicts awaiting the Academic Office */
+  conflicts?: number;
 }
 
 const n = (v: unknown) => Number(v ?? 0).toLocaleString("en-GB");
 const classPill = (c: Classification): "bad" | "warn" | "info" | "grey" => (c === "CONFIRMED" ? "bad" : c === "REQUIRES_REVIEW" ? "warn" : c === "POSSIBLE" ? "info" : "grey");
 const statusPill = (s: SwapStatus): "ok" | "bad" | "warn" | "grey" => (s === "COMPLETED" ? "ok" : s === "PENDING_APPROVAL" ? "warn" : s === "REJECTED" || s === "FAILED" ? "bad" : "grey");
 
-export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, swaps, problem, actingOffice, generatedBy }: {
-  tab: "desk" | "swaps"; summary: Summary; faculties: Faculty[]; filters: Record<string, string>;
+export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, swaps, problem, actingOffice, generatedBy, conflicts = null }: {
+  tab: "desk" | "swaps" | "conflicts"; summary: Summary; faculties: Faculty[]; filters: Record<string, string>;
   mismatches: { rows: Mismatch[]; total: number; page: number; size: number; asOf: string } | null; swaps: Swap[] | null; problem: Problem | null;
   actingOffice: string | null; generatedBy: string | null;
+  conflicts?: PlacementConflict[] | null;
 }) {
   const go = useQueryNav();
   const nav = (changes: Record<string, string>) => go(swapsHref(tab, { ...filters, page: "", ...changes }));
@@ -60,12 +64,14 @@ export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, sw
         ["Completed", n(summary.completed), "var(--green-ink)", `${n(summary.recent)} in the last 7 days · ${n(summary.rejected)} rejected · ${n(summary.failed)} failed or cancelled`, swapsHref("swaps", { ...scope, status: "COMPLETED" })],
       ]} />
       <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-3)", alignItems: "center" }}>
-        <Tabs look="line" label="Programme swap" value={tab} onChange={(t) => go(swapsHref(t, {}))} items={[{ id: "desk", label: "Mismatches", count: n(summary.requiring) }, { id: "swaps", label: "Swaps", count: n(summary.pending) }]} />
+        <Tabs look="line" label="Programme swap" value={tab} onChange={(t) => go(swapsHref(t, {}))} items={[{ id: "desk", label: "Mismatches", count: n(summary.requiring) }, { id: "swaps", label: "Swaps", count: n(summary.pending) },
+          { id: "conflicts", label: "Upload conflicts", count: n(summary.conflicts) }]} />
         <span className="grow" />
         <span className="sub2">Detector run {new Date(summary.asOf).toLocaleString("en-GB")}</span>
         <Btn kind="ghost" onClick={() => go(swapsHref(tab, { ...filters, refresh: "1" }))}>Run the detector again</Btn>
       </div>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {tab === "conflicts" ? <PlacementConflicts rows={conflicts ?? []} mayDecide={summary.prepares} /> : null}
 
       {tab === "desk" ? (
         <Panel title="Records whose placement looks wrong" right={mismatches ? `${n(mismatches.total)} found` : ""}>
@@ -151,9 +157,9 @@ export function ProgrammeSwap({ tab, summary, faculties, filters, mismatches, sw
             </Note>
           </PBody>
         </Panel>
-      ) : (
+      ) : tab === "swaps" ? (
         <SwapsTab swaps={swaps ?? []} filters={filters} faculties={faculties} nav={nav} summary={summary} generatedBy={generatedBy} onOpen={setOpen} onBatch={setBatch} />
-      )}
+      ) : null}
 
       {review ? <ReviewModal m={review} onClose={() => setReview(null)} onDone={() => { setReview(null); go(swapsHref("desk", { ...filters })); }} /> : null}
       {bulk ? <BulkModal students={mismatches?.rows.filter((m) => chosen.has(m.student_id)) ?? []} faculties={faculties} onClose={() => setBulk(false)}
@@ -326,7 +332,7 @@ function BulkModal({ students, faculties, onClose, onDone }: { students: Mismatc
             <Field id="bk-session" label="Effective session" hint="Blank: the current session"><input id="bk-session" className="ctl" value={session} onChange={(e) => setSession(e.target.value)} placeholder="2026/2027" /></Field>
             <Field id="bk-kind" label="Change type">
               <select id="bk-kind" className="ctl" value={kind} onChange={(e) => setKind(e.target.value as SwapKind)}>
-                {(Object.keys(KIND_WORDS) as SwapKind[]).map((k) => <option key={k} value={k}>{KIND_WORDS[k]}</option>)}
+                {PLAIN_KINDS.map((k) => <option key={k} value={k}>{KIND_WORDS[k]}</option>)}
               </select>
             </Field>
           </div>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changeWords, mismatchRows, refusalWords, reportRows, signalWords, swapsHref, type Mismatch, type Swap } from "./programme-swap.ts";
+import { CONFLICT_WORDS, KIND_WORDS, PLAIN_KINDS, changeWords, conflictWords, mismatchRows, refusalWords, reportRows, restoreWords, signalWords, swapsHref, type Mismatch, type RestoreCheck, type Swap } from "./programme-swap.ts";
 
 const swap = (o: Partial<Swap> = {}): Swap => ({
   id: "1", swap_ref: "PSW/2026/000001", student_id: "s", student: "Doe, John", matric_no: "MOAU/AD/BAM/24/1234", jamb_reg_no: "202410001AA",
@@ -52,4 +52,32 @@ test("why a record is flagged reads from its signals, and the list numbers its r
 test("the address names only the filters chosen", () => {
   assert.equal(swapsHref("desk", { fac: "", class: "CONFIRMED" }), "/programme-swap?class=CONFIRMED");
   assert.equal(swapsHref("swaps", { status: "PENDING_APPROVAL" }), "/programme-swap?tab=swaps&status=PENDING_APPROVAL");
+});
+
+test("V669: a transfer approved on the old portal is restored, never made as a plain swap; what restoring does, in words", () => {
+  assert.ok(!PLAIN_KINDS.includes("APPROVED_TRANSFER_RESTORED"));
+  assert.equal(KIND_WORDS.APPROVED_TRANSFER_RESTORED, "Approved transfer restored (old portal)");
+  const base = {
+    ok: true, refusals: [], warnings: [], change: "PROGRAMME_AND_LEVEL", session: "2026/2027",
+    student: { id: "s", name: "Doe, Jane", matricNo: "MOAU/SC/MCB/24/75807", jambRegNo: null, admissionNo: null, status: "ACTIVE", entryMode: "UTME", studyMode: null, entrySession: "2024/2025" },
+    from: { programme: "C1", programmeName: "B.Sc. Microbiology", dept: "MCB", department: null, faculty: "SC", facultyName: null, level: 200, category: null },
+    to: { programme: "C2", programmeName: "B.Sc. Biochemistry", dept: "BCH", department: null, faculty: "SC", facultyName: null, level: 300, category: null },
+    fees: null, registration: null, unchanged: [],
+  };
+  const moved: RestoreCheck = { ...base, restore: { fromProgramme: "C1", fromProgrammeName: "B.Sc. Microbiology", transferSession: "2025/2026", approvedOn: "2025-03-14",
+    recordOnly: false, recordedAlready: null, openApplication: { id: "a", state: "REG_OK", toProgramme: "C2", appliedAt: "2026-10-01", withdrawn: true } } };
+  assert.deepEqual(restoreWords(moved), [
+    "B.Sc. Microbiology at 200 Level becomes B.Sc. Biochemistry at 300 Level.",
+    "The transfer application waiting in the queue (reg ok) is withdrawn.",
+    "No transfer application, transfer fee or transfer approval is made; the matriculation number stays MOAU/SC/MCB/24/75807.",
+  ]);
+  const recorded: RestoreCheck = { ...base, restore: { ...moved.restore!, recordOnly: true, openApplication: null } };
+  assert.equal(restoreWords(recorded)[0], "The student is on B.Sc. Biochemistry at 300 Level already: the transfer approved on the old portal is recorded in the history, and nothing is moved.");
+  assert.equal(restoreWords(recorded).length, 2);
+});
+
+test("V669: a placement conflict in a line", () => {
+  assert.equal(conflictWords({ file_programme: "C1", file_programme_name: "B.Sc. Microbiology", file_level: 200, kept_programme: "C2", kept_programme_name: "B.Sc. Biochemistry",
+    kept_level: 300, settled_by: "PSW/2026/000006" }), "The upload named B.Sc. Microbiology at 200 Level; the record kept B.Sc. Biochemistry at 300 Level, set by PSW/2026/000006");
+  assert.equal(CONFLICT_WORDS.KEPT, "Recorded placement kept");
 });

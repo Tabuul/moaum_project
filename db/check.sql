@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 496
+\set EXPECTED 497
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -26884,6 +26884,112 @@ BEGIN
         format('conf=%s mb=%s/%s/%s proc=%s told=%s queue=%s ready=%s owe=%s wait=%s none=%s fc_mb=%s after=%s/%s queue_after=%s',
                n_conf, mb_status, mb_basis, mb_cgpa, mb_proc IS NOT NULL, mb_told, q_rows, q_ready_n, left(pos_owe::text, 300), left(pos_wait::text, 160),
                pos_none, left(fc_mb::text, 300), ready_after, mb_after, q_after));
+END $$;
+
+-- ── V669. A transfer approved on the old portal restored without a new application: two made-up programmes in two departments of a
+-- faculty (A, whose students' numbers carry ZQA, and B, ZQB); a student who transferred A → B on the old portal, put back on A at
+-- 200 Level by the migration, with an application left in the transfer queue; another on B rightly, whose number names A; a third for a
+-- restoration in bulk. The mismatch list suggests no department from the number alone; the restoration is checked (the application to
+-- be withdrawn, nothing made), then made — B at 300, the number unchanged, the application withdrawn, the transfer recorded, the history
+-- with it, no application made — a plain swap of that kind refused; an old file naming A at 200 again leaves the record on B at 300 and
+-- puts a placement conflict to the Academic Office, kept with the reason; the rightly placed student's transfer recorded only, and the
+-- list no longer judges them by the number; the restoration again refused as recorded; a bulk restoration (TRR/…) restores the valid
+-- row and leaves the invalid one out, no application made. Undone after.
+DO $$
+DECLARE pa text := 'C96669'; pb text := 'C96670'; da text; db_ text; fac text; t1 text := '2669/2670'; t2 text := '2670/2671';
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); msg text;
+        before_s2 text; chk jsonb; res jsonb; after text; app text; prior text; hist text; plain text; upload text; conflict text; kept text;
+        rec jsonb; after_s2 int; again text; bulk jsonb; bulk_s3 text; apps int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V669', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000669', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), t1, DATE '2669-10-01', DATE '2670-08-31'), (gen_random_uuid(), t2, DATE '2670-10-01', DATE '2671-08-31');
+        -- two departments of one faculty (not the College of Health's)
+        SELECT p1.dept_code, p2.dept_code, p1.faculty_code INTO da, db_, fac
+          FROM ref.programme p1 JOIN ref.programme p2 ON p2.faculty_code = p1.faculty_code AND p2.dept_code > p1.dept_code
+          JOIN ref.faculty f ON f.code = p1.faculty_code
+         WHERE p1.category = 'UNDER GRADUATE' AND p2.category = 'UNDER GRADUATE' AND NOT coalesce(p1.archived, false) AND NOT coalesce(p2.archived, false)
+           AND coalesce(f.college_code, '') <> 'CHS' AND p1.dept_code IS NOT NULL
+         ORDER BY p1.faculty_code, p1.dept_code, p2.dept_code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code) VALUES
+            (pa, 'B.Sc. Transfer Check A', da, fac, 'UNDER GRADUATE', 0, 400, 4, 'ZQA'), (pb, 'B.Sc. Transfer Check B', db_, fac, 'UNDER GRADUATE', 0, 400, 4, 'ZQB');
+        INSERT INTO people.student (id, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (s1, 'MOAU/' || fac || '/ZQA/69/96691', 'CHECKV669', 'Moved Back', 'F', pa, 'UTME', t1, 100, 200, 'ACTIVE', now()),
+            (s2, 'MOAU/' || fac || '/ZQA/69/96692', 'CHECKV669', 'Rightly Placed', 'M', pb, 'UTME', t1, 100, 300, 'ACTIVE', now()),
+            (s3, 'MOAU/' || fac || '/ZQA/69/96693', 'CHECKV669', 'In Bulk', 'F', pa, 'UTME', t1, 100, 200, 'ACTIVE', now());
+        -- the application the migration's victim was sent into
+        INSERT INTO people.transfer_application (student_id, session, from_programme_code, from_level, to_programme_code, reason, mode_of_entry, state)
+        VALUES (s1, t2, pa, 200, pb, 'Put back by the migration; asked to apply again', 'UTME', 'APPLIED');
+
+        before_s2 := (SELECT m.classification || '/' || coalesce(m.suggested_dept, '-') FROM people.programme_mismatches(fac, NULL, NULL) m WHERE m.student_id = s2);
+        chk := people.restore_transfer_check(s1, pb, 300, t2, NULL, t1, DATE '2025-03-14');
+        res := people.restore_approved_transfer(s1, pb, 300, t2, 'Transfer approved by Senate on the old portal; restored after migration', NULL, t1, 1,
+                                                DATE '2025-03-14', 'TRF/2670/00125', NULL);
+        after := (SELECT s.programme_code || ' ' || s.current_level || ' ' || s.matric_no FROM people.student s WHERE s.id = s1);
+        app := (SELECT string_agg(t.state, ',') FROM people.transfer_application t WHERE t.student_id = s1);
+        prior := (SELECT pt.from_programme || '>' || pt.to_programme || ' ' || pt.from_level || '>' || pt.to_level || ' ' || pt.effective_session || ':' || pt.effective_semester
+                         || ' ' || pt.approved_on || ' ' || pt.reference || ' ' || (pt.swap_id IS NOT NULL) FROM people.prior_transfer pt WHERE pt.student_id = s1);
+        hist := (SELECT string_agg(h.kind || CASE WHEN h.current THEN '*' ELSE '' END, ',' ORDER BY (h.kind = 'ORIGINAL_ADMISSION') DESC, h.at NULLS FIRST)
+                   FROM people.programme_history(s1) h);
+        BEGIN
+            PERFORM people.prepare_programme_swap(s3, pb, 300, t2, 'APPROVED_TRANSFER_RESTORED', 'a plain swap of the restoration kind', NULL);
+            plain := 'made';
+        EXCEPTION WHEN check_violation THEN plain := split_part(SQLERRM, ':', 1);
+        END;
+        -- an old file uploaded again names A at 200: the record keeps B at 300, the file's put to the Academic Office
+        upload := (SELECT u.updated || '/' || u.skipped FROM people.import_students_rows(jsonb_build_array(jsonb_build_object(
+                       'matric', 'MOAU/' || fac || '/ZQA/69/96691', 'name', 'CHECKV669, Moved Back', 'programme', pa, 'level', '200'))) u);
+        conflict := (SELECT s.programme_code || ' ' || s.current_level || ' | ' || c.file_programme || ' ' || c.file_level || ' kept ' || c.kept_programme || ' ' || c.kept_level
+                            || ' ' || c.status || ' ' || (c.settled_by = res->>'swapRef')
+                       FROM people.student s JOIN people.placement_conflict c ON c.student_id = s.id WHERE s.id = s1);
+        kept := (SELECT people.decide_placement_conflict(c.id, 'KEEP', 'The old file predates the approved transfer')->>'status'
+                   FROM people.placement_conflict c WHERE c.student_id = s1);
+        -- the rightly placed student: the transfer recorded, nothing moved; the list no longer judges them by the number
+        rec := people.restore_approved_transfer(s2, pb, 300, t2, 'Transfer approved on the old portal, recorded for the history', pa, t1, NULL, NULL, NULL, NULL);
+        after_s2 := (SELECT count(*) FROM people.programme_mismatches(fac, NULL, NULL) m WHERE m.student_id = s2);
+        BEGIN
+            PERFORM people.restore_approved_transfer(s2, pb, 300, t2, 'Transfer approved on the old portal, recorded again', pa, t1, NULL, NULL, NULL, NULL);
+            again := 'recorded twice';
+        EXCEPTION WHEN check_violation THEN again := split_part(SQLERRM, ':', 1);
+        END;
+        -- in bulk: the valid row restored, the student unknown left out
+        bulk := people.prepare_transfer_batch(jsonb_build_array(
+                    jsonb_build_object('matric_no', 'MOAU/' || fac || '/ZQA/69/96693', 'old_faculty', fac, 'old_dept', da, 'old_programme', pa, 'old_level', '200',
+                                       'new_faculty', fac, 'new_dept', db_, 'new_programme', pb, 'new_level', '300', 'effective_session', t1, 'effective_semester', '2',
+                                       'approval_ref', 'TRF/2670/00126', 'approved_on', '14/03/2025'),
+                    jsonb_build_object('matric_no', 'MOAU/' || fac || '/ZQA/69/00000', 'new_faculty', fac, 'new_dept', db_, 'new_programme', pb, 'new_level', '300')),
+                    t2, 'Transfers approved by Senate on the old portal, restored in bulk', 'SEN/2670/14', 'restore.xlsx', true, 'APPROVED_TRANSFER_RESTORED');
+        bulk_s3 := (SELECT s.programme_code || ' ' || s.current_level || ' ' || pt.reference || ' ' || pt.effective_semester || ' ' || (pt.batch_id::text = bulk->>'id')
+                      FROM people.student s JOIN people.prior_transfer pt ON pt.student_id = s.id WHERE s.id = s3);
+        apps := (SELECT count(*) FROM people.transfer_application t WHERE t.student_id IN (s1, s2, s3));
+        RAISE EXCEPTION 'the V669 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V669 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V669: a transfer approved on the old portal restored with no new application, the number unchanged; the matriculation number suggests no department; an upload never moves a recorded placement back',
+        coalesce(before_s2 = 'POSSIBLE/-'
+                 AND (chk->>'ok')::boolean AND chk->'warnings' @> '[{"code": "APPLICATION_WITHDRAWN"}]' AND (chk->'creates'->>'transferApplications')::int = 0
+                 AND res->>'swapRef' ~ '^PSW/' AND (res->>'transferApplicationsCreated')::int = 0
+                 AND after = pb || ' 300 MOAU/' || fac || '/ZQA/69/96691'
+                 AND app = 'WITHDRAWN'
+                 AND prior = pa || '>' || pb || ' 200>300 ' || t1 || ':1 2025-03-14 TRF/2670/00125 true'
+                 AND hist = 'ORIGINAL_ADMISSION,TRANSFER_APPROVED_OLD_PORTAL,PROGRAMME_SWAP_APPROVED_TRANSFER_RESTORED*'
+                 AND plain = 'PSW_KIND'
+                 AND upload = '1/0'
+                 AND conflict = pb || ' 300 | ' || pa || ' 200 kept ' || pb || ' 300 REQUIRES_REVIEW true'
+                 AND kept = 'KEPT'
+                 AND (rec->>'recordOnly')::boolean AND rec->>'swapId' IS NULL AND after_s2 = 0
+                 AND again = 'PTR_RECORDED'
+                 AND bulk->>'ref' ~ '^TRR/' AND (bulk->>'prepared')::int = 1 AND (bulk->>'invalid')::int = 1 AND (bulk->>'transferApplicationsCreated')::int = 0
+                 AND bulk_s3 = pb || ' 300 TRF/2670/00126 2 true'
+                 AND apps = 1, false),
+        format('mismatch before %s | check %s %s | restored %s %s | record %s | application %s | prior %s | history %s | plain swap %s | upload %s | conflict %s → %s | recorded only %s, listed after %s | again %s | bulk %s %s | applications %s',
+               before_s2, chk->>'ok', chk->'warnings', res->>'swapRef', res->>'transferApplicationsCreated', after, app, prior, hist, plain, upload, conflict, kept,
+               rec->>'recordOnly', after_s2, again, bulk, bulk_s3, apps));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
  *  placement kept. The shapes /api/v1/programme-swaps returns, the words its codes are shown in, and the rows the report takes. */
 
 export type SwapStatus = "PENDING_APPROVAL" | "COMPLETED" | "REJECTED" | "CANCELLED" | "FAILED";
-export type SwapKind = "LEGACY_MIGRATION_CORRECTION" | "PROGRAMME_CORRECTION" | "ACADEMIC_TRANSFER";
+export type SwapKind = "LEGACY_MIGRATION_CORRECTION" | "PROGRAMME_CORRECTION" | "ACADEMIC_TRANSFER" | "APPROVED_TRANSFER_RESTORED";
 export type Classification = "CONFIRMED" | "POSSIBLE" | "REQUIRES_REVIEW" | "NO_MISMATCH";
 export type ReviewStatus = "NOT_REVIEWED" | "UNDER_REVIEW" | "CONFIRMED" | "SWAP_REQUIRED" | "SWAPPED" | "NO_ACTION_REQUIRED" | "REQUIRES_DOCUMENTATION";
 
@@ -10,7 +10,10 @@ export const KIND_WORDS: Record<SwapKind, string> = {
   LEGACY_MIGRATION_CORRECTION: "Legacy migration correction",
   PROGRAMME_CORRECTION: "Programme correction",
   ACADEMIC_TRANSFER: "Academic transfer recorded",
+  APPROVED_TRANSFER_RESTORED: "Approved transfer restored (old portal)",
 };
+/** the kinds a plain swap is made as; a transfer approved on the old portal is restored with its record (V669), never as a plain swap */
+export const PLAIN_KINDS: SwapKind[] = ["LEGACY_MIGRATION_CORRECTION", "PROGRAMME_CORRECTION", "ACADEMIC_TRANSFER"];
 export const STATUS_WORDS: Record<SwapStatus, string> = {
   PENDING_APPROVAL: "Pending approval", COMPLETED: "Completed", REJECTED: "Rejected", CANCELLED: "Cancelled", FAILED: "Failed",
 };
@@ -124,4 +127,54 @@ export function swapsHref(tab: string, f: Record<string, string>): string {
   for (const [k, v] of Object.entries(f)) if (v) qs.set(k, v);
   const q = qs.toString();
   return `/programme-swap${q ? `?${q}` : ""}`;
+}
+
+/* ── V669: a transfer approved on the old portal, restored without a new application ── */
+
+export interface RestoreCheck extends CheckResult {
+  restore?: {
+    fromProgramme: string | null; fromProgrammeName: string | null; transferSession: string; approvedOn: string | null; recordOnly: boolean;
+    recordedAlready: string | null;
+    openApplication: { id: string; state: string; toProgramme: string; appliedAt: string; withdrawn: boolean } | null;
+  };
+  creates?: { transferApplications: number; transferPayments: number; transferApprovals: number; matriculationNumbers: number };
+}
+
+export interface RestoreDone {
+  priorTransferId: string; swapId: string | null; swapRef: string | null; recordOnly: boolean; withdrawnApplication: string | null;
+  transferApplicationsCreated: number; matricNo: string | null;
+}
+
+/** what restoring does, in the words the confirmation shows: the move (or the record alone), the application withdrawn, what is never made */
+export function restoreWords(c: RestoreCheck): string[] {
+  const out: string[] = [];
+  const to = c.to ? `${c.to.programmeName} at ${c.to.level ?? "—"} Level` : "the programme chosen";
+  out.push(c.restore?.recordOnly
+    ? `The student is on ${to} already: the transfer approved on the old portal is recorded in the history, and nothing is moved.`
+    : `${c.from.programmeName} at ${c.from.level ?? "—"} Level becomes ${to}.`);
+  if (c.restore?.openApplication?.withdrawn) out.push(`The transfer application waiting in the queue (${c.restore.openApplication.state.toLowerCase().replace(/_/g, " ")}) is withdrawn.`);
+  out.push(`No transfer application, transfer fee or transfer approval is made; the matriculation number stays ${c.student.matricNo ?? "as it is"}.`);
+  return out;
+}
+
+export type ConflictStatus = "REQUIRES_REVIEW" | "KEPT" | "APPLIED";
+
+/** an old-portal upload's programme or level against a placement this portal recorded (people.placement_conflicts) */
+export interface PlacementConflict {
+  id: string; student_id: string; name: string; matric_no: string | null; jamb_reg_no: string | null; source: "STUDENT_UPLOAD" | "BIOGRAPHY_UPLOAD";
+  file_programme: string; file_programme_name: string | null; file_level: number | null; kept_programme: string; kept_programme_name: string | null;
+  kept_level: number | null; current_programme: string; current_level: number | null; settled_by: string; status: ConflictStatus; seen: number;
+  first_seen: string; last_seen: string; note: string | null; decided_at: string | null; swap_ref: string | null;
+}
+
+export const CONFLICT_WORDS: Record<ConflictStatus, string> = {
+  REQUIRES_REVIEW: "Requires review", KEPT: "Recorded placement kept", APPLIED: "Upload's placement applied",
+};
+export const SOURCE_WORDS: Record<PlacementConflict["source"], string> = { STUDENT_UPLOAD: "Student upload", BIOGRAPHY_UPLOAD: "Biography upload" };
+
+/** a conflict in a line: what the upload named against what the record kept, and why it was kept */
+export function conflictWords(c: Pick<PlacementConflict, "file_programme" | "file_programme_name" | "file_level" | "kept_programme" | "kept_programme_name" | "kept_level" | "settled_by">): string {
+  const named = `${c.file_programme_name ?? c.file_programme}${c.file_level ? ` at ${c.file_level} Level` : ""}`;
+  const kept = `${c.kept_programme_name ?? c.kept_programme}${c.kept_level ? ` at ${c.kept_level} Level` : ""}`;
+  return `The upload named ${named}; the record kept ${kept}, set by ${c.settled_by}`;
 }

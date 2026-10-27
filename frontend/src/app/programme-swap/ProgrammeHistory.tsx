@@ -11,6 +11,9 @@ const KINDS: Record<string, string> = {
   ORIGINAL_ADMISSION: "Original admission", TRANSFER_EFFECTED: "Inter-departmental transfer", RECORD_MOVED: "Record moved", PROGRAMME_CHANGED: "Programme changed on the record",
   PROGRAMME_SWAP_LEGACY_MIGRATION_CORRECTION: "Programme swap: legacy migration correction", PROGRAMME_SWAP_PROGRAMME_CORRECTION: "Programme swap: programme correction",
   PROGRAMME_SWAP_ACADEMIC_TRANSFER: "Programme swap: academic transfer recorded",
+  // V669: a transfer approved on the old portal, and its restoration here
+  TRANSFER_APPROVED_OLD_PORTAL: "Inter-departmental transfer approved on the old portal",
+  PROGRAMME_SWAP_APPROVED_TRANSFER_RESTORED: "Approved transfer restored (no new application)",
 };
 
 export function ProgrammeHistory({ rows }: { rows: Record<string, unknown>[] }) {

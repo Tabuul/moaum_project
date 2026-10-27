@@ -4,7 +4,9 @@
  *  the new one for the office to fill); the file comes back and every row is checked against the student's current record and the
  *  target — never put right silently — and previewed, with an error report to correct and upload again; the valid rows are
  *  made as one batch of programme swaps (IDT/YYYY/NNNNNN) by the officer who uploads the file, and the students move at once (V633).
- *  A batch left pending from before is decided on this screen by any officer who may make a swap. */
+ *  A batch left pending from before is decided on this screen by any officer who may make a swap. V669: "approved on the old portal"
+ *  restores transfers the old portal approved instead (TRR/YYYY/NNNNNN): each row checked as a restoration, no transfer application,
+ *  fee or approval made, the matriculation number unchanged. */
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,7 +17,8 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { csvRows, xlsxRows } from "@/lib/xlsx";
-import { COLUMNS, STATUS, errorReportRows, readTransferSheet, rowWords, templateRows, type CheckedRow, type TemplateStudent, type Validation } from "@/lib/transfer-bulk";
+import { COLUMNS, RESTORE_COLUMNS, STATUS, errorReportRows, readTransferSheet, restoreTemplateRows, rowWords, templateRows, type CheckedRow, type TemplateStudent,
+  type Validation } from "@/lib/transfer-bulk";
 
 const BASE = "/api/bff/api/v1/transfers/bulk";
 const PREPARERS = ["academic", "ict", "registrar", "dregistrar", "super"];
@@ -35,12 +38,16 @@ const BATCH: Record<string, [string, "ok" | "info" | "warn" | "bad" | "grey"]> =
   COMPLETED_WITH_EXCEPTIONS: ["Completed with exceptions", "warn"], REJECTED: ["Rejected", "bad"], FAILED: ["Failed", "bad"], NOTHING_PREPARED: ["Nothing prepared", "grey"],
 };
 
-export function TransferBulk({ structure, batches, office }: { structure: Structure; batches: Batch[]; office: string | null; me: string | null }) {
+export function TransferBulk({ structure, batches, office, restoreInitially = false }: { structure: Structure; batches: Batch[]; office: string | null; me: string | null;
+  restoreInitially?: boolean }) {
   const router = useRouter();
   const mayPrepare = PREPARERS.includes(office ?? "");
   /** V633: who may make a swap decides a batch left pending from before, the officer who uploaded it included */
   const mayDecide = mayPrepare;
   const [tab, setTab] = useState<"upload" | "batches">("upload");
+  // V669: transfers the old portal approved, restored (no application) rather than transferred
+  const [restoreMode, setRestoreMode] = useState(restoreInitially);
+  const kind = restoreMode ? "APPROVED_TRANSFER_RESTORED" : "ACADEMIC_TRANSFER";
   // the template
   const [fac, setFac] = useState("");
   const [dept, setDept] = useState("");
@@ -70,8 +77,9 @@ export function TransferBulk({ structure, batches, office }: { structure: Struct
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
     const students = j as TemplateStudent[];
     const where = [structure.faculties.find((f) => f.code === fac)?.name, departments.find((d) => d.code === dept)?.name, programmes.find((p) => p.code === prog)?.name, level ? `${level} Level` : null].filter(Boolean).join(" · ");
-    downloadBlob(await brandedXlsx("Bulk Inter-Departmental Transfer", COLUMNS.map(([, l]) => l), templateRows(students, session.trim()), {
-      serial: docSerial("IDT"), sub: `${where} · ${students.length} students · template 1 · generated ${new Date().toLocaleDateString("en-GB")}. Leave the Old columns as they are; fill the New Faculty, Department and Programme codes and the New Level for each student who transfers, and delete the rows of those who do not. A lower level needs the Reason.`,
+    downloadBlob(await brandedXlsx(restoreMode ? "Restore Transfers Approved on the Old Portal" : "Bulk Inter-Departmental Transfer",
+      (restoreMode ? RESTORE_COLUMNS : COLUMNS).map(([, l]) => l), (restoreMode ? restoreTemplateRows : templateRows)(students, session.trim()), {
+      serial: docSerial(restoreMode ? "TRR" : "IDT"), sub: `${where} · ${students.length} students · template 1 · generated ${new Date().toLocaleDateString("en-GB")}. Leave the Old columns as they are; fill the New Faculty, Department and Programme codes and the New Level for each student who transfers, and delete the rows of those who do not. A lower level needs the Reason.`,
     }), `transfer-template-${dept || fac || prog}-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
@@ -81,7 +89,7 @@ export function TransferBulk({ structure, batches, office }: { structure: Struct
     setMade(null); setCheck(null);
     if (read.problem) { notifyProblem({ status: 400, title: "That file could not be read", detail: read.problem }); setRows(null); return; }
     setFile(f.name); setRows(read.rows);
-    const r = await fetch(`${BASE}/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: read.rows, session: session.trim() || null }) });
+    const r = await fetch(`${BASE}/validate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: read.rows, session: session.trim() || null, kind }) });
     const j = await r.json().catch(() => null);
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
     setCheck(j as Validation);
@@ -99,12 +107,12 @@ export function TransferBulk({ structure, batches, office }: { structure: Struct
     if (!rows || !check) return;
     const r = await fetch(BASE, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason.trim()) },
-      body: JSON.stringify({ rows, session: session.trim() || null, reason: reason.trim(), approvalRef: approvalRef.trim() || null, filename: file, validRowsOnly: validOnly }),
+      body: JSON.stringify({ rows, session: session.trim() || null, reason: reason.trim(), approvalRef: approvalRef.trim() || null, filename: file, validRowsOnly: validOnly, kind }),
     });
     const j = await r.json().catch(() => null);
     if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
     setMade(j as BatchDetail);
-    notify(`${(j as BatchDetail).ref}: ${(j as BatchDetail).completed} student${(j as BatchDetail).completed === 1 ? "" : "s"} transferred`);
+    notify(`${(j as BatchDetail).ref}: ${(j as BatchDetail).completed} student${(j as BatchDetail).completed === 1 ? "" : "s"} ${restoreMode ? "restored · new transfer applications: 0" : "transferred"}`);
     router.refresh();
   }
 
@@ -134,12 +142,24 @@ export function TransferBulk({ structure, batches, office }: { structure: Struct
       <Note kind="info" title="Students who moved department, recorded from a spreadsheet">
         Each row must name the student&rsquo;s current faculty, department, programme and level exactly as the record holds them; a row that does not is
         refused (SOURCE PROGRAMME MISMATCH), never put right. The valid rows become programme swaps under one batch, made at once by the officer who uploads
-        the file: each student is on the new programme when the upload is done. Registrations, results, payments and the matriculation number stay as they are;
-        a matriculation number that must follow is corrected separately under Matriculation Correction.
+        the file: each student is on the new programme when the upload is done. Registrations, results, payments and the matriculation number stay as they are:
+        a transfer never changes the matriculation number.
       </Note>
       <Tabs label="Bulk transfer" value={tab} onChange={setTab} items={[{ id: "upload", label: "New upload" }, { id: "batches", label: "Batches", count: batches.length }]} />
       {tab === "upload" ? (
         <>
+          <label className="row row--tight" style={{ alignItems: "center", gap: 8 }}>
+            <input type="checkbox" className="chk" checked={restoreMode} onChange={(e) => { setRestoreMode(e.target.checked); setCheck(null); setMade(null); setRows(null); }} />
+            <span><b>These transfers were approved on the old portal</b>: restore them — no new transfer applications, fees or approvals</span>
+          </label>
+          {restoreMode ? (
+            <Note kind="info" title="Restoring transfers approved on the old portal">
+              Each student is put on the approved programme and level directly and the old portal&rsquo;s transfer is recorded in their history; an application
+              left in the transfer queue for the same programme is withdrawn. The Old columns are the record as it stands (the department the migration put the
+              student back in); the New columns the approved destination; the Effective Session and Semester when the transfer took effect; the Approval Reference
+              the old portal&rsquo;s transfer reference; Approved On the date. A student already on the destination is recorded only.
+            </Note>
+          ) : null}
           <Panel title="1 · The template: the department's students as they stand">
             <PBody>
               <div className="row row--tight" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -213,12 +233,12 @@ export function TransferBulk({ structure, batches, office }: { structure: Struct
             ) : null}
           </Panel>
           {check && mayPrepare ? (
-            <Panel title="3 · Transfer the students">
+            <Panel title={restoreMode ? "3 · Restore the approved transfers" : "3 · Transfer the students"}>
               <PBody>
                 {made ? (
-                  <Note kind="ok" title={`${made.ref}: ${made.completed} student${made.completed === 1 ? "" : "s"} transferred`}
+                  <Note kind="ok" title={`${made.ref}: ${made.completed} student${made.completed === 1 ? "" : "s"} ${restoreMode ? "restored" : "transferred"}`}
                     action={<Btn kind="ghost" size="sm" onClick={() => { setTab("batches"); void openBatch(made.id); }}>Open the batch</Btn>}>
-                    {made.skipped ? `${made.skipped} row${made.skipped === 1 ? "" : "s"} left out with the reason. ` : ""}Each student transferred is on the new programme now; the batch keeps every row with its result.
+                    {made.skipped ? `${made.skipped} row${made.skipped === 1 ? "" : "s"} left out with the reason. ` : ""}{restoreMode ? "Each student is on the approved programme now and the old portal's transfer is in their history; new transfer applications: 0." : "Each student transferred is on the new programme now; the batch keeps every row with its result."}
                   </Note>
                 ) : (
                   <>
@@ -238,7 +258,7 @@ export function TransferBulk({ structure, batches, office }: { structure: Struct
                     ) : null}
                     <div className="row row--tight mt-2" style={{ gap: 8, alignItems: "center" }}>
                       <Btn kind="primary" disabled={reason.trim().length < 10 || (check.invalid > 0 && !validOnly) || check.valid + check.warnings === 0} busyLabel="Transferring…"
-                        onClick={() => prepare()}>{`Transfer ${check.valid + check.warnings} student${check.valid + check.warnings === 1 ? "" : "s"}`}</Btn>
+                        onClick={() => prepare()}>{`${restoreMode ? "Restore" : "Transfer"} ${check.valid + check.warnings} student${check.valid + check.warnings === 1 ? "" : "s"}`}</Btn>
                       <span className="sub2">{check.invalid && !validOnly ? "Correct the invalid rows, or choose to transfer the valid rows alone." : "Each row is checked again as its student is transferred."}</span>
                     </div>
                   </>

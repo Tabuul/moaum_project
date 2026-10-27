@@ -21,7 +21,7 @@ import { Biodata } from "../Biodata";
 import type { StudentRecord } from "@/lib/student";
 import type { RegistrationView } from "@/lib/student-portal";
 import { TargetPicker, type Target } from "@/app/programme-swap/TargetPicker";
-import { KIND_WORDS, refusalWords, type CheckResult, type Faculty, type SwapKind } from "@/lib/programme-swap";
+import { KIND_WORDS, PLAIN_KINDS, refusalWords, type CheckResult, type Faculty, type SwapKind } from "@/lib/programme-swap";
 import { recBatchPath } from "@/lib/graduation-reconciliation";
 import {
   FIELD_WORD, SEVERITY, jambYear, reasonProblem, sessionYear, words,
@@ -360,11 +360,13 @@ function PlacementSection({ page, faculties, may, settle }: { page: EditPage; fa
                 </Field>
                 <Field id="pl-kind" label="Change type">
                   <select id="pl-kind" className="ctl" value={kind} onChange={(e) => setKind(e.target.value as SwapKind)}>
-                    {(Object.keys(KIND_WORDS) as SwapKind[]).map((k) => <option key={k} value={k}>{KIND_WORDS[k]}</option>)}
+                    {PLAIN_KINDS.map((k) => <option key={k} value={k}>{KIND_WORDS[k]}</option>)}
                   </select>
                 </Field>
               </div>
-              <div className="row mt-2"><Btn kind="secondary" busy={swapBusy && !check} disabled={!target.programme || !target.level} onClick={() => void runCheck()}>Check the change</Btn></div>
+              <div className="row mt-2"><Btn kind="secondary" busy={swapBusy && !check} disabled={!target.programme || !target.level} onClick={() => void runCheck()}>Check the change</Btn>
+                {/* V669: a transfer approved on the old portal is restored with its record, never through the transfer queue */}
+                <LinkBtn kind="ghost" href={`/programme-swap/${s.id}?restore=1`}>Transfer approved on the old portal? Restore it</LinkBtn></div>
               {check ? (
                 <div className="mt-3">
                   {check.refusals.length ? (

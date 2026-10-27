@@ -29,7 +29,8 @@ import org.springframework.web.bind.annotation.RestController;
  * MISMATCH, the new programme in its department and faculty, the level, the student twice, every check of the programme swap) and
  * previewed; made, it becomes a batch IDT/YYYY/NNNNNN of programme swaps (ACADEMIC_TRANSFER) that move the students at once, by the
  * officer who uploads the file (V633). A batch left pending from before V633 is decided on the swap screens' batch decision. The
- * rules are the database's.
+ * rules are the database's. V669: kind APPROVED_TRANSFER_RESTORED restores transfers approved on the old portal instead — each row
+ * checked as a restoration (people.restore_upload_check), a batch TRR/YYYY/NNNNNN, no transfer application, fee or approval.
  */
 @RestController
 @RequestMapping("/api/v1/transfers/bulk")
@@ -65,7 +66,12 @@ class TransferBatchController {
                 .param("l", level, Types.INTEGER).query().listOfRows();
     }
 
-    public record Upload(@NotNull @Size(min = 1, max = 1000) List<Map<String, Object>> rows, @Size(max = 20) String session) {
+    public record Upload(@NotNull @Size(min = 1, max = 1000) List<Map<String, Object>> rows, @Size(max = 20) String session, @Size(max = 40) String kind) {
+    }
+
+    /** V669: a restoration of transfers approved on the old portal, or (the default) a bulk transfer */
+    static boolean restoring(String kind) {
+        return "APPROVED_TRANSFER_RESTORED".equals(kind == null ? null : kind.trim());
     }
 
     /** each row checked: VALID, WARNING (review points) or INVALID (problems), never put right silently; and the counts */
@@ -73,7 +79,8 @@ class TransferBatchController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> validate(@Valid @RequestBody Upload body) {
-        Object checked = parse(jdbc.sql("SELECT people.transfer_upload_check(CAST(:r AS jsonb), :s)::text")
+        Object checked = parse(jdbc.sql(restoring(body.kind()) ? "SELECT people.restore_upload_check(CAST(:r AS jsonb), :s)::text"
+                                                         : "SELECT people.transfer_upload_check(CAST(:r AS jsonb), :s)::text")
                 .param("r", json.writeValueAsString(body.rows())).param("s", blank(body.session()), Types.VARCHAR).query(String.class).single());
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = checked instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
@@ -83,13 +90,14 @@ class TransferBatchController {
         out.put("warnings", rows.stream().filter(r -> "WARNING".equals(r.get("status"))).count());
         out.put("invalid", rows.stream().filter(r -> "INVALID".equals(r.get("status"))).count());
         out.put("duplicates", rows.stream().filter(r -> String.valueOf(r.get("problems")).contains("DUPLICATE_ROW")).count());
+        out.put("kind", restoring(body.kind()) ? "APPROVED_TRANSFER_RESTORED" : "ACADEMIC_TRANSFER");
         out.put("rows", rows);
         return out;
     }
 
     public record Prepare(@NotNull @Size(min = 1, max = 1000) List<Map<String, Object>> rows, @Size(max = 20) String session,
                           @NotNull @Size(min = 10, max = 2000) String reason, @Size(max = 200) String approvalRef, @Size(max = 200) String filename,
-                          Boolean validRowsOnly) {
+                          Boolean validRowsOnly, @Size(max = 40) String kind) {
     }
 
     /** the batch made: the rows checked again, a programme swap made at once for each valid row, every row kept with its result */
@@ -97,10 +105,11 @@ class TransferBatchController {
     @PreAuthorize(PREPARERS)
     @Transactional
     Map<String, Object> prepare(@Valid @RequestBody Prepare body) {
-        Object made = parse(jdbc.sql("SELECT people.prepare_transfer_batch(CAST(:r AS jsonb), :s, :why, :ref, :f, :partial)::text")
+        Object made = parse(jdbc.sql("SELECT people.prepare_transfer_batch(CAST(:r AS jsonb), :s, :why, :ref, :f, :partial, :kind)::text")
                 .param("r", json.writeValueAsString(body.rows())).param("s", blank(body.session()), Types.VARCHAR).param("why", body.reason().trim())
                 .param("ref", blank(body.approvalRef()), Types.VARCHAR).param("f", blank(body.filename()), Types.VARCHAR)
-                .param("partial", Boolean.TRUE.equals(body.validRowsOnly())).query(String.class).single());
+                .param("partial", Boolean.TRUE.equals(body.validRowsOnly()))
+                .param("kind", restoring(body.kind()) ? "APPROVED_TRANSFER_RESTORED" : "ACADEMIC_TRANSFER").query(String.class).single());
         Object id = made instanceof Map<?, ?> m ? m.get("id") : null;
         return one(UUID.fromString(String.valueOf(id)));
     }
@@ -122,6 +131,8 @@ class TransferBatchController {
                 .orElseThrow(() -> new NotFound("bulk transfer", id));
         @SuppressWarnings("unchecked")
         Map<String, Object> out = new LinkedHashMap<>((Map<String, Object>) parse(batch));
+        // V669: a restoration of transfers approved on the old portal (TRR/…) makes no transfer application
+        out.put("kind", jdbc.sql("SELECT kind FROM people.transfer_batch WHERE id = :id").param("id", id).query(String.class).single());
         out.put("rows", parse(jdbc.sql("SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.row_no), '[]')::text FROM people.transfer_batch_rows(:id) x")
                 .param("id", id).query(String.class).single()));
         return out;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { COLUMNS, errorReportRows, readTransferSheet, rowWords, templateRows, type CheckedRow } from "./transfer-bulk.ts";
+import { COLUMNS, RESTORE_COLUMNS, errorReportRows, readTransferSheet, restoreTemplateRows, rowWords, templateRows, type CheckedRow } from "./transfer-bulk.ts";
 
 test("the template carries each student's current placement in the OLD columns and leaves the NEW ones blank", () => {
   const rows = templateRows([{ matric_no: "MOAU/AD/BUS/25/12939", jamb_reg_no: "12345678AB", student: "DOE, John", faculty_code: "AD", dept_code: "BUS",
@@ -34,4 +34,20 @@ test("a row is said by its problems, else its review points; the error report ke
   assert.match(rowWords(r), /SOURCE PROGRAMME MISMATCH/);
   assert.equal(rowWords({ problems: [], warnings: [{ code: "FACULTY_CHANGE", text: "The student moves to another faculty" }] }), "The student moves to another faculty");
   assert.deepEqual(errorReportRows([r])[0].slice(0, 4), [2, "MARY, John", "M1", "Invalid"]);
+});
+
+test("V669: the restoration's template — the bulk transfer's columns and the date approved; the sheet read back with it", () => {
+  assert.deepEqual(RESTORE_COLUMNS.slice(0, COLUMNS.length), COLUMNS);
+  assert.deepEqual(RESTORE_COLUMNS[RESTORE_COLUMNS.length - 1], ["approved_on", "Approved On"]);
+  const rows = restoreTemplateRows([{ matric_no: "MOAU/SC/MCB/24/75807", jamb_reg_no: null, student: "DOE, Jane", faculty_code: "SC", dept_code: "MCB",
+    programme_code: "C1", programme: "B.Sc. Microbiology", current_level: 200, status: "ACTIVE" }], "2025/2026");
+  assert.equal(rows[0].length, RESTORE_COLUMNS.length);
+  assert.equal(rows[0][13], "APPROVED_ON_OLD_PORTAL");
+  assert.equal(rows[0][RESTORE_COLUMNS.length - 1], "");
+  const read = readTransferSheet([RESTORE_COLUMNS.map(([, l]) => l), ["MOAU/SC/MCB/24/75807", "", "DOE, Jane", "SC", "MCB", "C1", "200", "SC", "BCH", "C2", "300",
+    "2025/2026", "1", "APPROVED_ON_OLD_PORTAL", "", "TRF/2025/00125", "", "14/03/2025"]]);
+  assert.equal(read.problem, null);
+  assert.equal(read.rows[0].approved_on, "14/03/2025");
+  assert.equal(read.rows[0].approval_ref, "TRF/2025/00125");
+  assert.equal(read.rows[0].effective_semester, "1");
 });

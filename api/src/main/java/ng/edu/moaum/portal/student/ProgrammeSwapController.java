@@ -142,6 +142,8 @@ class ProgrammeSwapController {
         out.put("refreshing", a.refreshing());
         out.put("prepares", jdbc.sql("SELECT people.programme_swap_office_prepares(:o)").param("o", office()).query(Boolean.class).single());
         out.put("decides", jdbc.sql("SELECT people.programme_swap_office_decides(:o, 'PROGRAMME_CORRECTION')").param("o", office()).query(Boolean.class).single());
+        // V669: the old-portal uploads' programmes kept against a placement this portal recorded, awaiting the Academic Office
+        out.put("conflicts", jdbc.sql("SELECT count(*) FROM people.placement_conflict WHERE status = 'REQUIRES_REVIEW'").query(Long.class).single());
         return out;
     }
 
@@ -290,6 +292,95 @@ class ProgrammeSwapController {
                 .query(UUID.class).single();
         forget();
         return detail(id);
+    }
+
+    /* ── V669: a transfer approved on the old portal, restored — the swap of kind APPROVED_TRANSFER_RESTORED, the transfer recorded,
+       an application left in the queue to the same programme withdrawn; no new application, fee or approval, the number untouched ── */
+    record RestoreCheck(UUID studentId, String toProgramme, Integer toLevel, String session, String fromProgramme, String transferSession, String approvedOn) { }
+    record Restore(UUID studentId, String toProgramme, Integer toLevel, String session, String fromProgramme, String transferSession,
+                   Integer transferSemester, String approvedOn, String reference, String reason) { }
+    record ConflictDecision(String decision, String note) { }
+
+    /** a date as the form sends it (YYYY-MM-DD), or none */
+    private static java.sql.Date dateOf(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return java.sql.Date.valueOf(java.time.LocalDate.parse(s.trim()));
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new DomainRuleViolation("PTR_APPROVED_ON", "The approval date is not a date.", new DomainRuleViolation.Remedy("Pick the date the transfer was approved.", "You"));
+        }
+    }
+
+    /** a student by matriculation number (or a former one), JAMB or admission number: the transfer desk's way to the restoration */
+    @GetMapping("/find")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> find(@RequestParam String number) {
+        String n = number == null ? "" : number.trim();
+        UUID id = jdbc.sql("""
+                SELECT s.id FROM people.student s
+                 WHERE upper(s.matric_no) = upper(:n) OR upper(s.jamb_reg_no) = upper(:n) OR upper(s.admission_no) = upper(:n)
+                    OR EXISTS (SELECT 1 FROM people.matric_alias a WHERE a.student_id = s.id AND upper(a.old_no) = upper(:n))
+                 ORDER BY (upper(s.matric_no) = upper(:n)) DESC NULLS LAST LIMIT 1
+                """).param("n", n).query(UUID.class).optional().orElseThrow(() -> new NotFound("student", n));
+        reach.check(id);
+        return jdbc.sql("""
+                SELECT s.id, upper(s.surname) || ', ' || s.other_names AS name, s.matric_no, s.programme_code, p.name AS programme, s.current_level, s.status
+                  FROM people.student s LEFT JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :s
+                """).param("s", id).query().singleRow();
+    }
+
+    @PostMapping("/restore-transfer/check")
+    @PreAuthorize(PREPARERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> restoreCheck(@RequestBody RestoreCheck body) {
+        if (body.studentId() == null) throw new DomainRuleViolation("PTR_STUDENT", "Name the student.", new DomainRuleViolation.Remedy("Choose a student.", "You"));
+        reach.check(body.studentId());
+        return jsonOf(jdbc.sql("SELECT people.restore_transfer_check(:s, :p, :l, :ses, :from, :ts, :on)::text")
+                .param("s", body.studentId()).param("p", body.toProgramme(), Types.VARCHAR).param("l", body.toLevel(), Types.INTEGER)
+                .param("ses", body.session(), Types.VARCHAR).param("from", body.fromProgramme(), Types.VARCHAR)
+                .param("ts", body.transferSession(), Types.VARCHAR).param("on", dateOf(body.approvedOn()), Types.DATE)
+                .query(String.class).single());
+    }
+
+    @PostMapping("/restore-transfer")
+    @PreAuthorize(PREPARERS)
+    @Transactional
+    Map<String, Object> restore(@RequestBody Restore body) {
+        if (body.studentId() == null) throw new DomainRuleViolation("PTR_STUDENT", "Name the student.", new DomainRuleViolation.Remedy("Choose a student.", "You"));
+        reach.check(body.studentId());
+        Map<String, Object> out = jsonOf(jdbc.sql("SELECT people.restore_approved_transfer(:s, :p, :l, :ses, :r, :from, :ts, :sem, :on, :ref, NULL)::text")
+                .param("s", body.studentId()).param("p", body.toProgramme(), Types.VARCHAR).param("l", body.toLevel(), Types.INTEGER)
+                .param("ses", body.session(), Types.VARCHAR).param("r", body.reason(), Types.VARCHAR).param("from", body.fromProgramme(), Types.VARCHAR)
+                .param("ts", body.transferSession(), Types.VARCHAR).param("sem", body.transferSemester(), Types.INTEGER)
+                .param("on", dateOf(body.approvedOn()), Types.DATE).param("ref", body.reference(), Types.VARCHAR)
+                .query(String.class).single());
+        forget();
+        return out;
+    }
+
+    /** what the old-portal uploads named against a placement this portal recorded: kept, and put to the Academic Office */
+    @GetMapping("/placement-conflicts")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> placementConflicts(@RequestParam(required = false) String status) {
+        String st = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status) ? null : status.trim().toUpperCase();
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM people.placement_conflicts(:st)").param("st", st, Types.VARCHAR).query().listOfRows();
+        long open = jdbc.sql("SELECT count(*) FROM people.placement_conflict WHERE status = 'REQUIRES_REVIEW'").query(Long.class).single();
+        return Map.of("rows", rows, "open", open);
+    }
+
+    @PostMapping("/placement-conflicts/{id}/decide")
+    @PreAuthorize(PREPARERS)
+    @Transactional
+    Map<String, Object> decideConflict(@PathVariable UUID id, @RequestBody ConflictDecision body) {
+        UUID student = jdbc.sql("SELECT student_id FROM people.placement_conflict WHERE id = :id").param("id", id).query(UUID.class).optional()
+                .orElseThrow(() -> new NotFound("placement conflict", id.toString()));
+        reach.check(student);
+        Map<String, Object> out = jsonOf(jdbc.sql("SELECT people.decide_placement_conflict(:id, :d, :n)::text")
+                .param("id", id).param("d", body.decision(), Types.VARCHAR).param("n", body.note(), Types.VARCHAR).query(String.class).single());
+        forget();
+        return out;
     }
 
     /** many students onto one programme and level, each checked and made on its own, at once (a refusal skips that student alone) */

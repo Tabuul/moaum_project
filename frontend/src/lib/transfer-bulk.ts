@@ -18,9 +18,19 @@ export function templateRows(students: TemplateStudent[], session: string): (str
     "", "", "", "", session, "", "INTER_DEPARTMENTAL", "", "", ""]);
 }
 
+/** V669: restoring transfers approved on the old portal: the template's columns and the date approved (the Approval Reference is the
+ *  old portal's transfer reference; the Effective Session and Semester, when the transfer took effect) */
+export const RESTORE_COLUMNS: [string, string][] = [...COLUMNS, ["approved_on", "Approved On"]];
+
+/** the restoration's template rows: the bulk transfer's, the date approved left for the office to fill */
+export function restoreTemplateRows(students: TemplateStudent[], session: string): (string | number)[][] {
+  return templateRows(students, session).map((r) => { const x = [...r]; x[13] = "APPROVED_ON_OLD_PORTAL"; x.push(""); return x; });
+}
+
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
 const KEYS = new Map(COLUMNS.flatMap(([k, label]) => [[norm(label), k], [norm(k), k]] as [string, string][]));
 // the names a column may also carry
+KEYS.set(norm("Approved On"), "approved_on"); KEYS.set(norm("Date Approved"), "approved_on"); KEYS.set(norm("Approval Date"), "approved_on");
 KEYS.set(norm("Matriculation Number"), "matric_no"); KEYS.set(norm("Matric No"), "matric_no"); KEYS.set(norm("JAMB"), "jamb_reg_no"); KEYS.set(norm("Name"), "student");
 
 /** a filled file read back: the header row found (the branding sits above it), each row by its column names, empty rows left out */

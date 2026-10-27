@@ -5,13 +5,17 @@
  * programme, level, cascading and searchable), the kind and the reason; VALIDATE asks the server what the swap would do and what
  * stands in its way; the preview shows it all — what changes, what stays, the fee lines under each programme, the registration
  * impact — and CONFIRM makes the swap: the officer who initiates it decides it, and the placement moves at once (V633).
+ * V669: the kind "Approved transfer restored (old portal)" restores a transfer approved on the old portal — the programme left, the
+ * session it took effect, the date and the old portal's reference recorded with it, an application left in the transfer queue to the
+ * same programme withdrawn; no new application, fee or approval, and the matriculation number untouched.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { Field, Passport, day } from "@/components/proto/blocks";
-import { KIND_WORDS, REVIEW_WORDS, refusalWords, signalWords, type CheckResult, type Faculty, type ReviewStatus, type SwapKind } from "@/lib/programme-swap";
+import { KIND_WORDS, REVIEW_WORDS, refusalWords, restoreWords, signalWords, type CheckResult, type Faculty, type RestoreCheck, type RestoreDone, type ReviewStatus,
+  type SwapKind } from "@/lib/programme-swap";
 import { words } from "@/lib/full-record";
 import { TargetPicker, type Target } from "../TargetPicker";
 import { ProgrammeHistory } from "../ProgrammeHistory";
@@ -33,16 +37,24 @@ export interface StudentView {
 
 const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export function SwapStudent({ view, faculties, actingOffice }: { view: StudentView; faculties: Faculty[]; actingOffice: string | null }) {
+export function SwapStudent({ view, faculties, actingOffice, restoreInitially = false }: { view: StudentView; faculties: Faculty[]; actingOffice: string | null;
+  restoreInitially?: boolean }) {
   const router = useRouter();
   const s = view.student;
   const prepares = ["academic", "ict", "registrar", "dregistrar", "super"].includes(actingOffice ?? "");
   const [target, setTarget] = useState<Target>({ faculty: "", dept: "", programme: "", level: s.current_level ? String(s.current_level) : "" });
   const [session, setSession] = useState(view.session ?? "");
-  const [kind, setKind] = useState<SwapKind>(view.signals?.admitted || s.entry_session ? "LEGACY_MIGRATION_CORRECTION" : "PROGRAMME_CORRECTION");
+  const [kind, setKind] = useState<SwapKind>(restoreInitially ? "APPROVED_TRANSFER_RESTORED"
+    : view.signals?.admitted || s.entry_session ? "LEGACY_MIGRATION_CORRECTION" : "PROGRAMME_CORRECTION");
+  // V669: the old portal's transfer, when it is restored
+  const restoring = kind === "APPROVED_TRANSFER_RESTORED";
+  const [prior, setPrior] = useState({ from: s.programme_code, session: "", semester: "", approvedOn: "", reference: "" });
+  const [restored, setRestored] = useState<RestoreDone | null>(null);
+  const programmes = faculties.flatMap((f) => f.departments.flatMap((d) => d.programmes.map((p) => ({ code: p.code, name: p.name, dept: d.name }))))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState<"check" | "confirm" | null>(null);
-  const [check, setCheck] = useState<CheckResult | null>(null);
+  const [check, setCheck] = useState<RestoreCheck | null>(null);
   const [done, setDone] = useState<{ id: string; swap_ref: string } | null>(null);
   const signals = view.signals ? signalWords({ matric_segment: view.signals.matric_segment, programme_segment: view.signals.programme_segment,
     registration_dept: view.signals.registration?.dept ?? null, registration_dept_name: view.signals.registration?.department ?? null,
@@ -55,7 +67,10 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
     setBusy("check");
     setCheck(null);
     try {
-      const r = await swapPost<CheckResult>("/check", { studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: session || null }, "Programme swap check");
+      const r = restoring
+        ? await swapPost<RestoreCheck>("/restore-transfer/check", { studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: session || null,
+            fromProgramme: prior.from || null, transferSession: prior.session || null, approvedOn: prior.approvedOn || null }, "Approved transfer restoration checked")
+        : await swapPost<CheckResult>("/check", { studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: session || null }, "Programme swap check");
       if (!r.ok) { notifyProblem(r.problem); return; }
       setCheck(r.data);
     } finally { setBusy(null); }
@@ -63,6 +78,16 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
   async function confirm() {
     setBusy("confirm");
     try {
+      if (restoring) {
+        const r = await swapPost<RestoreDone>("/restore-transfer", { studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: session || null,
+          fromProgramme: prior.from || null, transferSession: prior.session || null, transferSemester: prior.semester ? Number(prior.semester) : null,
+          approvedOn: prior.approvedOn || null, reference: prior.reference.trim() || null, reason }, `Approved transfer restored for ${s.matric_no ?? s.id}: ${target.programme} at ${target.level}`);
+        if (!r.ok) { notifyProblem(r.problem); return; }
+        setRestored(r.data);
+        notify(r.data.recordOnly ? "The transfer approved on the old portal is recorded; the student's placement stands" : `Approved transfer restored (${r.data.swapRef}): the student is on ${target.programme} at ${target.level} Level`);
+        router.refresh();
+        return;
+      }
       const r = await swapPost<{ id: string; swap_ref: string }>("", { studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: session || null, kind, reason },
         `Programme swap made for ${s.matric_no ?? s.id}: ${target.programme} at ${target.level}`);
       if (!r.ok) { notifyProblem(r.problem); return; }
@@ -90,9 +115,16 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
         </div>
       </div>
 
-      {view.openTransfer ? <Note kind="bad" title="An inter-departmental transfer is under way">To {view.openTransfer.to_programme_code}, {words(view.openTransfer.state)} since {day(view.openTransfer.applied_at)}. It is effected or withdrawn there before a swap.</Note> : null}
+      {view.openTransfer ? <Note kind="bad" title="An inter-departmental transfer is under way"
+        action={prepares && !restoring ? <Btn kind="secondary" size="sm" onClick={() => { setKind("APPROVED_TRANSFER_RESTORED"); setCheck(null); }}>Approved on the old portal? Restore it</Btn> : undefined}>
+        To {view.openTransfer.to_programme_code}, {words(view.openTransfer.state)} since {day(view.openTransfer.applied_at)}. It is effected or withdrawn there before a swap.
+        If the transfer was approved on the old portal already, restore it instead: the application is withdrawn and no new one is made.</Note> : null}
       {view.pendingSwap ? <Note kind="info" title={`Swap ${view.pendingSwap.swap_ref} awaits a decision`} action={<LinkBtn kind="primary" size="sm" href={`/programme-swap?tab=swaps&status=PENDING_APPROVAL&q=${encodeURIComponent(view.pendingSwap.swap_ref)}`}>Open it</LinkBtn>}>
         To {view.pendingSwap.to_programme} at {view.pendingSwap.to_level} Level, prepared {day(view.pendingSwap.prepared_at)}. It is decided on the Swaps tab.</Note> : null}
+      {restored ? <Note kind="ok" title={restored.recordOnly ? "Approved transfer recorded" : `Approved transfer restored (${restored.swapRef})`}
+        action={restored.swapRef ? <LinkBtn kind="primary" size="sm" href={`/programme-swap?tab=swaps&status=COMPLETED&q=${encodeURIComponent(restored.swapRef)}`}>See the swap</LinkBtn> : undefined}>
+        {restored.recordOnly ? "The student's placement stands; the transfer approved on the old portal is in the programme history below." : "The placement has moved to the approved programme and level; the transfer approved on the old portal and the old placement are in the programme history below."}
+        {restored.withdrawnApplication ? " The application left in the transfer queue is withdrawn." : ""} New transfer applications: {restored.transferApplicationsCreated}. Matriculation number unchanged{restored.matricNo ? ` (${restored.matricNo})` : ""}.</Note> : null}
       {done ? <Note kind="ok" title={`Programme swap ${done.swap_ref} completed`} action={<LinkBtn kind="primary" size="sm" href={`/programme-swap?tab=swaps&status=COMPLETED&q=${encodeURIComponent(done.swap_ref)}`}>See the swap</LinkBtn>}>
         The placement has moved: the record reads the new programme and level, the old placement stays in the programme history below, and the student is told.</Note> : null}
 
@@ -108,7 +140,7 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
         </Panel>
         <Panel title="New record" right="TO">
           <PBody>
-            {prepares && !view.pendingSwap && !view.openTransfer ? (
+            {prepares && !view.pendingSwap && (!view.openTransfer || restoring) ? (
               <>
                 <TargetPicker faculties={faculties} value={target} onChange={(t) => { setTarget(t); setCheck(null); }} />
                 <div className="grid grid--2">
@@ -123,26 +155,68 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
                     </select>
                   </Field>
                 </div>
+                {restoring ? (
+                  <>
+                    <Note kind="info" title="Restore a transfer approved on the old portal">The student is put on the approved programme and level directly, and the old
+                      portal&rsquo;s transfer is recorded in the history. No transfer application, fee or approval is made, and the matriculation number stays as it is.</Note>
+                    <div className="grid grid--2">
+                      <Field id="sw-from" label="Transferred from (programme)">
+                        <select id="sw-from" className="ctl" value={prior.from} onChange={(e) => { setPrior({ ...prior, from: e.target.value }); setCheck(null); }}>
+                          {programmes.map((p) => <option key={p.code} value={p.code}>{p.name} · {p.dept} ({p.code})</option>)}
+                        </select>
+                      </Field>
+                      <Field id="sw-tses" label="Transfer took effect in (session)">
+                        <select id="sw-tses" className="ctl" value={prior.session} onChange={(e) => { setPrior({ ...prior, session: e.target.value }); setCheck(null); }}>
+                          <option value="">The effective session above</option>
+                          {view.sessions.map((x) => <option key={x} value={x}>{x}</option>)}
+                        </select>
+                      </Field>
+                      <Field id="sw-tsem" label="Semester">
+                        <select id="sw-tsem" className="ctl" value={prior.semester} onChange={(e) => setPrior({ ...prior, semester: e.target.value })}>
+                          <option value="">Not recorded</option><option value="1">First</option><option value="2">Second</option>
+                        </select>
+                      </Field>
+                      <Field id="sw-appr" label="Approved on">
+                        <input id="sw-appr" className="ctl" type="date" value={prior.approvedOn} onChange={(e) => { setPrior({ ...prior, approvedOn: e.target.value }); setCheck(null); }} />
+                      </Field>
+                      <Field id="sw-tref" label="Old portal transfer reference" full>
+                        <input id="sw-tref" className="ctl" value={prior.reference} maxLength={80} placeholder="e.g. TRF/2024/00125" onChange={(e) => setPrior({ ...prior, reference: e.target.value })} />
+                      </Field>
+                    </div>
+                  </>
+                ) : null}
                 <Field id="sw-reason" label="Reason" hint="Required, ten characters at least; kept on the swap and the audit trail" full>
                   <textarea id="sw-reason" className="ctl" rows={2} value={reason} onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Student changed to this programme before migration; the legacy record kept the old programme" />
+                    placeholder={restoring ? "e.g. Transfer approved by Senate on the old portal; the migration put the student back in the department left"
+                      : "e.g. Student changed to this programme before migration; the legacy record kept the old programme"} />
                 </Field>
                 <div className="row">
-                  <Btn kind="secondary" busy={busy === "check"} busyLabel="Validating programme…" disabled={!chosen || !!busy || sameAsNow} onClick={validate}
-                    title={sameAsNow ? "The student is on that programme at that level already" : undefined}>Validate</Btn>
+                  <Btn kind="secondary" busy={busy === "check"} busyLabel="Validating programme…" disabled={!chosen || !!busy || (sameAsNow && !restoring)} onClick={validate}
+                    title={sameAsNow && !restoring ? "The student is on that programme at that level already" : undefined}>Validate</Btn>
                   {check ? <span className="sub2">Then confirm below.</span> : null}
                 </div>
               </>
-            ) : <div className="sub2">{!prepares ? "A swap is made by the Academic Office, the Registry or the Director of ICT." : "No swap can be made while a transfer or a swap is under way."}</div>}
+            ) : <div className="sub2">{!prepares ? "A swap is made by the Academic Office, the Registry or the Director of ICT." : "No swap can be made while a transfer or a swap is under way; a transfer approved on the old portal is restored (see above)."}</div>}
           </PBody>
         </Panel>
       </div>
 
       {check ? (
-        <Panel title="Programme swap preview" right={check.ok ? <Pil kind="ok">Ready</Pil> : <Pil kind="bad">Blocked</Pil>}>
+        <Panel title={restoring ? "Approved transfer restoration preview" : "Programme swap preview"} right={check.ok ? <Pil kind="ok">Ready</Pil> : <Pil kind="bad">Blocked</Pil>}>
           <PBody>
+            {restoring && check.restore ? (
+              <Note kind="info" title="This restores a previously approved transfer. It will NOT create a new transfer application.">
+                {restoreWords(check).map((w) => <div key={w}>{w}</div>)}
+                <div className="sub2 mt-1">Transferred from {check.restore.fromProgrammeName ?? check.restore.fromProgramme ?? "—"} · took effect {check.restore.transferSession}
+                  {check.restore.approvedOn ? ` · approved ${day(check.restore.approvedOn)}` : ""}{prior.reference.trim() ? ` · ${prior.reference.trim()}` : ""}</div>
+              </Note>
+            ) : null}
             {check.refusals.length ? <Note kind="bad" title="The swap cannot be made">{check.refusals.map((r) => <div key={r}>{refusalWords(r)}</div>)}</Note> : null}
-            {check.warnings.length ? <Note kind="info" title="Requires review: look at these before confirming">{check.warnings.map((w) => <div key={w.code}>{w.text}</div>)}</Note> : null}
+            {/* V669: what the restoration does is said above; the review points are the rest */}
+            {check.warnings.filter((w) => !restoring || !["APPLICATION_WITHDRAWN", "RECORD_ONLY"].includes(w.code)).length ? (
+              <Note kind="info" title="Requires review: look at these before confirming">
+                {check.warnings.filter((w) => !restoring || !["APPLICATION_WITHDRAWN", "RECORD_ONLY"].includes(w.code)).map((w) => <div key={w.code}>{w.text}</div>)}</Note>
+            ) : null}
             <div className="grid grid--2">
               <div><div className="eyebrow">Old</div><KvGrid cls="grid--2" pairs={[["Faculty", check.from.facultyName ?? "—"], ["Department", check.from.department ?? "—"], ["Programme", check.from.programmeName ?? check.from.programme], ["Level", `${check.from.level ?? "—"} Level`]]} /></div>
               <div><div className="eyebrow">New</div>{check.to ? <KvGrid cls="grid--2" pairs={[["Faculty", check.to.facultyName ?? "—"], ["Department", check.to.department ?? "—"], ["Programme", check.to.programmeName ?? check.to.programme], ["Level", `${check.to.level ?? "—"} Level`]]} /> : <div className="sub2">No programme chosen.</div>}</div>
@@ -163,8 +237,9 @@ export function SwapStudent({ view, faculties, actingOffice }: { view: StudentVi
             ) : null}
             <div className="row mt-3">
               <Btn kind="ghost" disabled={!!busy} onClick={() => setCheck(null)}>Cancel</Btn>
-              <Btn kind="primary" busy={busy === "confirm"} busyLabel="Processing programme swap…" disabled={!check.ok || !!busy || reason.trim().length < 10 || !!done} onClick={confirm}
-                title={reason.trim().length < 10 ? "Give the reason first" : undefined}>Confirm programme swap</Btn>
+              <Btn kind="primary" busy={busy === "confirm"} busyLabel={restoring ? "Restoring the approved transfer…" : "Processing programme swap…"}
+                disabled={!check.ok || !!busy || reason.trim().length < 10 || !!done || !!restored} onClick={confirm}
+                title={reason.trim().length < 10 ? "Give the reason first" : undefined}>{restoring ? (check.restore?.recordOnly ? "Record the approved transfer" : "Restore approved transfer") : "Confirm programme swap"}</Btn>
             </div>
           </PBody>
         </Panel>
