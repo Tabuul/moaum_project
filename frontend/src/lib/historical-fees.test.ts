@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bySession, clearanceRows, readComponents, reconRows, reportRows, statementRows, totals, waiverAmountProblem, type Period } from "./historical-fees.ts";
+import { bySession, clearanceRows, evidenceBody, evidencePeriods, evidenceProblem, PAYMENT_STATE_DESK, readComponents, reconRows, reportRows, reviewWords, statementRows, totals, waiverAmountProblem, type Evidence, type Period } from "./historical-fees.ts";
 
 // V654: the historical account as the screens group it — by session with its totals — and as the reports write it
 const periods: Period[] = [
@@ -60,4 +60,29 @@ test("a reconciliation run's rows: S/N first, the academic status in words, the 
     other_amount: "5000.00", process_id: null, clearance_ref: "FCL/2026/000001", bursary_state: "WAITING" }]);
   assert.deepEqual(r[0], [1, "DOE, Jane", "M1", "", "Science", "Physics", "B.Sc. Physics", "2024/2025", "Award approved — awaiting final clearance", 800000, 760000, 15000,
     25000, "2023/2024 First semester (₦25,000)", "", 5000, "Owing — other payments to review", "FCL/2026/000001", "waiting"]);
+});
+
+// V683: payment evidence a graduate submits for a past semester
+test("a period under review says what is under review; a settled period says nothing", () => {
+  const p: Period = { session: "2021/2022", semester: 2, level: 100, assessed: 50000, paid: 0, outstanding: 50000, credit: 0, status: "OUTSTANDING",
+    review: "PAYMENT_UNDER_REVIEW", evidence_ref: "HPE/2026/000001", evidence_state: "SUBMITTED", archived_amount: "60000.00", other_amount: 0 };
+  assert.deepEqual(reviewWords(p, true), ["Your payment evidence HPE/2026/000001 is with the Bursary", "A school fees payment of this session (₦60,000) is archived for review"]);
+  assert.deepEqual(reviewWords({ ...p, evidence_state: "MORE_INFORMATION_REQUIRED", archived_amount: 0, other_amount: 50000 }),
+    ["The graduate's payment evidence HPE/2026/000001 needs more information", "A payment of this session under another purpose (₦50,000) is being checked"]);
+  assert.deepEqual(reviewWords({ ...p, review: null }), []);
+});
+
+test("evidence is given for a period not settled with none of the graduate's open; the form is checked before it is sent", () => {
+  const ev: Evidence[] = [{ id: "e", reference: "HPE/2026/000001", session: "2022/2023", semester: 2, amount: 1, paid_on: null, channel: "BANK", payment_reference: "TELLER-1",
+    state: "SUBMITTED", submitted_at: "", decided_at: null, decision_note: null }];
+  assert.deepEqual(evidencePeriods(periods, ev).map((p) => `${p.session} ${p.semester}`), ["2021/2022 2"]);
+  assert.deepEqual(evidencePeriods(periods, [{ ...ev[0], state: "REJECTED" }]).map((p) => `${p.session} ${p.semester}`), ["2022/2023 2", "2021/2022 2"]);
+  const f = { amount: "50,000", paidOn: "2020-03-02", channel: "OLD_PORTAL" as const, reference: " MOAUM-OLD-1 ", note: "" };
+  assert.equal(evidenceProblem(f, "2026-10-28"), null);
+  assert.deepEqual(evidenceBody(f), { amount: 50000, paidOn: "2020-03-02", channel: "OLD_PORTAL", reference: "MOAUM-OLD-1", note: null });
+  assert.equal(evidenceProblem({ ...f, amount: "" }, "2026-10-28"), "Enter the amount you paid.");
+  assert.equal(evidenceProblem({ ...f, paidOn: "2026-11-01" }, "2026-10-28"), "The day you paid cannot be in the future.");
+  assert.equal(evidenceProblem({ ...f, channel: "" }, "2026-10-28"), "Say how you paid.");
+  assert.match(evidenceProblem({ ...f, reference: "abc" }, "2026-10-28") ?? "", /^Give the receipt/);
+  assert.deepEqual(PAYMENT_STATE_DESK.NOT_SCHOOL_FEES, ["Payment reallocations", "/finance/payment-reallocations"]);
 });

@@ -282,4 +282,107 @@ class HistoricalFeesIT {
         assertThat(money(mineS1.get("waived"))).isEqualByComparingTo("15000");
         assertThat(money(mineS1.get("outstanding"))).isEqualByComparingTo("0");
     }
+
+    private static final String PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    /**
+     * V683: payment evidence a graduate submits for a past semester, through the API. An invented graduate paid the first semester's
+     * school fees; ₦50,000 of theirs in the session stands under "Outstanding fees". Their second semester reads owing, under review
+     * (the other-purpose payment). They submit evidence naming that payment's number (not a second at once, not for the settled
+     * semester) with a file (a text file refused); another student cannot open the file. The Students Account Officer finds it in the
+     * queue, the payment among its candidates; a lecturer cannot decide; more is asked, the graduate sends it again; verified against
+     * that payment, it answers NOT_SCHOOL_FEES and the semester still owes ₦50,000 — the evidence never counts by itself. The graduate
+     * sees it verified.
+     */
+    @Test
+    void aGraduatesPaymentEvidenceIsReviewedAgainstAPaymentOnRecordAndNeverCountsByItself() {
+        int y = it.freeYear(7800, 8200, 0, 1);
+        String s0 = y + "/" + (y + 1);
+        it.session(s0, y);
+        sessions.add(s0);
+        UUID st = it.student(it.freeSurname("ZZHPEVID"), "C00023", it.freeNumber("MOAUM/ADM/78/", 6), it.freeNumber("MOAUM/HPE/78/", 6), 100);
+        UUID other = it.student(it.freeSurname("ZZHPEOTHER"), "C00023", it.freeNumber("MOAUM/ADM/78/", 6), it.freeNumber("MOAUM/HPE/78/", 6), 100);
+        String legacy = "MOAUM-OLD-HPEIT-" + y;
+        it.db(() -> {
+            jdbc.sql("UPDATE people.student SET status = 'GRADUATED', entry_session = :e, entry_level = 100 WHERE id = :s").param("e", s0).param("s", st).update();
+            jdbc.sql("INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), :s, :a, 100)").param("s", st).param("a", s0).update();
+            jdbc.sql("""
+                    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+                        (:a, 'V683 IT fees', 50000, 100, 'C00023', 1), (:a, 'V683 IT fees', 50000, 100, 'C00023', 2)
+                    """).param("a", s0).update();
+            return jdbc.sql("""
+                    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+                        (:s, :a, :r1, 'School fees ' || :a, 50000, now(), now(), gen_random_uuid(), 'Bank branch', :r1),
+                        (:s, :a, :r2, 'Outstanding fees ' || :a, 50000, now(), now(), gen_random_uuid(), 'Legacy', :r2)
+                    """).param("s", st).param("a", s0).param("r1", "MOAUM-FEE-HPEIT-" + y).param("r2", legacy).update();
+        });
+        String student = TestTokens.token(st, List.of("student"));
+        String officer = ItSupport.token("studentaccounts");
+        String bursar = ItSupport.token("bursar");
+
+        // the second semester owes, under review: a payment of the session stands under another purpose
+        Map<String, Object> mine = it.get(student, "/api/v1/me/historical-fees").getBody();
+        Map<String, Object> second = period((List<Map<String, Object>>) mine.get("periods"), s0, 2);
+        assertThat(second).containsEntry("status", "OUTSTANDING").containsEntry("review", "PAYMENT_UNDER_REVIEW");
+        assertThat(money(second.get("other_amount"))).isEqualByComparingTo("50000");
+        assertThat(period((List<Map<String, Object>>) mine.get("periods"), s0, 1).get("review")).isNull();
+
+        // the evidence: not for the settled semester, not a second at once
+        Map<String, Object> said = new HashMap<>(Map.of("session", s0, "semester", 1, "amount", 50000, "paidOn", "2020-03-02", "channel", "OLD_PORTAL",
+                "reference", legacy.toLowerCase(), "note", "Paid on the old portal; the receipt is attached"));
+        ResponseEntity<Map> settled = it.call(student, HttpMethod.POST, "/api/v1/me/historical-evidence", said);
+        assertThat(settled.getStatusCode().value()).isEqualTo(422);
+        assertThat(settled.getBody()).containsEntry("code", "HPE_SETTLED");
+        said.put("semester", 2);
+        ResponseEntity<Map> made = it.call(student, HttpMethod.POST, "/api/v1/me/historical-evidence", said);
+        assertThat(made.getStatusCode().value()).as(String.valueOf(made.getBody())).isEqualTo(200);
+        assertThat(made.getBody()).containsEntry("state", "SUBMITTED");
+        assertThat(String.valueOf(made.getBody().get("reference"))).matches("HPE/[0-9]{4}/[0-9]{6}");
+        String id = String.valueOf(made.getBody().get("id"));
+        ResponseEntity<Map> twice = it.call(student, HttpMethod.POST, "/api/v1/me/historical-evidence", said);
+        assertThat(twice.getStatusCode().value()).isEqualTo(422);
+        assertThat(twice.getBody()).containsEntry("code", "HPE_OPEN");
+
+        // a file: a PNG taken, a text file refused; another student cannot open it
+        ResponseEntity<Map> text = it.call(student, HttpMethod.POST, "/api/v1/me/historical-evidence/" + id + "/files", Map.of("filename", "note.txt", "dataUrl", "data:text/plain;base64,aGVsbG8="));
+        assertThat(text.getStatusCode().value()).isEqualTo(422);
+        assertThat(text.getBody()).containsEntry("code", "HPE_FILE_TYPE");
+        assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/historical-evidence/" + id + "/files", Map.of("filename", "receipt.png", "dataUrl", PNG))
+                .getStatusCode().value()).isEqualTo(200);
+        List<Map<String, Object>> evidence = (List<Map<String, Object>>) it.get(student, "/api/v1/me/historical-fees").getBody().get("evidence");
+        String file = String.valueOf(((List<Map<String, Object>>) evidence.get(0).get("files")).get(0).get("id"));
+        assertThat(it.getBytes(TestTokens.token(other, List.of("student")), "/api/v1/me/historical-evidence/" + id + "/files/" + file).getStatusCode().value()).isEqualTo(404);
+        assertThat(it.getBytes(student, "/api/v1/me/historical-evidence/" + id + "/files/" + file).getBody()).isNotEmpty();
+        assertThat(it.getBytes(officer, PATH + "/evidence/" + id + "/files/" + file).getStatusCode().value()).isEqualTo(200);
+
+        // the officer's queue and the payment among the candidates; a lecturer cannot decide
+        Map<String, Object> queue = it.get(officer, u -> u.path(PATH + "/evidence").queryParam("state", "SUBMITTED").queryParam("q", String.valueOf(made.getBody().get("reference"))).build()).getBody();
+        assertThat(queue.get("total")).isEqualTo(1);
+        Map<String, Object> one = it.get(officer, PATH + "/evidence/" + id).getBody();
+        Map<String, Object> cand = ((List<Map<String, Object>>) one.get("candidates")).stream().filter(c -> legacy.equals(c.get("reference"))).findFirst().orElseThrow();
+        assertThat(cand).containsEntry("why", "NUMBER").containsEntry("state", "NOT_SCHOOL_FEES");
+        assertThat((List<?>) one.get("files")).hasSize(1);
+        assertThat(it.call(ItSupport.token("lecturer"), HttpMethod.POST, PATH + "/evidence/" + id + "/decide", Map.of("decision", "REJECT", "note", "Not a receipt of ours"))
+                .getStatusCode().value()).isEqualTo(403);
+
+        // more is asked; the graduate sends it again
+        ResponseEntity<Map> asked = it.call(officer, HttpMethod.POST, PATH + "/evidence/" + id + "/decide", Map.of("decision", "MORE_INFORMATION", "note", "Attach the bank teller too, please"));
+        assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
+        assertThat(asked.getBody()).containsEntry("state", "MORE_INFORMATION_REQUIRED");
+        ResponseEntity<Map> again = it.call(student, HttpMethod.POST, "/api/v1/me/historical-evidence/" + id + "/resubmit",
+                Map.of("amount", 50000, "paidOn", "2020-03-02", "channel", "OLD_PORTAL", "reference", legacy, "note", "The teller is attached"));
+        assertThat(again.getStatusCode().value()).as(String.valueOf(again.getBody())).isEqualTo(200);
+        assertThat(again.getBody()).containsEntry("state", "SUBMITTED");
+
+        // verified against the payment on record: it is not school fees, so the semester still owes — the evidence never counts by itself
+        ResponseEntity<Map> verified = it.call(officer, HttpMethod.POST, PATH + "/evidence/" + id + "/decide",
+                Map.of("decision", "VERIFY", "note", "The old-portal receipt matches", "payment", cand.get("payment_id")));
+        assertThat(verified.getStatusCode().value()).as(String.valueOf(verified.getBody())).isEqualTo(200);
+        assertThat(verified.getBody()).containsEntry("state", "VERIFIED").containsEntry("payment", legacy).containsEntry("payment_state", "NOT_SCHOOL_FEES");
+        Map<String, Object> account = it.get(bursar, PATH + "/students/" + st).getBody();
+        assertThat(money(period((List<Map<String, Object>>) account.get("periods"), s0, 2).get("outstanding"))).isEqualByComparingTo("50000");
+        assertThat((List<Map<String, Object>>) account.get("evidence")).anySatisfy(e -> assertThat(e).containsEntry("state", "VERIFIED").containsEntry("payment_state", "NOT_SCHOOL_FEES"));
+        List<Map<String, Object>> seen = (List<Map<String, Object>>) it.get(student, "/api/v1/me/historical-fees").getBody().get("evidence");
+        assertThat(seen.get(0)).containsEntry("state", "VERIFIED");
+    }
 }

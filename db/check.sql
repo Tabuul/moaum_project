@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 510
+\set EXPECTED 511
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27992,6 +27992,128 @@ BEGIN
            AND q_s2 IS NULL, false),
       format('menu carry %s | draft %s, S2 %s | pick %s save %s off %s | S2 kept %s | reset %s → %s | q0 %s | q1 %s | q2 %s | q2b %s | S2 quote %s',
              menu_carry, n_draft, t_s2, after_pick, after_save, after_off, s2_kept, reset_out ->> 'reset', after_reset, q0, q1, q2, q2b, q_s2));
+END $$;
+
+-- ── V683. Payment evidence a graduate submits for a historical semester, reviewed by the Bursary. A made-up graduate admitted two
+--    sessions back paid the first session's first semester (₦50,000) and nothing as school fees after; a ₦50,000 payment of theirs in
+--    the first session stands under "Outstanding fees"; a ₦60,000 school-fee payment of theirs for the second session is archived for
+--    review; another student holds a payment numbered TELLER-6832. The graduate submits evidence for the first session's second
+--    semester (its number in lower case) — refused for a settled semester, a session not on the record, a second at once, no amount
+--    and a day to come; the period reads PAYMENT_UNDER_REVIEW with the evidence and the other-purpose payment, the second session's
+--    with the archived one, the settled semester nothing. ICT Support may not decide; a short reason is refused; more information is
+--    asked, the evidence sent again (not twice); the candidates list the payment its number names (not school fees) first; verified
+--    without a payment refused, then linked — answered NOT_SCHOOL_FEES, the period still owing ₦50,000 (the evidence never counts by
+--    itself); a second evidence naming the same payment refused, another student's number answered OTHER_STUDENT; withdrawn by the
+--    graduate, never by someone else; the graduate told at each step; data quality lists the evidence awaiting the Bursary and the
+--    archived payment. The block undoes its writes ──
+DO $$
+DECLARE officer uuid := gen_random_uuid(); bursar uuid := gen_random_uuid(); s0 text := '9885/9886'; s1 text := '9886/9887'; s2 text := '9887/9888';
+        st uuid := gen_random_uuid(); other uuid := gen_random_uuid(); p_other uuid; p_arch uuid; p_teller uuid; v_err text;
+        e1 record; e2 record; r_settled text; r_period text; r_open text; r_amount text; r_date text; r_ict text; r_note text; r_twice text;
+        r_need text; r_used text; r_not_mine text; rv1 text; rv0 text; rv_s1 text; asked text; again text; cand text; verified jsonb; owed_after numeric;
+        acct text; other_state text; withdrawn text; told int; quality text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'V683 check: payment evidence for a historical semester', true);
+    PERFORM set_config('moaum.actor_id', bursar::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+        (gen_random_uuid(), s0, '9885-10-01', '9886-08-31'), (gen_random_uuid(), s1, '9886-10-01', '9887-08-31'), (gen_random_uuid(), s2, '9887-10-01', '9888-08-31');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (st, 'MOAUM/ADM/98/968301', 'MOAUM/HPE/98/6831', 'CHECKEVIDENCE', 'Graduate', 'C00023', 'UTME', s0, 100, 200, 'GRADUATED', now()),
+        (other, 'MOAUM/ADM/98/968302', 'MOAUM/HPE/98/6832', 'CHECKEVIDENCE', 'Another', 'C00023', 'UTME', s0, 100, 200, 'ACTIVE', now());
+    INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, s0, 100), (gen_random_uuid(), st, s1, 200);
+    PERFORM finance.historical_set_start(s0, 'V683 check: assessed from the first session');
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+        (s0, 'V683 check fees', 50000, 100, 'C00023', 1), (s0, 'V683 check fees', 50000, 100, 'C00023', 2),
+        (s1, 'V683 check fees', 60000, 200, 'C00023', 1), (s1, 'V683 check fees', 60000, 200, 'C00023', 2);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (st, s0, 'MOAUM-FEE-V683-0001', 'School fees ' || s0, 50000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V683-0001'),
+        (st, s0, 'MOAUM-OLD-V683-0002', 'Outstanding fees ' || s0, 50000, now(), now(), bursar, 'Legacy', 'MOAUM-OLD-V683-0002'),
+        (st, s1, 'MOAUM-FEE-V683-0003', 'School fees ' || s1, 60000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V683-0003'),
+        (other, s1, 'TELLER-6832', 'School fees ' || s1, 60000, now(), now(), bursar, 'Bank branch', 'TELLER-6832');
+    p_other := (SELECT id FROM finance.payment_reference WHERE reference = 'MOAUM-OLD-V683-0002');
+    p_arch := (SELECT id FROM finance.payment_reference WHERE reference = 'MOAUM-FEE-V683-0003');
+    p_teller := (SELECT id FROM finance.payment_reference WHERE reference = 'TELLER-6832');
+    PERFORM finance.archive_payment(p_arch, 'UNKNOWN_OWNER', NULL, 'V683 check: whose payment this is is being confirmed', true);
+    acct := (SELECT string_agg(x.session || 'S' || x.semester || ':' || x.paid::numeric(14, 2) || '/' || x.outstanding::numeric(14, 2) || '/' || x.status, ' ' ORDER BY x.session, x.semester)
+               FROM finance.historical_account(st) x);
+
+    -- the graduate submits evidence for the first session's second semester
+    PERFORM set_config('moaum.actor_id', st::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM finance.historical_evidence_submit(st, s0, 1, 50000, NULL, 'BANK', 'TELLER-0001', NULL);
+    EXCEPTION WHEN check_violation THEN r_settled := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.historical_evidence_submit(st, s2, 1, 50000, NULL, 'BANK', 'TELLER-0001', NULL);
+    EXCEPTION WHEN check_violation THEN r_period := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.historical_evidence_submit(st, s0, 2, 0, NULL, 'BANK', 'TELLER-0001', NULL);
+    EXCEPTION WHEN check_violation THEN r_amount := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.historical_evidence_submit(st, s0, 2, 50000, current_date + 30, 'BANK', 'TELLER-0001', NULL);
+    EXCEPTION WHEN check_violation THEN r_date := split_part(SQLERRM, ':', 1); END;
+    SELECT x.* INTO e1 FROM finance.historical_evidence_submit(st, s0, 2, 50000, DATE '2020-03-02', 'old_portal', ' moaum-old-v683-0002 ', 'Paid on the old portal') x;
+    BEGIN PERFORM finance.historical_evidence_submit(st, s0, 2, 50000, NULL, 'BANK', 'TELLER-0009', NULL);
+    EXCEPTION WHEN check_violation THEN r_open := split_part(SQLERRM, ':', 1); END;
+    SELECT rv.review || '/' || coalesce(rv.evidence_ref, '-') || '/' || rv.other_count INTO rv1 FROM finance.historical_review(ARRAY[st]) rv WHERE rv.session = s0 AND rv.semester = 2;
+    SELECT coalesce(rv.review, 'none') INTO rv0 FROM finance.historical_review(ARRAY[st]) rv WHERE rv.session = s0 AND rv.semester = 1;
+    SELECT rv.review || '/' || rv.archived_count || '/' || rv.archived_amount INTO rv_s1 FROM finance.historical_review(ARRAY[st]) rv WHERE rv.session = s1 AND rv.semester = 1;
+
+    -- the review: ICT Support may not; more information asked; sent again, not twice
+    PERFORM set_config('moaum.actor_id', officer::text, true);
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    BEGIN PERFORM finance.historical_evidence_decide(e1.id, 'MORE_INFORMATION', 'Send the bank teller as well, please', NULL);
+    EXCEPTION WHEN insufficient_privilege THEN r_ict := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    BEGIN PERFORM finance.historical_evidence_decide(e1.id, 'MORE_INFORMATION', 'teller', NULL);
+    EXCEPTION WHEN check_violation THEN r_note := split_part(SQLERRM, ':', 1); END;
+    asked := finance.historical_evidence_decide(e1.id, 'MORE_INFORMATION', 'Send the bank teller as well, please', NULL) ->> 'state';
+    PERFORM set_config('moaum.actor_id', st::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    again := finance.historical_evidence_resubmit(e1.id, st, 50000, DATE '2020-03-02', 'OLD_PORTAL', 'MOAUM-OLD-V683-0002', 'The teller is attached');
+    BEGIN PERFORM finance.historical_evidence_resubmit(e1.id, st, 50000, NULL, 'OLD_PORTAL', 'MOAUM-OLD-V683-0002', NULL);
+    EXCEPTION WHEN check_violation THEN r_twice := split_part(SQLERRM, ':', 1); END;
+
+    -- the candidates, then verified: linked to the payment it names, which is not school fees — the period still owes
+    PERFORM set_config('moaum.actor_id', officer::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    cand := (SELECT string_agg(c.reference || ':' || c.why || ':' || c.state, ',' ORDER BY c.why, c.reference) FROM finance.historical_evidence_candidates(e1.id) c);
+    BEGIN PERFORM finance.historical_evidence_decide(e1.id, 'VERIFY', NULL, NULL);
+    EXCEPTION WHEN check_violation THEN r_need := split_part(SQLERRM, ':', 1); END;
+    verified := finance.historical_evidence_decide(e1.id, 'VERIFY', 'The old-portal receipt matches', p_other);
+    owed_after := (SELECT x.outstanding FROM finance.historical_account(st) x WHERE x.session = s0 AND x.semester = 2);
+    -- a second evidence naming the same payment; another student's number
+    PERFORM set_config('moaum.actor_id', st::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    SELECT x.* INTO e2 FROM finance.historical_evidence_submit(st, s1, 1, 60000, NULL, 'BANK', 'TELLER-6832', NULL) x;
+    PERFORM set_config('moaum.actor_id', officer::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    BEGIN PERFORM finance.historical_evidence_decide(e2.id, 'VERIFY', NULL, p_other);
+    EXCEPTION WHEN check_violation THEN r_used := split_part(SQLERRM, ':', 1); END;
+    other_state := (SELECT c.why || ':' || c.state FROM finance.historical_evidence_candidates(e2.id) c WHERE c.payment_id = p_teller);
+    -- withdrawn by the graduate, never by someone else
+    BEGIN PERFORM finance.historical_evidence_withdraw(e2.id, other, 'not mine');
+    EXCEPTION WHEN no_data_found THEN r_not_mine := split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.historical_refresh(ARRAY[st]);
+    quality := (SELECT string_agg(DISTINCT q.issue, ',' ORDER BY q.issue) FROM finance.historical_quality(1000000) q WHERE q.student_id = st);
+    withdrawn := finance.historical_evidence_withdraw(e2.id, st, 'Paid it online instead');
+    told := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'HISTORICAL_EVIDENCE_%:' || e1.id || '%');
+    RAISE EXCEPTION 'the V683 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V683 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V683: a graduate submits payment evidence for an unsettled historical semester (one open at a time); the period reads PAYMENT_UNDER_REVIEW with it, an archived or other-purpose payment; the Bursary asks for more, verifies it against a payment on record (one payment one evidence) and the evidence never counts by itself; withdrawn only by its graduate; told at each step; data quality lists it',
+      coalesce(acct = s0 || 'S1:50000.00/0.00/CLEARED ' || s0 || 'S2:0.00/50000.00/OUTSTANDING ' || s1 || 'S1:0.00/60000.00/OUTSTANDING ' || s1 || 'S2:0.00/60000.00/OUTSTANDING'
+           AND r_settled = 'HPE_SETTLED' AND r_period = 'HPE_PERIOD' AND r_amount = 'HPE_AMOUNT' AND r_date = 'HPE_DATE' AND r_open = 'HPE_OPEN'
+           AND e1.state = 'SUBMITTED' AND e1.reference ~ '^HPE/[0-9]{4}/[0-9]{6}$'
+           AND rv1 = 'PAYMENT_UNDER_REVIEW/' || e1.reference || '/1' AND rv0 = 'none' AND rv_s1 = 'PAYMENT_UNDER_REVIEW/1/60000.00'
+           AND r_ict = 'HFA_NOT_PERMITTED' AND r_note = 'HPE_NOTE' AND asked = 'MORE_INFORMATION_REQUIRED' AND again = 'SUBMITTED' AND r_twice = 'HPE_NOT_ASKED'
+           AND cand = 'MOAUM-FEE-V683-0003:ARCHIVED:ARCHIVED,MOAUM-OLD-V683-0002:NUMBER:NOT_SCHOOL_FEES,MOAUM-FEE-V683-0001:SESSION:COUNTED'
+           AND r_need = 'HPE_PAYMENT_NEEDED' AND verified ->> 'state' = 'VERIFIED' AND verified ->> 'paymentState' = 'NOT_SCHOOL_FEES' AND owed_after = 50000
+           AND r_used = 'HPE_PAYMENT_USED' AND other_state = 'NUMBER:OTHER_STUDENT' AND r_not_mine = 'HPE_NOT_FOUND' AND withdrawn = 'WITHDRAWN'
+           AND told = 3 AND quality = 'ARCHIVED_SCHOOL_FEES,PAYMENT_EVIDENCE_SUBMITTED', false),
+      format('account %s | refused %s/%s/%s/%s/%s | e1 %s %s | review %s, settled %s, s1 %s | ict %s note %s asked %s again %s twice %s | cand %s | need %s verified %s owed %s | used %s other %s not mine %s withdrawn %s | told %s | quality %s',
+             acct, r_settled, r_period, r_amount, r_date, r_open, e1.reference, e1.state, rv1, rv0, rv_s1, r_ict, r_note, asked, again, r_twice, cand,
+             r_need, verified, owed_after, r_used, other_state, r_not_mine, withdrawn, told, quality));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

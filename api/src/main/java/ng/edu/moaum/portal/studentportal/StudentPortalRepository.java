@@ -451,15 +451,19 @@ class StudentPortalRepository {
      *  award is approved with the final clearance still to complete */
     Map<String, Object> historicalFees(UUID student) {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
+        // V683: each period with what is under review for it — the student's own evidence, a school-fee payment of the session archived for
+        // review, a payment of the session under another purpose — so a period is never read as plainly unpaid while a payment is checked
         List<Map<String, Object>> periods = jdbc.sql("""
                 SELECT x.session, x.semester, x.level,
                        CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN NULL ELSE x.assessed END AS assessed,
                        x.paid, x.outstanding, x.credit,
                        CASE WHEN x.status IN ('REQUIRES_REVIEW', 'PENDING_APPROVAL') THEN 'BEING_ASSESSED' ELSE x.status END AS status,
-                       x.waived
+                       x.waived, rv.review, rv.evidence_ref, rv.evidence_state, rv.archived_amount, rv.other_amount
                   FROM finance.historical_account(:s) x
+                  LEFT JOIN finance.historical_review(ARRAY[CAST(:s AS uuid)]) rv ON rv.session = x.session AND rv.semester = x.semester
                 """).param("s", student).query().listOfRows();
         out.put("periods", periods);
+        out.put("evidence", historicalEvidence(student));
         out.put("graduated", jdbc.sql("""
                 SELECT s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED')
                   FROM people.student s WHERE s.id = :s
@@ -481,6 +485,95 @@ class StudentPortalRepository {
         if (session == null) return false;
         return jdbc.sql("SELECT records.awaiting_final_clearance(:s) AND :ses > coalesce(records.graduation_session(:s), :ses)")
                 .param("s", student).param("ses", session).query(Boolean.class).optional().orElse(false);
+    }
+
+    /** V683: the student's payment evidence for past semesters, newest first, each with its files and where it stands */
+    List<Map<String, Object>> historicalEvidence(UUID student) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT e.id, e.reference, e.session, e.semester, e.amount, e.paid_on::text AS paid_on, e.channel, e.payment_reference, e.note, e.state,
+                       e.submitted_at, e.updated_at, e.decided_at, e.decision_note,
+                       (SELECT coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'filename', f.filename) ORDER BY f.added_at), '[]'::jsonb)
+                          FROM finance.historical_payment_evidence_file f WHERE f.evidence_id = e.id)::text AS files
+                  FROM finance.historical_payment_evidence e WHERE e.student_id = :s ORDER BY e.submitted_at DESC
+                """).param("s", student).query().listOfRows();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+            m.put("files", PANEL_JSON.readValue(String.valueOf(r.get("files")), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { }));
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** V683: payment evidence the student submits for a past semester (the database checks the period, the one open, the fields) */
+    Map<String, Object> submitEvidence(UUID student, String session, int semester, BigDecimal amount, java.time.LocalDate paidOn, String channel, String reference,
+                                       String note) {
+        return jdbc.sql("SELECT x.id, x.reference, x.state FROM finance.historical_evidence_submit(:s, :ses, :sem, :a, :d, :c, :r, :n) x")
+                .param("s", student).param("ses", session).param("sem", semester).param("a", amount).param("d", paidOn, Types.DATE)
+                .param("c", channel).param("r", reference).param("n", note, Types.VARCHAR).query().singleRow();
+    }
+
+    String resubmitEvidence(UUID id, UUID student, BigDecimal amount, java.time.LocalDate paidOn, String channel, String reference, String note) {
+        return jdbc.sql("SELECT finance.historical_evidence_resubmit(:id, :s, :a, :d, :c, :r, :n)").param("id", id).param("s", student).param("a", amount)
+                .param("d", paidOn, Types.DATE).param("c", channel).param("r", reference).param("n", note, Types.VARCHAR).query(String.class).single();
+    }
+
+    String withdrawEvidence(UUID id, UUID student, String reason) {
+        return jdbc.sql("SELECT finance.historical_evidence_withdraw(:id, :s, :r)").param("id", id).param("s", student).param("r", reason, Types.VARCHAR)
+                .query(String.class).single();
+    }
+
+    static final java.util.Set<String> EVIDENCE_TYPES = java.util.Set.of("application/pdf", "image/jpeg", "image/png");
+
+    /** V683: a file of the student's own open payment evidence — a PDF, JPEG or PNG up to 5 MB, ten at most */
+    void addEvidenceFile(UUID id, UUID student, String filename, String dataUrl) {
+        Map<String, Object> e = jdbc.sql("""
+                SELECT x.state, (SELECT count(*) FROM finance.historical_payment_evidence_file f WHERE f.evidence_id = x.id) AS n
+                  FROM finance.historical_payment_evidence x WHERE x.id = :id AND x.student_id = :s FOR UPDATE
+                """).param("id", id).param("s", student).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new ng.edu.moaum.portal.shared.NotFound("payment evidence", id));
+        if (!java.util.Set.of("SUBMITTED", "MORE_INFORMATION_REQUIRED").contains(String.valueOf(e.get("state")))) {
+            throw new DomainRuleViolation("HPE_DECIDED", "This evidence is decided; files are added while it is with the Bursary.",
+                    new DomainRuleViolation.Remedy("Submit new evidence if the semester still shows a balance.", "You"));
+        }
+        if (((Number) e.get("n")).intValue() >= 10) {
+            throw new DomainRuleViolation("HPE_FILES", "An evidence carries ten files at most.", new DomainRuleViolation.Remedy("Put the pages in one PDF.", "You"));
+        }
+        String u = dataUrl == null ? "" : dataUrl;
+        int comma = u.indexOf(',');
+        String meta = comma > 0 && u.startsWith("data:") ? u.substring(5, comma) : "";
+        String type = meta.contains(";") ? meta.substring(0, meta.indexOf(';')) : meta;
+        if (!EVIDENCE_TYPES.contains(type)) {
+            throw new DomainRuleViolation("HPE_FILE_TYPE", "Evidence is a PDF, JPEG or PNG file.", new DomainRuleViolation.Remedy("Scan or photograph it as one of those.", "You"));
+        }
+        byte[] bytes;
+        try {
+            bytes = java.util.Base64.getDecoder().decode(u.substring(comma + 1).replaceAll("\\s", ""));
+        } catch (IllegalArgumentException bad) {
+            throw new DomainRuleViolation("HPE_FILE", "The file could not be read.", new DomainRuleViolation.Remedy("Choose the file again.", "You"));
+        }
+        if (bytes.length == 0 || bytes.length > 5 * 1024 * 1024) {
+            throw new DomainRuleViolation("HPE_FILE_SIZE", "Evidence is up to 5 MB a file.", new DomainRuleViolation.Remedy("Scan it at a lower resolution.", "You"));
+        }
+        String name = filename == null || filename.isBlank() ? "evidence" : filename.trim();
+        UUID object = files.store("finance.historical_payment_evidence_file", id, name, type, bytes);
+        jdbc.sql("""
+                INSERT INTO finance.historical_payment_evidence_file (evidence_id, filename, content_type, size_bytes, content, object_id, added_by, added_office)
+                VALUES (:x, :f, :t, :n, :c, :o, nullif(current_setting('moaum.actor_id', true), '')::uuid, nullif(current_setting('moaum.actor_office', true), ''))
+                """).param("x", id).param("f", name).param("t", type).param("n", (long) bytes.length)
+                .param("c", object == null ? bytes : null, Types.BINARY).param("o", object, Types.OTHER).update();
+        jdbc.sql("SELECT finance.historical_evidence_event(:x, 'FILE_ADDED', :n)").param("x", id).param("n", name).query().listOfRows();
+    }
+
+    /** V683: a file of the student's own evidence — never another student's */
+    Optional<FileObjects.Typed> evidenceFile(UUID id, UUID student, UUID file) {
+        return jdbc.sql("""
+                SELECT f.content_type, f.content, f.object_id FROM finance.historical_payment_evidence_file f
+                  JOIN finance.historical_payment_evidence e ON e.id = f.evidence_id
+                 WHERE f.id = :f AND e.id = :id AND e.student_id = :s
+                """).param("f", file).param("id", id).param("s", student).query().listOfRows().stream().findFirst()
+                .map(r -> new FileObjects.Typed(r.get("content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(r.get("object_id")))),
+                        String.valueOf(r.get("content_type"))));
     }
 
     /** V654: a reference for a graduate's approved historical balance of a session (the database checks the balance and the student) */

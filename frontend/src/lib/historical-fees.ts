@@ -16,6 +16,10 @@ export interface Period {
   pending_ref?: string | null; pending_amount?: Money | null; paid: Money; outstanding: Money | null; credit: Money; status: PeriodStatus;
   /** V665: the approved waivers and adjustments of the period */
   waived?: Money | null;
+  /** V683: what is under review for the period — the graduate's open evidence (the period's), the session's archived school-fee payments
+   *  not yet settled, its payments under another purpose; PAYMENT_UNDER_REVIEW on a period not settled where any stands */
+  review?: "PAYMENT_UNDER_REVIEW" | null; evidence_id?: string | null; evidence_ref?: string | null; evidence_state?: EvidenceState | null;
+  archived_count?: number; archived_amount?: Money | null; other_count?: number; other_amount?: Money | null;
 }
 
 export interface SessionGroup { session: string; periods: Period[]; assessed: number; waived: number; paid: number; outstanding: number; credit: number; review: number }
@@ -50,6 +54,8 @@ export interface StudentAccount {
   waivers?: Waiver[];
   otherPayments?: OtherPayment[];
   awaitingFinalClearance?: boolean;
+  /** V683: the graduate's payment evidence, and where each verified one's payment stands */
+  evidence?: (Evidence & { payment: string | null; payment_state: PaymentState | null })[];
 }
 
 export type WaiverState = "PENDING_BURSAR_APPROVAL" | "APPROVED" | "REJECTED" | "WITHDRAWN" | "REVOKED";
@@ -137,6 +143,9 @@ export interface Figures {
   awaitingGraduation?: number;
   /** V668: the final clearances waiting only on the Bursary, and how many are ready */
   readyToGraduate?: { ready: number; waiting: number };
+  /** V683: graduates' payment evidence by state, and graduates with a school-fee payment archived for review */
+  evidence?: { submitted: number; submitted_amount: Money; more_information: number; verified: number; verified_to_put_right: number; rejected: number };
+  archivedSchoolFees?: { students: number; amount: Money };
 }
 
 export const PERIOD_WORDS: Record<PeriodStatus, [string, Tone]> = {
@@ -250,3 +259,90 @@ export function statementRows(periods: Period[]): (string | number)[][] {
   ]);
 }
 export const STATEMENT_HEAD = ["S/N", "Session", "Semester", "Level", "Assessed (₦)", "Waived / adjusted (₦)", "Paid (₦)", "Outstanding (₦)", "Status"];
+
+/* ── V683: payment evidence a graduate submits for a past semester, reviewed by the Bursary ── */
+
+export type EvidenceState = "SUBMITTED" | "MORE_INFORMATION_REQUIRED" | "VERIFIED" | "REJECTED" | "WITHDRAWN";
+export type EvidenceChannel = "BANK" | "OLD_PORTAL" | "ONLINE" | "OTHER";
+/** where a payment stands against the graduate's session: counted, or what is still to be done before it counts */
+export type PaymentState = "COUNTED" | "ARCHIVED" | "OTHER_STUDENT" | "NOT_SCHOOL_FEES" | "OTHER_SESSION" | "NOT_CONFIRMED";
+
+export interface Evidence {
+  id: string; reference: string; session: string; semester: number; amount: Money; paid_on: string | null; channel: EvidenceChannel; payment_reference: string;
+  note?: string | null; state: EvidenceState; submitted_at: string; updated_at?: string; decided_at: string | null; decision_note: string | null;
+  files?: { id: string; filename: string }[];
+}
+
+/** one candidate payment on record for the evidence (finance.historical_evidence_candidates), or one found by another number */
+export interface Candidate {
+  payment_id: string; reference: string; receipt_no: string | null; student_id: string | null; matric_no: string | null; name: string | null; session: string | null;
+  purpose: string; amount: Money; confirmed_at: string; channel: string | null; archived: boolean; why: "NUMBER" | "SESSION" | "ARCHIVED" | "SEARCH";
+  state: PaymentState; verified_for: string | null;
+}
+
+export const EVIDENCE_WORDS: Record<EvidenceState, [string, Tone]> = {
+  SUBMITTED: ["With the Bursary", "warn"], MORE_INFORMATION_REQUIRED: ["More information needed", "bad"], VERIFIED: ["Verified", "ok"],
+  REJECTED: ["Not accepted", "bad"], WITHDRAWN: ["Withdrawn", "grey"],
+};
+
+export const CHANNEL_WORDS: Record<EvidenceChannel, string> = {
+  BANK: "At a bank (teller)", OLD_PORTAL: "On the old portal", ONLINE: "Online (card or transfer)", OTHER: "Otherwise",
+};
+
+/** a payment's standing against the session, and what the Bursary does about it (each with its own approval) */
+export const PAYMENT_STATE_WORDS: Record<PaymentState, [string, Tone, string]> = {
+  COUNTED: ["Counted as the session's school fees", "ok", "Nothing more: the account reads it."],
+  ARCHIVED: ["Archived for review", "warn", "Settle it on the Payment Archive; it counts once reconciled."],
+  OTHER_STUDENT: ["On another student's record", "warn", "Move it to this graduate with a payment swap; it counts once approved."],
+  NOT_SCHOOL_FEES: ["Under another purpose", "warn", "Correct its purpose with a payment reallocation; it counts once approved."],
+  OTHER_SESSION: ["Under another session", "warn", "Correct its session with a payment reallocation; it counts once approved."],
+  NOT_CONFIRMED: ["Not confirmed", "bad", "Only a confirmed payment counts."],
+};
+
+/** where each correction is made */
+export const PAYMENT_STATE_DESK: Partial<Record<PaymentState, [string, string]>> = {
+  ARCHIVED: ["Payment Archive", "/finance/payment-archive"], OTHER_STUDENT: ["Payment swaps", "/finance/payment-swaps"],
+  NOT_SCHOOL_FEES: ["Payment reallocations", "/finance/payment-reallocations"], OTHER_SESSION: ["Payment reallocations", "/finance/payment-reallocations"],
+};
+
+export const WHY_WORDS: Record<Candidate["why"], string> = {
+  NUMBER: "Its number is the one on the evidence", SESSION: "The graduate's payment in the session", ARCHIVED: "The graduate's archived payment",
+  SEARCH: "Found by the number searched",
+};
+
+/** what is under review for a period, in words — the student's own view says "your" */
+export function reviewWords(p: Period, studentView = false): string[] {
+  if (p.review !== "PAYMENT_UNDER_REVIEW") return [];
+  const out: string[] = [];
+  if (p.evidence_ref) {
+    out.push(`${studentView ? "Your" : "The graduate's"} payment evidence ${p.evidence_ref} ${p.evidence_state === "MORE_INFORMATION_REQUIRED" ? "needs more information" : "is with the Bursary"}`);
+  }
+  if (num(p.archived_amount) > 0) out.push(`A school fees payment of this session (${naira(p.archived_amount)}) is archived for review`);
+  if (num(p.other_amount) > 0) out.push(`A payment of this session under another purpose (${naira(p.other_amount)}) is being checked`);
+  return out;
+}
+
+/** the periods the graduate may give evidence for: not settled, and with no evidence of theirs already open */
+export function evidencePeriods(periods: Period[], evidence: Evidence[]): Period[] {
+  const open = new Set(evidence.filter((e) => e.state === "SUBMITTED" || e.state === "MORE_INFORMATION_REQUIRED").map((e) => `${e.session}|${e.semester}`));
+  return periods.filter((p) => p.status !== "CLEARED" && p.status !== "CREDIT" && !open.has(`${p.session}|${p.semester}`));
+}
+
+export interface EvidenceForm { amount: string; paidOn: string; channel: EvidenceChannel | ""; reference: string; note: string }
+
+/** the evidence form's first problem, or null (the database decides again) */
+export function evidenceProblem(f: EvidenceForm, today: string): string | null {
+  const a = Number(f.amount.replace(/[^0-9.]/g, ""));
+  if (!f.amount.trim() || !Number.isFinite(a) || a <= 0) return "Enter the amount you paid.";
+  if (f.paidOn && f.paidOn > today) return "The day you paid cannot be in the future.";
+  if (!f.channel) return "Say how you paid.";
+  const r = f.reference.trim();
+  if (r.length < 4 || r.length > 80) return "Give the receipt, teller or transaction number on your evidence (4 to 80 characters).";
+  if (f.note.length > 1000) return "The note is up to 1,000 characters.";
+  return null;
+}
+
+/** the evidence form as the API takes it */
+export function evidenceBody(f: EvidenceForm): { amount: number; paidOn: string | null; channel: string; reference: string; note: string | null } {
+  return { amount: Number(f.amount.replace(/[^0-9.]/g, "")), paidOn: f.paidOn || null, channel: f.channel, reference: f.reference.trim(), note: f.note.trim() || null };
+}

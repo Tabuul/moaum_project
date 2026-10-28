@@ -176,6 +176,48 @@ and one with nothing to pick up 15–45 ms.
 - **The Bursar's and the Students Account Officer's dashboards**: historical financial clearance and historical fee review.
 - **The clearance desk**: the Bursary stage's evidence lists each period.
 
+## Payment evidence from the graduate (V683)
+
+The University's master prompt of 28 October 2026 ("no receipt evidence must not automatically mean the student did not pay"). Asked
+who uploads evidence, the University chose: the graduate submits it, the Bursary reviews it.
+
+- **Submitting.** On their fees page a graduate gives evidence for a semester of their history that is not settled: the amount, the day,
+  how it was paid (bank, old portal, online, otherwise), the receipt, teller or transaction number, a note and files (PDF, JPEG or PNG, up
+  to 5 MB, ten at most). One evidence is open per semester at a time (`finance.historical_evidence_submit`, HPE/YYYY/NNNNNN). The
+  graduate may add files while it is with the Bursary, or withdraw it.
+- **Reviewing.** The Students Account Officer or the Bursar (`REVIEW_PAYMENT_EVIDENCE`) works through **Payment evidence** on
+  Historical Fees & Clearance. Each evidence lists the confirmed payments on record it may be
+  (`finance.historical_evidence_candidates`):
+  - the payment whose reference or receipt number is the one on the evidence, whoever holds it;
+  - the graduate's payments of the session, under any purpose;
+  - the graduate's archived payments.
+  A payment can also be found by another number. Old-portal records held because their number named no student are shown too; they
+  are matched on School Fees History Reconciliation (V647) first.
+- **Deciding** (`finance.historical_evidence_decide`):
+  - **Verify against this** links the evidence to that payment. A payment backs one verified evidence only.
+  - **Ask for more information** sends it back; the graduate adds what is asked and sends it again.
+  - **Reject** closes it.
+  Asking for more and rejecting need a reason (ten characters or more), which the graduate reads. The graduate is told at each step
+  (notices `HISTORICAL_EVIDENCE_RECEIVED`, `_MORE_INFO`, `_VERIFIED`, `_REJECTED`).
+- **Never paid by a document.** The evidence never counts by itself; the account is unchanged by it. Only the payment counts, once it is
+  the graduate's confirmed school fees of the session. `finance.historical_evidence_payment_state` says where the linked payment stands
+  and the desk that puts it right, each with its own approval:
+  - **counted:** nothing more to do;
+  - **archived:** the Payment Archive (V670);
+  - **on another student's record:** a payment swap (V527);
+  - **under another purpose or session:** a payment reallocation (V649).
+  A payment not on the portal at all (paid on the old portal and never brought over) is recorded on Old-Portal Payments first, with its
+  approval, and then linked.
+- **Payment under review.** `finance.historical_review` marks a semester that is not settled **PAYMENT_UNDER_REVIEW** where any of these
+  stands, so it is never read as plainly unpaid while a payment is checked:
+  - the graduate's open evidence for it;
+  - a school-fee payment of the session archived and not yet settled;
+  - a payment of the session under another purpose that may be school fees (outstanding fees, tuition, JAMB-named; V665).
+  What is owed is unchanged. The graduate's fees page, the desk's account and the full record show it beside the status.
+- **Figures and data quality.** The overview counts **Payment verification required** (evidence awaiting the Bursary, and that awaiting
+  the graduate) and **Archived school fees payments** (graduates with one under review, and its value). Data quality lists
+  PAYMENT_EVIDENCE_SUBMITTED and ARCHIVED_SCHOOL_FEES.
+
 ## Not done
 
 - The historical account reads earlier sessions on the programme the student holds now; a programme change is listed in data

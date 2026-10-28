@@ -31,6 +31,21 @@ class MeController {
     public record Contact(@Size(max = 30) String phone, @Size(max = 200) String email, @Size(max = 300) String address) {
     }
 
+    /** V683: payment evidence for a past semester — what was paid, when, how, and the receipt, teller or transaction number */
+    public record HistoricalEvidenceIn(@NotBlank String session, @Min(1) @Max(3) int semester, BigDecimal amount, @Size(max = 10) String paidOn,
+                                       @NotBlank @Size(max = 20) String channel, @NotBlank @Size(max = 80) String reference, @Size(max = 1000) String note) {
+    }
+
+    public record HistoricalEvidenceAgain(BigDecimal amount, @Size(max = 10) String paidOn, @NotBlank @Size(max = 20) String channel,
+                                          @NotBlank @Size(max = 80) String reference, @Size(max = 1000) String note) {
+    }
+
+    public record HistoricalEvidenceFile(@NotBlank @Size(max = 200) String filename, @NotBlank String dataUrl) {
+    }
+
+    public record HistoricalEvidenceWithdraw(@Size(max = 500) String reason) {
+    }
+
     public record NewReference(String session, BigDecimal amount) {
     }
 
@@ -276,6 +291,36 @@ class MeController {
     @PostMapping("/historical-fees/references")
     Map<String, Object> historicalReference(Authentication auth, @RequestBody NewReference body) {
         return portal.historicalReference(id(auth), body == null ? null : body.session(), body == null ? null : body.amount());
+    }
+
+    /** V683: payment evidence a graduate submits for a past semester the portal shows as unpaid; the Bursary reviews it */
+    @PostMapping("/historical-evidence")
+    Map<String, Object> submitHistoricalEvidence(Authentication auth, @Valid @RequestBody HistoricalEvidenceIn body) {
+        return portal.submitEvidence(id(auth), body.session(), body.semester(), body.amount(), body.paidOn(), body.channel(), body.reference(), body.note());
+    }
+
+    @PostMapping("/historical-evidence/{evidence}/files")
+    Map<String, Object> addHistoricalEvidenceFile(Authentication auth, @PathVariable UUID evidence, @Valid @RequestBody HistoricalEvidenceFile body) {
+        return portal.addEvidenceFile(id(auth), evidence, body.filename(), body.dataUrl());
+    }
+
+    @PostMapping("/historical-evidence/{evidence}/resubmit")
+    Map<String, Object> resubmitHistoricalEvidence(Authentication auth, @PathVariable UUID evidence, @Valid @RequestBody HistoricalEvidenceAgain body) {
+        return portal.resubmitEvidence(id(auth), evidence, body.amount(), body.paidOn(), body.channel(), body.reference(), body.note());
+    }
+
+    @PostMapping("/historical-evidence/{evidence}/withdraw")
+    Map<String, Object> withdrawHistoricalEvidence(Authentication auth, @PathVariable UUID evidence, @RequestBody(required = false) HistoricalEvidenceWithdraw body) {
+        return portal.withdrawEvidence(id(auth), evidence, body == null ? null : body.reason());
+    }
+
+    /** a file of the student's own evidence — another student's is not found */
+    @GetMapping("/historical-evidence/{evidence}/files/{file}")
+    org.springframework.http.ResponseEntity<byte[]> historicalEvidenceFile(Authentication auth, @PathVariable UUID evidence, @PathVariable UUID file) {
+        return portal.evidenceFile(id(auth), evidence, file)
+                .map(f -> org.springframework.http.ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType(f.contentType()))
+                        .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline").body(f.bytes()))
+                .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
     }
 
     private static UUID id(Authentication auth) {

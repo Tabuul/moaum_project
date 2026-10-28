@@ -464,6 +464,51 @@ public class StudentPortalService {
         return repo.historicalFees(id);
     }
 
+    /** V683: payment evidence a graduate submits for a past semester — the database checks the period (on their history, not settled),
+     *  that one is open at a time, and the fields; it counts for nothing until the Bursary verifies the payment it shows */
+    @Transactional
+    public Map<String, Object> submitEvidence(UUID id, String session, int semester, BigDecimal amount, String paidOn, String channel, String reference, String note) {
+        if (session == null || !session.matches("^[0-9]{4}/[0-9]{4}$")) {
+            throw new DomainRuleViolation("HPE_PERIOD", "Choose the session and semester the payment was for.",
+                    new DomainRuleViolation.Remedy("Pick a semester your school fees history lists.", "You"));
+        }
+        return repo.submitEvidence(id, session, semester, amount, evidenceDay(paidOn), channel, reference, note);
+    }
+
+    /** V683: a file added to the student's own evidence while it is with the Bursary */
+    @Transactional
+    public Map<String, Object> addEvidenceFile(UUID id, UUID evidence, String filename, String dataUrl) {
+        repo.addEvidenceFile(evidence, id, filename, dataUrl);
+        return Map.of("added", true);
+    }
+
+    /** V683: the evidence sent again with what the Bursary asked for */
+    @Transactional
+    public Map<String, Object> resubmitEvidence(UUID id, UUID evidence, BigDecimal amount, String paidOn, String channel, String reference, String note) {
+        return Map.of("state", repo.resubmitEvidence(evidence, id, amount, evidenceDay(paidOn), channel, reference, note));
+    }
+
+    /** V683: the student withdraws their evidence while it is with the Bursary */
+    @Transactional
+    public Map<String, Object> withdrawEvidence(UUID id, UUID evidence, String reason) {
+        return Map.of("state", repo.withdrawEvidence(evidence, id, reason));
+    }
+
+    /** V683: a file of the student's own evidence */
+    @Transactional(readOnly = true)
+    public java.util.Optional<ng.edu.moaum.portal.shared.FileObjects.Typed> evidenceFile(UUID id, UUID evidence, UUID file) {
+        return repo.evidenceFile(evidence, id, file);
+    }
+
+    private static java.time.LocalDate evidenceDay(String day) {
+        if (day == null || day.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(day.trim());
+        } catch (java.time.format.DateTimeParseException bad) {
+            throw new DomainRuleViolation("HPE_DATE", "The day you paid is a date (YYYY-MM-DD).", new DomainRuleViolation.Remedy("Pick the day from the calendar.", "You"));
+        }
+    }
+
     /** V654: a reference for an approved historical balance — the database refuses anything but a graduate's balance owed */
     @Transactional
     public Map<String, Object> historicalReference(UUID id, String session, BigDecimal amount) {

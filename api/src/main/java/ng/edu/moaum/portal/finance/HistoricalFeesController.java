@@ -105,6 +105,10 @@ class HistoricalFeesController {
                            @NotBlank @Size(max = 2000) String reason, @NotBlank @Size(max = 300) String authority, @Valid EvidenceIn evidence) {
     }
 
+    /** V683: a graduate's payment evidence decided — verified against the payment on record it shows, sent back for more, or rejected */
+    public record EvidenceDecideIn(@NotBlank @Pattern(regexp = "VERIFY|MORE_INFORMATION|REJECT") String decision, @Size(max = 2000) String note, UUID payment) {
+    }
+
     public record WaiverDecideIn(@NotBlank @Pattern(regexp = "APPROVE|REJECT") String decision, @Size(max = 2000) String note) {
     }
 
@@ -227,6 +231,21 @@ class HistoricalFeesController {
         out.put("assessments", jdbc.sql("SELECT a.state, count(*) AS n, coalesce(sum(a.amount), 0) AS amount FROM finance.historical_assessment a GROUP BY a.state")
                 .query().listOfRows());
         out.put("batchesPending", jdbc.sql("SELECT count(*) FROM finance.historical_batch WHERE state = 'PENDING_BURSAR_APPROVAL'").query(Long.class).single());
+        // V683: graduates' payment evidence by state, and graduates with a school-fee payment archived for review
+        out.put("evidence", jdbc.sql("""
+                SELECT count(*) FILTER (WHERE e.state = 'SUBMITTED') AS submitted, coalesce(sum(e.amount) FILTER (WHERE e.state = 'SUBMITTED'), 0) AS submitted_amount,
+                       count(*) FILTER (WHERE e.state = 'MORE_INFORMATION_REQUIRED') AS more_information,
+                       count(*) FILTER (WHERE e.state = 'VERIFIED') AS verified,
+                       count(*) FILTER (WHERE e.state = 'VERIFIED' AND finance.historical_evidence_payment_state(e.payment_id, e.student_id, e.session) <> 'COUNTED') AS verified_to_put_right,
+                       count(*) FILTER (WHERE e.state = 'REJECTED') AS rejected
+                  FROM finance.historical_payment_evidence e
+                """).query().singleRow());
+        out.put("archivedSchoolFees", jdbc.sql("""
+                SELECT count(DISTINCT a.student_id) AS students, coalesce(sum(a.amount), 0) AS amount
+                  FROM finance.payment_archive a JOIN people.student s ON s.id = a.student_id
+                 WHERE a.settled_at IS NULL AND a.purpose LIKE 'School fees%'
+                   AND (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
+                """).query().singleRow());
         // V665: waivers awaiting the Bursar, the approved total, and the approved graduands whose final clearance is still to complete
         out.put("waivers", jdbc.sql("""
                 SELECT count(*) FILTER (WHERE w.state = 'PENDING_BURSAR_APPROVAL') AS pending,
@@ -340,7 +359,19 @@ class HistoricalFeesController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("student", st);
         out.put("start", jdbc.sql("SELECT finance.historical_start()").query(String.class).optional().orElse(null));
-        out.put("periods", jdbc.sql("SELECT x.* FROM finance.historical_account(:id) x").param("id", id).query().listOfRows());
+        // V683: each period with what is under review for it (the graduate's evidence, an archived school-fee payment, a payment under
+        // another purpose) — never read as plainly unpaid while a payment is checked
+        out.put("periods", jdbc.sql("""
+                SELECT x.*, rv.review, rv.evidence_id, rv.evidence_ref, rv.evidence_state, rv.archived_count, rv.archived_amount, rv.other_count, rv.other_amount
+                  FROM finance.historical_account(:id) x
+                  LEFT JOIN finance.historical_review(ARRAY[CAST(:id AS uuid)]) rv ON rv.session = x.session AND rv.semester = x.semester
+                """).param("id", id).query().listOfRows());
+        out.put("evidence", jdbc.sql("""
+                SELECT e.id, e.reference, e.session, e.semester, e.amount, e.paid_on::text AS paid_on, e.channel, e.payment_reference, e.state, e.submitted_at,
+                       e.decided_at, e.decision_note, r.reference AS payment, finance.historical_evidence_payment_state(e.payment_id, e.student_id, e.session) AS payment_state
+                  FROM finance.historical_payment_evidence e LEFT JOIN finance.payment_reference r ON r.id = e.payment_id
+                 WHERE e.student_id = :id ORDER BY e.submitted_at DESC
+                """).param("id", id).query().listOfRows());
         // the graduate's summary brought up to date with the account just read, so the lists and figures agree with it
         jdbc.sql("""
                 SELECT finance.historical_refresh(ARRAY[s.id]) FROM people.student s
@@ -745,6 +776,143 @@ class HistoricalFeesController {
                 SELECT e.id, e.filename, e.content_type, e.size_bytes, e.added_at, helpdesk.person_name(e.added_by) AS added_by
                   FROM finance.historical_waiver_evidence e WHERE e.waiver_id = :id ORDER BY e.added_at
                 """).param("id", id).query().listOfRows());
+        return out;
+    }
+
+    /* ── payment evidence (V683) ── */
+
+    static final Set<String> EVIDENCE_STATES = Set.of("SUBMITTED", "MORE_INFORMATION_REQUIRED", "VERIFIED", "REJECTED", "WITHDRAWN");
+
+    /** graduates' payment evidence by state — the evidence awaiting the Bursary by default — each with the period's account beside it
+     *  and, once verified, where the payment linked stands */
+    @GetMapping("/evidence")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> evidenceList(@RequestParam(defaultValue = "SUBMITTED") String state, @RequestParam(required = false) String q,
+                                     @RequestParam(defaultValue = "0") int page) {
+        need("VIEW_HISTORICAL_PAYMENT");
+        String st = "ALL".equalsIgnoreCase(state) ? null : EVIDENCE_STATES.contains(state) ? state : "SUBMITTED";
+        String term = blank(q);
+        int pg = Math.max(0, Math.min(page, 2000));
+        String where = """
+                FROM finance.historical_payment_evidence e JOIN people.student s ON s.id = e.student_id JOIN ref.programme p ON p.code = s.programme_code
+                WHERE (CAST(:st AS text) IS NULL OR e.state = :st)
+                  AND (CAST(:q AS text) IS NULL OR e.reference ILIKE '%' || :q || '%' OR e.payment_reference ILIKE '%' || :q || '%'
+                       OR s.matric_no ILIKE '%' || :q || '%' OR s.jamb_reg_no ILIKE '%' || :q || '%' OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """;
+        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).query(Long.class).single();
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT e.id, e.reference, e.session, e.semester, e.amount, e.paid_on::text AS paid_on, e.channel, e.payment_reference, e.state, e.submitted_at,
+                       e.decided_at, (SELECT count(*) FROM finance.historical_payment_evidence_file f WHERE f.evidence_id = e.id) AS files,
+                       (SELECT r.reference FROM finance.payment_reference r WHERE r.id = e.payment_id) AS payment,
+                       finance.historical_evidence_payment_state(e.payment_id, e.student_id, e.session) AS payment_state,
+                       s.id AS student_id, s.surname, s.other_names, s.matric_no, s.status AS student_status, p.name AS programme
+                """ + where + " ORDER BY e.submitted_at LIMIT :lim OFFSET :off")
+                .param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("lim", PAGE).param("off", pg * PAGE).query().listOfRows();
+        List<UUID> ids = rows.stream().map(r -> UUID.fromString(String.valueOf(r.get("student_id")))).distinct().toList();
+        if (!ids.isEmpty()) {
+            List<Map<String, Object>> acct = jdbc.sql("SELECT x.student_id, x.session, x.semester, x.assessed, x.paid, x.waived, x.outstanding, x.status FROM finance.historical_rows(CAST(:ids AS uuid[])) x")
+                    .param("ids", ids.stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY).query().listOfRows();
+            for (Map<String, Object> r : rows) {
+                acct.stream().filter(x -> String.valueOf(x.get("student_id")).equals(String.valueOf(r.get("student_id")))
+                                && String.valueOf(x.get("session")).equals(String.valueOf(r.get("session")))
+                                && String.valueOf(x.get("semester")).equals(String.valueOf(r.get("semester"))))
+                        .findFirst().ifPresent(x -> {
+                            r.put("assessed", x.get("assessed"));
+                            r.put("paid", x.get("paid"));
+                            r.put("outstanding", x.get("outstanding"));
+                            r.put("period_status", x.get("status"));
+                        });
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", total);
+        out.put("page", pg);
+        out.put("size", PAGE);
+        out.put("rows", rows);
+        return out;
+    }
+
+    /** one evidence: what the graduate said, the files, the timeline, the period's account, and the payments on record it may be */
+    @GetMapping("/evidence/{id}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> evidenceOne(@PathVariable UUID id) {
+        need("VIEW_HISTORICAL_PAYMENT");
+        Map<String, Object> e = jdbc.sql("""
+                SELECT e.id, e.reference, e.student_id, e.session, e.semester, e.amount, e.paid_on::text AS paid_on, e.channel, e.payment_reference, e.note, e.state,
+                       e.submitted_at, e.updated_at, e.decided_at, e.decided_office, helpdesk.person_name(e.decided_by) AS decided_by_name, e.decision_note,
+                       e.payment_id, (SELECT r.reference FROM finance.payment_reference r WHERE r.id = e.payment_id) AS payment,
+                       finance.historical_evidence_payment_state(e.payment_id, e.student_id, e.session) AS payment_state,
+                       s.surname, s.other_names, s.matric_no, s.jamb_reg_no, s.status AS student_status, p.name AS programme
+                  FROM finance.historical_payment_evidence e JOIN people.student s ON s.id = e.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE e.id = :id
+                """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("payment evidence", id));
+        Map<String, Object> out = new LinkedHashMap<>(e);
+        out.put("period", jdbc.sql("SELECT x.* FROM finance.historical_account(:st) x WHERE x.session = :ses AND x.semester = :sem")
+                .param("st", e.get("student_id")).param("ses", e.get("session")).param("sem", e.get("semester")).query().listOfRows().stream().findFirst().orElse(null));
+        out.put("files", jdbc.sql("""
+                SELECT f.id, f.filename, f.content_type, f.size_bytes, f.added_at, f.added_office FROM finance.historical_payment_evidence_file f
+                 WHERE f.evidence_id = :id ORDER BY f.added_at
+                """).param("id", id).query().listOfRows());
+        out.put("events", jdbc.sql("""
+                SELECT v.action, v.at, v.office, v.note, CASE WHEN v.office = 'student' THEN 'The graduate' ELSE helpdesk.person_name(v.actor) END AS by_name
+                  FROM finance.historical_payment_evidence_event v WHERE v.evidence_id = :id ORDER BY v.at
+                """).param("id", id).query().listOfRows());
+        out.put("candidates", jdbc.sql("SELECT c.* FROM finance.historical_evidence_candidates(:id) c").param("id", id).query().listOfRows());
+        // an old-portal record held because its number named no student (V647): reconciled on School Fees History Reconciliation first
+        out.put("held", jdbc.sql("""
+                SELECT h.payref, h.original_identifier, h.purpose, h.session, h.semester, h.amount, h.status
+                  FROM finance.legacy_payment_held h
+                 WHERE h.payref IN (btrim(:r), upper(btrim(:r)), lower(btrim(:r))) LIMIT 10
+                """).param("r", e.get("payment_reference")).query().listOfRows());
+        return out;
+    }
+
+    /** a confirmed payment found by another number than the one on the evidence (from a bank statement, the old portal) */
+    @GetMapping("/evidence/{id}/search")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> evidenceSearch(@PathVariable UUID id, @RequestParam String ref) {
+        need("VIEW_HISTORICAL_PAYMENT");
+        Map<String, Object> e = jdbc.sql("SELECT e.id, e.student_id, e.session FROM finance.historical_payment_evidence e WHERE e.id = :id").param("id", id)
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("payment evidence", id));
+        String r = blank(ref);
+        if (r == null || r.length() < 4) return List.of();
+        return jdbc.sql("""
+                SELECT r.id AS payment_id, r.reference, r.receipt_no, r.student_id, s.matric_no, s.surname || ', ' || s.other_names AS name, r.session, r.purpose, r.amount,
+                       r.confirmed_at, r.channel, r.archived_at IS NOT NULL AS archived, 'SEARCH' AS why,
+                       finance.historical_evidence_payment_state(r.id, CAST(:st AS uuid), :ses) AS state,
+                       (SELECT v.reference FROM finance.historical_payment_evidence v WHERE v.payment_id = r.id AND v.state = 'VERIFIED') AS verified_for
+                  FROM finance.payment_reference r LEFT JOIN people.student s ON s.id = r.student_id
+                 WHERE r.confirmed_at IS NOT NULL AND (r.reference IN (:r, upper(:r), lower(:r)) OR r.receipt_no IN (:r, upper(:r), lower(:r)))
+                 LIMIT 20
+                """).param("r", r).param("st", e.get("student_id"), Types.OTHER).param("ses", e.get("session")).query().listOfRows();
+    }
+
+    @GetMapping("/evidence/{id}/files/{file}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> evidenceUpload(@PathVariable UUID id, @PathVariable UUID file) {
+        need("VIEW_HISTORICAL_PAYMENT");
+        Map<String, Object> f = jdbc.sql("SELECT filename, content_type, content, object_id FROM finance.historical_payment_evidence_file WHERE id = :f AND evidence_id = :x")
+                .param("f", file).param("x", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("evidence file", file));
+        byte[] bytes = f.get("content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(f.get("object_id"))));
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(String.valueOf(f.get("content_type"))))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + String.valueOf(f.get("filename")).replaceAll("[^A-Za-z0-9._ -]", "_") + "\"")
+                .body(bytes);
+    }
+
+    /** the Students Account Officer or the Bursar decides the evidence (REVIEW_PAYMENT_EVIDENCE, checked again in the database) */
+    @PostMapping("/evidence/{id}/decide")
+    @PreAuthorize("hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super')")
+    @Transactional
+    Map<String, Object> decideEvidence(@PathVariable UUID id, @Valid @RequestBody EvidenceDecideIn body) {
+        need("REVIEW_PAYMENT_EVIDENCE");
+        String answer = jdbc.sql("SELECT finance.historical_evidence_decide(:id, :d, :n, :p)::text").param("id", id).param("d", body.decision())
+                .param("n", body.note(), Types.VARCHAR).param("p", body.payment(), Types.OTHER).query(String.class).single();
+        Map<String, Object> out = new LinkedHashMap<>(evidenceOne(id));
+        out.put("decided", JSON.readValue(answer, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }));
         return out;
     }
 

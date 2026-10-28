@@ -4,11 +4,12 @@
  * V654: a student's historical school fees — every session of the record with its semesters, the level of each, what is assessed and
  * where it comes from, what is paid and what is owed; the session's totals and the student's. The account is the database's; this
  * shows it. A period for review is never shown as owed. The officer's actions on a period (assess, correct) are passed in. V665: an
- * approved waiver or adjustment shows in its own column, and lowers what the period owes.
+ * approved waiver or adjustment shows in its own column, and lowers what the period owes. V683: a period with a payment being checked (the
+ * graduate's evidence, an archived school-fee payment, a payment under another purpose) says so beside its status.
  */
 import { Fragment, useState, type ReactNode } from "react";
 import { Pil } from "@/components/proto/ui";
-import { bySession, naira, num, PERIOD_WORDS, semesterWords, totals, type Period } from "@/lib/historical-fees";
+import { bySession, naira, num, PERIOD_WORDS, reviewWords, semesterWords, totals, type Period } from "@/lib/historical-fees";
 
 export function HistoricalTotals({ periods }: { periods: Period[] }) {
   const t = totals(periods);
@@ -70,7 +71,9 @@ export function HistoricalAccount({ periods, studentView = false, actions }: {
                   <td className="num tnum">{num(p.waived) > 0 ? `−${naira(p.waived)}` : "—"}</td>
                   <td className="num tnum">{naira(p.paid)}{num(p.credit) >= 1 ? <span className="blk sub2">{naira(p.credit)} beyond</span> : null}</td>
                   <td className="num tnum" style={{ color: num(p.outstanding) > 0 ? "var(--red-ink)" : undefined }}>{p.outstanding == null ? "—" : naira(p.outstanding)}</td>
-                  <td><Pil kind={PERIOD_WORDS[p.status]?.[1] ?? "grey"}>{PERIOD_WORDS[p.status]?.[0] ?? p.status}</Pil></td>
+                  <td><Pil kind={PERIOD_WORDS[p.status]?.[1] ?? "grey"}>{PERIOD_WORDS[p.status]?.[0] ?? p.status}</Pil>
+                    {/* V683: a payment for the period being checked: never read as plainly unpaid meanwhile */}
+                    {p.review ? <><span className="blk mt-1"><Pil kind="warn">Payment under review</Pil></span>{reviewWords(p, studentView).map((w) => <span key={w} className="blk sub2">{w}</span>)}</> : null}</td>
                   {studentView ? null : (
                     <td className="sub2">{p.source === "ASSESSMENT" ? `Approved assessment ${p.source_ref ?? ""}` : p.source === "STRUCTURE" ? p.source_ref : "Historical fee structure not found"}
                       {p.pending_ref ? <span className="blk">Pending: {p.pending_ref}</span> : null}</td>

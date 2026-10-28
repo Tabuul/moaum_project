@@ -6,7 +6,7 @@ import { HistoricalFees, type Filters } from "./HistoricalFees";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["overview", "students", "approvals", "waivers", "recon", "cohort", "reports", "quality", "setting"] as const;
+const TABS = ["overview", "students", "approvals", "waivers", "evidence", "recon", "cohort", "reports", "quality", "setting"] as const;
 
 /** t/historicalfees — V654: historical school fees and the graduate's financial clearance (the Bursary, the Students Account Officer;
  *  Audit and the Registry read). ?tab= opens a tab; ?financial= / ?filter= / ?q= a list of graduates. */

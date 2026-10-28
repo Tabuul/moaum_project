@@ -5,7 +5,7 @@
  * list), the graduates found on the server, each graduate's account; the Bursar's approval queue; a cohort's assessment from a
  * preview; the reports (historical fees by period, financial clearance by graduate) to Excel and PDF; the data quality; the session
  * historical fees are assessed from. The account and every rule are the database's. V665: the waivers and adjustments awaiting the
- * Bursar, and the clearance reconciliation runs.
+ * Bursar, and the clearance reconciliation runs. V683: the payment evidence graduates submit, checked against the payments on record.
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,10 +21,11 @@ import { AssessmentView } from "./AssessmentView";
 import { Cohort } from "./Cohort";
 import { Reports } from "./Reports";
 import { WaiverQueue } from "./Waivers";
+import { EvidenceQueue } from "./Evidence";
 import { ReconRuns } from "./ReconRuns";
 import { hfCall } from "./hf-call";
 
-type Tab = "overview" | "students" | "approvals" | "waivers" | "recon" | "cohort" | "reports" | "quality" | "setting";
+type Tab = "overview" | "students" | "approvals" | "waivers" | "evidence" | "recon" | "cohort" | "reports" | "quality" | "setting";
 const FILTER_WORDS: Record<string, string> = {
   OUTSTANDING: "Outstanding fees", GRADUATED_OWING: "Graduated, money owed", PARTIALLY_PAID: "A semester paid in part", NO_OUTSTANDING: "No outstanding balance",
   CREDIT: "Credit / overpayment", AUTO_ASSESSED: "Every semester from the fee structure", WITH_ASSESSMENT: "With an approved assessment",
@@ -38,7 +39,8 @@ interface QueueRow { id: string; reference: string; session: string; semester: n
 interface Quality { byIssue: Record<string, number>; rows: { issue: string; detail: string; student_id: string; surname: string; other_names: string; matric_no: string | null; programme: string }[]; unmatchedLegacyPayments: number }
 
 const ISSUE: Record<string, string> = { NO_ENTRY_SESSION: "No admission session", NO_GRADUATION_SESSION: "No graduation session", MISSING_FEE_STRUCTURE: "Missing fee structure",
-  PENDING_APPROVAL: "Assessment awaiting the Bursar", OVERPAYMENT: "Unexpected overpayment", PROGRAMME_CHANGED: "Programme changed" };
+  PENDING_APPROVAL: "Assessment awaiting the Bursar", OVERPAYMENT: "Unexpected overpayment", PROGRAMME_CHANGED: "Programme changed",
+  PAYMENT_EVIDENCE_SUBMITTED: "Payment evidence awaiting the Bursary", ARCHIVED_SCHOOL_FEES: "School fees payment archived for review" };
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Lagos" }) : "—");
 
 export function HistoricalFees({ desk, figures, initialTab, initialFilters, faculties, programmes }: {
@@ -88,6 +90,7 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
     { id: "overview", label: "Overview" }, { id: "students", label: "Students" },
     { id: "approvals", label: `Bursar approval${pending?.n ? ` (${pending.n})` : ""}` },
     { id: "waivers", label: `Waivers and adjustments${figures?.waivers?.pending ? ` (${figures.waivers.pending})` : ""}` },
+    ...(can(desk, "VIEW_HISTORICAL_PAYMENT") ? [{ id: "evidence" as Tab, label: `Payment evidence${figures?.evidence?.submitted ? ` (${figures.evidence.submitted})` : ""}` }] : []),
     ...(can(desk, "VIEW_FINANCIAL_CLEARANCE") ? [{ id: "recon" as Tab, label: "Reconciliation runs" }] : []),
     ...(can(desk, "CREATE_HISTORICAL_FEE_ASSESSMENT") ? [{ id: "cohort" as Tab, label: "Cohort assessment" }] : []),
     ...(can(desk, "VIEW_HISTORICAL_FEE_REPORT") ? [{ id: "reports" as Tab, label: "Reports" }] : []),
@@ -146,6 +149,9 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
                 <Door label="Graduated with a financial obligation" n={figures.graduated_with_obligation} sub="Academic status GRADUATED, money owed" bad onClick={() => show("", "GRADUATED_OWING")} />
                 <Door label="Awaiting final clearance" n={figures.awaitingGraduation ?? 0} sub="Award approved; the Bursar's clearance graduates them" warn onClick={() => setTab("recon")} />
                 <Door label="Waivers awaiting the Bursar" n={Number(figures.waivers?.pending ?? 0)} sub={`${naira(figures.waivers?.pending_amount)} proposed · ${naira(figures.waivers?.approved_amount)} approved in force`} warn onClick={() => setTab("waivers")} />
+                {/* V683: what graduates say they paid, being checked; and school-fee payments archived for review, counted for nothing meanwhile */}
+                <Door label="Payment verification required" n={Number(figures.evidence?.submitted ?? 0)} sub={`${naira(figures.evidence?.submitted_amount)} in evidence awaiting the Bursary · ${Number(figures.evidence?.more_information ?? 0)} awaiting the graduate`} warn onClick={() => setTab("evidence")} />
+                <Door label="Archived school fees payments" n={Number(figures.archivedSchoolFees?.students ?? 0)} sub={`${naira(figures.archivedSchoolFees?.amount)} under review — not counted until settled`} warn onClick={() => router.push("/finance/payment-archive")} />
               </div>
               <Tiles items={[
                 ["Total historical amount assessed", naira(figures.assessed), null, "Approved assessments and historical fee structures"],
@@ -258,6 +264,16 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
             <div className="sub2 mb-2">A waiver or adjustment lowers what a past period owes — never a payment, never &ldquo;marked paid&rdquo;. It is proposed from the student&rsquo;s
               account with the reason, the approval it rests on and its evidence, and approved or rejected by another officer of the Bursar&rsquo;s office.</div>
             <WaiverQueue desk={desk} tick={tick} onChanged={bump} />
+          </PBody>
+        </Panel>
+      ) : null}
+      {tab === "evidence" ? (
+        <Panel title="Payment evidence from graduates">
+          <PBody>
+            <div className="sub2 mb-2">A graduate who paid a semester their history shows as unpaid gives the receipt, teller or old-portal receipt. Check it against the payments
+              on record and verify it against the one it shows — it never counts by itself; a payment archived, on another student&rsquo;s record or under another purpose is
+              put right on its own desk. Ask for more, or reject it, with a reason the graduate reads.</div>
+            <EvidenceQueue desk={desk} tick={tick} onChanged={bump} onOpenStudent={setOpen} />
           </PBody>
         </Panel>
       ) : null}

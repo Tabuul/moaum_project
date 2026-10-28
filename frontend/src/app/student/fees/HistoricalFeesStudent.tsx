@@ -4,14 +4,16 @@
  * V654: a graduate's historical school fees on their own fees page — each session and semester of their record with what is owed,
  * as the Bursary has assessed it (a semester still being assessed is shown as such, never as a debt), the total outstanding, and a
  * reference to pay a session's balance online (outside the session's payment window, never more than is owed). The payment is the
- * session's school fees; the receipt says so.
+ * session's school fees; the receipt says so. V683: a semester paid but shown as unpaid takes the graduate's payment evidence, which the
+ * Bursary checks against the payments on record.
  */
 import { useState } from "react";
 import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { HistoricalAccount, HistoricalTotals } from "@/components/finance/HistoricalAccount";
-import { bySession, naira, num, type Period } from "@/lib/historical-fees";
+import { bySession, naira, num, type Evidence, type Period } from "@/lib/historical-fees";
+import { HistoricalEvidence } from "./HistoricalEvidence";
 import { PayByCard, useAct } from "../common";
 
 export interface HistoricalFees {
@@ -19,6 +21,8 @@ export interface HistoricalFees {
   /** V665: the award approved, the final clearance to complete before the record reads GRADUATED */
   awaitingFinalClearance?: boolean;
   open: { reference: string; session: string; amount: number | string; expires_at: string }[]; reference?: string;
+  /** V683: the graduate's payment evidence for past semesters */
+  evidence?: Evidence[];
 }
 
 export function HistoricalFeesStudent({ data }: { data: HistoricalFees }) {
@@ -72,6 +76,7 @@ export function HistoricalFeesStudent({ data }: { data: HistoricalFees }) {
           </div>
         ) : owing.length ? <div className="sub2 mt-2">Settle your balance with the Bursary; it is recorded against the session it belongs to.</div> : null}
         {problem ? <ProblemNotice problem={problem} /> : null}
+        <HistoricalEvidence periods={data.periods} evidence={data.evidence ?? []} />
       </PBody>
     </Panel>
   );

@@ -18,10 +18,11 @@ import { printDocument } from "@/lib/document/html";
 import { docSerial } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
 import { HistoricalAccount, HistoricalTotals } from "@/components/finance/HistoricalAccount";
-import { can, KIND_WORDS, naira, num, semesterWords, STATE_WORDS, STATEMENT_HEAD, statementRows, totals, WAIVER_WORDS, type Assessment, type Desk, type Period, type StudentAccount as Account } from "@/lib/historical-fees";
+import { can, EVIDENCE_WORDS, KIND_WORDS, naira, num, PAYMENT_STATE_WORDS, semesterWords, STATE_WORDS, STATEMENT_HEAD, statementRows, totals, WAIVER_WORDS, type Assessment, type Desk, type Period, type StudentAccount as Account } from "@/lib/historical-fees";
 import { AssessmentForm } from "./AssessmentForm";
 import { AssessmentView } from "./AssessmentView";
 import { WaiverForm, WaiverView } from "./Waivers";
+import { EvidenceView } from "./Evidence";
 import { hfCall } from "./hf-call";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Lagos" }) : "—");
@@ -34,6 +35,7 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
   const [viewing, setViewing] = useState<string | null>(null);
   const [waiving, setWaiving] = useState<Period | null>(null);
   const [waiver, setWaiver] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     void hfCall<Account>(`/students/${studentId}`).then((r) => { if (!alive) return; if (r.ok) setA(r.data); else setProblem(r.problem); });
@@ -51,6 +53,7 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
       onClose={() => setWaiving(null)} onSaved={(id) => { setWaiving(null); setWaiver(id); changed(); }} />;
   }
   if (waiver) return <WaiverView id={waiver} desk={desk} onClose={() => setWaiver(null)} onChanged={changed} />;
+  if (evidence) return <EvidenceView id={evidence} desk={desk} onClose={() => setEvidence(null)} onChanged={changed} />;
   if (!a) return <Modal wide title="Historical school fees" onClose={onClose}>{problem ? <ProblemNotice problem={problem} /> : <div className="row row--tight sub2"><Spinner /> Reading the account…</div>}</Modal>;
 
   const s = a.student;
@@ -142,6 +145,20 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
                 <span key="r" className="tnum">{o.reference}</span>, <span key="s" className="tnum">{o.session}</span>, <span key="p" className="sub2">{o.purpose}</span>,
                 <span key="a" className="tnum">{naira(o.amount)}</span>, <span key="c" className="sub2">{day(o.confirmed_at)}</span>,
                 <span key="d" className="sub2">{o.kind === "OUTSTANDING_FEES" ? (o.desk_status ? o.desk_status.toLowerCase() : "waiting on the Outstanding fees payments desk") : "—"}</span>,
+              ])} />
+            </>
+          ) : null}
+          {/* V683: what the graduate says they paid, and where each verified one's payment stands */}
+          {a.evidence?.length ? (
+            <>
+              <div className="mt-2"><strong>Payment evidence from the graduate</strong></div>
+              <div className="sub2 mb-1">Never counted by itself: a verified evidence names the payment on record, which counts once it is the session&rsquo;s school fees.</div>
+              <DTable cols={["Evidence", "Semester", "Amount|num", "Number", "State", "Payment", "|num"]} rows={a.evidence.map((e) => [
+                <span key="r" className="tnum">{e.reference}<span className="blk sub2">{day(e.submitted_at)}</span></span>, <span key="s" className="tnum">{e.session} · S{e.semester}</span>,
+                <span key="a" className="tnum">{naira(e.amount)}</span>, <span key="n" className="tnum sub2">{e.payment_reference}</span>,
+                <Pil key="st" kind={EVIDENCE_WORDS[e.state]?.[1] ?? "grey"}>{EVIDENCE_WORDS[e.state]?.[0] ?? e.state}</Pil>,
+                <span key="p" className="sub2">{e.payment ? <>{e.payment}{e.payment_state ? <span className="blk">{PAYMENT_STATE_WORDS[e.payment_state][0]}</span> : null}</> : "—"}</span>,
+                <Btn key="v" kind="ghost" onClick={() => setEvidence(e.id)}>View</Btn>,
               ])} />
             </>
           ) : null}
