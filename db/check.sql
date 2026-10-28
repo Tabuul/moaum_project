@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 516
+\set EXPECTED 517
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -7061,6 +7061,8 @@ BEGIN
         SELECT * INTO e3 FROM finance.gst_eps_eligibility(b3, S);    -- TEST 3, 8
         SELECT * INTO e4 FROM finance.gst_eps_eligibility(b4, S);    -- TEST 4, 10, 13
         SELECT * INTO g4 FROM finance.gst_entitlement(b4, S);
+        -- V690: GST 981 is a 100 Level course of b4's programme with no record of it here — a carry-over b4 may add: held until the fee
+        -- is paid, and the fee payable for it, though nothing is owed for the level
         r_gate4 := coalesce(registration.gst_gate(b4, S, 'GST 981'), 'OPEN');
         BEGIN PERFORM finance.new_gst_reference(b4, S); r_ref4 := 'ALLOWED'; EXCEPTION WHEN check_violation THEN r_ref4 := split_part(SQLERRM, ':', 1); END;
         SELECT * INTO e5 FROM finance.gst_eps_eligibility(b5, S);    -- TEST 5
@@ -7122,7 +7124,7 @@ BEGIN
             -- TEST 3, 8: 300 level in B, no GST course, no EPS 983 — nothing
             AND NOT e3.required AND e3.gst_reason = 'GST_NOT_APPLICABLE' AND e3.eps_reason = 'EPS_NOT_APPLICABLE'
             -- TEST 4, 10, 13: 400 level in B — nothing owed, no reference, no gate even under the whole-registration rule
-            AND NOT e4.required AND g4.state = 'NOT_REQUIRED' AND r_gate4 = 'OPEN' AND r_ref4 = 'GST_NOT_REQUIRED' AND r_gate4all = 'OPEN' AND r_gate1all = 'GST_PAYMENT_REQUIRED'
+            AND NOT e4.required AND g4.state = 'NOT_REQUIRED' AND r_gate4 LIKE 'GST_PAYMENT_REQUIRED:%' AND r_ref4 = 'ALLOWED' AND r_gate4all = 'OPEN' AND r_gate1all = 'GST_PAYMENT_REQUIRED'
             -- TEST 5: 300 level with GST 981 failed — a carryover, and the menu and registration.carryovers say so too
             AND e5.required AND e5.gst_reason = 'GST_REQUIRED_CARRYOVER' AND e5.gst_carryovers = ARRAY['GST 981'] AND menu_b5 AND carry_b5
             -- TEST 6: 400 level, both passed — nothing; a student repeating 100 level who passed GST 981 is not offered it again
@@ -28462,6 +28464,83 @@ BEGIN
     PERFORM pg_temp.assert('V688: a Database Operator resets an applicant''s password beside the Director of ICT and ICT Support; the Registry is refused; the record takes dbops',
         v_err IS NULL AND got = 'dbops=ok ict=ok ictagent=ok registrar=APW_OFFICE ' AND coalesce(takes, false),
         format('err=%s got=%s takes=%s', v_err, got, takes));
+END $$;
+
+-- ── V690. A GST/EPS course added as a carry-over is held until the GST fee is paid. Made-up 400 Level students of one programme whose
+--    programme binds a 200 Level EPS course (and a 400 Level core course); a GST fee of ₦4,000 stated. One owes no GST fee: the EPS
+--    course is a carry-over they may add (not on the page's list), the gate holds it, the add is refused with the amount and nothing is
+--    registered; the core course is not held; the fee is payable (a reference); paid, the EPS course is added as a declared carry-over and
+--    the student is entitled. A direct-entry student who entered at 300 Level may not add it as a carry-over and is not asked to pay. A
+--    student who registered the EPS course before (approved, unpaid) owes the fee, and a reference is issued for it. Undone after ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); de uuid := gen_random_uuid(); old uuid := gen_random_uuid(); dept text; ses text := '9690/9691';
+        o uuid := gen_random_uuid(); oc uuid := gen_random_uuid(); r_old uuid := gen_random_uuid(); v_err text;
+        carry text; payable int; g_eps text; g_core text; refused text; on_reg int; ref1 text; paid_gate text; added jsonb; entry text; entitled boolean;
+        de_carry int; de_ref text; old_state text; old_ref text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'V690 check', true);
+    PERFORM assessment.ensure_session(ses);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9690/01' WHERE name = ses;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), ses, 2, 'OPEN') ON CONFLICT (session, number) DO UPDATE SET state = 'OPEN';
+    SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (st, 'MOAUM/ADM/99/996901', 'MOAUM/CHK/99/6901', 'CHECKV690', 'Carry Over', 'C00061', 'UTME', '9687/9688', 100, 400, 'ACTIVE', now()),
+        (de, 'MOAUM/ADM/99/996902', 'MOAUM/CHK/99/6902', 'CHECKV690', 'Direct Entry', 'C00061', 'DIRECT_ENTRY', '9689/9690', 300, 400, 'ACTIVE', now()),
+        (old, 'MOAUM/ADM/99/996903', 'MOAUM/CHK/99/6903', 'CHECKV690', 'Registered Before', 'C00061', 'UTME', '9687/9688', 100, 400, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+        ('EPS 969', 'Check Entrepreneurship Studies II', 2, 2, 200, dept, 'GST', 'LIVE', 'EPS'),
+        ('CHK 969', 'Check Final Year Core', 2, 2, 400, dept, 'Core', 'LIVE', NULL);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('EPS 969', 'C00061', 200, 'GST'), ('CHK 969', 'C00061', 400, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'EPS 969', ses, 2), (oc, 'CHK 969', ses, 2);
+    UPDATE finance.gst_setting SET required_for_gst_eps = true, covers_eps = true WHERE id = 1;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.state_gst_fee(ses, 4000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+    -- registered before, approved, unpaid
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (r_old, old, ses, 2, 400, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, added_as) VALUES (r_old, o, 2, 'CARRYOVER', 'APPROVED', 'CARRY_OVER_DECLARED');
+
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    carry := (SELECT string_agg(c.course_code || '/' || c.office, ',') FROM finance.gst_carry_payable(st, ses) c);
+    payable := (SELECT count(*) FROM finance.gst_payable_courses(st, ses));
+    g_eps := coalesce(split_part(registration.gst_gate(st, ses, 'EPS 969'), ':', 1), 'OPEN');
+    g_core := coalesce(registration.gst_gate(st, ses, 'CHK 969'), 'OPEN');
+    PERFORM set_config('moaum.carry_declare', 'on', true);
+    BEGIN
+        PERFORM registration.student_add_other(st, ses, 2, o);
+        refused := 'added';
+    EXCEPTION WHEN check_violation THEN refused := SQLERRM;
+    END;
+    on_reg := (SELECT count(*) FROM registration.entry e JOIN registration.course_registration c ON c.id = e.registration_id WHERE c.student_id = st);
+    ref1 := finance.new_gst_reference(st, ses);
+    UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = st, channel = 'CHECK', receipt_no = 'RCT-CHK-690' WHERE reference = ref1;
+    paid_gate := coalesce(registration.gst_gate(st, ses, 'EPS 969'), 'OPEN');
+    added := registration.student_add_other(st, ses, 2, o);
+    PERFORM set_config('moaum.carry_declare', '', true);
+    entry := (SELECT string_agg(e.entry_type || '/' || coalesce(e.added_as, '-'), ',') FROM registration.entry e JOIN registration.course_registration c ON c.id = e.registration_id WHERE c.student_id = st);
+    entitled := (SELECT x.entitled FROM finance.gst_entitlement(st, ses) x);
+    -- the direct entry student: not a carry-over of theirs, nothing to pay
+    de_carry := (SELECT count(*) FROM finance.gst_carry_payable(de, ses));
+    BEGIN PERFORM finance.new_gst_reference(de, ses); de_ref := 'ISSUED';
+    EXCEPTION WHEN check_violation THEN de_ref := split_part(SQLERRM, ':', 1); END;
+    -- registered before, unpaid: the fee is owed and payable
+    old_state := (SELECT x.required || '/' || x.state FROM finance.gst_entitlement(old, ses) x);
+    old_ref := finance.new_gst_reference(old, ses);
+    RAISE EXCEPTION 'the V690 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V690 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V690: a GST/EPS course a student may add as a carry-over is held until the GST fee is paid (the add refused with the amount, nothing registered), the fee payable for it, and once paid added; a direct-entry student not asked; a student who registered it before owes the fee',
+      coalesce(carry = 'EPS 969/EPS' AND payable = 0 AND g_eps = 'GST_PAYMENT_REQUIRED' AND g_core = 'OPEN'
+           AND refused LIKE 'GST_PAYMENT_REQUIRED: you are required to pay the GST fee of NGN 4,000.00 for 9690/9691 before you can register EPS courses%' AND on_reg = 0
+           AND ref1 LIKE 'MOAUM-FEE-%' AND paid_gate = 'OPEN' AND (added ->> 'added')::boolean AND entry = 'CARRYOVER/CARRY_OVER_DECLARED' AND entitled
+           AND de_carry = 0 AND de_ref = 'GST_NOT_REQUIRED' AND old_state = 'true/NOT_PAID' AND old_ref LIKE 'MOAUM-FEE-%', false),
+      format('carry %s payable %s | gate EPS %s core %s | add %s, on registration %s | ref %s paid gate %s | added %s entry %s entitled %s | DE carry %s ref %s | before %s ref %s',
+             carry, payable, g_eps, g_core, refused, on_reg, ref1, paid_gate, added, entry, entitled, de_carry, de_ref, old_state, old_ref));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

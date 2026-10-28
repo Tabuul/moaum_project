@@ -724,6 +724,8 @@ public class StudentPortalService {
         out.put("entitlement", repo.gstEntitlement(id, session));
         // V643: the GST/EPS courses the registration page shows — the fee is paid for them though not yet owed
         out.put("payable", repo.gstPayable(id, session));
+        // V690: the GST/EPS courses the student may add as a carry-over — the fee is paid before one is added
+        out.put("carryPayable", repo.gstCarryPayable(id, session));
         out.put("setting", repo.gstSetting());
         out.put("references", repo.gstReferences(id));
         out.put("courses", repo.gstCourses(id, session));

@@ -14,7 +14,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { gstPayState } from "@/lib/gst-payable";
+import { carryPayOffer, gstPayState } from "@/lib/gst-payable";
 import { PayByCard, RenewReference, naira, onDay, when } from "../common";
 
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
@@ -32,6 +32,8 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
   const el = gst.eligibility ?? null;
   // V643: a student shown a GST/EPS course on the registration page pays the fee for it, though not yet owing it
   const payState = gstPayState(e, gst.payable);
+  // V690: a GST/EPS course the student may add as a carry-over is registered only once the fee is paid: the payment is offered here
+  const carryOffer = carryPayOffer(e, gst.payable, gst.carryPayable);
   const shownOnly = payState.shown.length > 0;
   const shownOf = (eps: boolean) => (gst.payable ?? []).filter((p) => !e.required && (p.office === "EPS") === eps).map((p) => p.course_code);
   const [word, kind] = (shownOnly && !e.entitled ? STATE[e.open_reference ? "PENDING" : "NOT_PAID"] : STATE[e.state]) ?? [e.state, "grey"];
@@ -101,7 +103,14 @@ export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?:
       ) : null}
       {e.required && e.state === "NOT_STATED" ? <Note kind="info" title={`No GST fee is stated for ${gst.session} yet`}>Your GST/EPS courses register as usual.</Note> : null}
       {e.state === "EXEMPT" ? <Note kind="info" title={`No GST fee for you in ${gst.session}`}>Your GST/EPS courses register as usual.</Note> : null}
-      {e.state === "NOT_REQUIRED" && !shownOnly ? (
+      {e.state === "NOT_REQUIRED" && !shownOnly && carryOffer.length ? (
+        <Note kind="info" title="Adding a GST or EPS course as a carry-over? Pay the GST fee first"
+          action={e.open_reference ? null : <Btn kind="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Generating…" : "PAY GST FEE"}</Btn>}>
+          No GST or EPS course requires the fee of you in {gst.session} yet. A GST or EPS course of an earlier level you add as a carry-over
+          ({carryOffer.slice(0, 6).join(", ")}{carryOffer.length > 6 ? ` and ${carryOffer.length - 6} more` : ""}) is registered only once the GST fee
+          of <b className="tnum">{naira(Number(e.fee))}</b> for {gst.session} is paid. One payment covers GST and EPS. Pay it only if you are adding one.
+        </Note>
+      ) : e.state === "NOT_REQUIRED" && !shownOnly ? (
         <Note kind="info" title={`No GST or EPS payment is required of you in ${gst.session}`}>
           {el ? <>GST: {reasonWord(el.gst_reason)}. EPS: {reasonWord(el.eps_reason)}.</> : "No GST or EPS course is offered to your programme at your level, and none is carried over."}
           {" "}Nothing is owed. If you believe a course is missing, contact ICT Support.

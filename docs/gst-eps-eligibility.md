@@ -363,3 +363,38 @@ student's BIO 412 and MCB 402 open, while GST 111 and GST 412 still ask for the 
 
 Tests: `check.sql` V645 (a 100-level GST course on a 400 Level student's registration: the core course open and the
 registration submits, the GST course held; at 300 Level, or owing for a GST course of their own level, held as before).
+
+## 18. V690 — a GST/EPS course added as a carry-over waits for the GST fee (28 October 2026)
+
+The University's word, on a 400 Level student's approved registration carrying EPS 202 as "a carry-over you declared (no result on the
+portal)" with the GST fee unpaid: "this student register EPS without paying GST fee … let the person pay for the GST fee, GST/EPS fee
+is the same".
+
+**The gap.** `registration.gst_gate` held a GST/EPS course until the fee was paid in two cases:
+- when the fee was owed;
+- not yet owed, when the course was one the registration page shows at the student's level (`finance.gst_payable_courses`, §16).
+
+A GST/EPS course of an earlier level added through ADD CARRY-OVER (a declared carry-over, V611/V663) was neither, so it went
+through. Only once it was registered did the fee become owed (REGISTERED).
+
+**Now:**
+- `finance.gst_carry_payable(student, session)` lists the GST/EPS courses a student may add as a carry-over: bound to their programme
+  below their level (not below the entry level), of their track and curriculum, not passed, and not on the page's list.
+- The gate holds each until the GST fee is paid.
+- `new_gst_reference` and `renew_reference` accept such a student.
+- The GST page offers the payment ("Adding a GST or EPS course as a carry-over? Pay the GST fee first"). The dashboard does not ask it
+  of every such student.
+- In ADD CARRY-OVER, a refused GST/EPS course comes with a link to pay.
+
+**Already registered before this, unpaid.** The fee is owed (the registration makes it so), and the GST page asks for it. The
+examination card and the GST & EPS permit wait for it. The registration page now names the course with the amount ("GST PAYMENT
+REQUIRED"). Nothing is removed from a registration.
+
+**Tests:**
+- `check.sql` V690:
+  - the gate holds the EPS carry-over and the add is refused with the amount;
+  - a reference is issued and, paid, the course is added;
+  - a direct-entry student who entered above it is not asked to pay;
+  - a student who registered it before owes the fee.
+- `GstDeclaredCarryOverIT`.
+- `lib/gst-payable.test.ts` (`carryPayOffer`, `unpaidGstRegistered`).

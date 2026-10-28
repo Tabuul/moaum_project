@@ -27,3 +27,18 @@ export function gstPayState(e: { required: boolean; stated: boolean; entitled: b
     epsShown: notOwed.some((p) => p.office === "EPS"),
   };
 }
+
+/** V690: a student whose fee is not owed, with GST/EPS courses they may add as a carry-over — the fee is paid before one is added. The
+ *  GST page offers the payment for them; the dashboard does not ask it of every such student. */
+export function carryPayOffer(e: { required: boolean; stated: boolean; entitled: boolean; fee: number | string },
+                              payable: GstPayableCourse[] | null | undefined, carry: GstPayableCourse[] | null | undefined): string[] {
+  if (e.required || (payable ?? []).length || !e.stated || e.entitled || !(Number(e.fee) > 0)) return [];
+  return (carry ?? []).map((c) => c.course_code);
+}
+
+/** V690: the GST/EPS courses on a registration while the GST fee for the session is unpaid (registered before the gate held them) */
+export function unpaidGstRegistered(entries: { courseCode: string; kind?: string; status: string }[] | null | undefined,
+                                    e: { stated: boolean; entitled: boolean; fee: number | string } | null | undefined): string[] {
+  if (!e || !e.stated || e.entitled || !(Number(e.fee) > 0)) return [];
+  return (entries ?? []).filter((x) => x.kind === "GST" && x.status !== "DROPPED" && x.status !== "WITHDRAWN").map((x) => x.courseCode);
+}

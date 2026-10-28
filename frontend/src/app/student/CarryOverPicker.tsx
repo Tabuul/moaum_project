@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify } from "@/components/proto/Toast";
-import { Btn, Note, Pil, Tabs } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import {
@@ -104,6 +104,12 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
         <Note kind={w.kind === "ok" ? "ok" : "bad"} title={w.kind === "ok" ? "Carry-over courses added successfully." : w.title}>
           {w.kind === "ok" ? w.title : "The courses added are on your registration; the others are listed with the reason."}
         </Note>
+        {/* V690: a GST/EPS course is added once the GST fee is paid */}
+        {results.some((x) => !x.added && x.code === "GST_PAYMENT_REQUIRED") ? (
+          <Note kind="info" title="GST or EPS course: pay the GST fee first" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(session)}`}>PAY GST FEE</LinkBtn>}>
+            One payment covers GST and EPS. Once it is confirmed, add the course again here.
+          </Note>
+        ) : null}
         <div className="mt-2">
           {results.map((x) => (
             <div key={x.courseId} className="row" style={{ gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)", alignItems: "flex-start", flexWrap: "wrap" }}>

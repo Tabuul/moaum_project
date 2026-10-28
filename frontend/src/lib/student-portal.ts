@@ -106,6 +106,8 @@ export interface GstView {
   courses: GstCourseView[]; reference?: string;
   /** V643: the GST/EPS courses the registration page shows the student — the fee is paid for them though not yet owed */
   payable?: import("./gst-payable").GstPayableCourse[];
+  /** V690: the GST/EPS courses the student may add as a carry-over — the fee is paid before one is added */
+  carryPayable?: import("./gst-payable").GstPayableCourse[];
 }
 export interface RegistrationView {
   session: string; semester: number; level: number; limit: { min_units: number; max_units: number; curriculum?: string | null; basis?: "CURRICULUM" | "LEVEL" | "CCE" | "SIWES" }; probation?: Probation | null;

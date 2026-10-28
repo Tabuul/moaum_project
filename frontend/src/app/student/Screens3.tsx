@@ -25,6 +25,7 @@ import { AddOtherCourse } from "./AddOtherCourse";
 import { CarryOverPicker } from "./CarryOverPicker";
 import { carrySummary } from "@/lib/carry-over";
 import { SEMESTER_STATUS_WORDS, registeringWords, semesterWord as spilloverSemesterWord } from "@/lib/spillover";
+import { unpaidGstRegistered } from "@/lib/gst-payable";
 import { OverloadRequest } from "./OverloadRequest";
 import { codeVariant, courseLabel, shownCode } from "@/lib/course-code";
 
@@ -211,6 +212,8 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   if (locked && !v.addDropOpen) meter.hint = `${total} units registered; the range for ${v.level} Level is ${min}–${max}.`;
 
   const fees = v.fees;
+  // V690: a GST/EPS course on the registration while the GST fee is unpaid
+  const gstUnpaid = unpaidGstRegistered(reg?.entries, v.gst);
   // gate on THIS semester's fees, not only the open one — a full-session payment clears an
   // earlier semester the student never registered, so they can go back and register it now
   const cleared = v.clears ?? (fees.clearsRegistration === true);
@@ -350,6 +353,13 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       ) : spillPays ? (
         <Note kind="info" title="In spillover, you pay for the semesters you register">
           Choosing a course here makes this semester&rsquo;s school fees due{cleared ? "; they are paid, so the registration can be submitted." : "; the registration is submitted once they are paid."}
+        </Note>
+      ) : null}
+      {/* V690: a GST/EPS course on the registration with the GST fee unpaid (added before the gate held it): the fee is paid for it */}
+      {gstUnpaid.length ? (
+        <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="urgent" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
+          {gstUnpaid.join(", ")} {gstUnpaid.length === 1 ? "is" : "are"} on your registration, but the GST fee of <b className="tnum">{naira(Number(v.gst!.fee))}</b> for {v.session} is
+          not paid. Pay it on GST &amp; EPS: one payment covers GST and EPS. Your examination card and the GST &amp; EPS permit wait for it.
         </Note>
       ) : null}
       {carryOnly ? (

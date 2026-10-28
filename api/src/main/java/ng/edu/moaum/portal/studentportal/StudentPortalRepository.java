@@ -1226,6 +1226,12 @@ class StudentPortalRepository {
                 .param("s", student).param("ses", session).query().listOfRows();
     }
 
+    /** V690: the GST/EPS courses the student may add as a carry-over (finance.gst_carry_payable) */
+    List<Map<String, Object>> gstCarryPayable(UUID student, String session) {
+        return jdbc.sql("SELECT course_code, office FROM finance.gst_carry_payable(:s, :ses) ORDER BY course_code")
+                .param("s", student).param("ses", session).query().listOfRows();
+    }
+
     String newGstReference(UUID student, String session) {
         return jdbc.sql("SELECT finance.new_gst_reference(:s, :ses)").param("s", student).param("ses", session).query(String.class).single();
     }

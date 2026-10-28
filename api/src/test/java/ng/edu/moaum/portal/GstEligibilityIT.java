@@ -154,10 +154,11 @@ class GstEligibilityIT {
         assertThat(m(view.get("eligibility")).get("gst_reason")).isEqualTo("GST_NOT_APPLICABLE");
         assertThat(m(view.get("eligibility")).get("eps_reason")).isEqualTo("EPS_NOT_APPLICABLE");
         assertThat(l(view.get("courses"))).noneSatisfy(c -> assertThat(c.get("counts")).isEqualTo(true));
-        // the backend refuses to open a GST fee for them, whatever the page shows
+        // V690: nothing is owed, but the 100 Level GST course of their programme is one they may add as a carry-over (no record of it
+        // here): the fee is payable for it, and the gate would hold it until paid (a student with no such course is refused: check.sql V690)
+        assertThat(l(view.get("carryPayable"))).anySatisfy(c -> assertThat(c.get("course_code")).isEqualTo(gstCode));
         ResponseEntity<Map> ref = it.call(student, HttpMethod.POST, "/api/v1/me/gst/reference", Map.of("session", SESSION));
-        assertThat(ref.getStatusCode().value()).isEqualTo(422);
-        assertThat(ref.getBody().get("code")).isEqualTo("GST_NOT_REQUIRED");
+        assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
         // the whole-registration rule holds only a student who owes the fee: this one registers an ordinary course
         it.db(() -> jdbc.sql("UPDATE finance.gst_setting SET required_for_all = true WHERE id = 1").update());
         try {
