@@ -196,6 +196,28 @@ final class ItSupport {
         throw new IllegalStateException("no free number after " + prefix + " in " + digits + " digits");
     }
 
+    /**
+     * Oct 2026: a course prefix of the run's own — {@code lead} and two letters — that no course code on the database carries and
+     * no department or course prefix names. Five tests drew "Z" and two of the letters A–F (36 prefixes) at random, and a draw
+     * another test of the same run had made first met that test's course: CourseMergeIT went red in CI on a duplicate key
+     * (27 October 2026). Drawn from the 676, then looked up.
+     */
+    String freeCoursePrefix(String lead) {
+        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        for (int i = 0; i < 500; i++) {
+            String p = lead + (char) ('A' + random.nextInt(26)) + (char) ('A' + random.nextInt(26));
+            boolean used = jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM catalogue.course WHERE upper(code) LIKE '%' || :p || '%')
+                        OR EXISTS (SELECT 1 FROM ref.department WHERE upper(code) = :p)
+                        OR EXISTS (SELECT 1 FROM ref.course_prefix WHERE upper(prefix) = :p)
+                    """).param("p", p).query(Boolean.class).single();
+            if (!used) {
+                return p;
+            }
+        }
+        throw new IllegalStateException("no free course prefix after " + lead);
+    }
+
     /** a number in [min, bound) none of whose identifiers — as {@code identifiers} builds them from it: matriculation, admission and
      *  staff numbers, the surnames of invented students and people — any student or person holds, so the people a test invents from
      *  one random number are new on any database, however often the suite has run on it */

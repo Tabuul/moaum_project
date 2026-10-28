@@ -906,7 +906,20 @@ public class StudentPortalService {
         out.put("student", who);
         out.put("session", session);
         out.put("semester", semester);
-        out.put("rows", repo.carryOverCandidates(id, session, semester));
+        List<Map<String, Object>> rows = repo.carryOverCandidates(id, session, semester);
+        // V691: a GST/EPS course the GST fee holds is marked before it is ticked, with what the fee comes to — added, it would be refused
+        // until the fee is paid (V690)
+        List<String> gst = rows.stream().filter(r -> Boolean.TRUE.equals(r.get("selectable")) && List.of("GST", "EPS").contains(String.valueOf(r.get("course_group"))))
+                .map(r -> String.valueOf(r.get("course_code"))).distinct().toList();
+        Map<String, Object> hold = repo.gstCarryHolds(id, session, gst);
+        @SuppressWarnings("unchecked")
+        List<String> held = (List<String>) hold.get("held");
+        for (Map<String, Object> r : rows) {
+            boolean h = Boolean.TRUE.equals(r.get("selectable")) && held.contains(String.valueOf(r.get("course_code")));
+            r.put("gst_held", h);
+            r.put("gst_to_pay", h ? hold.get("toPay") : null);
+        }
+        out.put("rows", rows);
         // V682: a spillover student sees what the semester costs as soon as a course is ticked — every course they add is a carry-over,
         // and the semester's spillover fee is owed once one is on the registration (V616)
         out.put("fee", repo.spilloverSemesterQuote(id, session, semester));

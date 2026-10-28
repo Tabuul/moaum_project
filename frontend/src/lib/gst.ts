@@ -11,6 +11,8 @@ export interface GstCounts {
   population?: number; not_applicable?: number; carryover?: number; completed?: number; outstanding_students?: number; exempt?: number; review?: number;
   gst_registered: number; eps_registered: number; paid_not_registered: number; registered_unpaid: number; male: number; female: number;
   course_registrations: number; revenue: number; outstanding: number;
+  /** V691: what the GST fee comes to for the students registered without paying it */
+  registered_unpaid_owed?: number;
   /** V323: of the paid, how many through this portal and how many reconciled from the old one */
   paid_legacy?: number; paid_current?: number;
 }
@@ -76,11 +78,15 @@ export interface GstStudentRow {
   programme_code: string; programme: string; level: number; status: string; entry_mode: string; required: boolean; fee: number; stated: boolean; paid: number;
   entitled: boolean; pay_state: string; reference: string | null; paid_at: string | null; gst_registered: boolean; eps_registered: boolean; gst_courses: number; eps_courses: number;
   registered_at: string | null; registered_courses: string | null; result_stages: string | null;
+  /** V691: what the GST fee comes to for the student, owed and not paid (0 otherwise) */
+  owed?: number;
   /** V366: the office's own answer for the student — whether its courses concern them, why, the courses owed */
   office_required?: boolean; office_reason?: string; office_carryover?: boolean; office_completed?: boolean; office_owed?: string | null; review?: boolean;
   gst_reason?: string; eps_reason?: string;
 }
 export interface GstStudentPage { office: GstOffice; session: string; semester: number | null; eligibility?: string; total: number; page: number; size: number; rows: GstStudentRow[];
+  /** V691: what the GST fee owed comes to over the whole list, not the page */
+  owedTotal?: number;
   /** V577: when the population these rows come from was worked out */
   keptAt?: string | null }
 
@@ -112,7 +118,37 @@ export const PAY_WORD: Record<string, [string, "ok" | "bad" | "warn" | "grey" | 
 /** V366: who a list holds — the students the office's courses concern (the default), one kind of them, or those it does not concern */
 export const ELIGIBILITY_WORD: Record<string, string> = {
   REQUIRED: "Required", CARRYOVER: "Carryover", COMPLETED: "Completed this session", NOT_APPLICABLE: "Not applicable", REVIEW: "Paid, not required (review)", ALL: "Every undergraduate",
+  UNPAID_REGISTERED: "Registered, GST fee unpaid",
 };
+
+/* ── V691: students with a GST/EPS course registered while the GST fee is unpaid, reminded ── */
+
+export type RemindOutcome = "SENT" | "ALREADY_TODAY" | "NOT_UNPAID" | "NOT_REGISTERED" | "FEE_NOT_STATED" | "NOT_LISTED" | "NO_CONTACT";
+
+/** what POST /api/v1/gst/{office}/students/remind answers */
+export interface RemindAnswer { office: GstOffice; session: string; asked: number; counts: Partial<Record<RemindOutcome, number>>;
+  rows: { student: string; outcome: RemindOutcome; courses: string | null; amount: number | null }[] }
+
+export const REMIND_WORD: Record<RemindOutcome, string> = {
+  SENT: "reminded", ALREADY_TODAY: "reminded already today", NOT_UNPAID: "paid since or no longer owing", NOT_REGISTERED: "no GST or EPS course registered now",
+  FEE_NOT_STATED: "no GST fee stated for them", NOT_LISTED: "not on the list", NO_CONTACT: "no email, phone or portal to reach",
+};
+
+/** the answers of one or more reminder calls, added together, in words: "12 reminded · 3 reminded already today" */
+export function remindWords(answers: Pick<RemindAnswer, "counts">[]): { title: string; kind: "ok" | "warn" | "bad"; sent: number } {
+  const total: Partial<Record<RemindOutcome, number>> = {};
+  for (const a of answers) for (const [k, v] of Object.entries(a.counts ?? {})) total[k as RemindOutcome] = (total[k as RemindOutcome] ?? 0) + Number(v ?? 0);
+  const parts = (Object.keys(REMIND_WORD) as RemindOutcome[]).filter((k) => (total[k] ?? 0) > 0).map((k) => `${num(total[k] ?? 0)} ${REMIND_WORD[k]}`);
+  const sent = total.SENT ?? 0;
+  if (!parts.length) return { title: "Nobody was reminded.", kind: "bad", sent };
+  return { title: parts.join(" · "), kind: sent && parts.length === 1 ? "ok" : sent ? "warn" : "bad", sent };
+}
+
+/** whether the acting office reminds this list's students: the office itself, the Bursary, or super (the server decides again) */
+export function mayRemind(acting: string | null | undefined, office: GstOffice): boolean {
+  const a = (acting ?? "").toLowerCase();
+  return a === "bursar" || a === "super" || a === office.toLowerCase();
+}
 
 /** V366: why a student owes GST or EPS, or does not — the reason codes finance.gst_eps_eligibility gives */
 export function reasonWord(code: string | null | undefined): string {

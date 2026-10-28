@@ -10,6 +10,8 @@ export interface CarryRow {
   course_id: string; course_code: string; shown_code: string; title: string; units: number; level: number; course_semester: number;
   both_semesters: boolean; course_group: "GST" | "EPS" | "OTHER"; status: CarryStatus; origin_session: string | null; origin_semester: number | null;
   last_grade: string | null; offering_id: string | null; selectable: boolean; reason: string;
+  /** V691: a GST/EPS course the GST fee holds: added, it would be refused until the fee is paid — and what the fee comes to */
+  gst_held?: boolean; gst_to_pay?: number | null;
 }
 
 export interface CarryList {
@@ -75,9 +77,20 @@ export function groupRows(rows: CarryRow[]): { level: number; semesters: { semes
   return out;
 }
 
+/** V691: a course that may be ticked — one the student may add, and not a GST/EPS course the GST fee holds */
+export const tickable = (r: CarryRow) => r.selectable && !r.gst_held;
+
+/** V691: the GST fee the shown courses wait for, once (one payment covers GST and EPS), or null when none waits */
+export function gstHeld(rows: CarryRow[]): { count: number; toPay: number | null } | null {
+  const held = rows.filter((r) => r.gst_held);
+  if (!held.length) return null;
+  const amounts = held.map((r) => Number(r.gst_to_pay)).filter((n) => Number.isFinite(n) && n > 0);
+  return { count: held.length, toPay: amounts.length ? Math.max(...amounts) : null };
+}
+
 /** what is ticked: the number of courses and their units, and how many from each level */
 export function selection(rows: CarryRow[], picked: Set<string>): { count: number; units: number; byLevel: [number, number][] } {
-  const chosen = rows.filter((r) => picked.has(r.course_id) && r.selectable);
+  const chosen = rows.filter((r) => picked.has(r.course_id) && tickable(r));
   const byLevel = levelsOf(chosen).map((l) => [l, chosen.filter((r) => r.level === l).length] as [number, number]);
   return { count: chosen.length, units: chosen.reduce((n, r) => n + (r.units ?? 0), 0), byLevel };
 }

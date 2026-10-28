@@ -336,6 +336,7 @@ export const TITLES: Record<string, string> = {
   "t/pgexams": "Postgraduate course examinations",
   "t/pgseminars": "Research seminars",
   "t/gststudents": "GST Students",
+  "t/gstunpaid": "GST Fee Unpaid",
   "t/gstcourses": "GST Courses",
   "jupeb/cbt": "JUPEB CBT Examinations",
   "jupeb/bank": "JUPEB Question Bank",

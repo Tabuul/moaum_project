@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import ng.edu.moaum.portal.shared.AuditContext;
@@ -55,22 +56,27 @@ class GstController {
     private static final String BURSAR = "hasAnyAuthority('OFFICE_bursar','OFFICE_super')";
     /** the two offices that manage their own courses */
     private static final String MANAGERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_super')";
+    /** V691: who reminds a student with a GST/EPS course registered and the GST fee unpaid — the two offices and the Bursary */
+    private static final String REMINDERS = "hasAnyAuthority('OFFICE_gst','OFFICE_eps','OFFICE_bursar','OFFICE_super')";
     private static final Set<String> OFFICES = Set.of("GST", "EPS");
     private static final Set<String> PAY = Set.of("PAID", "NOT_PAID", "PENDING", "NOT_STATED", "NOT_REQUIRED", "EXEMPT");
-    /** V366: who a list holds — the students the office's courses concern (the default), or one kind of them, or those they do not concern */
-    private static final Set<String> ELIGIBILITY = Set.of("ALL", "REQUIRED", "CARRYOVER", "COMPLETED", "NOT_APPLICABLE", "REVIEW");
+    /** V366: who a list holds — the students the office's courses concern (the default), or one kind of them, or those they do not concern;
+     *  V691: or those with a GST/EPS course registered while the GST fee is unpaid (finance.gst_registered_unpaid) */
+    private static final Set<String> ELIGIBILITY = Set.of("ALL", "REQUIRED", "CARRYOVER", "COMPLETED", "NOT_APPLICABLE", "REVIEW", "UNPAID_REGISTERED");
     private static final Set<String> STATUSES = Set.of("ACTIVE", "PROBATION", "ADMITTED");
     private static final Set<String> MODES = Set.of("UTME", "DIRECT_ENTRY", "TRANSFER", "JUPEB", "SANDWICH");
 
     private final JdbcClient jdbc;
     private final GstPopulationKeeper population;
     private final TransactionTemplate reads;
+    private final TransactionTemplate writes;
 
     GstController(JdbcClient jdbc, GstPopulationKeeper population, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.population = population;
         this.reads = new TransactionTemplate(transactions);
         this.reads.setReadOnly(true);
+        this.writes = new TransactionTemplate(transactions);
     }
 
     /* ── the Bursar's door: the fee and the rule ── */
@@ -309,6 +315,7 @@ class GstController {
                                WHEN 'COMPLETED' THEN x.office_completed
                                WHEN 'NOT_APPLICABLE' THEN NOT x.involved
                                WHEN 'REVIEW' THEN x.review AND :office = 'GST'
+                               WHEN 'UNPAID_REGISTERED' THEN finance.gst_registered_unpaid(:office, x.gst_registered, x.eps_registered, x.gst_required, x.eps_required, x.entitled)
                                ELSE x.involved END)
                AND (:fac::text IS NULL OR x.faculty_code = :fac)
                AND (:dept::text IS NULL OR x.dept_code = :dept)
@@ -374,7 +381,9 @@ class GstController {
                        count(*) FILTER (WHERE gst_registered) AS gst_registered,
                        count(*) FILTER (WHERE eps_registered) AS eps_registered,
                        count(*) FILTER (WHERE office_required AND entitled AND NOT registered) AS paid_not_registered,
-                       count(*) FILTER (WHERE registered AND required AND NOT entitled) AS registered_unpaid,
+                       count(*) FILTER (WHERE finance.gst_registered_unpaid(:office, gst_registered, eps_registered, gst_required, eps_required, entitled)) AS registered_unpaid,
+                       coalesce(sum(CASE WHEN stated THEN greatest(fee - paid, 0) ELSE 0 END)
+                                FILTER (WHERE finance.gst_registered_unpaid(:office, gst_registered, eps_registered, gst_required, eps_required, entitled)), 0) AS registered_unpaid_owed,
                        count(*) FILTER (WHERE involved AND pay_state = 'PAID' AND pay_source = 'LEGACY_PORTAL') AS paid_legacy,
                        count(*) FILTER (WHERE involved AND pay_state = 'PAID' AND pay_source = 'CURRENT_PORTAL') AS paid_current,
                        count(*) FILTER (WHERE involved AND sex = 'M') AS male, count(*) FILTER (WHERE involved AND sex = 'F') AS female,
@@ -466,8 +475,12 @@ class GstController {
         List<Map<String, Object>> rows = bind(jdbc.sql("""
                 WITH x AS MATERIALIZED (""" + ROWS + """
                 ),
-                r AS (SELECT x.*, count(*) OVER () AS total_rows FROM x ORDER BY x.surname, x.other_names, x.number LIMIT :n OFFSET :off)
-                SELECT r.total_rows, r.student_id, r.number, r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme,
+                r AS (SELECT x.*, count(*) OVER () AS total_rows,
+                             -- V691: what the GST fee comes to for each student who owes it and has not paid, and for the whole list
+                             CASE WHEN x.required AND x.stated AND NOT x.entitled THEN greatest(x.fee - x.paid, 0) ELSE 0 END AS owed,
+                             sum(CASE WHEN x.required AND x.stated AND NOT x.entitled THEN greatest(x.fee - x.paid, 0) ELSE 0 END) OVER () AS owed_rows
+                        FROM x ORDER BY x.surname, x.other_names, x.number LIMIT :n OFFSET :off)
+                SELECT r.total_rows, r.owed_rows, r.owed, r.student_id, r.number, r.surname, r.other_names, r.sex, r.faculty_code, r.faculty, r.dept_code, r.department, r.programme_code, r.programme,
                        r.level, r.status, r.entry_mode, r.required, r.fee, r.stated, r.paid, r.entitled, r.pay_state, r.reference, r.paid_at,
                        r.gst_registered, r.eps_registered, r.gst_courses, r.eps_courses, r.registered_at, r.pay_source,
                        r.office_required, r.office_reason, r.office_carryover, r.office_completed, r.office_owed, r.review, r.gst_reason, r.eps_reason,
@@ -486,17 +499,48 @@ class GstController {
         // a page past the last has no row to carry the count: then it is counted on its own
         long total = !rows.isEmpty() ? ((Number) rows.get(0).get("total_rows")).longValue()
                 : pg == 0 ? 0 : bind(jdbc.sql("WITH r AS (" + ROWS + ") SELECT count(*) FROM r"), f).query(Long.class).single();
-        rows.forEach(r -> r.remove("total_rows"));
+        Object owedTotal = !rows.isEmpty() ? rows.get(0).get("owed_rows") : BigDecimal.ZERO;
+        rows.forEach(r -> { r.remove("total_rows"); r.remove("owed_rows"); });
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("office", o);
         out.put("session", f.session());
         out.put("semester", f.semester());
         out.put("eligibility", f.elig());
         out.put("total", total);
+        out.put("owedTotal", owedTotal == null ? BigDecimal.ZERO : owedTotal);   // V691: the whole list's, not the page's
         out.put("page", pg);
         out.put("size", sz);
         out.put("rows", rows);
         out.put("keptAt", kept);
+        return out;
+    }
+
+    public record RemindIn(@NotBlank String session, @NotEmpty @Size(max = 5000) List<UUID> students) {
+    }
+
+    /**
+     * V691: the students chosen from the list of those with a GST/EPS course registered while the GST fee is unpaid, reminded to pay it —
+     * each checked again in the database (still on the list, no payment confirmed since, a course still registered, the fee stated) and
+     * told at most once a day by email, SMS and the portal (finance.gst_unpaid_remind). The GST office, the EPS office or the Bursary;
+     * each sending written down. Answers each student and the counts.
+     */
+    @PostMapping("/{office}/students/remind")
+    @PreAuthorize(REMINDERS)
+    Map<String, Object> remind(@PathVariable String office, @Valid @RequestBody RemindIn body) {
+        String o = office(office);
+        String s = session(body.session());
+        population.ensure(s, null, false);   // V577: the whole session's population, as the list reads it
+        List<Map<String, Object>> rows = writes.execute(st -> jdbc.sql("SELECT * FROM finance.gst_unpaid_remind(:o, :s, CAST(:ids AS uuid[]))")
+                .param("o", o).param("s", s).param("ids", body.students().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY).query().listOfRows());
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String k : List.of("SENT", "ALREADY_TODAY", "NOT_UNPAID", "NOT_REGISTERED", "FEE_NOT_STATED", "NOT_LISTED", "NO_CONTACT")) counts.put(k, 0L);
+        for (Map<String, Object> r : rows) counts.merge(String.valueOf(r.get("outcome")), 1L, Long::sum);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("office", o);
+        out.put("session", s);
+        out.put("asked", rows.size());
+        out.put("counts", counts);
+        out.put("rows", rows);
         return out;
     }
 
@@ -1090,6 +1134,7 @@ class GstController {
         }
         row.put("revenue", g.getOrDefault("revenue", BigDecimal.ZERO));
         row.put("outstanding", g.getOrDefault("outstanding", BigDecimal.ZERO));
+        row.put("registered_unpaid_owed", g.getOrDefault("registered_unpaid_owed", BigDecimal.ZERO));   // V691
         return row;
     }
 

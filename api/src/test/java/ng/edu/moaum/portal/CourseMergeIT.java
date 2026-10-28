@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,9 +58,8 @@ class CourseMergeIT {
 
     @Test
     void theTwinsAreMergedIntoTheCourseKeptAndACourseMayBeTaughtInBothSemesters() {
-        // a prefix of the run's own: Z and two letters
-        String hex = UUID.randomUUID().toString().replaceAll("[^a-f]", "").toUpperCase() + "ABCDEF";
-        String p = "Z" + hex.substring(0, 2);
+        // a prefix of the run's own: Z and two letters no course carries
+        String p = it.freeCoursePrefix("Z");
         String twin = p + "101";
         String keep = p + " 101";
         String dept = it.db(() -> jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single());

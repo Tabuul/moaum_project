@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 518
+\set EXPECTED 519
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28601,6 +28601,96 @@ BEGIN
         coalesce(bases = '101=-,102=-,103=-,104=Core,105=Core' AND owed = 'ZEL 102,ZEL 104,ZEL 105' AND electives = 'ZEL 101,ZEL 103'
                  AND cum.tcr = 15 AND cum.tce = 0 AND cum.cgpa = 0, false),
         format('bases %s | owed %s | electives %s | tcr %s tce %s cgpa %s', bases, owed, electives, cum.tcr, cum.tce, cum.cgpa));
+END $$;
+
+-- ── V691. Students with a GST/EPS course registered and the GST fee unpaid, listed and reminded. Made-up 400 Level students of one
+--    programme; a GST fee of ₦4,000 that covers EPS. Registered, approved: EPS 961 unpaid (on the GST office's list and the EPS
+--    office's, ₦4,000 owed), GST 961 unpaid (the GST office's list only), EPS 961 paid (on neither); one with no GST/EPS course
+--    (on neither). The Registry may not send the reminder; the Bursary's tells the two unpaid students once (the portal notice names
+--    the course and the amount) and passes over the others; sent again the same day after one of them has paid, the other is
+--    reminded already today and the payer is passed over; both sendings written down. The gate over many courses at once holds,
+--    for the student with none registered, the GST and the EPS course they may add as carry-overs and not an unknown course. Undone after ──
+DO $$
+DECLARE ses text := '9691/9692'; dept text; v_err text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        oe uuid := gen_random_uuid(); og uuid := gen_random_uuid(); ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rd uuid := gen_random_uuid();
+        refb text; refd text; gst_list text; eps_list text; owed_a numeric; office_refused text; first text; second text;
+        a_notices int; a_body text; d_notices int; batches text; c_many text; c_one text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'V691 check', true);
+    PERFORM assessment.ensure_session(ses);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9691/01' WHERE name = ses;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), ses, 2, 'OPEN') ON CONFLICT (session, number) DO UPDATE SET state = 'OPEN';
+    SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00061';
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/99/996911', 'MOAUM/CHK/99/6911', 'CHECKV691', 'A Eps Unpaid', 'C00061', 'UTME', '9688/9689', 100, 400, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/99/996912', 'MOAUM/CHK/99/6912', 'CHECKV691', 'B Eps Paid', 'C00061', 'UTME', '9688/9689', 100, 400, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/99/996913', 'MOAUM/CHK/99/6913', 'CHECKV691', 'C None', 'C00061', 'UTME', '9688/9689', 100, 400, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/99/996914', 'MOAUM/CHK/99/6914', 'CHECKV691', 'D Gst Unpaid', 'C00061', 'UTME', '9688/9689', 100, 400, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+        ('EPS 961', 'Check Entrepreneurship Studies', 2, 2, 200, dept, 'GST', 'LIVE', 'EPS'),
+        ('GST 961', 'Check Use of English', 2, 2, 200, dept, 'GST', 'LIVE', 'GST');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('EPS 961', 'C00061', 200, 'GST'), ('GST 961', 'C00061', 200, 'GST');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (oe, 'EPS 961', ses, 2), (og, 'GST 961', ses, 2);
+    UPDATE finance.gst_setting SET required_for_gst_eps = true, covers_eps = true WHERE id = 1;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.state_gst_fee(ses, 4000, NULL, NULL, NULL, NULL, NULL, 'check', gen_random_uuid(), 'bursar');
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (ra, a, ses, 2, 400, 'APPROVED', now(), now()), (rb, b, ses, 2, 400, 'APPROVED', now(), now()), (rd, d, ses, 2, 400, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, added_as) VALUES
+        (ra, oe, 2, 'CARRYOVER', 'APPROVED', 'CARRY_OVER_DECLARED'), (rb, oe, 2, 'CARRYOVER', 'APPROVED', 'CARRY_OVER_DECLARED'),
+        (rd, og, 2, 'CARRYOVER', 'APPROVED', 'CARRY_OVER_DECLARED');
+    refb := finance.new_gst_reference(b, ses);
+    UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = b, channel = 'CHECK', receipt_no = 'RCT-CHK-6912' WHERE reference = refb;
+
+    -- the gate over many courses at once, and the gate over one (the same function)
+    c_many := (SELECT string_agg(m.course_code || '=' || coalesce(split_part(m.message, ':', 1), 'OPEN'), ',' ORDER BY m.course_code)
+                 FROM registration.gst_gate_many(c, ses, ARRAY['GST 961', 'EPS 961', 'NOPE 961', 'GST 961']) m);
+    c_one := coalesce(split_part(registration.gst_gate(c, ses, 'EPS 961'), ':', 1), 'OPEN') || ',' || coalesce(registration.gst_gate(c, ses, 'NOPE 961'), 'OPEN');
+    PERFORM finance.keep_gst_population(ses, NULL, true);
+    gst_list := (SELECT string_agg(split_part(k.other_names, ' ', 1), ',' ORDER BY k.other_names) FROM finance.gst_population_kept_of(ses, NULL) k
+                  WHERE k.surname = 'CHECKV691' AND finance.gst_registered_unpaid('GST', k.gst_registered, k.eps_registered, k.gst_required, k.eps_required, k.entitled));
+    eps_list := (SELECT string_agg(split_part(k.other_names, ' ', 1), ',' ORDER BY k.other_names) FROM finance.gst_population_kept_of(ses, NULL) k
+                  WHERE k.surname = 'CHECKV691' AND finance.gst_registered_unpaid('EPS', k.gst_registered, k.eps_registered, k.gst_required, k.eps_required, k.entitled));
+    owed_a := (SELECT CASE WHEN k.stated THEN k.fee - k.paid END FROM finance.gst_population_kept_of(ses, NULL) k WHERE k.student_id = a);
+
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM finance.gst_unpaid_remind('GST', ses, ARRAY[a]); office_refused := 'sent';
+    EXCEPTION WHEN insufficient_privilege THEN office_refused := split_part(SQLERRM, ':', 1); END;
+
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    first := (SELECT string_agg(q.t, ',' ORDER BY q.t)
+                FROM (SELECT CASE x.student WHEN a THEN 'a' WHEN b THEN 'b' WHEN c THEN 'c' ELSE 'd' END || '=' || x.outcome
+                             || coalesce('/' || x.courses || '/' || x.amount::numeric(14,2), '') AS t
+                        FROM finance.gst_unpaid_remind('GST', ses, ARRAY[a, b, c, d]) x) q);
+    -- d pays after the list was worked out; sent again the same day
+    refd := finance.new_gst_reference(d, ses);
+    UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = d, channel = 'CHECK', receipt_no = 'RCT-CHK-6914' WHERE reference = refd;
+    second := (SELECT string_agg(q.t, ',' ORDER BY q.t)
+                 FROM (SELECT CASE x.student WHEN a THEN 'a' ELSE 'd' END || '=' || x.outcome AS t FROM finance.gst_unpaid_remind('GST', ses, ARRAY[a, d]) x) q);
+    a_notices := (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = a AND n.template_key = 'GST_FEE_UNPAID_REGISTERED');
+    a_body := (SELECT n.body FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = a AND n.template_key = 'GST_FEE_UNPAID_REGISTERED' AND n.channel = 'PORTAL');
+    d_notices := (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = d AND n.template_key = 'GST_FEE_UNPAID_REGISTERED');
+    batches := (SELECT string_agg(r.list_office || ':' || r.asked || '/' || r.sent || '/' || r.already || '/' || r.skipped || ':' || r.sent_office, ',' ORDER BY r.asked DESC)
+                  FROM finance.gst_unpaid_reminder r WHERE r.session = ses);
+    RAISE EXCEPTION 'the V691 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V691 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V691: the students with a GST/EPS course registered and the GST fee unpaid are listed (the GST office''s list with EPS while the fee covers it, the EPS office''s with its own), with the amount; the Bursary reminds them once a day, each checked again, and every sending is written down; the Registry may not; the gate over many courses at once',
+      coalesce(gst_list = 'A,D' AND eps_list = 'A' AND owed_a = 4000 AND office_refused = 'GST_REMIND_OFFICE'
+           AND first = 'a=SENT/EPS 961/4000.00,b=NOT_UNPAID/EPS 961/0.00,c=NOT_UNPAID,d=SENT/GST 961/4000.00'
+           AND second = 'a=ALREADY_TODAY,d=NOT_UNPAID'
+           AND a_notices >= 1 AND a_body LIKE 'EPS 961 is on your course registration for 9691/9692, but the GST fee of NGN 4,000.00 is not paid.%'
+           AND d_notices = a_notices AND batches = 'GST:4/2/0/2:bursar,GST:2/0/1/1:bursar'
+           AND c_many = 'EPS 961=GST_PAYMENT_REQUIRED,GST 961=GST_PAYMENT_REQUIRED,NOPE 961=OPEN' AND c_one = 'GST_PAYMENT_REQUIRED,OPEN', false),
+      format('GST list %s EPS list %s owed a %s | registrar %s | first %s | second %s | notices a %s d %s body %s | batches %s | many %s one %s',
+             gst_list, eps_list, owed_a, office_refused, first, second, a_notices, d_notices, a_body, batches, c_many, c_one));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

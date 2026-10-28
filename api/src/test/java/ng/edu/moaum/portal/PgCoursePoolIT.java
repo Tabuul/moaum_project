@@ -79,8 +79,7 @@ class PgCoursePoolIT {
     @Test
     void aPgStudentRegistersOnTheSchoolsClassesOnTheUniversitysEngine() {
         String n = String.format("%06d", Math.abs(UUID.randomUUID().getMostSignificantBits() % 1_000_000L));
-        String hex = UUID.randomUUID().toString().replaceAll("[^a-f]", "").toUpperCase() + "ABCDEF";
-        String course = "Z" + hex.substring(0, 2) + " 811";
+        String course = it.freeCoursePrefix("Z") + " 811";
         Map<String, Object> prog = it.db(() -> jdbc.sql("""
                 SELECT code, dept_code, admissions.pg_award_level(pg_award) AS level FROM ref.programme
                  WHERE category = 'POST GRADUATE' AND NOT coalesce(archived, false) ORDER BY code LIMIT 1

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,9 +55,8 @@ class SameCodeCoursesIT {
 
     @Test
     void oneCodeCarriesSeparateCoursesTellsThemApartAndNeverWritesOneTitleOverAnother() {
-        // a code of the run's own: Z and two letters, 401
-        String hex = UUID.randomUUID().toString().replaceAll("[^a-f]", "").toUpperCase() + "ABCDEF";
-        String code = "Z" + hex.substring(0, 2) + " 401";
+        // a code of the run's own: Z and two letters no course carries, 401
+        String code = it.freeCoursePrefix("Z") + " 401";
         String dept = it.db(() -> jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", PROGRAMME).query(String.class).single());
 
         Map<String, Object> first = ok(it.call(academic, HttpMethod.POST, "/api/v1/catalogue/courses",

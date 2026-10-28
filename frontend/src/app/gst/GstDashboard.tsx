@@ -141,6 +141,12 @@ export function GstDashboard({ data, filters, base, actingOffice, cbt }: { data:
           ].filter(Boolean).join("; ")}.
         </Note>
       ) : null}
+      {Number(t.registered_unpaid) > 0 ? (
+        <Note kind="bad" title={`${num(t.registered_unpaid)} student${Number(t.registered_unpaid) === 1 ? " has" : "s have"} ${eps ? "an EPS" : "a GST or EPS"} course registered without the GST fee paid${Number(t.registered_unpaid_owed) ? ` — ${naira(Number(t.registered_unpaid_owed))}` : ""}`}
+          action={<LinkBtn kind="secondary" href={`${base}/students?${gstQuery(f, { eligibility: "UNPAID_REGISTERED" })}`}>View and remind</LinkBtn>}>
+          The registration makes the fee owed; their examination card and GST &amp; EPS permit wait for it.
+        </Note>
+      ) : null}
       <Tiles items={tiles} />
       {data.legacy && (Number(data.legacy.legacy_rows) > 0 || t.paid_legacy) ? (
         <Panel title={`OLD-PORTAL GST PAYMENTS · ${data.session}`} right={<LinkBtn kind="ghost" size="sm" href={`/finance/legacy-gst?session=${encodeURIComponent(data.session)}`}>Reconciliation desk</LinkBtn>}>

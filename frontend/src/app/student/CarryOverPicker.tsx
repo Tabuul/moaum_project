@@ -16,7 +16,7 @@ import { Btn, LinkBtn, Note, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import {
-  NO_FILTER, OWED, STATUS_KIND, STATUS_WORD, filterRows, groupRows, levelsOf, openingView, outcomeWords, selection, semesterWord,
+  NO_FILTER, OWED, STATUS_KIND, STATUS_WORD, filterRows, groupRows, gstHeld, levelsOf, openingView, outcomeWords, selection, semesterWord, tickable,
   type CarryFilter, type CarryList, type CarryResult,
 } from "@/lib/carry-over";
 import { quoteWords } from "@/lib/spillover";
@@ -62,6 +62,8 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
   const groups = useMemo(() => groupRows(shown), [shown]);
   const sel = selection(rows, picked);
   const owedCount = rows.filter((r) => OWED.includes(r.status)).length;
+  // V691: the GST/EPS courses the GST fee holds, flagged before they are ticked
+  const gstWait = useMemo(() => gstHeld(rows), [rows]);
   // V682: a spillover student sees what the semester costs as soon as a course is ticked
   const quote = spillover && list?.fee && sel.count ? quoteWords(list.fee, sel.count, addDrop) : null;
   const toggle = (id: string) => setPicked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
@@ -71,7 +73,7 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
     setBusy(true);
     setProblem(null);
     try {
-      const courses = rows.filter((r) => picked.has(r.course_id) && r.selectable).map((r) => r.course_id);
+      const courses = rows.filter((r) => picked.has(r.course_id) && tickable(r)).map((r) => r.course_id);
       const r = await fetch("/api/bff/api/v1/me/registration/carry-overs", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${courses.length} carry-over course${courses.length === 1 ? "" : "s"} added by the student`) },
@@ -148,6 +150,12 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
           ) : spillover && list.fee ? (
             <div className="sub2 mb-2">Tick a course to see the {semesterWord(semester).toLowerCase()} semester&rsquo;s spillover fee.</div>
           ) : null}
+          {gstWait ? (
+            <Note kind="bad" title={`GST fee first${gstWait.toPay ? ` — ${naira(gstWait.toPay)}` : ""}`}
+              action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(session)}`}>PAY GST FEE</LinkBtn>}>
+              {gstWait.count === 1 ? "A GST or EPS course below is" : `${gstWait.count} GST or EPS courses below are`} added once the GST fee is paid. One payment covers GST and EPS.
+            </Note>
+          ) : null}
           <Tabs label="Which courses" value={f.view} onChange={(v) => setF({ ...f, view: v })}
             items={[{ id: "OUTSTANDING", label: "ONLY OUTSTANDING", count: owedCount }, { id: "ALL", label: spillover ? "ALL YOUR COURSES" : "ALL PREVIOUS COURSES", count: rows.length }]} />
           <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
@@ -176,7 +184,7 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
           ) : null}
           {groups.length ? groups.map((g) => {
             const open = !closed.has(g.level);
-            const owed = g.semesters.reduce((n, s) => n + s.rows.filter((r) => r.selectable).length, 0);
+            const owed = g.semesters.reduce((n, s) => n + s.rows.filter(tickable).length, 0);
             return (
               <div key={g.level} className="mt-2" style={{ border: "1px solid var(--line)", borderRadius: 8 }}>
                 <button type="button" className="row" aria-expanded={open}
@@ -190,16 +198,18 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
                     <div className="t-xs b700 sub2 mt-1">{semesterWord(s.semester).toUpperCase()} SEMESTER</div>
                     {s.rows.map((r) => {
                       const on = picked.has(r.course_id);
+                      const can = tickable(r);
                       return (
                         <label key={r.course_id} className="row" style={{ gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)", alignItems: "flex-start", flexWrap: "wrap",
-                          cursor: r.selectable ? "pointer" : "default", opacity: r.selectable ? 1 : 0.75 }}>
-                          <input type="checkbox" checked={on && r.selectable} disabled={!r.selectable || busy} onChange={() => toggle(r.course_id)}
+                          cursor: can ? "pointer" : "default", opacity: can || r.gst_held ? 1 : 0.75 }}>
+                          <input type="checkbox" checked={on && can} disabled={!can || busy} onChange={() => toggle(r.course_id)}
                             aria-label={`Select ${r.shown_code} ${r.title}`} style={{ marginTop: 3, width: 18, height: 18 }} />
                           <div className="grow" style={{ minWidth: 200 }}>
                             <div><b className="tnum">{r.shown_code}</b> — {r.title}</div>
                             <div className="sub2">{r.level} Level · {semesterWord(r.course_semester)} Semester{r.both_semesters ? " (both semesters)" : ""}
                               {r.origin_session ? ` · last registered ${r.origin_session}` : ""}{r.last_grade ? ` · grade ${r.last_grade}` : ""}</div>
                             {r.reason ? <div className="sub2" style={!r.selectable && OWED.includes(r.status) ? { color: "var(--red-deep)" } : undefined}>{r.reason}</div> : null}
+                            {r.gst_held ? <div className="sub2 b600" style={{ color: "var(--red-deep)" }}>GST fee first{r.gst_to_pay ? ` — ${naira(Number(r.gst_to_pay))}` : ""}: pay it, then add this course.</div> : null}
                           </div>
                           <Pil kind={STATUS_KIND[r.status]}>{STATUS_WORD[r.status]}</Pil>
                           <span className="tnum b600" style={{ minWidth: 44, textAlign: "right" }}>{r.units} CU</span>

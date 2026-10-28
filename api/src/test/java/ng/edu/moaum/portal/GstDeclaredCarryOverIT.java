@@ -21,7 +21,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * V690: a GST/EPS course added as a carry-over waits for the GST fee, through the student's own door. An invented 400 Level student
  * owes no GST fee; their programme binds an EPS course at 200 Level they have no record of. The GST page offers the fee for it
  * (carryPayable); added through ADD CARRY-OVER it is refused GST_PAYMENT_REQUIRED and nothing is registered; the fee paid and confirmed,
- * it is added as a carry-over they declared. The run files everything under a session of its own. Needs DATABASE_URL.
+ * it is added as a carry-over they declared. V691: the ADD CARRY-OVER list flags the EPS course before it is ticked (gst_held, with
+ * the fee to pay), and no longer once the fee is paid. The run files everything under a session of its own. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -91,7 +92,11 @@ class GstDeclaredCarryOverIT {
 
         // added through ADD CARRY-OVER: refused until the fee is paid, nothing registered
         Map<String, Object> listed = it.get(student, u -> u.path("/api/v1/me/registration/carry-overs").queryParam("session", session).queryParam("semester", 1).build()).getBody();
-        String courseId = String.valueOf(((List<Map<String, Object>>) listed.get("rows")).stream().filter(r -> epsCode.equals(r.get("course_code"))).findFirst().orElseThrow().get("course_id"));
+        Map<String, Object> epsRow = ((List<Map<String, Object>>) listed.get("rows")).stream().filter(r -> epsCode.equals(r.get("course_code"))).findFirst().orElseThrow();
+        String courseId = String.valueOf(epsRow.get("course_id"));
+        // V691: flagged before it is ticked, with the fee to pay
+        assertThat(epsRow).containsEntry("selectable", true).containsEntry("gst_held", true);
+        assertThat(((Number) epsRow.get("gst_to_pay")).intValue()).isEqualTo(5000);
         Map<String, Object> refused = add(courseId);
         assertThat(refused).containsEntry("added", false).containsEntry("code", "GST_PAYMENT_REQUIRED");
         assertThat(String.valueOf(refused.get("message"))).contains("GST fee").contains("EPS courses");
@@ -102,6 +107,9 @@ class GstDeclaredCarryOverIT {
         assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
         String reference = String.valueOf(ref.getBody().get("reference"));
         it.db(() -> jdbc.sql("SELECT finance.confirm_payment(:r, 'CARD', 'gateway for the test')").param("r", reference).query(String.class).single());
+        Map<String, Object> paid = it.get(student, u -> u.path("/api/v1/me/registration/carry-overs").queryParam("session", session).queryParam("semester", 1).build()).getBody();
+        assertThat(((List<Map<String, Object>>) paid.get("rows")).stream().filter(r -> epsCode.equals(r.get("course_code"))).findFirst().orElseThrow())
+                .containsEntry("gst_held", false);   // V691: no longer flagged once paid
         assertThat(add(courseId)).containsEntry("added", true);
         assertThat(entries()).contains(epsCode + ":CARRYOVER");
     }

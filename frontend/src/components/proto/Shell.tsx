@@ -345,6 +345,7 @@ export const ROUTES: Record<string, string> = {
   "t/feesetup": "/finance/fees",
   "r/gst": "/gst/dashboard",
   "t/gststudents": "/gst/students",
+  "t/gstunpaid": "/gst/unpaid",
   "t/gstcourses": "/gst/courses",
   "r/eps": "/eps/dashboard",
   "t/epsstudents": "/eps/students",

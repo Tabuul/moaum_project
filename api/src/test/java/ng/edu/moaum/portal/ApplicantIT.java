@@ -53,13 +53,15 @@ class ApplicantIT {
         // V295: the session's applicants pay the checking fee and check their status while the Director of ICT has it open
         it.session(SESSION, 2093);
         it.openChecking(SESSION);
-        // the residue of an earlier run on the same database: the list it loaded is taken off the live list, so this run starts
-        // with none (admissions.withdraw_batch refuses once a student admitted from the list is on the register, as this
-        // test's is by its end; the rows and the batch are marked directly, as that function marks them)
+        // the residue of an earlier run on the same database: every list standing in the test's own session is taken off the
+        // live list, whatever its file was called (a list an earlier version of this test loaded under another name left the
+        // lookup reading "none" for "nolist"), so this run starts with none (admissions.withdraw_batch refuses once a student
+        // admitted from the list is on the register, as this test's is by its end; the rows and the batch are marked directly,
+        // as that function marks them). No other test loads a list for 2093/2094.
         it.db(() -> {
-            jdbc.sql("UPDATE admissions.caps_row SET withdrawn = true WHERE NOT withdrawn AND batch_id IN (SELECT id FROM admissions.caps_batch WHERE session = :s AND filename = 'CAPS-DE-it.xlsx')")
+            jdbc.sql("UPDATE admissions.caps_row SET withdrawn = true WHERE NOT withdrawn AND session = :s")
                     .param("s", SESSION).update();
-            return jdbc.sql("UPDATE admissions.caps_batch SET withdrawn_at = now(), withdrawn_by = gen_random_uuid(), withdrawn_reason = 'ApplicantIT: the list of an earlier run' WHERE session = :s AND filename = 'CAPS-DE-it.xlsx' AND withdrawn_at IS NULL")
+            return jdbc.sql("UPDATE admissions.caps_batch SET withdrawn_at = now(), withdrawn_by = gen_random_uuid(), withdrawn_reason = 'ApplicantIT: the list of an earlier run' WHERE session = :s AND withdrawn_at IS NULL")
                     .param("s", SESSION).update();
         });
         open = RestClient.builder().baseUrl("http://localhost:" + port).defaultStatusHandler(s -> true, (q, r) -> { }).build();

@@ -1232,6 +1232,22 @@ class StudentPortalRepository {
                 .param("s", student).param("ses", session).query().listOfRows();
     }
 
+    /** V691: the GST/EPS courses of the carry-over list the GST fee holds (registration.gst_gate_many: the gate an add meets, over every
+     *  course at once), and what the fee comes to — the gate asked only while the fee is stated, above nothing and not paid */
+    Map<String, Object> gstCarryHolds(UUID student, String session, List<String> codes) {
+        if (codes.isEmpty()) return Map.of("held", List.of());
+        Map<String, Object> e = jdbc.sql("SELECT stated, fee, paid, entitled FROM finance.gst_entitlement(:s, :ses)")
+                .param("s", student).param("ses", session).query().listOfRows().stream().findFirst().orElse(null);
+        if (e == null || !Boolean.TRUE.equals(e.get("stated")) || Boolean.TRUE.equals(e.get("entitled"))) return Map.of("held", List.of());
+        java.math.BigDecimal fee = (java.math.BigDecimal) e.get("fee");
+        java.math.BigDecimal paid = e.get("paid") == null ? java.math.BigDecimal.ZERO : (java.math.BigDecimal) e.get("paid");
+        if (fee == null || fee.signum() <= 0) return Map.of("held", List.of());
+        List<String> held = jdbc.sql("SELECT g.course_code FROM registration.gst_gate_many(:s, :ses, CAST(:codes AS text[])) g WHERE g.message IS NOT NULL ORDER BY g.course_code")
+                .param("codes", codes.toArray(String[]::new), java.sql.Types.ARRAY).param("s", student).param("ses", session)
+                .query(String.class).list();
+        return Map.of("held", held, "fee", fee, "toPay", fee.subtract(paid).max(java.math.BigDecimal.ZERO));
+    }
+
     String newGstReference(UUID student, String session) {
         return jdbc.sql("SELECT finance.new_gst_reference(:s, :ses)").param("s", student).param("ses", session).query(String.class).single();
     }

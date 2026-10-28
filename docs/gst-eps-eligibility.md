@@ -398,3 +398,57 @@ REQUIRED"). Nothing is removed from a registration.
   - a student who registered it before owes the fee.
 - `GstDeclaredCarryOverIT`.
 - `lib/gst-payable.test.ts` (`carryPayOffer`, `unpaidGstRegistered`).
+
+## 19. V691 — the students registered without paying, listed and reminded; the carry-over flagged before it is ticked (28 October 2026)
+
+After §18, the students who registered a GST/EPS course before it, without paying, owe the fee: the registration makes it owed. The GST
+desk counted them on its dashboard ("registered without paying") but listed them nowhere, the Bursar's menu had no way to them, and
+nothing told the students.
+
+**The list.**
+- `finance.gst_registered_unpaid(office, …)` is the one rule for the list and the dashboard figure: a GST course registered and owed,
+  or an EPS course registered and owed while the GST fee covers EPS; the fee neither paid nor exempt.
+- The GST office's list holds both, because one payment covers GST and EPS. The EPS office's list holds its own courses.
+- On the GST and EPS students pages it is the list "Registered, GST fee unpaid" (`eligibility=UNPAID_REGISTERED`). It is also
+  **GST Fee Unpaid** (`/gst/unpaid`, `t/gstunpaid`) in the GST office's and the Bursar's menus.
+- Each student shows what they owe, and the list shows the total for every page. The Excel and PDF exports gain an Owed (₦) column.
+- The dashboard's figure now uses the same rule, carries what it comes to (`registered_unpaid_owed`), and links to the list ("View
+  and remind").
+
+**The reminder.**
+- **Send reminder** on the list sends the notice `GST_FEE_UNPAID_REGISTERED` (email, SMS and portal) to every student on it, up to
+  5,000 per call. It names the courses on the registration, the session and the amount. API: `POST /api/v1/gst/{office}/students/remind`.
+- `finance.gst_unpaid_remind` checks each student again before telling them:
+  - still on the list;
+  - no GST payment confirmed since the list was worked out;
+  - a GST/EPS course still registered;
+  - the fee stated.
+- A student is told at most once a day: the notice's event key carries the Lagos date.
+- Each student is answered: SENT, ALREADY_TODAY, NOT_UNPAID, NOT_REGISTERED, FEE_NOT_STATED, NOT_LISTED or NO_CONTACT.
+- The GST office, the EPS office (its own list) and the Bursary send it. Anyone else is refused GST_REMIND_OFFICE.
+- Each sending is written down in `finance.gst_unpaid_reminder`: the list, how many were asked for, told, already told that day and
+  passed over, who sent it and when.
+
+**The carry-over flagged before it is ticked.**
+- In ADD CARRY-OVER, a GST/EPS course the GST fee holds (`registration.gst_gate`, as an add would be refused) comes marked `gst_held`
+  with the fee to pay.
+- The window says "GST fee first — ₦…" once, with PAY GST FEE, and marks each such course. The course cannot be ticked until the fee
+  is paid; once paid, it is no longer marked.
+- The server still refuses the add if the fee is unpaid (§18).
+- `registration.gst_gate_many(student, session, courses)` is the gate over many courses at once. It reads the student's GST standing
+  once, where asking the gate course by course read it again for each (about 1 s for 28 courses on a scratch database).
+  `registration.gst_gate` is now that function over one course, so the rule lives in one place. On a scratch database the two
+  agreed on every pair tried before the change: 2,814 student–course pairs, and 2,680 more with the whole registration held.
+
+**Tests:**
+- `check.sql` V691:
+  - the GST office's list holds the EPS and the GST student, and the EPS office's holds the EPS student, with ₦4,000 owed;
+  - the Registry is refused;
+  - the Bursary's reminder tells the two unpaid students and passes over the payer and the student with nothing registered;
+  - the same day again, one student is already told and the one who has paid since is passed over;
+  - both sendings are written down;
+  - the gate over many courses holds the GST and EPS carry-overs of a student with none registered, and not an unknown course.
+- `GstUnpaidRegisteredIT`: the list for the GST office, the EPS office and the Bursary, the dashboard figure, 403 for the Registry
+  and for the EPS office on the GST list, and the reminder sent once.
+- `GstDeclaredCarryOverIT`: the EPS row flagged with the fee, and no longer flagged once paid.
+- `lib/gst-unpaid.test.ts`, `lib/carry-over-gst.test.ts`.

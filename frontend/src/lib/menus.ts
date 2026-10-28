@@ -790,6 +790,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
+          { "id": "t/gstunpaid", "icon": "alert", "label": "GST Fee Unpaid" },
           { "id": "t/pgmigration", "icon": "swap", "label": "Old PG Application Fees" },
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
           { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },
@@ -2860,6 +2861,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "General Studies",
         "items": [
           { "id": "t/gststudents", "icon": "user", "label": "GST Students" },
+          { "id": "t/gstunpaid", "icon": "alert", "label": "GST Fee Unpaid" },
           { "id": "t/gstcourses", "icon": "book", "label": "GST Courses" },
           { "id": "t/gstbank", "icon": "flask", "label": "Question Bank" },
           { "id": "t/gstcbt", "icon": "cap", "label": "CBT Examinations" },

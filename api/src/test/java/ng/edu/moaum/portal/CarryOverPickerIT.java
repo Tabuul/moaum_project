@@ -90,8 +90,7 @@ class CarryOverPickerIT {
         it.session(session, y);
         int n = 1000 + new Random().nextInt(8999);
         String yy = String.format("%02d", y % 100);
-        String hex = UUID.randomUUID().toString().replaceAll("[^a-f]", "").toUpperCase() + "ABCDEF";
-        String p = "Z" + hex.substring(0, 2);   // the run's own course prefix
+        String p = it.freeCoursePrefix("Z");   // the run's own course prefix
         String[] place = it.db(() -> {
             String[] one = jdbc.sql("""
                     SELECT p.dept_code || ',' || p.faculty_code FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code

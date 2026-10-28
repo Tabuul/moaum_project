@@ -14,7 +14,7 @@ export default async function GSTStudentsPage({ searchParams }: { searchParams: 
   const [me, data] = await Promise.all([api<Me>("/api/v1/iam/me"), api<GstStudentPage>(`/api/v1/gst/GST/students?${gstQuery(filters, { page, size: 50 })}${refreshParam(p)}`)]);
   return (
     <Shell route="t/gststudents" me={me.ok ? me.data : null}>
-      {data.ok ? <GstStudents data={data.data} filters={filters} base="/gst" /> : <ProblemNotice problem={data.problem} />}
+      {data.ok ? <GstStudents data={data.data} filters={filters} base="/gst" actingOffice={me.ok ? me.data.activeOffice : null} /> : <ProblemNotice problem={data.problem} />}
     </Shell>
   );
 }
