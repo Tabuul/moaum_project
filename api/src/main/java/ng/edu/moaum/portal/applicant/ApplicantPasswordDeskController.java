@@ -13,6 +13,7 @@ import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
+import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -20,6 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,22 +42,32 @@ import tools.jackson.databind.ObjectMapper;
 @RequestMapping("/api/v1/applicant-passwords")
 class ApplicantPasswordDeskController {
 
-    static final String DESK = "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_super')";
+    /* V688: and the Database Operators (one over the whole University: universityOperatorOnly) */
+    static final String DESK = "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_dbops','OFFICE_super')";
     private static final String TEMP_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
     private final JdbcClient jdbc;
     private final ApplicantRepository repo;
     private final ObjectMapper json;
     private final String portalUrl;
+    private final OfficeScope scope;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
-    ApplicantPasswordDeskController(JdbcClient jdbc, ApplicantRepository repo, ObjectMapper json,
+    ApplicantPasswordDeskController(JdbcClient jdbc, ApplicantRepository repo, ObjectMapper json, OfficeScope scope,
                                     @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.jdbc = jdbc;
         this.repo = repo;
         this.json = json;
+        this.scope = scope;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
+    }
+
+    /** V688: an applicant belongs to no faculty, department or programme of the register yet, so a Database Operator resets one only
+     *  on a grant over the whole University (SCOPE_UNIVERSITY otherwise); every other office passes. Asked before every request here. */
+    @ModelAttribute
+    void universityOperatorOnly() {
+        scope.requireUniversityOperator("Resetting an applicant's password");
     }
 
     /** applicants by JAMB number, application number, email, phone or name (three characters or more) */

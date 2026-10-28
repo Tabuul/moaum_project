@@ -302,5 +302,15 @@ class ApplicantIT {
         assertThat(String.valueOf(link.getBody().get("sentTo"))).contains("@example.com").doesNotContain(jamb.toLowerCase() + "@");
         assertThat((List<Map<String, Object>>) it.getList(support, pwDesk + "/history?account=" + accountId).getBody())
                 .extracting(h -> h.get("method")).containsExactly("RESET_LINK", "TEMPORARY_PASSWORD");
+        // V688: a Database Operator over the whole University resets too; one held to a department is refused (SCOPE_UNIVERSITY)
+        String operator = it.officer("dbops", "institution", "University");
+        String heldOperator = it.officer("dbops", "department", jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single());
+        assertThat((List<Map<String, Object>>) it.getList(operator, pwDesk + "/search?q=" + appNo).getBody()).extracting(h -> h.get("application_no")).containsExactly(appNo);
+        ResponseEntity<Map> byOperator = it.call(operator, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "LINK", "reason", "The applicant asked the Database Operations office"));
+        assertThat(byOperator.getStatusCode().value()).as(String.valueOf(byOperator.getBody())).isEqualTo(200);
+        assertThat(it.call(heldOperator, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "LINK", "reason", "The applicant asked the department office"))
+                .getBody().get("code")).isEqualTo("SCOPE_UNIVERSITY");
+        assertThat((List<Map<String, Object>>) it.getList(support, pwDesk + "/history?account=" + accountId).getBody())
+                .extracting(h -> h.get("reset_office")).containsExactly("dbops", "academic", "ictagent");
     }
 }

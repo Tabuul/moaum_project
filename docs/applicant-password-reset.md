@@ -13,6 +13,8 @@ University could reset one.
 - The Director of ICT (`ict`), next to Student Password Reset.
 - The Academic Office (`academic`), under Admissions.
 - ICT Support (`ictagent`, `helpdeskhead`), next to Student Password Reset.
+- The Database Operators (`dbops`, V688), under Academic, on a grant over the whole University only: an operator held to a faculty,
+  department or programme is refused (`SCOPE_UNIVERSITY`), as an applicant belongs to none of them yet.
 - The Super Administrator.
 
 Every other office is refused, by the API and by the database (`APW_OFFICE`).

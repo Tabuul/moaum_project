@@ -12,7 +12,8 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RESET_METHOD, accountState, reasonProblem } from "@/lib/applicant-password";
 
-const DESK = ["ict", "academic", "ictagent", "helpdeskhead", "super"];
+/* V688: and the Database Operators (over the whole University; the server holds the scope) */
+const DESK = ["ict", "academic", "ictagent", "helpdeskhead", "dbops", "super"];
 
 interface Found {
   account_id: string; session: string; jamb_key: string | null; application_no: string | null; surname: string; other_names: string; email: string; phone: string;

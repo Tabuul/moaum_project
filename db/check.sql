@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 515
+\set EXPECTED 516
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28435,6 +28435,33 @@ BEGIN
                AND links = 3 AND r_limit = 'APW_LINK_LIMIT' AND NOT after_set.must_change_password AND after_set.temp_expires_at IS NULL
                AND f_jamb = 1 AND f_app = 1 AND f_mail = 1 AND f_phone = 1 AND f_name = 2, false),
       msg);
+END $$;
+
+-- ── V688: a Database Operator resets an applicant's password too: admissions.applicant_password_officer passes dbops beside the
+--          Director of ICT and ICT Support, the Registry is still refused, and the reset's record takes dbops as its office. (An
+--          operator held to a faculty, department or programme is refused by the API, SCOPE_UNIVERSITY: ApplicantIT.) ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); got text := ''; o text; v_err text; takes boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'CHECK V688', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        FOREACH o IN ARRAY ARRAY['dbops', 'ict', 'ictagent', 'registrar'] LOOP
+            PERFORM set_config('moaum.actor_office', o, true);
+            BEGIN
+                got := got || o || '=' || CASE WHEN admissions.applicant_password_officer() = who THEN 'ok' ELSE 'other' END || ' ';
+            EXCEPTION WHEN insufficient_privilege THEN got := got || o || '=' || split_part(SQLERRM, ':', 1) || ' ';
+            END;
+        END LOOP;
+        takes := (SELECT pg_get_constraintdef(c.oid) LIKE '%dbops%' FROM pg_constraint c
+                   WHERE c.conrelid = 'admissions.applicant_password_reset'::regclass AND c.conname = 'applicant_password_reset_reset_office_check');
+        RAISE EXCEPTION 'the V688 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V688 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V688: a Database Operator resets an applicant''s password beside the Director of ICT and ICT Support; the Registry is refused; the record takes dbops',
+        v_err IS NULL AND got = 'dbops=ok ict=ok ictagent=ok registrar=APW_OFFICE ' AND coalesce(takes, false),
+        format('err=%s got=%s takes=%s', v_err, got, takes));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
