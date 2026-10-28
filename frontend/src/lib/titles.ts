@@ -303,6 +303,8 @@ export const TITLES: Record<string, string> = {
   "a/dashboard": "My application",
   "a/apply": "Application form",
   "a/fee": "Application fee",
+  "a/mypassword": "Change password",
+  "t/applicantpw": "Applicant password reset",
   "a/screening": "Screening slip",
   "a/score": "Screening result",
   "a/status": "Admission status",

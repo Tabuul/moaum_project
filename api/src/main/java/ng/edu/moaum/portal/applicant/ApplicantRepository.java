@@ -34,13 +34,15 @@ class ApplicantRepository {
                 .query(UUID.class).single();
     }
 
+    /** V687: mustChangePassword and tempExpiresAt — a temporary password from the University stands until the applicant chooses their own */
     record Account(UUID id, String session, UUID candidateId, String jambKey, String email, String phone, String passwordHash,
-                   int failedAttempts, OffsetDateTime lockedUntil, UUID applicationId, String applicationNo, String surname, String otherNames) {
+                   int failedAttempts, OffsetDateTime lockedUntil, UUID applicationId, String applicationNo, String surname, String otherNames,
+                   boolean mustChangePassword, OffsetDateTime tempExpiresAt) {
     }
 
     private static final String ACCOUNT = """
             SELECT a.id, a.session, a.candidate_id, a.jamb_key, a.email, a.phone, a.password_hash, a.failed_attempts, a.locked_until,
-                   p.id AS application_id, p.application_no, c.surname, c.other_names
+                   p.id AS application_id, p.application_no, c.surname, c.other_names, a.must_change_password, a.temp_expires_at
               FROM admissions.applicant_account a
               JOIN admissions.application p ON p.account_id = a.id
               JOIN admissions.candidate c ON c.id = a.candidate_id
@@ -287,9 +289,22 @@ class ApplicantRepository {
         jdbc.sql("UPDATE admissions.password_reset SET used_at = now() WHERE id = :id").param("id", id).update();
     }
 
+    /** V687: the applicant's own change — the password set (the change no longer required, the account unlocked), every other open
+     *  session ended, the one making the change kept */
+    void changeOwnPassword(UUID account, String hash, byte[] keepSession) {
+        jdbc.sql("SELECT admissions.applicant_password_set(:id, :h)").param("h", hash).param("id", account).query().singleRow();
+        if (keepSession == null) {
+            jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = 'password changed' WHERE person_id = :id AND ended_at IS NULL")
+                    .param("id", account).update();
+        } else {
+            jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = 'password changed' WHERE person_id = :id AND ended_at IS NULL AND id <> :sid")
+                    .param("id", account).param("sid", keepSession).update();
+        }
+    }
+
     void setPassword(UUID account, String hash) {
-        jdbc.sql("UPDATE admissions.applicant_account SET password_hash = :h, failed_attempts = 0, locked_until = NULL WHERE id = :id")
-                .param("h", hash).param("id", account).update();
+        // V687: the applicant's own password — a temporary one spent, the change no longer required, the account unlocked
+        jdbc.sql("SELECT admissions.applicant_password_set(:id, :h)").param("h", hash).param("id", account).query().singleRow();
         jdbc.sql("UPDATE platform.session SET ended_at = now(), ended_reason = 'password reset' WHERE person_id = :id AND ended_at IS NULL")
                 .param("id", account).update();
     }

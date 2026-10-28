@@ -689,6 +689,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/capsintake", "icon": "box", "label": "Upload Applicants and Candidates" },
           { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
+          { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
           { "id": "t/postutme", "icon": "chart", "label": "Compute PUTME Score" },
           { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
@@ -1484,6 +1485,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportreach", "icon": "alert", "label": "Students We Cannot Reach" },
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
+{ "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
@@ -1756,6 +1758,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportreach", "icon": "alert", "label": "Students We Cannot Reach" },
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
+{ "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
@@ -2174,7 +2177,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "a/dashboard", "icon": "home", "label": "Overview" },
           { "id": "a/apply", "icon": "doc", "label": "Application Form" },
-          { "id": "a/fee", "icon": "card", "label": "Application Fee" }
+          { "id": "a/fee", "icon": "card", "label": "Application Fee" },
+          { "id": "a/mypassword", "icon": "shield", "label": "Change Password" }
         ]
       },
       {
@@ -2204,7 +2208,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "My application",
         "open": true,
         "items": [
-          { "id": "a/cce", "icon": "doc", "label": "CCE Application" }
+          { "id": "a/cce", "icon": "doc", "label": "CCE Application" },
+          { "id": "a/mypassword", "icon": "shield", "label": "Change Password" }
         ]
       },
       {
@@ -2254,7 +2259,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "My application",
         "open": true,
         "items": [
-          { "id": "a/preliminary", "icon": "doc", "label": "Preliminary Science Application" }
+          { "id": "a/preliminary", "icon": "doc", "label": "Preliminary Science Application" },
+          { "id": "a/mypassword", "icon": "shield", "label": "Change Password" }
         ]
       },
       {
@@ -2928,6 +2934,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportreach", "icon": "alert", "label": "Students We Cannot Reach" },
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
+{ "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
@@ -2968,6 +2975,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportreach", "icon": "alert", "label": "Students We Cannot Reach" },
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
+{ "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },

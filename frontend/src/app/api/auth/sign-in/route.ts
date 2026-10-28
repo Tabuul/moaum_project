@@ -128,7 +128,9 @@ export async function POST(request: NextRequest) {
   } else if (kind === "applicant") {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;
-    home = "/applicant";
+    /* V687: signed in on a temporary password from the University: their own password first */
+    mustChange = signed.mustChange === true;
+    home = mustChange ? "/applicant/password" : "/applicant";
   } else if (kind === "pgapplicant") {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;

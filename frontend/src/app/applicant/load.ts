@@ -14,6 +14,8 @@ export async function loadApplication(): Promise<{ me: Me; app: Application } | 
   if (who.ok && who.data.activeOffice !== "applicant") redirect("/");
   if (!mine.ok) {
     if (mine.problem.status === 401) redirect("/login");
+    /* V687: signed in on a temporary password from the University: their own password before anything else */
+    if (mine.problem.code === "PASSWORD_CHANGE_REQUIRED") redirect("/applicant/password");
     /* 27 Oct 2026: a JUPEB candidate or a postgraduate applicant signs in as an applicant too, and an address here answered them
        "application account … not found" — each is sent to their own portal (where the JUPEB application fee is paid) */
     if (mine.problem.status === 404) {

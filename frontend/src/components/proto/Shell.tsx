@@ -373,6 +373,8 @@ export const ROUTES: Record<string, string> = {
   "a/dashboard": "/applicant",
   "a/apply": "/applicant/apply",
   "a/fee": "/applicant/fee",
+  "a/mypassword": "/applicant/password",   // V687
+  "t/applicantpw": "/admissions/applicant-passwords",   // V687
   "a/screening": "/applicant/screening",
   "a/score": "/applicant/score",
   "a/status": "/applicant/status",

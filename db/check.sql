@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 514
+\set EXPECTED 515
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28367,6 +28367,74 @@ BEGIN
            AND prior = pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 true, ' || pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 true, ' || pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 false'
            AND apps_n = 4, false),
       format('office %s reason %s | got %s | swaps again %s | placed %s | apps %s | why %s | prior %s | applications %s', r_office, r_reason, got, swaps, placed, apps, why, prior, apps_n));
+END $$;
+
+-- ── V687: an applicant's password reset by the Director of ICT, the Academic Office or ICT Support. A made-up applicant, locked after
+--          failed sign-ins and signed in elsewhere: the Registry is refused, a reason under ten characters refused; ICT Support's temporary
+--          password unlocks the account, ends its session, requires the change and is written down (kept: never altered); the Academic
+--          Office's links stop at three an hour; the applicant's own password clears the change; the desk finds them by JAMB number,
+--          application number, email, +234 phone and name. The block undoes its writes ──
+DO $$
+DECLARE
+    ses constant text := '9688/9689'; cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); who uuid := gen_random_uuid();
+    r_office text; r_reason text; tmp jsonb; a admissions.applicant_account; open_sessions int; logged text; kept text; links int := 0; r_limit text;
+    after_set admissions.applicant_account; f_jamb int; f_app int; f_mail int; f_phone int; f_name int; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.reason', 'CHECK V687', true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, date '9688-10-01', date '9689-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (cand, ses, '96889990001AP', 'CHECKAPW', 'Locked Applicant', 'B.Sc. CHECK V687', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash, failed_attempts, locked_until)
+    VALUES (acct, ses, cand, '96889990001AP', 'checkapw.v687@example.com', '08036870001', crypt('An old password', gen_salt('bf', 12)), 5, now() + interval '10 minutes');
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (gen_random_uuid(), acct, cand, ses, 'APP/88/687001');
+    INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (gen_random_bytes(32), acct, 'applicant', now() + interval '1 hour');
+
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM admissions.applicant_password_temporary(acct, crypt('Temp-Pass-123', gen_salt('bf', 12)), 'Applicant forgot the password', 24); r_office := 'done';
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    BEGIN PERFORM admissions.applicant_password_temporary(acct, crypt('Temp-Pass-123', gen_salt('bf', 12)), 'forgot', 24); r_reason := 'done';
+    EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+    tmp := admissions.applicant_password_temporary(acct, crypt('Temp-Pass-123', gen_salt('bf', 12)), 'Applicant forgot the password; identity checked at the desk', 24);
+    SELECT * INTO a FROM admissions.applicant_account WHERE id = acct;
+    open_sessions := (SELECT count(*) FROM platform.session WHERE person_id = acct AND ended_at IS NULL);
+    logged := (SELECT r.method || ':' || r.reset_office || ':' || r.was_locked || ':' || r.sessions_ended FROM admissions.applicant_password_reset r WHERE r.account_id = acct);
+    BEGIN UPDATE admissions.applicant_password_reset SET reason = 'changed afterwards' WHERE account_id = acct; kept := 'altered';
+    EXCEPTION WHEN check_violation THEN kept := split_part(SQLERRM, ':', 1); END;
+
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    FOR i IN 1..4 LOOP
+        BEGIN PERFORM admissions.applicant_password_link(acct, md5(i::text), 'The applicant asked by telephone for a link', 'c***v@example.com and *******0001'); links := links + 1;
+        EXCEPTION WHEN check_violation THEN r_limit := split_part(SQLERRM, ':', 1); END;
+    END LOOP;
+
+    PERFORM admissions.applicant_password_set(acct, crypt('My own password', gen_salt('bf', 12)));
+    SELECT * INTO after_set FROM admissions.applicant_account WHERE id = acct;
+
+    f_jamb := (SELECT count(*) FROM admissions.applicant_password_find('96889990001ap') x WHERE x.account_id = acct);
+    f_app := (SELECT count(*) FROM admissions.applicant_password_find('APP/88/687001') x WHERE x.account_id = acct);
+    f_mail := (SELECT count(*) FROM admissions.applicant_password_find('CheckApw.V687@example.com') x WHERE x.account_id = acct);
+    f_phone := (SELECT count(*) FROM admissions.applicant_password_find('+234 803 687 0001') x WHERE x.account_id = acct);
+    f_name := (SELECT count(*) FROM admissions.applicant_password_find('locked applicant checkapw') x WHERE x.account_id = acct)
+            + (SELECT count(*) FROM admissions.applicant_password_find('checkapw locked') x WHERE x.account_id = acct);
+    msg := format('office %s reason %s | temporary: must %s until %s locked %s failed %s sessions %s logged %s kept %s | links %s then %s | set: must %s temp %s | find %s/%s/%s/%s/%s',
+                  r_office, r_reason, a.must_change_password, a.temp_expires_at IS NOT NULL AND a.temp_expires_at > now() + interval '23 hours', a.locked_until, a.failed_attempts,
+                  open_sessions, logged, kept, links, r_limit, after_set.must_change_password, after_set.temp_expires_at, f_jamb, f_app, f_mail, f_phone, f_name);
+    RAISE EXCEPTION 'the V687 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V687 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V687: an applicant''s password is reset by the Director of ICT, the Academic Office or ICT Support only, with a reason — a temporary password unlocks the account, ends its sessions and requires the change, written down and kept; links stop at three an hour; the applicant''s own password clears the change; the desk finds them',
+      coalesce(r_office = 'APW_OFFICE' AND r_reason = 'APW_REASON' AND a.must_change_password AND a.temp_expires_at > now() + interval '23 hours'
+               AND a.locked_until IS NULL AND a.failed_attempts = 0 AND open_sessions = 0 AND logged = 'TEMPORARY_PASSWORD:ictagent:true:1' AND kept = 'APW_KEPT'
+               AND links = 3 AND r_limit = 'APW_LINK_LIMIT' AND NOT after_set.must_change_password AND after_set.temp_expires_at IS NULL
+               AND f_jamb = 1 AND f_app = 1 AND f_mail = 1 AND f_phone = 1 AND f_name = 2, false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

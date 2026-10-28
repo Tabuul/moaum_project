@@ -157,6 +157,24 @@ class ApplicantController {
         return service.me(account(authentication));
     }
 
+    public record PasswordChange(@NotBlank @Size(max = 200) String currentPassword, @NotBlank @Size(max = 200) String newPassword) {
+    }
+
+    /** V687: whether the applicant must choose their own password now (signed in on a temporary one from the University) */
+    @GetMapping("/me/password")
+    @PreAuthorize(APPLICANT)
+    Map<String, Object> passwordState(Authentication authentication) {
+        return service.passwordState(account(authentication));
+    }
+
+    /** V687: the applicant's own new password — required after a temporary one, open at any time; this session stays signed in */
+    @PostMapping("/me/password")
+    @PreAuthorize(APPLICANT)
+    Map<String, Object> changePassword(Authentication authentication, @Valid @RequestBody PasswordChange body, HttpServletRequest request) {
+        String sid = authentication instanceof JwtAuthenticationToken t ? t.getToken().getClaimAsString("sid") : null;
+        return service.changePassword(account(authentication), sid, body.currentPassword(), body.newPassword(), ClientAddress.of(request));
+    }
+
     @PutMapping("/me/next-of-kin")
     @PreAuthorize(APPLICANT)
     Map<String, Object> nextOfKin(Authentication authentication, @Valid @RequestBody NextOfKin body) {

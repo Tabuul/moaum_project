@@ -53,7 +53,8 @@ public class ApplicantService {
             "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER", "PASSPORT_2");
     static final int MAX_DOCUMENT = 2 * 1024 * 1024;
 
-    public record SignedIn(String token, Instant expiresAt, UUID accountId, String applicationNo, String surname, String otherNames) {
+    /** V687: mustChange — signed in on a temporary password from the University: the applicant chooses their own before anything else */
+    public record SignedIn(String token, Instant expiresAt, UUID accountId, String applicationNo, String surname, String otherNames, boolean mustChange) {
     }
 
     private final ApplicantRepository repo;
@@ -284,6 +285,13 @@ public class ApplicantService {
                 throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
                 return badCredentials();
             }
+            // V687: a temporary password from the University opens the account for its hours only
+            if (a.mustChangePassword() && a.tempExpiresAt() != null && a.tempExpiresAt().isBefore(OffsetDateTime.now())) {
+                repo.event(identifier, a.id(), "TEMP_PASSWORD_EXPIRED", ip);
+                return new DomainRuleViolation("AUTH_TEMP_PASSWORD_EXPIRED", "The temporary password you were given has expired.",
+                        new DomainRuleViolation.Remedy("Ask the Academic Office or ICT Support for a new one, or choose \"Forgot password\": a link goes to the email and phone you gave.",
+                                "ICT Support"));
+            }
             byte[] sid = new byte[32];
             random.nextBytes(sid);
             Instant end = Instant.now().plus(SESSION_LENGTH);
@@ -291,12 +299,60 @@ public class ApplicantService {
             repo.signedIn(a.id());
             repo.event(identifier, a.id(), "SIGNED_IN", ip);
             String name = a.surname() + ", " + a.otherNames();
-            return new SignedIn(issuer.issue(a.id(), name, List.of("applicant"), sid, end), end, a.id(), a.applicationNo(), a.surname(), a.otherNames());
+            return new SignedIn(issuer.issue(a.id(), name, List.of("applicant"), sid, end), end, a.id(), a.applicationNo(), a.surname(), a.otherNames(),
+                    a.mustChangePassword());
         });
         if (outcome instanceof DomainRuleViolation refused) {
             throw refused;
         }
         return (SignedIn) outcome;
+    }
+
+    /** V687: whether the applicant must choose their own password now (a temporary one from the University stands), and until when it opens */
+    @Transactional(readOnly = true)
+    public Map<String, Object> passwordState(UUID account) {
+        ApplicantRepository.Account a = repo.byId(account).orElseThrow(() -> new NotFound("application account", account));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("mustChange", a.mustChangePassword());
+        out.put("temporaryUntil", a.mustChangePassword() && a.tempExpiresAt() != null ? a.tempExpiresAt().toString() : null);
+        out.put("name", a.surname() + ", " + a.otherNames());
+        out.put("applicationNo", a.applicationNo());
+        return out;
+    }
+
+    /**
+     * V687: the applicant's own new password — the one they have (or the temporary one from the University) first, then the new: eight
+     * characters or more, not their JAMB or application number, not the one they have. Every other open session ends; this one stays.
+     */
+    public Map<String, Object> changePassword(UUID account, String sidHex, String current, String next, String ip) {
+        ApplicantRepository.Account a = repo.byId(account).orElseThrow(() -> new NotFound("application account", account));
+        boolean sentinel = "SET_ON_FIRST_LOGIN".equals(a.passwordHash());
+        boolean ok = sentinel
+                ? a.jambKey() != null && a.jambKey().equalsIgnoreCase(current == null ? "" : current.trim())
+                : encoder.matches(current == null ? "" : current, a.passwordHash());
+        if (!ok) {
+            throw new DomainRuleViolation("AUTH_CURRENT_PASSWORD", "The password you have now is not the one entered.",
+                    new DomainRuleViolation.Remedy(a.mustChangePassword() ? "Enter the temporary password you were given." : "Enter the password you signed in with.", "You"));
+        }
+        if (next == null || next.length() < MIN_PASSWORD) {
+            throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
+                    new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
+        }
+        if (ownNumber(next, a.jambKey(), a.applicationNo())) {
+            throw numberIsNoPassword();
+        }
+        if (next.equals(current)) {
+            throw new DomainRuleViolation("AUTH_PASSWORD_SAME", "The new password is the one you have now.",
+                    new DomainRuleViolation.Remedy("Choose a different password.", "You"));
+        }
+        String hash = encoder.encode(next);
+        byte[] keep = sidHex == null || sidHex.isBlank() ? null : HexFormat.of().parseHex(sidHex);
+        atTheDoor(account, "applicant password changed", () -> {
+            repo.changeOwnPassword(account, hash, keep);
+            repo.event("", account, "PASSWORD_CHANGED", ip);
+            return null;
+        });
+        return Map.of("changed", true, "mustChange", false);
     }
 
     @Transactional

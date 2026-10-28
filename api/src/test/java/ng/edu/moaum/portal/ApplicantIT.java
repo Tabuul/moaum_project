@@ -264,5 +264,43 @@ class ApplicantIT {
 
         // the applicant's token reaches nothing of the office's
         assertThat(it.get(fresh, PATH + "/applicants").getStatusCode().value()).isEqualTo(403);
+
+        // ── V687: the Director of ICT, the Academic Office and ICT Support reset the password; the applicant chooses their own at once ──
+        String pwDesk = "/api/v1/applicant-passwords";
+        String support = ItSupport.token("ictagent");
+        String accountId = String.valueOf(reset.getBody().get("accountId"));
+        assertThat(it.getList(registrar, pwDesk + "/search?q=" + appNo).getStatusCode().value()).isEqualTo(403);
+        assertThat((List<Map<String, Object>>) it.getList(support, pwDesk + "/search?q=" + jamb).getBody()).extracting(h -> h.get("application_no")).containsExactly(appNo);
+        assertThat(it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "TEMPORARY", "reason", "short")).getBody().get("code"))
+                .isEqualTo("APW_REASON");
+        ResponseEntity<Map> temp = it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset",
+                Map.of("method", "TEMPORARY", "reason", "Applicant forgot the password; identity checked at the desk"));
+        assertThat(temp.getStatusCode().value()).as(String.valueOf(temp.getBody())).isEqualTo(200);
+        String tempPw = String.valueOf(temp.getBody().get("temporaryPassword"));
+        assertThat(tempPw).hasSize(12);
+        // the password they had opens nothing now; the temporary one opens a session that changes it before anything else
+        assertThat(post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", "a brand new password")).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> onTemp = post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", tempPw));
+        assertThat(onTemp.getStatusCode().value()).as(String.valueOf(onTemp.getBody())).isEqualTo(200);
+        assertThat(onTemp.getBody().get("mustChange")).isEqualTo(true);
+        String tempToken = String.valueOf(onTemp.getBody().get("token"));
+        ResponseEntity<Map> held = it.get(tempToken, "/api/v1/applicant/me");
+        assertThat(held.getStatusCode().value()).isEqualTo(403);
+        assertThat(held.getBody().get("code")).isEqualTo("PASSWORD_CHANGE_REQUIRED");
+        assertThat(it.get(tempToken, "/api/v1/applicant/me/password").getBody().get("mustChange")).isEqualTo(true);
+        assertThat(it.call(tempToken, HttpMethod.POST, "/api/v1/applicant/me/password", Map.of("currentPassword", tempPw, "newPassword", jamb)).getBody().get("code"))
+                .isEqualTo("AUTH_PASSWORD_IS_NUMBER");
+        assertThat(it.call(tempToken, HttpMethod.POST, "/api/v1/applicant/me/password", Map.of("currentPassword", tempPw, "newPassword", "my chosen password"))
+                .getStatusCode().value()).isEqualTo(200);
+        assertThat(it.get(tempToken, "/api/v1/applicant/me").getStatusCode().value()).as("the same session goes on").isEqualTo(200);
+        ResponseEntity<Map> chosen = post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", "my chosen password"));
+        assertThat(chosen.getStatusCode().value()).isEqualTo(200);
+        assertThat(chosen.getBody().get("mustChange")).isEqualTo(false);
+        // the Academic Office sends the applicant's own link instead: the address masked; both resets on the history
+        ResponseEntity<Map> link = it.call(academic, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "LINK", "reason", "The applicant asked by telephone for a link"));
+        assertThat(link.getStatusCode().value()).as(String.valueOf(link.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(link.getBody().get("sentTo"))).contains("@example.com").doesNotContain(jamb.toLowerCase() + "@");
+        assertThat((List<Map<String, Object>>) it.getList(support, pwDesk + "/history?account=" + accountId).getBody())
+                .extracting(h -> h.get("method")).containsExactly("RESET_LINK", "TEMPORARY_PASSWORD");
     }
 }
