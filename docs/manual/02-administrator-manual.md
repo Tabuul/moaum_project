@@ -882,6 +882,13 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 
 **3.4.7 Legacy fees and payment history imports.** Status: IMPLEMENTED. Old Fees History — `/finance/legacy-fees` (`bursar, super, admin`): template **Matriculation Number, Session, Semester, Amount Paid, Paid On, Receipt No, Note**; Amount blank = cleared in full against the schedule; preview then **Load n rows** (chunks of 500; idempotent on `MOAUM-LEG-…`); tiles Rows read / Settled / No such student / Nothing to settle. Payment History Upload — `/finance/payments-history` (`bursar, super, ict, admin`): template **Matriculation Number, Session, Amount, Purpose, Payment Date, Channel, Reference, Receipt No**; chunks of 400; a row already on record is skipped; no student is notified; a blank session files under LEGACY.
 
+**Possible bank double charges, checked against the bank's list (V684).** On Old Fees History, **Possible bank double charges** lists one student's old-portal payments of the same day, fee and amount under two payment numbers. A Bursary officer checks them one at a time (**Check with the bank…**), or many at once under **Check against the bank's list**:
+1. **Upload the bank's list…** (Excel or CSV with a payment-reference column; a bank statement's narration also works) and set **Payments from … to …**, the days the list covers in full.
+2. **Evidence**: name the statement or report → **Preview**. Each group of those days reads *Every payment on the list*, *Not all on the list* (the records not on it are to be withdrawn), or is left for a check by hand (*None on the list*, *Less on the list*, *No payment number*).
+3. **Record n checks and raise m withdrawals** (`BLC/YYYY/NNNNNN`).
+4. Another Bursary officer opens the list (**View**, **Excel**) and chooses **Approve all…** (each record archived, never deleted, and the student told) or **Reject all…** with a reason. The officer who recorded the list may **Cancel all…** instead.
+See `docs/old-fees-double-charges.md`.
+
 **3.4.8 NELFUND, wallets and funding sources.** Status: IMPLEMENTED. Sources & Wallets — `/finance/nelfund` (Bursary `bursar, admin, super`; Registry offices may match rows).
 
 - **Load a remittance**: The Fund's reference (e.g. `NLF/2026/0918`), Received on, Note, and the rows (template **Matriculation Number, Name, Amount**, or pasted) → **Load and match**: each row is matched on the register; matched rows credit the student's wallet; unmatched rows go to **Suspense** owned by the Registry (no such number) or the Bursary (withdrawn/graduated/bad amount).

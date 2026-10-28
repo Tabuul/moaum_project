@@ -23,6 +23,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { itemCodes, legacyFeeColumns, legacyFeeKind, legacyFeeRows, withItemNames, type ItemCode, type LegacyFeeRow as Row } from "@/lib/legacy-fees";
 import { fileTally } from "@/lib/old-fees-history";
 import { OldFeesDoubleCharges } from "./OldFeesDoubleCharges";
+import { OldFeesBankList } from "./OldFeesBankList";
 import { OldFeesDoubles } from "./OldFeesDoubles";
 import { OldFeesLedger } from "./OldFeesLedger";
 import { OldFeesMislabelled } from "./OldFeesMislabelled";
@@ -410,6 +411,9 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       <OldFeesOverpaid may={bursary} tick={changed} onChanged={bump} />
 
       <OldFeesDoubleCharges may={bursary} tick={changed} onChanged={bump} />
+
+      {/* V684: the bank's list of payments received, set against every possible double charge of its days at once */}
+      <OldFeesBankList may={bursary} tick={changed} onChanged={bump} />
 
       <OldFeesNotReceived may={bursary} tick={changed} onChanged={bump} />
 

@@ -229,4 +229,99 @@ class DoubleChargeIT {
         assertThat(it.call(bursar, HttpMethod.POST, other + "/cancel", Map.of()).getBody()).containsEntry("state", "CANCELLED");
         assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE reference = :r").param("r", recN.get(0)).query(Long.class).single()).isEqualTo(1);
     }
+
+    /** V684: two old-portal records of ₦85,294 for the first semester on a day already past, under two payment numbers */
+    private List<String> chargedOn(UUID student, String number, String day, String payrefA, String payrefB) {
+        String first = "MOAUM-LEG-" + number.replaceAll("[^0-9A-Z]", "") + "-" + a.replace("/", "-") + "-S1";
+        String second = first + "-" + payrefB;
+        it.db(() -> {
+            for (String[] r : new String[][] {{first, payrefA}, {second, payrefB}}) {
+                jdbc.sql("""
+                        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                        VALUES (:s, :ses, :r, 'School fees (legacy) · semester 1', 85294, CAST(:d AS timestamptz), CAST(:d AS timestamptz), :by, 'Legacy', 'LEG-' || :r,
+                                'Imported from the old portal · old ref ' || :p)
+                        """).param("s", student).param("ses", a).param("r", r[0]).param("d", day + " 09:00:00+01").param("p", r[1]).param("by", UUID.randomUUID()).update();
+                jdbc.sql("INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES (:p, :r, 85294)").param("p", r[1]).param("r", r[0]).update();
+            }
+            return null;
+        });
+        return List.of(first, second);
+    }
+
+    @Test
+    void theBanksListChecksThePossibleDoubleChargesOfItsDaysAtOnceAndAnotherOfficerDecidesItsWithdrawals() {
+        Random random = new Random();
+        int year = it.freeYear(3181, 3199, 0, 1);
+        a = year + "/" + (year + 1);
+        it.session(a, year);
+        java.time.LocalDate day = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).minusDays(10);
+        String numR = it.freeNumber("MOAUM/BLR/86/", 6);
+        String numN = it.freeNumber("MOAUM/BLN/86/", 6);
+        UUID received = it.student(it.freeSurname("ZZBLCR"), "C00023", null, numR, 200);
+        UUID notReceived = it.student(it.freeSurname("ZZBLCN"), "C00023", null, numN, 200);
+        String tag = String.format("%07d", random.nextInt(10_000_000));
+        String pR1 = "PR" + year + "R" + tag + "1", pR2 = "PR" + year + "R" + tag + "2", pN1 = "PR" + year + "N" + tag + "1", pN2 = "PR" + year + "N" + tag + "2";
+        chargedOn(received, numR, day.toString(), pR1, pR2);
+        List<String> recN = chargedOn(notReceived, numN, day.toString(), pN1, pN2);
+        String bursar = ItSupport.token("bursar");
+        String deputy = ItSupport.token("bursar");
+        String audit = ItSupport.token("audit");
+
+        // the gateway's report shows both of one student's payments and one of the other's (written as a report writes them)
+        Map<String, Object> list = new LinkedHashMap<>();
+        list.put("session", a);
+        list.put("from", day.minusDays(3).toString());
+        list.put("to", day.plusDays(3).toString());
+        list.put("numbers", List.of(Map.of("n", pR1.toLowerCase()), Map.of("n", pR2, "a", "85294"), Map.of("n", pN1, "a", "85,294.00")));
+        list.put("evidence", "Interswitch collections report, MOAU fees account");
+        list.put("fileName", "collections.xlsx");
+        list.put("rowsRead", 3);
+
+        // reading the list is the Bursary's; the preview judges each group and writes nothing
+        assertThat(it.call(audit, HttpMethod.POST, "/api/v1/finance/legacy-fees/double-charges/bank-list/preview", list).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> preview = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/double-charges/bank-list/preview", list);
+        assertThat(preview.getStatusCode().value()).as(String.valueOf(preview.getBody())).isEqualTo(200);
+        assertThat((Map<String, Object>) preview.getBody().get("counts")).containsEntry("RECEIVED", 1).containsEntry("NOT_RECEIVED", 1);
+        assertThat(preview.getBody()).containsEntry("toWithdraw", 1);
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.double_charge_check WHERE student_id IN (:a, :b)").param("a", received).param("b", notReceived)
+                .query(Long.class).single()).isZero();
+
+        // recorded: each group checked from the list, the record not on it raised for withdrawal beside the one that is
+        ResponseEntity<Map> recorded = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/double-charges/bank-list", list);
+        assertThat(recorded.getStatusCode().value()).as(String.valueOf(recorded.getBody())).isEqualTo(200);
+        String ref = (String) recorded.getBody().get("listRef");
+        assertThat(ref).matches("BLC/[0-9]{4}/[0-9]{6}");
+        assertThat((Map<String, Object>) recorded.getBody().get("outcomes")).containsEntry("RECEIVED", 1).containsEntry("NOT_RECEIVED", 1).containsEntry("raised", 1);
+        Map<String, Object> gR = group(it.get(audit, "/api/v1/finance/legacy-fees/double-charges?session=" + a).getBody(), received);
+        assertThat(gR).containsEntry("verdict", "RECEIVED");
+        String path = "/api/v1/finance/legacy-fees/bank-lists/" + ref.substring("BLC/".length());
+        Map<String, Object> shown = it.get(audit, path).getBody();
+        Map<String, Object> rowN = ((List<Map<String, Object>>) shown.get("rows")).stream().filter(r -> notReceived.toString().equals(r.get("student_id"))).findFirst().orElseThrow();
+        assertThat(rowN).containsEntry("outcome", "NOT_RECEIVED").containsEntry("missing", List.of(recN.get(1))).containsEntry("found", List.of(recN.get(0)));
+        assertThat((List<Map<String, Object>>) rowN.get("withdrawals")).extracting(w -> w.get("reference") + ":" + w.get("state")).containsExactly(recN.get(1) + ":PROPOSED");
+        Map<String, Object> listed = ((List<Map<String, Object>>) it.get(bursar, "/api/v1/finance/legacy-fees/bank-lists").getBody().get("rows")).stream()
+                .filter(r -> ref.equals(r.get("list_ref"))).findFirst().orElseThrow();
+        assertThat(listed).containsEntry("mine", true);
+        assertThat((Map<String, Object>) listed.get("withdrawals")).containsEntry("PROPOSED", 1);
+
+        // decided together, by another officer; a rejection says why
+        ResponseEntity<Map> self = it.call(bursar, HttpMethod.POST, path + "/decide", Map.of("action", "APPROVE"));
+        assertThat(self.getStatusCode().value()).isEqualTo(403);
+        assertThat(self.getBody()).containsEntry("code", "BANK_LIST_SAME_OFFICER");
+        assertThat(it.call(audit, HttpMethod.POST, path + "/decide", Map.of("action", "APPROVE")).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> bare = it.call(deputy, HttpMethod.POST, path + "/decide", Map.of("action", "REJECT"));
+        assertThat(bare.getStatusCode().value()).isEqualTo(422);
+        assertThat(bare.getBody()).containsEntry("code", "BANK_LIST_NOTE");
+        ResponseEntity<Map> approved = it.call(deputy, HttpMethod.POST, path + "/decide", Map.of("action", "APPROVE", "note", "Report seen"));
+        assertThat(approved.getStatusCode().value()).as(String.valueOf(approved.getBody())).isEqualTo(200);
+        assertThat(approved.getBody()).containsEntry("done", 1).containsEntry("refused", 0);
+
+        // the record the bank never received is archived, never deleted, and the student is no longer listed
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_archive WHERE reference = :r").param("r", recN.get(1)).query(String.class).single()).isEqualTo("NOT_RECEIVED");
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.payment_reference WHERE reference = :r").param("r", recN.get(1)).query(Long.class).single()).isEqualTo(1);
+        assertThat(group(it.get(audit, "/api/v1/finance/legacy-fees/double-charges?session=" + a).getBody(), notReceived)).isNull();
+        ResponseEntity<Map> nothing = it.call(deputy, HttpMethod.POST, path + "/decide", Map.of("action", "APPROVE"));
+        assertThat(nothing.getStatusCode().value()).isEqualTo(422);
+        assertThat(nothing.getBody()).containsEntry("code", "BANK_LIST_NOTHING_WAITING");
+    }
 }

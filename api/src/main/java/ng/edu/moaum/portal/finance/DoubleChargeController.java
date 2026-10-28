@@ -164,4 +164,112 @@ class DoubleChargeController {
         String state = jdbc.sql("SELECT finance.cancel_not_received(:r)").param("r", ref).query(String.class).single();
         return Map.of("requestRef", ref, "state", state);
     }
+
+    // ── V684: the bank's list of payments received, set against every possible double charge of the days it covers ───────────
+
+    /** one payment number on the bank's or the gateway's list, with the amount the list shows where it shows one */
+    public record BankNumber(@Size(max = 80) String n, @Size(max = 40) String a) { }
+
+    public record BankList(@Pattern(regexp = "^([0-9]{4}/[0-9]{4}|all)?$") String session, @NotNull LocalDate from, @NotNull LocalDate to,
+                           @NotNull @Size(min = 1, max = 300_000) List<BankNumber> numbers, @Size(max = 500) String evidence, @Size(max = 500) String note,
+                           @Size(max = 200) String fileName, Integer rowsRead) { }
+
+    private String numbersJson(BankList body) {
+        return json.writeValueAsString(body.numbers());
+    }
+
+    /** what recording the list would do: each possible double charge of the days it covers, judged — nothing written */
+    @PostMapping("/legacy-fees/double-charges/bank-list/preview")
+    @PreAuthorize(BURSARY)
+    @Transactional(readOnly = true)
+    Map<String, Object> bankListPreview(@Valid @RequestBody BankList body) {
+        String text = jdbc.sql("""
+                WITH m AS MATERIALIZED (SELECT * FROM finance.bank_list_preview(:s, :f, :t, CAST(:j AS jsonb)))
+                SELECT json_build_object(
+                    'session', coalesce(:s, 'all'),
+                    'numbers', (SELECT count(DISTINCT n) FROM finance.bank_list_numbers(CAST(:j AS jsonb))),
+                    'counts', (SELECT coalesce(json_object_agg(o.outcome, o.n), '{}'::json) FROM (SELECT outcome, count(*) AS n FROM m GROUP BY outcome) o),
+                    'toWithdraw', (SELECT coalesce(sum(cardinality(missing)), 0) FROM m WHERE outcome = 'NOT_RECEIVED'),
+                    'toWithdrawAmount', (SELECT coalesce(sum(amount * cardinality(missing)), 0) FROM m WHERE outcome = 'NOT_RECEIVED'),
+                    'rows', (SELECT coalesce(json_agg(r ORDER BY r.ord, r.name, r.paid_on), '[]'::json) FROM (
+                        SELECT student_id, number, name, session, purpose, paid_on::text AS paid_on, amount, payments, refs, payrefs, outcome, found, missing,
+                               array_position(ARRAY['NOT_RECEIVED', 'RECEIVED', 'AMOUNT_SHORT', 'NONE_FOUND', 'NO_NUMBER', 'CHECKED'], outcome) AS ord
+                          FROM m WHERE outcome NOT IN ('OUTSIDE_PERIOD', 'CHECKED')) r))::text
+                """).param("s", sessionOf(body.session()), Types.VARCHAR).param("f", body.from()).param("t", body.to())
+                .param("j", numbersJson(body)).query(String.class).single();
+        return read(text);
+    }
+
+    /** the list recorded (BLC/YYYY/NNNNNN): every payment received, or not all — the records not on it raised for withdrawal for
+     *  another Bursary officer to approve; the rest left for a check by hand */
+    @PostMapping("/legacy-fees/double-charges/bank-list")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> bankListRecord(@Valid @RequestBody BankList body) {
+        String ref = jdbc.sql("SELECT finance.bank_list_apply(:s, :f, :t, CAST(:j AS jsonb), :e, :n, :fn, :rr)")
+                .param("s", sessionOf(body.session()), Types.VARCHAR).param("f", body.from()).param("t", body.to()).param("j", numbersJson(body))
+                .param("e", body.evidence() == null ? "" : body.evidence().trim()).param("n", body.note(), Types.VARCHAR)
+                .param("fn", body.fileName(), Types.VARCHAR).param("rr", body.rowsRead(), Types.INTEGER).query(String.class).single();
+        String outcomes = jdbc.sql("SELECT outcomes::text FROM finance.bank_list_check WHERE list_ref = :r").param("r", ref).query(String.class).single();
+        return Map.of("listRef", ref, "outcomes", read(outcomes));
+    }
+
+    /** the bank lists recorded, the latest first, with what each judged and where its withdrawals stand */
+    @GetMapping("/legacy-fees/bank-lists")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> bankLists() {
+        String text = jdbc.sql("""
+                SELECT json_build_object('rows', (SELECT coalesce(json_agg(r ORDER BY r.at DESC), '[]'::json) FROM (
+                    SELECT l.list_ref, l.session, l.covers_from::text AS covers_from, l.covers_to::text AS covers_to, l.file_name, l.rows_read, l.numbers_read,
+                           l.with_amounts, l.evidence, l.note, l.outcomes, helpdesk.person_name(l.checked_by) AS checked_by, l.checked_at::text AS checked_at,
+                           l.checked_at AS at, l.checked_by = nullif(current_setting('moaum.actor_id', true), '')::uuid AS mine,
+                           (SELECT coalesce(json_object_agg(t.state, t.n), '{}'::json) FROM (
+                               SELECT w.state, count(*) AS n FROM finance.payment_not_received w
+                                WHERE w.request_ref IN (SELECT unnest(g.raised) FROM finance.bank_list_group g WHERE g.list_id = l.id)
+                                GROUP BY w.state) t) AS withdrawals
+                      FROM finance.bank_list_check l
+                     ORDER BY l.checked_at DESC
+                     LIMIT 200) r))::text
+                """).query(String.class).single();
+        return read(text);
+    }
+
+    /** one list: each possible double charge it judged, what the list showed and the withdrawals it raised */
+    @GetMapping("/legacy-fees/bank-lists/{year}/{seq}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> bankList(@PathVariable String year, @PathVariable String seq) {
+        String ref = "BLC/" + year + "/" + seq;
+        String text = jdbc.sql("""
+                SELECT json_build_object('listRef', l.list_ref, 'rows', (SELECT coalesce(json_agg(r ORDER BY r.ord, r.name, r.paid_on), '[]'::json) FROM (
+                    SELECT g.student_id, coalesce(s.matric_no, s.admission_no) AS number, s.surname || ', ' || s.other_names AS name, g.session, g.purpose,
+                           g.paid_on::text AS paid_on, g.amount, g.refs, g.payrefs, g.outcome, g.found, g.missing, g.refusal,
+                           array_position(ARRAY['NOT_RECEIVED', 'RECEIVED', 'REFUSED', 'AMOUNT_SHORT', 'NONE_FOUND', 'NO_NUMBER', 'CHECKED'], g.outcome) AS ord,
+                           (SELECT coalesce(json_agg(json_build_object('requestRef', w.request_ref, 'reference', w.reference, 'state', w.state) ORDER BY w.request_ref), '[]'::json)
+                              FROM finance.payment_not_received w WHERE w.request_ref = ANY (g.raised)) AS withdrawals
+                      FROM finance.bank_list_group g
+                      LEFT JOIN people.student s ON s.id = g.student_id
+                     WHERE g.list_id = l.id) r))::text
+                  FROM finance.bank_list_check l WHERE l.list_ref = :r
+                """).param("r", ref).query(String.class).optional()
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "No bank list " + ref));
+        return read(text);
+    }
+
+    public record BankListDecision(@NotBlank @Pattern(regexp = "APPROVE|REJECT|CANCEL") String action, @Size(max = 500) String note) { }
+
+    /** every withdrawal the list raised that still waits: approved or rejected by another Bursary officer, or cancelled by the one
+     *  who recorded the list — each through the withdrawal's own decision */
+    @PostMapping("/legacy-fees/bank-lists/{year}/{seq}/decide")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> bankListDecide(@PathVariable String year, @PathVariable String seq, @Valid @RequestBody BankListDecision body) {
+        String ref = "BLC/" + year + "/" + seq;
+        return jdbc.sql("SELECT done, refused, refusals FROM finance.decide_bank_list(:r, :a, :n)")
+                .param("r", ref).param("a", body.action()).param("n", body.note(), Types.VARCHAR)
+                .query((rs, i) -> Map.<String, Object>of("listRef", ref, "action", body.action(), "done", rs.getInt("done"), "refused", rs.getInt("refused"),
+                        "refusals", List.of((String[]) rs.getArray("refusals").getArray())))
+                .single();
+    }
 }

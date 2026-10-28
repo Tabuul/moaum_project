@@ -1,4 +1,4 @@
-# Overpaid old-portal fees: possible bank double charges and payments never received (V561)
+# Overpaid old-portal fees: possible bank double charges and payments never received (V561, V684)
 
 ## The case
 
@@ -48,7 +48,8 @@ reason.
   can cancel it.
 * **Approved:**
   * the record is withdrawn as V498 withdraws a double: its ledger posting reversed and freed;
-  * the record is kept on `finance.old_payment_withdrawn` (kind `NOT_RECEIVED`, with the record that stands), then removed;
+  * the record is kept on `finance.old_payment_withdrawn` (kind `NOT_RECEIVED`, with the record that stands) and, since V670,
+    archived for good (counted nowhere, never deleted);
   * its payment number is kept on `finance.legacy_payref_withdrawn`, so loading the same export again never records it
     again (counted as a duplicate);
   * the student is told by e-mail, text and the portal (template `PAYMENT_NOT_RECEIVED_REMOVED`) and their fees page shows
@@ -59,6 +60,38 @@ reason.
 
 The checks and the withdrawals are the Bursary's office (`bursar`). Every other finance reader sees them. The database enforces
 the office and the two people, not only the screen.
+
+### Checking against the bank's list (V684)
+
+Finance → Old Fees History → **Check against the bank's list** checks many groups at once. A Bursary officer uploads the bank's
+or the gateway's list of payments received (Excel or CSV) and says which days of payments it covers:
+
+* **The file.** A column naming the payment number (Payment Reference, Transaction Ref, Customer Reference, Ref, Receipt No …)
+  is read with the amount and date columns where the list has them. A bank statement with no such column is searched cell by
+  cell for numbers, and its amounts are not compared. Numbers are read in upper case without spaces, as the old portal keeps
+  them.
+* **The days.** Only groups paid within the days stated are judged. A payment made late on the last day may reach the bank the
+  next day, so end the days a little before the list does.
+* **Preview first** (`finance.bank_list_preview`, nothing written). Each unchecked group of those days is:
+  * **every payment on the list**: checked "every payment received";
+  * **not all on the list** (at least one on it): checked "not all", and each record not on the list is raised for withdrawal
+    beside the one that is;
+  * **none on the list**, **less on the list** than the record holds, or **a record with no payment number**: left for a check by
+    hand.
+* **Record** (`finance.bank_list_apply`, `BLC/YYYY/NNNNNN`). The checks and withdrawals are V561's own, each marked with the
+  list. A group whose withdrawal V561 refuses (several payments in one record, linked, swapped, the excess decided) is left
+  unchecked and named. Every group judged is kept on `finance.bank_list_group`, written once. A list that settles nothing is
+  refused (`BANK_LIST_NOTHING_TO_RECORD`).
+* **Decide together** (`finance.decide_bank_list`). Another Bursary officer approves or rejects (with a note) every withdrawal
+  the list raised that still waits; the officer who recorded the list may cancel them instead. Each one goes through
+  `finance.decide_not_received`, so an approved record is archived, never deleted, its number is remembered and the student is
+  told. A withdrawal that can no longer be made stays waiting and is named.
+
+A check made again by hand on Possible bank double charges replaces the list's.
+
+On the copy of 21 October 2026, a list of March 2026's payment numbers with one number of every other pair taken out judged
+86 groups in under a second: 43 every payment received and 43 not all, with 43 withdrawals (₦2.69m) raised. Recording took
+3 s and approving all 43 took 1 s (rolled back).
 
 ## For the case above
 
@@ -80,6 +113,13 @@ the office and the two people, not only the screen.
 
 The API is `/api/v1/finance/legacy-fees/double-charges` (list, `/check`) and `/api/v1/finance/payments-not-received`
 (list, raise, `/{year}/{seq}/decide`, `/{year}/{seq}/cancel`).
+
+V684 adds `finance.bank_list_check` and `finance.bank_list_group` (audited, kept), `double_charge_check.bank_list_id`, the
+functions `finance.bank_list_numbers`, `finance.bank_list_match`, `finance.bank_list_validate`, `finance.bank_list_preview`,
+`finance.bank_list_apply` and `finance.decide_bank_list`, and restates `finance.check_double_charge` (a check made again by
+hand clears the list's mark). The API: `POST /api/v1/finance/legacy-fees/double-charges/bank-list/preview` and
+`…/bank-list` (Bursary), `GET /api/v1/finance/legacy-fees/bank-lists` and `…/bank-lists/{year}/{seq}` (finance readers),
+`POST …/bank-lists/{year}/{seq}/decide` with `APPROVE`, `REJECT` or `CANCEL` (Bursary).
 
 On the Railway copy (17 Oct 2026) no student has such a pair, so the list is empty there; the AWS case comes from uploads made
 on AWS. The list reads a session in about 0.5 s on that copy, and every session in 1.4 s.

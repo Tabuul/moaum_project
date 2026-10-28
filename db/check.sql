@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 512
+\set EXPECTED 513
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28197,6 +28197,103 @@ BEGIN
   PERFORM pg_temp.assert('V685: no result withheld from a student owing nothing — a past session read at the level the student was in it (released though nothing is stated at today''s level, or a later level''s line is), the current session paid released, fees not stated withhold nothing; owing ₦12,400 for the past session withholds it, names the amount and (arrears) the current session too',
       coalesce(past1 AND past2 AND out_none = 0 AND with300 AND cur_paid AND unstated AND NOT owe1 AND owe_amt = 12400 AND arrears AND NOT owe_cur, false),
       msg);
+END $$;
+
+-- ── V684. Possible bank double charges checked in bulk against the bank's list of payments received. Five made-up students of
+--          one session each hold two old-portal records of one day and amount under two payment numbers. The list (numbers in odd
+--          case and spacing, amounts for some) shows both of the first's (every payment received), one of the second's (the other
+--          never arrived), both of the third's paid outside the days it covers, neither of the fourth's, and the fifth's first for
+--          less than the record. The preview judges each so and writes nothing; only the Bursary records the list (BLC/…): the
+--          first two checked from it, the second's missing record raised for withdrawal beside the one on the list, the rest left
+--          unchecked, every group judged kept and written once; the same list again settles nothing. Its withdrawals are decided
+--          together by another officer only (rejected only with a note), approved through V561's own decision — archived, never
+--          deleted — and nothing then waits; a check made again by hand is no longer the list's. An empty list and days the wrong
+--          way round are refused. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2189; ses text; v_prog text; v_dept text; v_fac text; b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid();
+    st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+    d0 date := (now() AT TIME ZONE 'Africa/Lagos')::date - 20; v_bank jsonb; i int; r1 text; r2 text; v_day date;
+    pv text; v_ict text; v_ref text; v_checks text; v_pnr text; v_groups int; v_again text; v_same text; v_bare text; dec record;
+    v_state text; v_archived int; v_none text; v_kept text; v_hand uuid; v_mark text; v_empty text; v_period text; v_wrote int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', b1::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V684', true);
+    ses := format('%s/%s', y, y + 1);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, make_date(y, 10, 1), make_date(y + 1, 9, 30), 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.Sc. CHECK V684', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    FOR i IN 1..5 LOOP
+        INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st[i], 'MOAUM/ZZL/BLC/5684' || i, 'CHECKV684', 'Bank List ' || i, v_prog, 'UTME', ses, 100, 200, 'ACTIVE', now());
+        v_day := CASE WHEN i = 3 THEN d0 - 30 ELSE d0 END;
+        r1 := 'MOAUM-LEG-MOAUMZZLBLC5684' || i || '-' || replace(ses, '/', '-') || '-S1';
+        r2 := r1 || '-PR2189' || i || 'B';
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no) VALUES
+            (st[i], ses, r1, 'School fees (legacy) · semester 1', 57190, v_day, v_day + time '09:00', b1, 'Legacy', 'Imported from the old portal', 'LEG-' || r1),
+            (st[i], ses, r2, 'School fees (legacy) · semester 1', 57190, v_day, v_day + time '10:00', b1, 'Legacy', 'Imported from the old portal', 'LEG-' || r2);
+        INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PR2189' || i || 'A', r1, 57190), ('PR2189' || i || 'B', r2, 57190);
+    END LOOP;
+    v_bank := jsonb_build_array(jsonb_build_object('n', 'pr21891a', 'a', '57190'), 'PR2189 1B', jsonb_build_object('n', 'PR21892A', 'a', '57,190.00'),
+                                'PR21893A', 'PR21893B', jsonb_build_object('n', 'PR21895A', 'a', '50000'), 'PR21895B', 'SOMETHING-ELSE-123');
+
+    -- the preview: each judged, nothing written
+    SELECT string_agg(right(m.number, 1) || '=' || m.outcome || CASE WHEN m.outcome = 'NOT_RECEIVED' THEN '/' || array_to_string(m.missing, ',') ELSE '' END, ' ' ORDER BY m.number) INTO pv
+      FROM finance.bank_list_preview(ses, d0 - 5, d0 + 5, v_bank) m;
+    SELECT count(*) INTO v_wrote FROM finance.double_charge_check WHERE student_id = ANY (st);
+    -- only the Bursary records it
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM finance.bank_list_apply(ses, d0 - 5, d0 + 5, v_bank, 'Interswitch collections report', NULL, 'list.xlsx', 9);
+    EXCEPTION WHEN insufficient_privilege THEN v_ict := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    v_ref := finance.bank_list_apply(ses, d0 - 5, d0 + 5, v_bank, 'Interswitch collections report', NULL, 'list.xlsx', 9);
+    SELECT string_agg(right(s.matric_no, 1) || '=' || c.verdict || CASE WHEN c.bank_list_id IS NOT NULL THEN '*' ELSE '' END, ' ' ORDER BY s.matric_no) INTO v_checks
+      FROM finance.double_charge_check c JOIN people.student s ON s.id = c.student_id WHERE c.student_id = ANY (st);
+    SELECT w.request_ref || ':' || right(w.reference, 3) || ':' || right(w.kept_reference, 3) INTO v_pnr
+      FROM finance.payment_not_received w WHERE w.student_id = st[2] AND w.state = 'PROPOSED';
+    SELECT count(*) INTO v_groups FROM finance.bank_list_group g JOIN finance.bank_list_check l ON l.id = g.list_id WHERE l.list_ref = v_ref;
+    BEGIN PERFORM finance.bank_list_apply(ses, d0 - 5, d0 + 5, v_bank, 'Interswitch collections report', NULL, 'list.xlsx', 9);
+    EXCEPTION WHEN check_violation THEN v_again := split_part(SQLERRM, ':', 1); END;
+    -- decided together, by another officer
+    BEGIN PERFORM finance.decide_bank_list(v_ref, 'APPROVE', NULL);
+    EXCEPTION WHEN insufficient_privilege THEN v_same := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', b2::text, true);
+    BEGIN PERFORM finance.decide_bank_list(v_ref, 'REJECT', NULL);
+    EXCEPTION WHEN check_violation THEN v_bare := split_part(SQLERRM, ':', 1); END;
+    SELECT * INTO dec FROM finance.decide_bank_list(v_ref, 'APPROVE', 'CHECK V684 report seen');
+    SELECT state INTO v_state FROM finance.payment_not_received WHERE student_id = st[2];
+    SELECT count(*) INTO v_archived FROM finance.payment_reference WHERE student_id = st[2] AND archived_at IS NOT NULL;
+    BEGIN PERFORM finance.decide_bank_list(v_ref, 'APPROVE', NULL);
+    EXCEPTION WHEN check_violation THEN v_none := split_part(SQLERRM, ':', 1); END;
+    -- kept as recorded
+    BEGIN UPDATE finance.bank_list_group SET outcome = 'RECEIVED' WHERE student_id = st[4];
+    EXCEPTION WHEN check_violation THEN v_kept := split_part(SQLERRM, ':', 1); END;
+    -- checked again by hand: the officer's, no longer the list's
+    v_hand := finance.check_double_charge(st[1], ses, 'School fees (legacy) · semester 1', d0, 57190, 'RECEIVED', 'Zenith statement, two credits', NULL, NULL);
+    SELECT CASE WHEN bank_list_id IS NULL THEN 'by hand' ELSE 'list' END INTO v_mark FROM finance.double_charge_check WHERE id = v_hand;
+    BEGIN PERFORM finance.bank_list_preview(ses, d0 - 5, d0 + 5, '[]'::jsonb);
+    EXCEPTION WHEN check_violation THEN v_empty := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.bank_list_preview(ses, d0 + 5, d0 - 5, v_bank);
+    EXCEPTION WHEN check_violation THEN v_period := split_part(SQLERRM, ':', 1); END;
+    RAISE EXCEPTION 'CHECK_V684_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V684_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V684: a bank list checks the possible double charges of its days at once — every number on it received, one missing raised for withdrawal beside the one on it, the rest left for a check by hand — recorded by the Bursary only and kept; its withdrawals decided together by another officer, archived through V561''s own decision',
+        coalesce(pv = '1=RECEIVED 2=NOT_RECEIVED/MOAUM-LEG-MOAUMZZLBLC56842-2189-2190-S1-PR21892B 3=OUTSIDE_PERIOD 4=NONE_FOUND 5=AMOUNT_SHORT'
+            AND v_wrote = 0 AND v_ict = 'PAY_CHECK_OFFICE' AND v_ref ~ '^BLC/[0-9]{4}/[0-9]{6}$'
+            AND v_checks = '1=RECEIVED* 2=NOT_RECEIVED*' AND v_pnr ~ '^PNR/[0-9]{4}/[0-9]{6}:92B:-S1$' AND v_groups = 4 AND v_again = 'BANK_LIST_NOTHING_TO_RECORD'
+            AND v_same = 'BANK_LIST_SAME_OFFICER' AND v_bare = 'BANK_LIST_NOTE' AND dec.done = 1 AND dec.refused = 0
+            AND v_state = 'APPROVED' AND v_archived = 1 AND v_none = 'BANK_LIST_NOTHING_WAITING' AND v_kept = 'BANK_LIST_KEPT'
+            AND v_mark = 'by hand' AND v_empty = 'BANK_LIST_EMPTY' AND v_period = 'BANK_LIST_PERIOD', false),
+        format('preview %s | wrote %s | ict %s | list %s | checks %s | withdrawal %s | groups %s | again %s | same %s bare %s | decided %s/%s | state %s archived %s | none %s | kept %s | mark %s | empty %s period %s',
+               pv, v_wrote, v_ict, v_ref, v_checks, v_pnr, v_groups, v_again, v_same, v_bare, dec.done, dec.refused, v_state, v_archived, v_none, v_kept, v_mark, v_empty, v_period));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
