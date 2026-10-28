@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 517
+\set EXPECTED 518
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28541,6 +28541,66 @@ BEGIN
            AND de_carry = 0 AND de_ref = 'GST_NOT_REQUIRED' AND old_state = 'true/NOT_PAID' AND old_ref LIKE 'MOAUM-FEE-%', false),
       format('carry %s payable %s | gate EPS %s core %s | add %s, on registration %s | ref %s paid gate %s | added %s entry %s entitled %s | DE carry %s ref %s | before %s ref %s',
              carry, payable, g_eps, g_core, refused, on_reg, ref1, paid_gate, added, entry, entitled, de_carry, de_ref, old_state, old_ref));
+END $$;
+
+-- ── V689. A failed elective is an F, never a carry-over. A made-up 200 Level student failed five 100 Level courses in one semester:
+--          ZEL 101, an elective the programme does not bind (taken outside its structure); ZEL 102, a core course it does not bind;
+--          ZEL 103, a core course the programme binds as an elective at another level; ZEL 104, an elective course the programme
+--          binds as core; ZEL 105, a core course bound as core. The registrations of 101, 102 and 103 carry no programme basis (the
+--          structure did not place them at 100 Level), 104 and 105 carry Core. Owed: 102, 104 and 105 — the programme's basis where the
+--          registration carries one, else its structure today, else the course's kind; 101 and 103 are failed electives, read as
+--          electives and not owed. Every F counts: the semester's 15 units attempted, none earned, a GPA of 0.00. Undone after ──
+DO $$
+DECLARE e1 text := '2689/2690'; cur text := '2690/2691'; prog text := 'C96689'; dept text; fac text;
+        st uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); msg text;
+        bases text; owed text; electives text; cum record;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V689', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), e1, DATE '2689-10-01', DATE '2690-08-31'), (gen_random_uuid(), cur, DATE '2690-10-01', DATE '2691-08-31');
+        SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+        VALUES (prog, 'B.A. Failed Elective Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+        INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office)
+        SELECT c, 'Check ' || c, 3, 1, 100, dept, CASE WHEN c IN ('ZEL 101', 'ZEL 104') THEN 'Elective' ELSE 'Core' END, 'LIVE', NULL
+          FROM unnest(ARRAY['ZEL 101', 'ZEL 102', 'ZEL 103', 'ZEL 104', 'ZEL 105']) c;
+        INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+            ('ZEL 103', prog, 200, 'Elective'), ('ZEL 104', prog, 100, 'Core'), ('ZEL 105', prog, 100, 'Core');
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/89/996891', 'MOAUM/CHK/89/6891', 'CHECKV689', 'Failed Elective', 'F', prog, 'UTME', e1, 100, 200, 'ACTIVE', now());
+        INSERT INTO catalogue.offering (id, course_code, session, semester)
+        SELECT gen_random_uuid(), c, e1, 1 FROM unnest(ARRAY['ZEL 101', 'ZEL 102', 'ZEL 103', 'ZEL 104', 'ZEL 105']) c;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+        VALUES (r1, st, e1, 1, 100, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+        SELECT r1, o.id, 3, 'CURRENT', 'APPROVED' FROM catalogue.offering o WHERE o.course_code LIKE 'ZEL %' AND o.session = e1;
+        INSERT INTO assessment.score_sheet (id, offering_id) SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.course_code LIKE 'ZEL %' AND o.session = e1;
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam)
+        SELECT sh.id, st, 10, 15 FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code LIKE 'ZEL %' AND o.session = e1;
+        PERFORM set_config('moaum.maintenance', 'on', true);
+        UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V689'
+          FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code LIKE 'ZEL %' AND o.session = e1;
+        PERFORM set_config('moaum.maintenance', '', true);
+
+        bases := (SELECT string_agg(right(o.course_code, 3) || '=' || coalesce(e.basis, '-'), ',' ORDER BY o.course_code)
+                    FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r1);
+        owed := (SELECT string_agg(c.course_code, ',' ORDER BY c.course_code) FROM registration.carryovers(st) c);
+        electives := (SELECT string_agg(c, ',' ORDER BY c) FROM unnest(ARRAY['ZEL 101', 'ZEL 102', 'ZEL 103', 'ZEL 104', 'ZEL 105']) c
+                       WHERE registration.is_elective_for(st, c));
+        SELECT * INTO cum FROM assessment.student_cumulative(st, e1, 1);
+        RAISE EXCEPTION 'CHECK_V689_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V689_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V689: a failed elective is an F, never a carry-over — an elective by the programme''s basis on the registration, else its structure today, else the course''s kind; a core course failed is owed; every F counts in the GPA',
+        coalesce(bases = '101=-,102=-,103=-,104=Core,105=Core' AND owed = 'ZEL 102,ZEL 104,ZEL 105' AND electives = 'ZEL 101,ZEL 103'
+                 AND cum.tcr = 15 AND cum.tce = 0 AND cum.cgpa = 0, false),
+        format('bases %s | owed %s | electives %s | tcr %s tce %s cgpa %s', bases, owed, electives, cum.tcr, cum.tce, cum.cgpa));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

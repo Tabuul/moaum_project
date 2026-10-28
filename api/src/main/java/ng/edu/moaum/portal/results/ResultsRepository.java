@@ -757,6 +757,14 @@ class ResultsRepository {
                 .query(String.class).list();
     }
 
+    /** V689: of the courses given, those that are electives to this student (registration.is_elective_for) — an elective failed is
+     *  an F, never a carry-over */
+    java.util.Set<String> electivesFor(UUID student, java.util.Collection<String> codes) {
+        if (codes.isEmpty()) return java.util.Set.of();
+        return new java.util.HashSet<>(jdbc.sql("SELECT c FROM unnest(CAST(:c AS text[])) c WHERE registration.is_elective_for(:s, c)")
+                .param("s", student).param("c", codes.toArray(String[]::new), Types.ARRAY).query(String.class).list());
+    }
+
     List<Sheets.GradeBand> gradeBands() {
         return gradeBands("UNIVERSITY");
     }

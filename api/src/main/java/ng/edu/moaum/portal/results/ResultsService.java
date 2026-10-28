@@ -1061,9 +1061,12 @@ public class ResultsService {
             /* the REMARK reads as the Senate's sheet reads: TO GO ON PROBATION when the CGPA is under 1.0; CO: for
                every core course owed (a prior carryover, or failed or absent on this sheet); Fail: for an elective
                failed; NR: for a course with no result; HELD: for one held for the Senate; PASS when nothing is owed, missing or
-               held; PENDING only while a set is still in the chain and nothing is owed */
-            List<String> coreOwed = owed.stream().filter(x -> !"Elective".equals(courseKind.get(x))).sorted().toList();
-            List<String> electiveOwed = owed.stream().filter(x -> "Elective".equals(courseKind.get(x))).sorted().toList();
+               held; PENDING only while a set is still in the chain and nothing is owed. V689: an elective is judged for the
+               student as the carry-overs judge it (the programme's basis on the registration, else its structure, else the
+               course's kind) — a failed elective is an F, never CO */
+            java.util.Set<String> electives = repo.electivesFor(e.getKey(), owed);
+            List<String> coreOwed = owed.stream().filter(x -> !electives.contains(x)).sorted().toList();
+            List<String> electiveOwed = owed.stream().filter(electives::contains).sorted().toList();
             List<String> parts = new ArrayList<>();
             if (!coreOwed.isEmpty()) parts.add("CO: " + String.join(", ", coreOwed));
             if (!electiveOwed.isEmpty()) parts.add("Fail: " + String.join(", ", electiveOwed));
