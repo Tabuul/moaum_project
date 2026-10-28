@@ -41,3 +41,30 @@ published result states is still repeated, not dropped.
 ## Tests
 
 `db/check.sql` V674; `SpilloverSemesterRegistrationIT.aSpilloverStudentRegistersCarryOversOnly`.
+
+## Only the carry-overs they add, and the semester's fee as they pick (V682)
+
+The University's word of 28 October 2026: a spillover student "should never see list of courses to register, they should only see a
+button to add carry overs … all the courses they are adding should carry a status carry over … once a course is selected they must see
+the amount they are supposed to pay for that semester". Asked whether the carry-overs their results state should still go on by
+themselves, the University chose: the student picks each one.
+
+- **Nothing goes on by itself.** For a spillover registration, `registration.student_draft` makes the registration empty, and a save
+  (`registration.student_choose`) places no carry-over either. Before, the draft put every course the published results show failed
+  for the semester on the registration as soon as it was made, so adding one course through ADD CARRY-OVER brought all of them, and
+  none could be taken off.
+- **Each removable before submission.** A save takes off any course the student no longer chooses, a carry-over the results state
+  among them; a reset (`registration.student_reset`) clears them all. ICT Support's ticketed additions stay, as for everyone. In add
+  and drop, a carry-over the results state is still repeated, not dropped.
+- **The page.** Course registration shows no list of courses: the spillover note with ADD CARRY-OVER, and under Carry-over courses the
+  courses added, each marked carry-over with Remove. The picker lists the courses the results show failed first (Only outstanding).
+- **The fee.** `finance.spillover_semester_quote(student, session, semester)` says what registering a course in the semester costs:
+  the semester's own spillover fee, the whole-session spillover item where no semester is registered yet, and — the semester read as
+  registered, as the registration gate reads it (V664) — what is still to pay for it. `GET /me/registration/carry-overs` carries it
+  as `fee`; once a course is ticked the picker shows the semester's fee and what is to pay (its foot line and a note). If a course of
+  the semester is already on the registration, it says the fee is owed already and adding more costs nothing more; in add and drop it
+  says to pay first, as the gate requires.
+- A spillover draft made before V682 keeps what is on it; the student can now take a course off it.
+
+Tests: `db/check.sql` V682; `SpilloverSemesterRegistrationIT.aSpilloverStudentPicksEachCarryOverAndSeesTheSemesterFee`;
+`lib/spillover.test.ts` (the picker's fee words).

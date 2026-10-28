@@ -103,6 +103,41 @@ export function registeringWords(s: SpilloverSemester): { title: string; body: s
   }
 }
 
+/** V682: what registering a course in a semester costs a spillover student, as the server works it out (finance.spillover_semester_quote):
+ *  the semester's own spillover fee, the whole-session item owed with the first semester registered, their sum, and — the semester read
+ *  as registered — what its registration then needs paid (anything earlier left unpaid and its own, less the session's payments) */
+export interface SpilloverQuote {
+  session: string; semester: number; label: string; registered: boolean; stated: boolean; cleared: boolean;
+  fee: number | string; sessionFee: number | string; charge: number | string; due: number | string; paid: number | string; toPay: number | string;
+}
+
+/** V682: the carry-over picker's words once a course is ticked — the semester's spillover fee, and what is to pay for it. addDrop: the
+ *  registration is submitted or approved, so a course is added only once the semester is paid (V664) */
+export function quoteWords(q: SpilloverQuote, count: number, addDrop = false): { title: string; body: string; charge: number; toPay: number; tone: "bad" | "ok" | "info" } {
+  const Which = semesterWord(q.semester);
+  const which = Which.toLowerCase();
+  const charge = num(q.charge);
+  const toPay = num(q.toPay);
+  const these = count === 1 ? "this course" : "these courses";
+  if (!q.stated) {
+    return { title: `${which.toUpperCase()} SPILLOVER FEE NOT YET STATED`, charge, toPay, tone: "info",
+      body: `No spillover fee is stated for the ${which} for your programme yet. The Bursary states it; your registration waits for it.` };
+  }
+  const then = addDrop ? ` Pay it on Fees & payments first; ${these} can be added once the payment is confirmed.`
+    : " Your courses stay on the draft meanwhile; submit once it is paid.";
+  if (q.registered) {
+    return { title: `${which.toUpperCase()} SPILLOVER FEE: ${nairaWords(q.fee)}`, charge: num(q.fee), toPay, tone: toPay < 1 ? "ok" : "bad",
+      body: `A course of the ${which} is already on your registration, so its spillover fee is owed already; adding ${these} costs nothing more.`
+        + (toPay < 1 ? " It is paid." : ` ${nairaWords(toPay)} is still to pay.${then}`) };
+  }
+  return { title: `${which.toUpperCase()} SPILLOVER FEE: ${nairaWords(charge)}`, charge, toPay, tone: toPay < 1 ? "ok" : "bad",
+    body: `Adding ${these} makes the ${which} spillover fee of ${nairaWords(q.fee)} payable`
+      + (num(q.sessionFee) > 0 ? `, with the session's spillover item of ${nairaWords(q.sessionFee)}` : "")
+      + ` — once for the ${which}, however many carry-overs you add in it.`
+      + (toPay < 1 ? " Your payments already cover it."
+        : ` To pay for the ${which}: ${nairaWords(toPay)}${toPay > charge + 0.5 ? " (with what is still owed before it)" : ""}.${then}`) };
+}
+
 export const STATUS_WORDS: Record<SpilloverStatus, [string, "ok" | "bad" | "info" | "warn"]> = {
   NOTHING_YET: ["Nothing to pay until you register", "info"],
   PAYMENT_REQUIRED: ["Payment required", "bad"],

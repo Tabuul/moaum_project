@@ -19,11 +19,15 @@ import {
   NO_FILTER, OWED, STATUS_KIND, STATUS_WORD, filterRows, groupRows, levelsOf, openingView, outcomeWords, selection, semesterWord,
   type CarryFilter, type CarryList, type CarryResult,
 } from "@/lib/carry-over";
+import { quoteWords } from "@/lib/spillover";
+import { naira } from "./common";
 
-export function CarryOverPicker({ session, semester, onAdded, onClose, onViewRegistered, spillover = false }: {
+export function CarryOverPicker({ session, semester, onAdded, onClose, onViewRegistered, spillover = false, addDrop = false }: {
   session: string; semester: number;
   /** V674: a spillover student: the courses of their own level are listed with the earlier ones, and every course they add is a carry-over */
   spillover?: boolean;
+  /** V682: the registration is submitted or approved (add and drop): a spillover student's course is added only once the semester is paid */
+  addDrop?: boolean;
   /** the classes the courses were added by: the draft's selection keeps them */
   onAdded: (offerings: string[]) => void;
   onClose: () => void;
@@ -58,6 +62,8 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
   const groups = useMemo(() => groupRows(shown), [shown]);
   const sel = selection(rows, picked);
   const owedCount = rows.filter((r) => OWED.includes(r.status)).length;
+  // V682: a spillover student sees what the semester costs as soon as a course is ticked
+  const quote = spillover && list?.fee && sel.count ? quoteWords(list.fee, sel.count, addDrop) : null;
   const toggle = (id: string) => setPicked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
 
   async function add() {
@@ -118,7 +124,8 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
     <Modal title="ADD CARRY-OVER COURSES" sub={sub} wide onClose={() => { if (!busy) onClose(); }}
       foot={
         <>
-          <span className="sub2 tnum grow">Selected Carry-Over Courses: <b>{sel.count}</b> · Total Units: <b>{sel.units} CU</b></span>
+          <span className="sub2 tnum grow">Selected Carry-Over Courses: <b>{sel.count}</b> · Total Units: <b>{sel.units} CU</b>
+            {quote && list?.fee?.stated ? <> · {semesterWord(semester)} Semester Fee: <b>{naira(quote.charge)}</b> · To Pay: <b className={quote.toPay >= 1 ? "ink-red" : "ink-green"}>{naira(quote.toPay)}</b></> : null}</span>
           <Btn kind="ghost" disabled={busy} onClick={onClose}>CLOSE</Btn>
           <Btn kind="urgent" disabled={!sel.count || busy} busy={busy} busyLabel="ADDING CARRY-OVER COURSES..." onClick={() => void add()}>ADD SELECTED CARRY-OVERS</Btn>
         </>
@@ -130,6 +137,11 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
           <div className="sub2 mb-2">{spillover
             ? "In spillover you register only the courses you still owe — of your level and the levels before it. Each course you add is registered as a carry-over, and the semester's spillover fee is then owed."
             : "Select courses from previous levels that you have not cleared."}</div>
+          {quote ? (
+            <Note kind={quote.tone} title={quote.title}>{quote.body}</Note>
+          ) : spillover && list.fee ? (
+            <div className="sub2 mb-2">Tick a course to see the {semesterWord(semester).toLowerCase()} semester&rsquo;s spillover fee.</div>
+          ) : null}
           <Tabs label="Which courses" value={f.view} onChange={(v) => setF({ ...f, view: v })}
             items={[{ id: "OUTSTANDING", label: "ONLY OUTSTANDING", count: owedCount }, { id: "ALL", label: spillover ? "ALL YOUR COURSES" : "ALL PREVIOUS COURSES", count: rows.length }]} />
           <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>

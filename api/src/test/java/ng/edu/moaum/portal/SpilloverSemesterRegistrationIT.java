@@ -38,6 +38,7 @@ class SpilloverSemesterRegistrationIT {
     PlatformTransactionManager transactions;
 
     ItSupport it;
+    int year;
     String session;
     String tag;
     String bursar;
@@ -47,7 +48,9 @@ class SpilloverSemesterRegistrationIT {
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
-        int y = it.freeYear(2300, 2900);
+        // V682: the session before free too, for a course failed in it
+        int y = it.freeYear(2300, 2900, 1, 0);
+        year = y;
         session = y + "/" + (y + 1);
         tag = Integer.toString(it.freeDraw(1_000, 10_000, k -> List.of("MOAUM/ADM/16/" + k + "64", "MOAUM/SPR/16/" + k + "4", "ZZSPR" + k)));
         bursar = TestTokens.token(it.person("ZZSPR-BUR-" + tag, "ZZSPRBUR"), List.of("bursar"));
@@ -257,5 +260,90 @@ class SpilloverSemesterRegistrationIT {
         assertThat(num(first.get("registeredCourses"))).isEqualTo(2);
         assertThat(first).containsEntry("registered", true).containsEntry("status", "PAYMENT_REQUIRED");
         assertThat(num(first.get("owed"))).isEqualTo(70000);
+    }
+
+    private List<String> entries(UUID student) {
+        return jdbc.sql("""
+                SELECT o.course_code || ':' || e.entry_type FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                  JOIN catalogue.offering o ON o.id = e.offering_id
+                 WHERE r.student_id = :s AND r.session = :ses AND r.semester = 1 AND e.status NOT IN ('DROPPED', 'WITHDRAWN') ORDER BY o.course_code
+                """).param("s", student).param("ses", session).query(String.class).list();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> picker(String token) {
+        return ok(it.get(token, u -> u.path("/api/v1/me/registration/carry-overs").queryParam("session", session).queryParam("semester", 1).build()));
+    }
+
+    /** V682: a spillover student picks each carry-over — with two courses failed the session before, the draft takes neither on its own;
+     *  the picker lists them as carry-overs to add and carries the first semester's spillover fee (₦70,000.00, all to pay); the one picked
+     *  is on the registration alone, a save places nothing beside it, the fee then reads as owed, and taken off it is gone */
+    @Test
+    @SuppressWarnings("unchecked")
+    void aSpilloverStudentPicksEachCarryOverAndSeesTheSemesterFee() {
+        UUID sp = it.student("ZZSPR" + tag, prog4, "MOAUM/ADM/16/" + tag + "64", "MOAUM/SPR/16/" + tag + "4", 500);
+        String token = TestTokens.token(sp, List.of("student"));
+        List<Map<String, Object>> lines = List.of(Map.of("programmeCode", prog4, "level", "400", "spillover", "SP1", "semester", "1", "amount", "70000"));
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + session + "/fee-lines", Map.of("rows", lines)));
+        String earlier = (year - 1) + "/" + year;
+        it.session(earlier, year - 1);
+        it.db(() -> {
+            // ZQS 511 and ZQS 512 taken the session before and failed, on published sheets
+            jdbc.sql("""
+                    INSERT INTO catalogue.offering (id, course_code, session, semester)
+                    SELECT gen_random_uuid(), c, :e, 1 FROM unnest(ARRAY['ZQS 511', 'ZQS 512']) c ON CONFLICT DO NOTHING
+                    """).param("e", earlier).update();
+            UUID reg = UUID.randomUUID();
+            jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (:r, :st, :e, 1, 400, 'APPROVED', now(), now())")
+                    .param("r", reg).param("st", sp).param("e", earlier).update();
+            jdbc.sql("""
+                    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+                    SELECT :r, o.id, c.units, 'CURRENT', 'APPROVED' FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
+                     WHERE o.session = :e AND o.course_code IN ('ZQS 511', 'ZQS 512')
+                    """).param("r", reg).param("e", earlier).update();
+            jdbc.sql("INSERT INTO assessment.score_sheet (id, offering_id) SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.session = :e AND o.course_code IN ('ZQS 511', 'ZQS 512')")
+                    .param("e", earlier).update();
+            jdbc.sql("""
+                    INSERT INTO assessment.score (sheet_id, student_id, ca, exam)
+                    SELECT sh.id, :st, 10, 15 FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+                     WHERE o.session = :e AND o.course_code IN ('ZQS 511', 'ZQS 512')
+                    """).param("st", sp).param("e", earlier).update();
+            jdbc.sql("SELECT set_config('moaum.maintenance', 'on', true)").query().singleRow();
+            jdbc.sql("""
+                    UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'IT V682'
+                      FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.session = :e AND o.course_code IN ('ZQS 511', 'ZQS 512')
+                    """).param("e", earlier).update();
+            return null;
+        });
+
+        Map<String, Object> view = ok(it.get(token, u -> u.path("/api/v1/me/registration").queryParam("session", session).queryParam("semester", 1).build()));
+        assertThat(view).containsEntry("carryOnly", true);
+        // the picker: both failed courses to add as carry-overs, and the first semester's fee before anything is registered
+        Map<String, Object> listed = picker(token);
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) listed.get("rows");
+        Map<String, Object> one = rows.stream().filter(r -> "ZQS 511".equals(r.get("course_code"))).findFirst().orElseThrow();
+        Map<String, Object> two = rows.stream().filter(r -> "ZQS 512".equals(r.get("course_code"))).findFirst().orElseThrow();
+        assertThat(one).containsEntry("status", "OUTSTANDING").containsEntry("selectable", true);
+        assertThat(two).containsEntry("status", "OUTSTANDING").containsEntry("selectable", true);
+        Map<String, Object> fee = (Map<String, Object>) listed.get("fee");
+        assertThat(fee).as("the semester's fee").isNotNull().containsEntry("label", "SP1").containsEntry("registered", false).containsEntry("stated", true);
+        assertThat(num(fee.get("fee"))).isEqualTo(70000);
+        assertThat(num(fee.get("charge"))).isEqualTo(70000);
+        assertThat(num(fee.get("toPay"))).isEqualTo(70000);
+
+        // ZQS 511 picked: on the registration alone, a carry-over — ZQS 512, failed too, is not placed beside it
+        Map<String, Object> added = ok(it.call(token, HttpMethod.POST, "/api/v1/me/registration/carry-overs",
+                Map.of("session", session, "semester", 1, "courses", List.of(one.get("course_id")))));
+        assertThat(added).containsEntry("addedCount", 1);
+        assertThat(entries(sp)).containsExactly("ZQS 511:CARRYOVER");
+        ok(it.call(token, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 1, "offerings", List.of(offering("ZQS 511", 1)))));
+        assertThat(entries(sp)).containsExactly("ZQS 511:CARRYOVER");
+        fee = (Map<String, Object>) picker(token).get("fee");
+        assertThat(fee).containsEntry("registered", true);
+        assertThat(num(fee.get("toPay"))).isEqualTo(70000);
+
+        // taken off before submission: gone
+        ok(it.call(token, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 1, "offerings", List.of())));
+        assertThat(entries(sp)).isEmpty();
     }
 }

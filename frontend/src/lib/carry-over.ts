@@ -2,6 +2,8 @@
  *  pure work of showing them: which a view shows, grouped by level and semester, what is ticked and what it adds up to, and what an
  *  add answered. The server decides every course; the screen only shows. */
 
+import type { SpilloverQuote } from "./spillover";
+
 export type CarryStatus = "OUTSTANDING" | "NO_RESULT" | "NO_RECORD" | "AWAITED" | "CLEARED" | "ALREADY_REGISTERED" | "NOT_OWED";
 
 export interface CarryRow {
@@ -13,6 +15,8 @@ export interface CarryRow {
 export interface CarryList {
   student: { name: string; matricNo: string | null; programme: string | null; level: number };
   session: string; semester: number; rows: CarryRow[];
+  /** V682: a spillover student: what registering a course in the semester costs (null for anyone else) */
+  fee?: SpilloverQuote | null;
 }
 
 export interface CarryResult { courseId: string; courseCode?: string; title?: string; units?: number; level?: number; added: boolean; code?: string; message?: string; offering?: string | null }

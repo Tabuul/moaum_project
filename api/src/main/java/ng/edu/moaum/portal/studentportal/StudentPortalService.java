@@ -860,6 +860,9 @@ public class StudentPortalService {
         out.put("session", session);
         out.put("semester", semester);
         out.put("rows", repo.carryOverCandidates(id, session, semester));
+        // V682: a spillover student sees what the semester costs as soon as a course is ticked — every course they add is a carry-over,
+        // and the semester's spillover fee is owed once one is on the registration (V616)
+        out.put("fee", repo.spilloverSemesterQuote(id, session, semester));
         return out;
     }
 

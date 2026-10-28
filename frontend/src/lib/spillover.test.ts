@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SEMESTER_STATUS_WORDS, registeringWords, semesterLine, spilloverStatus, spilloverTitle, type SpilloverPanel, type SpilloverSemester } from "./spillover.ts";
+import { SEMESTER_STATUS_WORDS, quoteWords, registeringWords, semesterLine, spilloverStatus, spilloverTitle, type SpilloverPanel, type SpilloverQuote, type SpilloverSemester } from "./spillover.ts";
 
 const sem = (n: number, o: Partial<SpilloverSemester> = {}): SpilloverSemester => ({ semester: n, fee: n === 1 ? 70000 : 60000, registered: false, carryovers: 0, courses: [], ...o });
 const panel = (o: Partial<SpilloverPanel> = {}): SpilloverPanel => ({
@@ -67,4 +67,36 @@ test("V664: nothing is charged for a semester with nothing registered", () => {
   const toRegister = registeringWords(sem(2, { status: "NOT_REGISTERED", carryovers: 2 }));
   assert.equal(toRegister.pay, false);
   assert.equal(toRegister.body, "You have 2 second semester carry-over courses. Nothing is owed for the second semester until a course of it is saved on your registration; its spillover fee of ₦60,000.00 is then payable, and the registration is submitted once it is paid. A payment for another semester does not cover it.");
+});
+
+// V682: the carry-over picker's words once a course is ticked
+const quote = (o: Partial<SpilloverQuote> = {}): SpilloverQuote => ({
+  session: "2025/2026", semester: 1, label: "SP1", registered: false, stated: true, cleared: false,
+  fee: 70000, sessionFee: 0, charge: 70000, due: 70000, paid: 0, toPay: 70000, ...o,
+});
+
+test("a course ticked in a semester not yet registered: its spillover fee and what is to pay", () => {
+  const w = quoteWords(quote(), 2);
+  assert.equal(w.title, "FIRST SEMESTER SPILLOVER FEE: ₦70,000.00");
+  assert.equal(w.toPay, 70000);
+  assert.equal(w.tone, "bad");
+  assert.equal(w.body, "Adding these courses makes the first semester spillover fee of ₦70,000.00 payable — once for the first semester, however many carry-overs you add in it. To pay for the first semester: ₦70,000.00. Your courses stay on the draft meanwhile; submit once it is paid.");
+  // the whole-session item with the first semester registered, and what is still owed before it
+  const s = quoteWords(quote({ semester: 2, fee: 60000, sessionFee: 20000, charge: 80000, toPay: 150000 }), 1, true);
+  assert.equal(s.title, "SECOND SEMESTER SPILLOVER FEE: ₦80,000.00");
+  assert.equal(s.body, "Adding this course makes the second semester spillover fee of ₦60,000.00 payable, with the session's spillover item of ₦20,000.00 — once for the second semester, however many carry-overs you add in it. To pay for the second semester: ₦150,000.00 (with what is still owed before it). Pay it on Fees & payments first; this course can be added once the payment is confirmed.");
+});
+
+test("a semester already registered costs nothing more; paid, not stated", () => {
+  const owed = quoteWords(quote({ registered: true, toPay: 30000, paid: 40000 }), 1);
+  assert.equal(owed.title, "FIRST SEMESTER SPILLOVER FEE: ₦70,000.00");
+  assert.equal(owed.body, "A course of the first semester is already on your registration, so its spillover fee is owed already; adding this course costs nothing more. ₦30,000.00 is still to pay. Your courses stay on the draft meanwhile; submit once it is paid.");
+  const paid = quoteWords(quote({ registered: true, toPay: 0, paid: 70000, cleared: true }), 3);
+  assert.equal(paid.tone, "ok");
+  assert.match(paid.body, /costs nothing more\. It is paid\.$/);
+  const covered = quoteWords(quote({ toPay: 0, paid: 70000 }), 1);
+  assert.match(covered.body, /Your payments already cover it\.$/);
+  const none = quoteWords(quote({ stated: false, fee: 0, charge: 0, toPay: 0 }), 1);
+  assert.equal(none.title, "FIRST SEMESTER SPILLOVER FEE NOT YET STATED");
+  assert.equal(none.tone, "info");
 });

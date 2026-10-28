@@ -641,6 +641,15 @@ class StudentPortalRepository {
                 .param("s", student).param("ses", session).param("sem", semester).param("c", course).query(UUID.class).single();
     }
 
+    /** V682: for a spillover registration, what registering a course in the semester costs (finance.spillover_semester_quote): the
+     *  semester's own spillover fee, the whole-session item owed with the first semester, what its registration then needs paid; null
+     *  for any other student */
+    Map<String, Object> spilloverSemesterQuote(UUID student, String session, int semester) {
+        String text = jdbc.sql("SELECT finance.spillover_semester_quote(:s, :ses, :sem)::text").param("s", student).param("ses", session).param("sem", semester)
+                .query(String.class).optional().orElse(null);
+        return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
     /** V663: every earlier course of the student for the carry-over picker, with what it is now and whether it may be added */
     List<Map<String, Object>> carryOverCandidates(UUID student, String session, int semester) {
         return jdbc.sql("SELECT * FROM registration.carry_over_candidates(:s, :ses, :sem)")

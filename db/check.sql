@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 509
+\set EXPECTED 510
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27885,6 +27885,113 @@ BEGIN
                  AND q_m IS DISTINCT FROM q_p
                  AND (SELECT count(*) FROM finance.fee_schedule f WHERE f.session = ses) = before, false),
         format('msg=%s', m));
+END $$;
+
+-- ── V682. A spillover student registers only the carry-overs they add, and the semester's fee is quoted as they pick. A made-up
+--    student at 500 Level on a four-year programme (SP1 by the level, first- and second-semester spillover lines of ₦70,000 and
+--    ₦60,000) failed ZYV 401 and ZYV 402 in the session before; a student at 300 Level of the same programme failed ZYV 201. The
+--    spillover student's draft is made empty though the results state two carry-overs; ZYV 401 picked is on it as a carry-over and
+--    a save places nothing beside it; taken off, it is gone; a reset clears a carry-over the results state; the quote reads the
+--    first semester's ₦70,000 owed once a course is registered and ₦70,000 to pay, nothing to pay once paid, and the second
+--    semester's ₦60,000 to pay apart; the student at 300 Level has ZYV 201 placed and kept as before, and no quote. Undone after ──
+DO $$
+DECLARE
+    v_dept text; v_fac text; prog text; v_err text; cur text := '9783/9784'; past text := '9782/9783'; bursar uuid := gen_random_uuid();
+    s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); p1 uuid := gen_random_uuid(); p2 uuid := gen_random_uuid(); r1 uuid; r2 uuid;
+    o401 uuid := gen_random_uuid(); o402 uuid := gen_random_uuid(); o201 uuid := gen_random_uuid();
+    menu_carry int; n_draft int; t_s2 text; after_pick text; after_save text; after_off int; s2_kept text; after_reset int; reset_out jsonb;
+    q0 jsonb; q1 jsonb; q2 jsonb; q2b jsonb; q_s2 jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', bursar::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V682', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+      (gen_random_uuid(), past, '9782-10-01', '9783-09-30', 'CLOSED'),
+      (gen_random_uuid(), cur, '9783-10-01', '9784-09-30', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9783/01' WHERE name = cur;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), cur, 1, 'OPEN'), (gen_random_uuid(), cur, 2, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V682', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/17/682001', 'MOAUM/ZYV/17/6821', 'CHECKV682', 'Spillover', prog, 'UTME', past, 100, 500, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/17/682002', 'MOAUM/ZYV/17/6822', 'CHECKV682', 'Current', prog, 'UTME', past, 100, 300, 'ACTIVE', now());
+    PERFORM finance.add_fee_lines(cur, jsonb_build_array(
+        jsonb_build_object('programmeCode', prog, 'level', '400', 'spillover', 'SP1', 'semester', '1', 'amount', '70000'),
+        jsonb_build_object('programmeCode', prog, 'level', '400', 'spillover', 'SP1', 'semester', '2', 'amount', '60000')));
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZYV 401', 'Check V682 One', 3, 1, 400, v_dept, 'Core', 'LIVE'), ('ZYV 402', 'Check V682 Two', 3, 1, 400, v_dept, 'Core', 'LIVE'),
+        ('ZYV 201', 'Check V682 Level Two', 2, 1, 200, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZYV 401', prog, 400, 'Core'), ('ZYV 402', prog, 400, 'Core'), ('ZYV 201', prog, 200, 'Core');
+    -- the session before: each failed (25 marks), published; this session's classes
+    INSERT INTO catalogue.offering (id, course_code, session, semester)
+    SELECT gen_random_uuid(), c, past, 1 FROM unnest(ARRAY['ZYV 401', 'ZYV 402', 'ZYV 201']) c;
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o401, 'ZYV 401', cur, 1), (o402, 'ZYV 402', cur, 1), (o201, 'ZYV 201', cur, 1);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (p1, s1, past, 1, 400, 'APPROVED', now(), now()), (p2, s2, past, 1, 200, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    SELECT CASE WHEN o.course_code = 'ZYV 201' THEN p2 ELSE p1 END, o.id, 3, 'CURRENT', 'APPROVED'
+      FROM catalogue.offering o WHERE o.course_code LIKE 'ZYV %' AND o.session = past;
+    INSERT INTO assessment.score_sheet (id, offering_id) SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.course_code LIKE 'ZYV %' AND o.session = past;
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam)
+    SELECT sh.id, CASE WHEN o.course_code = 'ZYV 201' THEN s2 ELSE s1 END, 10, 15
+      FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code LIKE 'ZYV %' AND o.session = past;
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V682'
+      FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code LIKE 'ZYV %' AND o.session = past;
+    PERFORM set_config('moaum.maintenance', '', true);
+
+    -- the results state two carry-overs for the spillover student this semester; the draft is made empty
+    menu_carry := (SELECT count(*) FROM registration.student_menu(s1, cur, 1) m WHERE m.carryover);
+    q0 := finance.spillover_semester_quote(s1, cur, 1);
+    r1 := registration.student_draft(s1, cur, 1);
+    n_draft := (SELECT count(*) FROM registration.entry e WHERE e.registration_id = r1);
+    r2 := registration.student_draft(s2, cur, 1);
+    t_s2 := (SELECT string_agg(o.course_code || '/' || e.entry_type, ',') FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r2);
+    -- picked (as the carry-over picker adds on a draft), then saved: ZYV 401 alone, a carry-over
+    PERFORM registration.student_add_other(s1, cur, 1, o401);
+    after_pick := (SELECT string_agg(o.course_code || '/' || e.entry_type, ',' ORDER BY o.course_code) FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r1);
+    PERFORM registration.student_choose(r1, ARRAY[o401]);
+    after_save := (SELECT string_agg(o.course_code || '/' || e.entry_type, ',' ORDER BY o.course_code) FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r1);
+    q1 := finance.spillover_semester_quote(s1, cur, 1);
+    -- taken off; the student at 300 Level keeps the carry-over the results state
+    PERFORM registration.student_choose(r1, '{}'::uuid[]);
+    after_off := (SELECT count(*) FROM registration.entry e WHERE e.registration_id = r1);
+    PERFORM registration.student_choose(r2, '{}'::uuid[]);
+    s2_kept := (SELECT string_agg(o.course_code || '/' || e.entry_type, ',') FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r2);
+    -- a reset clears a carry-over the results state
+    PERFORM registration.student_add_other(s1, cur, 1, o402);
+    reset_out := registration.student_reset(s1, cur, 1, 'CHECK V682', 'ACADEMIC_OFFICE');
+    after_reset := (SELECT count(*) FROM registration.entry e WHERE e.registration_id = r1);
+    -- ZYV 401 again, the first semester paid: nothing to pay for it; the second semester's own fee to pay apart
+    PERFORM registration.student_add_other(s1, cur, 1, o401);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (s1, cur, 'MOAUM-FEE-V682-0001', 'School fees ' || cur || ' · spillover (SP1) · first semester', 70000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V682-0001');
+    q2 := finance.spillover_semester_quote(s1, cur, 1);
+    q2b := finance.spillover_semester_quote(s1, cur, 2);
+    q_s2 := finance.spillover_semester_quote(s2, cur, 1);
+    RAISE EXCEPTION 'the V682 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V682 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V682: a spillover student''s draft holds only the carry-overs they add — none the results state placed by the draft or a save, one taken off gone, a reset clearing it — and the semester''s spillover fee is quoted (owed once a course is registered, to pay, paid, the other semester apart); a student not in spillover as before',
+      coalesce(menu_carry = 2 AND n_draft = 0 AND t_s2 = 'ZYV 201/CARRYOVER'
+           AND after_pick = 'ZYV 401/CARRYOVER' AND after_save = 'ZYV 401/CARRYOVER' AND after_off = 0 AND s2_kept = 'ZYV 201/CARRYOVER'
+           AND (reset_out ->> 'reset')::boolean AND after_reset = 0
+           AND NOT (q0 ->> 'registered')::boolean AND (q0 ->> 'fee')::numeric = 70000 AND (q0 ->> 'charge')::numeric = 70000
+           AND (q0 ->> 'toPay')::numeric = 70000 AND (q0 ->> 'stated')::boolean AND q0 ->> 'label' = 'SP1'
+           AND (q1 ->> 'registered')::boolean AND (q1 ->> 'toPay')::numeric = 70000
+           AND (q2 ->> 'toPay')::numeric = 0 AND (q2 ->> 'cleared')::boolean AND (q2 ->> 'paid')::numeric = 70000
+           AND NOT (q2b ->> 'registered')::boolean AND (q2b ->> 'fee')::numeric = 60000 AND (q2b ->> 'toPay')::numeric = 60000 AND NOT (q2b ->> 'cleared')::boolean
+           AND q_s2 IS NULL, false),
+      format('menu carry %s | draft %s, S2 %s | pick %s save %s off %s | S2 kept %s | reset %s → %s | q0 %s | q1 %s | q2 %s | q2b %s | S2 quote %s',
+             menu_carry, n_draft, t_s2, after_pick, after_save, after_off, s2_kept, reset_out ->> 'reset', after_reset, q0, q1, q2, q2b, q_s2));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
