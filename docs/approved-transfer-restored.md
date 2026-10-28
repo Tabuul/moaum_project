@@ -98,6 +98,28 @@ Either way it gives the reason.
 - **Programme swap desk.** An **Upload conflicts** tab: what each upload named, what the record kept and why, with Keep or Apply.
 - **Programme history** (swap page, student record). It shows "Inter-departmental transfer approved on the old portal" and "Approved transfer restored (no new application)".
 
+## Freeing the queue in one step (V686)
+
+The University's word of 28 October 2026: students whose transfer the old portal confirmed were still queued for the approvals again;
+"display all the list of student that apply for inter departmental transfer and remove them from the queue".
+
+- **The queue.** The transfer desk opens on **In the queue**: every application not yet effected, declined or withdrawn, whatever desk
+  it is with. **All** lists every application, and **Approved on the old portal** lists the ones freed or restored.
+- **Free transfers approved on the old portal.** For the Academic Office, the Registry, the Director of ICT and the super administrator:
+  - tick the applications, or **Choose every application in the queue**;
+  - give a reason (ten characters or more), and optionally the old portal's reference and the date it was approved;
+  - press **Free … from the queue**.
+- **What happens to each.** `people.free_old_portal_transfers` restores each one with `people.restore_approved_transfer`:
+  - the student is moved to the programme the application names, at the level they are at;
+  - the matriculation number does not change;
+  - the old portal's transfer is recorded in the history, with the application's session;
+  - the application leaves the queue (withdrawn, with the reason);
+  - no approval, fee or new application is made;
+  - a student already on that programme has the transfer recorded only.
+- **Each on its own.** One the checks refuse (an application no longer in the queue, one not found, a swap check) stays as it was and is
+  listed with its reason; the others are done. Up to 2,000 at a time.
+- **On the desk afterwards.** A freed application shows as **Moved — approved on the old portal**, with the reference.
+
 ## A genuine new transfer
 
 A student asking to move now still applies through the transfer workflow: application, the desks, the fee, Senate, effected.
@@ -119,4 +141,7 @@ A student asking to move now still applies through the transfer workflow: applic
   - the bulk restoration restores the valid row and leaves the invalid one out;
   - one application in all (the mistaken one, withdrawn).
 - **TransferRestoreIT:** the same through the API, the old-portal upload endpoint included, and a genuine new transfer still entering the queue.
+  V686: two queued applications freed at once (an HOD refused, an unknown one refused), both moved, listed as approved on the old portal.
+- **check.sql V686:** four queued students freed at once — two moved at their own level, one already on the programme recorded, an effected
+  application and an unknown id refused, the others done; the Bursar refused; a short reason refused.
 - **`lib/programme-swap.test.ts`, `lib/transfer-bulk.test.ts`:** the restoration's words, the plain kinds, the conflict's words, and the restoration template read back.

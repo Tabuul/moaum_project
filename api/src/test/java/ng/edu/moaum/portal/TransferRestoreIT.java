@@ -170,4 +170,67 @@ class TransferRestoreIT {
         assertThat(genuine.getStatusCode().value()).as(String.valueOf(genuine.getBody())).isEqualTo(200);
         assertThat(genuine.getBody()).containsEntry("state", "APPLIED");
     }
+
+    /**
+     * V686: the applications the old portal approved, freed from the queue together. Two programmes of the test's own; two students the
+     * old portal moved A → B, put back on A (200 and 300 Level) and recorded in the queue again. The queue lists both; an HOD may not free
+     * them; the Academic Office frees both and an id that names no application: both moved to B at their own level, the numbers unchanged,
+     * the applications withdrawn and listed as approved on the old portal, the unknown one refused, no application made.
+     */
+    @Test
+    void transfersApprovedOnTheOldPortalAreFreedFromTheQueueTogether() {
+        int n = 1000 + new Random().nextInt(8999);
+        String hex = UUID.randomUUID().toString().replaceAll("[^a-f]", "").toUpperCase() + "ABCDEFABCDEF";
+        String segA = "X" + hex.substring(0, 2), segB = "W" + hex.substring(2, 4);
+        String[] place = it.db(() -> {
+            String[] one = jdbc.sql("""
+                    SELECT p1.dept_code || ',' || p2.dept_code || ',' || p1.faculty_code
+                      FROM ref.programme p1 JOIN ref.programme p2 ON p2.faculty_code = p1.faculty_code AND p2.dept_code > p1.dept_code
+                      JOIN ref.faculty f ON f.code = p1.faculty_code
+                     WHERE p1.category = 'UNDER GRADUATE' AND p2.category = 'UNDER GRADUATE' AND NOT p1.archived AND NOT p2.archived
+                       AND coalesce(f.college_code, '') <> 'CHS' AND p1.dept_code IS NOT NULL
+                     ORDER BY p1.faculty_code, p1.dept_code, p2.dept_code LIMIT 1
+                    """).query(String.class).single().split(",");
+            List<String> codes = jdbc.sql("SELECT 'C' || x FROM generate_series(96500, 96999) x WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || x) ORDER BY random() LIMIT 2")
+                    .query(String.class).list();
+            jdbc.sql("""
+                    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code) VALUES
+                        (:a, 'B.Sc. Transfer Queue Test A ' || :a, :da, :f, 'UNDER GRADUATE', 0, 400, 4, :sa),
+                        (:b, 'B.Sc. Transfer Queue Test B ' || :b, :db, :f, 'UNDER GRADUATE', 0, 400, 4, :sb)
+                    """).param("a", codes.get(0)).param("b", codes.get(1)).param("da", one[0]).param("db", one[1]).param("f", one[2])
+                    .param("sa", segA).param("sb", segB).update();
+            return new String[] {one[2], codes.get(0), codes.get(1)};
+        });
+        String fac = place[0], pa = place[1], pb = place[2];
+        String m1 = "MOAU/" + fac + "/" + segA + "/24/" + n, m2 = "MOAU/" + fac + "/" + segA + "/24/" + (n + 1);
+        UUID s1 = it.student("ZZQUEUEA" + n, pa, "MOAUM/ADM/24/86" + n, m1, 200);
+        UUID s2 = it.student("ZZQUEUEB" + n, pa, "MOAUM/ADM/24/85" + n, m2, 300);
+        String a1 = String.valueOf(it.call(academic, HttpMethod.POST, "/api/v1/transfers", Map.of("number", m1, "toProgramme", pb, "reason", "Approved on the old portal")).getBody().get("id"));
+        String a2 = String.valueOf(it.call(academic, HttpMethod.POST, "/api/v1/transfers", Map.of("number", m2, "toProgramme", pb, "reason", "Approved on the old portal")).getBody().get("id"));
+
+        // the queue lists both
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) it.get(academic, "/api/v1/transfers").getBody().get("rows");
+        assertThat(rows).filteredOn(r -> a1.equals(r.get("id")) || a2.equals(r.get("id"))).extracting(r -> r.get("state")).containsExactlyInAnyOrder("APPLIED", "APPLIED");
+
+        // an HOD may not free them; the Academic Office frees both, and an id that names no application is refused
+        Map<String, Object> body = Map.of("applications", List.of(a1, a2, UUID.randomUUID().toString()), "reason", "Transfers approved by Senate on the old portal",
+                "reference", "SEN/IT/686", "approvedOn", "2025-03-14");
+        assertThat(it.call(ItSupport.token("hod"), HttpMethod.POST, "/api/v1/transfers/old-portal", body).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> freed = it.call(academic, HttpMethod.POST, "/api/v1/transfers/old-portal", body);
+        assertThat(freed.getStatusCode().value()).as(String.valueOf(freed.getBody())).isEqualTo(200);
+        assertThat(freed.getBody()).containsEntry("moved", 2).containsEntry("recorded", 0).containsEntry("refused", 1);
+        List<Map<String, Object>> results = (List<Map<String, Object>>) freed.getBody().get("rows");
+        assertThat(results).extracting(r -> r.get("outcome")).containsExactly("MOVED", "MOVED", "REFUSED");
+        assertThat(String.valueOf(results.get(0).get("swap_ref"))).startsWith("PSW/");
+        assertThat(String.valueOf(results.get(2).get("detail"))).startsWith("PTQ_NOT_FOUND");
+
+        // on B at their own level, the numbers unchanged; the applications out of the queue, named as approved on the old portal
+        assertThat(it.db(() -> jdbc.sql("SELECT string_agg(programme_code || ' ' || current_level || ' ' || matric_no, ', ' ORDER BY matric_no) FROM people.student WHERE id IN (:a, :b)")
+                .param("a", s1).param("b", s2).query(String.class).single())).isEqualTo(pb + " 200 " + m1 + ", " + pb + " 300 " + m2);
+        rows = (List<Map<String, Object>>) it.get(academic, "/api/v1/transfers").getBody().get("rows");
+        assertThat(rows).filteredOn(r -> a1.equals(r.get("id")) || a2.equals(r.get("id")))
+                .allSatisfy(r -> assertThat(r).containsEntry("state", "WITHDRAWN").containsEntry("restoredRef", "SEN/IT/686"));
+        assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM people.transfer_application WHERE student_id IN (:a, :b)").param("a", s1).param("b", s2)
+                .query(Long.class).single())).isEqualTo(2L);
+    }
 }

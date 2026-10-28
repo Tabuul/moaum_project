@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 513
+\set EXPECTED 514
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28294,6 +28294,79 @@ BEGIN
             AND v_mark = 'by hand' AND v_empty = 'BANK_LIST_EMPTY' AND v_period = 'BANK_LIST_PERIOD', false),
         format('preview %s | wrote %s | ict %s | list %s | checks %s | withdrawal %s | groups %s | again %s | same %s bare %s | decided %s/%s | state %s archived %s | none %s | kept %s | mark %s | empty %s period %s',
                pv, v_wrote, v_ict, v_ref, v_checks, v_pnr, v_groups, v_again, v_same, v_bare, dec.done, dec.refused, v_state, v_archived, v_none, v_kept, v_mark, v_empty, v_period));
+END $$;
+
+-- ── V686. Transfer applications approved on the old portal freed from the queue in bulk: two made-up programmes in two departments of a
+--    faculty (A and B); four students transferred A → B on the old portal, put back in the queue — one at the current department's desk
+--    (200 Level), one at the Academic Office's (300 Level), one already on B, one whose application was effected; and an id that names
+--    no application. The Bursar may not free them; a short reason is refused. The Academic Office frees all five at once: the first two
+--    moved to B at their own level (numbers unchanged, the swap made), the third recorded only, the effected one and the unknown one
+--    refused with the reason, the others done; each freed application withdrawn with the reason, the old portal's transfer recorded with
+--    the application's session, no application made. The block undoes its writes ──
+DO $$
+DECLARE pa text := 'C96686'; pb text := 'C96687'; da text; db_ text; fac text; t1 text := '2686/2687'; t2 text := '2687/2688';
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid();
+        a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); a3 uuid := gen_random_uuid(); a4 uuid := gen_random_uuid(); nobody uuid := gen_random_uuid();
+        r_office text; r_reason text; got text; placed text; apps text; why text; prior text; apps_n int; swaps int; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'check V686', true);
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000686', true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), t1, DATE '2686-10-01', DATE '2687-08-31', 'CLOSED'), (gen_random_uuid(), t2, DATE '2687-10-01', DATE '2688-08-31', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2687/01' WHERE name = t2;
+    SELECT p1.dept_code, p2.dept_code, p1.faculty_code INTO da, db_, fac
+      FROM ref.programme p1 JOIN ref.programme p2 ON p2.faculty_code = p1.faculty_code AND p2.dept_code > p1.dept_code
+      JOIN ref.faculty f ON f.code = p1.faculty_code
+     WHERE p1.category = 'UNDER GRADUATE' AND p2.category = 'UNDER GRADUATE' AND NOT coalesce(p1.archived, false) AND NOT coalesce(p2.archived, false)
+       AND coalesce(f.college_code, '') <> 'CHS' AND p1.dept_code IS NOT NULL
+     ORDER BY p1.faculty_code, p1.dept_code, p2.dept_code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code) VALUES
+        (pa, 'B.Sc. Queue Check A', da, fac, 'UNDER GRADUATE', 0, 400, 4, 'ZQC'), (pb, 'B.Sc. Queue Check B', db_, fac, 'UNDER GRADUATE', 0, 400, 4, 'ZQD');
+    INSERT INTO people.student (id, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAU/' || fac || '/ZQC/86/96861', 'CHECKV686', 'At First Desk', 'F', pa, 'UTME', t1, 100, 200, 'ACTIVE', now()),
+        (s2, 'MOAU/' || fac || '/ZQC/86/96862', 'CHECKV686', 'At Last Desk', 'M', pa, 'UTME', t1, 100, 300, 'ACTIVE', now()),
+        (s3, 'MOAU/' || fac || '/ZQC/86/96863', 'CHECKV686', 'Already Moved', 'F', pb, 'UTME', t1, 100, 200, 'ACTIVE', now()),
+        (s4, 'MOAU/' || fac || '/ZQC/86/96864', 'CHECKV686', 'Effected', 'M', pb, 'UTME', t1, 100, 200, 'ACTIVE', now());
+    INSERT INTO people.transfer_application (id, student_id, session, from_programme_code, from_level, to_programme_code, reason, mode_of_entry, state) VALUES
+        (a1, s1, t2, pa, 200, pb, 'Approved on the old portal; recorded again', 'UTME', 'APPLIED'),
+        (a2, s2, t2, pa, 300, pb, 'Approved on the old portal; recorded again', 'UTME', 'REG_OK'),
+        (a3, s3, t2, pa, 200, pb, 'Approved on the old portal; recorded again', 'UTME', 'APPLIED'),
+        (a4, s4, t2, pa, 200, pb, 'Effected here', 'UTME', 'EFFECTED');
+
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM people.free_old_portal_transfers(ARRAY[a1], 'Approved on the old portal by Senate', NULL, NULL);
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM people.free_old_portal_transfers(ARRAY[a1], 'short', NULL, NULL);
+    EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+    got := (SELECT string_agg(coalesce(f.matric_no, '-') || '=' || f.outcome || coalesce(':' || split_part(f.detail, ':', 1), '') || coalesce('/' || f.to_level, ''), ' ')
+              FROM people.free_old_portal_transfers(ARRAY[a1, a2, a3, a4, nobody], 'Transfers approved by Senate on the old portal', 'SEN/OLD/2687', DATE '2025-03-14') f);
+    swaps := (SELECT count(*) FROM people.free_old_portal_transfers(ARRAY[a4], 'Transfers approved by Senate on the old portal', NULL, NULL) f WHERE f.swap_ref IS NOT NULL);
+    placed := (SELECT string_agg(s.programme_code || ' ' || s.current_level || ' ' || right(s.matric_no, 5), ', ' ORDER BY s.matric_no) FROM people.student s WHERE s.id IN (s1, s2, s3));
+    apps := (SELECT string_agg(t.state, ',' ORDER BY s.matric_no) FROM people.transfer_application t JOIN people.student s ON s.id = t.student_id WHERE t.id IN (a1, a2, a3, a4));
+    why := (SELECT t.withdrawn_why FROM people.transfer_application t WHERE t.id = a1);
+    prior := (SELECT string_agg(pt.from_programme || '>' || pt.to_programme || ' ' || pt.effective_session || ' ' || pt.reference || ' ' || (pt.swap_id IS NOT NULL), ', ' ORDER BY pt.student_id = s3, pt.from_level, pt.to_level)
+                FROM people.prior_transfer pt WHERE pt.student_id IN (s1, s2, s3, s4));
+    apps_n := (SELECT count(*) FROM people.transfer_application t WHERE t.student_id IN (s1, s2, s3, s4));
+    RAISE EXCEPTION 'the V686 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V686 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V686: transfer applications the old portal approved are freed from the queue together — each student moved to the programme applied for at their level (or recorded, already on it), the application withdrawn with the reason, the transfer recorded; one effected or unknown refused, the others done; the Bursar refused',
+      coalesce(r_office = 'PTR_OFFICE' AND r_reason = 'PTR_REASON'
+           AND got = 'MOAU/' || fac || '/ZQC/86/96861=MOVED/200 MOAU/' || fac || '/ZQC/86/96862=MOVED/300 MOAU/' || fac || '/ZQC/86/96863=RECORDED/200 MOAU/'
+                     || fac || '/ZQC/86/96864=REFUSED:PTQ_NOT_QUEUED/200 -=REFUSED:PTQ_NOT_FOUND'
+           AND swaps = 0
+           AND placed = pb || ' 200 96861, ' || pb || ' 300 96862, ' || pb || ' 200 96863'
+           AND apps = 'WITHDRAWN,WITHDRAWN,WITHDRAWN,EFFECTED'
+           AND why LIKE 'Withdrawn by the Academic office: the transfer was approved on the old portal (SEN/OLD/2687)%'
+           AND prior = pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 true, ' || pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 true, ' || pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 false'
+           AND apps_n = 4, false),
+      format('office %s reason %s | got %s | swaps again %s | placed %s | apps %s | why %s | prior %s | applications %s', r_office, r_reason, got, swaps, placed, apps, why, prior, apps_n));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

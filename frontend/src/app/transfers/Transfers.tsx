@@ -5,7 +5,9 @@
  *  Academic office. Every office sees the whole pipeline; the Approve button shows only on the row and to
  *  the office whose turn it is (the server decides). Once approved, the student pays the Bursary-set fee
  *  and the registry effects the change. V669: a transfer the OLD portal approved is never recorded here again — it is restored on
- *  the programme swap (Restore a transfer approved on the old portal): no application, fee or approval, the number unchanged. */
+ *  the programme swap (Restore a transfer approved on the old portal): no application, fee or approval, the number unchanged. V686: the
+ *  applications the old portal approved and the queue still holds are chosen from In the queue and freed together — each student moved to
+ *  the programme applied for, without the approvals. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -17,6 +19,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
 import { SearchSelect } from "@/components/proto/SearchSelect";
+import { DEFAULT_REASON, freedSummary, inQueue, OUTCOME_WORDS, refusalWords, type Freed } from "@/lib/transfer-queue";
 export interface TransferRow {
   id: string; student_id: string; name: string; matric_no: string | null;
   from_programme: string; from_dept: string | null; from_level: number;
@@ -26,6 +29,8 @@ export interface TransferRow {
   recommended_level: number | null; committee_note: string | null; decline_note: string | null; withdrawn_why: string | null;
   applied_at: string; from_dept_at: string | null; to_dept_at: string | null; reg_at: string | null; acad_at: string | null; effected_at: string | null;
   fee_reference: string | null; fee_confirmed_at: string | null; session: string;
+  /** V669, V686: a withdrawn application whose transfer the old portal approved, restored — the reference it was restored under */
+  restoredRef?: string | null;
 }
 export interface Programme { code: string; name: string; faculty: string }
 
@@ -48,14 +53,35 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
   const [findNo, setFindNo] = useState("");
   const [finding, setFinding] = useState(false);
 
-  const [tab, setTab] = useState("APPLIED");
+  // V686: the offices that free old-portal transfers open on the queue
+  const [tab, setTab] = useState(mayRestore && rows.some((r) => inQueue(r.state)) ? "QUEUE" : "APPLIED");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [freeing, setFreeing] = useState({ reason: DEFAULT_REASON, reference: "", approvedOn: "" });
+  const [freed, setFreed] = useState<Freed[] | null>(null);
   const [rec, setRec] = useState({ number: "", programme: "", reason: "", utme: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Problem | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
   const count = (s: string) => rows.filter((r) => r.state === s).length;
-  const shown = tab === "ALL" ? rows : rows.filter((r) => r.state === tab);
+  const queued = rows.filter((r) => inQueue(r.state));
+  const restored = rows.filter((r) => r.state === "WITHDRAWN" && r.restoredRef);
+  const shown = tab === "ALL" ? rows : tab === "QUEUE" ? queued : tab === "RESTORED" ? restored : rows.filter((r) => r.state === tab);
+  const pickedRows = queued.filter((r) => picked.has(r.id));
+  const toggle = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  async function freeFromQueue() {
+    const n = pickedRows.length;
+    if (!n || !window.confirm(`Free ${n} application${n === 1 ? "" : "s"} from the queue? Each student is moved to the programme they applied for, at the level they are at, `
+      + "without the approvals; the matriculation number does not change and the old portal's transfer is recorded in their history.")) return;
+    const j = await send("/old-portal", { applications: pickedRows.map((r) => r.id), reason: freeing.reason.trim(), reference: freeing.reference.trim() || null,
+      approvedOn: freeing.approvedOn || null }, `${n} transfer application${n === 1 ? "" : "s"} approved on the old portal freed from the queue`);
+    if (!j) return;
+    const res = (j.rows ?? []) as Freed[];
+    setFreed(res);
+    setPicked(new Set());
+    setSaid(freedSummary(res));
+  }
 
   async function send(path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
     setBusy(true);
@@ -105,17 +131,68 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
 
       <div className="card"><PBody>
         <Tabs look="segmented" value={tab} onChange={setTab}
-          items={[["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["EFFECTED", "Completed"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => ({ id: k, label: l, count: k !== "ALL" && count(k) ? count(k) : undefined }))} />
+          items={[["QUEUE", "In the queue"], ["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["EFFECTED", "Completed"],
+            ["RESTORED", "Approved on the old portal"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => ({ id: k, label: l,
+            count: k === "QUEUE" ? (queued.length || undefined) : k === "RESTORED" ? (restored.length || undefined) : k !== "ALL" && count(k) ? count(k) : undefined }))} />
       </PBody></div>
 
-      <Panel title="Transfer applications" right={`${shown.length} shown`}>
+      {/* V686: the applications the old portal approved, freed from the queue together */}
+      {mayRestore && queued.length ? (
+        <Panel title="Free transfers approved on the old portal" right={`${pickedRows.length} of ${queued.length} in the queue chosen`}>
+          <PBody>
+            <div className="sub2">Students whose transfer the old portal approved and who were put back in this queue. Tick them below (in the queue), or choose every
+              application in the queue; each student is moved to the programme they applied for, at the level they are at, with no approval, fee or new application.
+              The application leaves the queue with the reason, the old portal&rsquo;s transfer is recorded in the student&rsquo;s history, and the matriculation number never changes.
+              One the checks refuse is left in the queue with the reason.</div>
+            <div className="row mt-2" style={{ flexWrap: "wrap", gap: 8 }}>
+              <Btn kind="secondary" disabled={busy} onClick={() => { setPicked(new Set(queued.map((r) => r.id))); setTab("QUEUE"); }}>Choose every application in the queue ({queued.length})</Btn>
+              {pickedRows.length ? <Btn kind="ghost" disabled={busy} onClick={() => setPicked(new Set())}>Clear the choice</Btn> : null}
+            </div>
+            <div className="grid grid--3 mt-2">
+              <Field id="tq-reason" label="Reason" hint="Ten characters at least; kept with each application and in each student's history">
+                <input id="tq-reason" className="ctl" maxLength={600} value={freeing.reason} onChange={(e) => setFreeing({ ...freeing, reason: e.target.value })} />
+              </Field>
+              <Field id="tq-ref" label="Old portal reference or memo" hint="Optional">
+                <input id="tq-ref" className="ctl tnum" maxLength={80} value={freeing.reference} onChange={(e) => setFreeing({ ...freeing, reference: e.target.value })} />
+              </Field>
+              <Field id="tq-on" label="Approved on" hint="Optional">
+                <input id="tq-on" type="date" className="ctl" value={freeing.approvedOn} onChange={(e) => setFreeing({ ...freeing, approvedOn: e.target.value })} />
+              </Field>
+            </div>
+            <div className="mt-2">
+              <Btn kind="primary" busy={busy} busyLabel="Moving the students…" disabled={busy || !pickedRows.length || freeing.reason.trim().length < 10} onClick={() => void freeFromQueue()}>
+                {pickedRows.length ? `Free ${pickedRows.length} from the queue and move ${pickedRows.length === 1 ? "the student" : "them"}` : "Tick the applications to free"}
+              </Btn>
+            </div>
+            {freed ? (
+              <div className="mt-2">
+                <Note kind={freed.some((x) => x.outcome === "REFUSED") ? "bad" : "ok"} title={freedSummary(freed)}>Each is on the record in your name.</Note>
+                <DTable cols={["Student", "From → To", "Level|num", "Result", "Reference"]} rows={freed.map((x) => [
+                  <Two key="s" a={x.name ?? "—"} b={x.matric_no ?? ""} />,
+                  <span key="ft" className="sub2">{x.from_programme ?? "—"} → <b>{x.to_programme ?? "—"}</b></span>,
+                  <span key="l" className="tnum">{x.to_level ?? "—"}</span>,
+                  <span key="o"><Pil kind={OUTCOME_WORDS[x.outcome]?.[1] ?? "grey"}>{OUTCOME_WORDS[x.outcome]?.[0] ?? x.outcome}</Pil>{x.detail ? <div className="sub2">{refusalWords(x.detail)}</div> : null}</span>,
+                  <span key="r" className="tnum sub2">{x.swap_ref ?? "—"}</span>,
+                ])} />
+              </div>
+            ) : null}
+          </PBody>
+        </Panel>
+      ) : null}
+
+      <Panel title={tab === "QUEUE" ? "Transfer applications in the queue" : "Transfer applications"} right={`${shown.length} shown`}>
         {shown.length ? (
-          <DTable cols={["Student", "From → To", "Entry · UTME · CGPA|mid", "Reason", "Stage", "Action|num"]} rows={shown.map((r) => [
+          <DTable cols={[...(mayRestore ? ["Free|mid"] : []), "Student", "From → To", "Entry · UTME · CGPA|mid", "Reason", "Stage", "Action|num"]} rows={shown.map((r) => [
+            ...(mayRestore ? [inQueue(r.state)
+              ? <input key="pk" type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Free ${r.name}'s application from the queue`} style={{ width: 18, height: 18 }} />
+              : <span key="pk" />] : []),
             <Two key="s" a={r.name} b={r.matric_no ?? ""} />,
             <span key="ft"><span className="sub2">{r.from_programme} · {r.from_level}L</span><div><b>→ {r.to_programme}</b></div></span>,
             <span className="sub2 tnum" key="e">{r.mode_of_entry}{r.utme_score != null ? ` · ${r.utme_score}` : ""}{r.cgpa != null ? ` · ${Number(r.cgpa).toFixed(2)}` : ""}</span>,
             <span className="sub2" key="r">{r.reason}{r.decline_note ? <div className="sub2">Declined: {r.decline_note}</div> : null}{r.withdrawn_why ? <div className="sub2">Withdrawn: {r.withdrawn_why}</div> : null}</span>,
-            <span key="st"><Pil kind={STATE[r.state] ?? "grey"}>{r.stageLabel ?? LABEL[r.state] ?? r.state}</Pil>{r.fee_reference ? <div className="sub2 tnum">{r.fee_reference}{r.fee_confirmed_at ? " · paid" : " · unpaid"}</div> : null}</span>,
+            <span key="st">{r.state === "WITHDRAWN" && r.restoredRef
+              ? <><Pil kind="ok">Moved — approved on the old portal</Pil><div className="sub2 tnum">{r.restoredRef}</div></>
+              : <Pil kind={STATE[r.state] ?? "grey"}>{r.stageLabel ?? LABEL[r.state] ?? r.state}</Pil>}{r.fee_reference ? <div className="sub2 tnum">{r.fee_reference}{r.fee_confirmed_at ? " · paid" : " · unpaid"}</div> : null}</span>,
             <span key="ac" className="row row--inline row--tight row--right">
               {r.canApprove ? <Btn kind="go" disabled={busy} onClick={() => { if (window.confirm(`Approve ${r.name}'s transfer at this stage? It moves to the next office.`)) void send(`/${r.id}/approve`, {}, `Approve transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} approved — ${LABEL[String(j.state)] ?? "advanced"}`); }); }}>Approve</Btn> : null}
               {r.canApprove ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Decline this application — why? The reason is recorded and shown to the student."); if (w && w.trim()) void send(`/${r.id}/decline`, { why: w.trim() }, `Decline transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} declined`); }); }}>Decline</Btn> : null}

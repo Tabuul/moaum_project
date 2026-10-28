@@ -79,6 +79,11 @@ class TransferController {
         };
     }
 
+    /** V686: the applications the old portal approved, freed from the queue together */
+    public record OldPortal(@jakarta.validation.constraints.NotEmpty @Size(max = 2000) List<@jakarta.validation.constraints.NotNull UUID> applications,
+                            @NotBlank @Size(max = 600) String reason, @Size(max = 80) String reference, @Size(max = 10) String approvedOn) {
+    }
+
     public record Apply(@NotBlank @Size(max = 6) String toProgramme, @NotBlank @Size(max = 600) String reason, Integer utme) {
     }
 
@@ -176,18 +181,60 @@ class TransferController {
                 .query().listOfRows();
         String office = actingOffice();
         String myDept = scope.actingDept();
+        // V669, V686: a withdrawn application whose transfer the old portal approved, restored — named by the restoration
+        Map<String, String> restored = new java.util.HashMap<>();
+        for (Map<String, Object> x : jdbc.sql("""
+                SELECT DISTINCT ON (t.id) t.id::text AS id, coalesce(pt.reference, sw.swap_ref, 'recorded') AS ref
+                  FROM people.transfer_application t
+                  JOIN people.prior_transfer pt ON pt.student_id = t.student_id AND pt.to_programme = t.to_programme_code
+                  LEFT JOIN people.programme_swap sw ON sw.id = pt.swap_id
+                 WHERE t.state = 'WITHDRAWN'
+                 ORDER BY t.id, pt.recorded_at DESC
+                """).query().listOfRows()) {
+            restored.put(String.valueOf(x.get("id")), String.valueOf(x.get("ref")));
+        }
         for (Map<String, Object> r : rows) {
             String st = String.valueOf(r.get("state"));
             boolean paid = r.get("fee_confirmed_at") != null;
             r.put("stageLabel", stageLabel(st, paid));
             r.put("canApprove", mayApprove(office, myDept,
                     st, str(r.get("from_dept")), str(r.get("to_dept")), paid));
+            r.put("restoredRef", restored.get(String.valueOf(r.get("id"))));
         }
         return Map.of("rows", rows);
     }
 
     private static String str(Object o) {
         return o == null ? null : String.valueOf(o);
+    }
+
+    /** V686: the applications the old portal approved, freed from the queue together — each student restored onto the programme the
+     *  application names at the level they are at (people.restore_approved_transfer: the number unchanged, the transfer recorded, the
+     *  application withdrawn; no approval, fee or new application), each answered MOVED, RECORDED or REFUSED with the reason. The offices
+     *  that restore a transfer (the database checks again). */
+    @PostMapping("/api/v1/transfers/old-portal")
+    @PreAuthorize(EFFECT)
+    @Transactional
+    Map<String, Object> freeOldPortal(@Valid @RequestBody OldPortal body) {
+        java.sql.Date on = null;
+        if (body.approvedOn() != null && !body.approvedOn().isBlank()) {
+            try {
+                on = java.sql.Date.valueOf(java.time.LocalDate.parse(body.approvedOn().trim()));
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new DomainRuleViolation("PTR_APPROVED_ON", "The approval date is not a date.",
+                        new DomainRuleViolation.Remedy("Pick the date the transfers were approved, or leave it empty.", "You"));
+            }
+        }
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM people.free_old_portal_transfers(CAST(:ids AS uuid[]), :r, :ref, :on)")
+                .param("ids", body.applications().stream().map(UUID::toString).toArray(String[]::new), Types.ARRAY)
+                .param("r", body.reason()).param("ref", body.reference(), Types.VARCHAR).param("on", on, Types.DATE)
+                .query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("moved", rows.stream().filter(r -> "MOVED".equals(r.get("outcome"))).count());
+        out.put("recorded", rows.stream().filter(r -> "RECORDED".equals(r.get("outcome"))).count());
+        out.put("refused", rows.stream().filter(r -> "REFUSED".equals(r.get("outcome"))).count());
+        out.put("rows", rows);
+        return out;
     }
 
     @GetMapping("/api/v1/transfers/programmes")
