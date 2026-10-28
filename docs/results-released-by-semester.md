@@ -59,3 +59,38 @@ published is withheld.
   - A balance carried from an earlier session blocks everything.
 - **StudentPortalIT** `eachSemestersResultsAreReleasedOnceTheFeesUpToItArePaid`: the same through `/me/results`.
 - **lib/results-withheld.test.ts** covers the wording.
+
+## V685: nothing withheld from a student who owes nothing (28 October 2026)
+
+The University's word, on a 300 Level B.A. English student's broadsheet that withheld both 2023/2024 semesters with no amount
+outstanding named: "allow all the students that are not owing fee to view their results, no restriction for viewing of result if
+the student is not owing anything".
+
+**The cause.** V667 withheld a semester wherever the session's fees were not stated for the student, and read every session through
+`finance.fee_stated`, `finance.due_for_semester` and `finance.position`, which match the fee lines to the student's **current**
+level (V654's warning: never read a past session through them). While the setup held 2025/2026 alone, an earlier session counted as
+"before the schedule" and was released. Once an earlier session's structure is on the setup (the historical school fees), a 300
+Level student entered in 2023/2024 is matched to 2023/2024's 300 Level lines: none, so "not stated" and withheld though nothing is
+owed (the screenshot); or a 300 Level line, so owing another cohort's fee.
+
+Reproduced on the live-shaped copy with 2023/2024 lines at 100 and 200 Level only: V667 withheld both 2023/2024 semesters with
+nothing outstanding; V685 releases them, and still does with a 300 Level line added.
+
+**The rule now.** A semester's results are withheld only where the student owes:
+
+- `finance.results_outstanding(student, session, semester)`: a session before the student's current one is read from the
+  historical account (`finance.historical_rows`: that session's lines as the student was then, or an approved assessment, waivers
+  netted off, payments allocated first semester first), the semester and those before it; nothing assessed (before the Bursar's
+  start, or awaiting review) is nothing owed. The current session as before: its lines against its confirmed school-fee payments.
+- `finance.results_arrears(student, session)`: a balance owed for an earlier session, read from the historical account.
+- `finance.results_cleared`: never gated → released; for the current session, its RESULTS rule met → released; a balance owed for an
+  earlier session blocks everything where the scheme says so (`arrears_block_all`), as before; otherwise released exactly when nothing
+  is outstanding up to the semester. **Fees not stated no longer withhold anything.**
+
+A withheld semester is named with `finance.results_outstanding`. A student who owes ₦12,400 for 2023/2024 at the level they were
+then sees that semester withheld with ₦12,400.00 outstanding (and, with arrears blocking everything, the later semesters too).
+Course registration, examinations and the fees page are not changed.
+
+**Tests.** check.sql V685 (released past results with nothing stated at today's level and with a later level's line; the current
+session paid released; fees not stated withhold nothing; owing ₦12,400 at the level then withheld with the amount named and the
+current session blocked by arrears). V667's block and `StudentPortalIT` hold unchanged.

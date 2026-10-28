@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 511
+\set EXPECTED 512
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28114,6 +28114,89 @@ BEGIN
       format('account %s | refused %s/%s/%s/%s/%s | e1 %s %s | review %s, settled %s, s1 %s | ict %s note %s asked %s again %s twice %s | cand %s | need %s verified %s owed %s | used %s other %s not mine %s withdrawn %s | told %s | quality %s',
              acct, r_settled, r_period, r_amount, r_date, r_open, e1.reference, e1.state, rv1, rv0, rv_s1, r_ict, r_note, asked, again, r_twice, cand,
              r_need, verified, owed_after, r_used, other_state, r_not_mine, withdrawn, told, quality));
+END $$;
+
+-- ── V685: no result withheld from a student who owes nothing. Under the Bursar's rule "results on payment in full" with arrears
+--          blocking everything: a made-up student entered a past session at 100 Level and now on 300 paid that session's ₦27,600; the
+--          past session's structure (100 and 200 Level, none at 300) is on the setup. Their past results are released (V667 withheld
+--          them: "not stated" at today's level) and stay released with a 300 Level line added; owing ₦12,400 at the level they were then,
+--          the semester is withheld with that amount named and the current session's too (arrears); a student whose current session
+--          has no fee stated has nothing withheld. The block undoes its writes ──
+DO $$
+DECLARE
+    S0 constant text := '9681/9682'; S1 constant text := '9682/9683'; v_dept text; v_fac text; prog text; prog2 text; ver uuid; ins uuid := gen_random_uuid();
+    st uuid := gen_random_uuid(); st2 uuid := gen_random_uuid(); bursar uuid := gen_random_uuid();
+    past1 boolean; past2 boolean; out_none numeric; with300 boolean; cur_paid boolean; owe1 boolean; owe_amt numeric; owe_cur boolean; arrears boolean; unstated boolean;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', bursar::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V685', true);
+    ver := policy.in_force('clearance', 'UNIVERSITY', current_date);
+    IF ver IS NULL THEN
+        ver := ins;
+        INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
+        VALUES (ver, 'clearance', 'UNIVERSITY',
+                daterange(current_date, (SELECT min(lower(validity)) FROM policy.version WHERE kind = 'clearance' AND scope = 'UNIVERSITY' AND lower(validity) > current_date)),
+                'CHECK V685', 'bursar');
+        INSERT INTO policy.clearance_scheme VALUES (ver, true);
+        INSERT INTO policy.clearance_rule SELECT ver, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END FROM ref.clearance_purpose p;
+    END IF;
+    UPDATE policy.clearance_rule SET releases_at = 'PAID_IN_FULL' WHERE version_id = ver AND purpose = 'RESULTS';
+    UPDATE policy.clearance_scheme SET arrears_block_all = true WHERE version_id = ver;
+
+    -- a past session and the current one; the historical account from the past session
+    UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state, senate_minute) VALUES
+        (gen_random_uuid(), S0, date '9681-10-01', date '9682-09-30', 'CLOSED', NULL), (gen_random_uuid(), S1, date '9682-10-01', date '9683-09-30', 'CURRENT', 'SEN/9682/01')
+    ON CONFLICT (name) DO UPDATE SET state = EXCLUDED.state, senate_minute = EXCLUDED.senate_minute;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S1, 1, 'OPEN'), (gen_random_uuid(), S1, 2, 'OPEN')
+    ON CONFLICT (session, number) DO NOTHING;
+    UPDATE finance.historical_setting SET assess_from = S0 WHERE id = 1;
+
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.A. CHECK V685', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog2 FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog2, 'B.A. CHECK V685 UNSTATED', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (st, 'MOAUM/ADM/81/685001', 'MOAUM/ZZR/81/6851', 'CHECKV685', 'Paid', prog, 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (st2, 'MOAUM/ADM/82/685002', 'MOAUM/ZZR/82/6852', 'CHECKV685', 'Unstated', prog2, 'UTME', S1, 100, 100, 'ACTIVE', now());
+    -- the past session's structure as its students were charged (100 and 200 Level, none at 300); the current session's two semesters
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+        (S0, 'CHECK V685 school fees', 27600, 100, prog, NULL), (S0, 'CHECK V685 school fees', 30000, 200, prog, NULL),
+        (S1, 'CHECK V685 school fees (semester 1)', 50000, NULL, prog, 1), (S1, 'CHECK V685 school fees (semester 2)', 30000, NULL, prog, 2);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (st, S0, 'MOAUM-FEE-V685-0001', 'School fees ' || S0, 27600, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V685-0001'),
+        (st, S1, 'MOAUM-FEE-V685-0002', 'School fees ' || S1, 80000, now(), now(), bursar, 'Bank branch', 'MOAUM-FEE-V685-0002');
+
+    past1 := finance.results_cleared(st, S0, 1);
+    past2 := finance.results_cleared(st, S0, 2);
+    out_none := finance.results_outstanding(st, S0, 2);
+    cur_paid := finance.results_cleared(st, S1, 2);
+    unstated := finance.results_cleared(st2, S1, 1);
+    -- a 300 Level line in the past session (a cohort two years ahead): not the student's
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (S0, 'CHECK V685 school fees', 60000, 300, prog, NULL);
+    with300 := finance.results_cleared(st, S0, 2);
+    -- owing at the level they were then: the 100 Level fee ₦40,000, ₦27,600 paid
+    UPDATE finance.fee_schedule SET amount = 40000 WHERE session = S0 AND programme_code = prog AND level = 100;
+    owe1 := finance.results_cleared(st, S0, 1);
+    owe_amt := finance.results_outstanding(st, S0, 1);
+    arrears := finance.results_arrears(st, S1);
+    owe_cur := finance.results_cleared(st, S1, 1);
+    msg := format('past %s/%s outstanding %s | with a 300 line %s | current paid %s | unstated %s | owing: first %s (%s) arrears %s current %s',
+                  past1, past2, out_none, with300, cur_paid, unstated, owe1, owe_amt, arrears, owe_cur);
+    RAISE EXCEPTION 'the V685 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V685 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V685: no result withheld from a student owing nothing — a past session read at the level the student was in it (released though nothing is stated at today''s level, or a later level''s line is), the current session paid released, fees not stated withhold nothing; owing ₦12,400 for the past session withholds it, names the amount and (arrears) the current session too',
+      coalesce(past1 AND past2 AND out_none = 0 AND with300 AND cur_paid AND unstated AND NOT owe1 AND owe_amt = 12400 AND arrears AND NOT owe_cur, false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

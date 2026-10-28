@@ -329,9 +329,10 @@ class StudentPortalRepository {
                 .query(Boolean.class).single());
     }
 
-    /** V667: what is still to pay for a semester's fees to be cleared — the figure a withheld semester is named with */
+    /** V667, V685: what is still to pay for a semester's results to be released — the figure a withheld semester is named with (a past
+     *  session from the historical account, at the level of that session: finance.results_outstanding) */
     BigDecimal semesterOutstanding(UUID student, String session, int semester) {
-        return jdbc.sql("SELECT outstanding FROM finance.semester_position(:s, :ses, :sem, false)").param("s", student).param("ses", session).param("sem", semester)
+        return jdbc.sql("SELECT finance.results_outstanding(:s, :ses, :sem)").param("s", student).param("ses", session).param("sem", semester)
                 .query(BigDecimal.class).optional().orElse(BigDecimal.ZERO);
     }
 
