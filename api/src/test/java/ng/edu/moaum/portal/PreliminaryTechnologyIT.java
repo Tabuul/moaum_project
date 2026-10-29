@@ -2,8 +2,10 @@ package ng.edu.moaum.portal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -24,7 +27,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * Business Education with Accounting Education (another programme's option refused) and is eligible; the desk of the route is the
  * Vocational and Technical Office's — the Preliminary Science Office is refused it, and the Vocational and Technical Office is
  * refused Preliminary Science's. A proficiency applicant is entry mode PROFICIENCY, can raise no fee reference until the Bursary
- * sets one, and chooses a certificate course. Needs DATABASE_URL.
+ * sets one, and chooses a certificate course. Both programmes' application fees are paid on Quickteller as every applicant's are.
+ * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -175,5 +179,80 @@ class PreliminaryTechnologyIT {
                 Map.of("sitting", 1, "exam_body", "NECO", "exam_type", "SSCE", "exam_number", "PRF" + tag, "exam_year", "2022", "subjects", List.of(
                         Map.of("subject", "English Language", "grade", "F9"), Map.of("subject", "Mathematics", "grade", "F9")))))));
         assertThat(((Map) ((Map) olevel.get("preliminary")).get("eligibility")).get("status")).isEqualTo("ELIGIBLE");
+    }
+
+    /**
+     * Pay on Quickteller for both programmes, as for every applicant: the application-fee reference a Preliminary Technology
+     * applicant raises, and a proficiency applicant's once the Bursary has stated the fee, are offered Quickteller and sent there
+     * with the portal's reference and the amount; Quickteller's question about each is answered with the applicant's name,
+     * application number and fee; Interswitch's notification confirms it on Quickteller's channel, once. The University's biller,
+     * the notification credentials and the proficiency fee are put back as they were.
+     */
+    @Test
+    void bothProgrammesApplicationFeesArePaidOnQuickteller() {
+        String bursar = ItSupport.token("bursar");
+        String ict = ItSupport.token("ict");
+        org.springframework.web.client.RestClient open = org.springframework.web.client.RestClient.builder().baseUrl("http://localhost:" + port)
+                .defaultStatusHandler(s -> true, (q, r) -> { }).build();
+        java.util.function.Function<String, String> xml = body -> open.post().uri("/api/v1/payments/paydirect/interswitch").contentType(MediaType.TEXT_XML)
+                .body(body).retrieve().body(String.class);
+        Map<String, Object> main = ((List<Map<String, Object>>) ok(it.get(bursar, "/api/v1/payments/paydirect")).get("billers")).stream()
+                .filter(b -> "MAIN".equals(b.get("scope"))).findFirst().orElseThrow();
+        String session = it.db(() -> jdbc.sql("SELECT policy.route_session('PROFICIENCY_CERTIFICATE')").query(String.class).single());
+        boolean proficiencyFeeSet = it.db(() -> jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.route_fee WHERE session = :s AND route = 'PROFICIENCY_CERTIFICATE')")
+                .param("s", session).query(Boolean.class).single());
+        try {
+            ok(it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/MAIN", Map.of("code", String.valueOf(main.get("biller_code")),
+                    "name", String.valueOf(main.get("name")), "link", "https://quickteller.com/bsum", "active", true, "redirect", true, "withAmount", true)));
+            ok(it.call(ict, HttpMethod.PUT, "/api/v1/payments/gateways/paydirect/key",
+                    Map.of("secret", "{\"serviceUsername\":\"moaum-it-prelim\",\"servicePassword\":\"an-invented-password\"}")));
+            if (!proficiencyFeeSet) {
+                ok(it.call(bursar, HttpMethod.PUT, "/api/v1/admissions/preliminary/config/fee?route=PROFICIENCY_CERTIFICATE", Map.of("applicationFee", 3000)));
+            }
+            for (String slug : List.of("preliminary-technology", "proficiency-certificate")) {
+                String tag = tag();
+                String applicant = String.valueOf(register(slug, tag, "F").get("token"));
+                String reference = String.valueOf(ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "APPLICATION"))).get("reference"));
+                Map<String, Object> row = it.db(() -> jdbc.sql("""
+                        SELECT f.amount, a.application_no FROM admissions.fee_reference f JOIN admissions.application a ON a.id = f.application_id WHERE f.reference = :r
+                        """).param("r", reference).query().singleRow());
+                BigDecimal amount = (BigDecimal) row.get("amount");
+                if (slug.startsWith("proficiency") && !proficiencyFeeSet) {
+                    assertThat(amount).as("the fee the Bursary stated").isEqualByComparingTo("3000");
+                }
+                String amountInLink = amount.stripTrailingZeros().scale() <= 0 ? amount.toBigInteger().toString() : amount.setScale(2).toPlainString();
+
+                // the pay block offers Quickteller, and the payer is sent there with the portal's own reference and the amount
+                assertThat(ok(it.get(applicant, "/api/v1/payments/gateways?reference=" + reference)).get("paydirect")).as(slug).isEqualTo(true);
+                assertThat(ok(it.call(applicant, HttpMethod.POST, "/api/v1/payments/checkout", Map.of("reference", reference, "gateway", "paydirect"))).get("url"))
+                        .as(slug).isEqualTo("https://quickteller.com/bsum?cid=" + reference + "&amount=" + amountInLink);
+
+                // Quickteller asks after the reference: the applicant, the application number and the fee
+                assertThat(xml.apply("<CustomerInformationRequest><ServiceUsername></ServiceUsername><ServicePassword></ServicePassword><MerchantReference>6405</MerchantReference>"
+                        + "<CustReference>" + reference + "</CustReference><PaymentItemCode>01</PaymentItemCode><ThirdPartyCode></ThirdPartyCode></CustomerInformationRequest>"))
+                        .as(slug).contains("<Status>0</Status>").containsIgnoringCase("<LastName>Tech" + tag + "</LastName>")
+                        .contains("(" + row.get("application_no") + ")</FirstName>").contains("<Amount>" + amount.setScale(2).toPlainString() + "</Amount>");
+
+                // Interswitch reports the payment: confirmed on Quickteller's channel, and the application form opens
+                String logId = String.valueOf(1_000_000 + new Random().nextInt(8_000_000));
+                assertThat(xml.apply(PaymentsIT.notification("moaum-it-prelim", "an-invented-password", reference, logId, amount.toPlainString(), false, false)))
+                        .as(slug).contains("<PaymentLogId>" + logId + "</PaymentLogId><Status>0</Status>");
+                assertThat(ok(it.get(applicant, "/api/v1/applicant/me")).get("feeConfirmedAt")).as(slug).isNotNull();
+                assertThat(it.db(() -> jdbc.sql("SELECT channel FROM admissions.fee_reference WHERE reference = :r").param("r", reference).query(String.class).single()))
+                        .as(slug).isEqualTo("Quickteller · WEB");
+                // paid: Quickteller is told so if it asks again
+                assertThat(xml.apply("<CustomerInformationRequest><CustReference>" + reference + "</CustReference></CustomerInformationRequest>")).as(slug).contains("<Status>1</Status>");
+            }
+        } finally {
+            ResponseEntity<Map> back = it.call(bursar, HttpMethod.PUT, "/api/v1/payments/paydirect/billers/MAIN", Map.of("code", String.valueOf(main.get("biller_code")),
+                    "name", String.valueOf(main.get("name")), "link", main.get("pay_link") == null ? "" : String.valueOf(main.get("pay_link")),
+                    "active", Boolean.TRUE.equals(main.get("active")), "redirect", Boolean.TRUE.equals(main.get("redirect")),
+                    "withAmount", !Boolean.FALSE.equals(main.get("with_amount"))));
+            assertThat(back.getStatusCode().value()).as("the biller as it was: " + back.getBody()).isEqualTo(200);
+            it.call(ict, HttpMethod.POST, "/api/v1/payments/gateways/paydirect/clear-key", Map.of());
+            if (!proficiencyFeeSet) {
+                it.db(() -> jdbc.sql("DELETE FROM admissions.route_fee WHERE session = :s AND route = 'PROFICIENCY_CERTIFICATE'").param("s", session).update());
+            }
+        }
     }
 }
