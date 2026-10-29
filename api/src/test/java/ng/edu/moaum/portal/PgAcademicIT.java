@@ -240,6 +240,38 @@ class PgAcademicIT {
                 assertThat(c).containsEntry("pgStage", "800B").containsEntry("pgStageLabel", "800 B — Year 2"));
     }
 
+    /** V693: a Masters student past the maximum period (a fourth session from admission, no cycle recorded) is charged the 800 C —
+     *  Extension line, is off the Bursary's list of students with no fee, and is still past the maximum period on the PG School's list */
+    @Test
+    void aStudentPastTheMaximumPeriodIsChargedTheExtensionLine() {
+        List<String> s = sessions(4);
+        String bursar = ItSupport.token("bursar"), pgschool = ItSupport.token("pgschool");
+        String surname = it.freeSurname("ZZPGBEYOND");
+        UUID past = pgStudent(surname, "C90090", s.get(0));   // 800 A, 800 B, 800 C, then past the maximum in the fourth session
+        String path = path(s.get(3));
+
+        // no line yet: on the list of students with no fee, named as past the maximum period and charged as 800 C
+        List<Map<String, Object>> unstated = (List<Map<String, Object>>) (List) it.getList(bursar, path + "/postgraduate/unstated").getBody();
+        assertThat(unstated).anySatisfy(u -> assertThat(u).containsEntry("programme_code", "C90090").containsEntry("stage_code", "800C")
+                .containsEntry("stage_label", "Past the maximum period — charged as 800 C — Extension").containsEntry("category", "RETURNING"));
+
+        // the programme's 800 B and 800 C lines: the 800 C line reaches the student, the 800 B line does not
+        List<Map<String, Object>> rows = List.of(Map.of("programmeCode", "C90090", "pgStage", "800B", "item", "Tuition", "amount", "55000", "semester", "1"),
+                Map.of("programmeCode", "C90090", "pgStage", "800C", "item", "Tuition", "amount", "40000", "semester", "1"));
+        ResponseEntity<Map> loaded = it.call(bursar, HttpMethod.POST, path + "/fee-structure", Map.of("rows", rows, "scope", "LISTED"));
+        assertThat(loaded.getStatusCode().value()).as(String.valueOf(loaded.getBody())).isEqualTo(200);
+        assertThat(charged(past, s.get(3))).isEqualByComparingTo("40000");
+        unstated = (List<Map<String, Object>>) (List) it.getList(bursar, path + "/postgraduate/unstated").getBody();
+        assertThat(unstated).noneSatisfy(u -> assertThat(u).containsEntry("programme_code", "C90090").containsEntry("stage_code", "800C"));
+
+        // the PG School still reads the student as past the maximum period, with no stage
+        Map<String, Object> page = it.get(pgschool, "/api/v1/pg/academic/students?session=" + s.get(3) + "&stage=BEYOND&q=" + surname).getBody();
+        assertThat((List<Map<String, Object>>) page.get("rows")).singleElement().satisfies(r -> {
+            assertThat(r).containsEntry("beyond", true).containsEntry("recommendation", "MAXIMUM_PERIOD_REACHED");
+            assertThat(r.get("stage_code")).isNull();
+        });
+    }
+
     @Test
     void aCycleIsReconciledProgressedExtendedClosedAndRestartedIntoCycleTwo() {
         List<String> s = sessions(4);

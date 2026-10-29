@@ -47,13 +47,15 @@ export function PgFees({ session }: { session: string }) {
           <Note kind="bad" title={`${waiting} postgraduate student${waiting === 1 ? " has" : "s have"} no fee line stated for ${session}`}>
             They cannot register until a line reaches them: name a postgraduate level (700, 800, 900), a PG stage (800 B — Year 2) or fresh or returning, the
             Postgraduate entry mode or group, or the programme. The stage below is each student&rsquo;s in {session}: state it with the Postgraduate fee structure.
+            A student past the maximum period is charged their qualification&rsquo;s last stage (800 C — Extension, 900 E — Extension 2, 700 Extension) until
+            the PG School closes the cycle or approves a restart (V693).
           </Note>
         ) : <Note kind="ok" title={`Every live postgraduate student has a fee line stated for ${session}`}>Registration is not held on the School&rsquo;s fees.</Note>}
       </PBody>
       {waiting ? (
         <DTable cols={["Level|num", "Programme", "Stage", "Students|num"]} texts={unstated.map((u) => `${u.level} ${u.programme_code} ${u.programme} ${u.stage_label ?? ""}`)}
           rows={unstated.map((u) => [<span key="l" className="tnum">{u.level}</span>, <span key="p"><b className="tnum">{u.programme_code}</b> {u.programme}</span>,
-            <span key="g">{u.stage_label ?? <span className="sub2">Past the maximum period or not read</span>}{u.category ? <span className="sub2"> · {u.category === "FRESH" ? "fresh" : "returning"}</span> : null}</span>,
+            <span key="g">{u.stage_label ?? <span className="sub2">Stage not read (no admission session, or no qualification from the programme&rsquo;s name)</span>}{u.category ? <span className="sub2"> · {u.category === "FRESH" ? "fresh" : "returning"}</span> : null}</span>,
             <span key="n" className="tnum">{u.students}</span>])} />
       ) : null}
       {mayReview ? (

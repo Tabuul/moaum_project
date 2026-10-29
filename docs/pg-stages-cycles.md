@@ -80,6 +80,36 @@ positions and the Bursary's reports agree.
 
 `finance.payment_pg_context` records, when a school-fees reference is generated, the cycle, stage and category it was raised under.
 
+### Past the maximum period: charged the last stage (V693)
+
+On 29 October 2026 the Bursary's page read "7574 postgraduate students have no fee line stated for 2025/2026". Most of them were past
+the maximum period by the calendar, with no stage:
+
+- a Masters student admitted in 2022/2023 or earlier is past 800 C in 2025/2026;
+- a PhD student admitted in 2020/2021 or earlier is past 900 E;
+- a PG Diploma student admitted in 2023/2024 or earlier is past 700 Extension.
+
+So no stage's line reached them. On the copy of 22 October 2026, with the lines in force, 1,074 of the 1,111 PG students with no fee
+were past the maximum period. The University chose that they pay the extension fee.
+
+`admissions.pg_fee_stages_of(session, students)` is the stage a student is **charged** at. It is `pg_stages_of`, except for a student
+past the maximum period whose cycle is still open (`MAXIMUM_PERIOD_REACHED`: an active cycle, or none recorded yet). Such a student
+is read at the qualification's last stage — 800 C — Extension, 900 E — Extension 2 or 700 Extension — with its category, and
+`beyond` stays true.
+
+Every fee reader reads it: `charges_of_as`, `fee_stated`, `due_for_semester`, `session_fee_total`, `fee_profiles` (so `fee_sums` and
+`fee_positions_of`), `historical_rows_read`, `pg_unstated`, `pg_unstated_by_stage` and the payment's PG context. The student is
+charged, can pay and can register.
+
+The PG School's reading is unchanged. The stage lists, the counts, the data-quality list and the student's own page still say "Past
+the maximum period".
+
+Closing the cycle (exhausted or closed, including by the reconciliation) ends it: from then on no stage's line reaches the student
+until a restart, which begins at the first stage, fresh. A line for the whole level, or for returning students without a stage, still
+reaches them.
+
+The Bursary's list of students with no fee names such a group "Past the maximum period — charged as 800 C — Extension".
+
 ## Reconciliation of existing students
 
 `admissions.pg_cycle_scan(session)` previews the students with no cycle yet: the cycle and stage each would get, with a confidence

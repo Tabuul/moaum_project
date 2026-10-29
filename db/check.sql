@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 519
+\set EXPECTED 520
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28691,6 +28691,81 @@ BEGIN
            AND c_many = 'EPS 961=GST_PAYMENT_REQUIRED,GST 961=GST_PAYMENT_REQUIRED,NOPE 961=OPEN' AND c_one = 'GST_PAYMENT_REQUIRED,OPEN', false),
       format('GST list %s EPS list %s owed a %s | registrar %s | first %s | second %s | notices a %s d %s body %s | batches %s | many %s one %s',
              gst_list, eps_list, owed_a, office_refused, first, second, a_notices, d_notices, a_body, batches, c_many, c_one));
+END $$;
+
+-- ── V693: a postgraduate student past the maximum period is charged the last stage's fee line: a made-up Masters student admitted
+--          three sessions before (800 A, 800 B, 800 C, then past the maximum) is still read past the maximum period with no stage by
+--          the PG School, but charged at 800 C — Extension (returning): the 800 C line and a returning line reach them, the 800 B line
+--          does not; the student's own charges, the semester's fee, the bulk positions and "fee stated" agree; with no 800 C line the
+--          Bursary's list names their group "Past the maximum period — charged as 800 C — Extension"; a school-fees reference names
+--          800 C; a PhD student past 900 E is charged 900 E's line; once the cycle is closed as exhausted only the returning line is
+--          left (no stage). The block undoes its own writes. ──
+DO $$
+DECLARE st uuid := gen_random_uuid(); phd uuid := gen_random_uuid(); officer uuid := gen_random_uuid();
+        s0 text := '9871/9872'; s1 text := '9872/9873'; s2 text := '9873/9874'; s3 text := '9874/9875'; s4 text := '9875/9876'; s5 text := '9876/9877';
+        school record; fee record; phd_fee record; charged numeric; bulk numeric; due numeric; stated boolean; listed text; listed_after text;
+        phd_charged numeric; ctx record; cyc uuid; closed_charged numeric; v_err text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', officer::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM set_config('moaum.reason', 'V693 check: past the maximum period, charged the extension line', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES
+            (gen_random_uuid(), s0, '9871-10-01', '9872-08-31'), (gen_random_uuid(), s1, '9872-10-01', '9873-08-31'),
+            (gen_random_uuid(), s2, '9873-10-01', '9874-08-31'), (gen_random_uuid(), s3, '9874-10-01', '9875-08-31'),
+            (gen_random_uuid(), s4, '9875-10-01', '9876-08-31'), (gen_random_uuid(), s5, '9876-10-01', '9877-08-31')
+        ON CONFLICT (name) DO NOTHING;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (st, 'MOAUM/ADM/98/969301', 'MOAUM/PGC/98/6930', 'CHECKPGBEYOND', 'Masters Student', 'C90090', 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()),
+            (phd, 'MOAUM/ADM/98/969302', 'MOAUM/PGC/98/6931', 'CHECKPGBEYOND', 'Doctoral Student', 'C90003', 'POSTGRADUATE', s0, 900, 900, 'ACTIVE', now());
+        SELECT x.* INTO school FROM admissions.pg_stages_of(s3, ARRAY[st]) x;
+        SELECT x.* INTO fee FROM admissions.pg_fee_stages_of(s3, ARRAY[st]) x;
+        SELECT x.* INTO phd_fee FROM admissions.pg_fee_stages_of(s5, ARRAY[phd]) x;
+
+        -- no 800 C line yet: the student's group is listed as past the maximum, charged as 800 C
+        INSERT INTO finance.fee_schedule (session, item, amount, programme_code, pg_stage, semester) VALUES (s3, 'V693 check tuition', 50000, 'C90090', '800B', 1);
+        listed := (SELECT u.stage_code || '|' || u.stage_label || '|' || u.category FROM finance.pg_unstated_by_stage(s3) u
+                    WHERE u.programme_code = 'C90090' AND u.stage_label LIKE 'Past the maximum period%');
+        INSERT INTO finance.fee_schedule (session, item, amount, programme_code, pg_stage, semester) VALUES (s3, 'V693 check tuition', 30000, 'C90090', '800C', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, fee_category, semester) VALUES (s3, 'V693 check returning levy', 2000, 800, 'RETURNING', 1);
+        charged := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(st, s3) c);
+        bulk := (SELECT p.due FROM finance.session_fee_positions(s3) p WHERE p.student_id = st);
+        due := finance.due_for_semester(st, s3, 1);
+        stated := finance.fee_stated(st, s3);
+        listed_after := (SELECT string_agg(u.stage_label, ',') FROM finance.pg_unstated_by_stage(s3) u
+                          WHERE u.programme_code = 'C90090' AND u.stage_label LIKE 'Past the maximum period%');
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at)
+        VALUES (st, s3, 'MOAUM-FEE-V693-CHECK', 'School fees ' || s3, 32000, now() + interval '3 days');
+        SELECT c.* INTO ctx FROM finance.payment_pg_context c JOIN finance.payment_reference r ON r.id = c.reference_id WHERE r.reference = 'MOAUM-FEE-V693-CHECK';
+
+        -- a PhD student past 900 E: 900 E's line
+        INSERT INTO finance.fee_schedule (session, item, amount, programme_code, pg_stage, semester) VALUES (s5, 'V693 check PhD tuition', 45000, 'C90003', '900E', 1);
+        INSERT INTO finance.fee_schedule (session, item, amount, programme_code, pg_stage, semester) VALUES (s5, 'V693 check PhD tuition', 60000, 'C90003', '900D', 1);
+        phd_charged := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(phd, s5) c);
+
+        -- the cycle closed as exhausted by the PG School: no stage, only the returning line
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO people.pg_cycle (student_id, cycle_no, qualification, programme_code, start_session, status, status_reason, status_at, source)
+        VALUES (st, 1, 'MASTERS', 'C90090', s0, 'MAXIMUM_PERIOD_EXHAUSTED', 'The extension year ended with the thesis outstanding', now(), 'RECONCILIATION')
+        RETURNING id INTO cyc;
+        closed_charged := (SELECT coalesce(sum(c.amount), 0) FROM finance.charges(st, s3) c);
+        RAISE EXCEPTION 'the V693 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'the V693 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V693: a PG student past the maximum period is charged the last stage''s line (800 C, 900 E) until the cycle is closed; the PG School still reads them past the maximum',
+        coalesce(v_err IS NULL
+                 AND school.stage_code IS NULL AND school.beyond AND school.recommendation = 'MAXIMUM_PERIOD_REACHED'
+                 AND fee.stage_code = '800C' AND fee.stage_label = '800 C — Extension' AND fee.category = 'RETURNING' AND fee.beyond AND fee.is_extension
+                 AND fee.recommendation = 'MAXIMUM_PERIOD_REACHED'
+                 AND phd_fee.stage_code = '900E' AND phd_fee.beyond
+                 AND listed = '800C|Past the maximum period — charged as 800 C — Extension|RETURNING' AND listed_after IS NULL
+                 AND charged = 32000 AND bulk = 32000 AND due = 32000 AND stated
+                 AND ctx.stage_code = '800C' AND ctx.category = 'RETURNING'
+                 AND phd_charged = 45000 AND closed_charged = 2000, false),
+        format('err=%s school=%s/%s/%s fee=%s/%s/%s/%s/%s phd=%s/%s listed=%s after=%s charged=%s bulk=%s due=%s stated=%s ctx=%s/%s phd=%s closed=%s',
+               v_err, school.stage_code, school.beyond, school.recommendation, fee.stage_code, fee.stage_label, fee.category, fee.beyond, fee.is_extension,
+               phd_fee.stage_code, phd_fee.beyond, listed, listed_after, charged, bulk, due, stated, ctx.stage_code, ctx.category, phd_charged, closed_charged));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

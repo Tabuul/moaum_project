@@ -279,7 +279,7 @@ export function PgStages({ config, initialTab, initialStage }: { config: Config;
       {tab === "reconcile" ? (
         <Panel title={`Reconciliation of the PG register, ${session}`} right={sessionPick}>
           <PBody>
-            <div className="sub2 mb-2">The PG students with no cycle recorded, read from their admission session and programme. Nothing changes until it is recorded: each becomes cycle 1 — active, with this session&rsquo;s stage recorded; or exhausted, when past the maximum period; or graduated. A reading of low confidence (no qualification or no admission session) is never recorded; put the record right first.</div>
+            <div className="sub2 mb-2">The PG students with no cycle recorded, read from their admission session and programme. Nothing changes until it is recorded: each becomes cycle 1 — active, with this session&rsquo;s stage recorded; or exhausted, when past the maximum period (then no stage&rsquo;s fee reaches the student until a restart; while the cycle is open they pay the last stage&rsquo;s, V693); or graduated. A reading of low confidence (no qualification or no admission session) is never recorded; put the record right first.</div>
             {scan.data ? (
               <>
                 <Tiles items={[
@@ -432,7 +432,7 @@ function CloseModal({ ids, onClose, onDone }: { ids: string[]; onClose: () => vo
   return (
     <Modal title="Close as exhausted" sub={`${ids.length} selected`} onClose={onClose}
       foot={<><Btn kind="ghost" onClick={onClose}>Cancel</Btn><span className="grow" /><Btn kind="urgent" disabled={why.trim().length < 10} busyLabel="Closing the cycles…" onClick={send}>Close the cycles</Btn></>}>
-      <div className="sub2">Only the active cycles past the maximum period are closed, as <b>maximum period exhausted</b>; the others are left as they are. A closed cycle is kept with everything in it; the student may then be restarted in a new cycle.</div>
+      <div className="sub2">Only the active cycles past the maximum period are closed, as <b>maximum period exhausted</b>; the others are left as they are. A closed cycle is kept with everything in it; the student may then be restarted in a new cycle. Until then no stage&rsquo;s fee reaches them: while the cycle is open they pay the last stage&rsquo;s (800 C, 900 E, 700 Extension).</div>
       <Field id="cl-why" label="Reason" hint="Ten characters at least"><input id="cl-why" className="ctl" value={why} maxLength={400} onChange={(e) => setWhy(e.target.value)} /></Field>
     </Modal>
   );
