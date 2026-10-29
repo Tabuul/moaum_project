@@ -50,7 +50,7 @@ public class ApplicantService {
     /** V379: a JAMB number or reference on the CCE list, as the list carries it */
     static final Pattern CCE_SHAPE = Pattern.compile("^[A-Z0-9/-]{6,24}$");
     static final List<String> DOCUMENT_KINDS = List.of("OLEVEL_STATEMENT", "OLEVEL_STATEMENT_2", "BIRTH_CERT", "LGA_ID", "JAMB_SLIP", "PASSPORT",
-            "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER", "PASSPORT_2");
+            "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER", "PASSPORT_2", "PASSPORT_3");
     static final int MAX_DOCUMENT = 2 * 1024 * 1024;
 
     /** V687: mustChange — signed in on a temporary password from the University: the applicant chooses their own before anything else */
@@ -398,9 +398,13 @@ public class ApplicantService {
         v.put("listKind", a.get("list_kind"));
         /* V379: a CCE applicant applies from the CCE list to the Centre for Continuing Education, not through Post-UTME */
         boolean cce = "CCE".equals(a.get("entry_mode"));
-        /* V446: a Preliminary Science applicant applies to the programme online, with no JAMB number, and is reviewed by its Office */
-        boolean prelim = "PRELIMINARY".equals(a.get("entry_mode"));
-        v.put("route", cce ? "CCE" : prelim ? "PRELIMINARY_SCIENCE" : "UTME");
+        /* V446: a Preliminary Science applicant applies to the programme online, with no JAMB number, and is reviewed by its Office;
+           V701: so does a Preliminary Technology applicant (PRELIMINARY) and a proficiency course applicant (PROFICIENCY) — the route
+           is the application's own, and "preliminaryProgramme" says it is one of them */
+        boolean prelim = "PRELIMINARY".equals(a.get("entry_mode")) || "PROFICIENCY".equals(a.get("entry_mode"));
+        String prelimRoute = prelim ? repo.prelimRoute(applicationId).orElse("PRELIMINARY_SCIENCE") : null;
+        v.put("route", cce ? "CCE" : prelim ? prelimRoute : "UTME");
+        v.put("preliminaryProgramme", prelim);
         /* the released decision opens to the applicant through Admission Status Checking (V271, V295): a valid application, checking
            open, the checking fee confirmed — or an admission already under way; the office always reads it. Until then nothing in the
            view says what the decision is: not the decision, nor the candidate's offer state (ADMITTED once an offer is released) */
@@ -452,8 +456,8 @@ public class ApplicantService {
             feeMap.put("stated", cf != null);
         }
         if (prelim) {
-            // V446: the Preliminary Science fees the Bursary stated for the route — only the application fee unless the University gives more
-            Map<String, Object> pf = repo.prelimFees(session);
+            // V446/V701: the fees the Bursary stated for the applicant's route — only the application fee unless the University gives more
+            Map<String, Object> pf = repo.prelimFees(session, prelimRoute);
             feeMap.put("applicationFee", pf == null || pf.get("application_fee") == null ? null : ((java.math.BigDecimal) pf.get("application_fee")).add((java.math.BigDecimal) pf.get("portal_charge")));
             feeMap.put("portalCharge", java.math.BigDecimal.ZERO);
             feeMap.put("acceptanceFee", pf == null ? null : pf.get("acceptance_fee"));
@@ -611,8 +615,8 @@ public class ApplicantService {
         Optional<String> prelimState = repo.prelimState(app);
         if (prelimState.isPresent()) {
             if (!List.of("DRAFT", "CORRECTION_REQUIRED").contains(prelimState.get())) {
-                throw new DomainRuleViolation("PRELIM_NOT_EDITABLE", "The application is with the Preliminary Science Office; documents change only when the Office asks.",
-                        new DomainRuleViolation.Remedy("If something is wrong, write to the Preliminary Science Office quoting your application number.", "Preliminary Science Office"));
+                throw new DomainRuleViolation("PRELIM_NOT_EDITABLE", "The application is with the programme's office; documents change only when the Office asks.",
+                        new DomainRuleViolation.Remedy("If something is wrong, write to the Office quoting your application number.", "The programme's office"));
             }
             if (!repo.prelimFeeSettled(app)) {
                 throw new DomainRuleViolation("PRELIM_FEE_FIRST", "Pay the application fee first; the documents are uploaded once the payment is verified.",
@@ -620,11 +624,11 @@ public class ApplicantService {
             }
             List<String> kinds = repo.prelimDocumentKinds(app);
             if (kind == null || !kinds.contains(kind)) {
-                throw new DomainRuleViolation("APP_DOCUMENT_KIND", "'" + kind + "' is not one of the documents of the Preliminary Science application.",
-                        new DomainRuleViolation.Remedy(String.join(", ", kinds) + ".", "Preliminary Science Office"));
+                throw new DomainRuleViolation("APP_DOCUMENT_KIND", "'" + kind + "' is not one of the documents of this application.",
+                        new DomainRuleViolation.Remedy(String.join(", ", kinds) + ".", "The programme's office"));
             }
-        } else if ("PASSPORT_2".equals(kind)) {
-            throw new DomainRuleViolation("APP_DOCUMENT_KIND", "A second passport photograph is a document of the Preliminary Science application.",
+        } else if ("PASSPORT_2".equals(kind) || "PASSPORT_3".equals(kind)) {
+            throw new DomainRuleViolation("APP_DOCUMENT_KIND", "A second or third passport photograph is a document of a preliminary programme's application.",
                     new DomainRuleViolation.Remedy("Upload your passport photograph as PASSPORT.", "You"));
         }
         Optional<String> cceState = repo.cceState(app);

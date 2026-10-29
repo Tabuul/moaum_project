@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isPrelimRoute } from "@/lib/preliminary";
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { api } from "@/lib/api";
@@ -17,7 +18,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const loaded = await loadApplication();
   /* V379: a CCE applicant pays on the CCE application, and comes back to it from the gateway */
   if (loaded.app?.route === "CCE") redirect("/applicant/cce");
-  if (loaded.app?.route === "PRELIMINARY_SCIENCE") redirect("/applicant/preliminary");
+  if (isPrelimRoute(loaded.app?.route)) redirect("/applicant/preliminary");
   return (
     <Shell route="a/fee" me={loaded.me}>
       {loaded.app ? <Fee a={loaded.app} /> : <ProblemNotice problem={loaded.problem} />}

@@ -43,6 +43,7 @@ export const OFFICE_LABELS: Record<string, string> = {
   cce: "Centre for Continuing Education",
   alumni: "Alumni Relations Office",
   prelim: "Preliminary Science Office",
+  prelimtech: "Preliminary Vocational and Technical Education Office",
   sandwich: "Sandwich Programme Office",
 };
 
@@ -95,6 +96,7 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   cce: ["Centre for Continuing Education", "CCE · part-time programmes"],
   alumni: ["Alumni Relations Office", "Final clearance and the alumni register"],
   prelim: ["Preliminary Science Office", "Preliminary Science Programme"],
+  prelimtech: ["Preliminary Vocational and Technical Education Office", "Preliminary Technology & Industrial Studies · Adikpo Campus proficiency certificates"],
   sandwich: ["Sandwich Programme Office", "Sandwich programme students"],
   pgschool: ["Dean, Postgraduate School", "School of Postgraduate Studies"],
   pgsecretary: ["Secretary, Postgraduate School", "School of Postgraduate Studies"],

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isPrelimRoute } from "@/lib/preliminary";
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { loadApplication } from "../load";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
  *  programme, the documents and the submission; then the Office's review and the published outcome */
 export default async function Page() {
   const loaded = await loadApplication();
-  if (loaded.app && loaded.app.route !== "PRELIMINARY_SCIENCE") redirect("/applicant");
+  if (loaded.app && !isPrelimRoute(loaded.app.route)) redirect("/applicant");
   return (
     <Shell route="a/preliminary" me={loaded.me}>
       {loaded.app ? <PrelimApplicantForm /> : <ProblemNotice problem={loaded.problem} />}

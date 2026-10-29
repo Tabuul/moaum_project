@@ -85,6 +85,8 @@ export default async function DashboardPage() {
   if (office === "extexaminer") redirect("/examiner");
   /* the Linkages & Partnerships office and the Legal Officer work from the partnerships desk (V658) */
   if (office === "linkages" || office === "legal") redirect("/partnerships");
+  /* the preliminary and proficiency offices work from their desk (V446, V701): each opens on its own programmes */
+  if (office === "prelim" || office === "prelimtech") redirect("/preliminary");
   const session = currentSession(sessions.ok ? sessions.data : []);
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;

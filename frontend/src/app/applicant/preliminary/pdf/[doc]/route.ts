@@ -6,7 +6,7 @@ import { qrMatrix } from "@/lib/qr";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument, type DocumentMeta } from "@/lib/document/pdf";
 import { formatDocDate, formatDocDateTime } from "@/lib/document/institution";
-import { ELIGIBILITY, REMEDIATION, TARGET_NOTE, labelOf, remediationWords, type PrelimBlock, type PrelimView } from "@/lib/preliminary";
+import { ELIGIBILITY, REMEDIATION, TARGET_NOTE, labelOf, monthsWords, remediationWords, type PrelimBlock, type PrelimView } from "@/lib/preliminary";
 
 export const dynamic = "force-dynamic";
 
@@ -37,11 +37,12 @@ async function passport(path: string | null): Promise<DocumentMeta["photo"]> {
 }
 
 /**
- * V446 — the Preliminary Science papers on the University's document writer, with the applicant's passport at the top right:
- * the application form (the applicant's own, or any application's for the Preliminary Science desk with ?id=, which its own
- * endpoint scopes), and the admission letter (the applicant's, once the admission is published: it names the Preliminary
- * Science Programme and the target programme only as an intended progression). Each is issued only when the server's record
- * supports it.
+ * V446/V701 — a preliminary or proficiency programme's papers on the University's document writer (Preliminary Science,
+ * Preliminary Technology & Industrial Studies, the Adikpo Campus certificate courses), with the applicant's passport at the top
+ * right: the application form (the applicant's own, or any application's for the programme's office with ?id=, which its own
+ * endpoint scopes), and the admission letter (the applicant's, once the admission is published: it names the programme, its
+ * campus and duration, and the target only as an intended progression with its area and specialisation, or the certificate
+ * course). Each is issued only when the server's record supports it; the wording is the programme's own configuration.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ doc: string }> }) {
   const { doc } = await params;
@@ -75,32 +76,46 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
   const photo = await passport(passportPath);
   const label = (kind: string) => p.programmeInfo.documents.find((d) => d.kind === kind)?.label ?? kind.replace(/_/g, " ").toLowerCase();
   const field = (f: string) => p.fields.find((x) => x.field === f)?.value ?? "-";
-  const target = p.programmeInfo.targets.find((t) => t.programmeCode === p.targetProgramme)?.name ?? p.targetName ?? "-";
+  const info = p.programmeInfo;
+  const officeName = info.office ?? "The programme's office";
+  const typeWord = info.programmeTypeCode === "PROFICIENCY_CERTIFICATE" ? "Proficiency certificate" : "Preliminary / Remedial";
+  // a certificate course's route has courses only: its form never speaks of a target programme, chosen or not
+  const course = p.targetKind === "COURSE" || (info.targets.length > 0 && info.targets.every((t) => t.kind === "COURSE"));
+  const target = p.targetName ?? "-";
+  const targetNote = info.targetNote ?? TARGET_NOTE;
+  const slug = info.route.toLowerCase().replace(/_/g, "-");
+  const attempted = info.rules.kind === "ATTEMPTED_CERTIFICATE";
   let pdf: PdfDocument;
   let file: string;
 
   if (doc === "form") {
     const submitted = !!p.submittedAt;
-    pdf = new PdfDocument("FORM", { title: "Preliminary Science application form", subtitle: `${session} academic session`, reference: appNo,
-      unit: "Preliminary Science Office", photo, photoBox: true, watermark: submitted ? null : "NOT YET SUBMITTED",
-      meta: [["Programme", "Preliminary Science (Preliminary / Remedial)"], ["Session", session]] }, inst);
+    pdf = new PdfDocument("FORM", { title: `${info.name} application form`, subtitle: `${session} academic session${info.campus ? ` · ${info.campus.name}` : ""}`, reference: appNo,
+      unit: officeName, photo, photoBox: true, watermark: submitted ? null : "NOT YET SUBMITTED",
+      meta: [["Programme", `${info.name} (${typeWord})`], ["Session", session], ...(info.campus ? [["Campus", info.campus.name] as [string, string]] : [])] }, inst);
     pdf.space(8);
     pdf.heading("Applicant");
     pdf.keyValues([["Application number", appNo], ["Name", name], ["Sex", sex === "F" ? "Female" : sex === "M" ? "Male" : "-"], ["Date of birth", formatDocDate(field("date_of_birth"), inst)],
       ["Email", email ?? "-"], ["Phone", phone ?? "-"], ["Nationality", field("nationality")], ["State of origin", field("state_of_origin")], ["Local government area", field("lga")],
       ["Home address", field("home_address")], ["Next of kin", `${field("kin_name")} (${field("kin_relationship")}), ${field("kin_mobile")}`],
       ["Submitted", submitted ? formatDocDateTime(p.submittedAt, inst) : "Not yet submitted"]]);
-    pdf.heading("O'Level results");
+    pdf.heading(attempted ? "Secondary school certificate examination" : "O'Level results");
     pdf.table(["Sitting", "Body", "Examination", "Number", "Year", "Subject", "Grade"],
       p.olevel.map((o) => [String(o.sitting), o.exam_body, o.exam_type ?? "-", o.exam_number, String(o.exam_year), o.subject, o.grade]), { serial: false });
     pdf.heading("Eligibility, as the portal reads the results given");
-    pdf.keyValues([["Status", labelOf(ELIGIBILITY, p.eligibility.status)[0]], ["Credit passes", p.eligibility.totalCredits < 0 ? "-" : String(p.eligibility.totalCredits)],
-      ["Core science credits", p.eligibility.coreCredits < 0 ? "-" : String(p.eligibility.coreCredits)], ["Sittings", String(p.eligibility.sittings)],
+    pdf.keyValues([["Status", labelOf(ELIGIBILITY, p.eligibility.status)[0]], ...(attempted ? [] : [["Credit passes", p.eligibility.totalCredits < 0 ? "-" : String(p.eligibility.totalCredits)],
+      ["Credits in the required subjects", p.eligibility.coreCredits < 0 ? "-" : String(p.eligibility.coreCredits)]] as [string, string][]), ["Sittings", String(p.eligibility.sittings)],
       ["Remediation", p.remediation.status ? `${labelOf(REMEDIATION, p.remediation.status)[0]}${p.remediation.status === "REQUIRED" ? `: ${remediationWords(p.remediation)}` : ""}` : "-"]]);
     pdf.paragraph("The University verifies every result against the documents; this reading is not a decision.", 8.5);
-    pdf.heading("Target programme");
-    pdf.keyValues([["Intended progression", target]], 1);
-    pdf.paragraph(TARGET_NOTE, 8.5);
+    if (course) {
+      pdf.heading("Certificate course");
+      pdf.keyValues([["Course", p.targetName ?? "Not yet chosen"], ["Category", p.targetGroup ?? "-"], ["Campus", info.campus?.name ?? "-"], ["Duration", monthsWords(info.durationMonths)]], 1);
+    } else {
+      pdf.heading(info.targetWord.charAt(0).toUpperCase() + info.targetWord.slice(1));
+      pdf.keyValues([["Intended progression", target], ...(p.targetGroup && p.targetGroup !== target ? [[info.groupWord.charAt(0).toUpperCase() + info.groupWord.slice(1), p.targetGroup] as [string, string]] : []),
+        ...(p.specialisationName ? [["Specialisation", p.specialisationName] as [string, string]] : [])], 1);
+      pdf.paragraph(targetNote, 8.5);
+    }
     pdf.heading("Payment");
     const paid = payments.filter((x) => x.confirmedAt ?? x.confirmed_at);
     pdf.table(["Fee", "Reference", "Amount", "Receipt", "Verified"], paid.map((x) => [x.kind === "APPLICATION" ? "Application fee" : x.kind, x.reference, money(x.amount),
@@ -108,29 +123,41 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     pdf.heading("Documents submitted");
     pdf.table(["Document", "File", "Status"], documents.map((d) => [d.label ?? label(d.kind), d.filename, d.status === "ACCEPTED" ? "Accepted" : d.status === "REJECTED" ? "Rejected" : "Received"]), { serial: true });
     pdf.heading("Declaration");
-    pdf.paragraph("I declare that the particulars given in this application are true, and that the O'Level results given are released results. I understand that a false statement or document ends the application, and any admission that follows from it.");
-    pdf.signatures([{ name, designation: "Applicant's signature and date" }, { designation: "Preliminary Science Office (stamp and date)" }]);
-    file = `preliminary-science-application-${appNo.replace(/\//g, "-")}`;
+    pdf.paragraph(`I declare that the particulars given in this application are true, and that the ${attempted ? "examination results given are my own" : "O'Level results given are released results"}. I understand that a false statement or document ends the application, and any admission that follows from it.`);
+    pdf.signatures([{ name, designation: "Applicant's signature and date" }, { designation: `${officeName} (stamp and date)` }]);
+    file = `${slug}-application-${appNo.replace(/\//g, "-")}`;
   } else if (doc === "letter") {
     if (office) return refuse("The admission letter is printed by the applicant from their own portal.", 403);
-    if (p.state !== "ADMITTED") return refuse("The admission letter is issued once your admission into the Preliminary Science Programme is published.");
+    if (p.state !== "ADMITTED") return refuse(`The admission letter is issued once your admission into ${info.name} is published.`);
     const l = await api<Letter>(`/api/v1/applicant/me/letter${url.searchParams.get("print") === "1" ? "?event=PRINTED" : ""}`);
     if (!l.ok) return NextResponse.json(l.problem, { status: l.problem.status });
     const letter = l.data;
-    const st = JSON.parse(letter.statement) as { targetProgramme?: string | null; targetFaculty?: string | null; targetDepartment?: string | null; remediationRequired?: boolean;
+    const st = JSON.parse(letter.statement) as { programme?: string | null; degreeType?: string | null; campus?: string | null; durationMonths?: number | null; area?: string | null;
+      specialisation?: string | null; certificateCourse?: string | null; targetNote?: string | null;
+      targetProgramme?: string | null; targetFaculty?: string | null; targetDepartment?: string | null; remediationRequired?: boolean;
       remediationSubjects?: string[]; remediationCreditsShort?: number; completionNote?: string | null; decisionReleasedOn?: string | null };
-    pdf = new PdfDocument("LETTER", { title: "Offer of provisional admission: Preliminary Science Programme", subtitle: `${session} academic session`, reference: letter.number,
-      unit: "Office of the Registrar · Preliminary Science Programme", photo, photoBox: true }, inst);
+    const programme = st.programme ?? info.name;
+    const campus = st.campus ?? info.campus?.name ?? null;
+    pdf = new PdfDocument("LETTER", { title: `Offer of provisional admission: ${programme}`, subtitle: `${session} academic session${campus ? ` · ${campus}` : ""}`, reference: letter.number,
+      unit: `Office of the Registrar · ${programme}`, photo, photoBox: true }, inst);
     pdf.space(8);
     pdf.keyValues([["Name", name], ["Application number", appNo], ["Admission reference", letter.number], ["Date", formatDocDate(letter.issued_on, inst)]]);
     const first = name.includes(",") ? name.split(",")[1].trim().split(" ")[0] : name;
     pdf.paragraph(`Dear ${first},`);
-    pdf.paragraph(`I am pleased to inform you that you have been offered provisional admission into the Preliminary Science Programme of ${inst.name} for the ${session} academic session, as below.`);
-    pdf.keyValues([["Programme", "Preliminary Science"], ["Programme type", "Preliminary / Remedial"], ["Study mode", "Full-time"], ["Academic session", session],
-      ["Admission status", "Admitted"], ["Intended progression (target programme)", st.targetProgramme ? `${st.targetProgramme}${st.targetDepartment ? ` (${st.targetDepartment})` : ""}` : "-"]], 1);
+    pdf.paragraph(`I am pleased to inform you that you have been offered provisional admission into the ${programme} of ${inst.name}${campus ? `, ${campus}` : ""}, for the ${session} academic session, as below.`);
+    const offer: [string, string][] = [["Programme", programme], ["Programme type", typeWord], ["Study mode", "Full-time"], ["Academic session", session]];
+    if (campus) offer.push(["Campus", campus]);
+    offer.push(["Duration", monthsWords(st.durationMonths ?? info.durationMonths)], ["Admission status", "Admitted"]);
+    if (st.certificateCourse) offer.push(["Certificate course", st.certificateCourse], ["Category", st.area ?? "-"]);
+    else {
+      offer.push(["Intended progression (target programme)", st.targetProgramme ? `${st.targetProgramme}${st.targetDepartment ? ` (${st.targetDepartment})` : ""}` : "-"]);
+      if (st.area && st.area !== st.targetProgramme) offer.push([info.groupWord.charAt(0).toUpperCase() + info.groupWord.slice(1), st.area]);
+      if (st.specialisation) offer.push(["Specialisation", st.specialisation]);
+    }
+    pdf.keyValues(offer, 1);
     pdf.heading("Conditions");
     const conditions = [
-      `This admission is into the Preliminary Science Programme only. ${TARGET_NOTE}`,
+      st.certificateCourse ? `This admission is into the certificate course named above${campus ? `, taught at ${campus}` : ""}.` : `This admission is into the ${programme} only. ${st.targetNote ?? targetNote}`,
       "This offer is provisional and subject to the verification of your credentials. Should any of them be found false, the offer is withdrawn.",
       ...(st.remediationRequired ? [`Before completing the programme you are to make up: ${remediationWords({ subjects: st.remediationSubjects ?? [], creditsShort: st.remediationCreditsShort ?? 0 })}. ${st.completionNote ?? ""}`.trim()] : []),
       "The University will tell you of the next steps of the programme on the portal.",
@@ -139,7 +166,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     pdf.paragraph("Congratulations.");
     pdf.signatures([{ designation: "Registrar" }]);
     pdf.qr(qrMatrix(`${url.origin}${letter.verifyPath}`), `Document ${letter.number} · version ${letter.version} · verification code ${letter.verification_code}`);
-    file = `preliminary-science-admission-letter-${appNo.replace(/\//g, "-")}`;
+    file = `${slug}-admission-letter-${appNo.replace(/\//g, "-")}`;
   } else {
     return refuse("No such paper.", 404);
   }

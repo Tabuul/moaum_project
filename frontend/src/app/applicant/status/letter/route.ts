@@ -4,6 +4,7 @@ import type { Application } from "@/lib/applicant";
 import { admissionLetterPdf, type LetterDoc } from "@/lib/admission-letter-pdf";
 import { crestImage, signatureImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
+import { isPrelimRoute } from "@/lib/preliminary";
 import { sessionToken } from "@/lib/session";
 import { jpegSize, type Image } from "@/lib/pdf-write";
 
@@ -30,8 +31,8 @@ export async function GET(req: Request) {
   const me = await api<Application>("/api/v1/applicant/me");
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const a = me.data;
-  /* V446: a Preliminary Science admission has its own letter — the programme, and the target only as an intended progression */
-  if (a.route === "PRELIMINARY_SCIENCE") return NextResponse.redirect(new URL("/applicant/preliminary/pdf/letter", req.url));
+  /* V446/V701: a preliminary or proficiency admission has its own letter — the programme, and the target only as an intended progression */
+  if (isPrelimRoute(a.route)) return NextResponse.redirect(new URL("/applicant/preliminary/pdf/letter", req.url));
   if (!a.decisionReleasedAt || a.decision !== "OFFERED") {
     return NextResponse.json({ status: 409, title: "No offer to print", detail: "The letter is issued when the Admissions Board's offer is released." }, { status: 409 });
   }

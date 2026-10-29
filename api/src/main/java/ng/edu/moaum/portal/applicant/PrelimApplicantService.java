@@ -29,6 +29,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class PrelimApplicantService {
 
     static final String ROUTE = "PRELIMINARY_SCIENCE";
+    /** V701: the routes of the preliminary stack, and the slugs their public pages go by */
+    static final Map<String, String> SLUGS = Map.of("preliminary-science", "PRELIMINARY_SCIENCE", "preliminary-technology", "PRELIMINARY_TECHNOLOGY",
+                                                    "proficiency-certificate", "PROFICIENCY_CERTIFICATE");
     private static final UUID NOBODY = new UUID(0L, 0L);
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
@@ -45,7 +48,20 @@ public class PrelimApplicantService {
         this.tx = new TransactionTemplate(transactions);
     }
 
-    public record Register(String surname, String firstName, String middleName, String sex, String dateOfBirth, String email, String phone, String password) {
+    public record Register(String surname, String firstName, String middleName, String sex, String dateOfBirth, String email, String phone, String password, String route) {
+    }
+
+    /** V701: a route by its code or its page's slug, one the stack holds; none named is Preliminary Science (V446's door) */
+    String routeOf(String raw) {
+        String r = raw == null || raw.isBlank() ? ROUTE : SLUGS.getOrDefault(raw.trim().toLowerCase(), raw.trim().toUpperCase());
+        Optional<String> found = jdbc.sql("SELECT route FROM admissions.prelim_programme WHERE route = :r").param("r", r).query(String.class).optional();
+        return found.orElseThrow(() -> new DomainRuleViolation("PRELIM_NO_PROGRAMME", "There is no such programme to apply to.",
+                new DomainRuleViolation.Remedy("Choose one of the programmes on the application page.", "You")));
+    }
+
+    /** V701: the window a route's applications come through */
+    String windowOf(String route) {
+        return jdbc.sql("SELECT window_type FROM admissions.prelim_programme WHERE route = :r").param("r", route).query(String.class).single();
     }
 
     /** the application started: the window open, an address and a person once; the applicant signed in at once */
@@ -73,11 +89,12 @@ public class PrelimApplicantService {
                     new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
         // the window first, with the Director's own message; the database refuses once more behind it
-        windows.requireOpen(ApplicationWindows.PRELIMINARY_SCIENCE, null);
+        String route = routeOf(r.route());
+        windows.requireOpen(windowOf(route), null);
         String hash = encoder.encode(r.password());
-        AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "Preliminary Science application started", null, ip), () -> tx.execute(status ->
+        AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "Application started (" + route + ")", null, ip), () -> tx.execute(status ->
                 jdbc.sql("SELECT admissions.prelim_register(:route, :s, :f, :m, :sex, :dob, :e, :p, :h)")
-                        .param("route", ROUTE).param("s", r.surname().trim()).param("f", r.firstName().trim())
+                        .param("route", route).param("s", r.surname().trim()).param("f", r.firstName().trim())
                         .param("m", r.middleName() == null ? null : r.middleName().trim(), java.sql.Types.VARCHAR)
                         .param("sex", r.sex() == null ? null : r.sex().trim().toUpperCase(), java.sql.Types.VARCHAR)
                         .param("dob", dob).param("e", mail).param("p", phone).param("h", hash)
@@ -89,7 +106,7 @@ public class PrelimApplicantService {
     UUID application(UUID account) {
         UUID app = applicants.applicationOf(account);
         if (route(app).isEmpty()) {
-            throw new DomainRuleViolation("PRELIM_NOT_APPLICATION", "This is not a Preliminary Science application.",
+            throw new DomainRuleViolation("PRELIM_NOT_APPLICATION", "This is not a preliminary or proficiency programme application.",
                     new DomainRuleViolation.Remedy("Use the applicant pages of your own application.", "You"));
         }
         return app;
@@ -111,12 +128,15 @@ public class PrelimApplicantService {
     /** the programme's part of an application: for the applicant (no officer notes on unpublished steps) or for the Office */
     Map<String, Object> block(UUID app, boolean forOffice) {
         Map<String, Object> r = jdbc.sql("""
-                SELECT r.*, p.name AS target_name, pr.name AS programme_name, a.session, a.application_no, c.sex,
-                       admissions.prelim_fee_settled(r.application_id) AS fee_settled
+                SELECT r.*, coalesce(p.name, t.requested_name) AS target_name, pr.name AS programme_name, a.session, a.application_no, c.sex,
+                       admissions.prelim_fee_settled(r.application_id) AS fee_settled, t.kind AS target_kind, t.group_name AS target_group,
+                       t.requested_name AS target_requested, sp.name AS specialisation_name, sp.code AS specialisation_code
                   FROM admissions.prelim_review r JOIN admissions.application a ON a.id = r.application_id
                   JOIN admissions.candidate c ON c.id = a.candidate_id
                   JOIN admissions.prelim_programme pr ON pr.route = r.route
-                  LEFT JOIN ref.programme p ON p.code = r.target_programme
+                  LEFT JOIN admissions.prelim_target t ON t.id = r.target_id
+                  LEFT JOIN admissions.prelim_specialisation sp ON sp.id = r.specialisation_id
+                  LEFT JOIN ref.programme p ON p.code = t.programme_code
                  WHERE r.application_id = :a
                 """).param("a", app).query().singleRow();
         Map<String, Object> b = new LinkedHashMap<>();
@@ -131,6 +151,13 @@ public class PrelimApplicantService {
         b.put("sex", r.get("sex"));
         b.put("targetProgramme", r.get("target_programme"));
         b.put("targetName", r.get("target_name"));
+        // V701: the target by id (a programme or a certificate course), its area or category, and the option chosen
+        b.put("targetId", r.get("target_id"));
+        b.put("targetKind", r.get("target_kind"));
+        b.put("targetGroup", r.get("target_group"));
+        b.put("targetRequestedName", r.get("target_requested"));
+        b.put("specialisationId", r.get("specialisation_id"));
+        b.put("specialisationName", r.get("specialisation_name"));
         b.put("submittedAt", r.get("submitted_at"));
         b.put("requestNote", "CORRECTION_REQUIRED".equals(state) || forOffice ? r.get("request_note") : null);
         b.put("eligibility", Map.of(
@@ -184,10 +211,16 @@ public class PrelimApplicantService {
         return view(account);
     }
 
+    /** the target and its option: by id (V701: a programme or a certificate course), or by programme code as V446 */
     @Transactional
-    public Map<String, Object> target(UUID account, String programmeCode) {
+    public Map<String, Object> target(UUID account, String programmeCode, UUID targetId, UUID specialisationId) {
         UUID app = application(account);
-        jdbc.sql("SELECT admissions.prelim_set_target(:a, :p, NULL)").param("a", app).param("p", programmeCode).query(String.class).single();
+        if (targetId != null) {
+            jdbc.sql("SELECT admissions.prelim_choose(:a, :t, :s, NULL)").param("a", app).param("t", targetId)
+                    .param("s", specialisationId, java.sql.Types.OTHER).query(String.class).single();
+        } else {
+            jdbc.sql("SELECT admissions.prelim_set_target(:a, :p, NULL)").param("a", app).param("p", programmeCode).query(String.class).single();
+        }
         return view(account);
     }
 
@@ -198,10 +231,17 @@ public class PrelimApplicantService {
         return view(account);
     }
 
-    /** the programme as the public reads it */
+    /** the programme as the public reads it (V701: any route, by code or slug) */
     @Transactional(readOnly = true)
-    public Map<String, Object> publicInfo() {
-        return json(jdbc.sql("SELECT admissions.prelim_public(:r)::text").param("r", ROUTE).query(String.class).single());
+    public Map<String, Object> publicInfo(String route) {
+        return json(jdbc.sql("SELECT admissions.prelim_public(:r)::text").param("r", routeOf(route)).query(String.class).single());
+    }
+
+    /** V701: the preliminary and proficiency programmes the public application page offers, by programme type */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> routes() {
+        List<Map<String, Object>> v = json(jdbc.sql("SELECT admissions.prelim_routes_public()::text").query(String.class).single());
+        return v == null ? List.of() : v;
     }
 
     /** a text[] column as a list of strings (empty for none) */

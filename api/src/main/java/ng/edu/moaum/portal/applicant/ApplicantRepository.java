@@ -342,8 +342,14 @@ class ApplicantRepository {
         return jdbc.sql("SELECT admissions.prelim_submit(:a, :ip)").param("a", applicationId).param("ip", ip).query(String.class).single();
     }
 
-    Map<String, Object> prelimFees(String session) {
-        return jdbc.sql("SELECT * FROM admissions.route_fee_rule(:s, 'PRELIMINARY_SCIENCE')").param("s", session).query().listOfRows().stream().findFirst().orElse(null);
+    /** V701: the fees the Bursary stated for a preliminary or proficiency route */
+    Map<String, Object> prelimFees(String session, String route) {
+        return jdbc.sql("SELECT * FROM admissions.route_fee_rule(:s, :r)").param("s", session).param("r", route).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    /** V701: the route of a preliminary or proficiency application */
+    Optional<String> prelimRoute(UUID applicationId) {
+        return jdbc.sql("SELECT route FROM admissions.prelim_review WHERE application_id = :a").param("a", applicationId).query(String.class).optional();
     }
 
     /** the Centre's review state of a CCE application, or empty for any other application */

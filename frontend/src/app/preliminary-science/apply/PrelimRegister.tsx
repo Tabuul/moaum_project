@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The Preliminary Science application's first step (V446): the name as on the O'Level certificate, sex, date of birth, email,
+ * A preliminary or proficiency application's first step (V446; V701 every route: Preliminary Science, Preliminary Technology &
+ * Industrial Studies, the Adikpo Campus proficiency certificate courses): the name as on the O'Level certificate, sex, date of birth, email,
  * phone and a password. The application number is issued at once and the applicant is signed in; the fee comes next, and the
  * rest of the form opens once the payment is verified. One application per address and per person in a session.
  */
@@ -13,7 +14,7 @@ import { Btn, LinkBtn, Note, PageHead } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { phoneRead } from "@/app/apply/Register";
-import { naira, type PrelimPublic } from "@/lib/preliminary";
+import { naira, prelimPage, requirementWords, type PrelimPublic } from "@/lib/preliminary";
 import { PasswordInput } from "@/components/PasswordInput";
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
@@ -50,7 +51,7 @@ export function PrelimRegister({ p }: { p: PrelimPublic }) {
     try {
       const r = await fetch("/api/auth/applicant/preliminary-register", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ surname: f.surname.trim(), firstName: f.firstName.trim(), middleName: f.middleName.trim() || null, sex: f.sex, dateOfBirth: f.dateOfBirth,
-          email: f.email.trim(), phone: phoneRead(f.phone).digits, password: f.pw, acceptPolicy: agreed }) });
+          email: f.email.trim(), phone: phoneRead(f.phone).digits, password: f.pw, acceptPolicy: agreed, route: p.route }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       router.push("/applicant/preliminary");
@@ -68,13 +69,17 @@ export function PrelimRegister({ p }: { p: PrelimPublic }) {
   );
 
   return (
-    <AuthLayout eyebrow={`Preliminary Science · ${p.session}`}
-      lead={<>The Preliminary Science Programme prepares candidates for subsequent admission into approved science-based programmes.</>}
-      stats={[[String(p.rules.minCredits), "O'Level credits"], [String(p.rules.minCoreCredits), "in core sciences"], [p.fee.stated && p.fee.applicationFee != null ? naira(p.fee.applicationFee) : "—", "application fee"]]}>
+    <AuthLayout eyebrow={`${p.name} · ${p.session}${p.campus ? ` · ${p.campus.name}` : ""}`}
+      lead={<>{p.description.split(". ").slice(0, 1).join("")}.</>}
+      stats={p.rules.kind === "ATTEMPTED_CERTIFICATE"
+        ? [[String(p.targets.length), "certificate courses"], [p.campus?.name ?? "—", "campus"], [p.fee.stated && p.fee.applicationFee != null ? naira(p.fee.applicationFee) : "—", "application fee"]]
+        : [[String(p.rules.minCredits), "O'Level credits"], [p.rules.requiredSubjects.length ? p.rules.requiredSubjects.join(", ") : String(p.rules.minCoreCredits), p.rules.requiredSubjects.length ? "required" : "in core subjects"],
+           [p.fee.stated && p.fee.applicationFee != null ? naira(p.fee.applicationFee) : "—", "application fee"]]}>
       <form className="login-card" onSubmit={(e) => { e.preventDefault(); void create(); }}>
-        <PageHead title="Start your Preliminary Science application" description="Your application number is issued at once. Pay the application fee next; the rest of the form opens once the payment is verified." />
+        <PageHead title={`Start your ${p.name} application`} description="Your application number is issued at once. Pay the application fee next; the rest of the form opens once the payment is verified." />
         <Note kind="info" title="Before you start">
-          You need at least {p.rules.minCredits} O&rsquo;Level credit passes in at most {p.rules.maxSittings} sittings, {p.rules.minCoreCredits} of them in {p.rules.coreSubjects.join(", ")}. An awaiting result is not accepted. <a className="lnk" href="/preliminary-science" target="_blank" rel="noopener">Read the requirements</a>.
+          {requirementWords(p)} <a className="lnk" href={prelimPage(p.route)} target="_blank" rel="noopener">Read the requirements</a>.
+          {p.fee.stated ? null : <> The application fee is not yet set by the Bursary: you may start, but the form opens only once it is set and paid.</>}
         </Note>
         {field("ps-s", "Surname", "surname", <input id="ps-s" value={f.surname} onChange={(e) => set("surname", e.target.value)} maxLength={60} autoComplete="family-name" required />)}
         {field("ps-f", "First name", "firstName", <input id="ps-f" value={f.firstName} onChange={(e) => set("firstName", e.target.value)} maxLength={60} autoComplete="given-name" required />)}

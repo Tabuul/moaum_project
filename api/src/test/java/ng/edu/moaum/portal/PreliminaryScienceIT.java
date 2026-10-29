@@ -124,7 +124,7 @@ class PreliminaryScienceIT {
         assertThat(code(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/preliminary/olevel", Map.of("sittings", List.of(
                 Map.of("sitting", 1, "exam_body", "WAEC", "exam_number", "4250101001", "exam_year", "2025", "awaiting", true, "subjects", List.of(Map.of("subject", "Physics", "grade", "C5")))))))).isEqualTo("PRELIM_AWAITING_RESULT");
         Map<String, Object> olevel = ok(it.call(applicant, HttpMethod.PUT, "/api/v1/applicant/me/preliminary/olevel", Map.of("sittings", List.of(
-                Map.of("sitting", 1, "exam_body", "WAEC", "exam_type", "SSCE", "exam_number", "4250101001", "exam_year", "2024", "subjects", List.of(
+                Map.of("sitting", 1, "exam_body", "WAEC", "exam_type", "SSCE", "exam_number", "42" + tag.substring(0, 8), "exam_year", "2024", "subjects", List.of(
                         Map.of("subject", "English Language", "grade", "C6"), Map.of("subject", "Mathematics", "grade", "C5"), Map.of("subject", "Chemistry", "grade", "C6"),
                         Map.of("subject", "Physics", "grade", "D7"), Map.of("subject", "Biology", "grade", "C5")))))));
         Map<String, Object> elig = (Map<String, Object>) ((Map) olevel.get("preliminary")).get("eligibility");

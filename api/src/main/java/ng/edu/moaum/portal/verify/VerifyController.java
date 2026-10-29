@@ -157,7 +157,11 @@ class VerifyController {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT fr.reference, fr.receipt_no, fr.kind, fr.amount, fr.channel, fr.confirmed_at, a.session, a.application_no,
-                       trim(upper(c.surname) || ', ' || c.other_names) AS name, c.programme, c.entry_mode,
+                       trim(upper(c.surname) || ', ' || c.other_names) AS name, c.programme,
+                       -- V701: a preliminary or proficiency applicant's receipt names its programme, not the entry mode two programmes share
+                       CASE WHEN c.entry_mode IN ('PRELIMINARY', 'PROFICIENCY')
+                            THEN coalesce((SELECT pr.route FROM admissions.prelim_review pr WHERE pr.application_id = a.id), c.entry_mode)
+                            ELSE c.entry_mode END AS entry_mode,
                        coalesce(
                          (SELECT 'data:' || coalesce(nullif(btrim(d.content_type), ''), 'image/jpeg') || ';base64,' || encode(b.content, 'base64')
                             FROM admissions.application_document d JOIN admissions.application_document_blob b ON b.document_id = d.id

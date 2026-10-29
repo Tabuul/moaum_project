@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
 import type { Me } from "@/components/proto/Shell";
 import type { Application } from "@/lib/applicant";
+import { isPrelimRoute } from "@/lib/preliminary";
 
 /**
  * The applicant's application, read once per screen, and the shell's idea of
@@ -36,9 +37,9 @@ export async function loadApplication(): Promise<{ me: Me; app: Application } | 
     /* the Screening Result item shows once the admission is decided (21 October 2026): the decision is the applicant's to read */
     flags: mine.data.decision ? ["decided"] : [],
     /* V379: a CCE applicant reads the CCE application's menu — no Post-UTME screening */
-    menu: mine.data.route === "CCE" ? "cceapplicant" : mine.data.route === "PRELIMINARY_SCIENCE" ? "prelimapplicant" : null,
+    menu: mine.data.route === "CCE" ? "cceapplicant" : isPrelimRoute(mine.data.route) ? "prelimapplicant" : null,
     unit: mine.data.route === "CCE" ? `Centre for Continuing Education · ${mine.data.session}`
-      : mine.data.route === "PRELIMINARY_SCIENCE" ? `Preliminary Science · ${mine.data.session}` : null,
+      : isPrelimRoute(mine.data.route) ? `${mine.data.programme ?? "Preliminary programme"} · ${mine.data.session}` : null,
   };
   return { me, app: mine.data };
 }

@@ -59,6 +59,10 @@ class ApplicationWindowsPublicController {
         out.put("jupeb", view(all.get(ApplicationWindows.JUPEB), "/jupeb/apply"));
         // V379: the CCE application — only those on JAMB's CCE list may apply
         out.put("cce", view(all.get(ApplicationWindows.CCE), "/cce/apply"));
+        // V701: the preliminary and proficiency programmes, each on its own window
+        out.put("preliminaryScience", view(all.get(ApplicationWindows.PRELIMINARY_SCIENCE), "/preliminary-science"));
+        out.put("preliminaryTechnology", view(all.get(ApplicationWindows.PRELIMINARY_TECHNOLOGY), "/preliminary-technology"));
+        out.put("proficiencyCertificate", view(all.get(ApplicationWindows.PROFICIENCY_CERTIFICATE), "/proficiency-certificate"));
         // V385: the Post-UTME CBT door and the result-checking page, each on the Director's own window for the Post-UTME session
         String putme = all.get(ApplicationWindows.POST_UTME).session();
         out.put("postUtmeCbt", view(windows.read(ApplicationWindows.POST_UTME_CBT, putme), "/post-utme/cbt"));

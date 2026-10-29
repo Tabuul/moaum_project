@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isPrelimRoute } from "@/lib/preliminary";
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { loadApplication } from "./load";
@@ -11,8 +12,8 @@ export default async function Page() {
   const loaded = await loadApplication();
   /* V379: a CCE applicant's home is the CCE application */
   if (loaded.app?.route === "CCE") redirect("/applicant/cce");
-  /* V446: a Preliminary Science applicant's home is the Preliminary Science application */
-  if (loaded.app?.route === "PRELIMINARY_SCIENCE") redirect("/applicant/preliminary");
+  /* V446/V701: a preliminary or proficiency applicant's home is their own application form */
+  if (isPrelimRoute(loaded.app?.route)) redirect("/applicant/preliminary");
   return (
     <Shell route="a/dashboard" me={loaded.me}>
       {loaded.app ? <Dashboard a={loaded.app} /> : <ProblemNotice problem={loaded.problem} />}

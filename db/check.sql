@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 525
+\set EXPECTED 526
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -308,7 +308,7 @@ DECLARE n int;
 BEGIN
     SELECT count(*) INTO n FROM ref.office;
     PERFORM pg_temp.assert('The office register carries every office',
-                           n = 48, n || ' offices (45 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520, the Database Operator V640, the Director, Linkages & Partnerships and the University Legal Officer V658; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
+                           n = 49, n || ' offices (46 staff offices incl. the SIWES Coordinator V156, the School of Postgraduate Studies'' Dean and Secretary V201, the College Finance Controller V227, the MBBS Coordinator V250, the ICT Support Agent V251, the External Examiner V254, the Dean of Student Affairs V290, the GST and EPS offices V314, the Head of ICT Support Desk V328, the JUPEB Office V339, the Centre for Continuing Education V379, the Alumni Relations Office V415, the Preliminary Science Office V446, the Sandwich Programme Office V469 and the Students Account Officer V520, the Database Operator V640, the Director, Linkages & Partnerships and the University Legal Officer V658, the Vocational and Technical Office V701; the applicant V021, the student V026 and the Post-UTME CBT candidate V385)');
 END $$;
 
 -- ── 4. a state change with no audit context is REFUSED ────────────────────
@@ -29157,6 +29157,196 @@ BEGIN
              AND msg LIKE '%panel 1:PAID:true:0,2:PAYMENT_REQUIRED:false:22350%'
              AND over = 0, false),
         msg);
+END $$;
+
+-- ── V701. Preliminary Technology & Industrial Studies and the Adikpo Campus proficiency certificate courses on V446's stack.
+--          Preliminary Technology: closed until the Director of ICT opens its own window (Preliminary Science's closed meanwhile);
+--          an applicant (entry mode PRELIMINARY, no JAMB number) pays the route's ₦5,000 before the form opens; an NTC sitting is
+--          accepted and an unknown qualification refused; English Language must be credited; until an area is chosen the eligibility
+--          waits, then the area's own subjects count (three of them) and the completion rule asks five relevant credits — four make
+--          it eligible with remediation, five eligible; a programme with options asks for one, never another programme's; one
+--          examination number is one person's; the Vocational and Technical Office reviews (Preliminary Science's Office refused),
+--          the Academic Office approves and publishes; the letter names the programme, its type, the target and the option. The
+--          proficiency courses: entry mode PROFICIENCY; no fee until the Bursary sets one (FEE NOT CONFIGURED, the form shut); an
+--          attempted certificate (all F9) is eligible; a certificate course of Adikpo Campus, never a Preliminary Technology target;
+--          the letter names the course, the campus and nine months; the payment classified PROFICIENCY_CERTIFICATE. Both kept apart
+--          from Post-UTME; the public reads the three routes. The block undoes its writes ──
+DO $$
+DECLARE a_off uuid := gen_random_uuid(); b_off uuid := gen_random_uuid(); t_off uuid := gen_random_uuid(); v_ses text; v_pses text;
+        acc uuid; app uuid; acc2 uuid; app2 uuid; pacc uuid; papp uuid; c record; pc record; v_ref text; v_amt numeric; v_pref text; v_closed text := 'accepted';
+        v_ps_closed text; v_fee_first text := 'accepted'; v_type_bad text := 'accepted'; e_wait text; e_area text; e_rem text[]; e_short int; e_noeng text; e_eng_missing text;
+        e_five text; e_five_rem text; v_spec_other text := 'accepted'; v_spec_need int; v_dup_ol text := 'accepted'; v_wrong_office text := 'accepted';
+        v_sub text; pub jsonb; letter credentials.issued; st record; notices int; v_home uuid; v_bus uuid; v_ind uuid; v_acc_ed uuid; v_auto uuid; v_weld uuid;
+        v_pfee_ref text := 'accepted'; v_pfee_form text := 'accepted'; pe text; v_wrong_target text := 'accepted'; ppub jsonb; pletter credentials.issued;
+        pcls record; tcls record; utme_aud boolean; scr boolean; pscr boolean; routes jsonb; pubp jsonb; wins int; words text; guard_ok boolean := false;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', a_off::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V701', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (a_off, 'CHK/V701A', 'CHECKV701', 'Academic'), (b_off, 'CHK/V701B', 'CHECKV701', 'Approver'),
+                                                                              (t_off, 'CHK/V701T', 'CHECKV701', 'Vocational');
+        v_ses := policy.route_session('PRELIMINARY_TECHNOLOGY');
+        v_pses := policy.route_session('PROFICIENCY_CERTIFICATE');
+        SELECT id INTO v_home FROM admissions.prelim_target WHERE route = 'PRELIMINARY_TECHNOLOGY' AND programme_code = 'C78876';
+        SELECT id INTO v_bus FROM admissions.prelim_target WHERE route = 'PRELIMINARY_TECHNOLOGY' AND programme_code = 'C67773';
+        SELECT id INTO v_ind FROM admissions.prelim_target WHERE route = 'PRELIMINARY_TECHNOLOGY' AND programme_code = 'C00096';
+        SELECT id INTO v_acc_ed FROM admissions.prelim_specialisation WHERE target_id = v_bus AND code = 'ACC-ED';
+        SELECT id INTO v_auto FROM admissions.prelim_specialisation WHERE target_id = v_ind AND code = 'AUTO';
+        SELECT id INTO v_weld FROM admissions.prelim_target WHERE route = 'PROFICIENCY_CERTIFICATE' AND requested_name = 'Certificate in Welding and Fabrication';
+        routes := admissions.prelim_routes_public();
+        pubp := admissions.prelim_public('PROFICIENCY_CERTIFICATE');
+        SELECT count(*) INTO wins FROM policy.application_windows_public() w WHERE w.window_type IN ('PRELIMINARY_TECHNOLOGY_APPLICATION', 'PROFICIENCY_CERTIFICATE_APPLICATION');
+        words := policy.window_word('PRELIMINARY_TECHNOLOGY_APPLICATION') || '|' || policy.window_word('PROFICIENCY_CERTIFICATE_APPLICATION');
+
+        -- (1) Preliminary Technology: closed until opened; its own window, Preliminary Science's closed meanwhile
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('PRELIMINARY_TECHNOLOGY_APPLICATION', v_ses, NULL, 'CLOSE', NULL, NULL, NULL, false, 'CHECK V701: closed', a_off, 'ict');
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        BEGIN PERFORM admissions.prelim_register('PRELIMINARY_TECHNOLOGY', 'Checkv701', 'Ada', NULL, 'F', DATE '2006-05-01', 'v701.closed@example.test', '08031239000',
+                                                 '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        EXCEPTION WHEN check_violation THEN v_closed := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM policy.window_act('PRELIMINARY_SCIENCE_APPLICATION', policy.route_session('PRELIMINARY_SCIENCE'), NULL, 'CLOSE', NULL, NULL, NULL, false, 'CHECK V701: Preliminary Science closed', a_off, 'ict');
+        PERFORM policy.window_act('PRELIMINARY_TECHNOLOGY_APPLICATION', v_ses, NULL, 'REOPEN', NULL, NULL, NULL, false, 'CHECK V701: open', a_off, 'ict');
+        PERFORM policy.window_act('PROFICIENCY_CERTIFICATE_APPLICATION', v_pses, NULL, 'OPEN', NULL, NULL, NULL, false, 'CHECK V701: open', a_off, 'ict');
+        SELECT w.state INTO v_ps_closed FROM policy.window_state('PRELIMINARY_SCIENCE_APPLICATION', policy.route_session('PRELIMINARY_SCIENCE'), NULL) w;
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        acc := admissions.prelim_register('PRELIMINARY_TECHNOLOGY', 'Checkv701', 'Ada', 'Ene', 'F', DATE '2006-05-01', 'v701.check@example.test', '08031239001',
+                                          '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        guard_ok := true;
+        SELECT a.id INTO app FROM admissions.application a WHERE a.account_id = acc;
+        SELECT a.application_no, ca.jamb_reg_no, ca.entry_mode, ca.entry_level, ca.programme, rv.route INTO c
+          FROM admissions.application a JOIN admissions.candidate ca ON ca.id = a.candidate_id JOIN admissions.prelim_review rv ON rv.application_id = a.id WHERE a.id = app;
+        BEGIN PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"NABTEB","exam_type":"NTC","exam_number":"V701NTC01","exam_year":"2024","subjects":[{"subject":"English Language","grade":"C6"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN v_fee_first := split_part(SQLERRM, ':', 1); END;
+        -- (2) the fee: the route's ₦5,000, verified by the payment service
+        v_ref := admissions.new_fee_reference(app, 'APPLICATION');
+        SELECT amount INTO v_amt FROM admissions.fee_reference WHERE reference = v_ref;
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM admissions.confirm_fee(v_ref, 'WEBPAY', 'CHECK V701');
+        -- (3) the O'Level: an NTC sitting accepted, an unknown qualification refused
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', acc::text, true);
+        BEGIN PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_type":"DIPLOMA","exam_number":"V701X","exam_year":"2024","subjects":[{"subject":"English Language","grade":"C6"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation OR foreign_key_violation THEN v_type_bad := split_part(SQLERRM, ':', 1); END;
+        -- (a) English, Biology, Economics, Agricultural Science — before an area: waits; Home Economics: eligible, one relevant credit short
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"NABTEB","exam_type":"NTC","exam_number":"V701NTC01","exam_year":"2024","subjects":[{"subject":"English Language","grade":"C6"},{"subject":"Biology","grade":"C5"},{"subject":"Economics","grade":"C4"},{"subject":"Agric","grade":"C5"},{"subject":"Mathematics","grade":"D7"}]}]'::jsonb);
+        SELECT eligibility_status INTO e_wait FROM admissions.prelim_review WHERE application_id = app;
+        PERFORM admissions.prelim_choose(app, v_home, NULL, NULL);
+        SELECT eligibility_status, remediation_subjects, remediation_credits_short INTO e_area, e_rem, e_short FROM admissions.prelim_review WHERE application_id = app;
+        -- (b) no credit in English Language: not eligible, English named
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"NABTEB","exam_type":"NTC","exam_number":"V701NTC01","exam_year":"2024","subjects":[{"subject":"English Language","grade":"D7"},{"subject":"Biology","grade":"C5"},{"subject":"Economics","grade":"C4"},{"subject":"Agricultural Science","grade":"C5"},{"subject":"Chemistry","grade":"C6"}]}]'::jsonb);
+        SELECT eligibility_status, (SELECT x->>'missing' FROM jsonb_array_elements(eligibility_checks) x WHERE x->>'key' = 'REQUIRED_SUBJECTS') INTO e_noeng, e_eng_missing
+          FROM admissions.prelim_review WHERE application_id = app;
+        -- (c) Business Education: another programme's option refused; the option asked for; five relevant credits — eligible, nothing to make up
+        BEGIN PERFORM admissions.prelim_choose(app, v_bus, v_auto, NULL); EXCEPTION WHEN check_violation THEN v_spec_other := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.prelim_choose(app, v_bus, NULL, NULL);
+        SELECT count(*) INTO v_spec_need FROM admissions.prelim_problems(app) p WHERE p.field = 'specialisation';
+        PERFORM admissions.prelim_choose(app, v_bus, v_acc_ed, NULL);
+        PERFORM admissions.prelim_save_olevel(app, '[{"sitting":1,"exam_body":"WAEC","exam_type":"SSCE","exam_number":"V701SSCE01","exam_year":"2024","subjects":[{"subject":"English Language","grade":"C6"},{"subject":"Mathematics","grade":"C5"},{"subject":"Economics","grade":"C4"},{"subject":"Commerce","grade":"B3"},{"subject":"Financial Accounting","grade":"C5"},{"subject":"Biology","grade":"F9"}]}]'::jsonb);
+        SELECT eligibility_status, remediation_status INTO e_five, e_five_rem FROM admissions.prelim_review WHERE application_id = app;
+        -- (d) one examination number is one person's: a second applicant giving it is refused
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        acc2 := admissions.prelim_register('PRELIMINARY_TECHNOLOGY', 'Otherv701', 'Bola', NULL, 'M', DATE '2005-02-02', 'v701.other@example.test', '08031239002',
+                                           '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        SELECT a.id INTO app2 FROM admissions.application a WHERE a.account_id = acc2;
+        UPDATE admissions.application SET fee_confirmed_at = now() WHERE id = app2;
+        PERFORM set_config('moaum.actor_id', acc2::text, true);
+        BEGIN PERFORM admissions.prelim_save_olevel(app2, '[{"sitting":1,"exam_body":"WAEC","exam_type":"SSCE","exam_number":"v701 ssce01","exam_year":"2024","subjects":[{"subject":"English Language","grade":"C6"}]}]'::jsonb);
+        EXCEPTION WHEN check_violation THEN v_dup_ol := split_part(SQLERRM, ':', 1); END;
+        -- (4) the form complete: biodata, three passports and the rest; submitted
+        PERFORM set_config('moaum.actor_id', acc::text, true);
+        PERFORM admissions.prelim_save_biodata(app, '{"home_address":"1 Check Road, Makurdi","state_of_origin":"Benue","lga":"Makurdi","nationality":"Nigerian","kin_name":"Ene Checkv701","kin_relationship":"Mother","kin_mobile":"08031230000"}'::jsonb, 'F');
+        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes, status)
+        SELECT gen_random_uuid(), app, k, lower(k) || '.pdf', 'application/pdf', 100, 'PENDING'
+          FROM unnest(ARRAY['PASSPORT', 'PASSPORT_2', 'PASSPORT_3', 'OLEVEL_STATEMENT', 'LGA_ID', 'BIRTH_CERT']) k;
+        v_sub := admissions.prelim_submit(app, '127.0.0.1');
+        -- (5) the review: Preliminary Science's Office refused; the Vocational and Technical Office recommends; the Academic Office approves and publishes
+        PERFORM set_config('moaum.actor_office', 'prelim', true); PERFORM set_config('moaum.actor_id', t_off::text, true);
+        BEGIN PERFORM admissions.prelim_act(app, 'START', NULL); EXCEPTION WHEN check_violation THEN v_wrong_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'prelimtech', true);
+        PERFORM admissions.prelim_act(app, 'START', NULL);
+        PERFORM admissions.prelim_review_document(d.id, 'ACCEPTED', NULL) FROM admissions.application_document d WHERE d.application_id = app AND d.superseded_at IS NULL;
+        PERFORM admissions.prelim_verify_olevel(app, 'VERIFIED', NULL);
+        PERFORM admissions.prelim_act(app, 'RECOMMEND', 'meets the entry requirement');
+        PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', b_off::text, true);
+        PERFORM admissions.prelim_act(app, 'APPROVE', NULL);
+        pub := admissions.prelim_publish('PRELIMINARY_TECHNOLOGY', v_ses, ARRAY[app]);
+        SELECT * INTO st FROM admissions.admission_status(app);
+        letter := admissions.issue_admission_letter(app);
+        SELECT count(*) INTO notices FROM platform.notice n WHERE n.about_kind = 'application' AND n.about_id = app AND n.template_key LIKE 'PRELIMINARY_TECHNOLOGY%';
+
+        -- (6) the proficiency courses: entry mode PROFICIENCY; no fee until the Bursary sets one
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+        pacc := admissions.prelim_register('PROFICIENCY_CERTIFICATE', 'Profv701', 'Chidi', NULL, 'M', DATE '2004-04-04', 'v701.prof@example.test', '08031239003',
+                                           '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE');
+        SELECT a.id INTO papp FROM admissions.application a WHERE a.account_id = pacc;
+        SELECT ca.entry_mode, ca.entry_level, ca.jamb_reg_no INTO pc FROM admissions.application a JOIN admissions.candidate ca ON ca.id = a.candidate_id WHERE a.id = papp;
+        BEGIN PERFORM admissions.new_fee_reference(papp, 'APPLICATION'); EXCEPTION WHEN check_violation THEN v_pfee_ref := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_id', pacc::text, true);
+        BEGIN PERFORM admissions.prelim_choose(papp, v_weld, NULL, NULL); EXCEPTION WHEN check_violation THEN v_pfee_form := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM admissions.set_route_fee(v_pses, 'PROFICIENCY_CERTIFICATE', 2500, 0, NULL, NULL);
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', pacc::text, true);
+        v_pref := admissions.new_fee_reference(papp, 'APPLICATION');
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', a_off::text, true);
+        PERFORM admissions.confirm_fee(v_pref, 'WEBPAY', 'CHECK V701');
+        PERFORM set_config('moaum.actor_office', 'applicant', true); PERFORM set_config('moaum.actor_id', pacc::text, true);
+        PERFORM admissions.prelim_save_olevel(papp, '[{"sitting":1,"exam_body":"NECO","exam_type":"SSCE","exam_number":"V701PROF01","exam_year":"2022","subjects":[{"subject":"English Language","grade":"F9"},{"subject":"Mathematics","grade":"F9"},{"subject":"Physics","grade":"E8"}]}]'::jsonb);
+        SELECT eligibility_status INTO pe FROM admissions.prelim_review WHERE application_id = papp;
+        BEGIN PERFORM admissions.prelim_choose(papp, v_ind, NULL, NULL); EXCEPTION WHEN check_violation THEN v_wrong_target := split_part(SQLERRM, ':', 1); END;
+        PERFORM admissions.prelim_choose(papp, v_weld, NULL, NULL);
+        PERFORM admissions.prelim_save_biodata(papp, '{"home_address":"2 Check Road, Adikpo","state_of_origin":"Benue","lga":"Kwande","nationality":"Nigerian","kin_name":"Ene Profv701","kin_relationship":"Father","kin_mobile":"08031230001"}'::jsonb, 'M');
+        INSERT INTO admissions.application_document (id, application_id, kind, filename, content_type, bytes, status)
+        SELECT gen_random_uuid(), papp, k, lower(k) || '.pdf', 'application/pdf', 100, 'PENDING' FROM unnest(ARRAY['PASSPORT', 'OLEVEL_STATEMENT']) k;
+        PERFORM admissions.prelim_submit(papp, '127.0.0.1');
+        PERFORM set_config('moaum.actor_office', 'prelimtech', true); PERFORM set_config('moaum.actor_id', t_off::text, true);
+        PERFORM admissions.prelim_act(papp, 'START', NULL);
+        PERFORM admissions.prelim_review_document(d.id, 'ACCEPTED', NULL) FROM admissions.application_document d WHERE d.application_id = papp AND d.superseded_at IS NULL;
+        PERFORM admissions.prelim_verify_olevel(papp, 'VERIFIED', NULL);
+        PERFORM admissions.prelim_act(papp, 'RECOMMEND', NULL);
+        PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', b_off::text, true);
+        PERFORM admissions.prelim_act(papp, 'APPROVE', NULL);
+        ppub := admissions.prelim_publish('PROFICIENCY_CERTIFICATE', v_pses, ARRAY[papp]);
+        pletter := admissions.issue_admission_letter(papp);
+        -- (7) the payments classified by programme type; both kept apart from Post-UTME
+        SELECT programme_type, source_module, responsible_office INTO pcls FROM reporting.payments WHERE reference = v_pref;
+        SELECT programme_type INTO tcls FROM reporting.payments WHERE reference = v_ref;
+        utme_aud := EXISTS (SELECT 1 FROM platform.applicant_window_audience('POST_UTME_REGISTRATION', v_ses, NULL, 100000) x WHERE x IN (app, papp));
+        scr := admissions.screening_required(app);
+        pscr := admissions.screening_required(papp);
+        RAISE EXCEPTION 'the V701 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        NULL;
+    END;
+    PERFORM pg_temp.assert('V701: Preliminary Technology & Industrial Studies (English plus three of the area''s subjects, five relevant credits to complete, options, the Vocational and Technical Office) and the Adikpo proficiency courses (entry mode PROFICIENCY, an attempted certificate, no fee until set, a certificate course) run on the preliminary stack, kept apart from Post-UTME',
+        coalesce(jsonb_array_length(routes) >= 3 AND jsonb_array_length(pubp->'targets') = 30 AND pubp->'campus'->>'code' = 'ADIKPO' AND (pubp->>'durationMonths')::int = 9
+                 AND NOT (pubp->'fee'->>'stated')::boolean AND wins = 2 AND words LIKE 'Preliminary Technology%|Proficiency certificate%'
+                 AND v_closed = 'APPLICATION_CLOSED' AND v_ps_closed = 'CLOSED' AND guard_ok
+                 AND c.application_no ~ '^APP/[0-9]{2}/[0-9]{6}$' AND c.jamb_reg_no IS NULL AND c.entry_mode = 'PRELIMINARY' AND c.entry_level = 0
+                 AND c.programme = 'Preliminary Technology & Industrial Studies' AND c.route = 'PRELIMINARY_TECHNOLOGY'
+                 AND v_fee_first = 'PRELIM_FEE_FIRST' AND v_amt = 5000 AND v_type_bad = 'PRELIM_OLEVEL_TYPE'
+                 AND e_wait = 'PENDING_REVIEW' AND e_area = 'ELIGIBLE_WITH_REMEDIATION' AND e_rem = '{}'::text[] AND e_short = 1
+                 AND e_noeng = 'NOT_ELIGIBLE' AND e_eng_missing = '["English Language"]'
+                 AND v_spec_other = 'PRELIM_SPECIALISATION_NOT_OFFERED' AND v_spec_need = 1 AND e_five = 'ELIGIBLE' AND e_five_rem = 'NOT_REQUIRED'
+                 AND v_dup_ol = 'PRELIM_DUPLICATE_OLEVEL' AND v_sub = 'submitted' AND v_wrong_office = 'PRELIM_OFFICE'
+                 AND (pub->>'admitted')::int = 1 AND st.status = 'ADMITTED' AND st.label = 'Admitted into Preliminary Technology & Industrial Studies'
+                 AND letter.statement->>'admissionRoute' = 'PRELIMINARY_TECHNOLOGY' AND letter.statement->>'degreeType' = 'PRELIMINARY / REMEDIAL'
+                 AND letter.statement->>'targetProgramme' = 'B.Sc. (ED) BUSINESS EDUCATION' AND letter.statement->>'specialisation' = 'Accounting Education'
+                 AND letter.statement->>'area' = 'Business Technology & Entrepreneurship Education' AND notices >= 4
+                 AND pc.entry_mode = 'PROFICIENCY' AND pc.entry_level = 0 AND pc.jamb_reg_no IS NULL
+                 AND v_pfee_ref = 'PRELIM_FEE_NOT_CONFIGURED' AND v_pfee_form = 'PRELIM_FEE_FIRST' AND pe = 'ELIGIBLE' AND v_wrong_target = 'PRELIM_TARGET_NOT_OFFERED'
+                 AND (ppub->>'admitted')::int = 1 AND pletter.statement->>'degreeType' = 'PROFICIENCY CERTIFICATE'
+                 AND pletter.statement->>'certificateCourse' = 'Certificate in Welding and Fabrication' AND pletter.statement->>'campus' = 'Adikpo Campus'
+                 AND (pletter.statement->>'durationMonths')::int = 9 AND pletter.statement->>'targetProgramme' IS NULL
+                 AND pcls.programme_type = 'PROFICIENCY_CERTIFICATE' AND pcls.source_module = 'PROFICIENCY_CERTIFICATE' AND pcls.responsible_office = 'prelimtech'
+                 AND tcls.programme_type = 'PRELIMINARY' AND NOT utme_aud AND NOT scr AND NOT pscr, false),
+        format('routes=%s pub=%s/%s/%s/%s wins=%s words=%s closed=%s/%s/%s reg=%s/%s/%s/%s/%s/%s fee=%s/%s type=%s elig=%s/%s/%s/%s noeng=%s/%s spec=%s/%s five=%s/%s dup=%s sub=%s office=%s pub=%s status=%s/%s letter=%s/%s/%s/%s/%s notices=%s prof=%s/%s/%s pfee=%s/%s pe=%s wrong=%s ppub=%s pletter=%s/%s/%s/%s class=%s/%s/%s/%s apart=%s/%s/%s',
+               jsonb_array_length(routes), jsonb_array_length(pubp->'targets'), pubp->'campus'->>'code', pubp->>'durationMonths', pubp->'fee'->>'stated', wins, words,
+               v_closed, v_ps_closed, guard_ok, c.application_no, c.jamb_reg_no, c.entry_mode, c.entry_level, c.programme, c.route, v_fee_first, v_amt, v_type_bad,
+               e_wait, e_area, e_rem, e_short, e_noeng, e_eng_missing, v_spec_other, v_spec_need, e_five, e_five_rem, v_dup_ol, v_sub, v_wrong_office, pub, st.status, st.label,
+               letter.statement->>'admissionRoute', letter.statement->>'degreeType', letter.statement->>'targetProgramme', letter.statement->>'specialisation', letter.statement->>'area',
+               notices, pc.entry_mode, pc.entry_level, pc.jamb_reg_no, v_pfee_ref, v_pfee_form, pe, v_wrong_target, ppub,
+               pletter.statement->>'degreeType', pletter.statement->>'certificateCourse', pletter.statement->>'campus', pletter.statement->>'durationMonths',
+               pcls.programme_type, pcls.source_module, pcls.responsible_office, tcls.programme_type, utme_aud, scr, pscr));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

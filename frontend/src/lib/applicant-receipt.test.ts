@@ -20,6 +20,12 @@ test("the CCE, Preliminary Science and postgraduate routes name their own fee; t
   assert.equal(applicantFeeName("ACCEPTANCE", "UTME"), "Acceptance fee");
 });
 
+test("V701: a preliminary or proficiency receipt names its own programme, never Preliminary Science's for another route", () => {
+  assert.equal(applicantReceiptTitle("APPLICATION", "PRELIMINARY_TECHNOLOGY"), "Preliminary Technology & Industrial Studies application receipt");
+  assert.equal(applicantFeeName("APPLICATION", "PROFICIENCY_CERTIFICATE"), "Proficiency certificate application fee");
+  assert.equal(applicantReceiptTitle("APPLICATION", "PRELIMINARY_SCIENCE"), "Preliminary Science application receipt");
+});
+
 test("the QR opens the public verification page with the signed code", () => {
   assert.equal(applicantReceiptVerifyPath("MOAUM-APP-006995-3918", "0A1B2C3D4E5F"), "/verify/receipt/MOAUM-APP-006995-3918?c=0A1B2C3D4E5F");
   assert.equal(applicantReceiptVerifyPath("A/B", "C D"), "/verify/receipt/A%2FB?c=C%20D");

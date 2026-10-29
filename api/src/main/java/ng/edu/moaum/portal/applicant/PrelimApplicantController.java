@@ -11,11 +11,13 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.ClientAddress;
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.Throttle;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,7 +44,7 @@ class PrelimApplicantController {
 
     record Register(@NotBlank @Size(max = 60) String surname, @NotBlank @Size(max = 60) String firstName, @Size(max = 60) String middleName,
                     @NotBlank @Size(max = 1) String sex, @NotBlank @Size(max = 10) String dateOfBirth, @NotBlank @Size(max = 200) String email,
-                    @NotBlank @Size(max = 20) String phone, @NotBlank @Size(max = 200) String password) {
+                    @NotBlank @Size(max = 20) String phone, @NotBlank @Size(max = 200) String password, @Size(max = 40) String route) {
     }
 
     record Biodata(@NotNull @Size(max = 30) Map<String, String> fields, @Size(max = 1) String sex) {
@@ -51,7 +53,8 @@ class PrelimApplicantController {
     record Sittings(@NotNull @Size(min = 1, max = 2) List<Map<String, Object>> sittings) {
     }
 
-    record Target(@NotBlank @Size(max = 20) String programmeCode) {
+    /** V701: the target by id (a programme or a certificate course) with its option, or by programme code as V446 */
+    record Target(@Size(max = 20) String programmeCode, UUID targetId, UUID specialisationId) {
     }
 
     record Withdraw(@Size(max = 500) String note) {
@@ -60,7 +63,19 @@ class PrelimApplicantController {
     /** the programme page: the description, the session, the window, the fee, the requirements, the targets, the documents */
     @GetMapping("/api/v1/public/preliminary-science")
     Map<String, Object> programme() {
-        return service.publicInfo();
+        return service.publicInfo(null);
+    }
+
+    /** V701: any preliminary or proficiency programme's page, by its slug or route code */
+    @GetMapping("/api/v1/public/preliminary/{route}")
+    Map<String, Object> programme(@PathVariable String route) {
+        return service.publicInfo(route);
+    }
+
+    /** V701: the preliminary and proficiency programmes the public application page offers */
+    @GetMapping("/api/v1/public/preliminary")
+    List<Map<String, Object>> programmes() {
+        return service.routes();
     }
 
     @PostMapping("/api/v1/applicant/preliminary/register")
@@ -68,7 +83,7 @@ class PrelimApplicantController {
         String source = ClientAddress.of(request);
         throttle.take(Throttle.Door.APPLICANT_REGISTER, source);
         return service.register(new PrelimApplicantService.Register(body.surname(), body.firstName(), body.middleName(), body.sex(), body.dateOfBirth(),
-                body.email(), body.phone(), body.password()), source);
+                body.email(), body.phone(), body.password(), body.route()), source);
     }
 
     @GetMapping("/api/v1/applicant/me/preliminary")
@@ -92,7 +107,10 @@ class PrelimApplicantController {
     @PutMapping("/api/v1/applicant/me/preliminary/target")
     @PreAuthorize(APPLICANT)
     Map<String, Object> target(Authentication authentication, @Valid @RequestBody Target body) {
-        return service.target(account(authentication), body.programmeCode());
+        if (body.targetId() == null && (body.programmeCode() == null || body.programmeCode().isBlank())) {
+            throw new DomainRuleViolation("PRELIM_TARGET_REQUIRED", "Choose the programme or course.", new DomainRuleViolation.Remedy("Pick one from the list.", "You"));
+        }
+        return service.target(account(authentication), body.programmeCode(), body.targetId(), body.specialisationId());
     }
 
     @PostMapping("/api/v1/applicant/me/preliminary/withdraw")

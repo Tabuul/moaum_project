@@ -1,8 +1,13 @@
 /** The receipt of an applicant's fee, named for what was paid: the Post-UTME application fee (UTME, Direct Entry and
- *  transfer applicants alike — the same screening), the CCE, Preliminary Science and postgraduate application fees, the
- *  admission checking fee and the acceptance fee. One name on the screen, the PDF and the public verification page. */
+ *  transfer applicants alike — the same screening), the CCE, Preliminary Science, Preliminary Technology & Industrial Studies,
+ *  proficiency certificate (V701) and postgraduate application fees, the admission checking fee and the acceptance fee. One name
+ *  on the screen, the PDF and the public verification page. A preliminary receipt names its route; one that names only the
+ *  entry mode (PRELIMINARY) is Preliminary Science's, the only one before V701. */
 
-const ROUTE: Record<string, string> = { CCE: "CCE", PRELIMINARY: "Preliminary Science", POSTGRADUATE: "Postgraduate" };
+const ROUTE: Record<string, string> = {
+  CCE: "CCE", PRELIMINARY: "Preliminary Science", POSTGRADUATE: "Postgraduate", PRELIMINARY_SCIENCE: "Preliminary Science",
+  PRELIMINARY_TECHNOLOGY: "Preliminary Technology & Industrial Studies", PROFICIENCY_CERTIFICATE: "Proficiency certificate", PROFICIENCY: "Proficiency certificate",
+};
 
 /** the fee in words, sentence case: "Post-UTME application fee" */
 export function applicantFeeName(kind: string | null | undefined, route?: string | null): string {

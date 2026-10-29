@@ -223,7 +223,9 @@ class PortalWindowController {
                                        ApplicationWindows.POSTGRADUATE, applications.sessionOf(ApplicationWindows.POSTGRADUATE),
                                        ApplicationWindows.JUPEB, applications.sessionOf(ApplicationWindows.JUPEB),
                                        ApplicationWindows.CCE, applications.sessionOf(ApplicationWindows.CCE),
-                                       ApplicationWindows.PRELIMINARY_SCIENCE, applications.sessionOf(ApplicationWindows.PRELIMINARY_SCIENCE)));
+                                       ApplicationWindows.PRELIMINARY_SCIENCE, applications.sessionOf(ApplicationWindows.PRELIMINARY_SCIENCE),
+                                       ApplicationWindows.PRELIMINARY_TECHNOLOGY, applications.sessionOf(ApplicationWindows.PRELIMINARY_TECHNOLOGY),
+                                       ApplicationWindows.PROFICIENCY_CERTIFICATE, applications.sessionOf(ApplicationWindows.PROFICIENCY_CERTIFICATE)));
         out.put("sessions", jdbc.sql("""
                 SELECT s.name, s.state,
                        (SELECT count(*) FROM admissions.applicant_account a WHERE a.session = s.name) AS registrations,
@@ -237,7 +239,9 @@ class PortalWindowController {
             w.put("type", t);
             w.put("session", s);
             w.put("path", ApplicationWindows.POST_UTME.equals(t) ? "/apply" : ApplicationWindows.JUPEB.equals(t) ? "/jupeb/apply" : ApplicationWindows.CCE.equals(t) ? "/cce/apply"
-                    : ApplicationWindows.PRELIMINARY_SCIENCE.equals(t) ? "/preliminary-science" : "/pg/apply");
+                    : ApplicationWindows.PRELIMINARY_SCIENCE.equals(t) ? "/preliminary-science"
+                    : ApplicationWindows.PRELIMINARY_TECHNOLOGY.equals(t) ? "/preliminary-technology"
+                    : ApplicationWindows.PROFICIENCY_CERTIFICATE.equals(t) ? "/proficiency-certificate" : "/pg/apply");
             w.putAll(jdbc.sql("""
                     SELECT m.message, m.updated_at AS message_updated_at, m.updated_office AS message_office,
                            (SELECT p.surname || ', ' || p.given_names FROM iam.person p WHERE p.id = m.updated_by) AS message_updated_by
@@ -245,11 +249,14 @@ class PortalWindowController {
                     """).param("t", t).query().singleRow());
             // V379: a CCE applicant's account sits in the same table as a Post-UTME applicant's; each window counts its own
             String table = ApplicationWindows.POST_UTME.equals(t)
-                    ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE c.entry_mode NOT IN ('CCE', 'PRELIMINARY')) x"
+                    ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE c.entry_mode NOT IN ('CCE', 'PRELIMINARY', 'PROFICIENCY')) x"
                     : ApplicationWindows.CCE.equals(t)
                     ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE c.entry_mode = 'CCE') x"
-                    : ApplicationWindows.PRELIMINARY_SCIENCE.equals(t)
-                    ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE c.entry_mode = 'PRELIMINARY') x"
+                    // V701: a preliminary or proficiency window counts its own route's applicants
+                    : ApplicationWindows.PRELIMINARY_TYPES.contains(t)
+                    ? "(SELECT a.* FROM admissions.applicant_account a JOIN admissions.application ap ON ap.account_id = a.id"
+                      + " JOIN admissions.prelim_review pr ON pr.application_id = ap.id JOIN admissions.prelim_programme pp ON pp.route = pr.route"
+                      + " WHERE pp.window_type = '" + t + "') x"
                     : ApplicationWindows.JUPEB.equals(t) ? "jupeb.application" : "admissions.pg_application";
             w.putAll(jdbc.sql("SELECT count(*) AS total, count(*) FILTER (WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos') AS today,"
                     + " count(*) FILTER (WHERE created_at >= now() - interval '7 days') AS week FROM " + table + " WHERE session = :s").param("s", s).query().singleRow());

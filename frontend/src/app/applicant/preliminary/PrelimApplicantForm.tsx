@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * The Preliminary Science application (V446), as the applicant works through it: the application fee first (the form opens once
- * the payment is verified by the payment service — never on returning from the gateway); the details; the O'Level in one sitting
- * or two, each released (an awaiting result is not accepted), with the eligibility the backend reads from it; the target programme,
- * chosen among the configured ones, an intended progression only; the documents; then the declaration and the submission, and
- * the application form to print or download. Once submitted the application is the Preliminary Science Office's: it changes only
- * when the Office asks for a correction.
+ * A preliminary or proficiency application (V446; V701 every route — Preliminary Science, Preliminary Technology & Industrial
+ * Studies with its areas and specialisations, the Adikpo Campus certificate courses), as the applicant works through it: the
+ * application fee first (the form opens once the payment is verified by the payment service — never on returning from the
+ * gateway; a fee the Bursary has not set keeps it shut); the details; the O'Level in one sitting or two, each released (an
+ * awaiting result is not accepted), or the examination sat where the route asks only that; the eligibility the backend reads
+ * from it; the target (an area's programme and its specialisation, an intended progression only) or the certificate course; the
+ * documents; then the declaration and the submission, and the application form to print or download. Once submitted the
+ * application is the programme's office's: it changes only when the Office asks for a correction.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { notify, notifyProblem } from "@/components/proto/Toast";
@@ -15,8 +17,8 @@ import { Field } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { confirmedReference, openReference } from "@/lib/applicant";
-import { ACTION, BODIES, ELIGIBILITY, EXAM_TYPES, GRADES, REMEDIATION, STATE, SUBJECTS, TARGET_NOTE, fileBase64, labelOf, naira, pcall, remediationWords, when,
-         type PrelimOlevel, type PrelimView } from "@/lib/preliminary";
+import { ACTION, BODIES, ELIGIBILITY, GRADES, REMEDIATION, STATE, SUBJECTS, TARGET_NOTE, examTypes, fileBase64, labelOf, naira, pcall, remediationWords,
+         requirementWords, when, type PrelimOlevel, type PrelimPublic, type PrelimView } from "@/lib/preliminary";
 import { PayByCard } from "../common";
 import { ReceiptCheck } from "@/components/ReceiptCheck";
 import { applicantReceiptTitle } from "@/lib/applicant-receipt";
@@ -27,14 +29,20 @@ const LETTER_PDF = "/applicant/preliminary/pdf/letter";
 
 interface Sitting { exam_body: string; exam_type: string; exam_number: string; exam_year: string; subjects: { subject: string; grade: string }[] }
 
-function sittingsOf(rows: PrelimOlevel[]): Sitting[] {
+/** the subjects a first sitting starts with: English and Mathematics, then the programme's own list where it has one */
+function startSubjects(info: PrelimPublic): string[] {
+  const own = info.rules.kind === "OLEVEL_CREDITS" && !info.rules.coreByTarget ? info.rules.coreSubjects : [];
+  return [...new Set(["English Language", "Mathematics", ...info.rules.requiredSubjects, ...own])].slice(0, 6);
+}
+
+function sittingsOf(rows: PrelimOlevel[], start: string[]): Sitting[] {
   const out: Sitting[] = [];
   for (const n of [1, 2]) {
     const r = rows.filter((o) => o.sitting === n);
     if (r.length) out.push({ exam_body: r[0].exam_body, exam_type: r[0].exam_type ?? "SSCE", exam_number: r[0].exam_number, exam_year: String(r[0].exam_year), subjects: r.map((o) => ({ subject: o.subject, grade: o.grade })) });
   }
   return out.length ? out : [{ exam_body: "WAEC", exam_type: "SSCE", exam_number: "", exam_year: "",
-    subjects: ["English Language", "Mathematics", "Chemistry", "Physics", "Biology"].map((s) => ({ subject: s, grade: "" })) }];
+    subjects: start.map((s) => ({ subject: s, grade: "" })) }];
 }
 
 export function PrelimApplicantForm() {
@@ -45,6 +53,7 @@ export function PrelimApplicantForm() {
   const [sex, setSex] = useState("");
   const [sittings, setSittings] = useState<Sitting[] | null>(null);
   const [target, setTarget] = useState("");
+  const [spec, setSpec] = useState("");
   const [declared, setDeclared] = useState(false);
   useEffect(() => {
     let live = true;
@@ -54,13 +63,14 @@ export function PrelimApplicantForm() {
         setV(r.data);
         setFields(Object.fromEntries(r.data.preliminary.fields.map((f) => [f.field, f.value ?? ""])));
         setSex(r.data.preliminary.sex ?? "");
-        setSittings(sittingsOf(r.data.preliminary.olevel));
-        setTarget(r.data.preliminary.targetProgramme ?? "");
+        setSittings(sittingsOf(r.data.preliminary.olevel, startSubjects(r.data.preliminary.programmeInfo)));
+        setTarget(r.data.preliminary.targetId ?? "");
+        setSpec(r.data.preliminary.specialisationId ?? "");
       } else notifyProblem(r.problem);
     });
     return () => { live = false; };
   }, [tick]);
-  if (!v || !fields || !sittings) return <Note kind="info" title="Reading your Preliminary Science application…">One moment.</Note>;
+  if (!v || !fields || !sittings) return <Note kind="info" title="Reading your application…">One moment.</Note>;
 
   const p = v.preliminary;
   const info = p.programmeInfo;
@@ -80,6 +90,14 @@ export function PrelimApplicantForm() {
   const elig = p.eligibility;
   const [eligWord, eligKind] = labelOf(ELIGIBILITY, elig.status);
   const published = state === "ADMITTED" || ((state === "NOT_ADMITTED" || state === "REJECTED") && v.decisionReleasedAt);
+  const office = info.office ? `the ${info.office}` : "the programme's office";
+  const attempted = info.rules.kind === "ATTEMPTED_CERTIFICATE";
+  const Office = office.charAt(0).toUpperCase() + office.slice(1);
+  const courses = info.targets.length > 0 && info.targets.every((t) => t.kind === "COURSE");
+  const targetNote = info.targetNote ?? TARGET_NOTE;
+  const chosen = info.targets.find((t) => t.id === target) ?? null;
+  const chosenWords = p.targetKind === "COURSE" ? `Your certificate course is ${p.targetName}.`
+    : p.targetName ? `Your intended progression is ${p.targetName}${p.specialisationName ? ` (${p.specialisationName})` : ""}.` : null;
 
   async function call(key: string, method: "POST" | "PUT", path: string, body: unknown, reason: string) {
     setBusy(key);
@@ -93,7 +111,7 @@ export function PrelimApplicantForm() {
   }
   async function upload(kind: string, file: File | null) {
     if (!file) return;
-    if ((kind === "PASSPORT" || kind === "PASSPORT_2") && file.type !== "image/jpeg") { notifyProblem({ status: 422, title: "A passport photograph is a JPEG image (.jpg)" }); return; }
+    if (kind.startsWith("PASSPORT") && file.type !== "image/jpeg") { notifyProblem({ status: 422, title: "A passport photograph is a JPEG image (.jpg)" }); return; }
     if (file.size > 2 * 1024 * 1024) { notifyProblem({ status: 422, title: `The file is ${Math.round(file.size / 1024)} KB; 2 MB at most` }); return; }
     const label = info.documents.find((d) => d.kind === kind)?.label ?? kind;
     await call(`doc-${kind}`, "POST", "/me/documents", { kind, filename: file.name, contentType: file.type, contentBase64: await fileBase64(file) }, `${label} uploaded`);
@@ -102,22 +120,22 @@ export function PrelimApplicantForm() {
   const head = (
     <>
       <Tiles cls="grid--4" items={[
-        ["APPLICATION", v.applicationNo, null, `Preliminary Science · ${v.session}`],
+        ["APPLICATION", v.applicationNo, null, `${info.name} · ${v.session}`],
         ["STATE", labelOf(STATE, state)[0], null, p.submittedAt ? `submitted ${when(p.submittedAt)}` : "not yet submitted"],
-        ["ELIGIBILITY", eligWord, eligKind === "bad" ? "var(--red-ink)" : eligKind === "warn" ? "var(--amber-ink)" : null, elig.sittings ? `${elig.totalCredits} credits · ${elig.coreCredits} core` : "no result given yet"],
+        ["ELIGIBILITY", eligWord, eligKind === "bad" ? "var(--red-ink)" : eligKind === "warn" ? "var(--amber-ink)" : null, elig.sittings ? (info.rules.kind === "ATTEMPTED_CERTIFICATE" ? `${elig.sittings} sitting${elig.sittings === 1 ? "" : "s"} given` : `${elig.totalCredits} credits${elig.coreCredits >= 0 ? ` · ${elig.coreCredits} in the subjects` : ""}`) : "no result given yet"],
         ["STILL NEEDED", editable ? problems.length : 0, editable && problems.length ? "var(--amber-ink)" : null, editable ? (problems.length ? "before you can submit" : "ready to submit") : "with the Office"],
       ]} />
-      {asked ? <Note kind="bad" title="The Preliminary Science Office asks for a correction">{p.requestNote} Make it below, then send the application back to the Office.</Note> : null}
+      {asked ? <Note kind="bad" title={`${Office} asks for a correction`}>{p.requestNote} Make it below, then send the application back to the Office.</Note> : null}
       {state === "ADMITTED" ? (
-        <Note kind="ok" title="You are admitted into the Preliminary Science Programme"
+        <Note kind="ok" title={`You are admitted into ${info.name}`}
           action={<a className="btn btn--primary btn--sm" href={LETTER_PDF} target="_blank" rel="noopener">Print your admission letter</a>}>
-          {p.targetName ? <>Your intended progression is {info.targets.find((t) => t.programmeCode === p.targetProgramme)?.name ?? p.targetName}. </> : null}{TARGET_NOTE}
+          {chosenWords ? <>{chosenWords} </> : null}{p.targetKind === "COURSE" ? null : targetNote}
           {p.remediation.status === "REQUIRED" ? <> Before completing the programme you are to make up: <b>{remediationWords(p.remediation)}</b>.</> : null}
         </Note>
       ) : published ? (
         <Note kind="bad" title="Your application was not successful">{v.decisionNote ?? "The outcome of your application is published."}</Note>
       ) : !editable && state !== "WITHDRAWN" ? (
-        <Note kind="info" title="Your application is with the Preliminary Science Office"
+        <Note kind="info" title={`Your application is with ${office}`}
           action={<a className="btn btn--secondary btn--sm" href={FORM_PDF} target="_blank" rel="noopener">Print your application form</a>}>
           The Office reviews it. You are told here and by email if anything more is needed, and when the outcome is published.
         </Note>
@@ -131,7 +149,7 @@ export function PrelimApplicantForm() {
       <Panel title={`${n} · ${title}`} right={missing.length ? <Pil kind="warn">{missing.length} to do</Pil> : <Pil kind="ok">Done</Pil>}>
         <PBody>
           {editable && !settled && step !== "PAYMENT" ? <Note kind="info" title="Pay the application fee first">This part of the form opens once your payment is verified.</Note> : null}
-          {missing.length && editable && (settled || step === "PAYMENT") ? <div className="sub2 mb-2">{missing.map((x) => x.message).join("; ")}.</div> : null}
+          {missing.length && editable && (settled || step === "PAYMENT") && !(step === "PAYMENT" && !v.fees.stated) ? <div className="sub2 mb-2">{missing.map((x) => x.message).join("; ")}.</div> : null}
           {body}
         </PBody>
       </Panel>
@@ -145,16 +163,16 @@ export function PrelimApplicantForm() {
       {head}
       {section(1, "Application fee", "PAYMENT", paid ? (
         <>
-          <div className="b700 mb-1">{applicantReceiptTitle("APPLICATION", "PRELIMINARY")}</div>
+          <div className="b700 mb-1">{applicantReceiptTitle("APPLICATION", v.route ?? "PRELIMINARY")}</div>
           <div className="mb-2">Paid <b>{naira(paid.amount)}</b> · <span className="tnum">{paid.reference}</span> · receipt {paid.receiptNo ?? "—"} · verified {when(paid.confirmedAt)}</div>
           <ReceiptCheck reference={paid.reference} source={`/api/bff/api/v1/applicant/me/receipts/${encodeURIComponent(paid.reference)}`}
             pdf={`/applicant/fee/receipt?reference=${encodeURIComponent(paid.reference)}`} />
         </>
       ) : !v.fees.stated || fee == null ? (
-        <div className="sub2">The Bursary has not yet stated the Preliminary Science application fee for {v.session}.</div>
+        <Note kind="info" title="Application fee not yet configured">The Bursary has not yet set the {info.name} application fee for {v.session}. The rest of the form opens once it is set and paid; you are told when it is.</Note>
       ) : fee === 0 ? <div className="sub2">No application fee is charged.</div> : (
         <>
-          <div className="mb-2">Preliminary Science application fee <b>{naira(fee)}</b>. Pay it first: the rest of the form opens once the payment is verified.</div>
+          <div className="mb-2">{info.name} application fee <b>{naira(fee)}</b> (non-refundable). Pay it first: the rest of the form opens once the payment is verified.</div>
           {open ? <div className="mb-2">Your reference: <b className="tnum">{open.reference}</b> (expires {when(open.expiresAt)}). Pay it on the gateway, or at a bank quoting it.</div> : null}
           <div className="row row--inline row--tight">
             {open ? <PayByCard reference={open.reference} amount={fee} /> : null}
@@ -184,10 +202,10 @@ export function PrelimApplicantForm() {
         </>
       ))}
 
-      {section(3, "O'Level results", "OLEVEL", (
+      {section(3, attempted ? "Examination results" : "O'Level results", "OLEVEL", (
         <>
-          <Note kind="info" title={`At least ${info.rules.minCredits} credits in at most ${info.rules.maxSittings} sitting${info.rules.maxSittings === 1 ? "" : "s"}; ${info.rules.minCoreCredits} of them in ${info.rules.coreSubjects.join(", ")}`}>
-            Give results already released. An awaiting result is not accepted for Preliminary Science.
+          <Note kind="info" title={attempted ? "The secondary school certificate examination you sat" : "Your O'Level results"}>
+            {requirementWords(info)}{chosen?.coreSubjects?.length ? <> For {chosen.group}: {chosen.coreSubjects.join(", ")}.</> : null}
           </Note>
           <div className={`grid grid--${twoSittings ? "2" : "3"} mt-2`}>
             {sittings.map((s, i) => (
@@ -196,7 +214,7 @@ export function PrelimApplicantForm() {
                   {formOpen && i === 1 ? <Btn kind="ghost" onClick={() => setSittings([sittings[0]])}>Remove the second sitting</Btn> : null}</div>
                 <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
                   <Field id={`ol-b${i}`} label="Examination body"><select id={`ol-b${i}`} className="ctl" disabled={!formOpen} value={s.exam_body} onChange={(e) => setSittings(sittings.map((x, j) => (j === i ? { ...x, exam_body: e.target.value } : x)))}>{BODIES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></Field>
-                  <Field id={`ol-t${i}`} label="Examination"><select id={`ol-t${i}`} className="ctl" disabled={!formOpen} value={s.exam_type} onChange={(e) => setSittings(sittings.map((x, j) => (j === i ? { ...x, exam_type: e.target.value } : x)))}>{EXAM_TYPES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></Field>
+                  <Field id={`ol-t${i}`} label="Examination"><select id={`ol-t${i}`} className="ctl" disabled={!formOpen} value={s.exam_type} onChange={(e) => setSittings(sittings.map((x, j) => (j === i ? { ...x, exam_type: e.target.value } : x)))}>{examTypes(info.rules).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></Field>
                   <Field id={`ol-n${i}`} label="Examination number"><input id={`ol-n${i}`} className="ctl tnum" disabled={!formOpen} value={s.exam_number} onChange={(e) => setSittings(sittings.map((x, j) => (j === i ? { ...x, exam_number: e.target.value } : x)))} /></Field>
                   <Field id={`ol-y${i}`} label="Year"><input id={`ol-y${i}`} className="ctl tnum" inputMode="numeric" maxLength={4} style={{ maxWidth: 90 }} disabled={!formOpen} value={s.exam_year} onChange={(e) => setSittings(sittings.map((x, j) => (j === i ? { ...x, exam_year: e.target.value.replace(/[^0-9]/g, "") } : x)))} /></Field>
                 </div>
@@ -233,23 +251,34 @@ export function PrelimApplicantForm() {
                 <Pil key="ok" kind={c.ok ? "ok" : "bad"}>{c.ok ? "Met" : "Not met"}</Pil>])} />
               {elig.reasons.length ? <ul className="sub2">{elig.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : null}
               {p.remediation.status === "REQUIRED" ? <div className="mt-1">Remediation before completing the programme: <b>{remediationWords(p.remediation)}</b> ({labelOf(REMEDIATION, p.remediation.status)[0].toLowerCase()}).</div> : null}
-              <div className="sub2 mt-1">The Preliminary Science Office verifies your results against your documents; the decision is the University&rsquo;s.</div>
+              <div className="sub2 mt-1">{Office} verifies your results against your documents; the decision is the University&rsquo;s.</div>
             </div>
           ) : null}
         </>
       ))}
 
-      {section(4, "Target programme", "PROGRAMME", (
+      {section(4, courses ? "Certificate course" : `${info.targetWord.charAt(0).toUpperCase()}${info.targetWord.slice(1)}`, "PROGRAMME", (
         <>
-          <div className="sub2 mb-2">{TARGET_NOTE}</div>
+          {courses ? (info.campus ? <div className="sub2 mb-2">{info.name}: {info.campus.name}{info.durationMonths ? `, ${info.durationMonths} months` : ""}.</div> : null)
+            : <div className="sub2 mb-2">{targetNote}</div>}
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
             <div style={{ minWidth: 320, flex: 1 }}>
-              <SearchSelect id="ps-target" value={target} onChange={setTarget} disabled={!formOpen} placeholder="Choose the programme you intend to progress to"
-                options={groups.flatMap((g) => info.targets.filter((t) => t.group === g).map((t) => ({ value: t.programmeCode, label: t.name, sub: g })))} />
+              <SearchSelect id="ps-target" value={target} onChange={(t) => { setTarget(t); setSpec(""); }} disabled={!formOpen}
+                placeholder={courses ? `Choose your ${info.groupWord} and certificate course` : `Choose the ${info.targetWord} you intend to progress to`}
+                options={groups.flatMap((g) => info.targets.filter((t) => t.group === g).map((t) => ({ value: t.id, label: t.name, sub: g })))} />
             </div>
-            {formOpen ? <Btn kind="primary" disabled={busy !== null || !target || target === p.targetProgramme} onClick={() => void call("target", "PUT", "/me/preliminary/target", { programmeCode: target }, "Target programme saved")}>{busy === "target" ? "Saving…" : "Save the target programme"}</Btn> : null}
+            {chosen?.specialisations.length ? (
+              <div style={{ minWidth: 260 }}>
+                <SearchSelect id="ps-spec" value={spec} onChange={setSpec} disabled={!formOpen} placeholder="Choose your specialisation"
+                  options={chosen.specialisations.map((sp) => ({ value: sp.id, label: sp.name, sub: chosen.name }))} />
+              </div>
+            ) : null}
+            {formOpen ? <Btn kind="primary" disabled={busy !== null || !target || (target === p.targetId && (spec || null) === p.specialisationId) || (!!chosen?.specialisations.length && !spec)}
+              onClick={() => void call("target", "PUT", "/me/preliminary/target", { targetId: target, specialisationId: spec || null }, courses ? "Certificate course saved" : "Your choice is saved")}>
+              {busy === "target" ? "Saving…" : "Save your choice"}</Btn> : null}
           </div>
-          {p.targetName ? <div className="mt-1">Chosen: <b>{info.targets.find((t) => t.programmeCode === p.targetProgramme)?.name ?? p.targetName}</b></div> : null}
+          {chosen?.coreSubjects?.length ? <div className="sub2 mt-1">{chosen.group}: {chosen.minCoreCredits ?? info.rules.minCoreCredits} credits among {chosen.coreSubjects.join(", ")}{info.rules.requiredSubjects.length ? `, besides ${info.rules.requiredSubjects.join(", ")}` : ""}.</div> : null}
+          {p.targetName ? <div className="mt-1">Chosen: <b>{p.targetName}</b>{p.specialisationName ? <> — {p.specialisationName}</> : null}{p.targetGroup ? <span className="sub2"> ({p.targetGroup})</span> : null}</div> : null}
         </>
       ))}
 
@@ -270,9 +299,9 @@ export function PrelimApplicantForm() {
         <Panel title={asked ? "6 · Send it back to the Office" : "6 · Declaration and submission"}>
           <PBody>
             <label className="row row--inline row--tight mb-2"><input type="checkbox" checked={declared} onChange={(e) => setDeclared(e.target.checked)} />
-              I declare that the particulars I have given are true and that my O&rsquo;Level results are released results. I understand that a false statement or document ends the application, and any admission that follows from it.</label>
+              I declare that the particulars I have given are true and that {attempted ? "the examination results I have given are my own" : <>my O&rsquo;Level results are released results</>}. I understand that a false statement or document ends the application, and any admission that follows from it.</label>
             <div className="row row--inline">
-              <Btn kind="go" size="md" disabled={busy !== null || !declared || problems.length > 0} onClick={() => void call("submit", "POST", "/me/submit", { declaration: true }, asked ? "Your application is sent back to the Office" : "Your Preliminary Science application is submitted")}>
+              <Btn kind="go" size="md" disabled={busy !== null || !declared || problems.length > 0} onClick={() => void call("submit", "POST", "/me/submit", { declaration: true }, asked ? "Your application is sent back to the Office" : "Your application is submitted")}>
                 {busy === "submit" ? "Sending…" : asked ? "Send it back to the Office" : "Submit my application"}</Btn>
               {problems.length ? <span className="sub2">{problems.length} thing{problems.length === 1 ? "" : "s"} still to do above.</span> : null}
             </div>
@@ -283,7 +312,7 @@ export function PrelimApplicantForm() {
       <Panel title="Your application form" right={<span className="row row--inline row--tight">
         <a className="btn btn--secondary btn--sm" href={FORM_PDF} target="_blank" rel="noopener">View or print</a>
         <a className="btn btn--ghost btn--sm" href={`${FORM_PDF}?download=1`}>Download PDF</a></span>}>
-        <PBody><div className="sub2">The form carries your passport, details, O&rsquo;Level results, target programme, payment and documents. Print it and take it, with the photocopies asked for, to the Preliminary Science Office where the University asks for physical submission.</div></PBody>
+        <PBody><div className="sub2">The form carries your passport, details, {attempted ? "examination results" : <>O&rsquo;Level results</>}, your choice, payment and documents. Print it and take it, with the photocopies asked for, to {office} where the University asks for physical submission.</div></PBody>
       </Panel>
 
       <Panel title="What has happened">
@@ -295,7 +324,7 @@ export function PrelimApplicantForm() {
       {["DRAFT", "SUBMITTED", "CORRECTION_REQUIRED"].includes(state) ? (
         <div className="row row--inline"><Btn kind="ghost" disabled={busy !== null} onClick={() => { if (window.confirm("Withdraw this application? It cannot be continued afterwards.")) void call("withdraw", "POST", "/me/preliminary/withdraw", { note: "Withdrawn by the applicant" }, "Your application is withdrawn"); }}>Withdraw my application</Btn></div>
       ) : null}
-      <div className="sub2">Questions about your application go to the Preliminary Science Office, quoting {v.applicationNo}.</div>
+      <div className="sub2">Questions about your application go to {office}, quoting {v.applicationNo}.</div>
     </>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * One Preliminary Science application, opened on the desk (V446): the O'Level eligibility screen — the general requirement, the
+ * One preliminary or proficiency application, opened on the desk (V446, V701 every route): the O'Level eligibility screen — the general requirement, the
  * candidate's result as the backend read it, the completion remediation — the results by sitting, the details, the documents
  * (each viewed and accepted, or rejected with the reason the applicant reads), the payments, and the review: taken up, sent back
  * for a correction, the O'Level verified (or found invalid), recommended by the Office, approved by someone else, not admitted
- * or rejected with the reason; the target programme changed with a reason; the remediation recorded as it progresses. Every
+ * or rejected with the reason; the target (with its specialisation) or certificate course changed with a reason; the remediation recorded as it progresses. Every
  * step is the server's to allow: a refusal comes back with its reason.
  */
 import { useEffect, useState } from "react";
@@ -27,11 +27,12 @@ interface Detail {
   letter: { number: string; version: number; issued_on: string } | null;
 }
 
-export function PrelimDetail({ id, may, onClose }: { id: string; may: { review: boolean; decide: boolean; recommend: boolean }; onClose: (changed: boolean) => void }) {
+export function PrelimDetail({ id, may, programme, onClose }: { id: string; may: { review: boolean; decide: boolean; recommend: boolean }; programme?: string; onClose: (changed: boolean) => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [target, setTarget] = useState("");
+  const [spec, setSpec] = useState("");
   const [rem, setRem] = useState("");
   const [changed, setChanged] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -39,7 +40,7 @@ export function PrelimDetail({ id, may, onClose }: { id: string; may: { review: 
     let live = true;
     void pcall<Detail>(`/api/v1/admissions/preliminary/applications/${id}`).then((r) => {
       if (!live) return;
-      if (r.ok) { setD(r.data); setTarget(r.data.preliminary.targetProgramme ?? ""); setRem(r.data.preliminary.remediation.status ?? ""); } else setProblem(r.problem);
+      if (r.ok) { setD(r.data); setTarget(r.data.preliminary.targetId ?? ""); setSpec(r.data.preliminary.specialisationId ?? ""); setRem(r.data.preliminary.remediation.status ?? ""); } else setProblem(r.problem);
     });
     return () => { live = false; };
   }, [id]);
@@ -68,24 +69,32 @@ export function PrelimDetail({ id, may, onClose }: { id: string; may: { review: 
   const st = p.state;
   const field = (f: string) => p.fields.find((x) => x.field === f)?.value ?? "—";
   const published = !!a.decision_released_at;
+  const info = p.programmeInfo;
+  const attempted = rules.kind === "ATTEMPTED_CERTIFICATE";
+  const course = p.targetKind === "COURSE" || (info.targets.length > 0 && info.targets.every((t) => t.kind === "COURSE"));
+  const chosen = info.targets.find((t) => t.id === target) ?? null;
+  const area = info.targets.find((t) => t.id === p.targetId) ?? null;
 
   return (
-    <Modal wide title={`${a.surname}, ${a.other_names} · ${a.application_no}`} sub={`Preliminary Science · ${a.session} · ${labelOf(STATE, st)[0]}${published ? " (published)" : ""}`}
+    <Modal wide title={`${a.surname}, ${a.other_names} · ${a.application_no}`} sub={`${programme ?? info.name} · ${a.session} · ${labelOf(STATE, st)[0]}${published ? " (published)" : ""}`}
       onClose={() => onClose(changed)}
       foot={<>
         <a className="btn btn--ghost btn--sm" href={`/applicant/preliminary/pdf/form?id=${id}`} target="_blank" rel="noopener">Print the application form</a>
         <Btn kind="secondary" onClick={() => onClose(changed)}>Close</Btn>
       </>}>
-      <h3 className="h4">O&rsquo;Level eligibility</h3>
+      <h3 className="h4">{attempted ? "Entry requirement" : "O’Level eligibility"}</h3>
       <div className="grid grid--2">
         <div className="card" style={{ padding: 10 }}>
           <div className="eyebrow">General requirement</div>
-          <KvGrid cls="grid--2" pairs={[["Minimum credits", `${rules.minCredits} (${rules.creditGrade} or better)`], ["Maximum sittings", String(rules.maxSittings)],
-            ["Minimum core science credits", String(rules.minCoreCredits)], ["Core science subjects", rules.coreSubjects.join(", ")], ["Awaiting result", "Not accepted"]]} />
+          {attempted ? <KvGrid cls="grid--2" pairs={[["Requirement", info.entryRequirement ?? "An attempted secondary school certificate"], ["Accepted", rules.qualifications.map((q) => q.label).join(", ") || "—"]]} />
+            : <KvGrid cls="grid--2" pairs={[["Minimum credits", `${rules.minCredits} (${rules.creditGrade} or better)`], ["Maximum sittings", String(rules.maxSittings)],
+            ...(rules.requiredSubjects.length ? [["Required credits", rules.requiredSubjects.join(", ")] as [string, string]] : []),
+            ["Minimum credits in the subjects", String(area?.minCoreCredits ?? rules.minCoreCredits)],
+            ["Subjects", (rules.coreByTarget ? area?.coreSubjects ?? [] : rules.coreSubjects).join(", ") || (rules.coreByTarget ? `those of the ${info.groupWord} chosen` : "—")], ["Awaiting result", "Not accepted"]]} />}
         </div>
         <div className="card" style={{ padding: 10 }}>
           <div className="eyebrow">Candidate result</div>
-          <KvGrid cls="grid--2" pairs={[["Total credits", elig.totalCredits < 0 ? "—" : String(elig.totalCredits)], ["Core science credits", elig.coreCredits < 0 ? "—" : `${elig.coreCredits}${elig.creditedCore.length ? ` (${elig.creditedCore.join(", ")})` : ""}`],
+          <KvGrid cls="grid--2" pairs={[["Total credits", elig.totalCredits < 0 ? "—" : String(elig.totalCredits)], ["Credits in the subjects", elig.coreCredits < 0 ? "—" : `${elig.coreCredits}${elig.creditedCore.length ? ` (${elig.creditedCore.join(", ")})` : ""}`],
             ["Sittings", String(elig.sittings)], ["O'Level verification", labelOf(VERIFICATION, p.olevelVerification)[0]]]} />
           <div className="row row--inline row--tight mt-1"><b>Status</b><Pil kind={ek as "ok"}>{ew}</Pil></div>
           <div className="mt-1"><b>Programme completion remediation:</b> {p.remediation.status ? `${labelOf(REMEDIATION, p.remediation.status)[0]}${p.remediation.status !== "NOT_REQUIRED" && (p.remediation.subjects.length || p.remediation.creditsShort) ? ` — ${remediationWords(p.remediation)}` : ""}` : "—"}</div>
@@ -93,7 +102,7 @@ export function PrelimDetail({ id, may, onClose }: { id: string; may: { review: 
         </div>
       </div>
 
-      <h3 className="h4 mt-2">O&rsquo;Level results</h3>
+      <h3 className="h4 mt-2">{attempted ? "Examination results" : "O’Level results"}</h3>
       <DTable noPrint pageSize={0} cols={["Sitting", "Body", "Examination", "Number", "Year", "Subject", "Grade"]} rows={p.olevel.map((o) => [o.sitting, o.exam_body, o.exam_type ?? "—", o.exam_number, o.exam_year, o.subject, o.grade])} />
       {may.review && ["SUBMITTED", "UNDER_REVIEW", "RECOMMENDED"].includes(st) ? (
         <div className="row row--inline row--tight mt-1">
@@ -107,14 +116,18 @@ export function PrelimDetail({ id, may, onClose }: { id: string; may: { review: 
         ["Nationality", field("nationality")], ["Address", field("home_address")], ["Next of kin", a.next_of_kin ?? `${field("kin_name")} (${field("kin_relationship")})`],
         ...(a.email ? [["Email", a.email] as [string, string], ["Phone", a.phone ?? "—"] as [string, string]] : []), ["Started", when(a.created_at)], ["Submitted", p.submittedAt ? when(p.submittedAt) : "not yet"]]} />
 
-      <h3 className="h4 mt-2">Target programme</h3>
-      <div className="sub2 mb-1">{TARGET_NOTE}</div>
+      <h3 className="h4 mt-2">{course ? "Certificate course" : info.targetWord.charAt(0).toUpperCase() + info.targetWord.slice(1)}</h3>
+      {course ? null : <div className="sub2 mb-1">{info.targetNote ?? TARGET_NOTE}</div>}
       <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
-        <b>{p.programmeInfo.targets.find((t) => t.programmeCode === p.targetProgramme)?.name ?? p.targetName ?? "not chosen"}</b>
+        <b>{p.targetName ?? "not chosen"}{p.specialisationName ? ` — ${p.specialisationName}` : ""}</b>{p.targetGroup && p.targetGroup !== p.targetName ? <span className="sub2">{p.targetGroup}</span> : null}
         {may.review && !published && st !== "WITHDRAWN" ? (
           <>
-            <div style={{ minWidth: 280 }}><SearchSelect id="pd-target" value={target} onChange={setTarget} options={p.programmeInfo.targets.map((t) => ({ value: t.programmeCode, label: t.name, sub: t.group }))} /></div>
-            <Btn kind="ghost" size="sm" disabled={busy !== null || !target || target === p.targetProgramme} onClick={() => { if (!note.trim()) { notifyProblem({ status: 422, title: "Write the reason for the change in the note first" }); return; } void post("target", "/target", { programmeCode: target, note: note.trim() }, "Target programme changed"); }}>Change the target</Btn>
+            <div style={{ minWidth: 280 }}><SearchSelect id="pd-target" value={target} onChange={(t) => { setTarget(t); setSpec(""); }} options={info.targets.map((t) => ({ value: t.id, label: t.name, sub: t.group }))} /></div>
+            {chosen?.specialisations.length ? <div style={{ minWidth: 220 }}><SearchSelect id="pd-spec" value={spec} onChange={setSpec} placeholder="Specialisation"
+              options={chosen.specialisations.map((x) => ({ value: x.id, label: x.name }))} /></div> : null}
+            <Btn kind="ghost" size="sm" disabled={busy !== null || !target || (target === p.targetId && (spec || null) === p.specialisationId) || (!!chosen?.specialisations.length && !spec)}
+              onClick={() => { if (!note.trim()) { notifyProblem({ status: 422, title: "Write the reason for the change in the note first" }); return; } void post("target", "/target", { targetId: target, specialisationId: spec || null, note: note.trim() }, course ? "Certificate course changed" : "Target changed"); }}>
+              {course ? "Change the course" : "Change the target"}</Btn>
           </>
         ) : null}
       </div>
@@ -157,7 +170,7 @@ export function PrelimDetail({ id, may, onClose }: { id: string; may: { review: 
         </>
       ) : null}
 
-      {may.review && ["ELIGIBLE", "ELIGIBLE_WITH_REMEDIATION"].includes(elig.status) ? (
+      {may.review && !attempted && ["ELIGIBLE", "ELIGIBLE_WITH_REMEDIATION"].includes(elig.status) ? (
         <>
           <h3 className="h4 mt-2">Remediation</h3>
           <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>

@@ -159,7 +159,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" },
-          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
@@ -250,7 +250,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "PG Admissions" },
-          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
         ]
       },
@@ -704,8 +704,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
-          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" },
-          { "id": "prelim/config", "icon": "book", "label": "Preliminary Science Settings" }
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" },
+          { "id": "prelim/config", "icon": "book", "label": "Preliminary & Proficiency Settings" }
         ]
       },
       {
@@ -821,7 +821,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
-          { "id": "prelim/config", "icon": "card", "label": "Preliminary Science Fees" }
+          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" }
         ]
       },
       {
@@ -1594,7 +1594,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
-          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Science" }
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" }
         ]
       },
       {
@@ -2253,15 +2253,42 @@ export const MENUS: Record<string, Menu> = {
       }
     ]
   },
+  "prelimtech": {
+    "label": "Preliminary Vocational and Technical Education Office",
+    "home": "prelim/dashboard",
+    "groups": [
+      {
+        "name": "Overview",
+        "items": [
+          { "id": "prelim/dashboard", "icon": "home", "label": "Applications" },
+          { "id": "prelim/reports", "icon": "chart", "label": "Reports" },
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
+        ]
+      },
+      {
+        "name": "Administration",
+        "items": [
+          { "id": "prelim/config", "icon": "book", "label": "Programme Settings" }
+        ]
+      },
+      {
+        "name": "Me",
+        "items": [
+          { "id": "r/self", "icon": "user", "label": "Leave & Payslip" },
+          { "id": "r/tickets", "icon": "server", "label": "ICT Support Tickets" }
+        ]
+      }
+    ]
+  },
   "prelimapplicant": {
-    "label": "Preliminary Science Applicant",
+    "label": "Preliminary or Proficiency Applicant",
     "home": "a/preliminary",
     "groups": [
       {
         "name": "My application",
         "open": true,
         "items": [
-          { "id": "a/preliminary", "icon": "doc", "label": "Preliminary Science Application" },
+          { "id": "a/preliminary", "icon": "doc", "label": "My Application" },
           { "id": "a/mypassword", "icon": "shield", "label": "Change Password" }
         ]
       },
