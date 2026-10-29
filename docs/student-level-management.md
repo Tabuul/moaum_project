@@ -255,6 +255,56 @@ The University reported a 100 Level student (entered 2025/2026 by UTME) whose GS
 registration and her enrolment follow, and the permit, the examination card and the receipt then read 100 Level. If her record
 already reads 100, the put-right has set them.
 
+## A student who changed department is held a level behind (29 October 2026, V696)
+
+The University's word: a student who changes department usually steps down one level behind their entry cohort, and should never
+read a level ahead of the level they stepped down to. The case reported: a student who entered Accounting in 2023/2024 (matric
+…/ACC/23/…), now in B.Ed Guidance and Counselling, whose record read 200 Level and whose 2025/2026 receipt read 300.
+
+**Why the receipt read 300.** The receipt prints the greater of the record and the session's registration, enrolment or the count
+of sessions from entry (V672). With no 2025/2026 registration or enrolment, the count from 2023/2024 gave 300. `people.level_in`
+falls back on the same count. Nothing on the portal knew she had changed department: the old portal's transfers kept the old matric
+and were never migrated as transfers (V669).
+
+**Who changed department** (`people.department_changed`). Either:
+- the matric names a department (the third part of BSU/MS/ACC/23/…, a programme's matric code or a department's code) and the
+  programme is in none of them; or
+- a transfer to the programme from another department is recorded: a completed ACADEMIC_TRANSFER or APPROVED_TRANSFER_RESTORED
+  swap, an old-portal transfer, or an effected transfer application.
+
+A matric that names no department is no evidence either way.
+
+**The hold** (`people.hold_department_change`). An active undergraduate (not CCE) who changed department and entered before the
+current session:
+- is given an effective cohort one session after the session they entered (the cohort desk's override; decision
+  COHORT_DEPARTMENT_CHANGE). The academic position counts their expected level, completion and spillover from it, so the level
+  desk proposes nothing above it;
+- has their record lowered to the level that cohort reaches in the current session, if it is above it (decision
+  LEVEL_DEPARTMENT_CHANGE), with the current session's registrations and enrolment (V641's carry).
+
+A student whose cohort is already set, or whose hold was taken off on the cohort desk, is left as they are. Sessions before the
+current one keep what was registered.
+
+**What reads it.** `people.cohort_cap` is the level a set effective cohort reaches, in the current session and after.
+`people.receipt_level` and `people.level_in` never read above it. The rollover only ever adds one level, so a held student stays one
+behind.
+
+**When it runs.**
+- Once in the migration, for every student (`people.hold_department_changes`, batch V696-DEPARTMENT-CHANGE). The Academic Office
+  or the Registry may run it again; it is safe to run again.
+- On every transfer to another department, as it is made (trigger `trg_student_department_change` on the programme), and when an
+  old-portal transfer is recorded for a student already on the programme (`trg_prior_transfer_department_change`). A correction
+  that puts a student back into the department their matric names is not held. A transfer still reports the level it was made at
+  (Free N on the transfer desk says MOVED/200); the hold follows it. V686's check now expects the freed students at 100.
+
+**On the live-shaped copy of 28 October 2026** (rolled back): 566 students held, 87 records lowered (200→100 ×46, 400→300 ×28,
+300→200 ×8, 600→500 ×5), every reading of 2025/2026 within the hold. Spillover positions move a year later (SP2→SP1 ×101,
+limit→SP2 ×46, SP1→the final year ×25). The 2025/2026 fees stated rise for 82 of them by ₦2.92M in all: the fee follows the record,
+and 100 Level fees and a final year's fees are higher than 200 Level fees and spillover fees. 58 who entered before 2018/2019 were
+not held: the session after their entry is not on the calendar, and none of them reads above the hold.
+
+**To take a hold off** for one student, remove their cohort on the cohort desk, then correct the level here if it should be higher.
+
 ## Tests
 
 | Test | What it covers |
@@ -267,3 +317,5 @@ already reads 100, the put-right has set them.
 | `StudentLevelSupportIT` (V641) | a student at 200, registered, enrolled and billed for the session: the receipt reads 200; the warning says a correction carries; corrected to 100, the registration and enrolment read 100 (`carried` 1/1, `registrationKept` false) and so does the receipt; a progression leaves the registration as it is |
 | `check.sql` V641 | the desk's correction carries (record, registration, enrolment and `people.level_in` at 100), a progression does not; the put-right sets a fresh student's rows left at 200 and finds none the second time; the rollover into the fresh students' entry session promotes the continuing student and holds the fresh one (EXPECTED 467) |
 | `level-management.test.ts` (V641) | the warning for a correction says the registration and enrolment follow; for a progression and a spillover year, that the registration stays |
+| `check.sql` V696 | made-up students who changed department: lowered with the session's registration and enrolment, the session before kept; already a level behind, held with the receipt no longer ahead; their own department's matric, a fresher and a correction back left as they are; a transfer held as it is made; nothing proposed above the hold; a hold taken off not put back; the Bursary refused |
+| `level-management.test.ts` (V696) | the two decisions in words |

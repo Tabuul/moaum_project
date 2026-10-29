@@ -126,6 +126,9 @@ export function ruleWord(rule: string | null | undefined): string {
     case "LEVEL_ARITHMETIC": return "Correction by the sessions counted";
     case "LEVEL_ABOVE_FINAL": return "Brought to the final level";   // V601
     case "LEVEL_SPILLOVER_YEAR": return "Spillover year set (level desk)";   // V628
+    // V696: a student who changed department is held one level behind their entry cohort
+    case "LEVEL_DEPARTMENT_CHANGE": return "Held a level behind (changed department)";
+    case "COHORT_DEPARTMENT_CHANGE": return "Cohort a session later (changed department)";
     default: return rule ? "Registry decision" : "Level change";
   }
 }

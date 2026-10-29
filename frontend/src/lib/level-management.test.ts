@@ -53,6 +53,8 @@ test("the levels on the record run one per session, and each change is named by 
   assert.equal(ruleWord("LEVEL_PROGRESS"), "Progressed (level desk)");
   assert.equal(ruleWord("LEVEL_SPILLOVER"), "Spillover correction");
   assert.equal(ruleWord("LEVEL_ABOVE_FINAL"), "Brought to the final level");
+  assert.equal(ruleWord("LEVEL_DEPARTMENT_CHANGE"), "Held a level behind (changed department)");   // V696
+  assert.equal(ruleWord("COHORT_DEPARTMENT_CHANGE"), "Cohort a session later (changed department)");
   assert.equal(ruleWord("PROMOTE"), "Registry decision");
 });
 

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 521
+\set EXPECTED 522
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28302,7 +28302,8 @@ END $$;
 --    faculty (A and B); four students transferred A → B on the old portal, put back in the queue — one at the current department's desk
 --    (200 Level), one at the Academic Office's (300 Level), one already on B, one whose application was effected; and an id that names
 --    no application. The Bursar may not free them; a short reason is refused. The Academic Office frees all five at once: the first two
---    moved to B at their own level (numbers unchanged, the swap made), the third recorded only, the effected one and the unknown one
+--    moved to B at their own level (numbers unchanged, the swap made), the third recorded only — the three then held one level behind
+--    their entry cohort of 2686/2687 (V696: 100 Level in 2687/2688) — the effected one and the unknown one
 --    refused with the reason, the others done; each freed application withdrawn with the reason, the old portal's transfer recorded with
 --    the application's session, no application made. The block undoes its writes ──
 DO $$
@@ -28363,7 +28364,7 @@ BEGIN
            AND got = 'MOAU/' || fac || '/ZQC/86/96861=MOVED/200 MOAU/' || fac || '/ZQC/86/96862=MOVED/300 MOAU/' || fac || '/ZQC/86/96863=RECORDED/200 MOAU/'
                      || fac || '/ZQC/86/96864=REFUSED:PTQ_NOT_QUEUED/200 -=REFUSED:PTQ_NOT_FOUND'
            AND swaps = 0
-           AND placed = pb || ' 200 96861, ' || pb || ' 300 96862, ' || pb || ' 200 96863'
+           AND placed = pb || ' 100 96861, ' || pb || ' 100 96862, ' || pb || ' 100 96863'   -- V696: held a level behind their entry cohort
            AND apps = 'WITHDRAWN,WITHDRAWN,WITHDRAWN,EFFECTED'
            AND why LIKE 'Withdrawn by the Academic office: the transfer was approved on the old portal (SEN/OLD/2687)%'
            AND prior = pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 true, ' || pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 true, ' || pa || '>' || pb || ' ' || t2 || ' SEN/OLD/2687 false'
@@ -28817,6 +28818,85 @@ BEGIN
            AND classed = 'MOAU-ZQV 692' AND gone AND state_after = 'LIVE/-' AND taken = 'refused', false),
       format('old held %s ended held %s | renamed %s same id %s | bound %s class %s old gone %s | after restore %s | taken code %s',
              old_held, ended_held, renamed, id_after = id_before, bound, classed, gone, state_after, taken));
+END $$;
+
+-- ── V696. A student who changed department held one level behind their entry cohort. Made-up students of B.Ed Guidance and
+--    Counselling (C47096, Educational Foundations) who entered in 9686/9687, the current session 9688/9689: A with an Accounting
+--    matric at 300 Level, registered and enrolled at 300 this session (200 the session before) — held a session later and lowered to
+--    200 with them, the session before kept; B with an Accounting matric already at 200 — held, nothing lowered, the receipt no longer
+--    300; C with the programme's own matric at 300 — not changed; D a fresher of 9688/9689 — left as they are. E, of B.Sc.
+--    Accounting with an Accounting matric at 300, transferred to C47096 at 300 — held as the transfer is made, at 200; F, whose matric
+--    names Educational Foundations, put back from Accounting into C47096 — not held. The level desk proposes nothing above the hold;
+--    a hold the cohort desk takes off is not put back; the Bursary may not hold every student at once. Undone after ──
+DO $$
+DECLARE v_err text; ses text := '9688/9689'; prev text := '9687/9688'; ent text := '9686/9687';
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); ra uuid := gen_random_uuid(); rp uuid := gen_random_uuid();
+        changed text; outcomes text; a_state text; a_prev text; b_receipt_before int; b_state text; c_state text; e_state text; f_state text;
+        a_decisions text; proposals int; again text; removed text; office_refused text; past_cap text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'V696 check', true);
+    PERFORM assessment.ensure_session(ent); PERFORM assessment.ensure_session(prev); PERFORM assessment.ensure_session(ses);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9696/01' WHERE name = ses;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/99/996961', 'BSU/MS/ACC/86/96961', 'CHECKV696', 'A Lowered', 'C47096', 'UTME', ent, 100, 300, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/99/996962', 'BSU/MS/ACC/86/96962', 'CHECKV696', 'B Behind', 'C47096', 'UTME', ent, 100, 200, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/99/996963', 'BSU/ED/GDC/86/96963', 'CHECKV696', 'C Own', 'C47096', 'UTME', ent, 100, 300, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/99/996964', 'BSU/MS/ACC/88/96964', 'CHECKV696', 'D Fresher', 'C47096', 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (e, 'MOAUM/ADM/99/996965', 'BSU/MS/ACC/86/96965', 'CHECKV696', 'E Transfer', 'C00019', 'UTME', ent, 100, 300, 'ACTIVE', now()),
+        (f, 'MOAUM/ADM/99/996966', 'BSU/ED/GDC/86/96966', 'CHECKV696', 'F Put back', 'C00019', 'UTME', ent, 100, 300, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (ra, a, ses, 1, 300, 'APPROVED', now(), now()), (rp, a, prev, 1, 200, 'APPROVED', now(), now());
+    INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), a, ses, 300), (gen_random_uuid(), a, prev, 200);
+    changed := (SELECT string_agg(x.k || '=' || people.department_changed(x.id), ',' ORDER BY x.k)
+                  FROM (VALUES ('a', a), ('c', c), ('e', e), ('f', f)) x(k, id));
+    b_receipt_before := people.receipt_level(b, ses);
+    outcomes := (SELECT string_agg(x.k || '=' || people.hold_department_change(x.id, 'V696 check: changed department', 'CHK696'), ',' ORDER BY x.k)
+                   FROM (VALUES ('a', a), ('b', b), ('c', c), ('d', d)) x(k, id));
+    a_state := (SELECT s.current_level || '/' || (SELECT level FROM registration.course_registration WHERE id = ra) || '/'
+                       || (SELECT level FROM people.enrolment WHERE student_id = a AND session = ses) || '/' || people.receipt_level(a, ses)
+                       || '/' || people.level_in(a, ses) || '/' || (SELECT effective_cohort FROM people.cohort_override WHERE student_id = a)
+                  FROM people.student s WHERE s.id = a);
+    a_prev := (SELECT level FROM registration.course_registration WHERE id = rp) || '/' || (SELECT level FROM people.enrolment WHERE student_id = a AND session = prev)
+              || '/' || people.receipt_level(a, prev);
+    past_cap := coalesce(people.cohort_cap(a, prev)::text, 'none');
+    b_state := (SELECT s.current_level || '/' || people.receipt_level(b, ses) || '/' || people.level_in(b, ses) FROM people.student s WHERE s.id = b);
+    c_state := (SELECT s.current_level || '/' || people.receipt_level(c, ses) || '/' || EXISTS (SELECT 1 FROM people.cohort_override WHERE student_id = c) FROM people.student s WHERE s.id = c);
+    a_decisions := (SELECT string_agg(rule || ':' || coalesce(previous_level || '>' || new_level, effective_cohort), ',' ORDER BY rule)
+                      FROM people.cohort_decision WHERE student_id = a AND batch_ref = 'CHK696');
+    proposals := (SELECT count(*) FROM people.level_correction WHERE student_id IN (a, b) AND proposed_level > 200);
+    -- a transfer to another department, as decide_programme_swap makes it; a correction back into the matric's department
+    UPDATE people.student SET programme_code = 'C47096', current_level = 300 WHERE id = e;
+    UPDATE people.student SET programme_code = 'C47096', current_level = 300 WHERE id = f;
+    e_state := (SELECT s.current_level || '/' || coalesce((SELECT effective_cohort FROM people.cohort_override WHERE student_id = e), 'none') FROM people.student s WHERE s.id = e);
+    f_state := (SELECT s.current_level || '/' || coalesce((SELECT effective_cohort FROM people.cohort_override WHERE student_id = f), 'none') FROM people.student s WHERE s.id = f);
+    again := people.hold_department_change(a, 'V696 check: again', 'CHK696');
+    PERFORM people.set_cohort_override(b, NULL, 'V696 check: the hold taken off');
+    removed := people.hold_department_change(b, 'V696 check: put back?', 'CHK696');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN
+      PERFORM * FROM people.hold_department_changes('V696 check: every student', 'CHK696');
+      office_refused := 'allowed';
+    EXCEPTION WHEN OTHERS THEN office_refused := split_part(SQLERRM, ':', 1);
+    END;
+    RAISE EXCEPTION 'the V696 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V696 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V696: a student who changed department is held one level behind their entry cohort — the record, the session''s registration and enrolment, the receipt and the level read never above it, the session before kept; a student of their matric''s department, a fresher and a correction back are left as they are; a transfer holds the student as it is made; the level desk proposes nothing above the hold; a hold taken off is not put back',
+      coalesce(changed = 'a=true,c=false,e=false,f=true' AND outcomes = 'a=LOWERED,b=HELD,c=NOT_CHANGED,d=ENTRY_SESSION'
+           AND a_state = '200/200/200/200/200/9687/9688' AND a_prev = '200/200/200' AND past_cap = 'none'
+           AND b_receipt_before = 300 AND b_state = '200/200/200' AND c_state = '300/300/false'
+           AND a_decisions = 'COHORT_DEPARTMENT_CHANGE:9687/9688,LEVEL_DEPARTMENT_CHANGE:300>200' AND proposals = 0
+           AND e_state = '200/9687/9688' AND f_state = '300/none' AND again = 'COHORT_SET' AND removed = 'HELD_BEFORE'
+           AND office_refused = 'LEVEL_CORRECTION_OFFICE', false),
+      format('changed %s | outcomes %s | a %s before %s past cap %s | b receipt before %s now %s | c %s | a decisions %s | proposals %s | e %s f %s | again %s removed %s | bursar %s',
+             changed, outcomes, a_state, a_prev, past_cap, b_receipt_before, b_state, c_state, a_decisions, proposals, e_state, f_state, again, removed, office_refused));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
