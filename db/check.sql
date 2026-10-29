@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 529
+\set EXPECTED 530
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29614,6 +29614,30 @@ BEGIN
            AND q4_state = 'DECLINED/The amendment AMD-9700-00002 was refused: The board found the marks as keyed', false),
       format('states %s | groups %s | kinds %s | held %s | uploads %s | registrar %s | q1 %s again %s same %s no marks %s | follow %s done %s | q2 ict %s then %s | q3 %s again %s | q4 %s',
              states, groups, kinds, held, uploads, r_office, q1_was, r_open, r_same, r_marks, q1_follow, q1_done, q2_ict, q2_state, q3_state, q3_again, q4_state));
+END $$;
+
+-- ── V703. Preliminary Technology asks for one passport photograph (the University's word of 29 October 2026): its documents are
+--          the passport photograph, the O'Level results, the LGA and birth certificates; photographs 2 and 3 are not among them,
+--          on the public page or as a document the submission waits on; Preliminary Science keeps its second photograph ──
+DO $$
+DECLARE
+    tech text; sci text; prof text; v_label text; pub_docs text; pub_required text; waits int;
+BEGIN
+    SELECT string_agg(kind, ',' ORDER BY ord) INTO tech FROM admissions.prelim_document WHERE route = 'PRELIMINARY_TECHNOLOGY';
+    SELECT string_agg(kind, ',' ORDER BY ord) INTO sci FROM admissions.prelim_document WHERE route = 'PRELIMINARY_SCIENCE';
+    SELECT string_agg(kind, ',' ORDER BY ord) INTO prof FROM admissions.prelim_document WHERE route = 'PROFICIENCY_CERTIFICATE';
+    SELECT d.label INTO v_label FROM admissions.prelim_document d WHERE d.route = 'PRELIMINARY_TECHNOLOGY' AND d.kind = 'PASSPORT';
+    SELECT string_agg(x->>'kind', ','), string_agg(x->>'kind', ',') FILTER (WHERE (x->>'required')::boolean)
+      INTO pub_docs, pub_required
+      FROM jsonb_array_elements(admissions.prelim_public('PRELIMINARY_TECHNOLOGY')->'documents') x;
+    -- the documents a submission waits on are the route's required ones: none of them a second or third photograph
+    SELECT count(*) INTO waits FROM admissions.prelim_document d
+     WHERE d.route = 'PRELIMINARY_TECHNOLOGY' AND d.required AND d.kind IN ('PASSPORT_2', 'PASSPORT_3');
+    PERFORM pg_temp.assert('V703: Preliminary Technology asks for one passport photograph — photographs 2 and 3 off its documents, the public page and the submission',
+        tech = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT' AND v_label = 'Passport photograph'
+          AND pub_docs = tech AND pub_required NOT LIKE '%PASSPORT\_%' AND waits = 0
+          AND sci LIKE 'PASSPORT,PASSPORT_2,%' AND prof = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT',
+        format('technology=%s label=%s public=%s required=%s waits=%s | science=%s | proficiency=%s', tech, v_label, pub_docs, pub_required, waits, sci, prof));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

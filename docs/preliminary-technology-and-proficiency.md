@@ -43,7 +43,7 @@ with a reason. Every open application is read again under the new rule.
 | Qualifications accepted | SSCE, GCE, NABTEB NTC, NABTEB NBC, City & Guilds Part I, City & Guilds Part II, Federal Craft Training Certificate, TC II, another the University approves (`admissions.qualification_type`, new; `screening_olevel.exam_type` now refers to it) | the same |
 | Targets | 3 areas, each an existing programme of the register | 30 certificate courses in 3 categories |
 | Options | specialisations within a target programme (`admissions.prelim_specialisation`, new) | none |
-| Documents | 3 passport photographs (JPEG), O'Level result per sitting, LGA certificate, birth certificate | passport, certificate or result, second sitting if any, LGA and birth certificates (optional) |
+| Documents | one passport photograph (JPEG; three until V703), O'Level result per sitting, LGA certificate, birth certificate | passport, certificate or result, second sitting if any, LGA and birth certificates (optional) |
 | Application fee | ₦5,000, non-refundable (`route_fee`, 2026/2027) | **FEE NOT CONFIGURED**. The form stays shut until the Bursary sets a fee and it is paid. |
 | Window | `PRELIMINARY_TECHNOLOGY_APPLICATION`: closed until the Director of ICT opens it | `PROFICIENCY_CERTIFICATE_APPLICATION`: the same |
 
@@ -134,7 +134,7 @@ and it switches to the other route from the desk. The central offices see one **
   - the qualification list the route accepts;
   - the area, then its specialisation, or the category, then its course;
   - the subjects the chosen area asks for;
-  - three passport photographs where the route asks for them;
+  - the passport photographs the route asks for (one for each programme since V703);
   - every heading and note in the route's own words.
 
   The application form and admission letter (PDF) name the programme, campus and duration, and either the target with its area
@@ -231,3 +231,17 @@ Nothing below is invented. Each shows as "Not configured" or stays shut until th
   - prelimtech's desk opening on its own programmes;
   - the application's detail and both printed forms;
   - the settings (an option added) and the reports.
+
+---
+
+## 6. One passport photograph (V703)
+
+The University's word of 29 October 2026: "remove Passport photograph (2 of 3), Passport photograph (3 of 3) from the upload of
+Required documents". Preliminary Technology's documents now hold one passport photograph, labelled "Passport photograph".
+
+- The public page and the form no longer list photographs 2 and 3.
+- The submission no longer waits on them.
+- An upload of either is refused as not one of the application's documents.
+- A photograph an applicant had already uploaded under either stays on the desk with the application's other files.
+
+Preliminary Science keeps its second photograph. The proficiency courses always asked for one.
