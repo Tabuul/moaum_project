@@ -236,7 +236,7 @@ checking and their reminders.
 
 ## 16. Documents
 
-Required kinds (all configurable): PASSPORT and PASSPORT_2 (two recent passport photographs), OLEVEL_STATEMENT, OLEVEL_STATEMENT_2
+Required kinds (all configurable): PASSPORT (one recent passport photograph; PASSPORT_2, a second, until V704), OLEVEL_STATEMENT, OLEVEL_STATEMENT_2
 (required only for two sittings), LGA_ID (indigene certificate), and BIRTH_CERT (birth certificate or declaration of age). The
 **payment receipt** is the portal's own receipt, not an upload. Each document is reviewed as ACCEPTED or REJECTED with a reason.
 Content is served only to its owner or an authorised desk reader within scope. The application form PDF (with the passport)
@@ -340,7 +340,7 @@ review state, target and eligibility. The list never loads all applications, O'L
 8. **Target names that differ from the register**: Anatomy → Human Anatomy, Physiology → Human Physiology, "B.Sc Doctor of
    Pharmacy" → Doctor of Pharmacy, B. Nursing Science → Bachelor of Nursing Sciences, "B.INDCHM. Industrial Chemistry" →
    B.Sc Industrial Chemistry. These were mapped, never renamed.
-9. **Two passport photographs**: whether both must be uploaded or only presented physically (both are required uploads now).
+9. **Two passport photographs**: settled on 29 October 2026 — one is uploaded (V704: the second taken off the documents; one already uploaded stays on the desk).
 10. **Physical submission**: where and by when the printed form and photocopies go (the steps say "where the University asks").
 11. **NIN**: not collected, because the shared applicant biodata has no NIN field. Collecting it means adding it there for every route.
 12. **Failed-payment message**: no `PAYMENT_FAILED` notice. The gateway path reports only confirmed payments to applicants.

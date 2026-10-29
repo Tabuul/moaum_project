@@ -140,7 +140,9 @@ class PreliminaryScienceIT {
         assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "JAMB_SLIP", "filename", "x.pdf", "contentType", "application/pdf", "contentBase64", PDF))))
                 .isEqualTo("APP_DOCUMENT_KIND");
         ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT", "filename", "me.png", "contentType", "image/png", "contentBase64", PIXEL)));
-        ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT_2", "filename", "me2.png", "contentType", "image/png", "contentBase64", PIXEL)));
+        // V704: one passport photograph; a second is not one of the programme's documents
+        assertThat(code(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", "PASSPORT_2", "filename", "me2.png", "contentType", "image/png", "contentBase64", PIXEL))))
+                .isEqualTo("APP_DOCUMENT_KIND");
         for (String kind : List.of("OLEVEL_STATEMENT", "LGA_ID", "BIRTH_CERT")) {
             ok(it.call(applicant, HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", kind, "filename", kind.toLowerCase() + ".pdf", "contentType", "application/pdf", "contentBase64", PDF)));
         }
@@ -167,7 +169,7 @@ class PreliminaryScienceIT {
         ok(it.call(office, HttpMethod.POST, "/api/v1/admissions/preliminary/applications/" + app + "/act", Map.of("action", "START")));
         Map<String, Object> detail = ok(it.get(office, "/api/v1/admissions/preliminary/applications/" + app));
         List<Map<String, Object>> docs = (List<Map<String, Object>>) detail.get("documents");
-        assertThat(docs).hasSize(5);
+        assertThat(docs).hasSize(4);   // the passport photograph (one since V704), the O'Level result, the indigene and birth certificates
         assertThat(it.getBytes(office, "/api/v1/admissions/preliminary/applications/" + app + "/documents/" + docs.get(0).get("id") + "/content").getStatusCode().value()).isEqualTo(200);
         assertThat(code(it.call(office, HttpMethod.POST, "/api/v1/admissions/preliminary/applications/" + app + "/act", Map.of("action", "RECOMMEND")))).isEqualTo("PRELIM_DOCUMENTS_UNVERIFIED");
         for (Map<String, Object> d : docs) {

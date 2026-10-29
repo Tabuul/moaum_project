@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 530
+\set EXPECTED 531
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29618,7 +29618,7 @@ END $$;
 
 -- ── V703. Preliminary Technology asks for one passport photograph (the University's word of 29 October 2026): its documents are
 --          the passport photograph, the O'Level results, the LGA and birth certificates; photographs 2 and 3 are not among them,
---          on the public page or as a document the submission waits on; Preliminary Science keeps its second photograph ──
+--          on the public page or as a document the submission waits on (Preliminary Science's second photograph: V704's block) ──
 DO $$
 DECLARE
     tech text; sci text; prof text; v_label text; pub_docs text; pub_required text; waits int;
@@ -29636,8 +29636,23 @@ BEGIN
     PERFORM pg_temp.assert('V703: Preliminary Technology asks for one passport photograph — photographs 2 and 3 off its documents, the public page and the submission',
         tech = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT' AND v_label = 'Passport photograph'
           AND pub_docs = tech AND pub_required NOT LIKE '%PASSPORT\_%' AND waits = 0
-          AND sci LIKE 'PASSPORT,PASSPORT_2,%' AND prof = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT',
+          AND prof = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT',
         format('technology=%s label=%s public=%s required=%s waits=%s | science=%s | proficiency=%s', tech, v_label, pub_docs, pub_required, waits, sci, prof));
+END $$;
+
+-- ── V704. Preliminary Science asks for one passport photograph (the University's word of 29 October 2026): its documents are the
+--          recent passport photograph, the O'Level results, the indigene and birth certificates; the second photograph is not among
+--          them, on the public page or as a document the submission waits on; every preliminary and proficiency route asks for one ──
+DO $$
+DECLARE
+    sci text; pub_docs text; seconds int;
+BEGIN
+    SELECT string_agg(kind, ',' ORDER BY ord) INTO sci FROM admissions.prelim_document WHERE route = 'PRELIMINARY_SCIENCE';
+    SELECT string_agg(x->>'kind', ',') INTO pub_docs FROM jsonb_array_elements(admissions.prelim_public('PRELIMINARY_SCIENCE')->'documents') x;
+    SELECT count(*) INTO seconds FROM admissions.prelim_document WHERE kind IN ('PASSPORT_2', 'PASSPORT_3');
+    PERFORM pg_temp.assert('V704: Preliminary Science asks for one passport photograph — the second off its documents and its public page; no route asks for a second or third',
+        sci = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT' AND pub_docs = sci AND seconds = 0,
+        format('science=%s public=%s second or third photographs asked by any route=%s', sci, pub_docs, seconds));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
