@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 520
+\set EXPECTED 521
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28766,6 +28766,57 @@ BEGIN
         format('err=%s school=%s/%s/%s fee=%s/%s/%s/%s/%s phd=%s/%s listed=%s after=%s charged=%s bulk=%s due=%s stated=%s ctx=%s/%s phd=%s closed=%s',
                v_err, school.stage_code, school.beyond, school.recommendation, fee.stage_code, fee.stage_label, fee.category, fee.beyond, fee.is_extension,
                phd_fee.stage_code, phd_fee.beyond, listed, listed_after, charged, bulk, due, stated, ctx.stage_code, ctx.category, phd_charged, closed_charged));
+END $$;
+
+-- ── V692. B.Sc. Computer Science's three old MOAU codes renamed and the ended courses its CCMAS structure lists made live: none of
+--    the three old codes is held, and each code the structure names, where held, is live. The way it is done, on a made-up course
+--    under an old code after the MOAU one, ended, bound to C00023 with a class: renamed (written loosely), the same course under the
+--    new code with its binding and class, the old code gone; restored, live with no end date. A new code another course holds is
+--    refused, which the migration leaves as it is. Undone after ──
+DO $$
+DECLARE v_err text; old_held int; ended_held int; dept text; o uuid := gen_random_uuid(); id_before uuid; id_after uuid;
+        renamed text; bound text; classed text; gone boolean; state_after text; taken text;
+BEGIN
+  old_held := (SELECT count(*) FROM catalogue.course WHERE code IN ('MOAU COS 123/CMP223', 'MOAU-COS 311/CMP 311', 'MOAU-COS 315/CMP 315'));
+  ended_held := (SELECT count(*) FROM catalogue.course
+                  WHERE code IN ('MOAU-COS 123', 'MOAU-COS 311', 'MOAU-COS 315', 'COS 202', 'CSC 203', 'INS 401', 'MOAU-COS 104',
+                                 'MOAU-COS 120', 'MOAU-COS 205', 'MOAU-COS 262', 'MOAU-INS 204') AND state = 'ENDED');
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'V692 check', true);
+    PERFORM assessment.ensure_session('9692/9693');
+    SELECT dept_code INTO dept FROM ref.programme WHERE code = 'C00023';
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ended_on) VALUES
+        ('MOAU-ZQV 692/CMP 692', 'Check Old Code Course', 2, 1, 300, dept, 'Core', 'ENDED', current_date),
+        ('MOAU-ZQV 693/CMP 693', 'Check Taken Code Course', 2, 1, 300, dept, 'Core', 'LIVE', NULL),
+        ('MOAU-ZQV 693', 'Check Taken Code Course', 2, 1, 300, dept, 'Core', 'LIVE', NULL);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('MOAU-ZQV 692/CMP 692', 'C00023', 300, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o, 'MOAU-ZQV 692/CMP 692', '9692/9693', 1);
+    id_before := (SELECT id FROM catalogue.course WHERE code = 'MOAU-ZQV 692/CMP 692');
+    renamed := catalogue.rename_course('MOAU-ZQV 692/CMP 692', 'moau-zqv 692');
+    id_after := (SELECT id FROM catalogue.course WHERE code = 'MOAU-ZQV 692');
+    bound := (SELECT string_agg(programme_code || ':' || level || ':' || basis, ',') FROM catalogue.course_offer WHERE course_code = 'MOAU-ZQV 692');
+    classed := (SELECT course_code FROM catalogue.offering WHERE id = o);
+    gone := NOT EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'MOAU-ZQV 692/CMP 692')
+        AND NOT EXISTS (SELECT 1 FROM catalogue.course_offer WHERE course_code = 'MOAU-ZQV 692/CMP 692');
+    PERFORM catalogue.restore_course('MOAU-ZQV 692');
+    state_after := (SELECT state || '/' || coalesce(ended_on::text, '-') FROM catalogue.course WHERE code = 'MOAU-ZQV 692');
+    BEGIN
+      PERFORM catalogue.rename_course('MOAU-ZQV 693/CMP 693', 'MOAU-ZQV 693');
+      taken := 'renamed';
+    EXCEPTION WHEN unique_violation THEN taken := 'refused';
+    END;
+    RAISE EXCEPTION 'the V692 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V692 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V692: B.Sc. Computer Science''s three old MOAU codes are renamed and the ended courses its CCMAS structure lists are live; a course under an old code after the MOAU one, renamed, is the same course under the new code with its binding and class, and restored is live; a new code already held is refused',
+      coalesce(old_held = 0 AND ended_held = 0 AND renamed = 'MOAU-ZQV 692' AND id_after = id_before AND bound = 'C00023:300:Core'
+           AND classed = 'MOAU-ZQV 692' AND gone AND state_after = 'LIVE/-' AND taken = 'refused', false),
+      format('old held %s ended held %s | renamed %s same id %s | bound %s class %s old gone %s | after restore %s | taken code %s',
+             old_held, ended_held, renamed, id_after = id_before, bound, classed, gone, state_after, taken));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
