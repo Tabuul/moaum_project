@@ -407,6 +407,9 @@ the migration in one set-based pass; the triggers keep them from there.
 - **Tests:** check.sql's V595 block (late final year SP1, enrolment-only SP2, no final-level record as before, final year now
   NORMAL, an early wrong level ignored, a deferment after the final year counted); `SpilloverFinalYearIT`.
 
+Since V695 a final-level record of the current session counts only when the register shows the student in the session before it
+(§21).
+
 ## 19. Five-year programmes at 500, and level corrections by the level on record (V598)
 
 Every level-dependent part of the portal already reads the programme's own final level (`ref.programme.final_level`):
@@ -480,3 +483,41 @@ correction. The next level is still shown, and `spilloverState` is returned for 
 
 - **Tests:** check.sql's V601 block; `LevelCorrectionsIT` (records above the final level); `StudentLevelSupportIT` (a spillover
   student not progressed).
+
+## 21. This session's first record alone never makes the final year (V695)
+
+**The problem.** On 29 October 2026 the University sent a 400 Level B.Sc. Mass Communication student who had been asked for the
+first semester's fee. The student entered in 2019/2020 (cohort 2020/2021) and was in spillover year 2. They paid the second
+semester's spillover fee (₦22,350) and were then asked for ₦59,350.
+
+The student had nothing on the register before 2025/2026. Their registration of that session therefore became "the first session at
+the final level" (§18). That made 2025/2026 their final year, and they left spillover. They were charged both semesters' ordinary
+400 Level lines, ₦81,700, less the ₦22,350 paid: ₦59,350.
+
+An enrolment row of the session does the same. Such a row comes from the old portal or from a level correction carried into the
+session (V641, V676). The University's word: "spill over student who did not register for first semester is been asked to pay for
+first semester, do this for all the affected spill over student".
+
+**The rule now.** A final-level record of the current session shows the final year only when the register shows the student in the
+session just before it, by a registration or an enrolment (`policy.sessions_elapsed` ≤ 1). With nothing there — no history on the
+portal, or a gap — the count of sessions decides, as before V595. A final-level record of an earlier session counts as §18 has it.
+
+Every position is recomputed by the migration. The fees follow the position (V637): a spillover student is charged the spillover
+lines of the semesters they register (V616). A student who has paid more than that is shown it on the overpaid desk. Nothing is
+refunded or moved by the migration.
+
+A student counted outside the maximum period this way may be registered this session. Graduation by status reconciliation
+(V638) then lists them with LOW confidence ("registered or enrolled for the current session"). They are left for review and
+never graduated by a batch or by the nightly run.
+
+**On the copy of 22 October 2026:**
+
+- **233 students are back in spillover:** 209 in SP1, 20 in SP2, 2 at the limit, 2 below the final level. Each of them had only an
+  enrolment of 2025/2026. They had been charged ₦20.3M as final-year students, and 111 of them had paid ₦8.0M.
+- **1,361 students registered or enrolled the session before** (1,336 at 300 Level in 2024/2025). They are in their final year as
+  §18 has it, and stay so.
+
+**Tests:** check.sql's V695 block (no history, enrolment only and a gap stay SP2, the first charged the second semester's spillover
+line alone; the session before at 300 Level makes the final year, charged both semesters). V595's block was restated so that its
+student who is first at 400 Level this session is registered at 300 Level the session before. V638's block was restated too:
+its student registered at the final level this session, with nothing before, is now a LOW candidate left for review.
