@@ -1406,8 +1406,8 @@ Branded Excel and print exports put **S/N** as the first column, generated at ex
 | JAMB admission template | admissions | academic, registrar | programme or all | — | yes (JAMB's own layout, five sheets) | `admissions.*` |
 | Computed Post-UTME; Screened summary/detail/all-O'Level | admissions | academic, super (computed); readers | programme, faculty | branded print | yes (CPU) | `non_sitter_post_utme`, screening views |
 | Screening register non-index scores | admissions | readers | — | — | **CSV only** | — |
-| Postgraduate applications | pgadmissions | readers | session | — | yes (PGAPP) | `pg_application` |
-| Merged application documents; application summary; offer letter | pgadmissions | desk; applicant | — | server PDF | — | — |
+| Postgraduate applications (V694: date of application, documents, times applied) | pgadmissions | readers | session; documents complete / pending / paid, not uploaded / fee unpaid; applied more than once; order | — | yes (PGAPP) | `pg_application`, `pg_document_state`, `pg_session_duplicates` |
+| Merged application documents; application summary; application form (V694, the desk's); offer letter | pgadmissions | desk; applicant | — | server PDF | — | — |
 | Examiner reports (8 kinds) | examiners | desk offices in reach | session, faculty, department, programme, examiner, status, dates | — | **CSV only** | `extexam.*` |
 | ICT support report | helpdesk | ict, admin, super | dates, category, priority, agent, faculty, department | — | **CSV only** | `helpdesk.*` |
 | Graduates Awaiting Certificate; Document Requests; Issued Documents; Document Verifications | credentials | documents readers | per screen | branded print | yes (DOC; verifications PDF only) | `credentials.*` |

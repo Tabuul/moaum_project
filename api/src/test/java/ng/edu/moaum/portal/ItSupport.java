@@ -218,6 +218,21 @@ final class ItSupport {
         throw new IllegalStateException("no free course prefix after " + lead);
     }
 
+    /** V694: a postgraduate applicant no earlier run has made. One application is taken from a person in a session, known by two of
+     *  name, date of birth and phone, so a test that applies as a new person draws all three afresh: letters for the name (the rule
+     *  reads a name's letters only), a phone of eleven digits and a date of birth */
+    record PgPerson(String surname, String otherNames, String dob, String phone) {
+    }
+
+    static PgPerson pgPerson(String surname) {
+        java.util.concurrent.ThreadLocalRandom r = java.util.concurrent.ThreadLocalRandom.current();
+        StringBuilder given = new StringBuilder("Zz");
+        for (int i = 0; i < 8; i++) given.append((char) ('a' + r.nextInt(26)));
+        String dob = java.time.LocalDate.of(1970, 1, 1).plusDays(r.nextInt(0, 365 * 30)).toString();
+        String phone = "080" + String.format("%08d", r.nextInt(0, 100_000_000));
+        return new PgPerson(surname, given.toString(), dob, phone);
+    }
+
     /** a number in [min, bound) none of whose identifiers — as {@code identifiers} builds them from it: matriculation, admission and
      *  staff numbers, the surnames of invented students and people — any student or person holds, so the people a test invents from
      *  one random number are new on any database, however often the suite has run on it */

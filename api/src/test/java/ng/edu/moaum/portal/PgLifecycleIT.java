@@ -61,8 +61,9 @@ class PgLifecycleIT {
 
         // ── the applicant applies: the application is numbered and the fee reference minted ──
         Map<String, Object> form = new java.util.LinkedHashMap<>();
-        form.put("surname", "ZZPGCANDIDATE"); form.put("otherNames", "Lifecycle"); form.put("sex", "F"); form.put("dob", "1995-04-12");
-        form.put("state", "Benue"); form.put("lga", "Makurdi"); form.put("email", email); form.put("phone", "08012345678");
+        ItSupport.PgPerson who = ItSupport.pgPerson("ZZPGCANDIDATE");   // V694: one application a person a session — a person no run has made
+        form.put("surname", who.surname()); form.put("otherNames", who.otherNames()); form.put("sex", "F"); form.put("dob", who.dob());
+        form.put("state", "Benue"); form.put("lga", "Makurdi"); form.put("email", email); form.put("phone", who.phone());
         form.put("nationality", "Nigerian"); form.put("contactAddress", "No. 5 Gboko Road," + (char) 10 + "  Makurdi,  Benue State");
         form.put("password", password); form.put("programme", programme);
         form.put("priorInstitution", "Benue State University"); form.put("priorAward", "B.Sc. Computer Science"); form.put("priorClass", "Second Class Upper");

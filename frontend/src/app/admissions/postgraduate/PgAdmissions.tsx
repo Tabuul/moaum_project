@@ -15,6 +15,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { docLabel } from "@/lib/pg-documents";
+import { DOCUMENT_FILTERS, appliedOn, appliedTimes, desksHref, documentsPill, missingDocuments } from "@/lib/pg-applications";
 import { ScreeningDesk, SCREENING, when } from "./ScreeningDesk";
 
 export interface PgRow {
@@ -30,6 +31,9 @@ export interface PgRow {
   specialisation?: string | null; specialisation_id?: string | null;
   /** V675: the old portal's application number, for an application migrated from it */
   legacy_application_no?: string | null;
+  /** V694: when the application was made; where its document upload stands; the other applications of the same person */
+  applied_at?: string | null; documents_state?: string | null; documents_required?: number | null; documents_uploaded?: number | null;
+  documents_missing?: string | null; also_applied?: string | null; times_applied?: number | null;
 }
 /** V675: an application migrated from the old portal — its old number, the upload, what the old portal decided, its fees and documents */
 interface Legacy {
@@ -40,14 +44,19 @@ interface Legacy {
   fees: { id: string; kind: string; legacy_reference: string; amount: number; paid_on: string | null; state: string; stated_status: string | null; decision_note: string | null }[];
   documents: { id: string; kind: string; label: string; legacy_ref: string; missing: boolean }[];
 }
-export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; faculty: number; offered: number; accepted: number; admitted: number; not_recommended?: number; returned?: number; not_offered?: number; unpaid?: number }; rows: PgRow[] }
+export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; faculty: number; offered: number; accepted: number; admitted: number; not_recommended?: number; returned?: number; not_offered?: number; unpaid?: number;
+  /** V694 */ documents_complete?: number; documents_pending?: number; documents_none?: number; documents_fee_unpaid?: number; duplicates?: number }; rows: PgRow[] }
+/** V694: the list's narrowing, kept in the address */
+export interface PgFilters { documents: string | null; duplicates: boolean; sort: string | null }
 interface Screening { state: string; venue: string | null; scheduled_for: string | null; verified_documents: string[] | null; missing_documents: string[] | null; issues: string | null; remarks: string | null; reason: string | null; decided_at: string | null; officer: string | null; officer_office: string | null }
 interface Referee { id: string; name: string; email: string | null; phone: string | null; institution: string | null; position: string | null; reference_text: string | null; submitted_at: string | null; relationship: string | null; known_duration: string | null; attestation: string | null; recommendation: string | null; verdict: string | null }
 const VERDICT_LABEL: Record<string, string> = { RECOMMEND: "Recommended", RECOMMEND_WITH_RESERVATION: "Recommended with reservation", DO_NOT_RECOMMEND: "Not recommended" };
 interface DocMeta { id: string; kind: string; filename: string; content_type: string; uploaded_at: string }
 interface PriorQual { kind: string; institution: string | null; award: string | null; field: string | null; class_of_degree: string | null; cgpa: number | null; year: number | null }
 interface HistoryRow { kind: string; note: string | null; at: string; actor: string | null; actor_office: string | null }
-interface Detail { found: boolean; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; nationality?: string | null; contact_address?: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null; checking_confirmed_at?: string | null; acceptance_confirmed_at?: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[]; screening?: Screening | null; screeningRequired?: boolean; student?: { admission_no: string; matric_no: string | null; status: string } | null;
+/** V694: another application of the same person in the session */
+interface AlsoApplied { id: string; application_no: string; email: string | null; fee_paid: boolean; applied_at: string | null; matched_on: string; state: string; programme_name: string }
+interface Detail { found: boolean; alsoApplied?: AlsoApplied[]; application?: PgRow & { sex: string | null; date_of_birth: string | null; lga: string | null; nationality?: string | null; contact_address?: string | null; prior_year: number | null; proposal_title: string | null; proposal_text: string | null; dept_note: string | null; fac_note: string | null; fac_decided_at: string | null; spgs_note: string | null; checking_confirmed_at?: string | null; acceptance_confirmed_at?: string | null }; referees?: Referee[]; priorDegrees?: PriorQual[]; documents?: DocMeta[]; history?: HistoryRow[]; screening?: Screening | null; screeningRequired?: boolean; student?: { admission_no: string; matric_no: string | null; status: string } | null;
   /** V488: the programme's running specialisations, for the School before admission */
   specialisations?: { id: string; code: string; name: string }[]; legacy?: Legacy | null }
 const EVENT_LABEL: Record<string, string> = {
@@ -70,11 +79,17 @@ const fmtWhen = (v: string) => new Date(v).toLocaleString("en-GB", { day: "2-dig
 
 /** the applications on the desk as a branded workbook: S/N first, names A–Z as the desk lists them */
 async function exportRows(rows: PgRow[], session: string) {
-  const headers = ["S/N", "Application number", "Old application number", "Applicant", "Programme", "Award", "Specialisation", "Department", "Faculty", "Level", "Session", "Application fee", "Application status", "Submitted"];
-  const body = rows.map((r, i) => [
-    i + 1, r.application_no, r.legacy_application_no ?? "", `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.specialisation ?? "", r.department_name ?? "", r.faculty_name ?? "",
-    r.entry_level, session, r.fee_confirmed_at ? "Paid" : "Unpaid", stageOf(r).label, r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "",
-  ]);
+  const headers = ["S/N", "Application number", "Old application number", "Applicant", "Programme", "Award", "Specialisation", "Department", "Faculty", "Level", "Session",
+    "Date of application", "Application fee", "Documents", "Documents missing", "Times applied", "Also applied as", "Application status"];
+  const body = rows.map((r, i) => {
+    const at = appliedOn(r.applied_at ?? r.submitted_at);
+    return [
+      i + 1, r.application_no, r.legacy_application_no ?? "", `${r.surname}, ${r.other_names}`, r.programme_name, r.pg_award ?? "", r.specialisation ?? "", r.department_name ?? "", r.faculty_name ?? "",
+      r.entry_level, session, at.time ? `${at.day} ${at.time}` : "", r.fee_confirmed_at ? "Paid" : "Unpaid",
+      documentsPill(r.documents_state, r.documents_uploaded, r.documents_required).label, missingDocuments(r.documents_missing),
+      Number(r.times_applied ?? 1), r.also_applied ?? "", stageOf(r).label,
+    ];
+  });
   const blob = await brandedXlsx("Postgraduate applications", headers, body, { sheetName: "Applications", serial: docSerial("PGAPP"), sub: session });
   downloadBlob(blob, `postgraduate-applications-${session.replace("/", "-")}.xlsx`);
 }
@@ -265,6 +280,11 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
           <div className="b700 t-lg">{a.surname}, {a.other_names}</div>
           <div className="sub2 mt-1">{a.application_no} · {a.programme_name}{a.pg_award ? ` (${a.pg_award})` : ""}</div>
           <div className="sub2">{a.email}{a.phone ? ` · ${a.phone}` : ""}</div>
+          {/* V694: when the application was made, and its form to download or print */}
+          <div className="row row--inline row--tight mt-1">
+            <span className="sub2">Applied {(() => { const at = appliedOn(a.applied_at ?? a.submitted_at); return at.time ? `${at.day}, ${at.time}` : at.day; })()}</span>
+            <a href={`/admissions/postgraduate/applications/${id}/form`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm">Application form (PDF)</a>
+          </div>
           {/* V488: the specialisation applied for; the School sets or changes it until the applicant is admitted */}
           {a.specialisation || (d.specialisations ?? []).length ? (
             <div className="row row--inline row--tight mt-1">
@@ -280,6 +300,22 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
           ) : null}
         </div>
       </div>
+
+      {/* V694: the same person's other applications in the session — two of name, date of birth and phone agree */}
+      {(d.alsoApplied ?? []).length ? (
+        <Note kind="bad" title={`This applicant applied ${(d.alsoApplied ?? []).length + 1} times this session`}>
+          The same {[...new Set((d.alsoApplied ?? []).flatMap((x) => x.matched_on.split(", ")))].join(", ")} appear on {(d.alsoApplied ?? []).length === 1 ? "another application" : "other applications"}.
+          One application is taken from each applicant; decide on one and decline the others with a note.
+          <ul className="mt-1">
+            {(d.alsoApplied ?? []).map((x) => (
+              <li key={x.id}>
+                <a href={`/admissions/postgraduate/applications/${x.id}`}>{x.application_no}</a> · {x.programme_name} · {STATE[x.state]?.label ?? x.state}
+                {x.fee_paid ? " · fee paid" : " · fee unpaid"}{x.applied_at ? ` · applied ${appliedOn(x.applied_at).day}` : ""}{x.email ? ` · ${x.email}` : ""}
+              </li>
+            ))}
+          </ul>
+        </Note>
+      ) : null}
 
       <Section title="Bio-data">
         <Kv k="Surname" v={a.surname} />
@@ -336,6 +372,17 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
       </Section>
 
       <Section title="Documents">
+        {/* V694: where the upload stands against the documents the applicant is asked for */}
+        {a.documents_state ? (() => {
+          const pill = documentsPill(a.documents_state, a.documents_uploaded, a.documents_required);
+          const missing = missingDocuments(a.documents_missing);
+          return (
+            <div className="row row--inline row--tight mb-2">
+              <Pil kind={pill.kind}>{pill.label}</Pil>
+              {missing && a.documents_state !== "COMPLETE" ? <span className="sub2">Still to upload: {missing}</span> : null}
+            </div>
+          );
+        })() : null}
         {otherDocs.length || passport ? (
           <div className="stack">
             <div className="row row--base">
@@ -513,8 +560,10 @@ export function PgApplicationPage({ id, session, actingOffice, heading }: {
   );
 }
 
-export function PgAdmissions({ session, sessions = [], view, problem, actingOffice }: {
+export function PgAdmissions({ session, sessions = [], view, problem, actingOffice, filters = { documents: null, duplicates: false, sort: null } }: {
   session: string; sessions?: { name: string; state: string }[]; view: PgView | null; problem: Problem | null; actingOffice: string | null;
+  /** V694: the list's narrowing and order, kept in the address so the Excel and a reload show the same rows */
+  filters?: PgFilters;
 }) {
   const router = useRouter();
   const queryNav = useQueryNav();
@@ -539,7 +588,7 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
           <div className="row">
             <label htmlFor="pg-session" className="sub2 b600">Admissions session</label>
             <select id="pg-session" className="ctl" style={{ maxWidth: 260 }} value={session}
-              onChange={(e) => queryNav(`/admissions/postgraduate?session=${encodeURIComponent(e.target.value)}`)}>
+              onChange={(e) => queryNav(desksHref(e.target.value, filters))}>
               {sessionOptions.map((s) => (
                 <option key={s.name} value={s.name}>{s.name}{s.state === "CURRENT" ? " · current" : s.state === "PLANNED" ? " · planned" : ""}</option>
               ))}
@@ -575,27 +624,64 @@ export function PgAdmissions({ session, sessions = [], view, problem, actingOffi
           ) : null}
 
           {tab === "applications" ? <Panel title="Postgraduate applications" right={<span className="row row--inline row--tight">
-            <span className="sub2">{view.rows.length} application{view.rows.length === 1 ? "" : "s"} · name A–Z</span>
+            <span className="sub2">{view.rows.length} application{view.rows.length === 1 ? "" : "s"} · {filters.sort === "applied" ? "newest first" : "name A–Z"}</span>
             {view.rows.length ? <Btn kind="ghost" onClick={() => void exportRows(view.rows, session)}>Download Excel</Btn> : null}
           </span>}>
+            {/* V694: narrowed on the server by where the document upload stands, or to those who applied more than once */}
+            <PBody style={{ paddingBottom: 0 }}>
+              <div className="row row--inline row--tight" role="group" aria-label="Narrow the applications" style={{ flexWrap: "wrap" }}>
+                <Btn kind={!filters.documents && !filters.duplicates ? "primary" : "ghost"} size="sm"
+                  onClick={() => queryNav(desksHref(session, { sort: filters.sort }))}>All · {c?.total ?? 0}</Btn>
+                {DOCUMENT_FILTERS.map((f) => (
+                  <Btn key={f.value} kind={filters.documents === f.value ? "primary" : "ghost"} size="sm"
+                    onClick={() => queryNav(desksHref(session, { ...filters, documents: filters.documents === f.value ? null : f.value }))}>
+                    {f.label} · {Number((c as Record<string, unknown> | undefined)?.[f.count] ?? 0)}
+                  </Btn>
+                ))}
+                <Btn kind={filters.duplicates ? "primary" : "ghost"} size="sm"
+                  onClick={() => queryNav(desksHref(session, { ...filters, duplicates: !filters.duplicates }))}>Applied more than once · {c?.duplicates ?? 0}</Btn>
+                <span className="grow" />
+                <label htmlFor="pg-sort" className="sub2">Order</label>
+                <select id="pg-sort" className="ctl" style={{ maxWidth: 240 }} value={filters.sort === "applied" ? "applied" : ""}
+                  onChange={(e) => queryNav(desksHref(session, { ...filters, sort: e.target.value || null }))}>
+                  <option value="">Name A–Z</option>
+                  <option value="applied">Date of application, newest first</option>
+                </select>
+              </div>
+            </PBody>
             {view.rows.length ? (
               <DTable
-                cols={["S/N|num", "Applicant", "Programme", "Level|mid", "First degree", "Stage|mid", "|num"]}
+                cols={["S/N|num", "Applicant", "Programme", "Level|mid", "Applied", "First degree", "Documents", "Stage|mid", "|num"]}
                 rows={view.rows.map((r, i) => {
                   const st = stageOf(r);
+                  const at = appliedOn(r.applied_at ?? r.submitted_at);
+                  const docs = documentsPill(r.documents_state, r.documents_uploaded, r.documents_required);
+                  const missing = r.documents_state === "PENDING" ? missingDocuments(r.documents_missing) : "";
+                  const twice = appliedTimes(r.times_applied, r.also_applied);
                   return [
                     <span key="sn" className="tnum sub2">{i + 1}</span>,
-                    <Two key="n" a={`${r.surname}, ${r.other_names}`} b={r.legacy_application_no ? `${r.application_no} · old ${r.legacy_application_no}` : r.application_no} />,
+                    <span key="n">
+                      <Two a={`${r.surname}, ${r.other_names}`} b={r.legacy_application_no ? `${r.application_no} · old ${r.legacy_application_no}` : r.application_no} />
+                      {twice ? <div className="sub2 ink-red b600">{twice}</div> : null}
+                    </span>,
                     <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.pg_award ?? ""}{r.pg_research ? " · research" : ""}{r.specialisation ? ` · ${r.specialisation}` : ""}</div></span>,
                     <span className="tnum" key="l">{r.entry_level}</span>,
+                    <Two key="at" a={at.day} b={at.time} />,
                     <span className="sub2" key="d">{r.prior_award ?? "—"}{r.prior_class ? ` · ${r.prior_class}` : ""}</span>,
+                    <span key="docs"><Pil kind={docs.kind}>{docs.label}</Pil>{missing ? <div className="sub2">Missing: {missing}</div> : null}</span>,
                     <Pil kind={st.kind} key="s">{st.label}</Pil>,
-                    <LinkBtn kind="ghost" key="a" href={detailHref(r.id)}>Details</LinkBtn>,
+                    <span key="a" className="row row--inline row--tight" style={{ flexWrap: "nowrap", justifyContent: "flex-end" }}>
+                      <a href={`/admissions/postgraduate/applications/${r.id}/form`} target="_blank" rel="noopener" className="btn btn--ghost btn--sm"
+                        title={`Application form of ${r.application_no} (PDF)`}>Form</a>
+                      <LinkBtn kind="ghost" href={detailHref(r.id)}>Details</LinkBtn>
+                    </span>,
                   ];
                 })}
-                texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.legacy_application_no ?? ""} ${r.programme_name} ${r.state}`)}
+                texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.application_no} ${r.legacy_application_no ?? ""} ${r.programme_name} ${r.state} ${documentsPill(r.documents_state).label} ${r.also_applied ?? ""}`)}
               />
-            ) : <PBody><div className="sub2">No postgraduate application has been submitted for {session} yet.</div></PBody>}
+            ) : <PBody><div className="sub2">{filters.documents || filters.duplicates
+              ? "No application of this session matches the filter chosen."
+              : `No postgraduate application has been submitted for ${session} yet.`}</div></PBody>}
           </Panel> : null}
         </>
       ) : (

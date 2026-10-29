@@ -106,6 +106,8 @@ export function PgApply() {
     if (step === 2) {
       if (!f.surname?.trim() || !f.otherNames?.trim()) { setProblem({ status: 400, title: "Your surname and other names are required." }); notifyProblem({ status: 400, title: "Your surname and other names are required." }); return; }
       if (!f.email?.trim()) { setProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); notifyProblem({ status: 400, title: "Your email is required — you sign in with it to pay." }); return; }
+      // V694: one application is taken from each applicant in a session, known by the name, date of birth and phone
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dob ?? "")) { setProblem({ status: 400, title: "Your date of birth is required." }); notifyProblem({ status: 400, title: "Your date of birth is required." }); return; }
       if (!nationality.trim()) { setProblem({ status: 400, title: "Your nationality is required." }); notifyProblem({ status: 400, title: "Your nationality is required." }); return; }
       if ((f.contactAddress ?? "").trim().length < 5) { setProblem({ status: 400, title: "Your contact address is required." }); notifyProblem({ status: 400, title: "Your contact address is required." }); return; }
     }
@@ -156,7 +158,8 @@ export function PgApply() {
   return (
     <Wrap>
       <Note kind="info" title="Apply for a postgraduate programme">
-        You may apply for only one programme at a time. The application fee is stated once you submit.
+        One application is taken from each applicant in a session: if you have applied already, sign in with the email you used to continue it — a
+        second application in your name is refused. The application fee is stated once you submit.
       </Note>
 
       <Stepper steps={STEPS} current={step} onGo={(n) => { if (n < step) { setProblem(null); setStep(n); } }} />
@@ -188,7 +191,7 @@ export function PgApply() {
               <Field id="surname" label="Surname"><input id="surname" className="ctl" value={f.surname ?? ""} onChange={set("surname")} autoComplete="family-name" /></Field>
               <Field id="otherNames" label="Other names"><input id="otherNames" className="ctl" value={f.otherNames ?? ""} onChange={set("otherNames")} autoComplete="given-name" /></Field>
               <Field id="sex" label="Sex"><select id="sex" className="ctl" value={f.sex ?? ""} onChange={set("sex")}><option value="">—</option><option value="F">Female</option><option value="M">Male</option></select></Field>
-              <Field id="dob" label="Date of birth"><input id="dob" type="date" className="ctl" value={f.dob ?? ""} onChange={set("dob")} /></Field>
+              <Field id="dob" label="Date of birth" required><input id="dob" type="date" className="ctl" required value={f.dob ?? ""} onChange={set("dob")} /></Field>
               <Field id="nationality" label="Nationality">
                 {/* a state of origin and LGA are a Nigerian's; another nationality clears them */}
                 <select id="nationality" className="ctl" value={f.nationality ?? ""}

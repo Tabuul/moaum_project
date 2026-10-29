@@ -100,6 +100,11 @@ class PgApplyController {
     Map<String, Object> apply(@Valid @RequestBody ApplyIn body) {
         // V312: a new application is started only while the Director of ICT has the postgraduate application open
         windows.requireOpen(ApplicationWindows.POSTGRADUATE, null);
+        // V694: one application per person a session, known by two of name, date of birth and phone — the date of birth is asked
+        if (body.dob() == null || !body.dob().trim().matches("(19|20)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])")) {
+            throw new DomainRuleViolation("PG_APPLY_DOB", "Give your date of birth.",
+                    new DomainRuleViolation.Remedy("Enter your date of birth on the form and submit it again.", "You"));
+        }
         // no duplicate application: an email that already carries one is told its number, not given a second
         List<Map<String, Object>> existing = jdbc.sql("""
                 SELECT a.application_no FROM admissions.pg_application a

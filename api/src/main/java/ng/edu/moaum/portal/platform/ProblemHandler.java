@@ -242,6 +242,8 @@ class ProblemHandler {
             Map.entry("HELPDESK_HELP_NUMBER_UNKNOWN", "Number not on the register"), Map.entry("HELPDESK_CHECK_SLOW_DOWN", "Too many checks"),
             // V564: the postgraduate application door
             Map.entry("PG_APP_EXISTS", "Already applied with this email"), Map.entry("PG_APPLY_RETRY", "Not saved: please try again"),
+            // V694: one application per person a session; the desk's documents filter
+            Map.entry("PG_APPLY_DOB", "Date of birth needed"), Map.entry("PG_DOCUMENTS_FILTER", "Not a documents filter"),
             // V578: the programme swap
             Map.entry("PSW_SAME_OFFICER", "Another officer decides"), Map.entry("PSW_OFFICE", "Not for this office"), Map.entry("PSW_PENDING", "A swap is already pending"),
             Map.entry("PSW_TRANSFER_OPEN", "A transfer is under way"), Map.entry("PSW_LEVEL", "Not a level of that programme"), Map.entry("PSW_CATEGORY", "Not a programme swap"),

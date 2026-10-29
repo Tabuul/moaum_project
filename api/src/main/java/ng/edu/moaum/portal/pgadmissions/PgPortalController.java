@@ -669,23 +669,33 @@ class PgPortalController {
         String ct = String.valueOf(r.getOrDefault("content_type", "image/jpeg"));
         // the application-summary PDF can only embed JPEG, so re-encode a PNG passport to JPEG on request
         if ("jpeg".equalsIgnoreCase(format) && !ct.contains("jpeg")) {
-            try {
-                java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
-                if (src != null) {
-                    java.awt.image.BufferedImage rgb = new java.awt.image.BufferedImage(src.getWidth(), src.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
-                    java.awt.Graphics2D g = rgb.createGraphics();
-                    g.setColor(java.awt.Color.WHITE);
-                    g.fillRect(0, 0, src.getWidth(), src.getHeight());
-                    g.drawImage(src, 0, 0, null);
-                    g.dispose();
-                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                    if (javax.imageio.ImageIO.write(rgb, "jpg", baos)) { bytes = baos.toByteArray(); ct = "image/jpeg"; }
-                }
-            } catch (java.io.IOException reencodeFailed) { /* fall back to the stored bytes and type */ }
+            byte[] jpeg = asJpeg(bytes, ct);
+            if (jpeg != null) { bytes = jpeg; ct = "image/jpeg"; }
         }
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(ct))
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=600")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline").body(bytes);
+    }
+
+    /** a passport photograph as a JPEG — the stored bytes when they are one, else re-encoded on white (a PNG's transparency);
+     *  null when the image cannot be read. The printed application (the applicant's summary, V694 the desk's form) embeds JPEG only. */
+    static byte[] asJpeg(byte[] bytes, String contentType) {
+        if (bytes == null) return null;
+        if (contentType != null && contentType.contains("jpeg")) return bytes;
+        try {
+            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+            if (src == null) return null;
+            java.awt.image.BufferedImage rgb = new java.awt.image.BufferedImage(src.getWidth(), src.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g = rgb.createGraphics();
+            g.setColor(java.awt.Color.WHITE);
+            g.fillRect(0, 0, src.getWidth(), src.getHeight());
+            g.drawImage(src, 0, 0, null);
+            g.dispose();
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            return javax.imageio.ImageIO.write(rgb, "jpg", baos) ? baos.toByteArray() : null;
+        } catch (java.io.IOException unreadable) {
+            return null;
+        }
     }
 
     /** email the applicant a link to sign in and download their application summary (PDF) */

@@ -94,8 +94,11 @@ class PgLifecycleCompleteIT {
     private Applied apply(String programme, boolean pay) {
         String email = "zzpgc." + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         Map<String, Object> form = new LinkedHashMap<>();
-        form.put("surname", "ZZPGCOMPLETE");
-        form.put("otherNames", "Lifecycle");
+        ItSupport.PgPerson who = ItSupport.pgPerson("ZZPGCOMPLETE");   // V694: one application a person a session; the date of birth asked
+        form.put("surname", who.surname());
+        form.put("otherNames", who.otherNames());
+        form.put("dob", who.dob());
+        form.put("phone", who.phone());
         form.put("email", email);
         form.put("password", "Candidate2026!");
         form.put("programme", programme);

@@ -133,15 +133,33 @@ class PgAdmissionsController {
         return fees(session, year);
     }
 
-    /** the postgraduate applications for a session, newest submission first, with a per-state count */
+    /** V694: how an application's document upload may be asked for — as admissions.pg_document_state names it */
+    private static final java.util.Set<String> DOCUMENT_STATES = java.util.Set.of("COMPLETE", "PENDING", "NONE", "FEE_UNPAID");
+
+    /** the postgraduate applications for a session, by name (or, V694, newest application first), with a per-state count; V694:
+     *  each with the date it was made, where its document upload stands and the other applications of the same person; narrowed
+     *  on the server by the upload's state ({@code documents}) or to the applicants who applied more than once ({@code duplicates}) */
     @GetMapping("/applications")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> applications(@RequestParam String session,
                                      @RequestParam(required = false) String programme,
-                                     @RequestParam(required = false) String state) {
+                                     @RequestParam(required = false) String state,
+                                     @RequestParam(required = false) String documents,
+                                     @RequestParam(required = false) Boolean duplicates,
+                                     @RequestParam(required = false) String sort) {
+        String docs = documents == null || documents.isBlank() ? null : documents.trim().toUpperCase();
+        if (docs != null && !DOCUMENT_STATES.contains(docs)) {
+            throw new DomainRuleViolation("PG_DOCUMENTS_FILTER", "The documents filter is one of COMPLETE, PENDING, NONE or FEE_UNPAID.",
+                    new DomainRuleViolation.Remedy("Choose the filter from the list on the page.", "You"));
+        }
+        boolean newest = "applied".equalsIgnoreCase(sort == null ? "" : sort.trim());
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id, a.application_no, a.session, a.state, a.entry_level, a.programme_code,
+                       coalesce(a.submitted_at, a.created_at) AS applied_at,   -- V694: when the application was made
+                       ds.state AS documents_state, ds.required AS documents_required, ds.uploaded AS documents_uploaded,
+                       ds.missing AS documents_missing,
+                       dup.also_applied, coalesce(dup.times, 1) AS times_applied,
                        g.name AS programme_name, g.pg_award, g.pg_research, g.dept_code, g.faculty_code,
                        d.name AS department_name, f.name AS faculty_name,
                        p.surname, p.other_names, p.email, p.phone, p.state_of_origin,
@@ -159,21 +177,33 @@ class PgAdmissionsController {
                   JOIN ref.programme g ON g.code = a.programme_code
                   JOIN ref.department d ON d.code = g.dept_code
                   JOIN ref.faculty f ON f.code = g.faculty_code
+                 CROSS JOIN LATERAL admissions.pg_document_state(a.id) ds
+                  LEFT JOIN admissions.pg_session_duplicates(:s) dup ON dup.application_id = a.id
                  WHERE a.session = :s
                    AND (:prog::text IS NULL OR a.programme_code = :prog)
                    AND (:state::text IS NULL OR a.state = :state)
                    AND (:dept::text IS NULL OR g.dept_code = :dept)
                    AND (:fac::text IS NULL OR g.faculty_code = :fac)
                    AND (NOT :paidOnly OR a.fee_confirmed_at IS NOT NULL)
-                 ORDER BY p.surname, p.other_names, a.application_no
+                   AND (:docs::text IS NULL OR ds.state = :docs)
+                   AND (NOT :dups OR dup.application_id IS NOT NULL)
+                 ORDER BY CASE WHEN :newest THEN coalesce(a.submitted_at, a.created_at) END DESC NULLS LAST,
+                          p.surname, p.other_names, a.application_no
                 """)
                 .param("s", session).param("paidOnly", paidOnly())
                 .param("prog", programme == null || programme.isBlank() ? null : programme.trim(), Types.VARCHAR)
                 .param("state", state == null || state.isBlank() ? null : state.trim().toUpperCase(), Types.VARCHAR)
                 .param("dept", boundDept(), Types.VARCHAR).param("fac", boundFaculty(), Types.VARCHAR)
+                .param("docs", docs, Types.VARCHAR).param("dups", Boolean.TRUE.equals(duplicates)).param("newest", newest)
                 .query().listOfRows();
         Map<String, Object> counts = jdbc.sql("""
                 SELECT count(*) AS total,
+                       -- V694: where the document upload stands, and the applicants who applied more than once
+                       count(*) FILTER (WHERE ds.state = 'COMPLETE') AS documents_complete,
+                       count(*) FILTER (WHERE ds.state = 'PENDING') AS documents_pending,
+                       count(*) FILTER (WHERE ds.state = 'NONE') AS documents_none,
+                       count(*) FILTER (WHERE ds.state = 'FEE_UNPAID') AS documents_fee_unpaid,
+                       count(*) FILTER (WHERE dup.application_id IS NOT NULL) AS duplicates,
                        count(*) FILTER (WHERE a.state = 'SUBMITTED') AS submitted,
                        count(*) FILTER (WHERE a.state = 'DEPT_RECOMMENDED') AS recommended,
                        count(*) FILTER (WHERE a.state = 'FAC_RECOMMENDED') AS faculty,
@@ -186,6 +216,8 @@ class PgAdmissionsController {
                        count(*) FILTER (WHERE a.state = 'RETURNED') AS returned,
                        count(*) FILTER (WHERE a.fee_confirmed_at IS NULL) AS unpaid
                   FROM admissions.pg_application a JOIN ref.programme g ON g.code = a.programme_code
+                 CROSS JOIN LATERAL admissions.pg_document_state(a.id) ds
+                  LEFT JOIN admissions.pg_session_duplicates(:s) dup ON dup.application_id = a.id
                  WHERE a.session = :s
                    AND (:dept::text IS NULL OR g.dept_code = :dept)
                    AND (:fac::text IS NULL OR g.faculty_code = :fac)
@@ -483,10 +515,16 @@ class PgAdmissionsController {
                        -- V488: the specialisation applied for (the student's own once admitted)
                        a.specialisation_id,
                        (SELECT ps.name FROM catalogue.programme_specialisation ps
-                         WHERE ps.id = coalesce((SELECT ss.specialisation_id FROM people.student_specialisation ss WHERE ss.student_id = a.student_id), a.specialisation_id)) AS specialisation
+                         WHERE ps.id = coalesce((SELECT ss.specialisation_id FROM people.student_specialisation ss WHERE ss.student_id = a.student_id), a.specialisation_id)) AS specialisation,
+                       -- V694: the department and faculty (for the application form), when it was made, where its document upload stands
+                       d.name AS department_name, f.name AS faculty_name, coalesce(a.submitted_at, a.created_at) AS applied_at,
+                       ds.state AS documents_state, ds.required AS documents_required, ds.uploaded AS documents_uploaded, ds.missing AS documents_missing
                   FROM admissions.pg_application a
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
                   JOIN ref.programme g ON g.code = a.programme_code
+                  JOIN ref.department d ON d.code = g.dept_code
+                  JOIN ref.faculty f ON f.code = g.faculty_code
+                 CROSS JOIN LATERAL admissions.pg_document_state(a.id) ds
                  WHERE a.id = :id
                 """).param("id", id).query().listOfRows();
         if (found.isEmpty()) {
@@ -539,7 +577,37 @@ class PgAdmissionsController {
                     .param("s", app.get("student_id")).query().listOfRows().stream().findFirst().orElse(null));
         }
         out.put("legacy", legacyOf(id));
+        // V694: the person's other applications in the session — by two of name, date of birth and phone (the email masked)
+        out.put("alsoApplied", jdbc.sql("""
+                SELECT x.application_id AS id, x.application_no, admissions.pg_mask_email(x.email) AS email, x.fee_paid, x.applied_at, x.matched_on,
+                       a.state, g.name AS programme_name
+                  FROM admissions.pg_same_person_applications(:id) x
+                  JOIN admissions.pg_application a ON a.id = x.application_id
+                  JOIN ref.programme g ON g.code = a.programme_code
+                 ORDER BY x.applied_at, x.application_no
+                """).param("id", id).query().listOfRows());
         return out;
+    }
+
+    /** V694: the applicant's passport photograph as a JPEG, for the application form the desk prints — the same image the
+     *  applicant's own summary carries, re-encoded when it was uploaded as a PNG. Scoped to the application. */
+    @GetMapping("/applications/{id}/passport.jpg")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    ResponseEntity<byte[]> passport(@PathVariable UUID id) {
+        inBound(id);
+        Map<String, Object> r = jdbc.sql("""
+                SELECT content_type, bytes, object_id FROM admissions.pg_document WHERE application_id = :id AND kind = 'PASSPORT'
+                """).param("id", id).query().listOfRows().stream().findFirst().orElse(null);
+        if (r == null || (r.get("bytes") == null && r.get("object_id") == null)) {
+            throw new NotFound("passport", id);
+        }
+        byte[] jpeg = PgPortalController.asJpeg(files.resolve((byte[]) r.get("bytes"), (UUID) r.get("object_id")),
+                String.valueOf(r.getOrDefault("content_type", "image/jpeg")));
+        if (jpeg == null) {
+            throw new NotFound("passport", id);
+        }
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).header(HttpHeaders.CACHE_CONTROL, "private, max-age=600").body(jpeg);
     }
 
     /** V675: an application migrated from the old portal — its old number and source, the batch that brought it, what the old portal

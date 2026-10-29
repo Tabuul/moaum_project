@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 522
+\set EXPECTED 523
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28897,6 +28897,86 @@ BEGIN
            AND office_refused = 'LEVEL_CORRECTION_OFFICE', false),
       format('changed %s | outcomes %s | a %s before %s past cap %s | b receipt before %s now %s | c %s | a decisions %s | proposals %s | e %s f %s | again %s removed %s | bursar %s',
              changed, outcomes, a_state, a_prev, past_cap, b_receipt_before, b_state, c_state, a_decisions, proposals, e_state, f_state, again, removed, office_refused));
+END $$;
+
+-- ── V694. Postgraduate applications: one per person a session, their documents tracked. Ada applies (date of birth, phone); the
+--          same Ada under another email — her name's words in another order, her phone as +234… — is refused PG_APP_DUPLICATE,
+--          naming the first email masked; a namesake with another date of birth and phone is taken. An application of Ada's made
+--          twice before V694 (written in as the old door let it be) is flagged with the other's number, the namesake not; with
+--          the first paid, the second is issued no application-fee reference (PG_APP_DUPLICATE_PAID). The documents: Ada paid with
+--          nothing uploaded is NONE; with the passport and the undergraduate certificate PENDING 2 of 6, the four others named;
+--          with all six COMPLETE; the namesake unpaid FEE_UNPAID; an MPhil/PhD applicant is asked the higher degree too. Undone after ──
+DO $$
+DECLARE s text := '2694/2695'; prog text := 'C96694'; dept text; fac text;
+        a1 uuid; a2 uuid; a3 uuid; ap2 uuid; refused text; masked text; paid_refused text;
+        flags text; keys text; st_none text; st_pending text; st_complete text; st_unpaid text; req_900 int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V694', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s, DATE '2694-10-01', DATE '2695-08-31');
+        SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research)
+        VALUES (prog, 'M.Sc. One Application Check', dept, fac, 'POST GRADUATE', 0, 'MSC', false);
+
+        SELECT x.application_id INTO a1 FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', prog, 'surname', 'CHECKV694', 'otherNames', 'Ada Once',
+               'dob', '1990-05-06', 'phone', '08031234567', 'email', 'check.v694.ada@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        BEGIN
+            PERFORM admissions.pg_apply(jsonb_build_object('session', s, 'programme', prog, 'surname', 'once', 'otherNames', 'ADA, checkv694',
+                    'dob', '1990-05-06', 'phone', '+234 803 123 4567', 'email', 'check.v694.again@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12))));
+            refused := 'taken';
+        EXCEPTION WHEN check_violation THEN
+            refused := split_part(SQLERRM, ':', 1);
+            masked := CASE WHEN SQLERRM LIKE '%c***a@example.test%' AND SQLERRM NOT LIKE '%check.v694.ada%' THEN 'masked' ELSE SQLERRM END;
+        END;
+        SELECT x.application_id INTO a3 FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', prog, 'surname', 'CHECKV694', 'otherNames', 'Ada Once',
+               'dob', '1985-01-02', 'phone', '07069876543', 'email', 'check.v694.namesake@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+
+        -- an application of Ada's made twice before V694, written in as the old door let it be
+        INSERT INTO admissions.pg_applicant (session, surname, other_names, date_of_birth, email, phone, password_hash)
+        VALUES (s, 'Checkv694', 'Ada Once', DATE '1990-05-06', 'check.v694.before@example.test', '08031234567', crypt('x', gen_salt('bf', 12))) RETURNING id INTO ap2;
+        INSERT INTO admissions.pg_application (applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+        VALUES (ap2, s, 'PG/94/' || lpad(platform.next_number('PG_APPLICATION', 'UNIVERSITY', s)::text, 6, '0'), prog, 800, 'SUBMITTED', now()) RETURNING id INTO a2;
+        flags := (SELECT string_agg(x.l, ',' ORDER BY x.l) FROM (
+                    SELECT CASE d.application_id WHEN a1 THEN 'ada' WHEN a2 THEN 'before' WHEN a3 THEN 'namesake' END || '=' || d.times
+                           || ':' || (d.also_applied = (SELECT a.application_no FROM admissions.pg_application a WHERE a.id = CASE d.application_id WHEN a1 THEN a2 ELSE a1 END)) AS l
+                      FROM admissions.pg_session_duplicates(s) d) x);
+
+        -- Ada's first paid: the one made twice is issued no application-fee reference
+        UPDATE admissions.pg_application SET fee_confirmed_at = now() WHERE id = a1;
+        BEGIN
+            PERFORM admissions.pg_new_fee_reference(a2, 'APPLICATION');
+            paid_refused := 'issued';
+        EXCEPTION WHEN check_violation THEN paid_refused := split_part(SQLERRM, ':', 1);
+        END;
+
+        -- the documents: paid and none, then two, then all six; the namesake unpaid
+        st_none := (SELECT d.state FROM admissions.pg_document_state(a1) d);
+        INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes)
+        VALUES (a1, 'PASSPORT', 'me.jpg', 'image/jpeg', '\xffd8'::bytea), (a1, 'UNDERGRAD_CERT', 'degree.pdf', 'application/pdf', '\x25504446'::bytea),
+               (a1, 'NAME_CHANGE', 'name.pdf', 'application/pdf', '\x25504446'::bytea);
+        st_pending := (SELECT d.state || ' ' || d.uploaded || '/' || d.required || ' ' || d.missing FROM admissions.pg_document_state(a1) d);
+        INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes)
+        SELECT a1, k, lower(k) || '.pdf', 'application/pdf', '\x25504446'::bytea FROM unnest(ARRAY['OLEVEL', 'BIRTH_CERTIFICATE', 'NYSC', 'LGA_CERTIFICATE']) k;
+        st_complete := (SELECT d.state || ' ' || d.uploaded || '/' || d.required || ' ' || coalesce(d.missing, '-') FROM admissions.pg_document_state(a1) d);
+        st_unpaid := (SELECT d.state FROM admissions.pg_document_state(a3) d);
+        req_900 := cardinality(admissions.pg_documents_required(900));
+        keys := concat_ws(',', admissions.pg_phone_key('+234 803 123 4567'), admissions.pg_phone_key('2348031234567'), admissions.pg_phone_key('8031234567'),
+                          coalesce(admissions.pg_phone_key('12345'), '-'), CASE WHEN admissions.pg_name_key('Abata, Catherine-Ema', NULL) = admissions.pg_name_key('EMA', 'catherine abata') THEN 'one name' END,
+                          admissions.pg_mask_email('ada.bem@gmail.com'));
+        RAISE EXCEPTION 'CHECK_V694_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V694_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V694: one postgraduate application a person a session — two of name, date of birth and phone; a namesake taken; one made twice before flagged and not paid twice; the document upload complete, pending, not uploaded or fee unpaid',
+        coalesce(refused = 'PG_APP_DUPLICATE' AND masked = 'masked' AND flags = 'ada=2:true,before=2:true' AND paid_refused = 'PG_APP_DUPLICATE_PAID'
+                 AND st_none = 'NONE' AND st_pending = 'PENDING 2/6 OLEVEL,BIRTH_CERTIFICATE,NYSC,LGA_CERTIFICATE' AND st_complete = 'COMPLETE 6/6 -'
+                 AND st_unpaid = 'FEE_UNPAID' AND req_900 = 7
+                 AND keys = '08031234567,08031234567,08031234567,-,one name,a***m@gmail.com', false),
+        format('refused %s | masked %s | flags %s | paid %s | none %s | pending %s | complete %s | unpaid %s | 900 %s | keys %s',
+               refused, masked, flags, paid_refused, st_none, st_pending, st_complete, st_unpaid, req_900, keys));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
