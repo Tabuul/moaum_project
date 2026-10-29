@@ -90,7 +90,7 @@ test("a course ticked in a semester not yet registered: its spillover fee and wh
 test("a semester already registered costs nothing more; paid, not stated", () => {
   const owed = quoteWords(quote({ registered: true, toPay: 30000, paid: 40000 }), 1);
   assert.equal(owed.title, "FIRST SEMESTER SPILLOVER FEE: ₦70,000.00");
-  assert.equal(owed.body, "A course of the first semester is already on your registration, so its spillover fee is owed already; adding this course costs nothing more. ₦30,000.00 is still to pay. Your courses stay on the draft meanwhile; submit once it is paid.");
+  assert.equal(owed.body, "The first semester spillover fee is owed already (a course of it is on your registration, or a payment was made for it); adding this course costs nothing more. ₦30,000.00 is still to pay. Your courses stay on the draft meanwhile; submit once it is paid.");
   const paid = quoteWords(quote({ registered: true, toPay: 0, paid: 70000, cleared: true }), 3);
   assert.equal(paid.tone, "ok");
   assert.match(paid.body, /costs nothing more\. It is paid\.$/);
@@ -99,4 +99,15 @@ test("a semester already registered costs nothing more; paid, not stated", () =>
   const none = quoteWords(quote({ stated: false, fee: 0, charge: 0, toPay: 0 }), 1);
   assert.equal(none.title, "FIRST SEMESTER SPILLOVER FEE NOT YET STATED");
   assert.equal(none.tone, "info");
+});
+
+test("V697: a semester charged because a payment was made for it says so, and another semester's payment never covers the second", () => {
+  const paidFor: SpilloverSemester = { semester: 1, fee: 52150, registered: true, paidFor: true, registeredCourses: 0, carryovers: 0, courses: [], owed: 52150, paid: 52150, outstanding: 0, status: "PAID" };
+  assert.equal(semesterLine(paidFor), "A payment was made for this semester and its spillover fee is paid.");
+  const second: SpilloverSemester = { semester: 2, fee: 22350, registered: true, paidFor: false, registeredCourses: 1, carryovers: 0, courses: [], owed: 22350, paid: 0, outstanding: 22350, status: "PAYMENT_REQUIRED" };
+  assert.equal(semesterLine(second), "A course is registered in it: ₦22,350.00 of its spillover fee is still to pay. A payment for another semester does not cover it.");
+  const short: SpilloverSemester = { semester: 1, fee: 52150, registered: true, paidFor: true, registeredCourses: 0, carryovers: 0, courses: [], owed: 52150, paid: 34900, outstanding: 17250, status: "PART_PAID" };
+  assert.equal(semesterLine(short), "A payment was made for this semester: ₦17,250.00 of its spillover fee is still to pay. A payment for another semester does not cover it.");
+  // a paid-for semester with a course of it registered too reads as registered
+  assert.equal(semesterLine({ ...paidFor, registeredCourses: 2 }), "A course is registered in it and its spillover fee is paid.");
 });

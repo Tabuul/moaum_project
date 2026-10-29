@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 524
+\set EXPECTED 525
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29063,6 +29063,99 @@ BEGIN
              AND a2.spillover_state = 'SPILLOVER_YEAR_2' AND c2 = 0
              AND a3.spillover_state = 'SPILLOVER_YEAR_2'
              AND a4.spillover_state = 'NORMAL' AND a4.expected_completion = cur AND NOT sp4 AND c4 = 81700, false),
+        msg);
+END $$;
+
+-- ── V697: a spillover payment made for a semester pays that semester only. Made-up spillover students (admitted five sessions ago
+--          to a four-year programme, 400 Level, spillover year 2), the session's spillover lines ₦52,150 for the first semester and
+--          ₦22,350 for the second: one who paid the first semester on the old portal this session (and the second semester of the
+--          session before) and registers a second-semester course — the first semester charged and paid, the second owed ₦22,350 and
+--          its registration held; one who paid the first semester with nothing registered — charged and paid, not overpaid; one who paid
+--          ₦34,900 for the first semester — owing the rest; one who paid ₦74,500 for both semesters and registers both — both cleared,
+--          as before. The block undoes its writes ──
+DO $$
+DECLARE
+    y int := 2297; v_prog text; v_dept text; v_fac text; cur text; prev text; msg text; off2 uuid := gen_random_uuid(); off1 uuid := gen_random_uuid();
+    reg1 uuid := gen_random_uuid(); reg4a uuid := gen_random_uuid(); reg4b uuid := gen_random_uuid(); b uuid := gen_random_uuid();
+    t1 uuid := gen_random_uuid(); t2 uuid := gen_random_uuid(); t3 uuid := gen_random_uuid(); t4 uuid := gen_random_uuid();
+    s1 int[]; s2 int[]; q1 record; p1 record; p2 record; p3 record; p4 record; c4a boolean; c4b boolean; gate text; panel jsonb; over int;
+BEGIN
+  BEGIN   -- the check's own sessions, programme, students, lines, registrations and payments, undone at the end
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V697', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), format('%s/%s', x, x + 1), make_date(x, 10, 1), make_date(x + 1, 9, 30), 'CLOSED' FROM generate_series(y - 5, y + 2) x
+    ON CONFLICT (name) DO NOTHING;
+    cur := format('%s/%s', y, y + 1); prev := format('%s/%s', y - 1, y);
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2297/01' WHERE name = cur;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO v_prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (v_prog, 'B.A. CHECK V697', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (t1, 'MOAUM/ADM/92/697001', 'MOAUM/ZZS/92/6971', 'CHECKV697', 'Paid first registers second', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 400, 'ACTIVE', now()),
+        (t2, 'MOAUM/ADM/92/697002', 'MOAUM/ZZS/92/6972', 'CHECKV697', 'Paid first only', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 400, 'ACTIVE', now()),
+        (t3, 'MOAUM/ADM/92/697003', 'MOAUM/ZZS/92/6973', 'CHECKV697', 'Paid first short', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 400, 'ACTIVE', now()),
+        (t4, 'MOAUM/ADM/92/697004', 'MOAUM/ZZS/92/6974', 'CHECKV697', 'Paid both', v_prog, 'UTME', format('%s/%s', y - 5, y - 4), 100, 400, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.add_fee_lines(cur, jsonb_build_array(
+        jsonb_build_object('programmeCode', v_prog, 'level', '', 'spillover', 'Yes', 'semester', '1', 'amount', '52150'),
+        jsonb_build_object('programmeCode', v_prog, 'level', '', 'spillover', 'Yes', 'semester', '2', 'amount', '22350')));
+    -- the old portal's payments as the Old Fees History upload records them: this session's first semester, and the session before's second
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no) VALUES
+        (t1, cur, 'MOAUM-LEG-ZZS926971-2297-2298-S1', 'School fees (legacy) · semester 1', 52150, now(), now(), b, 'Legacy', 'Imported from the old portal', 'LEG-ZZS926971-2297-S1'),
+        (t1, prev, 'MOAUM-LEG-ZZS926971-2296-2297-S2', 'School fees (legacy) · semester 2', 22350, now(), now(), b, 'Legacy', 'Imported from the old portal', 'LEG-ZZS926971-2296-S2'),
+        (t2, cur, 'MOAUM-LEG-ZZS926972-2297-2298-S1', 'School fees (legacy) · semester 1', 52150, now(), now(), b, 'Legacy', 'Imported from the old portal', 'LEG-ZZS926972-2297-S1'),
+        (t3, cur, 'MOAUM-LEG-ZZS926973-2297-2298-S1', 'School fees (legacy) · semester 1', 34900, now(), now(), b, 'Legacy', 'Imported from the old portal', 'LEG-ZZS926973-2297-S1'),
+        (t4, cur, 'MOAUM-FEE-ZZS926974-V697', 'School fees ' || cur || ' · spillover (SP2) · both semesters', 74500, now(), now(), b, 'Card', NULL, 'RCT-ZZS926974-V697');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- t1 registers a second-semester course this session; t4 a course in each semester
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZV 6972', 'Check V697 second', 3, 2, 400, v_dept, 'Core', 'LIVE'), ('ZZV 6971', 'Check V697 first', 3, 1, 400, v_dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off2, 'ZZV 6972', cur, 2), (off1, 'ZZV 6971', cur, 1);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES
+        (reg1, t1, cur, 2, 400, 'DRAFT'), (reg4a, t4, cur, 1, 400, 'DRAFT'), (reg4b, t4, cur, 2, 400, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES
+        (reg1, off2, 3, 'CURRENT', 'REGISTERED'), (reg4a, off1, 3, 'CURRENT', 'REGISTERED'), (reg4b, off2, 3, 'CURRENT', 'REGISTERED');
+    PERFORM people.refresh_academic_positions(ARRAY[t1, t2, t3, t4]);
+
+    s1 := finance.reg_semesters(t1, cur); s2 := finance.reg_semesters(t2, cur);
+    SELECT * INTO q1 FROM finance.semester_position(t1, cur, 2);
+    SELECT * INTO p1 FROM finance.position(t1, cur);
+    SELECT * INTO p2 FROM finance.position(t2, cur);
+    SELECT * INTO p3 FROM finance.position(t3, cur);
+    SELECT * INTO p4 FROM finance.position(t4, cur);
+    c4a := finance.semester_cleared(t4, cur, 1); c4b := finance.semester_cleared(t4, cur, 2);
+    BEGIN
+        PERFORM registration.semester_fee_gate(t1, cur, 2);
+        gate := 'passed';
+    EXCEPTION WHEN check_violation THEN gate := split_part(SQLERRM, ':', 1);
+    END;
+    panel := finance.spillover_panel(t1, cur);
+    over := (SELECT count(*) FROM finance.overpaid(cur) o WHERE o.student_id IN (t1, t2, t3, t4));
+    msg := format('regs %s/%s | s2 due %s paid %s out %s cleared %s gate %s | t1 %s/%s/%s t2 %s/%s/%s t3 %s/%s/%s t4 %s/%s cleared %s/%s | panel %s | overpaid %s',
+                  s1, s2, q1.due, q1.paid, q1.outstanding, q1.cleared, gate, p1.due, p1.paid, p1.balance, p2.due, p2.paid, p2.balance,
+                  p3.due, p3.paid, p3.balance, p4.due, p4.paid, c4a, c4b,
+                  (SELECT string_agg(e->>'semester' || ':' || (e->>'status') || ':' || (e->>'paidFor') || ':' || ((e->>'outstanding')::numeric)::int, ',' ORDER BY e->>'semester')
+                     FROM jsonb_array_elements(panel->'semesters') e), over);
+    RAISE EXCEPTION 'CHECK_V697_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V697_UNDONE' THEN msg := 'error: ' || SQLERRM; END IF;
+  END;
+    PERFORM pg_temp.assert('V697: a spillover payment made for a semester pays that semester only — the semester it names charged and paid, the second semester owed until it is paid itself, the session before''s payment not counted, nothing read overpaid',
+        coalesce(msg LIKE 'regs%'
+             AND s1 = ARRAY[1, 2] AND s2 = ARRAY[1]
+             AND q1.due = 74500 AND q1.paid = 52150 AND q1.outstanding = 22350 AND NOT q1.cleared AND gate = 'REG_SEMESTER_FEES_DUE'
+             AND p1.due = 74500 AND p1.paid = 52150 AND p1.balance = 22350
+             AND p2.due = 52150 AND p2.paid = 52150 AND p2.balance = 0
+             AND p3.due = 52150 AND p3.paid = 34900 AND p3.balance = 17250
+             AND p4.due = 74500 AND p4.paid = 74500 AND c4a AND c4b
+             AND msg LIKE '%panel 1:PAID:true:0,2:PAYMENT_REQUIRED:false:22350%'
+             AND over = 0, false),
         msg);
 END $$;
 

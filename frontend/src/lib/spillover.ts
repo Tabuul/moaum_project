@@ -10,6 +10,8 @@ export interface SpilloverSemester {
   semester: number; fee: number | string; registered: boolean; carryovers: number; courses: SpilloverCourse[];
   /** V674: the courses on the semester's registration this session — every course a spillover student registers is a carry-over */
   registeredCourses?: number;
+  /** V697: a school-fee payment of the session was made for this semester (the old portal's, often), so it is charged, course or not */
+  paidFor?: boolean;
   owed?: number | string; paid?: number | string; outstanding?: number | string; status?: SemesterFeeStatus; cleared?: boolean;
   /** what is still to pay for the semester to be cleared — anything earlier left unpaid, and its own */
   toClear?: number | string;
@@ -47,9 +49,11 @@ export function spilloverTitle(sp: SpilloverPanel): string {
 export function semesterLine(s: SpilloverSemester): string {
   const carry = s.carryovers ? `${s.carryovers} carry-over course${s.carryovers === 1 ? "" : "s"} from this semester. ` : "";
   // V664: the server says where the semester stands; its own payment, never another semester's
-  if (s.status === "PAID") return `${carry}A course is registered in it and its spillover fee is paid.`;
+  // V697: a semester charged because a payment was made for it (no course of it on the portal) says so
+  const why = s.paidFor && !num(s.registeredCourses) ? "A payment was made for this semester" : "A course is registered in it";
+  if (s.status === "PAID") return `${carry}${why} and its spillover fee is paid.`;
   if (s.status === "PART_PAID" || s.status === "PAYMENT_REQUIRED") {
-    return `${carry}A course is registered in it: ${nairaWords(s.outstanding)} of its spillover fee is still to pay. A payment for another semester does not cover it.`;
+    return `${carry}${why}: ${nairaWords(s.outstanding)} of its spillover fee is still to pay. A payment for another semester does not cover it.`;
   }
   if (s.registered) {
     return num(s.fee) > 0 ? `${carry}A course is registered in it, so its spillover fee is owed.` : `${carry}A course is registered in it; no spillover fee is stated for your programme yet.`;
@@ -127,7 +131,8 @@ export function quoteWords(q: SpilloverQuote, count: number, addDrop = false): {
     : " Your courses stay on the draft meanwhile; submit once it is paid.";
   if (q.registered) {
     return { title: `${which.toUpperCase()} SPILLOVER FEE: ${nairaWords(q.fee)}`, charge: num(q.fee), toPay, tone: toPay < 1 ? "ok" : "bad",
-      body: `A course of the ${which} is already on your registration, so its spillover fee is owed already; adding ${these} costs nothing more.`
+      // V697: owed already — a course of it is registered, or a payment was made for it
+      body: `The ${which} spillover fee is owed already (a course of it is on your registration, or a payment was made for it); adding ${these} costs nothing more.`
         + (toPay < 1 ? " It is paid." : ` ${nairaWords(toPay)} is still to pay.${then}`) };
   }
   return { title: `${which.toUpperCase()} SPILLOVER FEE: ${nairaWords(charge)}`, charge, toPay, tone: toPay < 1 ? "ok" : "bad",

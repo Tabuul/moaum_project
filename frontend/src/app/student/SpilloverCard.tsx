@@ -48,7 +48,7 @@ export function SpilloverCard({ sp, compact = false }: { sp: SpilloverPanel; com
             <span key="c" className="tnum">{s.carryovers}</span>,
             <span key="r" className="tnum">{s.registeredCourses ?? 0}</span>,
             <span key="f" className="tnum">{Number(s.fee) > 0 ? naira(s.fee) : "Not stated"}</span>,
-            <span key="w" className="sub2">{s.registered ? <Pil kind="info">Registered</Pil> : null} {semesterLine(s)}</span>,
+            <span key="w" className="sub2">{s.registered ? <Pil kind="info">{s.paidFor && !Number(s.registeredCourses ?? 0) ? "Paid for" : "Registered"}</Pil> : null} {semesterLine(s)}</span>,
           ])} />
       )}
       {!compact ? sp.semesters.filter((s) => s.courses.length).map((s) => (
