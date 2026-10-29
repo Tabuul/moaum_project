@@ -21,6 +21,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { roleLabel } from "@/lib/offices";
 import { STAGE_LABEL, type Mark } from "@/lib/results";
+import { LateResultsUpload } from "@/components/results/LateResultsUpload";
 
 /** the desk of each stage — the server's rule (assessment.stage_offices = Sheets.DESK) */
 const STAGE_DESKS: Record<string, string[]> = {
@@ -71,6 +72,7 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   const [classUnits, setClassUnits] = useState<ClassUnit[]>([]);
   const [unitsRaise, setUnitsRaise] = useState<{ u: ClassUnit; units: string; reason: string } | null>(null);
   const [applied, setApplied] = useState(prefill ?? null);
+  const [uploading, setUploading] = useState(false);   // V702: late results from one upload
   if ((prefill ?? null) !== applied) {
     setApplied(prefill ?? null);
     if (prefill) setRaise({ ...prefill });
@@ -92,6 +94,12 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
     void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/units`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setClassUnits(await r.json()); });
     return () => { live = false; };
   }, [sheetId, rows]);
+
+  async function reload() {
+    const r = await fetch(`/api/bff/api/v1/results/sheets/${sheetId}/amendments`, { cache: "no-store" });
+    if (r.ok) setRows(await r.json());
+    router.refresh();
+  }
 
   async function post(path: string, body: unknown, reason: string) {
     setBusy(true);
@@ -119,8 +127,9 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
       <PBody>
         <p className="sub2">A published mark changes only by an amendment, approved by each desk and applied on the Senate minute; the original is kept. A candidate on the roll with no mark on the sheet gets a late result the same way.</p>
         {published && late.length ? (
-          <Note kind="bad" title={`${late.length} candidate${late.length === 1 ? "" : "s"} on the roll with no mark on this sheet`}>
-            {`${late.slice(0, 6).map((c) => c.number).join(", ")}${late.length > 6 ? ` and ${late.length - 6} more` : ""}: no result, never an F. ${mayRaise ? "Raise a late result for each, with the mark and the reason." : "The course's lecturer, or the Programme Examinations Officer, raises a late result for each."}`}
+          <Note kind="bad" title={`${late.length} candidate${late.length === 1 ? "" : "s"} on the roll with no mark on this sheet`}
+            action={mayRaise ? <Btn kind="primary" onClick={() => setUploading(true)}>Upload late results</Btn> : undefined}>
+            {`${late.slice(0, 6).map((c) => c.number).join(", ")}${late.length > 6 ? ` and ${late.length - 6} more` : ""}: no result, never an F. ${mayRaise ? "Raise a late result for each, with the mark and the reason, one at a time or from one upload." : "The course's lecturer, or the Programme Examinations Officer, raises a late result for each."}`}
           </Note>
         ) : null}
         {unitsOff.length ? (
@@ -222,6 +231,7 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
             <input id="am-act" className="ctl" value={act.text} onChange={(e) => setAct({ ...act, text: e.target.value })} placeholder={act.kind === "minute" ? "SEN/2026/…" : ""} autoComplete="off" /></Field>
         </Modal>
       ) : null}
+      {uploading ? <LateResultsUpload sheetId={sheetId} courseCode={courseCode} caMax={caMax} candidates={late} onClose={() => setUploading(false)} onDone={() => void reload()} /> : null}
     </Panel>
   );
 }

@@ -123,6 +123,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
           { "id": "t/sheet", "icon": "doc", "label": "Score Entry", "badge": "2" },
@@ -217,6 +218,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/graduation", "icon": "cap", "label": "Graduation List" },
           { "id": "t/sheet", "icon": "doc", "label": "Score Entry" },
@@ -580,6 +582,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets", "badge": "6" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Monitoring" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/chain", "icon": "check", "label": "Approval Chain" },
           { "id": "t/approvals", "icon": "check", "label": "Verification Queue" },
           { "id": "t/queries", "icon": "bell", "label": "Result Queries" },
@@ -638,7 +641,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" }
         ]
       },
       {
@@ -821,7 +826,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
-          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" }
+          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" },
+          { "id": "f/heldfees", "icon": "card", "label": "Held Students' Fees" }
         ]
       },
       {
@@ -867,7 +873,8 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "School Fees",
         "items": [
-          { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" }
+          { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" },
+          { "id": "f/heldfees", "icon": "card", "label": "Held Students' Fees" }
         ]
       },
       {
@@ -979,7 +986,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
           { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" },
-          { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" }
+          { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" }
         ]
       },
       {
@@ -1080,6 +1088,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets" },
           { "id": "t/exams", "icon": "flask", "label": "Examinations" },
@@ -1127,6 +1136,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheet" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/scores", "icon": "doc", "label": "Score Sheets" }
         ]
@@ -1186,6 +1196,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/legacy", "icon": "swap", "label": "Migrate from Old Portal" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
           { "id": "t/unicbt", "icon": "cap", "label": "CBT Examinations" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
@@ -1261,6 +1273,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/chain", "icon": "doc", "label": "Approval Chain" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
@@ -1417,6 +1431,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/resultviewer", "icon": "chart", "label": "Result Viewer" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
           { "id": "t/resultcorrections", "icon": "check", "label": "Result Corrections" },
           { "id": "t/resultuploads", "icon": "upload", "label": "Result Upload History" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
@@ -1551,7 +1566,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" }
         ]
       },
       {
@@ -1672,6 +1689,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/resultcorrections", "icon": "check", "label": "Result Corrections" },
           { "id": "t/resultuploads", "icon": "upload", "label": "Result Upload History" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" }
         ]
       },

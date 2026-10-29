@@ -305,6 +305,28 @@ not held: the session after their entry is not on the calendar, and none of them
 
 **To take a hold off** for one student, remove their cohort on the cohort desk, then correct the level here if it should be higher.
 
+### Never above the hold (29 October 2026, V702)
+
+V696 lowered the records once. V702 keeps them there, whatever writes a level afterwards:
+
+- **The level desk** (`people.level_options`) gives `heldAt`, offers no level above it, and has no next level while the student is at
+  it (LEVEL_HELD_DEPARTMENT_CHANGE). `people.support_set_level` refuses a correction above it with the same code.
+- **Anything else** (an upload, a reconciliation, a record edit) that would raise the record above the hold is held at it by the
+  trigger `trg_student_hold_level`. The attempt is written down as a decision LEVEL_HELD_DEPARTMENT_CHANGE, with the level asked for.
+- **The roll-over** (`people.roll_over_session`) counts the hold in the session it rolls into, so a held student still moves up a
+  level each session, one behind their entry cohort.
+
+Only a hold the change of department set counts (`people.department_hold_of`). A cohort the desk set since for another reason is not
+a hold. Taking the cohort off on the cohort desk lifts the hold.
+
+**The fees.** A held student is charged the held level's fee (the University's word of 29 October 2026). The Bursary's page Held
+Students' Fees (`/finance/department-change-fees`, `finance.department_change_fee_effect`) lists each held student with:
+- the charge at the level held;
+- what the session would charge without the hold (the cohort as entered, the record at the level V696 lowered it from);
+- the difference.
+
+The reading lifts the hold and undoes it, so nothing on a record changes.
+
 ## Tests
 
 | Test | What it covers |
@@ -318,4 +340,6 @@ not held: the session after their entry is not on the calendar, and none of them
 | `check.sql` V641 | the desk's correction carries (record, registration, enrolment and `people.level_in` at 100), a progression does not; the put-right sets a fresh student's rows left at 200 and finds none the second time; the rollover into the fresh students' entry session promotes the continuing student and holds the fresh one (EXPECTED 467) |
 | `level-management.test.ts` (V641) | the warning for a correction says the registration and enrolment follow; for a progression and a spillover year, that the registration stays |
 | `check.sql` V696 | made-up students who changed department: lowered with the session's registration and enrolment, the session before kept; already a level behind, held with the receipt no longer ahead; their own department's matric, a fresher and a correction back left as they are; a transfer held as it is made; nothing proposed above the hold; a hold taken off not put back; the Bursary refused |
+| `check.sql` V702 | a held student offered nothing above the hold and refused 300 on the desk; an upload's 300 held at 200 and written down; a cohort the desk set since for another reason not a hold; a student left above the hold by an old upload not promoted by the roll-over, the held student promoted to the next session's hold; the Bursary's list read and undone |
+| `ResultMonitorIT` (V702) | the held students' fees read by the Bursary (a lecturer refused), the hold still standing after |
 | `level-management.test.ts` (V696) | the two decisions in words |

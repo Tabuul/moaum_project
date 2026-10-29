@@ -164,3 +164,88 @@ export function recordCells(r: RecordRow): (string | number | null)[] {
     r.points, r.qualityPoints, STATE_WORD[r.state] ?? r.state, stageWord(r.stage), r.lecturer ?? "", day(r.uploadedAt), day(r.lastModified),
   ];
 }
+
+/* ── V702: duplicate results, resolved by the Registry's side ── */
+
+export interface DuplicateClass {
+  offeringId: string; courseCode: string; courseTitle: string | null; sheetId: string | null; stage: string | null;
+  ca: number | null; exam: number | null; total: number | null; grade: string | null; entryStatus: string | null;
+  decision: "KEPT" | "WITHDRAWN" | null; resolutionId: string | null; decidedAt: string | null; decidedOffice: string | null; decidedReason: string | null;
+}
+export interface DuplicateRow {
+  studentId: string; number: string | null; studentName: string; programmeCode: string; level: number | null; baseCode: string;
+  resolved: boolean; classes: DuplicateClass[];
+}
+
+export const DECISION_WORD: Record<string, string> = { KEPT: "Stands", WITHDRAWN: "Withdrawn from the registration" };
+
+/** the classes still standing (not withdrawn) — one when the duplicate is resolved */
+export const standing = (classes: DuplicateClass[]) => classes.filter((c) => c.decision !== "WITHDRAWN");
+
+/** the classes withdrawn when one is kept: every other class still standing (a course on three classes takes two decisions) */
+export function toWithdraw(keep: string, classes: DuplicateClass[]): DuplicateClass[] {
+  return standing(classes).filter((c) => c.offeringId !== keep);
+}
+
+/** what stops a choice going (the server's DUP_* rules, said before it is sent); null when it may go */
+export function resolveProblem(keep: string, classes: DuplicateClass[], reason: string): string | null {
+  const k = classes.find((c) => c.offeringId === keep);
+  if (!k) return "Choose the course that stands.";
+  if (k.decision === "WITHDRAWN") return "That course is withdrawn already; put it back first.";
+  if (!toWithdraw(keep, classes).length) return "Nothing else stands beside it.";
+  if (reason.trim().length < 10) return "Say why this course stands, in ten characters or more.";
+  return null;
+}
+
+export const DUPLICATE_HEADERS = ["Student", "Matric No.", "Programme", "Level", "Course", "Class", "Course Title", "Result", "Stage", "Registration", "Decision", "Decided by", "Why"];
+
+/** a duplicate as export rows: one a class, the student's columns on each */
+export function duplicateCells(d: DuplicateRow): (string | number | null)[][] {
+  return d.classes.map((c) => [
+    d.studentName, d.number ?? "", d.programmeCode, d.level, d.baseCode, c.courseCode, c.courseTitle ?? "",
+    markWords({ ca: c.ca, exam: c.exam, total: c.total, grade: c.grade }), stageWord(c.stage), c.entryStatus ?? "Not registered",
+    c.decision ? DECISION_WORD[c.decision] : d.resolved ? "" : "To decide", c.decidedOffice ?? "", c.decidedReason ?? "",
+  ]);
+}
+
+/* ── V702: late results for a published sheet, from one upload ── */
+
+export interface LateRow { number: string; ca: number | null; exam: number | null; outcome: string | null }
+export type LateOutcome = "RAISED" | "NOT_LATE" | "REPEATED" | "REFUSED";
+export const LATE_WORD: Record<LateOutcome, string> = {
+  RAISED: "Raised for verification", NOT_LATE: "Not a late result", REPEATED: "Repeated in the file", REFUSED: "Refused",
+};
+export const LATE_TONE: Record<LateOutcome, "ok" | "warn" | "grey" | "bad"> = { RAISED: "ok", NOT_LATE: "warn", REPEATED: "grey", REFUSED: "bad" };
+export const LATE_MAX = 2000;
+const OUTCOMES = ["GRADED", "ABSENT", "WITHHELD", "INCOMPLETE", "MALPRACTICE", "EXEMPTED"];
+
+/** the rows of an uploaded sheet: a heading row naming the matriculation number, the CA and the examination (and an outcome, if
+ *  any); blank rows passed over. The server matches each number to the sheet's roll and says what it did with it. */
+export function lateRows(table: string[][]): { rows: LateRow[]; problem: string | null } {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const head = table.findIndex((r) => r.some((c) => /matric|reg(istration)?\.? ?no|^number$/.test(norm(c ?? ""))));
+  if (head < 0) return { rows: [], problem: "The file needs a heading row with a Matric No. column." };
+  const h = table[head].map((c) => norm(c ?? ""));
+  const col = (re: RegExp) => h.findIndex((c) => re.test(c));
+  const num = col(/matric|reg(istration)?\.? ?no|^number$/), ca = col(/^ca\b|continuous|^c\.a/), exam = col(/exam/), out = col(/outcome|remark|status/);
+  if (ca < 0 || exam < 0) return { rows: [], problem: "The file needs a CA column and an Exam column beside the Matric No." };
+  const mark = (v: string | undefined) => {
+    const t = (v ?? "").trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? Math.round(n) : NaN;
+  };
+  const rows: LateRow[] = [];
+  for (const r of table.slice(head + 1)) {
+    const number = (r[num] ?? "").trim();
+    const o = out >= 0 ? (r[out] ?? "").trim().toUpperCase() : "";
+    const c = mark(r[ca]), e = mark(r[exam]);
+    if (!number && c == null && e == null && !o) continue;
+    if (Number.isNaN(c) || Number.isNaN(e)) return { rows: [], problem: `Row ${rows.length + 1} (${number || "no number"}): a mark is not a number.` };
+    if (o && !OUTCOMES.includes(o)) return { rows: [], problem: `Row ${rows.length + 1} (${number || "no number"}): the outcome is one of ${OUTCOMES.map((x) => x.toLowerCase()).join(", ")}.` };
+    rows.push({ number, ca: c, exam: e, outcome: o || null });
+  }
+  if (!rows.length) return { rows, problem: "The file has no rows under its headings." };
+  if (rows.length > LATE_MAX) return { rows: [], problem: `At most ${LATE_MAX.toLocaleString()} rows a time; split the file.` };
+  return { rows, problem: null };
+}

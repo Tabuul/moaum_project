@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useJson } from "@/lib/use-json";
 import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
-import { Btn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
@@ -84,7 +84,8 @@ export function Exceptions({ scope, structure, sessions, ceiling, initialKind }:
             <span className="grow" />
             <input className="ctl" style={{ maxWidth: 300 }} placeholder="Search name, matric, course" value={typed} onChange={(e) => setTyped(e.target.value)} aria-label="Search the exceptions" />
           </div>
-          {kind ? <Note kind="info" title={KIND_WORD[kind]}>{KIND_NOTE[kind]}</Note> : null}
+          {kind ? <Note kind="info" title={KIND_WORD[kind]}
+            action={kind === "DUPLICATE_RESULT" ? <LinkBtn href="/results/monitor/duplicates" kind="primary">Resolve them</LinkBtn> : undefined}>{KIND_NOTE[kind]}</Note> : null}
           {data ? (
             <DTable pageSize={0} cols={["S/N|num", "Exception", "Student", "Matric No.", "Programme", "Level|num", "Course", "Detail", "Stage", ""]}
               rows={data.rows.map((r, i) => [

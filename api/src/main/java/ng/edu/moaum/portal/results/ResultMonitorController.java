@@ -57,6 +57,12 @@ class ResultMonitorController {
             + "'OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_gst','OFFICE_eps')";
     /** the desk of entry declines a request (as it raises an amendment: AmendmentsController.ENTRY) */
     private static final String ENTRY = "hasAnyAuthority('OFFICE_lecturer','OFFICE_exams','OFFICE_gst','OFFICE_eps')";
+    /** V702: the exceptions (the missing marks among them) and a result's details are read by the department and faculty desks too,
+     *  each within its own scope, to chase and export them */
+    static final String EXCEPTION_READERS = "hasAnyAuthority('OFFICE_ict','OFFICE_super','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar',"
+            + "'OFFICE_records','OFFICE_dbops','OFFICE_hod','OFFICE_dean','OFFICE_exams','OFFICE_facultyexams','OFFICE_facultyofficer')";
+    /** V702: who resolves a duplicate result (the University's choice of 29 October 2026: the Registry's side, and ICT University-wide) */
+    static final String RESOLVERS = "hasAnyAuthority('OFFICE_records','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_ict','OFFICE_dbops','OFFICE_super')";
 
     static final Set<String> STATES = Set.of("AWAITING", "MISSING", "ENTRY", "VERIFICATION", "APPROVAL", "PUBLISHED");
     static final List<String> KINDS = List.of("RESULT_WITHOUT_REGISTRATION", "DUPLICATE_RESULT", "MISSING_SCORE", "INVALID_SCORE", "COURSE_ABOVE_LEVEL",
@@ -320,7 +326,7 @@ class ResultMonitorController {
     /** one student's result in one course: the student, the course, the result, the sittings, every version of the mark, the sheet's
      *  chain, the amendments and the correction requests */
     @GetMapping("/monitor/records/{offering}/{student}")
-    @PreAuthorize(MONITORS)
+    @PreAuthorize(EXCEPTION_READERS)
     @Transactional(readOnly = true)
     Map<String, Object> record(@PathVariable UUID offering, @PathVariable UUID student) {
         Map<String, Object> st = jdbc.sql("""
@@ -401,7 +407,7 @@ class ResultMonitorController {
     /* ── what needs a look ── */
 
     @GetMapping("/monitor/exceptions")
-    @PreAuthorize(MONITORS)
+    @PreAuthorize(EXCEPTION_READERS)
     @Transactional(readOnly = true)
     Map<String, Object> exceptions(@RequestParam(required = false) String session, @RequestParam(required = false) Integer sem,
                                    @RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
@@ -614,6 +620,170 @@ class ResultMonitorController {
     Map<String, Object> withdraw(@PathVariable UUID id, @Valid @RequestBody NoteIn body) {
         jdbc.sql("SELECT assessment.withdraw_correction_request(:id, :n)").param("id", id).param("n", body.note().trim()).query().singleRow();
         return requestRows("q.id = :id", Map.of("id", id)).get(0);
+    }
+
+    /* ── V702: duplicate results, resolved by the Registry's side ── */
+
+    /** the students in scope with marks for one course on two classes, each class with its result, the registration and the decision */
+    @GetMapping("/monitor/duplicates")
+    @PreAuthorize(RESOLVERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> duplicates(@RequestParam(required = false) String session, @RequestParam(required = false) Integer sem,
+                                   @RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
+                                   @RequestParam(required = false) String prog, @RequestParam(required = false, defaultValue = "OPEN") String state,
+                                   @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page,
+                                   @RequestParam(defaultValue = "50") int size) {
+        OfficeScope.Bound b = scope.bound(blank(fac), blank(dept), blank(prog));
+        Period p = period(session, sem);
+        String which = state == null ? "OPEN" : state.trim().toUpperCase();
+        if (!List.of("OPEN", "RESOLVED", "ALL").contains(which)) {
+            throw new DomainRuleViolation("RESULT_DUPLICATE_STATE", "Duplicates are listed OPEN, RESOLVED or ALL.");
+        }
+        String search = blank(q) == null ? null : "%" + q.trim() + "%";
+        int sz = Math.max(1, Math.min(size, 5000));
+        int pg = Math.max(1, page);
+        customPlan();
+        List<Map<String, Object>> classes = jdbc.sql("""
+                SELECT x.student_id AS "studentId", x.number, x.student_name AS "studentName", x.programme_code AS "programmeCode", x.level,
+                       x.base_code AS "baseCode", x.offering_id AS "offeringId", x.course_code AS "courseCode", x.course_title AS "courseTitle",
+                       x.sheet_id AS "sheetId", x.stage, x.ca, x.exam, x.total, x.grade, x.entry_status AS "entryStatus", x.decision,
+                       x.resolution_id AS "resolutionId", x.decided_at AS "decidedAt", x.decided_office AS "decidedOffice",
+                       x.decided_reason AS "decidedReason", x.standing
+                  FROM assessment.result_duplicates(:s, :m, CAST(:f AS text), CAST(:d AS text), CAST(:p AS text)) x
+                 WHERE CAST(:q AS text) IS NULL OR x.number ILIKE :q OR x.student_name ILIKE :q OR x.course_code ILIKE :q
+                 ORDER BY x.programme_code, x.student_name, x.base_code, x.course_code
+                """).param("s", p.session()).param("m", p.sem()).param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR)
+                .param("p", b.prog(), Types.VARCHAR).param("q", search, Types.VARCHAR).query().listOfRows();
+        // one row a student's course, its classes under it
+        Map<String, Map<String, Object>> groups = new LinkedHashMap<>();
+        for (Map<String, Object> c : classes) {
+            String key = c.get("studentId") + "|" + c.get("baseCode");
+            Map<String, Object> g = groups.computeIfAbsent(key, x -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                for (String f : List.of("studentId", "number", "studentName", "programmeCode", "level", "baseCode")) m.put(f, c.get(f));
+                m.put("resolved", c.get("standing") instanceof Number n && n.intValue() <= 1);
+                m.put("classes", new ArrayList<Map<String, Object>>());
+                return m;
+            });
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> list = (List<Map<String, Object>>) g.get("classes");
+            Map<String, Object> one = new LinkedHashMap<>(c);
+            for (String f : List.of("studentId", "number", "studentName", "programmeCode", "level", "baseCode", "standing")) one.remove(f);
+            list.add(one);
+        }
+        long open = groups.values().stream().filter(g -> !Boolean.TRUE.equals(g.get("resolved"))).count();
+        List<Map<String, Object>> chosen = groups.values().stream()
+                .filter(g -> "ALL".equals(which) || ("RESOLVED".equals(which) == Boolean.TRUE.equals(g.get("resolved")))).toList();
+        if (pg == 1) {
+            Map<String, Object> filters = new LinkedHashMap<>();
+            filters.put("session", p.session());
+            filters.put("semester", p.sem());
+            if (b.fac() != null) filters.put("faculty", b.fac());
+            if (b.dept() != null) filters.put("department", b.dept());
+            if (b.prog() != null) filters.put("programme", b.prog());
+            filters.put("state", which);
+            logRead("RESULT_DUPLICATES", "Duplicate results", filters, chosen.size());
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", p.session());
+        out.put("semester", p.sem());
+        out.put("state", which);
+        out.put("open", open);
+        out.put("resolved", groups.size() - open);
+        out.put("total", chosen.size());
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("rows", chosen.stream().skip((long) (pg - 1) * sz).limit(sz).toList());
+        return out;
+    }
+
+    public record ResolveIn(@NotNull UUID studentId, @NotNull UUID keep, @NotNull UUID drop, @NotBlank @Size(min = 10, max = 2000) String reason) {
+    }
+
+    private void studentInScope(UUID student) {
+        Map<String, Object> st = jdbc.sql("""
+                SELECT pr.faculty_code AS fac, pr.dept_code AS dept, s.programme_code AS prog
+                  FROM people.student s LEFT JOIN ref.programme pr ON pr.code = s.programme_code WHERE s.id = :id
+                """).param("id", student).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("student", student));
+        scope.bound((String) st.get("fac"), (String) st.get("dept"), (String) st.get("prog"));
+    }
+
+    /** the class that stands chosen; the other withdrawn from the registration, its mark kept on its sheet, the decision written down */
+    @PostMapping("/monitor/duplicates/resolve")
+    @PreAuthorize(RESOLVERS)
+    @Transactional
+    Map<String, Object> resolveDuplicate(@Valid @RequestBody ResolveIn body) {
+        studentInScope(body.studentId());
+        UUID id = jdbc.sql("SELECT assessment.resolve_duplicate(:st, :k, :d, :r)").param("st", body.studentId()).param("k", body.keep())
+                .param("d", body.drop()).param("r", body.reason().trim()).query(UUID.class).single();
+        return Map.of("id", id);
+    }
+
+    /** a decision put back: the withdrawn class's registration as it stood */
+    @PostMapping("/monitor/duplicates/{id}/undo")
+    @PreAuthorize(RESOLVERS)
+    @Transactional
+    Map<String, Object> undoDuplicate(@PathVariable UUID id, @Valid @RequestBody NoteIn body) {
+        UUID student = jdbc.sql("SELECT student_id FROM assessment.duplicate_resolution WHERE id = :id").param("id", id).query(UUID.class)
+                .optional().orElseThrow(() -> new NotFound("duplicate decision", id));
+        studentInScope(student);
+        jdbc.sql("SELECT assessment.undo_duplicate_resolution(:id, :n)").param("id", id).param("n", body.note().trim()).query().singleRow();
+        return Map.of("id", id, "undone", true);
+    }
+
+    /* ── V702: the desk of entry's open requests, wherever its sheets are ── */
+
+    /** the open correction requests on the sheets this desk reaches — the lecturer's own courses, a desk's scope */
+    @GetMapping("/correction-requests/mine")
+    @PreAuthorize(ENTRY)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> myRequests() {
+        List<Map<String, Object>> open = requestRows("q.state IN ('OPEN', 'IN_AMENDMENT')", Map.of());
+        Map<Object, Boolean> reached = new LinkedHashMap<>();
+        return open.stream().filter(r -> reached.computeIfAbsent(r.get("sheetId"), sh -> {
+            try {
+                results.reach((UUID) sh);
+                return true;
+            } catch (org.springframework.security.access.AccessDeniedException | NotFound e) {
+                return false;
+            }
+        })).limit(200).toList();
+    }
+
+    /* ── V702: late results for a published sheet, from one upload ── */
+
+    public record LateRow(@Size(max = 60) String number, @Min(0) @Max(100) Integer ca, @Min(0) @Max(100) Integer exam,
+                          @Pattern(regexp = "(?i)GRADED|ABSENT|WITHHELD|INCOMPLETE|MALPRACTICE|EXEMPTED|") String outcome) {
+    }
+
+    public record LateIn(@NotBlank @Size(min = 10, max = 2000) String reason, @NotNull @Size(min = 1, max = 2000) List<@Valid LateRow> rows) {
+    }
+
+    /** each candidate on the sheet's roll with no mark raised as a late result (V422), through the chain to Senate; each row answered */
+    @PostMapping("/sheets/{id}/late-results")
+    @PreAuthorize(ENTRY)
+    @Transactional
+    Map<String, Object> lateResults(@PathVariable UUID id, @Valid @RequestBody LateIn body) {
+        Sheets.Row r = results.reach(id);
+        ResultsService.requireStageDesk("ENTRY", r.courseCode(), "raised");
+        String rows;
+        try {
+            rows = json.writeValueAsString(body.rows());
+        } catch (RuntimeException e) {
+            throw new DomainRuleViolation("LATE_ROWS", "The rows could not be read.");
+        }
+        List<Map<String, Object>> out = jdbc.sql("""
+                SELECT x.row_no AS "row", x.number, x.outcome, x.detail, x.ref
+                  FROM assessment.raise_late_results(:sh, CAST(:rows AS jsonb), :reason) x ORDER BY x.row_no
+                """).param("sh", id).param("rows", rows).param("reason", body.reason().trim()).query().listOfRows();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (String k : List.of("RAISED", "NOT_LATE", "REPEATED", "REFUSED")) counts.put(k, 0L);
+        out.forEach(x -> counts.merge(String.valueOf(x.get("outcome")), 1L, Long::sum));
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("courseCode", r.courseCode());
+        res.put("counts", counts);
+        res.put("rows", out);
+        return res;
     }
 
     /* ── the desk of entry's side: a sheet's requests, and declining one ── */

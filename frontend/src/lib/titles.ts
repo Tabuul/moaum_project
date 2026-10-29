@@ -221,6 +221,8 @@ export const TITLES: Record<string, string> = {
   "t/resultexceptions": "Result exceptions",
   "t/resultuploads": "Result upload history",
   "t/resultcorrections": "Result corrections",
+  "t/resultduplicates": "Duplicate results",
+  "f/heldfees": "Held students' fees",
   "r/registrar": "Registry",
   "r/classlist": "Registered students",
   "r/allocate": "Teaching allocation",

@@ -209,4 +209,106 @@ class ResultMonitorIT {
         assertThat(up.getStatusCode().value()).isEqualTo(200);
         assertThat((List<Map<String, Object>>) up.getBody().get("rows")).extracting(r -> r.get("courseCode") + " " + r.get("records")).contains(p + " 101 2");
     }
+
+    /**
+     * V702: A's mark on the BSU- twin of the first course resolved by Exams & Records (not the Bursary) and put back by the Registry;
+     * the second course published and A's late result raised from an upload by the Examinations Officer, B's mark passed over; the
+     * Officer's open requests found wherever its sheets are; the exceptions read by the Head of Department; C held after a change of
+     * department on the Bursary's list.
+     */
+    @Test
+    void duplicatesAreResolvedLateResultsUploadedAndTheHeldStudentsListedForTheBursary() {
+        UUID twin = it.db(() -> {
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max) VALUES ('BSU-' || :p || ' 101', 'Monitor Course One', 3, 1, 100, :d, 'Core', 'LIVE', 40)")
+                    .param("p", p).param("d", dept).update();
+            UUID o = UUID.randomUUID();
+            jdbc.sql("INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (:o, 'BSU-' || :p || ' 101', :s, 1)").param("o", o).param("p", p).param("s", session).update();
+            jdbc.sql("INSERT INTO assessment.score_sheet (id, offering_id) VALUES (gen_random_uuid(), :o)").param("o", o).update();
+            jdbc.sql("""
+                    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, basis)
+                    SELECT r.id, :o, 3, 'CURRENT', 'APPROVED', 'Core' FROM registration.course_registration r WHERE r.student_id = :a AND r.session = :s
+                    """).param("o", o).param("a", a).param("s", session).update();
+            jdbc.sql("INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) SELECT sh.id, :a, 20, 40, 'GRADED' FROM assessment.score_sheet sh WHERE sh.offering_id = :o")
+                    .param("a", a).param("o", o).update();
+            jdbc.sql("SELECT set_config('moaum.maintenance', 'on', true)").query().singleRow();
+            jdbc.sql("""
+                    UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'IT V702'
+                      FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.session = :s AND o.course_code = :p || ' 102'
+                    """).param("s", session).param("p", p).update();
+            return o;
+        });
+        String records = ItSupport.token("records");
+
+        // ── the duplicate, listed and resolved by Exams & Records, not the Bursary; put back by the Registry ──
+        assertThat(it.get(ItSupport.token("bursar"), q("/api/v1/results/monitor/duplicates?prog=" + prog)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> dups = it.get(records, q("/api/v1/results/monitor/duplicates?prog=" + prog));
+        assertThat(dups.getStatusCode().value()).as(String.valueOf(dups.getBody())).isEqualTo(200);
+        assertThat(dups.getBody()).containsEntry("open", 1).containsEntry("total", 1);
+        Map<String, Object> dup = ((List<Map<String, Object>>) dups.getBody().get("rows")).get(0);
+        assertThat(dup).containsEntry("studentId", a.toString()).containsEntry("resolved", false);
+        assertThat((List<Map<String, Object>>) dup.get("classes")).extracting(x -> x.get("courseCode") + " " + x.get("entryStatus") + " " + x.get("total"))
+                .containsExactly("BSU-" + p + " 101 APPROVED 60", p + " 101 APPROVED 70");
+        Map<String, Object> keep = Map.of("studentId", a.toString(), "keep", offering1.toString(), "drop", twin.toString(),
+                "reason", "IT V702: the plain code is the course of the programme");
+        assertThat(it.call(ItSupport.token("bursar"), HttpMethod.POST, "/api/v1/results/monitor/duplicates/resolve", keep).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> resolved = it.call(records, HttpMethod.POST, "/api/v1/results/monitor/duplicates/resolve", keep);
+        assertThat(resolved.getStatusCode().value()).as(String.valueOf(resolved.getBody())).isEqualTo(200);
+        ResponseEntity<Map> twice = it.call(records, HttpMethod.POST, "/api/v1/results/monitor/duplicates/resolve", keep);
+        assertThat(twice.getStatusCode().value()).isEqualTo(422);
+        assertThat(twice.getBody()).containsEntry("code", "DUP_RESOLVED");
+        ResponseEntity<Map> done = it.get(records, q("/api/v1/results/monitor/duplicates?prog=" + prog + "&state=RESOLVED"));
+        assertThat(done.getBody()).containsEntry("open", 0).containsEntry("resolved", 1);
+        assertThat((List<Map<String, Object>>) ((List<Map<String, Object>>) done.getBody().get("rows")).get(0).get("classes"))
+                .extracting(x -> x.get("courseCode") + " " + x.get("decision") + " " + x.get("entryStatus"))
+                .containsExactly("BSU-" + p + " 101 WITHDRAWN WITHDRAWN", p + " 101 KEPT APPROVED");
+        ResponseEntity<Map> undone = it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/results/monitor/duplicates/" + resolved.getBody().get("id") + "/undo",
+                Map.of("note", "IT V702: the board keeps both until it sits"));
+        assertThat(undone.getStatusCode().value()).as(String.valueOf(undone.getBody())).isEqualTo(200);
+        assertThat(it.get(records, q("/api/v1/results/monitor/duplicates?prog=" + prog)).getBody()).containsEntry("open", 1);
+
+        // ── late results by the sheet: the programme's Examinations Officer, not the Bursary ──
+        UUID sheet2 = jdbc.sql("SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.session = :s AND o.course_code = :p || ' 102'")
+                .param("s", session).param("p", p).query(UUID.class).single();
+        String aNo = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :id").param("id", a).query(String.class).single();
+        String bNo = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :id").param("id", b).query(String.class).single();
+        Map<String, Object> late = Map.of("reason", "IT V702: the scripts reached the department late",
+                "rows", List.of(Map.of("number", aNo, "ca", 20, "exam", 40), Map.of("number", bNo, "ca", 1, "exam", 1)));
+        String exams = it.officer("exams", "programme", prog);
+        assertThat(it.call(ItSupport.token("bursar"), HttpMethod.POST, "/api/v1/results/sheets/" + sheet2 + "/late-results", late).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> raised = it.call(exams, HttpMethod.POST, "/api/v1/results/sheets/" + sheet2 + "/late-results", late);
+        assertThat(raised.getStatusCode().value()).as(String.valueOf(raised.getBody())).isEqualTo(200);
+        assertThat((Map<String, Object>) raised.getBody().get("counts")).containsEntry("RAISED", 1).containsEntry("NOT_LATE", 1);
+        assertThat((List<Map<String, Object>>) raised.getBody().get("rows")).extracting(x -> x.get("outcome")).containsExactly("RAISED", "NOT_LATE");
+        assertThat(String.valueOf(((List<Map<String, Object>>) raised.getBody().get("rows")).get(0).get("ref"))).startsWith("AMD-");
+
+        // ── the Officer's open requests, wherever its sheets are; a lecturer who teaches none of them sees none ──
+        ResponseEntity<Map> asked = it.call(ict, HttpMethod.POST, "/api/v1/results/monitor/corrections", Map.of("sheetId", sheet1.toString(), "studentId", a.toString(),
+                "reasonKind", "INCORRECT_SCORE", "note", "IT V702: the examination was 45 on the script", "ca", 30, "exam", 45));
+        assertThat(asked.getStatusCode().value()).as(String.valueOf(asked.getBody())).isEqualTo(200);
+        ResponseEntity<List> mine = it.getList(exams, "/api/v1/results/correction-requests/mine");
+        assertThat(mine.getStatusCode().value()).isEqualTo(200);
+        assertThat((List<Map<String, Object>>) mine.getBody()).extracting(x -> x.get("id")).contains(asked.getBody().get("id"));
+        ResponseEntity<List> notMine = it.getList(ItSupport.token("lecturer"), "/api/v1/results/correction-requests/mine");
+        assertThat((List<Map<String, Object>>) notMine.getBody()).extracting(x -> x.get("id")).doesNotContain(asked.getBody().get("id"));
+
+        // ── the exceptions, read by the Head of Department within the department ──
+        ResponseEntity<Map> hod = it.get(it.officer("hod", "department", dept), q("/api/v1/results/monitor/exceptions?dept=" + dept + "&prog=" + prog + "&kind=MISSING_SCORE"));
+        assertThat(hod.getStatusCode().value()).as(String.valueOf(hod.getBody())).isEqualTo(200);
+
+        // ── C held after a change of department, on the Bursary's list; read and undone ──
+        it.db(() -> {
+            jdbc.sql("INSERT INTO people.cohort_override (student_id, effective_cohort, reason, set_by, actor_office) VALUES (:c, :s, 'IT V702: changed department', :c, 'academic')")
+                    .param("c", c).param("s", session).update();
+            return jdbc.sql("""
+                    INSERT INTO people.cohort_decision (student_id, previous_status, final_status, previous_cohort, effective_cohort, rule, reason, officer, actor_office, session)
+                    VALUES (:c, 'ACTIVE', 'ACTIVE', '2020/2021', :s, 'COHORT_DEPARTMENT_CHANGE', 'IT V702: changed department', :c, 'academic', :s)
+                    """).param("c", c).param("s", session).update();
+        });
+        assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/finance/department-change-fees?session=" + session).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> fees = it.get(ItSupport.token("bursar"), "/api/v1/finance/department-change-fees?session=" + session);
+        assertThat(fees.getStatusCode().value()).as(String.valueOf(fees.getBody())).isEqualTo(200);
+        assertThat((List<Map<String, Object>>) fees.getBody().get("rows")).filteredOn(x -> c.toString().equals(x.get("studentId")))
+                .extracting(x -> x.get("heldLevel") + ">" + x.get("unheldLevel")).containsExactly("100>100");
+        assertThat(jdbc.sql("SELECT count(*) FROM people.cohort_override WHERE student_id = :c").param("c", c).query(Integer.class).single()).isEqualTo(1);
+    }
 }

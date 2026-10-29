@@ -124,6 +124,84 @@ RESULT_EXCEPTIONS, RESULT_DETAIL). Exports log themselves.
   approval, published, missing, with exceptions, corrections pending and completed, not available yet, and the results by faculty.
   Each figure opens its list.
 
+## The follow-ups (29 October 2026, V702)
+
+The University's word: "d 1-7", on the follow-ups V700 left.
+
+### Duplicate results, resolved by the Registry's side
+
+A student with marks for one course on two classes in a semester: its BSU-/MOAU- twin, or a second course under the code. On the
+copy of 28 October 2026 there were 2,172 in 2024/2025's first semester, such as BSU-CMS 101 beside CMS 101.
+
+- **Who decides** (the University's choice): Exams & Records, the Registrar, the Deputy Registrar, the Academic Office, the Director
+  of ICT, the Database Operators, and super (DUP_OFFICE otherwise).
+- **What a decision does** (`assessment.resolve_duplicate(student, keep, drop, reason)`):
+  - the class kept stands;
+  - the other is withdrawn from the student's registration (entry WITHDRAWN), so the transcript, the CGPA and the broadsheet count
+    the course once;
+  - its mark stays on its sheet, as history;
+  - the decision is written down (`assessment.duplicate_resolution`, audited) with the reason (ten characters or more).
+- **Refusals:** DUP_NOT_SAME (not one course in one semester), DUP_NOT_DUPLICATE (no mark on both), DUP_RESOLVED (a class already
+  withdrawn for the student).
+- **A course on three classes** takes a decision for each class withdrawn.
+- **Putting it back** (`assessment.undo_duplicate_resolution`) restores the withdrawn class's registration as it stood. The decision
+  is kept, with who put it back and why.
+- **The list and the exceptions.** `assessment.result_duplicates` lists each class with its result, the registration and the
+  decision. The exceptions no longer count a resolved pair, nor the withdrawn class's mark as a result without a registration.
+
+### Correction requests told
+
+The course's lecturer is told of a request by email, SMS and the portal (template CORRECTION_REQUESTED: the student, the course,
+the reason, the result as it stands and the one asked for). The Director of ICT who asked is told when it is corrected or declined
+(CORRECTION_CLOSED). The rest of the desk of entry sees the request on the sheet, and on its own list: Corrections asked of your
+sheets, on the score sheets page and the results desk (GET `/api/v1/results/correction-requests/mine`).
+
+### Missing scores, by department, and late results by upload
+
+- The exceptions, and a result's details, are read by the Heads of Department, the Deans, the Departmental, Faculty and Programme
+  Examinations Officers, and the Faculty Officers, each within its own scope. Result Exceptions is in their menus. Missing score,
+  narrowed to a department, exports to Excel or PDF for the department to chase.
+- A published sheet's candidates with no mark get their late results from one upload (POST
+  `/api/v1/results/sheets/{id}/late-results`, `assessment.raise_late_results`). The desk of entry downloads the template listing
+  them, fills in the CA and exam (or an outcome), and uploads it with the reason.
+- Each row becomes a late result (V422) through the chain to Senate, as one raised by hand. Each row is answered:
+  - RAISED, with its amendment;
+  - NOT_LATE: a mark already (corrected by an amendment), or not on the roll;
+  - REPEATED;
+  - REFUSED, with the chain's reason.
+- The whole upload is refused when the desk is not the desk of entry, the sheet is not published (LATE_NOT_PUBLISHED), or there is no
+  reason (LATE_REASON). At most 2,000 rows.
+
+### API added
+
+| Endpoint | |
+|---|---|
+| GET `/api/v1/results/monitor/duplicates?session&sem&fac&dept&prog&state=OPEN\|RESOLVED\|ALL&q&page&size` | each student's course with its classes; open and resolved counted (RESOLVERS) |
+| POST `/api/v1/results/monitor/duplicates/resolve`, POST `…/duplicates/{id}/undo` | RESOLVERS, within their scope |
+| GET `/api/v1/results/correction-requests/mine` | the open requests on the sheets this desk of entry reaches |
+| POST `/api/v1/results/sheets/{id}/late-results` | the sheet's desk of entry |
+| GET `/api/v1/finance/department-change-fees?session` | the held students' fees, for the Bursary (see student-level-management.md) |
+
+The exceptions and a result's details (GET `…/monitor/exceptions`, `…/monitor/records/{offering}/{student}`) are read by
+EXCEPTION_READERS: the MONITORS, the Database Operators, and the department and faculty desks.
+
+### Screens added
+
+- **Duplicate Results** (`/results/monitor/duplicates`). In the menus of the Director of ICT, Exams & Records, the Registrar, the
+  Deputy Registrar, the Academic Office, the Database Operators and super. Each student's course is listed with its classes, the
+  result on each and the registration, and offers Keep this one (with the reason), Put back, View and Excel. Same course twice in
+  the exceptions links here.
+- **The amendments panel on a published sheet:** Upload late results.
+- **The score sheets page and the results desk:** Corrections asked of your sheets.
+
+### Also in V702
+
+- **COS 203 unbound from B.Sc. Computer Science.** It sits beside CSC 203; both are "Discrete Structures", and the CCMAS structure
+  has CSC 203.
+- **Admission numbers no student already holds.** Sessions a century apart (a test's 2384/2385 and 2084/2085) each counted their own
+  series under the same two digits. Both issued MOAUM/ADM/84/000001: AdmissionLifecycleIT's duplicate key in CI.
+  `people.next_admission_no` passes over a number already held. Intake and the postgraduate admission use it.
+
 ## Tests
 
 | Test | What it covers |
@@ -131,3 +209,6 @@ RESULT_EXCEPTIONS, RESULT_DETAIL). Exports log themselves.
 | `check.sql` V700 | made-up students: the records and their states, the counts by programme and level, every kind of exception, a held result, a sheet's upload; a correction refused to the Registry, once at a time, never the marks on record, an incorrect score with no marks refused; followed into its amendment and resolved by the new version, declined by the desk (not the Director of ICT), withdrawn once, declined with a refused amendment |
 | `ResultMonitorIT` | the overview, the records filtered and searched, one result, the exceptions, who reads (Registry yes, lecturer and Bursary no), the request (Registry refused, a second refused CRQ_OPEN), the Examinations Officer seeing and declining it (the Director of ICT not), a withdrawal, the corrections list, the upload history |
 | `lib/result-monitor.test.ts` | the words, the request's rules before it is sent, the query string, the export row |
+| `check.sql` V702 | a duplicate resolved by Exams & Records (refused to the Bursary, without a reason, across courses, without both marks, twice): the twin withdrawn, its mark kept, the exceptions and the transcript passing over it; put back by the Registry; a correction told to the lecturer and its decline to the Director of ICT; late results uploaded — raised, a mark already, not on the roll, repeated, refused (no number, over the CA), the whole refused to the Bursary, without a reason and on a sheet at entry; an admission number held passed over; COS 203 not bound |
+| `ResultMonitorIT` (V702) | the duplicates listed, resolved by Exams & Records (the Bursary refused, twice refused DUP_RESOLVED) and put back by the Registry; late results uploaded by the Examinations Officer (the Bursary refused); the Officer's open requests found, a lecturer's not; the exceptions read by the Head of Department |
+| `lib/result-monitor.test.ts` (V702) | the duplicate's choice and what it withdraws, the export rows; the late results read from a file |

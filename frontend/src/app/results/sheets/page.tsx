@@ -4,6 +4,7 @@ import type { MySheet } from "@/lib/results";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { SheetsList } from "./SheetsList";
+import { CorrectionsAsked } from "@/components/results/CorrectionsAsked";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function SheetsPage({ searchParams }: { searchParams: Promi
   const sheets = await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(scope.session)}${scope.sem ? `&sem=${scope.sem}` : ""}${all ? "&all=true" : ""}`);
   return (
     <Shell route="t/scores" me={me.ok ? me.data : null}>
+      <CorrectionsAsked actingOffice={office} />
       {sheets.ok ? <SheetsList sheets={sheets.data} session={scope.session} sessions={sessions} sem={scope.sem} all={all} /> : <ProblemNotice problem={sheets.problem} />}
     </Shell>
   );

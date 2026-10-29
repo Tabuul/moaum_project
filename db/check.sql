@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 531
+\set EXPECTED 532
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29653,6 +29653,203 @@ BEGIN
     PERFORM pg_temp.assert('V704: Preliminary Science asks for one passport photograph — the second off its documents and its public page; no route asks for a second or third',
         sci = 'PASSPORT,OLEVEL_STATEMENT,OLEVEL_STATEMENT_2,LGA_ID,BIRTH_CERT' AND pub_docs = sci AND seconds = 0,
         format('science=%s public=%s second or third photographs asked by any route=%s', sci, pub_docs, seconds));
+END $$;
+
+-- ── V702. The follow-ups to V692, V696 and V700. A made-up programme (C97020) in the current session 9702/9703, semester 1, its
+--    lecturer and a Director of ICT on the staff register: A with marks for ZQY 701 (published) and its twin BSU-ZQY 701 (at entry),
+--    both registered; B, C and D registered for ZQY 702 (published), B alone with a mark. A duplicate resolved by Exams & Records —
+--    refused to the Bursary, without a reason, across two courses and for a student without both marks; the twin withdrawn from the
+--    registration, its mark kept, the exceptions and the transcript passing over it; refused a second time; put back. A correction
+--    asked: the lecturer told, and the Director of ICT told when the lecturer declines it. Late results uploaded for ZQY 702: raised,
+--    passed over (a mark already, not on the roll), repeated, refused (no number, over the CA). Held after a change of department:
+--    H at 200 (cohort 9701/9702) — the level desk offers nothing above 200 and refuses 300, an upload's 300 held at 200 and written
+--    down; K, whose cohort the desk set since for another reason, raised to 300; H3 left at 200 above its hold by an old upload; the
+--    roll-over into 9703/9704 takes H to 300 and leaves H3; the Bursary's list of the held, read and undone. An admission number held
+--    already passed over; COS 203 not bound to B.Sc. Computer Science. Undone after ──
+DO $$
+DECLARE ses text := '9702/9703'; prev text := '9701/9702'; nxt text := '9703/9704'; prog text := 'C97020'; dept text; fac text; v_err text;
+        s_a uuid := gen_random_uuid(); s_b uuid := gen_random_uuid(); s_c uuid := gen_random_uuid(); s_d uuid := gen_random_uuid();
+        s_h uuid := gen_random_uuid(); s_h3 uuid := gen_random_uuid(); s_k uuid := gen_random_uuid(); s_x uuid := gen_random_uuid();
+        ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid(); rd uuid := gen_random_uuid();
+        lec uuid := gen_random_uuid(); ict uuid := gen_random_uuid(); clerk uuid := gen_random_uuid();
+        o1 uuid; o1b uuid; o2 uuid; sh1 uuid; sh1b uuid; sh2 uuid; r1 uuid; q uuid; q_ref text;
+        dups_before text; d_bursar text; d_reason text; d_same text; d_none text; d_after text; d_entry text; d_kinds text; d_marks int;
+        d_transcript text; d_again text; d_undo_short text; d_undone text; d_kinds_back text; d_undo_again text;
+        told_lec int; told_body text; told_ict int;
+        l_bursar text; l_reason text; l_entry text; l_rows text; l_amends text;
+        h_opts text; h_desk text; h_upload text; h_written text; k_upload int; fee_rows text; fee_after text; roll_h text; roll_h3 text;
+        adm text; cos203 int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', clerk::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'V702 check', true);
+    PERFORM assessment.ensure_session(prev); PERFORM assessment.ensure_session(ses);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9702/01' WHERE name = ses;
+    SELECT p1.dept_code, p1.faculty_code INTO dept, fac FROM ref.programme p1 JOIN ref.faculty f ON f.code = p1.faculty_code
+     WHERE p1.category = 'UNDER GRADUATE' AND NOT coalesce(p1.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p1.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+    VALUES (prog, 'B.Sc. Follow-up Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (lec, 'CHK/V702/1', 'CHECKV702', 'Lecturer One', 'v702.lecturer@example.test'),
+        (ict, 'CHK/V702/2', 'CHECKV702', 'Director Two', 'v702.ict@example.test');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max) VALUES
+        ('ZQY 701', 'Check Course One', 3, 1, 100, dept, 'Core', 'LIVE', 40), ('BSU-ZQY 701', 'Check Course One', 3, 1, 100, dept, 'Core', 'LIVE', 40),
+        ('ZQY 702', 'Check Course Two', 2, 1, 100, dept, 'Core', 'LIVE', 40);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZQY 701', prog, 100, 'Core'), ('ZQY 702', prog, 100, 'Core');
+    o1 := gen_random_uuid(); o1b := gen_random_uuid(); o2 := gen_random_uuid();
+    INSERT INTO catalogue.offering (id, course_code, session, semester, lecturer_id) VALUES
+        (o1, 'ZQY 701', ses, 1, lec), (o1b, 'BSU-ZQY 701', ses, 1, lec), (o2, 'ZQY 702', ses, 1, lec);
+    sh1 := gen_random_uuid(); sh1b := gen_random_uuid(); sh2 := gen_random_uuid();
+    INSERT INTO assessment.score_sheet (id, offering_id) VALUES (sh1, o1), (sh1b, o1b), (sh2, o2);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s_a, 'MOAUM/ADM/99/997021', 'BSU/SC/ZQY/02/97021', 'CHECKV702', 'A Twice', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (s_b, 'MOAUM/ADM/99/997022', 'BSU/SC/ZQY/02/97022', 'CHECKV702', 'B Marked', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (s_c, 'MOAUM/ADM/99/997023', 'BSU/SC/ZQY/02/97023', 'CHECKV702', 'C Late', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (s_d, 'MOAUM/ADM/99/997024', 'BSU/SC/ZQY/02/97024', 'CHECKV702', 'D Over', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (s_h, 'MOAUM/ADM/99/997025', 'BSU/SC/ZQY/00/97025', 'CHECKV702', 'H Held', prog, 'UTME', '9700/9701', 100, 200, 'ACTIVE', now()),
+        (s_h3, 'MOAUM/ADM/99/997026', 'BSU/SC/ZQY/01/97026', 'CHECKV702', 'H3 Above', prog, 'UTME', prev, 100, 200, 'ACTIVE', now()),
+        (s_k, 'MOAUM/ADM/99/997027', 'BSU/SC/ZQY/00/97027', 'CHECKV702', 'K Reset', prog, 'UTME', '9700/9701', 100, 200, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (ra, s_a, ses, 1, 100, 'APPROVED', now(), now()), (rb, s_b, ses, 1, 100, 'APPROVED', now(), now()),
+        (rc, s_c, ses, 1, 100, 'APPROVED', now(), now()), (rd, s_d, ses, 1, 100, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, basis) VALUES
+        (ra, o1, 3, 'CURRENT', 'APPROVED', 'Core'), (ra, o1b, 3, 'CURRENT', 'APPROVED', 'Core'), (ra, o2, 2, 'CURRENT', 'APPROVED', 'Core'),
+        (rb, o2, 2, 'CURRENT', 'APPROVED', 'Core'), (rc, o2, 2, 'CURRENT', 'APPROVED', 'Core'), (rd, o2, 2, 'CURRENT', 'APPROVED', 'Core');
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES
+        (sh1, s_a, 30, 50, 'GRADED'), (sh1b, s_a, 20, 40, 'GRADED'), (sh2, s_b, 20, 30, 'GRADED');
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'SEN/9702/CHK' WHERE id IN (sh1, sh2);
+    PERFORM set_config('moaum.maintenance', '', true);
+
+    -- 1. the duplicate resolved
+    dups_before := (SELECT string_agg(x.course_code || '=' || coalesce(x.decision, '-') || '/' || x.standing || '/' || x.entry_status, ',' ORDER BY x.course_code)
+                      FROM assessment.result_duplicates(ses, 1, NULL, NULL, prog) x);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM assessment.resolve_duplicate(s_a, o1, o1b, 'V702 check: the plain code stands'); d_bursar := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_bursar := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    BEGIN PERFORM assessment.resolve_duplicate(s_a, o1, o1b, 'twin'); d_reason := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_reason := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM assessment.resolve_duplicate(s_a, o1, o2, 'V702 check: not one course'); d_same := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_same := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM assessment.resolve_duplicate(s_b, o1, o1b, 'V702 check: no marks on either'); d_none := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_none := split_part(SQLERRM, ':', 1); END;
+    r1 := assessment.resolve_duplicate(s_a, o1, o1b, 'V702 check: the plain code is the course of the programme');
+    d_after := (SELECT string_agg(x.course_code || '=' || coalesce(x.decision, '-') || '/' || x.standing || '/' || x.entry_status, ',' ORDER BY x.course_code)
+                  FROM assessment.result_duplicates(ses, 1, NULL, NULL, prog) x);
+    d_entry := (SELECT r.dropped_entry_was || '/' || r.decided_office FROM assessment.duplicate_resolution r WHERE r.id = r1);
+    d_kinds := coalesce((SELECT string_agg(x.kind || ':' || x.course_code, ',' ORDER BY x.kind, x.course_code)
+                           FROM assessment.result_exceptions(ses, 1, NULL, NULL, prog, NULL) x WHERE x.student_id = s_a AND x.course_code LIKE '%ZQY 701'), '-');
+    d_marks := (SELECT count(*) FROM assessment.score sc WHERE sc.sheet_id = sh1b AND sc.student_id = s_a);
+    d_transcript := (SELECT string_agg(t.course_code, ',' ORDER BY t.course_code) FROM assessment.student_results(s_a) t WHERE t.session = ses);
+    BEGIN PERFORM assessment.resolve_duplicate(s_a, o1b, o1, 'V702 check: the other way about'); d_again := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_again := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM assessment.undo_duplicate_resolution(r1, 'oops'); d_undo_short := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_undo_short := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM assessment.undo_duplicate_resolution(r1, 'V702 check: the board kept both until it sits');
+    d_undone := (SELECT e.status || '/' || r.undone_office FROM registration.entry e, assessment.duplicate_resolution r WHERE e.registration_id = ra AND e.offering_id = o1b AND r.id = r1);
+    d_kinds_back := (SELECT string_agg(x.course_code, ',' ORDER BY x.course_code)
+                       FROM assessment.result_exceptions(ses, 1, NULL, NULL, prog, NULL) x WHERE x.student_id = s_a AND x.kind = 'DUPLICATE_RESULT');
+    BEGIN PERFORM assessment.undo_duplicate_resolution(r1, 'V702 check: put back again'); d_undo_again := 'allowed';
+    EXCEPTION WHEN OTHERS THEN d_undo_again := split_part(SQLERRM, ':', 1); END;
+
+    -- 2. a correction told
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    q := assessment.request_correction(sh1, s_a, 'INCORRECT_SCORE', 'V702 check: the exam was 55 on the script', 30, 55, NULL);
+    q_ref := (SELECT x.ref FROM assessment.correction_request x WHERE x.id = q);
+    told_lec := (SELECT count(*) FROM platform.notice n WHERE n.event_key = 'CORRECTION_REQUESTED:' || q_ref AND n.about_id = lec);
+    told_body := (SELECT n.body FROM platform.notice n WHERE n.event_key = 'CORRECTION_REQUESTED:' || q_ref AND n.about_id = lec AND n.channel = 'EMAIL');
+    PERFORM set_config('moaum.actor_id', lec::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    PERFORM assessment.decline_correction_request(q, 'V702 check: the script reads 50, as entered');
+    told_ict := (SELECT count(*) FROM platform.notice n WHERE n.event_key = 'CORRECTION_CLOSED:' || q_ref || ':DECLINED' AND n.about_id = ict);
+
+    -- 3. late results by the sheet
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM * FROM assessment.raise_late_results(sh2, '[{"number":"X"}]'::jsonb, 'V702 check: the scripts came late'); l_bursar := 'allowed';
+    EXCEPTION WHEN OTHERS THEN l_bursar := 'refused'; END;
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    BEGIN PERFORM * FROM assessment.raise_late_results(sh2, '[{"number":"X"}]'::jsonb, 'late'); l_reason := 'allowed';
+    EXCEPTION WHEN OTHERS THEN l_reason := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM * FROM assessment.raise_late_results(sh1b, '[{"number":"X"}]'::jsonb, 'V702 check: the scripts came late'); l_entry := 'allowed';
+    EXCEPTION WHEN OTHERS THEN l_entry := split_part(SQLERRM, ':', 1); END;
+    l_rows := (SELECT string_agg(x.row_no || ':' || x.outcome || CASE WHEN x.outcome = 'REFUSED' THEN ':' || coalesce(split_part(x.detail, ':', 1), '') ELSE '' END
+                                 || CASE WHEN x.ref IS NOT NULL THEN ':ref' ELSE '' END, ',' ORDER BY x.row_no)
+                 FROM assessment.raise_late_results(sh2, jsonb_build_array(
+                        jsonb_build_object('number', 'bsu/sc/zqy/02/97023', 'ca', 20, 'exam', 40),
+                        jsonb_build_object('number', 'BSU/SC/ZQY/02/97022', 'ca', 10, 'exam', 20),
+                        jsonb_build_object('number', 'BSU/SC/ZQY/02/97023', 'ca', 21, 'exam', 40),
+                        jsonb_build_object('number', '', 'ca', 1, 'exam', 1),
+                        jsonb_build_object('number', 'ZQY/NO/SUCH/9702', 'ca', 1, 'exam', 1),
+                        jsonb_build_object('number', 'BSU/SC/ZQY/02/97024', 'ca', 50, 'exam', 30),
+                        jsonb_build_object('number', 'BSU/SC/ZQY/02/97021', 'outcome', 'absent')), 'V702 check: the scripts reached the department late') x);
+    l_amends := (SELECT string_agg(right(st.matric_no, 1) || ':' || m.kind || ':' || m.stage || ':' || m.outcome || ':' || coalesce(m.ca::text, '-'), ',' ORDER BY st.matric_no)
+                   FROM assessment.amendment m JOIN people.student st ON st.id = m.student_id WHERE m.sheet_id = sh2);
+
+    -- 4. held after a change of department
+    PERFORM set_config('moaum.actor_id', clerk::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.cohort_override (student_id, effective_cohort, reason, set_by, actor_office) VALUES
+        (s_h, prev, 'V702 check: changed department', clerk, 'academic'), (s_h3, ses, 'V702 check: changed department', clerk, 'academic'),
+        (s_k, prev, 'V702 check: the cohort desk set it since', clerk, 'academic');
+    INSERT INTO people.cohort_decision (student_id, previous_status, final_status, previous_cohort, effective_cohort, previous_level, new_level, rule, reason, officer, actor_office, session) VALUES
+        (s_h, 'ACTIVE', 'ACTIVE', '9700/9701', prev, NULL, NULL, 'COHORT_DEPARTMENT_CHANGE', 'V702 check: changed department', clerk, 'academic', ses),
+        (s_h, 'ACTIVE', 'ACTIVE', '9700/9701', prev, 300, 200, 'LEVEL_DEPARTMENT_CHANGE', 'V702 check: changed department', clerk, 'academic', ses),
+        (s_h3, 'ACTIVE', 'ACTIVE', prev, ses, NULL, NULL, 'COHORT_DEPARTMENT_CHANGE', 'V702 check: changed department', clerk, 'academic', ses),
+        (s_k, 'ACTIVE', 'ACTIVE', '9700/9701', prev, NULL, NULL, 'COHORT_DEPARTMENT_CHANGE', 'V702 check: changed department', clerk, 'academic', ses);
+    h_opts := (SELECT (o->>'heldAt') || '/' || coalesce(o->>'nextLevel', '-') || '/' || split_part(o->>'progressRefusal', ':', 1) || '/' || (o->'otherLevels')::text
+                 FROM people.level_options(s_h) o);
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    BEGIN PERFORM people.support_set_level(s_h, 'CORRECTION', 300, 200, 'V702 check: the record says 300', ses, 1, NULL); h_desk := 'allowed';
+    EXCEPTION WHEN OTHERS THEN h_desk := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- the Bursary's list, read with the hold lifted and undone
+    fee_rows := (SELECT string_agg(right(f.number, 1) || ':' || f.held_level || '>' || f.unheld_level, ',' ORDER BY f.number)
+                   FROM finance.department_change_fee_effect(ses) f WHERE f.programme_code = prog);
+    fee_after := (SELECT count(*) || '/' || (SELECT current_level FROM people.student WHERE id = s_h) || '/' || coalesce(nullif(current_setting('moaum.level_hold', true), ''), '-')
+                    FROM people.cohort_override o WHERE o.student_id IN (s_h, s_h3, s_k));
+    UPDATE people.student SET current_level = 300 WHERE id IN (s_h, s_k);   -- an upload
+    h_upload := (SELECT current_level::text FROM people.student WHERE id = s_h);
+    h_written := (SELECT d.previous_level || '>' || d.new_level || '/' || d.session FROM people.cohort_decision d WHERE d.student_id = s_h AND d.rule = 'LEVEL_HELD_DEPARTMENT_CHANGE');
+    k_upload := (SELECT current_level FROM people.student WHERE id = s_k);
+    PERFORM people.roll_over_session(nxt, 'ROLLOVER', 'V702 check: the next session');
+    roll_h := (SELECT s.current_level || '/' || coalesce((SELECT e.level::text FROM people.enrolment e WHERE e.student_id = s.id AND e.session = nxt), '-') FROM people.student s WHERE s.id = s_h);
+    roll_h3 := (SELECT s.current_level || '/' || coalesce((SELECT e.level::text FROM people.enrolment e WHERE e.student_id = s.id AND e.session = nxt), '-') FROM people.student s WHERE s.id = s_h3);
+
+    -- 7. an admission number held already is passed over
+    INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+    VALUES (s_x, 'MOAUM/ADM/02/000001', 'CHECKV702', 'X Holder', prog, 'UTME', ses, 100, 100, 'ADMITTED');
+    adm := people.next_admission_no('02', ses);
+    -- 6. COS 203 is not bound to B.Sc. Computer Science
+    cos203 := (SELECT count(*) FROM catalogue.course_offer co WHERE co.course_code = 'COS 203' AND co.programme_code = 'C00023');
+    RAISE EXCEPTION 'the V702 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V702 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V702: a duplicate resolved by Exams & Records and put back by the Registry (refused to the Bursary, without a reason, across courses, without both marks, twice); a correction told to the lecturer and its decline to the Director of ICT; late results raised from one upload; a held student kept at the hold by the desk, an upload and the roll-over, and the Bursary''s list read and undone; an admission number held passed over; COS 203 unbound',
+      coalesce(dups_before = 'BSU-ZQY 701=-/2/APPROVED,ZQY 701=-/2/APPROVED'
+           AND d_bursar = 'DUP_OFFICE' AND d_reason = 'DUP_REASON' AND d_same = 'DUP_NOT_SAME' AND d_none = 'DUP_NOT_DUPLICATE'
+           AND d_after = 'BSU-ZQY 701=WITHDRAWN/1/WITHDRAWN,ZQY 701=KEPT/1/APPROVED' AND d_entry = 'APPROVED/records' AND d_kinds = '-' AND d_marks = 1
+           AND d_transcript = 'ZQY 701,ZQY 702' AND d_again = 'DUP_RESOLVED' AND d_undo_short = 'DUP_REASON' AND d_undone = 'APPROVED/registrar'
+           AND d_kinds_back = 'BSU-ZQY 701,ZQY 701' AND d_undo_again = 'DUP_NOT_FOUND'
+           AND told_lec = 2 AND told_body LIKE '%CHECKV702, A Twice%ZQY 701%CA 30 · Exam 55%' AND told_ict = 2
+           AND l_bursar = 'refused' AND l_reason = 'LATE_REASON' AND l_entry = 'LATE_NOT_PUBLISHED'
+           AND l_rows = '1:RAISED:ref,2:NOT_LATE,3:REPEATED,4:REFUSED:No matriculation number,5:NOT_LATE,6:REFUSED:RES_AMEND_SPLIT,7:RAISED:ref'
+           AND l_amends = '1:LATE:VERIFICATION:ABSENT:-,3:LATE:VERIFICATION:GRADED:20'
+           AND h_opts = '200/-/LEVEL_HELD_DEPARTMENT_CHANGE/[100]' AND h_desk = 'LEVEL_HELD_DEPARTMENT_CHANGE'
+           AND fee_rows = '5:200>300,6:200>200' AND fee_after = '3/200/-'
+           AND h_upload = '200' AND h_written = '200>200/' || '9702/9703' AND k_upload = 300
+           AND roll_h = '300/300' AND roll_h3 = '200/-'
+           AND adm = 'MOAUM/ADM/02/000002' AND cos203 = 0, false),
+      format('dups %s | bursar %s reason %s same %s none %s | after %s entry %s kinds %s marks %s transcript %s again %s | undo %s / %s, %s back %s again %s | told %s %s / %s | late %s %s %s rows %s amends %s | held %s desk %s fees %s after %s upload %s written %s k %s roll %s h3 %s | adm %s cos %s',
+             dups_before, d_bursar, d_reason, d_same, d_none, d_after, d_entry, d_kinds, d_marks, d_transcript, d_again, d_undo_short, d_undone, '', d_kinds_back, d_undo_again,
+             told_lec, left(told_body, 200), told_ict, l_bursar, l_reason, l_entry, l_rows, l_amends, h_opts, h_desk, fee_rows, fee_after, h_upload, h_written, k_upload,
+             roll_h, roll_h3, adm, cos203));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
