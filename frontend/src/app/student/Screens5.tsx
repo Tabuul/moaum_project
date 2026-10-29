@@ -296,10 +296,14 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
       )
       ) : !c.matricNo ? (
         <Note kind="info" title="A card is made after matriculation">It is keyed on the matriculation number, which you do not have yet.</Note>
-      ) : c.clearsIdCard === false ? (
-        <Note kind="bad" title="Your card waits on the school-fee condition" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Under the scheme in force, the identity card is released at the first instalment.</Note>
+      ) : c.replacement?.needed && !c.replacement.paid ? (
+        /* V699: a card after the first is a replacement, printed once its fee is paid */
+        <Note kind="bad" title="Your next card is a replacement">It is printed once you pay the replacement fee below; your first card was free.</Note>
+      ) : c.replacement?.needed && c.replacement.paid ? (
+        <Note kind="ok" title="Replacement fee paid — collect your new card from the Security Unit">The card desk prints it against your payment ({c.replacement.payment}) and hands it over in person.</Note>
       ) : (
-        <Note kind="info" title="Your card has not been issued yet">The card desk prints it and hands it over in person against the photograph on your record; bring your fee receipt.</Note>
+        /* V699: the first card is issued on the matriculation number, with no fee condition */
+        <Note kind="info" title="Your card has not been issued yet">The card desk prints it on your matriculation number and hands it over in person against the photograph on your record.</Note>
       )}
       <div className="card"><div className="card__body row row--top" style={{ flexDirection: "row", gap: "var(--s-5)" }}>
         <Passport w={112} h={139} radius={5} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
@@ -314,6 +318,28 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
           <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record; the card desk issues a replacement."); if (!reason) return; void act("lost", "POST", "/me/id-card/lost", { reason }, `Identity card reported lost: ${reason}`); }}>{busy === "lost" ? "Reporting…" : "Report it lost"}</Btn>
           <LinkBtn kind="ghost" href="/student/support">Request a replacement</LinkBtn>
         </div>
+      ) : null}
+      {/* V699: the replacement fee — a card after the first is printed once it is paid */}
+      {c.matricNo && c.replacement?.needed && !c.replacement.paid ? (
+        <Panel title="Replacement card" right={c.replacement.fee != null ? naira(c.replacement.fee) : "Fee not set"}>
+          <PBody>
+            {c.replacement.fee == null ? (
+              <div className="sub2">The Bursary has not set the identity card replacement fee yet; ask the Bursary.</div>
+            ) : (c.reference ?? c.replacement.openReference) ? (
+              <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
+                <span className="sub2">Reference <b className="tnum">{c.reference ?? c.replacement.openReference}</b></span>
+                <PayByCard reference={(c.reference ?? c.replacement.openReference) as string} amount={Number(c.replacement.openAmount ?? c.replacement.fee)} />
+              </div>
+            ) : (
+              <div className="row row--inline">
+                <span className="sub2">A replacement identity card costs <b>{naira(c.replacement.fee)}</b>. Pay it here; the Security Unit prints your new card once the payment is confirmed.</span>
+                <Btn kind="primary" disabled={busy !== null} onClick={() => void act("repl", "POST", "/me/id-card/replacement-fee", {}, "Identity card replacement fee reference", "Reference ready — pay it below")}>
+                  {busy === "repl" ? "Preparing…" : "Pay replacement fee"}
+                </Btn>
+              </div>
+            )}
+          </PBody>
+        </Panel>
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Cards" right="Every card ever issued to you">

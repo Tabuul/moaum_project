@@ -115,6 +115,7 @@ export const TITLES: Record<string, string> = {
   "s/reghistory": "Registration history",
   "t/idcards": "Student ID card",
   "t/idcardreport": "ID card report",
+  "t/staffidcards": "Staff ID cards",
   "t/idverify": "Verify a card",
   "t/idlost": "Lost & replacement",
   "t/pipeline": "Result pipeline",

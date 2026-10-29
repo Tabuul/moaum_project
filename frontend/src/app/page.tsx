@@ -24,7 +24,7 @@ import type { AllocationRow } from "./dashboards/AllocationHistory";
 import type { StaffNotice } from "@/lib/lecturer";
 import { HrDashboard, type HrHome } from "./dashboards/Hr";
 import { DeanDashboard, type DeanHome } from "./dashboards/Dean";
-import { SecurityDashboard } from "./dashboards/Security";
+import { SecurityDashboard, type StaffCardCounts } from "./dashboards/Security";
 import { HousingDashboard } from "./dashboards/Housing";
 import { SiwesDashboard, type SiwesOffering } from "./dashboards/Siwes";
 import { AuditDashboard, type AuditEntry } from "./dashboards/Audit";
@@ -121,6 +121,8 @@ export default async function DashboardPage() {
   const dean = office && ["dean", "facultyofficer"].includes(office) ? await api<DeanHome>(`/api/v1/dean/dashboard?session=${encodeURIComponent(session)}`) : null;
   /* the Chief Security Officer and Internal Audit (Director and Deputy) read the same posture (V002) */
   const posture = office && ["security", "audit", "deputyaudit"].includes(office) ? await api<Posture>("/api/v1/governance/security") : null;
+  /* V698: the Chief Security Officer's identity cards — the staff in service and the cards in force */
+  const staffCards = office === "security" ? await api<{ counts: StaffCardCounts }>("/api/v1/credentials/identity-cards/staff/roster?summary=true") : null;
   const auditFeed = office && ["audit", "deputyaudit"].includes(office) ? await api<{ entries: AuditEntry[] }>("/api/v1/audit/entries?limit=12") : null;
   /* Housing/Welfare: the accommodation draw (V038) */
   const hostel = office === "housing" ? await api<HostelDeskData>(`/api/v1/hostel/sessions/${encodeURIComponent(session)}`) : null;
@@ -174,7 +176,7 @@ export default async function DashboardPage() {
       ) : office === "facultyofficer" ? (
         <DeanDashboard me={me.ok ? me.data : null} home={dean && dean.ok ? dean.data : null} role="Faculty Officer" />
       ) : office === "security" ? (
-        <SecurityDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} />
+        <SecurityDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} staffCards={staffCards && staffCards.ok ? staffCards.data.counts : null} />
       ) : (office === "audit" || office === "deputyaudit") ? (
         <AuditDashboard me={me.ok ? me.data : null} posture={posture && posture.ok ? posture.data : null} feed={auditFeed && auditFeed.ok ? auditFeed.data.entries : []} />
       ) : office === "housing" ? (

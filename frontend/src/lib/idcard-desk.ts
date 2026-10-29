@@ -4,8 +4,15 @@
  */
 export type Kind = "ok" | "warn" | "bad" | "info" | "grey";
 
+/** V699: whether a new card would be a replacement (the student has had one), the fee the Bursary set, whether it is paid (and by which
+ *  payment), and an open reference to pay it */
+export interface Replacement { needed: boolean; fee: number | string | null; paid: boolean; payment: string | null; openReference: string | null; openAmount: number | string | null }
+
 export interface Eligibility {
   eligible: boolean; reasons: string[];
+  /** V699: said to the desk, never held against the card — the photograph, the study, the school fees */
+  warnings?: string[];
+  replacement?: Replacement;
   checks?: { in_study: boolean; matric: boolean; photo: boolean; fees: boolean };
   fees?: { session: string | null; stated: boolean | null; released: boolean | null; earlier: { session: string; due: number; paid: number; balance: number; paid_in_full: boolean }[]; short: string[] };
   card?: { card_no: string; state: string; version: number } | null;
@@ -71,13 +78,24 @@ export function reasonWord(code: string | null | undefined): string {
 }
 
 /** the eligibility in words: the heading and the lines under it — the reasons when not eligible, the checks met when eligible */
-export function eligibilityWords(e: Eligibility): { title: string; kind: "ok" | "bad"; lines: string[] } {
-  if (e.eligible) {
-    const lines = ["Valid matriculation number", "Official photograph available", "School-fee eligibility satisfied"];
-    if (e.fees?.session) lines[2] = `School-fee eligibility satisfied (${e.fees.session} released by the scheme in force${e.fees.earlier?.length ? `; ${e.fees.earlier.length} earlier session${e.fees.earlier.length === 1 ? "" : "s"} paid in full` : ""})`;
-    return { title: "ID card eligible", kind: "ok", lines };
+const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** V699: the matriculation number alone decides the first card; a card after it (a replacement) waits on its fee, paid by the student */
+export function eligibilityWords(e: Eligibility): { title: string; kind: "ok" | "bad"; lines: string[]; warnings: string[] } {
+  const warnings = e.warnings ?? [];
+  if (!e.eligible) return { title: "ID card not eligible", kind: "bad", lines: e.reasons.length ? e.reasons : ["The record does not meet the card's conditions"], warnings };
+  const r = e.replacement;
+  if (r?.needed && !r.paid) {
+    return {
+      title: "A new card is a replacement: it waits on its fee", kind: "bad", warnings,
+      lines: ["Valid matriculation number",
+        r.fee == null ? "The Bursary has not set the replacement fee yet" : `Replacement fee of ${naira(r.fee)} not paid — the student pays it on their portal (Identity Card)`],
+    };
   }
-  return { title: "ID card not eligible", kind: "bad", lines: e.reasons.length ? e.reasons : ["The record does not meet the card's conditions"] };
+  return {
+    title: "ID card eligible", kind: "ok", warnings,
+    lines: ["Valid matriculation number", ...(r?.needed ? [`Replacement fee paid (${r.payment ?? "on record"})`] : ["First card: issued on the matriculation number"])],
+  };
 }
 
 /** the words on the actions: what each button does, and the busy word while it runs */
@@ -101,5 +119,7 @@ export function eventWord(e: CardEvent): string {
 export function actionsFor(e: Eligibility, card: { state: string } | null, may: boolean): { print: boolean; collect: boolean; replace: boolean; end: boolean } {
   if (!may) return { print: false, collect: false, replace: false, end: false };
   const live = !!card && (card.state === "PRINTED" || card.state === "ISSUED");
-  return { print: e.eligible, collect: !!card && card.state === "PRINTED", replace: live && e.eligible, end: live };
+  // V699: the card in force printed again costs nothing; a new card after the first (a replacement) waits on its paid fee
+  const feePaid = !e.replacement?.needed || e.replacement.paid;
+  return { print: e.eligible && (live || feePaid), collect: !!card && card.state === "PRINTED", replace: live && e.eligible && feePaid, end: live };
 }

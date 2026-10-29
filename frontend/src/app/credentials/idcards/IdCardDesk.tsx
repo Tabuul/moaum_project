@@ -125,7 +125,7 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
             <Field id="idc-q" label="Search student"><input id="idc-q" className="ctl" value={q} onChange={(ev) => setQ(ev.target.value)} placeholder="MOAU/AD/BUS/21/12345, a JAMB number, a name, a phone or an e-mail" style={{ minWidth: 360 }} maxLength={80} autoFocus /></Field>
             <Btn kind="primary" disabled={searching} onClick={() => void search(0)}>{searching ? "SEARCHING..." : "SEARCH STUDENT"}</Btn>
           </form>
-          <div className="sub2" style={{ marginTop: "var(--s-2)" }}>A card is eligible on the matriculation number, the official photograph and the school fees as the Bursary records them. Clearance is a separate process and is never read here.</div>
+          <div className="sub2" style={{ marginTop: "var(--s-2)" }}>A student&rsquo;s first card is issued on the matriculation number alone (V699); a card after it — a replacement — is printed once the student has paid the replacement fee on their portal. The photograph and the school fees are shown, never held against the card; clearance is never read here.</div>
         </PBody>
         {rows ? (
           rows.length ? (
@@ -178,6 +178,8 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
             </div>
             <Note kind={words.kind} title={words.title} action={!sel.photo && may ? <LinkBtn kind="ghost" href={`/students/${s.student_id}?tab=biodata`}>Photograph on the record</LinkBtn> : undefined}>
               {words.lines.map((l) => <div key={l}>{words.kind === "ok" ? "✓ " : "— "}{l}</div>)}
+              {/* V699: said, not held against the card */}
+              {words.warnings.map((w) => <div key={w} className="sub2">· {w}</div>)}
             </Note>
             {may ? (
               <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>

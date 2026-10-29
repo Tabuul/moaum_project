@@ -2,12 +2,16 @@ import type { Me } from "@/components/proto/Shell";
 import type { Posture } from "@/app/security/Security";
 import { LinkBtn, Note, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { printAllHref } from "@/lib/staff-cards";
+
+/** V698: the staff in service and their cards, as the Staff ID Cards desk counts them */
+export interface StaffCardCounts { staff: number; withCard: number; withoutCard: number; withoutPhoto: number; registerOnly: number }
 
 const when = (ts: string | null) => { if (!ts) return "—"; try { return new Date(ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return "—"; } };
 
 /** The Chief Security Officer's home: the sign-in defence and the integrity of the record — from the
  *  audit spine and the sign-in events (V002), nothing the system cannot substantiate. */
-export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Posture | null }) {
+export function SecurityDashboard({ me, posture, staffCards = null }: { me: Me | null; posture: Posture | null; staffCards?: StaffCardCounts | null }) {
   if (!posture) return <Note kind="bad" title="The security posture could not be read">The dashboard reads the audit spine and the sign-in events; they did not answer.</Note>;
   const a = posture.audit;
   const s = posture.signins;
@@ -46,6 +50,26 @@ export function SecurityDashboard({ me, posture }: { me: Me | null; posture: Pos
               <span className="tnum sub2" key="l">{when(f.last_at)}</span>,
             ])} texts={top.map((f) => f.username)} />
         ) : <PBody><div className="sub2">No account is drawing failed sign-ins.</div></PBody>}
+      </Panel>
+
+      {/* V698: the identity cards the Security Unit issues and prints — the staff's, all at once if need be, and the students' */}
+      <Panel title="Identity cards" right={staffCards ? `${staffCards.withCard} of ${staffCards.staff} staff carded` : "Staff and students"}>
+        <PBody>
+          {staffCards ? (
+            <Tiles items={[
+              ["Staff in service", String(staffCards.staff), null, "Office or HR staff register"],
+              ["Staff cards in force", String(staffCards.withCard), staffCards.withCard ? "var(--green-ink)" : null, "Printable now"],
+              ["Staff without a card", String(staffCards.withoutCard), staffCards.withoutCard ? "var(--red-ink)" : null, "To issue"],
+              ["Staff without a photograph", String(staffCards.withoutPhoto), staffCards.withoutPhoto ? "var(--chrome)" : null, "Printed with a blank frame"],
+            ]} />
+          ) : <div className="sub2">The staff card register did not answer.</div>}
+          <div className="grid--fill mt-3">
+            <LinkBtn kind="primary" href="/credentials/idcards/staff">Staff ID cards</LinkBtn>
+            {staffCards && staffCards.withCard ? <a className="btn btn--secondary btn--sm" href={printAllHref({})} target="_blank" rel="noopener">Print all staff ID cards ({staffCards.withCard})</a> : null}
+            {staffCards && staffCards.withoutCard ? <LinkBtn kind="ghost" href="/credentials/idcards/staff?card=WITHOUT">Issue the {staffCards.withoutCard} missing</LinkBtn> : null}
+            <LinkBtn kind="ghost" href="/credentials/idcards">Student ID cards</LinkBtn>
+          </div>
+        </PBody>
       </Panel>
 
       <Panel title="Security desks" right={me?.name ? `Signed in as ${me.name}` : "Security"}>

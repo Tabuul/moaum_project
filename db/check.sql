@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 526
+\set EXPECTED 528
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -21980,8 +21980,8 @@ BEGIN
 END $$;
 -- ── V605: the Security Unit's student identity card desk ──
 -- A matriculated student with a photograph and the first session on the calendar paid in full: eligible with no clearance started
--- (clearance is never read); one without a photograph, one without a matriculation number, and one whose earlier session is unpaid
--- read their reason in words. The card is printed (PRINTED, a number drawn, counted on a second print), handed over (ISSUED, by whom
+-- (clearance is never read); V699: one without a photograph and one whose earlier session is unpaid are eligible too, the photograph
+-- and the fees said as warnings, and one without a matriculation number reads its reason in words. The card is printed (PRINTED, a number drawn, counted on a second print), handed over (ISSUED, by whom
 -- and when), replaced on a reason from the list — the old card ended and linked, version 2 — and a replacement on no listed reason
 -- is refused; a second live card cannot exist; the old door (issue) still makes and hands over a card in one act; the events are on
 -- the credentials trail. The block undoes its writes.
@@ -22051,6 +22051,9 @@ BEGIN
             bad := 'NOT REFUSED';
         EXCEPTION WHEN OTHERS THEN bad := split_part(SQLERRM, ':', 1);
         END;
+        -- V699: a replacement is printed once its fee, set by the Bursary, is paid by the student
+        UPDATE finance.fee_setting SET id_card_replacement_fee = 2000 WHERE id = 1;
+        PERFORM finance.confirm_payment(credentials.id_card_replacement_reference(st), 'BANK_BRANCH', 'check V605 replacement fee');
         r3 := credentials.print_identity_card(st, 'LOST', 'left in a taxi');
         SELECT c.state, c.ended_reason INTO old_state, old_reason FROM credentials.identity_card c WHERE c.card_no = r1->>'card_no';
         SELECT prev.card_no INTO prev_no FROM credentials.identity_card c JOIN credentials.identity_card prev ON prev.id = c.previous_card_id WHERE c.card_no = r3->>'card_no';
@@ -22073,16 +22076,16 @@ BEGIN
         IF msg <> 'the V605 check undoes its writes' THEN RAISE; END IF;
     END;
     PERFORM pg_temp.assert('V605: a matriculated student with a photograph and the fees paid is eligible with no clearance started (clearance never read), the missing photograph, matriculation number and unpaid fees each a reason in words; the card printed (counted on a second print) and handed over, a second live card impossible, a replacement refused without a listed reason and made on one with the old card ended and linked (version 2), the old door making and handing over in one act, every act an event',
-        n_clear = 0 AND (e1->>'eligible')::boolean AND NOT (e2->>'eligible')::boolean AND NOT (e3->>'eligible')::boolean AND NOT (e4->>'eligible')::boolean
-        AND e2->'reasons' ? 'Student photograph is missing' AND e3->'reasons' ? 'Matriculation number not yet issued'
-        AND (e4->'reasons'->>0) LIKE 'Required school-fee condition not satisfied%' AND position('clearance' in lower(e1::text || e2::text || e3::text || e4::text)) = 0
+        n_clear = 0 AND (e1->>'eligible')::boolean AND (e2->>'eligible')::boolean AND NOT (e3->>'eligible')::boolean AND (e4->>'eligible')::boolean
+        AND e2->'warnings' ? 'Student photograph is missing: the card prints with a blank frame' AND e3->'reasons' ? 'Matriculation number not yet issued'
+        AND (e4->'warnings'->>0) LIKE 'School fees:%' AND position('clearance' in lower(e1::text || e2::text || e3::text || e4::text)) = 0
         AND r1->>'state' = 'PRINTED' AND (r1->>'card_no') ~ '^MOAUM/ID/[0-9]{2}/[0-9]{5}$' AND (r2->>'print_count')::int = 2 AND r2->>'card_no' = r1->>'card_no'
         AND c1->>'state' = 'ISSUED' AND dup = 'unique' AND bad = 'ID_CARD_REASON'
         AND (r3->>'version')::int = 2 AND (r3->>'replaced')::boolean AND old_state = 'LOST' AND old_reason LIKE 'lost%' AND prev_no = r1->>'card_no'
-        AND r4->>'code' = 'ID_CARD_NOT_ELIGIBLE' AND issued_state = 'ISSUED' AND n_cards = 2 AND v_live = 1 AND n_events >= 5,
+        AND r4->>'outcome' = 'NOT REFUSED' AND issued_state = 'ISSUED' AND n_cards = 2 AND v_live = 1 AND n_events >= 5,
         format('clear %s | e1 %s e2 %s e3 %s e4 %s | r1 %s/%s r2 count %s | collected %s dup %s bad %s | r3 v%s replaced %s old %s/%s prev %s | nophoto %s | issued %s/%s | cards %s live %s events %s',
-               n_clear, e1->>'eligible', e2->'reasons', e3->'reasons', e4->'reasons'->>0, r1->>'card_no', r1->>'state', r2->>'print_count', c1->>'state', dup, bad,
-               r3->>'version', r3->>'replaced', old_state, old_reason, prev_no, r4->>'code', issued_no, issued_state, n_cards, v_live, n_events));
+               n_clear, e1->>'eligible', e2->'warnings', e3->'reasons', e4->'warnings'->>0, r1->>'card_no', r1->>'state', r2->>'print_count', c1->>'state', dup, bad,
+               r3->>'version', r3->>'replaced', old_state, old_reason, prev_no, coalesce(r4->>'code', r4->>'outcome'), issued_no, issued_state, n_cards, v_live, n_events));
 END $$;
 
 -- ── V606. The College's MBBS machinery held to its own programmes; sign-in contacts counted unreachable. An invented MBBS entrant
@@ -29347,6 +29350,114 @@ BEGIN
                notices, pc.entry_mode, pc.entry_level, pc.jamb_reg_no, v_pfee_ref, v_pfee_form, pe, v_wrong_target, ppub,
                pletter.statement->>'degreeType', pletter.statement->>'certificateCourse', pletter.statement->>'campus', pletter.statement->>'durationMonths',
                pcls.programme_type, pcls.source_module, pcls.responsible_office, tcls.programme_type, utme_aud, scr, pscr));
+END $$;
+
+-- ── V698: staff identity cards issued and printed in bulk by the Security Unit. Made-up members of staff: one holding an office
+--          (a lecturer), one on the HR staff register with no portal office (non-teaching, in a unit), one with neither, one with a card
+--          already, one with no staff number and one who has left. The roster lists those in service — the lecturer, the one on the
+--          register and the carded one (not the one with neither, nor the last two) — the register-only one with the
+--          unit and NON_ACADEMIC; a bulk issue gives the first two a card, passes the carded one over (HAS_CARD) and refuses the one
+--          with neither (STAFF_CARD_NO_OFFICE); every card numbered as one issued alone. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); a3 uuid := gen_random_uuid(); a4 uuid := gen_random_uuid();
+        a5 uuid := gen_random_uuid(); a6 uuid := gen_random_uuid(); v_unit text; listed text; reg text; outs text; carded int; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'security', true);
+        PERFORM set_config('moaum.reason', 'check V698', true);
+        SELECT code INTO v_unit FROM ref.unit WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+        INSERT INTO iam.person (id, staff_number, surname, given_names, ended_on, ended_reason) VALUES
+            (who, 'ZZ-ISSUER-698', 'ZZISSUER', 'Card Desk', NULL, NULL),
+            (a1, 'P6980001', 'ZZSTAFFV698', 'Lecturer', NULL, NULL), (a2, 'P6980002', 'ZZSTAFFV698', 'Register', NULL, NULL),
+            (a3, 'P6980003', 'ZZSTAFFV698', 'Neither', NULL, NULL), (a4, 'P6980004', 'ZZSTAFFV698', 'Carded', NULL, NULL),
+            (a5, NULL, 'ZZSTAFFV698', 'Nonumber', NULL, NULL), (a6, 'P6980006', 'ZZSTAFFV698', 'Left', current_date - 30, 'retired (check V698)');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), a1, 'lecturer', 'department', 'MTC', 'check V698', who, current_date),
+               (gen_random_uuid(), a4, 'lecturer', 'department', 'MTC', 'check V698', who, current_date),
+               (gen_random_uuid(), a5, 'lecturer', 'department', 'MTC', 'check V698', who, current_date);
+        INSERT INTO hrm.staff_record (person_id, present_rank, category, home_unit) VALUES (a2, 'SENIOR EXECUTIVE OFFICER', 'NON_ACADEMIC', v_unit),
+               (a6, 'SECURITY OFFICER', 'NON_ACADEMIC', v_unit);
+        PERFORM credentials.issue_staff_card(a4, NULL);
+        listed := (SELECT string_agg(r.given_names || ':' || r.in_office::text || ':' || coalesce(r.category, '-') || ':' || (r.card_no IS NOT NULL)::text, ',' ORDER BY r.given_names)
+                     FROM credentials.staff_card_roster(NULL, NULL, 'ZZSTAFFV698') r);
+        reg := (SELECT r.unit = (SELECT u.name FROM ref.unit u WHERE u.code = v_unit) AND r.rank = 'SENIOR EXECUTIVE OFFICER'
+                  FROM credentials.staff_card_roster(NULL, v_unit, 'ZZSTAFFV698') r WHERE r.person_id = a2)::text;
+        outs := (SELECT string_agg(x.staff_number || '=' || x.outcome || CASE WHEN x.card_no ~ '^MOAUM/SID/[0-9]{2}/[0-9]{5}$' THEN '+no' ELSE '' END, ',' ORDER BY x.staff_number)
+                   FROM credentials.issue_staff_cards(ARRAY[a1, a2, a3, a4], 'check V698') x);
+        carded := (SELECT count(*) FROM credentials.staff_card_roster(NULL, NULL, 'ZZSTAFFV698') r WHERE r.card_no IS NOT NULL);
+        RAISE EXCEPTION 'the V698 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V698 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V698: the staff in service (an office, or the HR staff register) are listed with the card in force and issued cards in bulk — the one with a card passed over, the one with neither refused',
+        coalesce(listed = 'Carded:true:-:true,Lecturer:true:-:false,Register:false:NON_ACADEMIC:false' AND reg = 'true'
+                 AND outs = 'P6980001=ISSUED+no,P6980002=ISSUED+no,P6980003=STAFF_CARD_NO_OFFICE,P6980004=HAS_CARD+no' AND carded = 3, false),
+        format('listed %s | register %s | issued %s | carded %s', listed, reg, outs, carded));
+END $$;
+
+-- ── V699: a student's identity card on the matriculation number; a replacement on its fee. A made-up matriculated student with no
+--          photograph and no school fees paid is eligible and printed a first card with no fee; one with no matriculation number is not.
+--          Before any card the replacement fee is not asked (ID_CARD_FIRST_FREE). With no fee set a replacement is refused, and no
+--          reference is given (ID_CARD_REPLACEMENT_FEE_NOT_SET); the fee set, a reference is given at it and, unpaid, the replacement
+--          still refused; paid, the card is replaced on it (the payment linked, one payment one card) and a second replacement refused
+--          until paid again; the card in force printed again costs nothing. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ug text; v_ses text; st uuid := gen_random_uuid(); nm uuid := gen_random_uuid();
+        e1 jsonb; e2 jsonb; r1 jsonb; r2 jsonb; r3 jsonb; first_free text; unset text; no_ref text; v_ref text; ref_amt numeric; ref_purpose text;
+        unpaid text; again text; linked boolean; state_after jsonb; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'security', true);
+        PERFORM set_config('moaum.reason', 'check V699', true);
+        v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+        SELECT p.code INTO ug FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st, 'MOAUM/ADM/69/969901', 'MOAUM/ZZQ/69/96991', 'CHECKV699', 'Matriculated', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now()),
+               (nm, 'MOAUM/ADM/69/969902', NULL, 'CHECKV699', 'Nomatric', ug, 'UTME', v_ses, 100, 100, 'ADMITTED', NULL);
+        UPDATE finance.fee_setting SET id_card_replacement_fee = NULL WHERE id = 1;
+        e1 := credentials.id_card_eligibility(st);
+        e2 := credentials.id_card_eligibility(nm);
+        BEGIN PERFORM credentials.id_card_replacement_reference(st); first_free := 'GIVEN';
+        EXCEPTION WHEN check_violation THEN first_free := split_part(SQLERRM, ':', 1); END;
+        r1 := credentials.print_identity_card(st, NULL, NULL);
+        BEGIN PERFORM credentials.print_identity_card(st, 'LOST', 'dropped'); unset := 'PRINTED';
+        EXCEPTION WHEN check_violation THEN unset := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM credentials.id_card_replacement_reference(st); no_ref := 'GIVEN';
+        EXCEPTION WHEN check_violation THEN no_ref := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        UPDATE finance.fee_setting SET id_card_replacement_fee = 2000 WHERE id = 1;
+        PERFORM set_config('moaum.actor_office', 'security', true);
+        v_ref := credentials.id_card_replacement_reference(st);
+        SELECT r.amount, r.purpose INTO ref_amt, ref_purpose FROM finance.payment_reference r WHERE r.reference = v_ref;
+        BEGIN PERFORM credentials.print_identity_card(st, 'LOST', 'dropped'); unpaid := 'PRINTED';
+        EXCEPTION WHEN check_violation THEN unpaid := split_part(SQLERRM, ':', 1); END;
+        PERFORM finance.confirm_payment(v_ref, 'BANK_BRANCH', 'check V699');
+        r2 := credentials.print_identity_card(st, 'LOST', 'dropped');
+        linked := (SELECT c.replacement_payment_id = (SELECT r.id FROM finance.payment_reference r WHERE r.reference = v_ref)
+                     FROM credentials.identity_card c WHERE c.card_no = r2->>'card_no');
+        state_after := credentials.id_card_replacement_state(st);
+        BEGIN PERFORM credentials.print_identity_card(st, 'DAMAGED', NULL); again := 'PRINTED';
+        EXCEPTION WHEN check_violation THEN again := split_part(SQLERRM, ':', 1); END;
+        r3 := credentials.print_identity_card(st, NULL, 'printer jam');
+        RAISE EXCEPTION 'the V699 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V699 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V699: a student''s first identity card is printed on the matriculation number alone; a replacement once its fee, set by the Bursary and paid by the student, is paid — one payment, one card; the card in force printed again is free',
+        coalesce((e1->>'eligible')::boolean AND e1->'warnings' ? 'Student photograph is missing: the card prints with a blank frame'
+                 AND NOT (e2->>'eligible')::boolean AND e2->'reasons' ? 'Matriculation number not yet issued'
+                 AND first_free = 'ID_CARD_FIRST_FREE' AND r1->>'state' = 'PRINTED' AND unset = 'ID_CARD_REPLACEMENT_FEE' AND no_ref = 'ID_CARD_REPLACEMENT_FEE_NOT_SET'
+                 AND ref_amt = 2000 AND ref_purpose = 'Identity card replacement fee' AND unpaid = 'ID_CARD_REPLACEMENT_FEE'
+                 AND (r2->>'replaced')::boolean AND r2->>'replacement_payment' = v_ref AND linked
+                 AND NOT (state_after->>'paid')::boolean AND again = 'ID_CARD_REPLACEMENT_FEE'
+                 AND r3->>'card_no' = r2->>'card_no' AND (r3->>'print_count')::int = 2, false),
+        format('e1 %s/%s | e2 %s | first %s | r1 %s | unset %s noref %s | ref %s %s | unpaid %s | r2 %s/%s linked %s | after %s | again %s | r3 %s/%s',
+               e1->>'eligible', e1->'warnings', e2->'reasons', first_free, r1->>'state', unset, no_ref, ref_amt, ref_purpose, unpaid,
+               r2->>'replaced', r2->>'replacement_payment', linked, state_after, again, r3->>'card_no', r3->>'print_count'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

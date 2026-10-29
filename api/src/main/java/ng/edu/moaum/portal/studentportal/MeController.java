@@ -267,6 +267,12 @@ class MeController {
         return portal.card(id(auth));
     }
 
+    /** V699: the reference to pay the identity card replacement fee — a card after the first is printed once it is paid */
+    @PostMapping("/id-card/replacement-fee")
+    Map<String, Object> replacementFee(Authentication auth) {
+        return portal.cardReplacementFee(id(auth));
+    }
+
     @PostMapping("/id-card/lost")
     Map<String, Object> lost(Authentication auth, @RequestBody(required = false) @Valid Lost body) {
         return portal.reportLost(id(auth), body == null ? null : body.reason());

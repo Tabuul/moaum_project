@@ -296,6 +296,20 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     const ok = await send("tf", "PUT", "/transfer-fee", { amount: Number(tf) || 0 }, `Inter-departmental transfer fee set to ${tf}`);
     if (ok) setTfStated(true);
   }
+  // V699: the student identity card replacement fee (Bursary-set; the first card is free, on the matriculation number)
+  const [rf, setRf] = useState("");
+  const [rfStated, setRfStated] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/bff/api/v1/finance/id-card-replacement-fee").then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (alive && j) { setRf(String(j.amount ?? "")); setRfStated(!!j.stated); }
+    }).catch(() => { /* leave blank */ });
+    return () => { alive = false; };
+  }, []);
+  async function saveReplacementFee(): Promise<void> {
+    const ok = await send("rf", "PUT", "/id-card-replacement-fee", { amount: Number(rf) || 0 }, `Identity card replacement fee set to ${rf}`);
+    if (ok) setRfStated(true);
+  }
 
   // the postgraduate application/acceptance fees (admissions.pg_fee), read by the PG apply page
   const [pgf, setPgf] = useState({ applicationFee: "", acceptanceFee: "", checkingFee: "" });
@@ -878,6 +892,20 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="tf-amt" label="Transfer processing fee"><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>
             <Btn kind="primary" disabled={!may || busy !== null || !tf.trim()} onClick={() => void saveTransferFee()}>{busy === "tf" ? "Saving…" : "Set the transfer fee"}</Btn>
             <span className="sub2">A student who transfers will pay {naira(Number(tf) || 0)}.</span>
+          </div>
+        </PBody>
+      </Panel>
+      <Panel title="Student identity card · replacement fee" right={rfStated ? "Set by the Bursary" : "Not set yet — required before any replacement card"}>
+        <PBody>
+          <div className="sub2 mb-3">
+            A student&rsquo;s first identity card is issued on the matriculation number, with no fee. A card after it — lost, damaged or
+            otherwise replaced — is printed once the student pays this fee on their portal. There is no default: until it is set, no
+            replacement card is printed.
+          </div>
+          <div className="row row--end">
+            <Field id="rf-amt" label="Replacement card fee"><input id="rf-amt" className="ctl tnum" inputMode="numeric" value={rf} onChange={(e) => setRf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="2000" disabled={!may} /></Field>
+            <Btn kind="primary" disabled={!may || busy !== null || !rf.trim() || !(Number(rf) > 0)} onClick={() => void saveReplacementFee()}>{busy === "rf" ? "Saving…" : "Set the replacement fee"}</Btn>
+            <span className="sub2">A student replacing their card will pay {naira(Number(rf) || 0)}.</span>
           </div>
         </PBody>
       </Panel>

@@ -1260,6 +1260,17 @@ public class StudentPortalService {
         out.put("cards", repo.cards(id));
         Boolean cleared = repo.schemeInForce() ? repo.clears(id, session(), "ID_CARD") : null;
         out.put("clearsIdCard", cleared);
+        // V699: the first card is issued on the matriculation number; a card after it waits on the replacement fee — whether a new card
+        // would be one, the fee, whether it is paid, and the open reference to pay it
+        out.put("replacement", repo.cardReplacement(id));
+        return out;
+    }
+
+    @Transactional
+    public Map<String, Object> cardReplacementFee(UUID id) {
+        String reference = repo.cardReplacementReference(id);
+        Map<String, Object> out = new LinkedHashMap<>(card(id));
+        out.put("reference", reference);
         return out;
     }
 

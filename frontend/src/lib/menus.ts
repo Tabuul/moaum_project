@@ -1046,6 +1046,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Services",
         "items": [
           { "id": "t/idcards", "icon": "user", "label": "Student ID Card" },
+          { "id": "t/staffidcards", "icon": "print", "label": "Staff ID Cards" },
           { "id": "t/idlost", "icon": "alert", "label": "Lost & Replacement" },
           { "id": "t/idcardreport", "icon": "chart", "label": "ID Card Report" }
         ]

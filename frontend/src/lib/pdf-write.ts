@@ -296,7 +296,11 @@ export function jpegSize(data: Uint8Array): { width: number; height: number } | 
 }
 
 /** the document: pages in order, as bytes */
-export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
+/** V698: a page's drawing compressed (zlib, /FlateDecode) when the caller supplies the compressor — a server route printing many
+ *  pages (every staff card) passes node:zlib's; the writer itself imports nothing, so the browser's exports draw as before */
+export interface PdfOptions { deflate?: (data: Uint8Array) => Uint8Array }
+
+export function pdf(pages: Page[], title = "MOAUM Portal", options: PdfOptions = {}): Uint8Array {
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [];
   const offsets: number[] = [];
@@ -317,11 +321,19 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   /* 1 catalog · 2 pages · 3 F1 · 4 F2 · 5 F3 · 6 F4 · 7 F5 · then per page: page, content, images */
   let next = 8;
   const pageIds: number[] = [];
-  const built: { id: number; content: number; images: { id: number; name: string; img: Image }[]; page: Page }[] = [];
+  const built: { id: number; content: number; images: { id: number; name: string; img: Image; first: boolean }[]; page: Page }[] = [];
+  // V698: an image drawn on many pages (the crest, a signature on a print of every staff card) is written once and shared
+  const shared = new Map<Uint8Array, number>();
   for (const p of pages) {
     const id = next++;
     const content = next++;
-    const images = p.images.map((im) => ({ id: next++, name: im.name, img: im.img }));
+    const images = p.images.map((im) => {
+      const seen = shared.get(im.img.data);
+      if (seen !== undefined) return { id: seen, name: im.name, img: im.img, first: false };
+      const imgId = next++;
+      shared.set(im.img.data, imgId);
+      return { id: imgId, name: im.name, img: im.img, first: true };
+    });
     pageIds.push(id);
     built.push({ id, content, images, page: p });
   }
@@ -335,9 +347,10 @@ export function pdf(pages: Page[], title = "MOAUM Portal"): Uint8Array {
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
     obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> /GSM << /BM /Multiply >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
-    const stream = enc.encode(b.page.ops.join("\n"));
-    obj(b.content, [enc.encode(`<< /Length ${stream.length} >>\nstream\n`), stream, enc.encode("\nendstream")]);
-    for (const im of b.images) {
+    const raw = enc.encode(b.page.ops.join("\n"));
+    const stream = options.deflate ? options.deflate(raw) : raw;
+    obj(b.content, [enc.encode(`<< /Length ${stream.length}${options.deflate ? " /Filter /FlateDecode" : ""} >>\nstream\n`), stream, enc.encode("\nendstream")]);
+    for (const im of b.images.filter((x) => x.first)) {
       obj(im.id, [enc.encode(`<< /Type /XObject /Subtype /Image /Width ${im.img.width} /Height ${im.img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.img.data.length} >>\nstream\n`), im.img.data, enc.encode("\nendstream")]);
     }
   }

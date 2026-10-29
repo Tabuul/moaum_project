@@ -1,4 +1,4 @@
-import { A4, Page, pdf, type Image } from "../pdf-write.ts";
+import { A4, Page, pdf, type Image, type PdfOptions } from "../pdf-write.ts";
 import { crestImage } from "../pdf-crest.ts";
 import { addressLine, contactLine, formatDocDateTime, nameUpper, type Institution } from "./institution.ts";
 import { currentInstitution, currentLogo } from "./institution-cache.ts";
@@ -164,7 +164,8 @@ function watermarkPage(p: Page, meta: DocumentMeta): void {
  * The pages keep their own headers; the footer gives them the University, the generation line and the
  * page numbers the profile asks for.
  */
-export function finishPdf(pages: Page[], title: string, profileId: DocumentProfileId | string = "FORM", meta: Partial<DocumentMeta> = {}): Uint8Array {
+export function finishPdf(pages: Page[], title: string, profileId: DocumentProfileId | string = "FORM", meta: Partial<DocumentMeta> = {},
+                          options: PdfOptions = {}): Uint8Array {
   const profile = profileOf(profileId);
   const inst = currentInstitution();
   const m: DocumentMeta = { title, ...meta };
@@ -176,7 +177,7 @@ export function finishPdf(pages: Page[], title: string, profileId: DocumentProfi
       watermarkPage(p, m);
     });
   }
-  return pdf(pages, clean(title) || documentTitle(profile, title));
+  return pdf(pages, clean(title) || documentTitle(profile, title), options);
 }
 
 export interface TableOptions {

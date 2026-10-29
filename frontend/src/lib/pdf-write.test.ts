@@ -41,3 +41,20 @@ test("a line is measured by Helvetica's own widths, so a heading in capitals is 
   const x = Number(/ ([\d.]+) 700\.00 Td \(APPLICATION SUMMARY\)/.exec(p.ops.join(" "))?.[1]);
   assert.equal(x, Number((297.5 - 146.664 / 2).toFixed(2)));
 });
+
+test("V698: an image drawn on many pages is written once and shared; a page's drawing is compressed when the caller asks", async () => {
+  const { deflateSync, inflateSync } = await import("node:zlib");
+  const img = { width: 2, height: 2, data: new Uint8Array([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]) };
+  const pages = [1, 2, 3].map((n) => new Page().text(72, 780, `Card ${n}`).jpeg(10, 10, 20, 20, img).jpeg(40, 10, 20, 20, img));
+  const plain = Buffer.from(pdf(pages, "Cards")).toString("latin1");
+  assert.equal((plain.match(/\/Subtype \/Image/g) ?? []).length, 1);
+  assert.equal((plain.match(/\/Type \/Page /g) ?? []).length, 3);
+  assert.ok(!plain.includes("/FlateDecode"));
+  const packed = Buffer.from(pdf(pages, "Cards", { deflate: (b) => deflateSync(b) }));
+  const text = packed.toString("latin1");
+  assert.equal((text.match(/\/FlateDecode/g) ?? []).length, 3);
+  // the first page's drawing comes back as drawn
+  const at = text.indexOf("/FlateDecode >>\nstream\n") + "/FlateDecode >>\nstream\n".length;
+  const len = Number(/\/Length (\d+) \/Filter \/FlateDecode/.exec(text)![1]);
+  assert.match(inflateSync(packed.subarray(at, at + len)).toString("latin1"), /Card 1/);
+});

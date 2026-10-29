@@ -369,6 +369,7 @@ export const ROUTES: Record<string, string> = {
   "t/publish": "/results/publish",
   "t/idcards": "/credentials/idcards",
   "t/idcardreport": "/credentials/idcards/report",
+  "t/staffidcards": "/credentials/idcards/staff",   // V698
   "t/queries": "/results/queries",
   /* the applicant's journey (proto/part13.html) */
   "a/dashboard": "/applicant",

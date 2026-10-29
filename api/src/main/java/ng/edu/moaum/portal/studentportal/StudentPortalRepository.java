@@ -1155,6 +1155,16 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT finance.transcript_fee(:s)").param("s", session).query(BigDecimal.class).single();
     }
 
+    /** V699: whether a new identity card would be a replacement, its fee, whether it is paid, and the open reference to pay it */
+    Map<String, Object> cardReplacement(UUID student) {
+        String text = jdbc.sql("SELECT credentials.id_card_replacement_state(:s)::text").param("s", student).query(String.class).optional().orElse(null);
+        return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    String cardReplacementReference(UUID student) {
+        return jdbc.sql("SELECT credentials.id_card_replacement_reference(:s)").param("s", student).query(String.class).single();
+    }
+
     String purposeReference(UUID student, String session, BigDecimal amount, String purpose) {
         return jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount).param("p", purpose).query(String.class).single();
     }

@@ -288,7 +288,11 @@ export interface AttendanceRow { course_code: string; title: string; attended: n
 export interface Timetable { session: string; semester: number; slots: Slot[]; attendance: AttendanceRow[];
   /** V380: a CCE student's attendance is the register's; attendanceShown false when the Centre's policy keeps it off the portal */
   register?: boolean; attendanceShown?: boolean }
-export interface Card { matricNo: string | null; cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null }[]; clearsIdCard: boolean | null }
+export interface Card { matricNo: string | null; cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_at: string | null; ended_reason: string | null }[]; clearsIdCard: boolean | null;
+  /** V699: a card after the first is a replacement, printed once its fee is paid — whether a new card would be one, the fee, whether it
+   *  is paid, and the open reference to pay it */
+  replacement?: { needed: boolean; fee: number | null; paid: boolean; payment: string | null; openReference: string | null; openAmount: number | null } | null;
+  reference?: string }
 export interface TranscriptRow { id: string; ref: string; destination: string; destination_name: string | null; mode: string; copies: number; requested_at: string; paid_at: string | null; stage: string; produced_at: string | null; released_at: string | null; open_reference: string | null }
 export interface Transcripts { fee: number; requests: TranscriptRow[]; ref?: string; reference?: string }
 

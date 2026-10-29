@@ -122,15 +122,22 @@ class IdentityCardDeskIT {
         paid(owing, session, 50000);   // the earlier session unpaid
         paid(noPhoto, before, 50000);
         paid(noPhoto, session, 50000);
+        // V699: the replacement fee as this test finds it, put back at the end; unset here, so the first replacement is refused for it
+        java.math.BigDecimal feeBefore = jdbc.sql("SELECT id_card_replacement_fee FROM finance.fee_setting WHERE id = 1").query(java.math.BigDecimal.class).optional().orElse(null);
+        it.db(() -> jdbc.sql("UPDATE finance.fee_setting SET id_card_replacement_fee = NULL WHERE id = 1").update());
         try {
             // TEST 1, 2, 16: eligible on the fee record, the matriculation number and the photograph — no clearance has started
             Map<String, Object> e = eligibility(eligible);
             assertThat(e).as(String.valueOf(e)).containsEntry("eligible", true);
             assertThat(String.valueOf(e).toLowerCase()).doesNotContain("clearance");
             assertThat(jdbc.sql("SELECT count(*) FROM clearance.process WHERE student_id = :s").param("s", eligible).query(Long.class).single()).isZero();
-            // TEST 3, 4, 5: the reasons, in words
-            assertThat((List<String>) eligibility(owing).get("reasons")).anySatisfy(r -> assertThat(r).contains("school-fee condition").contains(before));
-            assertThat((List<String>) eligibility(noPhoto).get("reasons")).contains("Student photograph is missing");
+            // TEST 3, 4, 5 — V699: the matriculation number alone decides; the fees and the photograph are said, never held against the card
+            Map<String, Object> owes = eligibility(owing);
+            assertThat(owes).containsEntry("eligible", true);
+            assertThat((List<String>) owes.get("warnings")).anySatisfy(r -> assertThat(r).contains("School fees").contains(before));
+            Map<String, Object> nophoto = eligibility(noPhoto);
+            assertThat(nophoto).containsEntry("eligible", true);
+            assertThat((List<String>) nophoto.get("warnings")).contains("Student photograph is missing: the card prints with a blank frame");
             assertThat((List<String>) eligibility(noMatric).get("reasons")).contains("Matriculation number not yet issued");
 
             // TEST 8, 9, 10: the search by matriculation number, JAMB number and name
@@ -145,12 +152,12 @@ class IdentityCardDeskIT {
 
             // TEST 11: the Library reads; it prints nothing
             assertThat(it.call(library, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + eligible + "/print", Map.of()).getStatusCode().value()).isEqualTo(403);
-            // TEST 3, 4: printing is blocked with the reason
-            ResponseEntity<Map> blocked = it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + noPhoto + "/print", Map.of());
-            assertThat(blocked.getStatusCode().value()).isEqualTo(422);
-            assertThat(blocked.getBody()).containsEntry("code", "ID_CARD_NOT_ELIGIBLE");
-            assertThat(String.valueOf(blocked.getBody().get("detail"))).contains("photograph");
-            assertThat(it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + owing + "/print", Map.of()).getBody()).containsEntry("code", "ID_CARD_NOT_ELIGIBLE");
+            // TEST 3, 4 — V699: the first card is printed on the matriculation number, the photograph missing or the fees owed
+            ResponseEntity<Map> first = it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + noPhoto + "/print", Map.of());
+            assertThat(first.getStatusCode().value()).as(String.valueOf(first.getBody())).isEqualTo(200);
+            assertThat(first.getBody()).containsEntry("state", "PRINTED");
+            assertThat(it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + owing + "/print", Map.of()).getBody()).containsEntry("state", "PRINTED");
+            assertThat(it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + noMatric + "/print", Map.of()).getBody()).containsEntry("code", "ID_CARD_NOT_ELIGIBLE");
 
             // TEST 13: two prints at once make one card
             ExecutorService pool = Executors.newFixedThreadPool(2);
@@ -185,6 +192,22 @@ class IdentityCardDeskIT {
 
             // TEST 7, 12, 14: a replacement needs a reason from the list; the old card stays in the history, linked; the Library cannot end a card
             assertThat(it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + eligible + "/print", Map.of("replaceReason", "WHIM")).getBody()).containsEntry("code", "ID_CARD_REASON");
+            // V699: a replacement is printed once its fee, set by the Bursary, is paid by the student on their portal — one payment, one card
+            String studentToken = TestTokens.token(eligible, List.of("student"));
+            assertThat(it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + eligible + "/print", Map.of("replaceReason", "DAMAGED", "note", "cracked in two")).getBody())
+                    .containsEntry("code", "ID_CARD_REPLACEMENT_FEE");
+            assertThat(it.call(library, HttpMethod.PUT, "/api/v1/finance/id-card-replacement-fee", Map.of("amount", 2500)).getStatusCode().value()).isEqualTo(403);
+            assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/finance/id-card-replacement-fee", Map.of("amount", 2500)).getStatusCode().value()).isEqualTo(200);
+            Map<String, Object> mine = it.get(studentToken, "/api/v1/me/id-card").getBody();
+            assertThat((Map<String, Object>) mine.get("replacement")).containsEntry("needed", true).containsEntry("paid", false);
+            ResponseEntity<Map> owed = it.call(studentToken, HttpMethod.POST, "/api/v1/me/id-card/replacement-fee", Map.of());
+            assertThat(owed.getStatusCode().value()).as(String.valueOf(owed.getBody())).isEqualTo(200);
+            String feeRef = String.valueOf(owed.getBody().get("reference"));
+            assertThat(jdbc.sql("SELECT amount FROM finance.payment_reference WHERE reference = :r").param("r", feeRef).query(java.math.BigDecimal.class).single()).isEqualByComparingTo("2500");
+            // asked again, the same open reference
+            assertThat(it.call(studentToken, HttpMethod.POST, "/api/v1/me/id-card/replacement-fee", Map.of()).getBody()).containsEntry("reference", feeRef);
+            it.db(() -> jdbc.sql("SELECT finance.confirm_payment(:r, 'BANK_BRANCH', 'identity card replacement test')").param("r", feeRef).query().listOfRows());
+            assertThat((Map<String, Object>) eligibility(eligible).get("replacement")).containsEntry("paid", true).containsEntry("payment", feeRef);
             ResponseEntity<Map> replaced = it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + eligible + "/print", Map.of("replaceReason", "DAMAGED", "note", "cracked in two"));
             assertThat(replaced.getStatusCode().value()).as(String.valueOf(replaced.getBody())).isEqualTo(200);
             assertThat(replaced.getBody()).containsEntry("replaced", true).containsEntry("version", 2).containsEntry("state", "PRINTED").containsEntry("previous_card_no", cardNo);
@@ -193,6 +216,10 @@ class IdentityCardDeskIT {
             assertThat(jdbc.sql("SELECT state || '/' || ended_reason FROM credentials.identity_card WHERE card_no = :n").param("n", cardNo).query(String.class).single()).startsWith("DAMAGED/damaged");
             assertThat(jdbc.sql("SELECT prev.card_no FROM credentials.identity_card c JOIN credentials.identity_card prev ON prev.id = c.previous_card_id WHERE c.card_no = :n").param("n", newNo).query(String.class).single()).isEqualTo(cardNo);
             UUID newId = jdbc.sql("SELECT id FROM credentials.identity_card WHERE card_no = :n").param("n", newNo).query(UUID.class).single();
+            // the payment is spent on this card: another replacement waits on another payment
+            assertThat(replaced.getBody()).containsEntry("replacement_payment", feeRef);
+            assertThat(it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + eligible + "/print", Map.of("replaceReason", "LOST", "note", "lost again")).getBody())
+                    .containsEntry("code", "ID_CARD_REPLACEMENT_FEE");
             assertThat(it.call(library, HttpMethod.POST, "/api/v1/credentials/identity-cards/cards/" + newId + "/end", Map.of("state", "LOST", "reason", "library tries")).getStatusCode().value()).isEqualTo(403);
             List<Map<String, Object>> history = (List<Map<String, Object>>) it.get(security, "/api/v1/credentials/identity-cards/students/" + eligible + "/history").getBody().get("cards");
             assertThat(history).hasSize(2);
@@ -208,12 +235,14 @@ class IdentityCardDeskIT {
             assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + session + "/schedule", Map.of("item", "Laboratory fee", "amount", 20000, "level", 200)).getStatusCode().value()).isEqualTo(200);
             Map<String, Object> after = eligibility(eligible);
             assertThat(after.get("eligible")).as(String.valueOf(after)).isIn(false, true);   // the scheme may release at the first instalment, paid: the reading is finance's
-            // TEST 15 (graduation): the record graduated keeps its cards and gets no new one
+            // TEST 15 (graduation): the record graduated keeps its cards; V699 says it to the desk, the matriculation number decides
             it.db(() -> { jdbc.sql("SELECT people.change_status(:s, 'GRADUATED', 'SEN/IT/605', current_date, 'identity card test')").param("s", eligible).query().listOfRows(); return 0; });
-            assertThat((List<String>) eligibility(eligible).get("reasons")).anySatisfy(r -> assertThat(r).contains("graduated"));
+            assertThat((List<String>) eligibility(eligible).get("warnings")).anySatisfy(r -> assertThat(r).contains("graduated"));
             assertThat(jdbc.sql("SELECT count(*) FROM credentials.identity_card WHERE student_id = :s").param("s", eligible).query(Long.class).single()).isEqualTo(2L);
         } finally {
             it.db(() -> {
+                // V699: the replacement fee put back as this test found it
+                jdbc.sql("UPDATE finance.fee_setting SET id_card_replacement_fee = CAST(:f AS numeric) WHERE id = 1").param("f", feeBefore, java.sql.Types.NUMERIC).update();
                 jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :s").param("s", session).update();
                 jdbc.sql("DELETE FROM policy.clearance_rule WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = :i)").param("i", INSTRUMENT).update();
                 jdbc.sql("DELETE FROM policy.clearance_scheme WHERE version_id IN (SELECT id FROM policy.version WHERE instrument = :i)").param("i", INSTRUMENT).update();

@@ -971,6 +971,31 @@ class FinanceController {
         return Map.of("amount", body.amount(), "stated", true);
     }
 
+    /* ── V699: the student identity card replacement fee (Bursary-set; the first card is issued on the matriculation number) ── */
+
+    @GetMapping("/id-card-replacement-fee")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> idCardReplacementFee() {
+        BigDecimal amount = jdbc.sql("SELECT credentials.id_card_replacement_fee()").query(BigDecimal.class).optional().orElse(null);
+        java.util.Map<String, Object> out = new java.util.HashMap<>();
+        out.put("amount", amount);   // null until the Bursary sets it (no default)
+        out.put("stated", amount != null);
+        return out;
+    }
+
+    @PutMapping("/id-card-replacement-fee")
+    @PreAuthorize(BURSARY)
+    @Transactional
+    Map<String, Object> setIdCardReplacementFee(@Valid @RequestBody TransferFee body) {
+        if (body.amount().signum() <= 0) {
+            throw new DomainRuleViolation("ID_CARD_REPLACEMENT_FEE_AMOUNT", "The replacement fee is an amount above nothing.",
+                    new DomainRuleViolation.Remedy("Enter the fee in naira.", "Bursary"));
+        }
+        jdbc.sql("UPDATE finance.fee_setting SET id_card_replacement_fee = :a WHERE id = 1").param("a", body.amount()).update();
+        return Map.of("amount", body.amount(), "stated", true);
+    }
+
     /* ── V571: who is charged the spillover fee lines — a level above the programme's final level (V088), or the cohort engine's
           spillover (SP1, SP2 … and the limit reached); the Bursary's choice, with a preview of who would move and what they would owe ── */
 

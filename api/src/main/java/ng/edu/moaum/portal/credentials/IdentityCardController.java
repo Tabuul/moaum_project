@@ -486,21 +486,151 @@ class IdentityCardController {
         Map<String, Object> m = new java.util.LinkedHashMap<>(row);
         m.put("verify_path", staffVerifyPath(String.valueOf(row.get("card_no"))));
         // what the card shows, and nothing more of the HR record: the desk prints from the register
-        m.put("face", jdbc.sql("""
-                SELECT pe.staff_number, pe.surname, pe.given_names, sr.present_rank AS rank, dp.name AS department, f.name AS faculty, e.category,
-                       sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo,
-                       credentials.staff_blood_group(pe.id) AS blood_group
-                  FROM iam.person pe LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
-                  LEFT JOIN hrm.employment e ON e.person_id = pe.id AND e.status <> 'ENDED'
-                  LEFT JOIN ref.department dp ON dp.code = sr.home_department LEFT JOIN ref.faculty f ON f.code = dp.faculty_code
-                 WHERE pe.id = :p
-                """).param("p", personId).query().listOfRows().stream().findFirst().orElse(Map.of()));
+        m.put("face", jdbc.sql(STAFF_FACE + " WHERE pe.id = :p").param("p", personId).query().listOfRows().stream().findFirst().orElse(Map.of()));
         m.put("offices", jdbc.sql("""
                 SELECT a.office_code, o.label AS office FROM iam.office_assignment a JOIN ref.office o ON o.code = a.office_code
                  WHERE a.person_id = :p AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
                  ORDER BY a.valid_from DESC
                 """).param("p", personId).query().listOfRows());
         return m;
+    }
+
+    /** what a staff card prints of the person — the department, or (V698) the unit and category the HR staff register gives the
+     *  non-teaching staff, who hold no office on the portal */
+    private static final String STAFF_FACE = """
+            SELECT pe.id AS person_id, pe.staff_number, pe.surname, pe.given_names, sr.present_rank AS rank,
+                   coalesce(dp.name, u.name, sr.unit_as_given) AS department, f.name AS faculty, coalesce(e.category, sr.category) AS category,
+                   sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo,
+                   credentials.staff_blood_group(pe.id) AS blood_group
+              FROM iam.person pe LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
+              LEFT JOIN LATERAL (SELECT x.category, x.appointment_date FROM hrm.employment x WHERE x.person_id = pe.id AND x.status <> 'ENDED'
+                                  ORDER BY x.appointment_date DESC NULLS LAST LIMIT 1) e ON true
+              LEFT JOIN ref.department dp ON dp.code = sr.home_department LEFT JOIN ref.unit u ON u.code = sr.home_unit
+              LEFT JOIN ref.faculty f ON f.code = coalesce(dp.faculty_code, sr.home_faculty)
+            """;
+
+    /* ── V698 · the Security Unit issues and prints the staff cards in bulk ── */
+
+    /** the staff in the University's service (an office today, or the HR staff register), with what the card prints and the card in
+     *  force — narrowed by faculty, department or unit, a name, staff number or card number, and whether a card is in force; with the
+     *  counts of the whole narrowing and the faculties and units to narrow by */
+    @GetMapping("/staff/roster")
+    @PreAuthorize(STAFF_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> staffRoster(@RequestParam(required = false) String faculty, @RequestParam(required = false) String unit,
+                                    @RequestParam(required = false) String q, @RequestParam(required = false) String card,
+                                    @RequestParam(required = false) Boolean summary) {
+        String c = blank(card) == null ? null : card.trim().toUpperCase();
+        if (c != null && !List.of("WITH", "WITHOUT").contains(c)) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARDS_FILTER", "The card filter is WITH or WITHOUT.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Choose the filter from the list on the page.", "You"));
+        }
+        List<Map<String, Object>> all = jdbc.sql("SELECT * FROM credentials.staff_card_roster(:f, :u, :q)")
+                .param("f", blank(faculty), Types.VARCHAR).param("u", blank(unit), Types.VARCHAR).param("q", blank(q), Types.VARCHAR)
+                .query().listOfRows();
+        long with = all.stream().filter(r -> r.get("card_id") != null).count();
+        Map<String, Object> counts = new java.util.LinkedHashMap<>();
+        counts.put("staff", all.size());
+        counts.put("withCard", with);
+        counts.put("withoutCard", all.size() - with);
+        counts.put("withoutPhoto", all.stream().filter(r -> !Boolean.TRUE.equals(r.get("has_photo"))).count());
+        counts.put("registerOnly", all.stream().filter(r -> !Boolean.TRUE.equals(r.get("in_office"))).count());
+        List<Map<String, Object>> rows = all.stream()
+                .filter(r -> c == null || ("WITH".equals(c) == (r.get("card_id") != null)))
+                .map(r -> {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+                    if (r.get("card_no") != null) m.put("verify_path", staffVerifyPath(String.valueOf(r.get("card_no"))));
+                    return m;
+                }).toList();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("counts", counts);
+        // the Chief Security Officer's dashboard reads the counts alone
+        if (Boolean.TRUE.equals(summary)) return out;
+        out.put("rows", rows);
+        // what the roster can be narrowed by: every faculty and unit a member of staff in service is in
+        out.put("faculties", jdbc.sql("""
+                SELECT DISTINCT r.faculty_code AS code, r.faculty AS name FROM credentials.staff_card_roster(NULL, NULL, NULL) r
+                 WHERE r.faculty_code IS NOT NULL AND r.faculty IS NOT NULL ORDER BY r.faculty
+                """).query().listOfRows());
+        out.put("units", jdbc.sql("""
+                SELECT DISTINCT r.unit_code AS code, r.unit AS name, r.faculty_code FROM credentials.staff_card_roster(NULL, NULL, NULL) r
+                 WHERE r.unit_code IS NOT NULL AND r.unit IS NOT NULL ORDER BY r.unit
+                """).query().listOfRows());
+        return out;
+    }
+
+    /** a card for every member of staff in service the narrowing names who has none in force (or for the persons named) */
+    public record StaffIssueAll(@Size(max = 20) String faculty, @Size(max = 40) String unit, @Size(max = 80) String q,
+                                @Size(max = 5000) List<UUID> personIds, @Size(max = 200) String reason) {
+    }
+
+    @PostMapping("/staff/issue-all")
+    @PreAuthorize(ISSUERS)
+    @Transactional
+    Map<String, Object> issueStaffAll(@Valid @RequestBody StaffIssueAll body) {
+        List<UUID> waiting = jdbc.sql("SELECT person_id FROM credentials.staff_card_roster(:f, :u, :q) WHERE card_id IS NULL")
+                .param("f", blank(body.faculty()), Types.VARCHAR).param("u", blank(body.unit()), Types.VARCHAR).param("q", blank(body.q()), Types.VARCHAR)
+                .query(UUID.class).list();
+        if (body.personIds() != null && !body.personIds().isEmpty()) {
+            java.util.Set<UUID> named = new java.util.HashSet<>(body.personIds());
+            waiting = waiting.stream().filter(named::contains).toList();
+        }
+        if (waiting.isEmpty()) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARDS_NONE_WAITING", "Every member of staff named already holds a card in force.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Print the cards in force; a card lost or damaged is replaced one at a time.", "Security Unit"));
+        }
+        List<Map<String, Object>> results = jdbc.sql("SELECT * FROM credentials.issue_staff_cards(CAST(:p AS uuid[]), :r)")
+                .param("p", waiting.toArray(new UUID[0])).param("r", blank(body.reason()), Types.VARCHAR).query().listOfRows();
+        Map<String, Long> tally = new java.util.TreeMap<>();
+        for (Map<String, Object> r : results) tally.merge(String.valueOf(r.get("outcome")), 1L, Long::sum);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("issued", tally.getOrDefault("ISSUED", 0L));
+        out.put("tally", tally);
+        out.put("refused", results.stream().filter(r -> !List.of("ISSUED", "HAS_CARD").contains(String.valueOf(r.get("outcome")))).toList());
+        return out;
+    }
+
+    /** every card in force the narrowing names (or the persons named), with what each prints — the Security Unit's print of them all */
+    @GetMapping("/staff/print")
+    @PreAuthorize(ISSUERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> staffPrint(@RequestParam(required = false) String faculty, @RequestParam(required = false) String unit,
+                                   @RequestParam(required = false) String q, @RequestParam(required = false) List<UUID> ids) {
+        List<UUID> persons = jdbc.sql("SELECT person_id FROM credentials.staff_card_roster(:f, :u, :q) WHERE card_id IS NOT NULL")
+                .param("f", blank(faculty), Types.VARCHAR).param("u", blank(unit), Types.VARCHAR).param("q", blank(q), Types.VARCHAR)
+                .query(UUID.class).list();
+        if (ids != null && !ids.isEmpty()) {
+            java.util.Set<UUID> named = new java.util.HashSet<>(ids);
+            persons = persons.stream().filter(named::contains).toList();
+        }
+        if (persons.size() > 5000) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARDS_TOO_MANY", persons.size() + " cards are more than the 5,000 one print takes.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Print a faculty or a unit at a time.", "You"));
+        }
+        UUID[] arr = persons.toArray(new UUID[0]);
+        Map<Object, Map<String, Object>> faces = new java.util.HashMap<>();
+        for (Map<String, Object> f : jdbc.sql(STAFF_FACE + " WHERE pe.id = ANY (CAST(:p AS uuid[]))").param("p", arr).query().listOfRows()) {
+            faces.put(f.get("person_id"), f);
+        }
+        Map<Object, List<Map<String, Object>>> offices = new java.util.HashMap<>();
+        for (Map<String, Object> o : jdbc.sql("""
+                SELECT a.person_id, a.office_code, o.label AS office FROM iam.office_assignment a JOIN ref.office o ON o.code = a.office_code
+                 WHERE a.person_id = ANY (CAST(:p AS uuid[])) AND a.valid_from <= current_date AND (a.valid_to IS NULL OR a.valid_to >= current_date)
+                 ORDER BY a.person_id, a.valid_from DESC
+                """).param("p", arr).query().listOfRows()) {
+            offices.computeIfAbsent(o.get("person_id"), k -> new java.util.ArrayList<>()).add(Map.of("office_code", o.get("office_code"), "office", o.get("office")));
+        }
+        List<Map<String, Object>> cards = jdbc.sql(STAFF_CARD_ROWS + """
+                 WHERE c.state = 'ISSUED' AND c.person_id = ANY (CAST(:p AS uuid[]))
+                 ORDER BY p.surname, p.given_names, p.staff_number
+                """).param("p", arr).query().listOfRows().stream().map(r -> {
+            Map<String, Object> m = new java.util.LinkedHashMap<>(r);
+            m.put("verify_path", staffVerifyPath(String.valueOf(r.get("card_no"))));
+            m.put("face", faces.getOrDefault(r.get("person_id"), Map.of()));
+            m.put("offices", offices.getOrDefault(r.get("person_id"), List.of()));
+            return m;
+        }).toList();
+        return Map.of("cards", cards);
     }
 
     /** the photograph the card carries, for the desk's print — only of a member of staff with a card in force */
