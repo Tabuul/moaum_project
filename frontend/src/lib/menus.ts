@@ -1415,6 +1415,10 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
+          { "id": "t/resultviewer", "icon": "chart", "label": "Result Viewer" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/resultcorrections", "icon": "check", "label": "Result Corrections" },
+          { "id": "t/resultuploads", "icon": "upload", "label": "Result Upload History" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
@@ -1658,6 +1662,17 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/courseregreport", "icon": "doc", "label": "Course Registration Report" },
           { "id": "t/dbquery", "icon": "search", "label": "Database Query & Reports" },
           { "id": "t/dataquality", "icon": "shield", "label": "Data Quality" }
+        ]
+      },
+      {
+        "name": "Results Monitoring",
+        "items": [
+          { "id": "t/resultviewer", "icon": "chart", "label": "Result Viewer" },
+          { "id": "t/broadsheet", "icon": "chart", "label": "Result Broadsheet" },
+          { "id": "t/resultcorrections", "icon": "check", "label": "Result Corrections" },
+          { "id": "t/resultuploads", "icon": "upload", "label": "Result Upload History" },
+          { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
+          { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" }
         ]
       },
       {

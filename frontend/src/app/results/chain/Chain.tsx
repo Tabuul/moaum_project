@@ -13,6 +13,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Gate, Gates, Modal, Field, Step, TwoCol } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Amendments } from "./Amendments";
+import { CorrectionRequests, type RaisePrefill } from "@/components/results/CorrectionRequests";
 
 const DESK_OF: Record<string, string> = {
   ENTRY: "lecturer", VERIFICATION: "exams", DEPT_BOARD: "hod", FACULTY_SCRUTINY: "facultyexams",
@@ -31,6 +32,8 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState<"return" | "minute" | "behalf" | null>(null);
   const [text, setText] = useState("");
+  // V700: a correction the Director of ICT asked for, taken up as an amendment — its marks and reason fill the amendment's form
+  const [prefill, setPrefill] = useState<RaisePrefill | null>(null);
   // V318: a submission from entry by someone who does not teach the course is on the lecturer's behalf and says why
   const onBehalf = s.stage === "ENTRY" && !detail.youTeach && (actingOffice === "exams" || actingOffice === "academic");
   const uploads = detail.uploads ?? [];
@@ -166,8 +169,11 @@ export function Chain({ detail, actingOffice }: { detail: SheetDetail; actingOff
         />
       </Panel>
 
+      {/* V700: the corrections the Director of ICT asked of this sheet's desk of entry */}
+      <CorrectionRequests sheetId={s.id} stage={s.stage} actingOffice={actingOffice} onRaise={setPrefill} />
+
       {/* V358: a published mark is corrected only by an amendment through the chain */}
-      <Amendments sheetId={s.id} courseCode={s.courseCode} caMax={typeof s.caMax === "number" ? s.caMax : 40} published={published} actingOffice={actingOffice} marks={detail.marks} />
+      <Amendments prefill={prefill} sheetId={s.id} courseCode={s.courseCode} caMax={typeof s.caMax === "number" ? s.caMax : 40} published={published} actingOffice={actingOffice} marks={detail.marks} />
 
       <Note kind={published ? "ok" : "bad"} title={published ? "Students see their mark, grade and Senate approval date" : "Students see nothing yet"}>
         {published ? null : `Their result page shows “awaiting Senate approval”; the sheet is at stage ${s.spineStage} of 6.`}

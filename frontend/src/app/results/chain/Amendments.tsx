@@ -57,8 +57,10 @@ function stagePil(stage: string) {
   return <Pil kind="info">{`At ${STAGE_LABEL[stage]?.[0] ?? stage.toLowerCase().replace(/_/g, " ")}`}</Pil>;
 }
 
-export function Amendments({ sheetId, courseCode, caMax, published, actingOffice, marks }: {
+export function Amendments({ sheetId, courseCode, caMax, published, actingOffice, marks, prefill }: {
   sheetId: string; courseCode: string; caMax: number; published: boolean; actingOffice: string | null; marks: Mark[];
+  /** V700: a correction request taken up — its marks and reason fill the form */
+  prefill?: { studentId: string; outcome: string; ca: string; exam: string; reason: string } | null;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Amendment[] | null>(null);
@@ -68,6 +70,11 @@ export function Amendments({ sheetId, courseCode, caMax, published, actingOffice
   const [late, setLate] = useState<LateCandidate[]>([]);
   const [classUnits, setClassUnits] = useState<ClassUnit[]>([]);
   const [unitsRaise, setUnitsRaise] = useState<{ u: ClassUnit; units: string; reason: string } | null>(null);
+  const [applied, setApplied] = useState(prefill ?? null);
+  if ((prefill ?? null) !== applied) {
+    setApplied(prefill ?? null);
+    if (prefill) setRaise({ ...prefill });
+  }
   useEffect(() => {
     let live = true;
     void fetch(`/api/bff/api/v1/results/sheets/${sheetId}/amendments`, { cache: "no-store" }).then(async (r) => { if (live && r.ok) setRows(await r.json()); });

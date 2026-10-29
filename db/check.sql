@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 528
+\set EXPECTED 529
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29458,6 +29458,162 @@ BEGIN
         format('e1 %s/%s | e2 %s | first %s | r1 %s | unset %s noref %s | ref %s %s | unpaid %s | r2 %s/%s linked %s | after %s | again %s | r3 %s/%s',
                e1->>'eligible', e1->'warnings', e2->'reasons', first_free, r1->>'state', unset, no_ref, ref_amt, ref_purpose, unpaid,
                r2->>'replaced', r2->>'replacement_payment', linked, state_after, again, r3->>'card_no', r3->>'print_count'));
+END $$;
+
+-- ── V700. Result monitoring for the Director of ICT. A made-up programme (C97000) in the current session 9700/9701, semester 1: A at
+--    100 Level registered for ZQX 701 (published, 30 + 50), its twin BSU-ZQX 701 (at entry), ZQX 702 (at verification, no mark),
+--    ZQX 703 (a 200 Level course), ZQX 704 (taught in semester 2) and ZQX 705 (not in the structure); B for ZQX 701 (35 + 50, the
+--    course's CA maximum lowered to 30 after) and ZQX 702 (20 + 30); C for ZQX 702 alone, with a mark on ZQX 701; D at 200 Level
+--    carrying ZQX 701, passed (30 + 40) and published in 9699/9700. The records and their states, the counts by programme and level,
+--    every kind of exception (and a result held for an unknown number, University-wide), the upload of a sheet. A correction asked
+--    for: refused to the Registry, a second one of a result refused, the marks on record refused, an incorrect score with no marks
+--    refused; followed into the amendment raised for it and resolved by the new version; declined by the desk of entry (not by the
+--    Director of ICT); withdrawn once and not twice; declined when its amendment is refused. Undone after ──
+DO $$
+DECLARE ses text := '9700/9701'; prev text := '9699/9700'; prog text := 'C97000'; dept text; fac text; v_err text;
+        a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+        ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rc uuid := gen_random_uuid(); rd uuid := gen_random_uuid(); rdp uuid := gen_random_uuid();
+        actor uuid := gen_random_uuid(); q1 uuid; q2 uuid; q3 uuid; q4 uuid;
+        states text; groups text; kinds text; held int; uploads text;
+        r_office text; r_open text; r_same text; r_marks text; q1_was text; q1_follow text; q1_done text; q2_ict text; q2_state text;
+        q3_state text; q3_again text; q4_state text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', actor::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'V700 check', true);
+    PERFORM assessment.ensure_session(prev); PERFORM assessment.ensure_session(ses);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9700/01' WHERE name = ses;
+    SELECT p1.dept_code, p1.faculty_code INTO dept, fac FROM ref.programme p1 JOIN ref.faculty f ON f.code = p1.faculty_code
+     WHERE p1.category = 'UNDER GRADUATE' AND NOT coalesce(p1.archived, false) AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p1.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
+    VALUES (prog, 'B.Sc. Result Monitoring Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max) VALUES
+        ('ZQX 701', 'Check Course One', 3, 1, 100, dept, 'Core', 'LIVE', 40), ('BSU-ZQX 701', 'Check Course One', 3, 1, 100, dept, 'Core', 'LIVE', 40),
+        ('ZQX 702', 'Check Course Two', 2, 1, 100, dept, 'Core', 'LIVE', 40), ('ZQX 703', 'Check Course Three', 2, 1, 200, dept, 'Core', 'LIVE', 40),
+        ('ZQX 704', 'Check Course Four', 2, 2, 100, dept, 'Core', 'LIVE', 40), ('ZQX 705', 'Check Course Five', 2, 1, 100, dept, 'Elective', 'LIVE', 40);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZQX 701', prog, 100, 'Core'), ('ZQX 702', prog, 100, 'Core'), ('ZQX 703', prog, 200, 'Core'), ('ZQX 704', prog, 100, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester)
+    SELECT gen_random_uuid(), x, ses, 1 FROM unnest(ARRAY['ZQX 701', 'BSU-ZQX 701', 'ZQX 702', 'ZQX 703', 'ZQX 704', 'ZQX 705']) x
+    UNION ALL SELECT gen_random_uuid(), 'ZQX 701', prev, 1;
+    INSERT INTO assessment.score_sheet (id, offering_id) SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.course_code LIKE '%ZQX 70%' AND o.session IN (ses, prev);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/99/997001', 'BSU/SC/ZQX/00/97001', 'CHECKV700', 'A Many', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/99/997002', 'BSU/SC/ZQX/00/97002', 'CHECKV700', 'B Invalid', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/99/997003', 'BSU/SC/ZQX/00/97003', 'CHECKV700', 'C Unregistered', prog, 'UTME', ses, 100, 100, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/99/997004', 'BSU/SC/ZQX/99/97004', 'CHECKV700', 'D Carried', prog, 'UTME', prev, 100, 200, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES
+        (ra, a, ses, 1, 100, 'APPROVED', now(), now()), (rb, b, ses, 1, 100, 'APPROVED', now(), now()), (rc, c, ses, 1, 100, 'APPROVED', now(), now()),
+        (rd, d, ses, 1, 200, 'APPROVED', now(), now()), (rdp, d, prev, 1, 100, 'APPROVED', now(), now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, basis)
+    SELECT x.reg, o.id, 2, x.t, 'APPROVED', x.basis
+      FROM (VALUES (ra, 'ZQX 701', ses, 'CURRENT', 'Core'), (ra, 'BSU-ZQX 701', ses, 'CURRENT', 'Core'), (ra, 'ZQX 702', ses, 'CURRENT', 'Core'),
+                   (ra, 'ZQX 703', ses, 'CURRENT', 'Core'), (ra, 'ZQX 704', ses, 'CURRENT', 'Core'), (ra, 'ZQX 705', ses, 'CURRENT', NULL),
+                   (rb, 'ZQX 701', ses, 'CURRENT', 'Core'), (rb, 'ZQX 702', ses, 'CURRENT', 'Core'), (rc, 'ZQX 702', ses, 'CURRENT', 'Core'),
+                   (rd, 'ZQX 701', ses, 'CARRYOVER', 'Core'), (rdp, 'ZQX 701', prev, 'CURRENT', 'Core')) x(reg, code, s, t, basis)
+      JOIN catalogue.offering o ON o.course_code = x.code AND o.session = x.s AND o.semester = 1;
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome)
+    SELECT sh.id, x.st, x.ca, x.ex, 'GRADED'
+      FROM (VALUES (a, 'ZQX 701', ses, 30, 50), (a, 'BSU-ZQX 701', ses, 20, 40), (a, 'ZQX 703', ses, 10, 50), (a, 'ZQX 704', ses, 20, 30),
+                   (a, 'ZQX 705', ses, 20, 30), (b, 'ZQX 701', ses, 35, 50), (b, 'ZQX 702', ses, 20, 30), (c, 'ZQX 701', ses, 25, 40),
+                   (d, 'ZQX 701', prev, 30, 40)) x(st, code, s, ca, ex)
+      JOIN catalogue.offering o ON o.course_code = x.code AND o.session = x.s AND o.semester = 1
+      JOIN assessment.score_sheet sh ON sh.offering_id = o.id;
+    UPDATE catalogue.course SET ca_max = 30 WHERE code = 'ZQX 701';   -- the CA maximum lowered after B's 35 was entered
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet sh SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'SEN/9700/CHK'
+      FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code = 'ZQX 701';
+    UPDATE assessment.score_sheet sh SET stage = 'VERIFICATION', submitted_at = now()
+      FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code = 'ZQX 702';
+    PERFORM set_config('moaum.maintenance', '', true);
+    INSERT INTO assessment.legacy_result_holding (session, semester, matric, course_code, raw, loaded_at)
+    VALUES (ses, 1, 'ZQX/NO/SUCH/9700', 'ZQX 701', '{}'::jsonb, now());
+    INSERT INTO assessment.sheet_upload (id, sheet_id, uploaded_by, uploader_office, reason, rows_written, uploaded_at)
+    SELECT gen_random_uuid(), sh.id, actor, 'lecturer', 'V700 check: the class uploaded', 2, now() FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+     WHERE o.course_code = 'ZQX 701' AND o.session = ses;
+
+    states := (SELECT string_agg(right(r.number, 1) || ':' || r.course_code || '=' || assessment.result_state(r.stage, r.has_score), ',' ORDER BY r.number, r.course_code)
+                 FROM assessment.result_records(ses, 1, NULL, NULL, prog, NULL, NULL) r);
+    groups := (SELECT string_agg(g.programme_code || ':' || g.level || ':' || g.students || '/' || g.results || '/' || g.with_result || '/' || g.awaiting || '/' || g.at_entry
+                                 || '/' || g.verification || '/' || g.approval || '/' || g.published || '/' || g.missing, ',' ORDER BY g.level)
+                 FROM assessment.result_monitor_groups(ses, 1, NULL, dept) g WHERE g.programme_code = prog);
+    kinds := (SELECT string_agg(x.kind || ':' || right(st.matric_no, 1) || ':' || x.course_code, ',' ORDER BY x.kind, st.matric_no, x.course_code)
+                FROM assessment.result_exceptions(ses, 1, NULL, NULL, prog, NULL) x JOIN people.student st ON st.id = x.student_id);
+    held := (SELECT count(*) FROM assessment.result_exceptions(ses, 1, NULL, NULL, NULL, NULL) x WHERE x.kind = 'RESULT_HELD_NO_STUDENT' AND x.course_code = 'ZQX 701');
+    uploads := (SELECT string_agg(u.kind || ':' || coalesce(u.course_code, '-') || ':' || u.records, ',') FROM assessment.result_uploads(ses, 1) u);
+
+    -- a correction asked for, and followed
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 701' AND o.session = ses), a, 'INCORRECT_SCORE', 'V700 check: exam was 60', 30, 60, NULL);
+      r_office := 'allowed';
+    EXCEPTION WHEN OTHERS THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    q1 := assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 701' AND o.session = ses),
+                                        a, 'INCORRECT_SCORE', 'V700 check: the exam was 60 on the script', 30, 60, NULL);
+    q1_was := (SELECT q.state || '/' || q.was_ca || '+' || q.was_exam || '=' || q.was_total || '/' || q.was_stage || '/' || q.ca || '+' || q.exam || '/' || q.outcome
+                 FROM assessment.correction_request q WHERE q.id = q1);
+    BEGIN PERFORM assessment.request_correction((SELECT sheet_id FROM assessment.correction_request WHERE id = q1), a, 'OTHER', 'V700 check: asked again', NULL, NULL, NULL);
+      r_open := 'allowed';
+    EXCEPTION WHEN OTHERS THEN r_open := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 702'), b, 'INCORRECT_SCORE', 'V700 check: the same marks', 20, 30, NULL);
+      r_same := 'allowed';
+    EXCEPTION WHEN OTHERS THEN r_same := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 703'), a, 'INCORRECT_SCORE', 'V700 check: no marks named', NULL, NULL, NULL);
+      r_marks := 'allowed';
+    EXCEPTION WHEN OTHERS THEN r_marks := split_part(SQLERRM, ':', 1); END;
+    -- the desk of entry raises the amendment: the request follows it; the new version resolves it
+    PERFORM set_config('moaum.actor_office', 'exams', true);
+    INSERT INTO assessment.amendment (ref, sheet_id, student_id, was_version, was_ca, was_exam, was_outcome, ca, exam, outcome, reason, stage, raised_by, raised_office)
+    SELECT 'AMD-9700-00001', q.sheet_id, a, 1, 30, 50, 'GRADED', 30, 60, 'GRADED', 'V700 check: raised from the request', 'VERIFICATION', actor, 'exams'
+      FROM assessment.correction_request q WHERE q.id = q1;
+    q1_follow := (SELECT q.state || '/' || (q.amendment_id IS NOT NULL) FROM assessment.correction_request q WHERE q.id = q1);
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, reason)
+    SELECT q.sheet_id, a, 2, 30, 60, 'GRADED', 'Amendment AMD-9700-00001 applied' FROM assessment.correction_request q WHERE q.id = q1;
+    q1_done := (SELECT q.state || '/' || q.resolved_version || '/' || q.closed_office FROM assessment.correction_request q WHERE q.id = q1);
+    -- declined by the desk of entry, not by the Director of ICT
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    q2 := assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 701' AND o.session = ses),
+                                        b, 'INCORRECT_SCORE', 'V700 check: the CA is over the maximum', 30, 50, NULL);
+    BEGIN PERFORM assessment.decline_correction_request(q2, 'V700 check: the Director declines'); q2_ict := 'allowed';
+    EXCEPTION WHEN OTHERS THEN q2_ict := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    PERFORM assessment.decline_correction_request(q2, 'V700 check: the CA of 35 was approved by the board');
+    q2_state := (SELECT q.state || '/' || q.closed_office FROM assessment.correction_request q WHERE q.id = q2);
+    -- withdrawn once, not twice
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    q3 := assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 702'),
+                                        c, 'MISSING_SCORE', 'V700 check: the mark is on the script', 20, 40, NULL);
+    PERFORM assessment.withdraw_correction_request(q3, 'V700 check: found on the sheet after all');
+    q3_state := (SELECT q.state FROM assessment.correction_request q WHERE q.id = q3);
+    BEGIN PERFORM assessment.withdraw_correction_request(q3, 'V700 check: withdrawn again'); q3_again := 'allowed';
+    EXCEPTION WHEN OTHERS THEN q3_again := split_part(SQLERRM, ':', 1); END;
+    -- declined when its amendment is refused
+    q4 := assessment.request_correction((SELECT sh.id FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQX 702'),
+                                        b, 'DATA_ENTRY_ERROR', 'V700 check: 25 and 35 were keyed as 20 and 30', 25, 35, NULL);
+    PERFORM set_config('moaum.actor_office', 'exams', true);
+    INSERT INTO assessment.amendment (ref, sheet_id, student_id, was_version, was_ca, was_exam, was_outcome, ca, exam, outcome, reason, stage, raised_by, raised_office)
+    SELECT 'AMD-9700-00002', q.sheet_id, b, 1, 20, 30, 'GRADED', 25, 35, 'GRADED', 'V700 check: raised from the request', 'VERIFICATION', actor, 'exams'
+      FROM assessment.correction_request q WHERE q.id = q4;
+    UPDATE assessment.amendment SET stage = 'REFUSED', closed_reason = 'The board found the marks as keyed', closed_at = now() WHERE ref = 'AMD-9700-00002';
+    q4_state := (SELECT q.state || '/' || q.closed_note FROM assessment.correction_request q WHERE q.id = q4);
+    RAISE EXCEPTION 'the V700 check undoes its writes';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V700 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V700: the result records, their states and counts, and every kind of exception, read from the approved registrations as the broadsheet reads them; the uploads; a correction the Director of ICT asks of the desk of entry — refused to others, once at a time, never the marks on record, followed into its amendment and resolved by the new version, declined by the desk, withdrawn once, declined with a refused amendment',
+      coalesce(states = '1:BSU-ZQX 701=ENTRY,1:ZQX 701=PUBLISHED,1:ZQX 702=MISSING,1:ZQX 703=ENTRY,1:ZQX 704=ENTRY,1:ZQX 705=ENTRY,2:ZQX 701=PUBLISHED,2:ZQX 702=VERIFICATION,3:ZQX 702=MISSING,4:ZQX 701=MISSING'
+           AND groups = 'C97000:100:3/9/7/0/4/1/0/2/2,C97000:200:1/1/0/0/0/0/0/0/1'
+           AND kinds = 'COURSE_ABOVE_LEVEL:1:ZQX 703,COURSE_OTHER_SEMESTER:1:ZQX 704,COURSE_OUTSIDE_PROGRAMME:1:ZQX 705,DUPLICATE_RESULT:1:BSU-ZQX 701,DUPLICATE_RESULT:1:ZQX 701,INVALID_SCORE:2:ZQX 701,MISSING_SCORE:1:ZQX 702,MISSING_SCORE:3:ZQX 702,MISSING_SCORE:4:ZQX 701,PASSED_STILL_CARRIED:4:ZQX 701,RESULT_WITHOUT_REGISTRATION:3:ZQX 701'
+           AND held = 1 AND uploads = 'SCORE_SHEET:ZQX 701:2'
+           AND r_office = 'CRQ_OFFICE' AND q1_was = 'OPEN/30+50=80/PUBLISHED/30+60/GRADED' AND r_open = 'CRQ_OPEN' AND r_same = 'CRQ_SAME' AND r_marks = 'CRQ_MARKS'
+           AND q1_follow = 'IN_AMENDMENT/true' AND q1_done = 'RESOLVED/2/exams'
+           AND q2_ict = 'CRQ_OFFICE' AND q2_state = 'DECLINED/lecturer' AND q3_state = 'WITHDRAWN' AND q3_again = 'CRQ_STATE'
+           AND q4_state = 'DECLINED/The amendment AMD-9700-00002 was refused: The board found the marks as keyed', false),
+      format('states %s | groups %s | kinds %s | held %s | uploads %s | registrar %s | q1 %s again %s same %s no marks %s | follow %s done %s | q2 ict %s then %s | q3 %s again %s | q4 %s',
+             states, groups, kinds, held, uploads, r_office, q1_was, r_open, r_same, r_marks, q1_follow, q1_done, q2_ict, q2_state, q3_state, q3_again, q4_state));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ function normalise(r: RollRow): RollRow {
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { ScoreEntry } from "./ScoreEntry";
+import { CorrectionRequests } from "@/components/results/CorrectionRequests";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ export default async function SheetPage({ params }: { params: Promise<{ id: stri
       sub={s ? `${s.units} credit unit${s.units === 1 ? "" : "s"} · ${s.session} ${semesterName(s.semester).toLowerCase()} semester · ${s.deptName}` : undefined}>
       {detail.ok && roll.ok ? (
         <>
+          {/* V700: the corrections the Director of ICT asked of this sheet's desk of entry */}
+          <CorrectionRequests sheetId={s!.id} stage={s!.stage} actingOffice={office} />
           <ScoreEntry detail={detail.data} roll={roll.data.map(normalise)} actingOffice={office} />
           <HeldScripts sheetId={s!.id} courseCode={s!.courseCode} courseTitle={s!.courseTitle} caMax={typeof s!.caMax === "number" ? s!.caMax : 40} items={heldRows} own={own}
             closesOn={heldRows[0]?.closesOn ?? null} />

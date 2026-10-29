@@ -9,6 +9,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { officeLabel } from "@/lib/offices";
 import { ResetData } from "./ResetData";
 import { PgLegacyPanel } from "@/components/pg/PgLegacyPanel";
+import { ResultMonitoringPanel } from "@/components/results/ResultMonitoringPanel";
 
 interface Status {
   service: string;
@@ -105,6 +106,8 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
           </Note>
         </>
       ) : null}
+      {/* V700: the results of the current semester, each figure opening the list it counts */}
+      <ResultMonitoringPanel />
       {/* V679: the old-portal PG migration's figures, each opening its records on the desk (27 Oct 2026) */}
       <PgLegacyPanel />
       {canManagePeople ? (
