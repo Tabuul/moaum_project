@@ -42,6 +42,9 @@ const PUTME_CBT = "POST_UTME_CBT";
 const PUTME_RESULTS = "POST_UTME_RESULT_CHECKING";
 const PUTME = new Set([PUTME_CBT, PUTME_RESULTS]);
 const WORD: Record<string, string> = { POST_UTME_REGISTRATION: "Post UTME Registration", POSTGRADUATE_APPLICATION: "Postgraduate Application", [PG_CHECKING]: "Postgraduate Admission Status Checking", JUPEB_APPLICATION: "JUPEB Application", [JUPEB_CHECKING]: "JUPEB Admission Status Checking", CCE_APPLICATION: "CCE Application", PRELIMINARY_SCIENCE_APPLICATION: "Preliminary Science Application", PRELIMINARY_TECHNOLOGY_APPLICATION: "Preliminary Technology & Industrial Studies Application", PROFICIENCY_CERTIFICATE_APPLICATION: "Proficiency Certificate (Adikpo Campus) Application", [PUTME_CBT]: "Post-UTME CBT Examination", [PUTME_RESULTS]: "Post-UTME Result Checking" };
+/** a window's name: the API may list a window this build has no word for (a newer API during a deploy, Oct 2026: the page threw on
+ *  the two V701 windows while the API was ahead), so the code's own words stand in rather than the page failing */
+const wordOf = (type: string): string => WORD[type] ?? type.toLowerCase().split("_").map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
 const NOUN: Record<string, string> = { POST_UTME_REGISTRATION: "registration", POSTGRADUATE_APPLICATION: "application", [PG_CHECKING]: "checking fee", JUPEB_APPLICATION: "JUPEB application", [JUPEB_CHECKING]: "checking fee", CCE_APPLICATION: "CCE registration", PRELIMINARY_SCIENCE_APPLICATION: "Preliminary Science application", PRELIMINARY_TECHNOLOGY_APPLICATION: "Preliminary Technology application", PROFICIENCY_CERTIFICATE_APPLICATION: "proficiency certificate application", [PUTME_CBT]: "examination sitting", [PUTME_RESULTS]: "result check" };
 const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = { OPEN: ["OPEN", "ok"], CLOSED: ["CLOSED", "bad"], SCHEDULED: ["SCHEDULED", "info"], EXPIRED: ["EXPIRED", "warn"] };
 const ACTION_WORD: Record<string, string> = { OPEN: "Open", REOPEN: "Reopen", CLOSE: "Close", SCHEDULE: "Schedule", EXTEND: "Extend", SHORTEN: "Shorten", EDIT: "Edit", MESSAGE: "Message" };
@@ -74,10 +77,10 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
       const body: Record<string, unknown> = { session, semester: null, action: act.action, reason: reason.trim() || null, lateFeeEnabled: false };
       if (opens) body.opensAt = new Date(opens).toISOString();
       if (closes) body.closesAt = new Date(closes).toISOString();
-      const r = await fetch(`/api/bff/api/v1/portal-windows/${act.type}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${WORD[act.type]} ${session}: ${act.action.toLowerCase()}`) }, body: JSON.stringify(body) });
+      const r = await fetch(`/api/bff/api/v1/portal-windows/${act.type}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${wordOf(act.type)} ${session}: ${act.action.toLowerCase()}`) }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { const pr = (j as Problem) ?? { status: r.status, title: r.statusText }; setProblem(pr); notifyProblem(pr); return; }
-      notify(`${WORD[act.type]}: ${act.action.toLowerCase()} recorded · now ${String(j?.after?.state ?? "").toLowerCase()}`);
+      notify(`${wordOf(act.type)}: ${act.action.toLowerCase()} recorded · now ${String(j?.after?.state ?? "").toLowerCase()}`);
       setAct(null); router.refresh();
     } finally { setBusy(false); }
   };
@@ -86,16 +89,16 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
     if (!text) { notifyProblem({ status: 422, title: "The closure message cannot be blank." }); return; }
     setSaving(w.type);
     try {
-      const r = await fetch(`/api/bff/api/v1/portal-windows/applications/${w.type}/message?session=${encodeURIComponent(session)}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${WORD[w.type]}: closure message`) }, body: JSON.stringify({ message: text }) });
+      const r = await fetch(`/api/bff/api/v1/portal-windows/applications/${w.type}/message?session=${encodeURIComponent(session)}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${wordOf(w.type)}: closure message`) }, body: JSON.stringify({ message: text }) });
       const j = await r.json().catch(() => null);
       if (!r.ok) { const pr = (j as Problem) ?? { status: r.status, title: r.statusText }; notifyProblem(pr); return; }
-      notify(`${WORD[w.type]}: closure message saved`);
+      notify(`${wordOf(w.type)}: closure message saved`);
       router.refresh();
     } finally { setSaving(null); }
   };
 
   const EHEAD = ["S/N", "Window", "Action", "Previous status", "New status", "Opens", "Closes", "Reason", "Changed by", "Changed at"];
-  const allEvents = page.windows.flatMap((w) => w.events.map((e) => ({ ...e, window: WORD[w.type] ?? w.type }))).sort((a, b) => (a.at < b.at ? 1 : -1));
+  const allEvents = page.windows.flatMap((w) => w.events.map((e) => ({ ...e, window: wordOf(w.type) }))).sort((a, b) => (a.at < b.at ? 1 : -1));
   const excel = async () => {
     const rows = allEvents.map((e, i) => [i + 1, e.window, e.action, e.previous_state ?? "", e.new_state ?? "", when(e.new_opens_at), when(e.new_closes_at), e.reason ?? "", `${e.officer ?? ""}${e.office ? ` (${e.office})` : ""}`, when(e.at)]);
     const blob = await brandedXlsx("Application Registration Control History", EHEAD, rows, { sheetName: "History", serial: docSerial("ARC"), sub: session });
@@ -105,13 +108,13 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
   const card = (w: AppWindow) => {
     const [word, kind] = STATE[w.state] ?? [w.state, "grey"];
     const live = page.liveSessions[w.type];
-    const noun = NOUN[w.type];
+    const noun = NOUN[w.type] ?? "application";
     const checking = CHECKING.has(w.type);
     const putme = PUTME.has(w.type);
     const closedByDefault = putme || w.type === "JUPEB_APPLICATION" || checking || w.type === "CCE_APPLICATION" || w.type === "PRELIMINARY_SCIENCE_APPLICATION"
       || w.type === "PRELIMINARY_TECHNOLOGY_APPLICATION" || w.type === "PROFICIENCY_CERTIFICATE_APPLICATION";
     return (
-      <Panel key={w.type} title={`${WORD[w.type].toUpperCase()} · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
+      <Panel key={w.type} title={`${wordOf(w.type).toUpperCase()} · ${session}`} right={<Pil kind={kind}>{word}{!w.configured ? " · by default" : ""}</Pil>}>
         <PBody>
           <Tiles items={[
             ["STATUS", word, w.state === "OPEN" ? "var(--green-ink)" : "var(--red-ink)", w.state === "OPEN" ? (w.closes_at ? `Closes ${when(w.closes_at)}` : "No closing date") : w.state === "SCHEDULED" ? `Opens ${when(w.opens_at)}` : w.state === "EXPIRED" ? `Closed ${when(w.closes_at)}` : "Closed by the Director"],
@@ -161,7 +164,7 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
           <span key="n" className="tnum sub2">{i + 1}</span>, <b key="a">{ACTION_WORD[e.action] ?? e.action}</b>, <span key="b" className="sub2">{e.previous_state ?? ""}</span>, <Pil key="c" kind={(STATE[e.new_state ?? ""] ?? ["", "grey"])[1]}>{e.new_state}</Pil>,
           <span key="o" className="tnum sub2">{when(e.new_opens_at)}</span>, <span key="e" className="tnum sub2">{when(e.new_closes_at)}</span>,
           <span key="r" className="sub2">{e.reason ?? ""}</span>, <span key="w" className="sub2">{e.officer ?? ""}{e.office ? ` (${e.office})` : ""}</span>, <span key="t" className="tnum sub2">{when(e.at)}</span>,
-        ])} /> : <PBody><div className="sub2">No act on {WORD[w.type]} for {session} yet: it is {closedByDefault ? "closed" : "open"} by default.</div></PBody>}
+        ])} /> : <PBody><div className="sub2">No act on {wordOf(w.type)} for {session} yet: it is {closedByDefault ? "closed" : "open"} by default.</div></PBody>}
       </Panel>
     );
   };
@@ -190,18 +193,18 @@ export function Applications({ page, actingOffice }: { page: ApplicationsPage; a
       </Panel>
 
       {act && acting ? (
-        <Modal title={`${ACTION_WORD[act.action] ?? act.action} ${WORD[act.type]}`} sub={`${session} · the whole admission exercise`} onClose={() => setAct(null)}
+        <Modal title={`${ACTION_WORD[act.action] ?? act.action} ${wordOf(act.type)}`} sub={`${session} · the whole admission exercise`} onClose={() => setAct(null)}
           foot={<><Btn kind="ghost" onClick={() => setAct(null)}>Back</Btn><Btn kind={act.action === "CLOSE" ? "urgent" : "primary"} disabled={busy} onClick={() => void submit()}>{act.action === "CLOSE" ? "Yes, close it now" : act.action === "REOPEN" || act.action === "OPEN" ? "Open it" : "Record"}</Btn></>}>
           {problem ? <ProblemNotice problem={problem} /> : null}
           {act.action === "CLOSE" ? (
-            <Note kind="bad" title={`Are you sure you want to close ${WORD[act.type]} for ${session}?`}>
+            <Note kind="bad" title={`Are you sure you want to close ${wordOf(act.type)} for ${session}?`}>
               {CHECKING.has(act.type)
                 ? <>It takes effect at once. No checking fee is taken and no status read until it is reopened; a fee already paid stands. Nothing is deleted.</>
                 : <>It takes effect at once. No new {NOUN[act.type]} can be started until it is reopened; {acting.path} shows your closure message. Applicants already registered continue. Nothing is deleted.</>}
             </Note>
           ) : (
             <>
-              <div className="sub2 mb-2">{act.action === "OPEN" || act.action === "REOPEN" ? "Leave the dates blank to open now with no closing; or give the closing the window runs to." : act.action === "SCHEDULE" ? `${WORD[act.type]} opens and closes by these dates, on the server's clock in Africa/Lagos. Until it opens, ${acting.path} shows the closure message.` : act.action === "EXTEND" ? "Move the closing later. The previous dates stay in the history." : act.action === "SHORTEN" ? "Move the closing earlier." : "Change either date; the rule before is kept in the history."}</div>
+              <div className="sub2 mb-2">{act.action === "OPEN" || act.action === "REOPEN" ? "Leave the dates blank to open now with no closing; or give the closing the window runs to." : act.action === "SCHEDULE" ? `${wordOf(act.type)} opens and closes by these dates, on the server's clock in Africa/Lagos. Until it opens, ${acting.path} shows the closure message.` : act.action === "EXTEND" ? "Move the closing later. The previous dates stay in the history." : act.action === "SHORTEN" ? "Move the closing earlier." : "Change either date; the rule before is kept in the history."}</div>
               <div className="grid grid--2">
                 <Field id="arc-o" label="Opens"><input id="arc-o" type="datetime-local" className="ctl" value={opens} onChange={(e) => setOpens(e.target.value)} /></Field>
                 <Field id="arc-c" label="Closes"><input id="arc-c" type="datetime-local" className="ctl" value={closes} onChange={(e) => setCloses(e.target.value)} /></Field>

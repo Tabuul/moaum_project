@@ -33,6 +33,9 @@ const OPEN = ["/login", "/apply", "/pg/apply", "/api/auth/", "/api/bff/api/v1/ap
   "/jupeb/apply", "/jupeb/reset",
   /* the CCE application (V379): only those on JAMB's CCE list register, with the JAMB number and the date of birth */
   "/cce/apply",
+  /* the preliminary and proficiency programmes' public pages and their first step (V446, V701): read and started with no account;
+     the registration posts to /api/auth/, open above. The desk at /preliminary stays signed-in (no prefix here matches it). */
+  "/preliminary-science", "/preliminary-technology", "/proficiency-certificate",
   /* the collaboration enquiry (V658): the public form, the applicant's secure status page (its token in the address) and their
      API doors, for an organisation with no account; the API limits each connection. The desk at /partnerships stays signed-in. */
   "/partnerships/collaboration", "/partnerships/status/", "/api/bff/api/v1/public/partnerships/"];
