@@ -61,6 +61,9 @@ A batch and its rows are never deleted (a trigger refuses it). A row's values ar
   - Admitted comes in as the School's offer, its decision dated and noted "On the old portal".
   - Accepted takes a verified acceptance payment.
   - On the register follows the old portal's screening.
+  - Since V712, an applicant admitted on the old portal is put on the register at the import, whatever is left of the acceptance
+    fee and screening here (a not-cleared screening decided on this portal stands), to pay school fees; the old portal's payments
+    are uploaded as history (docs/pg-admitted-on-old-portal-to-register.md).
 
   The applicant template refuses an admitted row, and the admitted template refuses one that is not.
 - **Fees.**

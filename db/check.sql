@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 539
+\set EXPECTED 540
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27598,7 +27598,8 @@ END $$;
 -- the School, then read), one admitted (refused: the admitted template carries it), an applicant already on this portal (found
 -- by email, never made twice), one with no email. The admitted file: one accepted on a verified payment and cleared at
 -- screening (admitted to the register, once), one whose acceptance fee is only claimed (verified later by another officer, not
--- the uploader), a student already on the register (linked), the claimed applicant again (moved forward to the offer). Both
+-- the uploader), a student already on the register (linked), the claimed applicant again (moved forward to the offer). V712: the
+-- admitted on the old portal are on the register at the import, the one whose acceptance fee is held and the claimed one too. Both
 -- numbers find the same applicant; the same file again changes nothing; the history is not deleted. The block undoes its writes.
 DO $$
 DECLARE s0 text := '9877/9878'; who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); prog text := 'C96731';
@@ -27738,8 +27739,8 @@ BEGIN
         AND n_app_email = 1 AND posted = 1 AND under_review = 'REQUIRES_REVIEW' AND refused = 'PG_FEE_UNDER_REVIEW' AND a_claim.fee_confirmed_at IS NULL
         AND found_old = a_new.application_no AND found_new = 'OLDPG/9877/0001' AND told = 3 AND trail_told = 0
         AND a_c.state = 'ADMITTED' AND a_c.student_id IS NOT NULL AND n_students_c = 1 AND screening_src = 'CLEARED:OLD_PORTAL'
-        AND a_d.state = 'OFFERED' AND chk_paid AND same_officer = 'PGMIG_SAME_OFFICER' AND verified_state = 'ADMITTED:true'
-        AND r_link = 'LINKED:true' AND bio = 'OLDPG/9877/0010' AND recon_state = 'RECONCILED:OFFERED'
+        AND a_d.state = 'ADMITTED' AND chk_paid AND same_officer = 'PGMIG_SAME_OFFICER' AND verified_state = 'ADMITTED:true'
+        AND r_link = 'LINKED:true' AND bio = 'OLDPG/9877/0010' AND recon_state = 'RECONCILED:ADMITTED'
         AND again = 'UNCHANGED,SKIPPED,UNCHANGED,UNCHANGED,SKIPPED,UNCHANGED,SKIPPED' AND apps_after = apps_before AND n_admits = 1
         AND del_refused = 'PGMIG_KEPT' AND (figures->>'migrated')::int >= 6,
         format('err=%s | dup=%s unmapped=%s mapped=%s admittedIn=%s existing=%s noemail=%s | created=%s no=%s state=%s fee=%s | email=%s posted=%s review=%s refused=%s claimfee=%s | old=%s new=%s told=%s trail=%s | C=%s/%s students=%s scr=%s | D=%s paid=%s same=%s verified=%s | link=%s bio=%s recon=%s | again=%s %s/%s admits=%s | del=%s fig=%s',
@@ -30573,6 +30574,92 @@ BEGIN
                      || ' || (5) dry 1=WILL_RESET/97109990001AB 3=WILL_RESET/APP/97/710012 4=NOT_FOUND 5=REPEATED/97109990001AB 6=REFUSED 7=AMBIGUOUS 8=REPEATED, u1 hash $2a$ | registrar APW_OFFICE | done 1=RESET 3=RESET 4=NOT_FOUND 5=REPEATED 6=REFUSED 7=AMBIGUOUS 8=REPEATED | bulk UNDERGRADUATE:7/2/5:true, carried 2, u1 sentinel t must t, told 1'
                      || ' || pg 1=RESET/PG/97/710011 2=RESET/PG/97/710012 3=NOT_FOUND, must t/t, one sealed t, not the number t', false),
       msg);
+END $$;
+
+-- ── V712. Postgraduate applicants admitted on the old portal are put on the register at once, to pay school fees (the University's
+--          word of 30 October 2026: "allow all admitted migration pg applicant student to bypass all the process and pay school fee,
+--          but we will upload their history of the other payments from the old portal"). Made-up applicants of a made-up session: the
+--          admitted file's applicant with no acceptance on record, and one whose acceptance fee the old portal only claims, are on the
+--          register at the import — taken as accepted, nothing recorded as paid, the claimed fee still held for the Bursary — and
+--          asked no application or acceptance fee; the applicants' file's applicant is not; an admitted applicant whom this portal's
+--          screening did not clear is kept back. The block undoes its writes ──
+DO $$
+DECLARE s0 text := '9712/9713'; who uuid := gen_random_uuid(); prog text := 'C96741'; v_dept text; v_fac text; b1 uuid; b2 uuid;
+        a_plain admissions.pg_application; a_held admissions.pg_application; a_sub admissions.pg_application; a_kept uuid;
+        plain text; held text; held_fee text; sub text; fee_acc text; fee_app text; kept text; kept_ret text; flags text; students int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V712 check: admitted on the old portal', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHK/V712/S', 'CHECKOLDADMIT', 'School', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9712-10-01', '9713-08-31');
+        SELECT d.code, d.faculty_code INTO v_dept, v_fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research)
+        VALUES (prog, 'M.Sc. Check Admitted Old Portal', v_dept, v_fac, 'POST GRADUATE', 0, 'MSC', false);
+
+        -- the applicants' file: one still applying
+        b1 := (admissions.pg_migration_open('APPLICANTS', 'applicants.xlsx', NULL, 1, false) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b1, 1, jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9712/0003', 'lastName', 'CHECKOLDADMIT', 'firstName', 'Applying', 'email', 'v712.applying@example.test',
+                               'session', s0, 'programmeCode', prog)));
+        PERFORM admissions.pg_migration_check(b1, 1, 1);
+        PERFORM admissions.pg_migration_import(b1, 1, 1);
+        PERFORM admissions.pg_migration_finish(b1);
+        -- the admitted file: admitted with nothing more on record, and accepted on a fee the old portal only claims
+        b2 := (admissions.pg_migration_open('ADMITTED', 'admitted.xlsx', NULL, 2, false) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b2, 1, jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9712/0001', 'lastName', 'CHECKOLDADMIT', 'firstName', 'Plain', 'email', 'v712.plain@example.test',
+                               'session', s0, 'programmeCode', prog, 'admissionStatus', 'Admitted'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9712/0002', 'lastName', 'CHECKOLDADMIT', 'firstName', 'Held', 'email', 'v712.held@example.test',
+                               'session', s0, 'programmeCode', prog, 'admissionStatus', 'Admitted', 'acceptanceStatus', 'Accepted',
+                               'acceptanceFeeReference', 'OLD-ACC-7121', 'acceptanceFeeAmount', '50000', 'acceptanceVerification', 'Paid')));
+        PERFORM admissions.pg_migration_check(b2, 1, 2);
+        PERFORM admissions.pg_migration_import(b2, 1, 2);
+        PERFORM admissions.pg_migration_finish(b2);
+        SELECT a.* INTO a_plain FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9712/0001';
+        SELECT a.* INTO a_held FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9712/0002';
+        SELECT a.* INTO a_sub FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9712/0003';
+        plain := a_plain.state || '/' || (a_plain.student_id IS NOT NULL) || '/' || (a_plain.accepted_at IS NOT NULL) || '/' || (a_plain.acceptance_confirmed_at IS NULL);
+        held := a_held.state || '/' || (a_held.student_id IS NOT NULL);
+        held_fee := (SELECT f.state FROM admissions.pg_legacy_fee f WHERE f.legacy_reference = 'OLD-ACC-7121');
+        sub := a_sub.state || '/' || (a_sub.student_id IS NOT NULL);
+        students := (SELECT count(*) FROM people.student s WHERE s.surname = 'CHECKOLDADMIT');
+        flags := admissions.pg_admitted_on_old_portal(a_plain.id) || '/' || admissions.pg_admitted_on_old_portal(a_sub.id);
+        BEGIN
+            PERFORM admissions.pg_new_fee_reference(a_plain.id, 'ACCEPTANCE');
+            fee_acc := 'issued';
+        EXCEPTION WHEN check_violation THEN fee_acc := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM admissions.pg_new_fee_reference(a_plain.id, 'APPLICATION');
+            fee_app := 'issued';
+        EXCEPTION WHEN check_violation THEN fee_app := split_part(SQLERRM, ':', 1);
+        END;
+
+        -- an applicant decided as admitted on the old portal whom this portal's screening did not clear is kept back
+        INSERT INTO admissions.pg_applicant (session, surname, other_names, email, phone, password_hash)
+        VALUES (s0, 'CHECKOLDADMIT', 'Kept', 'v712.kept@example.test', '08030007124', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.pg_application (applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+        SELECT p.id, s0, 'PG/12/997124', prog, 800, 'OFFERED', now() FROM admissions.pg_applicant p WHERE p.email = 'v712.kept@example.test'
+        RETURNING id INTO a_kept;
+        INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id, decided_on_old_portal)
+        VALUES (a_kept, 'OLDPG/9712/0004', b2, true);
+        INSERT INTO admissions.pg_screening (application_id, state, reason, decided_at, source)
+        VALUES (a_kept, 'NOT_CLEARED', 'Check V712: the certificate did not match', now(), 'PORTAL');
+        kept_ret := coalesce(admissions.pg_mig_admit_direct(a_kept)::text, 'kept');
+        kept := (SELECT a.state || '/' || (a.student_id IS NOT NULL) FROM admissions.pg_application a WHERE a.id = a_kept);
+        RAISE EXCEPTION 'CHECK_V712_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V712_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V712: postgraduate applicants admitted on the old portal are on the register at the import, asked no application or acceptance fee here',
+        coalesce(plain = 'ADMITTED/true/true/true' AND held = 'ADMITTED/true' AND held_fee = 'REQUIRES_REVIEW' AND sub = 'SUBMITTED/false' AND students = 2
+                 AND flags = 'true/false' AND fee_acc = 'PG_FEE_NOT_NEEDED' AND fee_app = 'PG_FEE_NOT_NEEDED'
+                 AND kept_ret = 'kept' AND kept = 'OFFERED/false', false),
+        format('plain %s | held %s, fee %s | applying %s | students %s | flags %s | fees %s/%s | screening here kept %s %s',
+               plain, held, held_fee, sub, students, flags, fee_acc, fee_app, kept_ret, kept));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

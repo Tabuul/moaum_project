@@ -418,6 +418,10 @@ class PgPortalController {
                 .param("app", a.get("application_id")).query(String.class).optional().orElse(null));
         out.put("oldPortalFeesUnderReview", jdbc.sql("SELECT kind FROM admissions.pg_legacy_fee WHERE application_id = :app AND state = 'REQUIRES_REVIEW' ORDER BY kind")
                 .param("app", a.get("application_id")).query(String.class).list());
+        // V712: admitted on the old portal and put on the register: no application or acceptance fee is asked here (the old portal's are
+        // recorded from its payments); school fees are paid on the student portal
+        out.put("oldPortalAdmitted", Boolean.TRUE.equals(jdbc.sql("SELECT admissions.pg_admitted_on_old_portal(:app)")
+                .param("app", a.get("application_id")).query(Boolean.class).single()));
         out.put("session", a.get("session"));
         out.put("name", a.get("surname") + ", " + a.get("other_names"));
         out.put("surname", a.get("surname"));

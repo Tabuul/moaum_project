@@ -27,6 +27,8 @@ interface Me {
   email: string; phone: string | null;
   /** V675: the old portal's application number, for an application migrated from it, and its fees still being verified */
   legacyApplicationNo?: string | null; oldPortalFeesUnderReview?: string[];
+  /** V712: admitted on the old portal and put on the register: no application or acceptance fee asked here; school fees on the student portal */
+  oldPortalAdmitted?: boolean;
   state: string; entryLevel: number; programme: string; programmeCode: string; award: string | null; research: boolean;
   faculty: string; department: string; submittedAt: string | null; createdAt: string | null; feeConfirmedAt: string | null;
   applicationFee: number | null; acceptanceFee: number | null; checkingFee: number | null; liveReference: string | null;
@@ -159,7 +161,8 @@ export function PgPortal() {
       const m = j as Me;
       setMe(m);
       // the fee to prepare for the current step: application, then checking (to see the decision), then acceptance
-      const kind = !m.feeConfirmedAt ? "APPLICATION"
+      const kind = m.oldPortalAdmitted ? null
+        : !m.feeConfirmedAt ? "APPLICATION"
         : m.state === "DECISION_LOCKED" && m.statusChecking?.mayPay ? "CHECKING"
         : (!m.acceptanceConfirmedAt && (m.state === "OFFERED" || m.state === "ACCEPTED" || m.state === "ADMITTED")) ? "ACCEPTANCE"
         : null;
@@ -260,12 +263,18 @@ export function PgPortal() {
     name: me.name, staffNumber: me.applicationNo, sessionId: null, unit: me.programme, waiting: {},
   };
 
-  const paid = !!me.feeConfirmedAt;
+  // V712: admitted on the old portal: what was paid there is recorded from its payments, nothing is asked here
+  const oldAdmitted = !!me.oldPortalAdmitted;
+  const paid = !!me.feeConfirmedAt || oldAdmitted;
   const passport = me.documents.find((d) => d.kind === "PASSPORT") ?? null;
   const docCount = me.documents.filter((d) => d.kind !== "PASSPORT").length;
   const sc = me.statusChecking;
   const scr = me.screening;
-  const steps: [string, boolean, string | null][] = [
+  const steps: [string, boolean, string | null][] = oldAdmitted ? [
+    ["Admitted on the old portal", true, me.spgsDecidedAt],
+    ["On the University register — student portal open", !!me.admittedAt, me.admittedAt],
+    ["Matriculation number issued", !!me.student?.matric_no, null],
+  ] : [
     ["Application submitted", !!me.submittedAt, me.submittedAt],
     ["Application fee paid", paid, me.feeConfirmedAt],
     ["Department recommendation", !!me.deptDecidedAt, me.deptDecidedAt],
@@ -366,7 +375,7 @@ export function PgPortal() {
         </Panel>
       ) : null}
 
-      {paid && !me.acceptanceConfirmedAt && (me.state === "OFFERED" || me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
+      {paid && !oldAdmitted && !me.acceptanceConfirmedAt && (me.state === "OFFERED" || me.state === "ACCEPTED" || me.state === "ADMITTED") ? (
         <Panel title="Congratulations — you have been offered a place">
           <PBody>
             <Note kind="ok" title="CONGRATULATIONS!">
@@ -529,6 +538,7 @@ export function PgPortal() {
         <Note kind="ok" title="You are now a student of the University" action={<LinkBtn kind="primary" href="/login">Go to the Student Sign-in</LinkBtn>}>
           Your admission number is <b className="tnum">{me.student.admission_no}</b>{me.student.matric_no ? <>, and your matriculation number <b className="tnum">{me.student.matric_no}</b></> : null}.
           Sign in to the student portal with the admission number and the password you chose here.
+          {oldAdmitted ? " You were admitted on the University's old portal: pay your school fees there. The fees you paid on the old portal are recorded from its payments; nothing more is asked of you here." : null}
         </Note>
       ) : null}
 

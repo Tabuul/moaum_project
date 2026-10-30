@@ -130,12 +130,13 @@ class PgMigrationIT {
         Map<String, Object> report = ok(it.get(school, M + "/batches/" + b1 + "/rows?status=PROBLEMS"));
         assertThat(String.valueOf(report.get("rows"))).contains("NOT_ADMITTED_IN_ADMITTED_FILE");
 
-        // the old number and this portal's both find the admitted applicant, whose offer stands while the acceptance fee is held
+        // the old number and this portal's both find the admitted applicant — V712: on the register at the import, the acceptance fee
+        // still held for the Bursary
         List<Map<String, Object>> byOld = (List<Map<String, Object>>) it.getList(school, M + "/find?q=" + old2).getBody();
         assertThat(byOld).hasSize(1);
         String newNo = String.valueOf(byOld.get(0).get("application_no"));
         assertThat(newNo).matches("PG/" + String.valueOf(y).substring(2) + "/\\d{6}");
-        assertThat(byOld.get(0).get("state")).isEqualTo("OFFERED");
+        assertThat(byOld.get(0).get("state")).isEqualTo("ADMITTED");
         assertThat((List<Map<String, Object>>) it.getList(school, M + "/find?q=" + newNo).getBody()).extracting(r -> r.get("legacy_application_no")).containsExactly(old2);
 
         // the held fee: not the School's to verify, nor the uploader's; the Bursar's verification accepts and the old screening admits
@@ -221,7 +222,9 @@ class PgMigrationIT {
         // an offer: on either number until they choose their own, and the notice says so
         Map<String, Object> offer = byOld.apply(oldOffer);
         String newOffer = String.valueOf(offer.get("application_no"));
-        assertThat(offer.get("state")).isEqualTo("OFFERED");
+        // V712: admitted on the old portal, on the register at the import
+        assertThat(offer.get("state")).isEqualTo("ADMITTED");
+        assertThat(offer.get("admission_no")).isNotNull();
         assertThat(offer.get("first")).isEqualTo(true);
         assertThat(String.valueOf(offer.get("told"))).contains(oldOffer, newOffer, "Your first password is either application number");
         assertThat(String.valueOf(offer.get("sms"))).contains("either number as your first password");
@@ -240,6 +243,11 @@ class PgMigrationIT {
         assertThat(asNumber.getBody().get("code")).isEqualTo("AUTH_PASSWORD_IS_NUMBER");
         String chosen = "Chosen-" + y + "-pw";
         ok(it.call(token, HttpMethod.POST, "/api/v1/pg/me/password", Map.of("currentPassword", oldOffer, "newPassword", chosen)));
+        // V712: the applicant portal asks no application or acceptance fee of one admitted on the old portal
+        assertThat(ok(it.get(token, "/api/v1/pg/me"))).containsEntry("oldPortalAdmitted", true).containsEntry("state", "ADMITTED");
+        ResponseEntity<Map> acceptance = it.call(token, HttpMethod.POST, "/api/v1/pg/fee-reference?kind=ACCEPTANCE", Map.of());
+        assertThat(acceptance.getStatusCode().value()).isEqualTo(422);
+        assertThat(acceptance.getBody().get("code")).isEqualTo("PG_FEE_NOT_NEEDED");
         assertThat(pgSignIn(oldOffer, oldOffer).getStatusCode().value()).isEqualTo(422);
         assertThat(pgSignIn(newOffer, newOffer).getStatusCode().value()).isEqualTo(422);
         ResponseEntity<Map> again = pgSignIn(oldOffer, chosen);
