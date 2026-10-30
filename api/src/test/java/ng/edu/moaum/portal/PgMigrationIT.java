@@ -23,7 +23,10 @@ import org.springframework.transaction.PlatformTransactionManager;
  * whose application fee the old portal verified, and one admitted there whose acceptance fee it did not verify and whom it cleared
  * at screening — and the check writes nothing. Imported, each has this portal's number and the old one, and both find them; the
  * School may not verify the held fee, the officer who uploaded it neither, and the Bursar's verification accepts the offer and the
- * old portal's screening admits the applicant to the register. The same file again changes nothing. Needs DATABASE_URL.
+ * old portal's screening admits the applicant to the register. The same file again changes nothing. V709: an applicant the migration
+ * creates signs in on either number, with either as the first password, and chooses their own before anything else; one the old
+ * portal screened opens the student portal on the admission number first, or on the password chosen on the applicant portal.
+ * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -163,5 +166,105 @@ class PgMigrationIT {
                 .query(Long.class).single());
         assertThat(after).isEqualTo(before);
         assertThat((List<Map<String, Object>>) it.getList(school, M + "/batches").getBody()).extracting(r -> String.valueOf(r.get("id"))).contains(UUID.fromString(b1).toString(), b2);
+    }
+
+    private ResponseEntity<Map> pgSignIn(String identifier, String password) {
+        return it.anon(HttpMethod.POST, "/api/v1/pg/sign-in", Map.of("identifier", identifier, "password", password));
+    }
+
+    private ResponseEntity<Map> studentSignIn(String number, String password) {
+        return it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", number, "password", password));
+    }
+
+    /** V709: the University's word of 30 October 2026, "pg admitted … cant login from the migrated lagacy data" */
+    @Test
+    void aMigratedApplicantSignsInOnEitherNumberFirstAndChoosesTheirOwn() {
+        int y = it.freeYear(7600, 7790, 0, 0);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        String code = it.db(() -> jdbc.sql("""
+                SELECT 'C9' || lpad(g::text, 4, '0') FROM generate_series(8000, 9999) g
+                 WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C9' || lpad(g::text, 4, '0')) ORDER BY random() LIMIT 1
+                """).query(String.class).single());
+        it.db(() -> jdbc.sql("""
+                INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, archived, category, pg_award)
+                SELECT :c, :n, d.code, d.faculty_code, 0, false, 'POST GRADUATE', 'MSC' FROM ref.department d ORDER BY d.code LIMIT 1
+                """).param("c", code).param("n", "M.Sc. First Sign-in Check " + y).update());
+        String school = it.officer("pgschool", "institution", "University");
+        // the old portal's numbers, as the University's sign-in page showed one (S00220260204082731)
+        String stamp = String.format("%09d", Math.floorMod(System.nanoTime(), 1_000_000_000L));
+        String oldOffer = "S002" + y + stamp + "1", oldFirst = "S002" + y + stamp + "2", oldCarried = "S002" + y + stamp + "3";
+        List<Map<String, Object>> rows = List.of(
+                row("legacyApplicationNo", oldOffer, "lastName", "Firstsignin", "firstName", "Offered", "email", "itpgfs" + stamp + "a@example.test", "phone", "080" + stamp.substring(1),
+                        "session", session, "programmeCode", code, "admissionStatus", "Admitted"),
+                row("legacyApplicationNo", oldFirst, "lastName", "Firstsignin", "firstName", "Studentdoor", "email", "itpgfs" + stamp + "b@example.test",
+                        "session", session, "programmeCode", code, "admissionStatus", "Admitted", "acceptanceStatus", "Accepted",
+                        "acceptanceFeeReference", "ITPGFS-B-" + stamp, "acceptanceFeeAmount", "50000", "acceptanceVerification", "Verified", "screeningDecision", "Cleared"),
+                row("legacyApplicationNo", oldCarried, "lastName", "Firstsignin", "firstName", "Carried", "email", "itpgfs" + stamp + "c@example.test",
+                        "session", session, "programmeCode", code, "admissionStatus", "Admitted", "acceptanceStatus", "Accepted",
+                        "acceptanceFeeReference", "ITPGFS-C-" + stamp, "acceptanceFeeAmount", "50000", "acceptanceVerification", "Verified", "screeningDecision", "Cleared"));
+        Map<String, Object> checked = upload(school, rows, "first-sign-in.xlsx");
+        assertThat(((Number) checked.get("readyToImport")).intValue()).as(String.valueOf(checked)).isEqualTo(3);
+        String batch = String.valueOf(checked.get("id"));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + batch + "/import", Map.of("from", 1, "to", 3)));
+        assertThat(((Number) ok(it.call(school, HttpMethod.POST, M + "/batches/" + batch + "/finish", Map.of())).get("created")).intValue()).isEqualTo(3);
+        java.util.function.Function<String, Map<String, Object>> byOld = old -> it.db(() -> jdbc.sql("""
+                SELECT a.id, a.application_no, a.state, s.admission_no, sa.must_change AS student_first, p.must_change_password AS first,
+                       (SELECT n.body FROM platform.notice n WHERE n.event_key = 'pg-migrated:' || a.id AND n.channel = 'EMAIL' LIMIT 1) AS told,
+                       (SELECT n.body FROM platform.notice n WHERE n.event_key = 'pg-migrated:' || a.id AND n.channel = 'SMS' LIMIT 1) AS sms
+                  FROM admissions.pg_legacy_application l JOIN admissions.pg_application a ON a.id = l.application_id
+                  JOIN admissions.pg_applicant p ON p.id = a.applicant_id
+                  LEFT JOIN people.student s ON s.id = a.student_id LEFT JOIN iam.student_account sa ON sa.student_id = a.student_id
+                 WHERE l.legacy_application_no = :o
+                """).param("o", old).query().singleRow());
+
+        // an offer: on either number until they choose their own, and the notice says so
+        Map<String, Object> offer = byOld.apply(oldOffer);
+        String newOffer = String.valueOf(offer.get("application_no"));
+        assertThat(offer.get("state")).isEqualTo("OFFERED");
+        assertThat(offer.get("first")).isEqualTo(true);
+        assertThat(String.valueOf(offer.get("told"))).contains(oldOffer, newOffer, "Your first password is either application number");
+        assertThat(String.valueOf(offer.get("sms"))).contains("either number as your first password");
+        ResponseEntity<Map> in = pgSignIn(oldOffer, " " + oldOffer.toLowerCase() + " ");
+        assertThat(in.getStatusCode().value()).as(String.valueOf(in.getBody())).isEqualTo(200);
+        assertThat(in.getBody().get("mustChange")).isEqualTo(true);
+        assertThat(pgSignIn(oldOffer, newOffer).getStatusCode().value()).isEqualTo(200);
+        assertThat(pgSignIn(newOffer, oldOffer).getStatusCode().value()).isEqualTo(200);
+        assertThat(pgSignIn(oldOffer, "Not-" + oldOffer).getStatusCode().value()).isEqualTo(422);
+        String token = String.valueOf(in.getBody().get("token"));
+        ResponseEntity<Map> gated = it.get(token, "/api/v1/pg/me");
+        assertThat(gated.getStatusCode().value()).isEqualTo(403);
+        assertThat(gated.getBody().get("code")).isEqualTo("PASSWORD_CHANGE_REQUIRED");
+        // the change: the old number is the one they have; neither number is the new one
+        ResponseEntity<Map> asNumber = it.call(token, HttpMethod.POST, "/api/v1/pg/me/password", Map.of("currentPassword", oldOffer, "newPassword", newOffer));
+        assertThat(asNumber.getBody().get("code")).isEqualTo("AUTH_PASSWORD_IS_NUMBER");
+        String chosen = "Chosen-" + y + "-pw";
+        ok(it.call(token, HttpMethod.POST, "/api/v1/pg/me/password", Map.of("currentPassword", oldOffer, "newPassword", chosen)));
+        assertThat(pgSignIn(oldOffer, oldOffer).getStatusCode().value()).isEqualTo(422);
+        assertThat(pgSignIn(newOffer, newOffer).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> again = pgSignIn(oldOffer, chosen);
+        assertThat(again.getStatusCode().value()).isEqualTo(200);
+        assertThat(again.getBody().get("mustChange")).isEqualTo(false);
+
+        // screened on the old portal: on the register, the student door opens on the admission number first
+        Map<String, Object> first = byOld.apply(oldFirst);
+        assertThat(first.get("state")).isEqualTo("ADMITTED");
+        assertThat(first.get("student_first")).isEqualTo(true);
+        String admissionNo = String.valueOf(first.get("admission_no"));
+        assertThat(String.valueOf(first.get("told"))).contains(admissionNo, "with your admission number, which is also your first password");
+        ResponseEntity<Map> student = studentSignIn(admissionNo, admissionNo);
+        assertThat(student.getStatusCode().value()).as(String.valueOf(student.getBody())).isEqualTo(200);
+        assertThat(student.getBody().get("mustChange")).isEqualTo(true);
+
+        // the password chosen on the applicant portal opens the student portal never signed into, and the number no longer does
+        Map<String, Object> carried = byOld.apply(oldCarried);
+        String carriedAdmission = String.valueOf(carried.get("admission_no"));
+        String pgToken = String.valueOf(pgSignIn(oldCarried, oldCarried).getBody().get("token"));
+        ok(it.call(pgToken, HttpMethod.POST, "/api/v1/pg/me/password", Map.of("currentPassword", oldCarried, "newPassword", chosen)));
+        assertThat(byOld.apply(oldCarried).get("student_first")).isEqualTo(false);
+        ResponseEntity<Map> carriedIn = studentSignIn(carriedAdmission, chosen);
+        assertThat(carriedIn.getStatusCode().value()).as(String.valueOf(carriedIn.getBody())).isEqualTo(200);
+        assertThat(carriedIn.getBody().get("mustChange")).isEqualTo(false);
+        assertThat(studentSignIn(carriedAdmission, carriedAdmission).getStatusCode().value()).isNotEqualTo(200);
     }
 }

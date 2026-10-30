@@ -83,8 +83,10 @@ A batch and its rows are never deleted (a trigger refuses it). A row's values ar
   the passport, up to 8 MB, checked by its bytes. Documents are never public.
 - **Notices.** The pipeline's own notices are silent inside a migration (`admissions.pg_tell_applicant`). Each migrated applicant
   is told once (`told_at`; event key `pg-migrated:<application>`), by email and SMS. The notice gives the new and old numbers and
-  says to sign in with the email and use "Forgot password". It never contains a password. A new applicant's sign-in is a sealed
-  cost-12 hash of a secret nobody holds.
+  says how to sign in. A new applicant's stored password is a sealed cost-12 hash of a secret nobody holds, but since V709 they
+  sign in on the old number, the new number or the email, with either number as the first password, and choose their own at once;
+  an admitted one opens the student portal on the admission number first (docs/pg-migrated-applicant-first-sign-in.md). An
+  applicant the migration links keeps their own password and is told to use "Forgot password" if they have not set one.
 
 ## Figures
 

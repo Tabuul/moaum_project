@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 536
+\set EXPECTED 537
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -30248,6 +30248,76 @@ BEGIN
         coalesce(lv_phd = 900 AND lv_pgd = 700 AND lv_msc = 800 AND lv_moved = 900 AND docs_phd = 'NONE 0/7'
                  AND reads = 'PHD,PHD,MPHIL,MSC,MSC,-,true,false,false' AND left_wrong = 0, false),
         format('phd %s | pgd %s | msc %s | moved %s | documents %s | reads %s | left %s', lv_phd, lv_pgd, lv_msc, lv_moved, docs_phd, reads, left_wrong));
+END $$;
+
+-- ── V709. A postgraduate applicant migrated from the old portal signs in on either number first (the University's word of 30
+--          October 2026: "pg admitted … cant login from the migrated lagacy data"). Made-up applicants: one written while the old
+--          portal's migration runs (moaum.pg_migration set) is to choose their own password, so a number opens the account until
+--          then; one from the public form is not. On the register, the first one's student account opens on the admission number
+--          first and the second's does not; the password the first chooses is carried to the student account never signed into,
+--          and one chosen after the student has signed in is not. No applicant the migration created is left that nobody can open.
+--          The block undoes its writes ──
+DO $$
+DECLARE s text := '2709/2710'; dept text; fac text; a_mig uuid; a_pub uuid; p_mig uuid; p_pub uuid; st_mig uuid; st_pub uuid;
+        first_mig boolean; first_pub boolean; sfirst_mig boolean; sfirst_pub boolean; carried boolean; kept boolean; sealed int; h_new text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V709', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s, DATE '2709-10-01', DATE '2710-08-31');
+        SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research)
+        VALUES ('C96719', 'M.Sc. First Password Check', dept, fac, 'POST GRADUATE', 0, 'MSC', false);
+
+        -- written while the old portal's migration runs, sealed as V675 seals it; then one from the public form
+        PERFORM set_config('moaum.pg_migration', 'CHECK-V709', true);
+        SELECT x.application_id INTO a_mig FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', 'C96719', 'surname', 'CHECKV709', 'otherNames', 'Migrated One',
+               'dob', '1980-01-01', 'phone', '08030000719', 'email', 'check.v709.mig@example.test', 'passwordHash', crypt(gen_random_uuid()::text, gen_salt('bf', 12)))) x;
+        PERFORM set_config('moaum.pg_migration', '', true);
+        SELECT x.application_id INTO a_pub FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', 'C96719', 'surname', 'CHECKV709', 'otherNames', 'Public Two',
+               'dob', '1981-02-02', 'phone', '08030000720', 'email', 'check.v709.pub@example.test', 'passwordHash', crypt('Own-pass-709', gen_salt('bf', 12)))) x;
+        SELECT applicant_id INTO p_mig FROM admissions.pg_application WHERE id = a_mig;
+        SELECT applicant_id INTO p_pub FROM admissions.pg_application WHERE id = a_pub;
+        SELECT must_change_password INTO first_mig FROM admissions.pg_applicant WHERE id = p_mig;
+        SELECT must_change_password INTO first_pub FROM admissions.pg_applicant WHERE id = p_pub;
+
+        -- on the register as admissions.pg_admit puts them: the student account opened with the applicant's hash, then the student named
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (gen_random_uuid(), people.next_admission_no('09', s), 'CHECKV709', 'Migrated One', 'C96719', 'POSTGRADUATE', s, 800, 800, 'ADMITTED') RETURNING id INTO st_mig;
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (gen_random_uuid(), people.next_admission_no('09', s), 'CHECKV709', 'Public Two', 'C96719', 'POSTGRADUATE', s, 800, 800, 'ADMITTED') RETURNING id INTO st_pub;
+        INSERT INTO iam.student_account (id, student_id, password_hash, must_change)
+        SELECT gen_random_uuid(), st_mig, p.password_hash, false FROM admissions.pg_applicant p WHERE p.id = p_mig;
+        INSERT INTO iam.student_account (id, student_id, password_hash, must_change)
+        SELECT gen_random_uuid(), st_pub, p.password_hash, false FROM admissions.pg_applicant p WHERE p.id = p_pub;
+        UPDATE admissions.pg_application SET state = 'ADMITTED', admitted_at = now(), student_id = st_mig WHERE id = a_mig;
+        UPDATE admissions.pg_application SET state = 'ADMITTED', admitted_at = now(), student_id = st_pub WHERE id = a_pub;
+        SELECT must_change INTO sfirst_mig FROM iam.student_account WHERE student_id = st_mig;
+        SELECT must_change INTO sfirst_pub FROM iam.student_account WHERE student_id = st_pub;
+
+        -- the migrated applicant chooses their own on the applicant portal: carried to the student account never signed into
+        h_new := crypt('Chosen-pass-709', gen_salt('bf', 12));
+        PERFORM admissions.pg_applicant_password_set(p_mig, h_new);
+        SELECT a.password_hash = h_new AND NOT a.must_change INTO carried FROM iam.student_account a WHERE a.student_id = st_mig;
+        -- once the student has signed in, the student portal's password is the student's own: a later change is not carried
+        UPDATE iam.student_account SET last_signed_in_at = now() WHERE student_id = st_mig;
+        PERFORM admissions.pg_applicant_password_set(p_mig, crypt('Another-pass-709', gen_salt('bf', 12)));
+        SELECT a.password_hash = h_new INTO kept FROM iam.student_account a WHERE a.student_id = st_mig;
+
+        sealed := (SELECT count(*) FROM admissions.pg_applicant p
+                    WHERE NOT p.must_change_password AND p.last_signed_in_at IS NULL AND p.password_reset_at IS NULL
+                      AND EXISTS (SELECT 1 FROM admissions.pg_migration_row r JOIN admissions.pg_application ap ON ap.id = r.application_id
+                                   WHERE ap.applicant_id = p.id AND r.action = 'CREATE' AND r.result = 'CREATED')
+                      AND NOT EXISTS (SELECT 1 FROM iam.password_reset x WHERE x.subject_kind = 'PGAPPLICANT' AND x.subject_id = p.id AND x.used_at IS NOT NULL));
+        RAISE EXCEPTION 'CHECK_V709_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V709_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V709: a migrated postgraduate applicant opens on a number first and chooses their own — the student account too, the chosen password carried',
+        coalesce(first_mig AND NOT first_pub AND sfirst_mig AND NOT sfirst_pub AND carried AND kept AND sealed = 0, false),
+        format('applicant first %s/%s | student first %s/%s | carried %s | kept after sign-in %s | sealed %s', first_mig, first_pub, sfirst_mig, sfirst_pub, carried, kept, sealed));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

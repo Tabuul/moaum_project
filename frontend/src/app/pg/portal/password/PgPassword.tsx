@@ -1,6 +1,7 @@
 "use client";
-/** The postgraduate applicant's own password (V706). After the School or ICT reset it to the application number the portal opens nothing
- *  else until it is changed (the API's ApplicantPasswordGate); otherwise it is the applicant's to change at will. */
+/** The postgraduate applicant's own password (V706). After the School or ICT reset it to the application number — or, for an applicant
+ *  brought over from the old portal, on its first sign-in on either number (V709) — the portal opens nothing else until it is changed
+ *  (the API's ApplicantPasswordGate); otherwise it is the applicant's to change at will. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -39,16 +40,16 @@ export function PgPassword({ state }: { state: PgPasswordState }) {
     <div className="stack" style={{ maxWidth: 560 }}>
       {state.mustChange ? (
         <Note kind="bad" title="Choose your own password to continue">
-          {`The University reset your password to your application number${state.applicationNo ? ` (${state.applicationNo})` : ""}. Your application opens once you choose your own.`}
+          {`You signed in with your application number${state.applicationNo ? ` (${state.applicationNo})` : ""} or the old portal's. Your application opens once you choose your own password.`}
         </Note>
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Change password">
         <PBody>
-          <Field id="pgp-cur" label={state.mustChange ? "Your application number" : "Current password"} required>
+          <Field id="pgp-cur" label={state.mustChange ? "The number you signed in with" : "Current password"} hint={state.mustChange ? "Your application number, or the old portal's" : undefined} required>
             <PasswordInput id="pgp-cur" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} />
           </Field>
-          <Field id="pgp-new" label="New password" required hint="Eight characters or more; not your application number">
+          <Field id="pgp-new" label="New password" required hint="Eight characters or more; not your application number, old or new">
             <PasswordInput id="pgp-new" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} />
           </Field>
           <Field id="pgp-again" label="New password again" required error={f.again && f.again !== f.next ? "The two do not match" : undefined}>

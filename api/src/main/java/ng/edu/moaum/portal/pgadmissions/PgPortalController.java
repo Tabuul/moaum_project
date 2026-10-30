@@ -96,7 +96,23 @@ class PgPortalController {
 
     private static DomainRuleViolation badCredentials() {
         return new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "That email and password do not match a postgraduate application account.",
-                new DomainRuleViolation.Remedy("Use the email you applied with (or your PG application number) and the password you chose; five failures lock the account for fifteen minutes.", "School of Postgraduate Studies"));
+                new DomainRuleViolation.Remedy("Use the email you applied with, your PG application number or the old portal's, and the password you chose; five failures lock the account for fifteen minutes.", "School of Postgraduate Studies"));
+    }
+
+    /** the applicant's own numbers: this portal's application numbers and the old portal's (V675) */
+    private List<String> numbersOf(UUID applicant) {
+        return jdbc.sql("""
+                SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = :me
+                UNION ALL
+                SELECT lg.legacy_application_no FROM admissions.pg_legacy_application lg JOIN admissions.pg_application ap ON ap.id = lg.application_id WHERE ap.applicant_id = :me
+                """).param("me", applicant).query(String.class).list();
+    }
+
+    /** V709: while the applicant is to choose their own password (a reset, V706; or an applicant the old portal's migration created),
+     *  either number opens the account — this portal's application number or the old portal's — however its letters and spaces are typed */
+    static boolean aNumberOpens(String password, List<String> numbers) {
+        String p = password == null ? "" : password.trim();
+        return !p.isEmpty() && numbers.stream().anyMatch(n -> n != null && !n.isBlank() && n.trim().equalsIgnoreCase(p));
     }
 
     /** sign in on the email the applicant applied with, or their PG application number, and their password (public) */
@@ -130,8 +146,10 @@ class PgPortalController {
         int attempts = ((Number) a.get("failed_attempts")).intValue();
         boolean mustChange = Boolean.TRUE.equals(a.get("must_change_password"));
         String hash = String.valueOf(a.get("password_hash"));
-        /* V706: after a reset the application number opens the account, however its letters are typed */
-        boolean ok = encoder.matches(body.password(), hash) || (mustChange && encoder.matches(body.password().trim().toUpperCase(), hash));
+        /* V706: after a reset the application number opens the account, however its letters are typed; V709: and the old portal's
+           number, for a reset applicant and for one the old portal's migration created, until they choose their own */
+        boolean ok = encoder.matches(body.password(), hash)
+                || (mustChange && (aNumberOpens(body.password(), numbersOf(applicantId)) || encoder.matches(body.password().trim().toUpperCase(), hash)));
         if (!ok) {
             int next = attempts + 1;
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
@@ -192,19 +210,15 @@ class PgPortalController {
         String hash = String.valueOf(a.get("password_hash"));
         boolean must = Boolean.TRUE.equals(a.get("must_change_password"));
         String current = body.currentPassword();
-        if (!(encoder.matches(current, hash) || (must && encoder.matches(current.trim().toUpperCase(), hash)))) {
+        List<String> own = numbersOf(me);
+        if (!(encoder.matches(current, hash) || (must && (aNumberOpens(current, own) || encoder.matches(current.trim().toUpperCase(), hash))))) {
             throw new DomainRuleViolation("AUTH_CURRENT_PASSWORD", "The password you have now is not the one entered.",
-                    new DomainRuleViolation.Remedy(must ? "Enter your application number, the password the University reset yours to." : "Enter the password you signed in with.", "You"));
+                    new DomainRuleViolation.Remedy(must ? "Enter the number you signed in with: your application number, or the old portal's." : "Enter the password you signed in with.", "You"));
         }
         String next = body.newPassword();
         if (next.length() < 8) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.", new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
-        List<String> own = jdbc.sql("""
-                SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = :me
-                UNION ALL
-                SELECT lg.legacy_application_no FROM admissions.pg_legacy_application lg JOIN admissions.pg_application ap ON ap.id = lg.application_id WHERE ap.applicant_id = :me
-                """).param("me", me).query(String.class).list();
         if (own.stream().anyMatch(n -> n != null && !n.isBlank() && n.trim().equalsIgnoreCase(next.trim()))) {
             throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your application number cannot be your password.",
                     new DomainRuleViolation.Remedy("Choose a password that is not your application number.", "You"));

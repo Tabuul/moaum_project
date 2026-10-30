@@ -8,7 +8,8 @@ import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
  *   MOAUM/XXX/YY/NNNN                 a student, on the matriculation number
  *   12 digits + 2–3 letters, APP/…    an applicant, on the JAMB or application number
  *   anything else                     a member of staff, on the staff number or email —
- *                                     and, failing that, an applicant on an email address
+ *                                     and, failing that, an applicant on an email address, or a
+ *                                     postgraduate applicant on the old portal's number (V709)
  * The token goes into a cookie the browser cannot read; the office cookie says
  * which side of the portal opens.
  */
@@ -72,6 +73,14 @@ export async function POST(request: NextRequest) {
       kind = "student";
     } else {
       r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);
+      /* V709: an old-portal postgraduate number may have this shape too */
+      if (r && (r.status === 422 || r.status === 429)) {
+        const pg = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
+        if (pg && pg.ok) {
+          r = pg;
+          kind = "pgapplicant";
+        }
+      }
     }
   } else if (kind === "applicant") {
     /* the same JAMB/application number opens the student dashboard once the candidate is on the
@@ -107,6 +116,14 @@ export async function POST(request: NextRequest) {
             kind = "jupeb";
           }
         }
+      }
+    } else if (r && (r.status === 422 || r.status === 429)) {
+      /* V709: a number of no shape the page knows that is no staff number: the old portal's postgraduate application number
+         (S00220260204082731 and the like), which the postgraduate door finds a migrated applicant by */
+      const pg = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
+      if (pg && pg.ok) {
+        r = pg;
+        kind = "pgapplicant";
       }
     }
   }

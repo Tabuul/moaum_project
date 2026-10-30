@@ -20,6 +20,7 @@ const ADMISSION = /^MOAUM\/ADM\/[0-9]{2}\/[0-9]{6}$/i;
 const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
 const JUPEB = /^JUPEB\/APP\/[0-9]{4}\/[0-9]{6}$/i;
+const PG_APPLICATION = /^PG\/[0-9]{2}\/[0-9]{6}$/i;
 
 function whoIs(id: string): string {
   const s = id.trim();
@@ -27,9 +28,10 @@ function whoIs(id: string): string {
   if (ADMISSION.test(s)) return "An admitted student, on the admission number";
   if (MATRIC.test(s)) return "A student, on the matriculation number";
   if (JUPEB.test(s)) return "A JUPEB applicant or student, on the JUPEB application number";
+  if (PG_APPLICATION.test(s)) return "A postgraduate applicant, on the PG application number";
   if (JAMB.test(s) || APPLICATION.test(s)) return "An applicant, on the JAMB or application number";
   if (s.includes("@")) return "A member of staff or an applicant, on the email address";
-  return "A member of staff, on the staff number";
+  return "A member of staff on the staff number, or a postgraduate applicant on the old portal's number";
 }
 
 /** the line icons the form uses, drawn as the CMS draws them */
