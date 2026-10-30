@@ -51,7 +51,7 @@ class PgRefereeController {
         Map<String, Object> r = firstOrNull(jdbc.sql("""
                 SELECT r.name AS referee_name, r.position, r.institution, r.submitted_at,
                        p.surname, p.other_names, a.application_no, a.session,
-                       g.name AS programme_name, g.pg_award
+                       g.name AS programme_name, admissions.pg_award_of(g.pg_award, g.name) AS pg_award   -- V707
                   FROM admissions.pg_referee r
                   JOIN admissions.pg_application a ON a.id = r.application_id
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id

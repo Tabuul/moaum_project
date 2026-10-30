@@ -25,7 +25,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * phone as +234… — is refused, naming the first email masked; a namesake with another date of birth and phone is taken; an
  * application made twice before V694 is flagged on the desk with the other's number, and once the one is paid the other is not
  * issued a fee reference. Paid with nothing uploaded, the application is on the "paid, not uploaded" list; with some uploaded it
- * is pending with the others named; with all, complete. The passport comes to the application form as a JPEG. Needs DATABASE_URL.
+ * is pending with the others named; with all, complete. The passport comes to the application form as a JPEG. V707: a PhD programme
+ * the register upload made with no award recorded is applied for as a PhD. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -98,7 +99,7 @@ class PgOneApplicationIT {
     @Test
     void aPersonAppliesOnceASessionAndTheDeskSeesWhenTheDocumentsAndAnyApplicationMadeTwice() {
         String programme = jdbc.sql("""
-                SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived AND admissions.pg_award_level(pg_award) = 800 ORDER BY code LIMIT 1
+                SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived AND pg_award IS NOT NULL AND admissions.pg_award_level(pg_award) = 800 ORDER BY code LIMIT 1
                 """).query(String.class).single();
         ItSupport.PgPerson ada = ItSupport.pgPerson("ZZPGONCE");
         String first = email("once");
@@ -211,5 +212,47 @@ class PgOneApplicationIT {
         // a filter the desk does not offer is refused
         assertThat(it.get(school, u -> u.path("/api/v1/pg/applications").queryParam("session", session).queryParam("documents", "SOME").build())
                 .getBody()).containsEntry("code", "PG_DOCUMENTS_FILTER");
+    }
+
+    /**
+     * V707: a programme with no award recorded — as the register upload makes them, "PhD LAW" — is read by its name. The form's
+     * list offers it as a PhD research degree at 900; an applicant to it is filed at 900, and their portal and the School's desk
+     * read it as a PhD, not a Master's. The made-up programme is set aside after.
+     */
+    @Test
+    void aPhdProgrammeWithNoAwardRecordedIsAppliedForAsAPhd() {
+        String code = it.db(() -> jdbc.sql("""
+                SELECT 'C9' || lpad(g::text, 4, '0') FROM generate_series(7000, 7999) g
+                 WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C9' || lpad(g::text, 4, '0')) ORDER BY random() LIMIT 1
+                """).query(String.class).single());
+        String name = "PhD ZZAWARD" + code.substring(2);
+        it.db(() -> jdbc.sql("""
+                INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, archived, category, pg_award, pg_research)
+                SELECT :c, :n, d.code, d.faculty_code, 0, false, 'POST GRADUATE', NULL, false FROM ref.department d ORDER BY d.code LIMIT 1
+                """).param("c", code).param("n", name).update());
+        try {
+            List<Map<String, Object>> list = (List<Map<String, Object>>) (List) org.springframework.web.client.RestClient.create("http://localhost:" + port)
+                    .get().uri("/api/v1/pg/programmes").retrieve().toEntity(List.class).getBody();
+            assertThat(list).filteredOn(p -> code.equals(p.get("code"))).singleElement()
+                    .satisfies(p -> assertThat(p).containsEntry("pg_award", "PHD").containsEntry("pg_research", true).containsEntry("entry_level", 900));
+
+            ItSupport.PgPerson person = ItSupport.pgPerson("ZZPGAWARD");
+            String mail = email("award");
+            ResponseEntity<Map> applied = it.anon(HttpMethod.POST, "/api/v1/pg/apply", form(person.surname(), person.otherNames(), person.dob(), person.phone(), mail, code));
+            assertThat(applied.getStatusCode().value()).as(String.valueOf(applied.getBody())).isEqualTo(200);
+            UUID app = UUID.fromString(String.valueOf(applied.getBody().get("application_id")));
+            assertThat(jdbc.sql("SELECT entry_level FROM admissions.pg_application WHERE id = :a").param("a", app).query(Integer.class).single()).isEqualTo(900);
+
+            ResponseEntity<Map> signedIn = it.anon(HttpMethod.POST, "/api/v1/pg/sign-in", Map.of("identifier", mail, "password", "Candidate2026!"));
+            assertThat(signedIn.getStatusCode().value()).as(String.valueOf(signedIn.getBody())).isEqualTo(200);
+            Map<String, Object> me = it.get(String.valueOf(signedIn.getBody().get("token")), "/api/v1/pg/me").getBody();
+            assertThat(me).containsEntry("award", "PHD").containsEntry("entryLevel", 900).containsEntry("research", true).containsEntry("programme", name);
+
+            ResponseEntity<Map> desk = it.get(school, "/api/v1/pg/applications/" + app);
+            assertThat(desk.getStatusCode().value()).as(String.valueOf(desk.getBody())).isEqualTo(200);
+            assertThat(String.valueOf(desk.getBody())).contains("pg_award=PHD").contains("entry_level=900");
+        } finally {
+            it.db(() -> jdbc.sql("UPDATE ref.programme SET archived = true WHERE code = :c").param("c", code).update());
+        }
     }
 }

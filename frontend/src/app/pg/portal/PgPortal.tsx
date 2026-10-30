@@ -55,6 +55,9 @@ interface Me {
 
 const naira = (n: number | null) => (n == null ? "—" : "₦" + Number(n).toLocaleString());
 const LEVEL: Record<number, string> = { 700: "Postgraduate Diploma", 800: "Master", 900: "MPhil / PhD" };
+/** V707: the award a programme is read at, in words (a programme with no award recorded is read by its name: "PhD LAW" is a PhD) */
+const AWARD: Record<string, string> = { PHD: "PhD", MPHIL: "MPhil", PGD: "PGD", MSC: "M.Sc.", MA: "M.A.", MED: "M.Ed.", MBA: "MBA", MPA: "MPA", LLM: "LL.M." };
+const awardWord = (a: string | null): string | null => (a ? AWARD[a] ?? a : null);
 const STATE_LABEL: Record<string, string> = {
   DRAFT: "Draft", SUBMITTED: "Submitted — with the department", DEPT_RECOMMENDED: "Recommended by the department — with the faculty",
   DEPT_DECLINED: "Not recommended by the department", FAC_RECOMMENDED: "Recommended by the faculty — with the School",
@@ -302,7 +305,7 @@ export function PgPortal() {
       {verifying ? <Note kind="info" title="Confirming your payment…">The page updates once the payment reaches the University.</Note> : null}
 
       <Tiles items={[
-        ["Programme", me.award ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
+        ["Programme", awardWord(me.award) ?? LEVEL[me.entryLevel] ?? "PG", null, me.programme],
         ["Application fee", paid ? "Paid" : naira(me.applicationFee), paid ? "var(--green-ink)" : "var(--chrome)", paid ? "confirmed" : "unpaid"],
         ["Documents", `${new Set(me.documents.filter((d) => d.kind !== "PASSPORT").map((d) => d.kind)).size}/${DOC_TYPES.length}`, docCount ? null : "var(--chrome)", "uploaded"],
         ["Stage", STATE_SHORT[me.state] ?? me.state, me.state === "ADMITTED" ? "var(--green-ink)" : null, me.department],
@@ -372,7 +375,7 @@ export function PgPortal() {
             <div className="mt-3">
               <KvGrid cls="grid--2" pairs={[
                 ["Applicant", me.name], ["Application number", me.applicationNo], ["Admission session", me.session], ["Faculty", me.faculty],
-                ["Department", me.department], ["Programme", me.programme], ["Degree", me.award ?? LEVEL[me.entryLevel] ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
+                ["Department", me.department], ["Programme", me.programme], ["Degree", awardWord(me.award) ?? LEVEL[me.entryLevel] ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
                 ["Admission status", "Admitted"], ["Next step", "Accept your admission"],
               ]} />
             </div>
@@ -464,7 +467,7 @@ export function PgPortal() {
             <KvGrid cls="grid--1" pairs={[
               ["Application number", me.applicationNo], ...(me.legacyApplicationNo ? [["Old application number", me.legacyApplicationNo] as [string, string]] : []),
               ["Session", me.session], ["Programme", me.programme],
-              ["Award", me.award ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
+              ["Award", awardWord(me.award) ?? "—"], ["Level", LEVEL[me.entryLevel] ?? String(me.entryLevel)],
               ["Faculty", me.faculty], ["Department", me.department], ["Date applied", fmtDate(me.submittedAt)],
             ]} />
             <div className="sub2 eyebrow eyebrow--gap">Bio-data</div>

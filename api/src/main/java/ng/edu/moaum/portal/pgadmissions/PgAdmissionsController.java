@@ -160,7 +160,7 @@ class PgAdmissionsController {
                        ds.state AS documents_state, ds.required AS documents_required, ds.uploaded AS documents_uploaded,
                        ds.missing AS documents_missing,
                        dup.also_applied, coalesce(dup.times, 1) AS times_applied,
-                       g.name AS programme_name, g.pg_award, g.pg_research, g.dept_code, g.faculty_code,
+                       g.name AS programme_name, admissions.pg_award_of(g.pg_award, g.name) AS pg_award, admissions.pg_research_of(g.pg_research, g.pg_award, g.name) AS pg_research, g.dept_code, g.faculty_code,   -- V707
                        d.name AS department_name, f.name AS faculty_name,
                        p.surname, p.other_names, p.email, p.phone, p.state_of_origin,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa,
@@ -504,7 +504,7 @@ class PgAdmissionsController {
     Map<String, Object> application(@PathVariable UUID id) {
         List<Map<String, Object>> found = jdbc.sql("""
                 SELECT a.id, a.application_no, a.session, a.state, a.entry_level, a.programme_code,
-                       g.name AS programme_name, g.pg_award, g.pg_research,
+                       g.name AS programme_name, admissions.pg_award_of(g.pg_award, g.name) AS pg_award, admissions.pg_research_of(g.pg_research, g.pg_award, g.name) AS pg_research,   -- V707
                        p.surname, p.other_names, p.sex, p.date_of_birth, p.state_of_origin, p.lga, p.nationality, p.contact_address, p.email, p.phone,
                        a.prior_institution, a.prior_award, a.prior_class, a.prior_cgpa, a.prior_year,
                        a.proposal_title, a.proposal_text,

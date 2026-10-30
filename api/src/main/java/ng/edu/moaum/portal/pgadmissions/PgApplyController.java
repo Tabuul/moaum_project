@@ -57,8 +57,10 @@ class PgApplyController {
     @GetMapping("/programmes")
     List<Map<String, Object>> programmes() {
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT g.code, g.name, f.name AS faculty_name, d.name AS department_name, g.pg_award, g.pg_research,
-                       admissions.pg_award_level(g.pg_award) AS entry_level
+                SELECT g.code, g.name, f.name AS faculty_name, d.name AS department_name,
+                       -- V707: a programme with no award recorded (the register upload's "PhD LAW") read by its name
+                       admissions.pg_award_of(g.pg_award, g.name) AS pg_award, admissions.pg_research_of(g.pg_research, g.pg_award, g.name) AS pg_research,
+                       admissions.pg_award_level(admissions.pg_award_of(g.pg_award, g.name)) AS entry_level
                   FROM ref.programme g
                   JOIN ref.faculty f ON f.code = g.faculty_code
                   JOIN ref.department d ON d.code = g.dept_code
@@ -193,7 +195,7 @@ class PgApplyController {
                        CASE WHEN a.state IN ('DRAFT','SUBMITTED','RETURNED','ACCEPTED','ADMITTED') THEN a.state
                             WHEN a.state IN ('OFFERED','NOT_OFFERED') THEN CASE WHEN c.may_check THEN a.state ELSE 'DECISION_LOCKED' END
                             ELSE 'UNDER_REVIEW' END AS state,
-                       a.entry_level, g.name AS programme_name, g.pg_award,
+                       a.entry_level, g.name AS programme_name, admissions.pg_award_of(g.pg_award, g.name) AS pg_award,   -- V707
                        p.surname, p.other_names, a.fee_confirmed_at, a.submitted_at,
                        CASE WHEN c.may_check THEN a.spgs_note END AS spgs_note
                   FROM admissions.pg_application a

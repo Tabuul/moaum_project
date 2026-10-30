@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 535
+\set EXPECTED 536
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -30192,6 +30192,62 @@ BEGIN
       coalesce(msg = 'check ver true cred true CREDITED 7000.00 | verified COMPLETED desk VERIFIED/S2, credited later to S2 | credited COMPLETED moved true, entry S2/true desk CREDITED/S2, wallets 3000.00/9000.00, on the swap t said 1, entries 3→3'
                || ' | spent SWAP_OUTSTANDING_SPENT, decision FAILED SWAP_OUTSTANDING_SPENT | reversal COMPLETED entry S1 wallets 7000.00/5000.00', false),
       msg);
+END $$;
+
+-- ── V707. A postgraduate programme with no award recorded is read by its name (the University's word of 30 October 2026: "PhD
+--          programme coming as Master instead of PhD programme"). Made-up programmes as the register upload makes them — "PhD
+--          ZZLAW" and "PGD ZZLAW", no award — beside a catalogue one with its award (M.Sc.): through the public form, the PhD
+--          applicant is filed at 900 and asked the higher degree (7 documents), the PGD one at 700, the M.Sc. one at 800; the M.Sc.
+--          application moved to the PhD programme follows it to 900; the awards and research degrees read so (Ph.D., M.Phil.,
+--          the recorded award first); no application to such a programme is left at another level off the register. The block
+--          undoes its writes ──
+DO $$
+DECLARE s text := '2707/2708'; dept text; fac text; a_phd uuid; a_pgd uuid; a_msc uuid;
+        lv_phd int; lv_pgd int; lv_msc int; lv_moved int; docs_phd text; reads text; left_wrong int;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'check V707', true);
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s, DATE '2707-10-01', DATE '2708-08-31');
+        SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research) VALUES
+            ('C96707', 'PhD ZZLAW', dept, fac, 'POST GRADUATE', 0, NULL, false),
+            ('C96708', 'PGD ZZLAW', dept, fac, 'POST GRADUATE', 0, NULL, false),
+            ('C96709', 'M.Sc. Award Recorded Check', dept, fac, 'POST GRADUATE', 0, 'MSC', false);
+
+        SELECT x.application_id INTO a_phd FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', 'C96707', 'surname', 'CHECKV707', 'otherNames', 'Doctoral One',
+               'dob', '1980-01-01', 'phone', '08030000707', 'email', 'check.v707.phd@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        SELECT x.application_id INTO a_pgd FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', 'C96708', 'surname', 'CHECKV707', 'otherNames', 'Diploma Two',
+               'dob', '1981-02-02', 'phone', '08030000708', 'email', 'check.v707.pgd@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        SELECT x.application_id INTO a_msc FROM admissions.pg_apply(jsonb_build_object('session', s, 'programme', 'C96709', 'surname', 'CHECKV707', 'otherNames', 'Masters Three',
+               'dob', '1982-03-03', 'phone', '08030000709', 'email', 'check.v707.msc@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        SELECT entry_level INTO lv_phd FROM admissions.pg_application WHERE id = a_phd;
+        SELECT entry_level INTO lv_pgd FROM admissions.pg_application WHERE id = a_pgd;
+        SELECT entry_level INTO lv_msc FROM admissions.pg_application WHERE id = a_msc;
+        -- paid, the PhD applicant is asked the higher degree beside the six
+        UPDATE admissions.pg_application SET fee_confirmed_at = now() WHERE id = a_phd;
+        docs_phd := (SELECT d.state || ' ' || d.uploaded || '/' || d.required FROM admissions.pg_document_state(a_phd) d);
+        -- moved to the PhD programme, the M.Sc. application follows it
+        UPDATE admissions.pg_application SET programme_code = 'C96707' WHERE id = a_msc;
+        SELECT entry_level INTO lv_moved FROM admissions.pg_application WHERE id = a_msc;
+
+        reads := concat_ws(',', admissions.pg_award_of(NULL, 'PhD LAW'), admissions.pg_award_of(NULL, 'Ph.D. Law'), admissions.pg_award_of(NULL, 'M.Phil. History'),
+                           admissions.pg_award_of(NULL, 'MSC CHEMISTRY'), admissions.pg_award_of('MSC', 'PhD Law'), coalesce(admissions.pg_award_of(NULL, 'Master of Laws'), '-'),
+                           admissions.pg_research_of(false, NULL, 'PHD ACCOUNTING')::text, admissions.pg_research_of(false, 'MSC', 'PhD Law')::text,
+                           admissions.pg_research_of(false, NULL, 'MSC ACCOUNTING')::text);
+        left_wrong := (SELECT count(*) FROM admissions.pg_application a JOIN ref.programme g ON g.code = a.programme_code
+                        WHERE nullif(btrim(coalesce(g.pg_award, '')), '') IS NULL AND admissions.pg_award_of(NULL, g.name) IS NOT NULL AND a.student_id IS NULL
+                          AND a.entry_level IS DISTINCT FROM admissions.pg_award_level(admissions.pg_award_of(NULL, g.name)));
+        RAISE EXCEPTION 'CHECK_V707_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V707_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V707: a postgraduate programme with no award recorded read by its name — a PhD applicant filed at 900 and asked the higher degree, a PGD one at 700, the recorded award first',
+        coalesce(lv_phd = 900 AND lv_pgd = 700 AND lv_msc = 800 AND lv_moved = 900 AND docs_phd = 'NONE 0/7'
+                 AND reads = 'PHD,PHD,MPHIL,MSC,MSC,-,true,false,false' AND left_wrong = 0, false),
+        format('phd %s | pgd %s | msc %s | moved %s | documents %s | reads %s | left %s', lv_phd, lv_pgd, lv_msc, lv_moved, docs_phd, reads, left_wrong));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

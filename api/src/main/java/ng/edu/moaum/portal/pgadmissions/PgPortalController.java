@@ -262,7 +262,7 @@ class PgPortalController {
         Map<String, Object> r = firstOrNull(jdbc.sql("""
                 SELECT fr.reference, fr.kind, fr.amount, fr.confirmed_at, NULL::text AS receipt_no, fr.channel, fr.generated_at,
                        a.application_no, a.session, p.surname, p.other_names, NULL::text AS jamb_reg_no,
-                       g.name || coalesce(' (' || g.pg_award || ')', '') AS programme, 'POSTGRADUATE' AS route
+                       g.name || coalesce(' (' || admissions.pg_award_of(g.pg_award, g.name) || ')', '') AS programme, 'POSTGRADUATE' AS route
                   FROM admissions.pg_fee_reference fr
                   JOIN admissions.pg_application a ON a.id = fr.application_id
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
@@ -359,7 +359,8 @@ class PgPortalController {
                        a.proposal_title, a.proposal_text, a.return_note, a.returned_at, a.returned_to,
                        p.surname, p.other_names, p.email, p.phone, p.sex, p.date_of_birth, p.state_of_origin, p.lga,
                        p.nationality, p.contact_address,
-                       g.code AS programme_code, g.name AS programme_name, g.pg_award, g.pg_research,
+                       g.code AS programme_code, g.name AS programme_name,
+                       admissions.pg_award_of(g.pg_award, g.name) AS pg_award, admissions.pg_research_of(g.pg_research, g.pg_award, g.name) AS pg_research,   -- V707: read by the name when no award is recorded
                        f.name AS faculty_name, d.name AS department_name, a.session,
                        -- V488: the specialisation — the student's own once admitted, else the one applied for
                        (SELECT ps.name FROM catalogue.programme_specialisation ps
