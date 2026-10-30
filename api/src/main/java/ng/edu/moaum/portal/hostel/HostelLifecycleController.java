@@ -481,6 +481,8 @@ class HostelLifecycleController {
         String session = ses(s, y);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dashboard", jdbc.sql("SELECT hostel.dashboard(:s)::text").param("s", session).query(String.class).single());
+        // V705: full, maintenance, special, Student Union and Security rooms; reservations awaiting payment
+        out.put("rooms", jdbc.sql("SELECT hostel.room_kpis(:s)::text").param("s", session).query(String.class).single());
         out.put("preview", jdbc.sql("SELECT * FROM hostel.preview(:s)").param("s", session).query().singleRow());
         out.put("sessions", jdbc.sql("SELECT name FROM policy.academic_session ORDER BY name DESC").query(String.class).list());
         out.put("halls", jdbc.sql("SELECT code, name, sex, kind, state FROM hostel.hall WHERE ended_on IS NULL ORDER BY name").query().listOfRows());
@@ -568,6 +570,8 @@ class HostelLifecycleController {
     @PreAuthorize(OFFICE)
     @Transactional
     Map<String, Object> allocate(@PathVariable String s, @PathVariable String y, @PathVariable UUID id, @Valid @RequestBody AllocateIn body) {
+        // V705: a reservation past its 48 hours is lapsed first, so its bed is free to the desk this instant
+        jdbc.sql("SELECT hostel.lapse_holds(:s)").param("s", ses(s, y)).query(Integer.class).single();
         UUID a = jdbc.sql("SELECT hostel.allocate(:a, :b, :r)").param("a", id).param("b", body.bedId()).param("r", body.reason().trim()).query(UUID.class).single();
         return Map.of("allocationId", a, "reference", jdbc.sql("SELECT reference_no FROM hostel.allocation WHERE id = :i").param("i", a).query(String.class).single());
     }

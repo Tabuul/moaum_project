@@ -83,7 +83,7 @@ export interface Dash {
   applicationStatus: { status: string; n: number }[]; applicationsByHall: { hall: string; n: number }[]; applicationsByFaculty: { faculty: string; faculty_code: string | null; n: number }[]; applicationsByLevel: { level: number | null; n: number }[];
 }
 export interface Preview { eligible_applicants: number; approved: number; pending_review: number; free_beds: number; halls: number; rooms: number; will_seat: number; will_wait: number }
-export interface DashboardData { dashboard: string; preview: Preview; sessions: string[]; halls: { code: string; name: string; sex: string | null; kind: string; state: string }[]; kinds: { code: string; label: string }[]; faculties: { code: string; name: string }[]; waiting: { reviews: number; transfers: number; checkouts: number; checkins: number; clearances: number; maintenance: number } }
+export interface DashboardData { dashboard: string; /** V705: hostel.room_kpis as JSON text */ rooms?: string; preview: Preview; sessions: string[]; halls: { code: string; name: string; sex: string | null; kind: string; state: string }[]; kinds: { code: string; label: string }[]; faculties: { code: string; name: string }[]; waiting: { reviews: number; transfers: number; checkouts: number; checkins: number; clearances: number; maintenance: number } }
 
 export interface RoomRow {
   /** V290 */ category?: string;
@@ -172,6 +172,14 @@ export interface Checklist { school_fees: boolean; course_registration: boolean;
 export interface StudentRooms {
   session: string; checklist: Checklist; setting: { session: string; semester: number | null; state: string; allocation_method: string; requires_review: boolean; applications_open: string | null; applications_close: string | null; hold_hours: number; fee: number; drawn_at: string | null } | null;
   rooms: RoomBoardRow[]; totalOpenRooms: number; halls: { code: string; name: string; sex: string | null; kind: string; campus: string | null; location: string | null }[]; roomTypes: { code: string; label: string; beds: number }[];
+  /** V705: the student's alert for a free room, if set (told_at once the clock has told them) */
+  watch?: RoomWatch | null;
+}
+export interface RoomWatch { id: string; hall_code: string | null; hall_name: string | null; room_type: string | null; room_type_label: string | null; created_at: string; told_at: string | null; told_room_no: string | null; told_hall_name: string | null }
+/** V705: the Dean's room figures (hostel.room_kpis) */
+export interface RoomKpis {
+  rooms: number; capacity: number; full: number; maintenance: number; pending_reservations: number; pending_applications: number; room_alerts: number;
+  byCategory: { category: string; label: string; general: boolean; chargeable: boolean; rooms: number; beds: number; occupied: number; reserved: number; available: number }[];
 }
 export const FEE_STATUS: Record<string, [string, PilKind]> = { PAYABLE: ["Outstanding", "bad"], PAID: ["Paid", "ok"], NO_CHARGE: ["No charge", "info"] };
 export const ROOM_STATUS: Record<string, [string, PilKind]> = {

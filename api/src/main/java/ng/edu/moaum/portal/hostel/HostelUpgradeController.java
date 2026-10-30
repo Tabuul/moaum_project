@@ -98,7 +98,43 @@ class HostelUpgradeController {
         out.put("totalOpenRooms", jdbc.sql("SELECT count(*) FROM hostel.room_choices(:m, :s)").param("m", me).param("s", s).query(Long.class).single());
         out.put("halls", jdbc.sql("SELECT code, name, sex, kind, campus, location FROM hostel.hall WHERE ended_on IS NULL AND state = 'ACTIVE' ORDER BY name").query().listOfRows());
         out.put("roomTypes", jdbc.sql("SELECT code, label, beds FROM hostel.room_type WHERE active ORDER BY beds").query().listOfRows());
+        // V705: the student's alert for a free room, if one is set, and the last one told
+        out.put("watch", jdbc.sql("""
+                SELECT w.id, w.hall_code, h.name AS hall_name, w.room_type, rt.label AS room_type_label, w.created_at, w.told_at, r.room_no AS told_room_no, th.name AS told_hall_name
+                  FROM hostel.room_watch w LEFT JOIN hostel.hall h ON h.code = w.hall_code LEFT JOIN hostel.room_type rt ON rt.code = w.room_type
+                  LEFT JOIN hostel.room r ON r.id = w.told_room_id LEFT JOIN hostel.hall th ON th.code = r.hall_code
+                 WHERE w.student_id = :m AND w.session = :s AND w.ended_at IS NULL
+                 ORDER BY w.told_at IS NULL DESC, w.created_at DESC LIMIT 1
+                """).param("m", me).param("s", s).query().listOfRows().stream().findFirst().orElse(null));
         return out;
+    }
+
+    public record WatchIn(String session, @Size(max = 8) String hall, @Size(max = 30) String roomType) {
+    }
+
+    /** V705: "notify me when a suitable hostel room becomes available" — an eligible student with no bed; told once by the clock */
+    @PostMapping("/api/v1/me/hostel/watch")
+    @PreAuthorize(STUDENT)
+    @Transactional
+    Map<String, Object> watch(Authentication auth, @Valid @RequestBody WatchIn body) {
+        UUID me = student(auth);
+        String s = studentSession(me, body.session());
+        UUID id = jdbc.sql("SELECT hostel.watch_rooms(:m, :s, :h, :t)").param("m", me).param("s", s)
+                .param("h", blank(body.hall()), Types.VARCHAR).param("t", blank(body.roomType()), Types.VARCHAR).query(UUID.class).single();
+        return Map.of("id", id, "session", s);
+    }
+
+    public record SessionIn(String session) {
+    }
+
+    @PostMapping("/api/v1/me/hostel/watch/cancel")
+    @PreAuthorize(STUDENT)
+    @Transactional
+    Map<String, Object> unwatch(Authentication auth, @RequestBody(required = false) SessionIn body) {
+        UUID me = student(auth);
+        String s = studentSession(me, body == null ? null : body.session());
+        int n = jdbc.sql("SELECT hostel.unwatch_rooms(:m, :s)").param("m", me).param("s", s).query(Integer.class).single();
+        return Map.of("cancelled", n, "session", s);
     }
 
     public record ReserveIn(String session, @NotNull UUID roomId) {
@@ -229,6 +265,8 @@ class HostelUpgradeController {
             studentId = jdbc.sql("SELECT id FROM people.student WHERE upper(matric_no) = upper(:n) OR upper(admission_no) = upper(:n) LIMIT 1").param("n", body.studentNumber().trim()).query(UUID.class).optional()
                     .orElseThrow(() -> new NotFound("student", body.studentNumber().trim()));
         }
+        // V705: a reservation past its 48 hours is lapsed first, so its bed is free to the Dean this instant
+        jdbc.sql("SELECT hostel.lapse_holds(:s)").param("s", session).query(Integer.class).single();
         UUID id = jdbc.sql("SELECT hostel.allocate_special(:b, :s, :c, :st, :p, :n, :why, :from, :to)")
                 .param("b", body.bedId()).param("s", session).param("c", blank(body.category()) == null ? null : body.category().trim().toUpperCase(), Types.VARCHAR)
                 .param("st", studentId, Types.OTHER).param("p", body.personId(), Types.OTHER).param("n", blank(body.occupantName()), Types.VARCHAR)

@@ -15,8 +15,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Every hour the hostel clock runs (V261): a hold that has expired unpaid lapses and the bed passes to the next
- *  name on the waiting list, whether anybody is watching (V030 wrote the rule; nothing used to call it). */
+/** Every five minutes the hostel clock runs (V261; hourly until V705): a hold that has expired unpaid lapses and the bed
+ *  passes to the next name on the waiting list, whether anybody is watching (V030 wrote the rule; nothing used to call it);
+ *  the reminders go before the deadline (V290); a student who asked to be told of a free room is told (V705). The room
+ *  lists already treat a hold past its deadline as free, and a reservation lapses it first, so the clock is for the record
+ *  and the notices, not the 48 hours themselves. */
 @Component
 public class HostelClock {
 
@@ -33,7 +36,7 @@ public class HostelClock {
         this.tx = new TransactionTemplate(transactions);
     }
 
-    @Scheduled(cron = "${moaum.hostel.cron:0 5 * * * *}", zone = "Africa/Lagos")
+    @Scheduled(cron = "${moaum.hostel.cron:0 */5 * * * *}", zone = "Africa/Lagos")
     public void tick() {
         lock.runExclusively("hostel-clock", this::tickNow);
     }
@@ -47,6 +50,9 @@ public class HostelClock {
                 // V290: the student is reminded at 24, 6 and 1 hours before a reservation expires, once each
                 Integer reminded = jdbc.sql("SELECT hostel.remind_holds()").query(Integer.class).single();
                 if (reminded != null && reminded > 0) LOG.info("hostel: {} payment reminder(s) sent", reminded);
+                // V705: "notify me when a suitable room becomes available", once each
+                Integer told = jdbc.sql("SELECT hostel.tell_watchers()").query(Integer.class).single();
+                if (told != null && told > 0) LOG.info("hostel: {} student(s) told of a free room", told);
                 return total;
             }));
             if (n != null && n > 0) LOG.info("hostel: {} hold(s) lapsed and passed on", n);

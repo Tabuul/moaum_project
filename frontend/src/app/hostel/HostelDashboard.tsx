@@ -12,7 +12,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { Donut, HBars, VZ, vzNum } from "@/components/proto/vz";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { OCCUPANCY, WINDOW_STATE, callHostel, dayOf, pct, type Dash, type DashboardData } from "@/lib/hostel";
+import { OCCUPANCY, WINDOW_STATE, callHostel, dayOf, pct, type Dash, type DashboardData, type RoomKpis } from "@/lib/hostel";
 
 const OFFICERS = ["dsa", "services", "housing", "registrar", "admin", "super"];
 const OCC_COL: Record<string, string> = { OCCUPIED: VZ.s1, RESERVED: VZ.warn, AVAILABLE: VZ.good, MAINTENANCE: VZ.crit, OUT_OF_SERVICE: VZ.s5 };
@@ -23,6 +23,7 @@ export function HostelDashboard({ data, session: s, sessions, office }: { data: 
   const router = useRouter();
   const queryNav = useQueryNav();
   const d = JSON.parse(data.dashboard) as Dash;
+  const rk = data.rooms ? (JSON.parse(data.rooms) as RoomKpis) : null;
   const t = d.totals;
   const w = d.setting;
   const pv = data.preview;
@@ -98,6 +99,17 @@ export function HostelDashboard({ data, session: s, sessions, office }: { data: 
         ["Pending clearance", vzNum(t.pending_clearance), t.pending_clearance ? "var(--amber-ink)" : null, `${vzNum(t.cleared)} cleared`, q("/hostel/clearance", "&state=PENDING")],
         ["Open maintenance", vzNum(t.maintenance_open), t.maintenance_open ? "var(--red-ink)" : null, `${vzNum(t.transfers_pending)} transfer request(s)`, q("/hostel/clearance", "&tab=maintenance")],
       ]} cls="grid--4" />
+
+      {rk ? (
+        <Tiles items={[
+          ["Rooms", vzNum(rk.rooms), null, `${vzNum(rk.capacity)} beds of capacity`, q("/hostel/inventory")],
+          ["Full rooms", vzNum(rk.full), rk.full ? "var(--chrome)" : null, "No bed free", q("/hostel/occupancy", "&status=OCCUPIED")],
+          ["Maintenance rooms", vzNum(rk.maintenance), rk.maintenance ? "var(--red-ink)" : null, "Not open to reservation", q("/hostel/occupancy", "&status=MAINTENANCE")],
+          ...rk.byCategory.filter((c) => !c.general).map((c): [string, string, string | null, string, string] => [`${c.label} rooms`, vzNum(c.rooms), null, `${vzNum(c.beds)} beds · ${vzNum(c.occupied + c.reserved)} allocated · ${c.chargeable ? "fee payable" : "no charge"}`, q("/hostel/special")]),
+          ["Pending reservations", vzNum(rk.pending_reservations), rk.pending_reservations ? "var(--amber-ink)" : null, "Held 48 hours for payment", q("/hostel/occupancy", "&status=RESERVED")],
+          ["Pending applications", vzNum(rk.pending_applications), rk.pending_applications ? "var(--amber-ink)" : null, `${vzNum(rk.room_alerts)} student(s) waiting for a room alert`, q("/hostel/applications")],
+        ]} cls="grid--4" />
+      ) : null}
 
       {data.waiting.reviews || data.waiting.transfers || data.waiting.checkouts || data.waiting.clearances || data.waiting.checkins ? (
         <Panel title="Waiting at this desk">

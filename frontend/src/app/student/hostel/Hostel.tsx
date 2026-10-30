@@ -27,6 +27,9 @@ import { Field, Modal, Steps } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { naira, onDay, useAct, when } from "../common";
 
+/** a room as students know it: "A1" when the hostel has no blocks (the import's MAIN), else "B-12" (V705) */
+const roomLabel = (block: string | null, room: string) => (!block || block === "MAIN" ? room : `${block}-${room}`);
+
 export function Hostel({ h }: { h: StudentHostelFull }) {
   const { act, busy, problem } = useAct();
   const queryNav = useQueryNav();
@@ -49,6 +52,20 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
     const r = await act("reserve", "POST", "/me/hostel/reserve", { session: h.session, roomId }, "Room reservation", "Room reserved. Pay the hostel fee within the hold window.");
     if (r) queryNav(`/student/hostel?session=${encodeURIComponent(h.session)}`);
   }
+  /* V705: "notify me when a suitable room becomes available" — the hostel and room type chosen above, or any */
+  const watch = rooms?.watch ?? null;
+  const watching = !!watch && !watch.told_at;
+  const watchHall = rooms?.halls.find((x) => x.code === roomFilter.hall)?.name ?? null;
+  const watchType = rooms?.roomTypes.find((x) => x.code === roomFilter.type)?.label ?? null;
+  async function notifyMe() {
+    const r = await act("watch", "POST", "/me/hostel/watch", { session: h.session, hall: roomFilter.hall || null, roomType: roomFilter.type || null }, "Hostel room alert", "We will tell you by email and SMS when a room has a free bed.");
+    if (r) queryNav(`/student/hostel?session=${encodeURIComponent(h.session)}`);
+  }
+  async function stopNotifying() {
+    const r = await act("unwatch", "POST", "/me/hostel/watch/cancel", { session: h.session }, "Hostel room alert cancelled", "Room alert cancelled.");
+    if (r) queryNav(`/student/hostel?session=${encodeURIComponent(h.session)}`);
+  }
+  const roomsShown = rooms ? rooms.rooms.filter((r) => (!roomFilter.hall || r.hall_code === roomFilter.hall) && (!roomFilter.type || r.room_type === roomFilter.type)) : [];
 
   const open = v.open === true;
   const appState = v.state ?? null;
@@ -57,7 +74,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
   const holdLeft = v.held_until ? Math.max(0, Math.round((new Date(v.held_until).getTime() - now) / 36e5)) : null;
   const inRoom = al === "CHECKED_IN";
   const needsRules = !!v.rules && al === "CONFIRMED";
-  const place = live ? `${v.hall_name}, Block ${v.block}${v.floor ? `, floor ${v.floor}` : ""}, Room ${v.room_no}, ${v.bed_label ?? `bed ${v.bed}`}` : "";
+  const place = live ? `${v.hall_name}${v.block && v.block !== "MAIN" ? `, Block ${v.block}` : ""}${v.floor ? `, floor ${v.floor}` : ""}, Room ${v.room_no}, ${v.bed_label ?? `bed ${v.bed}`}` : "";
 
   async function apply() {
     const r = await act("apply", "POST", "/me/hostel/apply-full", { session: h.session, hall: form.hall || null, category: form.category, note: form.note || null, roomType: form.roomType || null, block: form.block || null, specialNeed: form.specialNeed || null, roommateNumber: form.roommateNumber || null, roommateNote: form.roommateNote || null }, "Hostel application", "Hostel application submitted successfully.");
@@ -120,7 +137,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
         </Note>
       ) : al === "HELD" ? (
         <Note kind="bad" title={<>A bed is held for you — <Countdown until={v.held_until as string} /> to pay ({holdLeft} h)</>} action={<span className="row row--inline row--tight"><Btn kind="urgent" disabled={busy !== null} onClick={() => void pay()}>Pay {naira(v.fee)} now</Btn><Btn kind="ghost" onClick={() => setAsk("decline")}>Decline</Btn></span>}>
-          {place}. Unpaid by {when(v.held_until)}, the bed goes to the next name on the list. Pay at the bank or by card.
+          {place}. Unpaid by {when(v.held_until)}, {v.basis === "SELF" ? "the reservation expires and the bed is released" : "the bed goes to the next name on the list"}. Pay at the bank or by card.
         </Note>
       ) : al === "CHECKED_OUT" || v.clearance_state === "CLEARED" ? (
         <Note kind="ok" title="Checked out and cleared" action={<a href={`/student/hostel/clearance?session=${encodeURIComponent(h.session)}`} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Clearance certificate (PDF)</a>}>Your stay for {h.session} is closed with clearance {v.clearance_ref}.</Note>
@@ -178,15 +195,32 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
               <Field id="rr-type" label="Room type"><select id="rr-type" className="ctl" value={roomFilter.type} onChange={(e) => setRoomFilter({ ...roomFilter, type: e.target.value })}><option value="">Any</option>{rooms.roomTypes.map((t) => <option key={t.code} value={t.code}>{t.label} · {t.beds} bed{t.beds === 1 ? "" : "s"}</option>)}</select></Field>
             </div>
           </PBody>
-          {rooms.rooms.length === 0 ? (
-            <PBody><Note kind="info" title="NO ROOMS CURRENTLY AVAILABLE">All rooms are occupied or reserved. Applications remain open; check again later.</Note></PBody>
+          {roomsShown.length === 0 ? (
+            <PBody>
+              {rooms.rooms.length === 0
+                ? <Note kind="info" title="NO ROOMS CURRENTLY AVAILABLE">All available hostel rooms are currently occupied or reserved. Applications remain open; you may check again later.</Note>
+                : <Note kind="info" title="No room of that choice is free">No room {watchHall ? `in ${watchHall}` : ""}{watchHall && watchType ? " " : ""}{watchType ? `of the ${watchType.toLowerCase()} type` : ""} has a bed free to reserve: they are occupied, reserved or closed. Choose another hostel or room type, or check again later.</Note>}
+            </PBody>
           ) : (
             <DTable cols={["Hostel", "Room|mid", "Capacity|mid", "Occupied|mid", "Reserved|mid", "Available|mid", "Fee|num", "Action|num"]}
-              rows={rooms.rooms.filter((r) => (!roomFilter.hall || r.hall_code === roomFilter.hall) && (!roomFilter.type || r.room_type === roomFilter.type)).map((r) => [
-                <span key="h">{r.hall_name}{r.campus ? <span className="sub2 blk">{r.campus}</span> : null}</span>, <b className="tnum" key="n">{r.block}-{r.room_no}</b>, r.capacity, r.occupied, r.reserved, <b className="tnum" key="a">{r.available}</b>,
+              rows={roomsShown.map((r) => [
+                <span key="h">{r.hall_name}{r.campus ? <span className="sub2 blk">{r.campus}</span> : null}</span>, <b className="tnum" key="n">{roomLabel(r.block, r.room_no)}</b>, r.capacity, r.occupied, r.reserved, <b className="tnum" key="a">{r.available}</b>,
                 <span className="tnum" key="f">{r.fee_status === "NO_CHARGE" ? "No charge" : naira(r.fee)}</span>,
-                <Btn kind="primary" size="sm" key="b" disabled={busy !== null} onClick={() => void reserve(r.room_id, `${r.hall_name} ${r.block}-${r.room_no}`)}>Reserve</Btn>])} />
+                <Btn kind="primary" size="sm" key="b" disabled={busy !== null} onClick={() => void reserve(r.room_id, `${r.hall_name} ${roomLabel(r.block, r.room_no)}`)}>Reserve</Btn>])} />
           )}
+          <PBody>
+            {watching && watch ? (
+              <Note kind="ok" title="Room alert set" action={<Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => void stopNotifying()}>Cancel alert</Btn>}>
+                We will email and text you when a room {watch.hall_name ? `in ${watch.hall_name}` : "in any hostel open to you"}{watch.room_type_label ? ` of the ${watch.room_type_label.toLowerCase()} type` : ""} has a free bed. The alert is not a reservation: reserve the room here when you are told.
+              </Note>
+            ) : roomsShown.length === 0 ? (
+              <div className="row row--tight" style={{ gap: 12, alignItems: "center" }}>
+                <Btn kind="secondary" disabled={busy !== null} onClick={() => void notifyMe()}>Notify me when a suitable room becomes available</Btn>
+                <span className="sub2">{watchHall ?? "Any hostel open to you"}{watchType ? ` · ${watchType}` : " · any room type"}. Told once, by email and SMS.</span>
+              </div>
+            ) : null}
+            {watch?.told_at ? <div className="sub2 mt-1">On {onDay(watch.told_at)} we told you that room {watch.told_room_no ?? ""}{watch.told_hall_name ? ` of ${watch.told_hall_name}` : ""} had a free bed.</div> : null}
+          </PBody>
         </Panel>
       ) : null}
 
@@ -226,7 +260,7 @@ export function Hostel({ h }: { h: StudentHostelFull }) {
             <PBody>
               <KvGrid cls="grid--2" pairs={[
                 ["Reference", <span key="r" className="tnum">{v.allocation_ref}</span>], ["Session", h.session],
-                ["Hall", `${v.hall_name ?? "—"}${v.hall_campus ? ` · ${v.hall_campus}` : ""}`], ["Block · floor", `${v.block ?? "—"}${v.floor ? ` · floor ${v.floor}` : ""}`],
+                ["Hall", `${v.hall_name ?? "—"}${v.hall_campus ? ` · ${v.hall_campus}` : ""}`], ["Block · floor", `${v.block && v.block !== "MAIN" ? v.block : "—"}${v.floor ? ` · floor ${v.floor}` : ""}`],
                 ["Room", `${v.room_no ?? "—"}${v.room_type ? ` · ${v.room_type}` : ""}`], ["Bed", v.bed_label ?? `Bed ${v.bed ?? "—"}`],
                 ["Fee", v.confirmed_at ? `${naira(v.fee)} — paid ${onDay(v.confirmed_at)}` : `${naira(v.fee)} — ${holdLeft} h left on the hold`],
                 ["Basis", v.basis === "PRIORITY" ? "Priority" : v.basis === "RESERVE" ? `From the waiting list, position ${v.draw_position}` : `Ballot, position ${v.draw_position}`],

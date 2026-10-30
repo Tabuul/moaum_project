@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 533
+\set EXPECTED 534
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29982,6 +29982,111 @@ BEGIN
                AND p_told = 1 AND p_none = 'PGPW_NO_APPLICATION' AND f_app = 1 AND f_old = 1 AND f_mail = 1 AND f_phone = 1 AND f_name = 2
                AND NOT p_after.must_change_password AND p_kept_session = 1 AND p_other_session = 0, false),
       msg);
+END $$;
+
+-- ── V705: the hostel follow-ups. Two made-up hostels the old portal named alike (its IDs 97051 and 97052) import as two, told apart
+--          by their location, "Room A1" saved as room A1, and a second import changes nothing; a capacity is not cut below a held bed.
+--          In a made-up session 9705/9706, open first come and closing on the Lagos day it is: the window reads open under any session
+--          time zone. Student A reserves the one bed of a room; its fee reference expires with the hold; past the deadline the room
+--          board reads the bed free before any clock, and B reserves it (A's hold lapsed once); A's money confirmed after is recorded,
+--          A's stay left expired. C's room alert is told once when a bed frees. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := '9705/9706'; ug text; v_err text; msg text;
+        s_a uuid := gen_random_uuid(); s_b uuid := gen_random_uuid(); s_c uuid := gen_random_uuid(); s_d uuid := gen_random_uuid();
+        rows jsonb; prev text; again text; codes text; names text; room_nos text; halls int; cut text; guard text;
+        r_west uuid; r_east uuid; r_wide uuid; b2 uuid; tz text; tz_open text := ''; al_a uuid; al_d uuid; ap uuid; v_ref text;
+        exp_ok boolean; before_free int; after_free int; lapsed text; lapsed_events int; paid text; a_state text; a_fee text; late_events int;
+        told_before int; told_after int; told_twice int; watch_told boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'dsa', true);
+        PERFORM set_config('moaum.reason', 'check V705', true);
+        PERFORM assessment.ensure_session(ses);
+        SELECT p.code INTO ug FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, sex, matriculated_at)
+        VALUES (s_a, 'MOAUM/ADM/70/970501', 'MOAUM/ZZH/70/97051', 'CHECKV705', 'Student A', ug, 'UTME', ses, 100, 100, 'ACTIVE', 'F', now()),
+               (s_b, 'MOAUM/ADM/70/970502', 'MOAUM/ZZH/70/97052', 'CHECKV705', 'Student B', ug, 'UTME', ses, 100, 100, 'ACTIVE', 'F', now()),
+               (s_c, 'MOAUM/ADM/70/970503', 'MOAUM/ZZH/70/97053', 'CHECKV705', 'Student C', ug, 'UTME', ses, 100, 100, 'ACTIVE', 'F', now()),
+               (s_d, 'MOAUM/ADM/70/970504', 'MOAUM/ZZH/70/97054', 'CHECKV705', 'Student D', ug, 'UTME', ses, 100, 100, 'ACTIVE', 'F', now());
+
+        -- the old portal's workbook, as the import screen sends it
+        rows := jsonb_build_array(
+            jsonb_build_object('hall', 'Checkv Lodge', 'hall_ref', '97051', 'location', 'Western Wing', 'room', 'Room A1', 'capacity', '1', 'hall_sex', 'Female'),
+            jsonb_build_object('hall', 'Checkv Lodge', 'hall_ref', '97051', 'location', 'Western Wing', 'room', 'Room A2', 'capacity', '2', 'hall_sex', 'Female'),
+            jsonb_build_object('hall', 'Checkv Lodge', 'hall_ref', '97052', 'location', 'Eastern Wing(2nd Camp)', 'room', 'Room A1', 'capacity', '1', 'hall_sex', 'Female'));
+        SELECT string_agg(outcome, ',' ORDER BY row_no), string_agg(hall_code, ',' ORDER BY row_no), string_agg(DISTINCT hall_name, ' | '), string_agg(room_no, ',' ORDER BY row_no)
+          INTO prev, codes, names, room_nos FROM hostel.import_rows(rows, false);
+        PERFORM hostel.import_rows(rows, true);
+        SELECT string_agg(outcome, ',' ORDER BY row_no) INTO again FROM hostel.import_rows(rows, true);
+        SELECT count(*) INTO halls FROM hostel.hall WHERE legacy_ref IN ('97051', '97052') AND sex = 'F' AND location IS NOT NULL;
+        r_west := (SELECT id FROM hostel.room WHERE hall_code = 'CL97051' AND room_no = 'A1');
+        r_wide := (SELECT id FROM hostel.room WHERE hall_code = 'CL97051' AND room_no = 'A2');
+        r_east := (SELECT id FROM hostel.room WHERE hall_code = 'CL97052' AND room_no = 'A1');
+        PERFORM hostel.close('ROOM', r_wide::text, 'MAINTENANCE', 'Repainting');
+
+        -- the window: first come, no review, closing (and opening) on the Lagos day it is
+        INSERT INTO hostel.session_setting (session, fee, hold_hours, applications_open, applications_close, allocation_method, requires_review, require_registration, require_school_fees, state, semester)
+        VALUES (ses, 50000, 48, (now() AT TIME ZONE 'Africa/Lagos')::date, (now() AT TIME ZONE 'Africa/Lagos')::date, 'FIRST_COME', false, false, false, 'OPEN', 1);
+        FOREACH tz IN ARRAY ARRAY['Pacific/Kiritimati', 'Etc/GMT+12', 'UTC'] LOOP
+            PERFORM set_config('TimeZone', tz, true);
+            tz_open := tz_open || CASE WHEN (SELECT window_open FROM hostel.eligibility_checklist(s_a, ses)) THEN 'Y' ELSE 'N' END;
+        END LOOP;
+        PERFORM set_config('TimeZone', 'UTC', true);
+
+        -- A reserves the one bed of the west room; its reference lasts no longer than the hold
+        al_a := hostel.reserve_room(s_a, ses, r_west);
+        UPDATE hostel.allocation SET held_until = now() + interval '1 hour' WHERE id = al_a;
+        ap := (SELECT application_id FROM hostel.allocation WHERE id = al_a);
+        v_ref := hostel.new_fee_reference(ap);
+        exp_ok := (SELECT pr.expires_at = al.held_until FROM finance.payment_reference pr JOIN hostel.allocation al ON al.reference = pr.reference WHERE pr.reference = v_ref);
+
+        -- a capacity is not cut below a held bed: the east room's two beds, the second held by D through the Dean
+        UPDATE hostel.room SET beds = 2 WHERE id = r_east;
+        b2 := (SELECT id FROM hostel.bed WHERE room_id = r_east AND number = 2);
+        al_d := hostel.allocate_special(b2, ses, NULL, s_d, NULL, NULL, 'check V705', NULL, NULL);
+        SELECT outcome || ':' || message INTO cut
+          FROM hostel.import_rows(jsonb_build_array(jsonb_build_object('hall', 'Checkv Lodge', 'hall_ref', '97052', 'room', 'A1', 'capacity', '1')), false);
+        BEGIN UPDATE hostel.room SET beds = 1 WHERE id = r_east; guard := 'CUT';
+        EXCEPTION WHEN check_violation THEN guard := split_part(SQLERRM, ':', 1); END;
+
+        -- past the deadline the bed reads free at once; B takes it; A's hold lapsed once
+        UPDATE hostel.allocation SET held_until = now() - interval '1 minute' WHERE id = al_a;
+        before_free := (SELECT available FROM hostel.room_board(ses) WHERE room_id = r_west);
+        PERFORM hostel.reserve_room(s_b, ses, r_west);
+        PERFORM hostel.lapse_holds(ses);
+        lapsed := (SELECT state FROM hostel.allocation WHERE id = al_a);
+        lapsed_events := (SELECT count(*) FROM hostel.event WHERE allocation_id = al_a AND action = 'RESERVATION_EXPIRED');
+        after_free := (SELECT available FROM hostel.room_board(ses) WHERE room_id = r_west);
+
+        -- A's money arrives after the bed went to B: confirmed as money, never refused; A's stay left expired
+        paid := finance.confirm_payment(v_ref, 'BANK', 'check V705');
+        SELECT state, fee_status INTO a_state, a_fee FROM hostel.allocation WHERE id = al_a;
+        late_events := (SELECT count(*) FROM hostel.event WHERE allocation_id = al_a AND action = 'PAYMENT_AFTER_EXPIRY');
+
+        -- C asks to be told of a free room in the west hostel: nothing free; the Dean frees the wide room; told once
+        PERFORM hostel.watch_rooms(s_c, ses, 'CL97051', NULL);
+        told_before := hostel.tell_watchers();
+        PERFORM hostel.close('ROOM', r_wide::text, 'AVAILABLE', NULL);
+        told_after := hostel.tell_watchers();
+        told_twice := hostel.tell_watchers();
+        watch_told := EXISTS (SELECT 1 FROM hostel.room_watch WHERE student_id = s_c AND told_at IS NOT NULL AND told_room_id = r_wide);
+        RAISE EXCEPTION 'the V705 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V705 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V705: the old portal''s hostel workbook imports as it stands (two hostels of one name kept apart, "Room A1" as A1, again unchanged); a held bed caps a capacity cut; the window reads the Lagos day; a reference lasts no longer than its hold; an expired hold frees its bed at once; late money is recorded; a room alert is told once',
+        coalesce(prev ~ '^(NEW|EXISTING),(NEW|EXISTING),(NEW|EXISTING)$' AND codes = 'CL97051,CL97051,CL97052' AND room_nos = 'A1,A2,A1'
+                 AND names = 'Checkv Lodge, Eastern Wing (2nd Camp) | Checkv Lodge, Western Wing' AND again = 'EXISTING,EXISTING,EXISTING' AND halls = 2
+                 AND tz_open = 'YYY' AND exp_ok
+                 AND cut LIKE 'ERROR:Bed 2 is held or occupied%' AND guard = 'HOSTEL_CAPACITY_BELOW_OCCUPANCY'
+                 AND before_free = 1 AND after_free = 0 AND lapsed = 'LAPSED' AND lapsed_events = 1
+                 AND paid = 'confirmed' AND a_state = 'LAPSED' AND a_fee <> 'PAID' AND late_events = 1
+                 AND told_before = 0 AND told_after = 1 AND told_twice = 0 AND watch_told, false),
+        format('import %s codes %s names %s rooms %s again %s halls %s | open by zone %s | reference with hold %s | cut %s guard %s | free %s→%s A %s (%s) | paid %s A %s/%s late %s | alert %s/%s/%s told %s',
+               prev, codes, names, room_nos, again, halls, tz_open, exp_ok, cut, guard, before_free, after_free, lapsed, lapsed_events, paid, a_state, a_fee, late_events,
+               told_before, told_after, told_twice, watch_told));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

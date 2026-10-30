@@ -2,7 +2,8 @@
 
 /** Import hostels and rooms (V290): the University's workbook read in the browser — every sheet found, the header row
  *  detected, each column mapped to a field, the rows previewed and validated on the server (NEW, EXISTING, UPDATED,
- *  DUPLICATE, ERROR) — then committed without duplicates. Re-uploading the same file changes nothing. */
+ *  DUPLICATE, ERROR) — then committed without duplicates. Re-uploading the same file changes nothing. The old portal's own
+ *  export reads as it stands (V705): its "Block" is the hostel, named by Block ID, its gender taken from the Hostel Blocks sheet. */
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,31 +13,12 @@ import { Field } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { csvRows, xlsxWorkbook, type Sheet } from "@/lib/xlsx";
 import { HOSTEL_OFFICERS, callHostel } from "@/lib/hostel";
+import { FIELDS, autoMap, guessHeader, hallDetailsFrom, importRecords, isFooter, type FieldKey } from "@/lib/hostel-import";
 
-const FIELDS: [string, string, RegExp][] = [
-  ["hall_code", "Hostel code", /^(hostel|hall)[ _-]?(code|id)$|^code$/i],
-  ["hall", "Hostel name", /^(hostel|hall)([ _-]?name)?$|^name$/i],
-  ["block", "Block / wing", /^(block|wing)/i],
-  ["floor", "Floor", /^floor|^level$/i],
-  ["room", "Room number", /^room([ _-]?(no|number|name))?$/i],
-  ["capacity", "Capacity (beds)", /^(capacity|beds?|bed[ _-]?space|spaces?|occupancy)$/i],
-  ["category", "Category", /^(category|type of room|use|purpose|reserved)/i],
-  ["room_type", "Room type", /^room[ _-]?type$/i],
-  ["gender", "Gender", /^(gender|sex)$/i],
-  ["hall_kind", "Hostel kind", /^(kind|hostel[ _-]?kind)$/i],
-];
 type Outcome = "NEW" | "EXISTING" | "UPDATED" | "DUPLICATE" | "ERROR";
 interface PreviewRow { row_no: number; hall_code: string | null; hall_name: string | null; block: string | null; room_no: string | null; beds: number | null; category: string | null; room_type: string | null; sex: string | null; floor: number | null; outcome: Outcome; message: string }
 interface Report { committed: boolean; received: number; counts: Record<Outcome, number>; rows: PreviewRow[] }
 const TONE: Record<Outcome, "ok" | "grey" | "info" | "warn" | "bad"> = { NEW: "ok", EXISTING: "grey", UPDATED: "info", DUPLICATE: "warn", ERROR: "bad" };
-
-function guessHeader(rows: string[][]): number {
-  for (let i = 0; i < Math.min(rows.length, 15); i++) {
-    const hits = rows[i].filter((c) => FIELDS.some(([, , re]) => re.test(c.trim()))).length;
-    if (hits >= 2) return i;
-  }
-  return 0;
-}
 
 export function HostelImport({ office }: { office: string | null }) {
   const router = useRouter();
@@ -46,20 +28,17 @@ export function HostelImport({ office }: { office: string | null }) {
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [sheet, setSheet] = useState(0);
   const [header, setHeader] = useState(0);
-  const [map, setMap] = useState<Record<string, number>>({});
+  const [map, setMap] = useState<Partial<Record<FieldKey, number>>>({});
   const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const rows = sheets[sheet]?.rows ?? [];
   const head = rows[header] ?? [];
-  const body = rows.slice(header + 1).filter((r) => r.some((c) => c.trim() !== ""));
-
-  function autoMap(h: string[]) {
-    const m: Record<string, number> = {};
-    FIELDS.forEach(([k, , re]) => { const i = h.findIndex((c) => re.test(c.trim())); if (i >= 0) m[k] = i; });
-    return m;
-  }
+  const filled = rows.slice(header + 1).filter((r) => r.some((c) => c.trim() !== ""));
+  const body = filled.filter((r) => !isFooter(r));
+  const footers = filled.length - body.length;
+  const details = map.hall_ref !== undefined && map.hall_ref >= 0 && (map.gender === undefined || map.gender < 0) ? hallDetailsFrom(sheets, sheet) : null;
 
   async function read(f: File) {
     setError(null); setReport(null); setName(f.name);
@@ -76,11 +55,7 @@ export function HostelImport({ office }: { office: string | null }) {
   function pickSheet(i: number) { setSheet(i); const h = guessHeader(sheets[i]?.rows ?? []); setHeader(h); setMap(autoMap(sheets[i]?.rows[h] ?? [])); setReport(null); }
   function pickHeader(i: number) { setHeader(i); setMap(autoMap(rows[i] ?? [])); setReport(null); }
 
-  const records = () => body.map((r) => {
-    const o: Record<string, string> = {};
-    for (const [k] of FIELDS) { const i = map[k]; if (i !== undefined && i >= 0) o[k] = r[i] ?? ""; }
-    return o;
-  });
+  const records = () => importRecords(body, map, details);
   const ready = map.room !== undefined && map.capacity !== undefined && (map.hall !== undefined || map.hall_code !== undefined);
 
   async function run(commit: boolean) {
@@ -108,7 +83,8 @@ export function HostelImport({ office }: { office: string | null }) {
             {rows.length ? <Field id="hi-head" label="Header row"><select id="hi-head" className="ctl" value={header} onChange={(e) => pickHeader(Number(e.target.value))}>{rows.slice(0, 15).map((r, i) => <option key={i} value={i}>Row {i + 1}: {r.slice(0, 5).join(" · ").slice(0, 60)}</option>)}</select></Field> : null}
           </div>
           {error ? <Note kind="bad" title="The file could not be read">{error}</Note> : null}
-          {sheets.length ? <div className="sub2 mt-1">{name}: {sheets.length} sheet{sheets.length === 1 ? "" : "s"}, {body.length} data rows under the header on &ldquo;{sheets[sheet]?.name}&rdquo;.</div> : null}
+          {sheets.length ? <div className="sub2 mt-1">{name}: {sheets.length} sheet{sheets.length === 1 ? "" : "s"}, {body.length} data rows under the header on &ldquo;{sheets[sheet]?.name}&rdquo;{footers ? ` (${footers} total or note row${footers === 1 ? "" : "s"} below the data left out)` : ""}.</div> : null}
+          {details ? <div className="sub2">Each hostel&rsquo;s gender and location are read from the sheet &ldquo;{details.sheet}&rdquo; by its ID ({Object.keys(details.byRef).length} hostels).</div> : null}
         </PBody>
       </Panel>
 
@@ -125,7 +101,7 @@ export function HostelImport({ office }: { office: string | null }) {
                 </Field>
               ))}
             </div>
-            <div className="sub2 mt-1">Category words the import understands: General, Special / Reserved, Student Union (or SU), Security. A blank category is General. A capacity of 1 to 64 beds. Gender F or M, or blank to follow the hostel.</div>
+            <div className="sub2 mt-1">A hostel named by the old portal&rsquo;s ID is found by it on a later import, whatever its name; two hostels of one name are told apart by their location. &ldquo;Room A1&rdquo; is saved as room A1. Category words the import understands: General, Special / Reserved, Student Union (or SU), Security. A blank category is General. A capacity of 1 to 64 beds. Gender F or M, or blank to follow the hostel.</div>
             <div className="row row--tight mt-2"><Btn kind="primary" onClick={() => void run(false)} disabled={!may || !ready || busy || !body.length}>{busy ? "Checking…" : `Preview ${body.length} rows`}</Btn>{!ready ? <span className="sub2">Map the hostel, the room number and the capacity first.</span> : null}</div>
           </PBody>
         </Panel>
