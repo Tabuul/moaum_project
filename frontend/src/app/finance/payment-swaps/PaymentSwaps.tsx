@@ -21,6 +21,7 @@ import { STATUS_WORDS, SWAP_HEAD, SWAP_STATUSES, swapLine, swapQuery, type SwapD
 import { NewSwap } from "./NewSwap";
 import { SwapView } from "./SwapView";
 import { swapGet } from "./swap-call";
+import { WalletDebtsPanel } from "@/components/finance/WalletDebtsPanel";
 
 function Door({ label, n, sub, on, onClick }: { label: string; n: number; sub: string; on: boolean; onClick: () => void }) {
   return (
@@ -154,6 +155,8 @@ export function PaymentSwaps({ filters, list, office, initial }: { filters: Swap
           </PBody>
         ) : null}
       </Panel>
+      {/* V710: the wallets a swap left owing (a credit already used), all of them, with a search */}
+      <div id="wallets-owing"><WalletDebtsPanel full /></div>
 
       {making ? <NewSwap onClose={() => setMaking(false)} onDone={(d) => { setMaking(false); setOpen(d); notify(`${d.swap.swap_ref} sent for approval`); router.refresh(); }} /> : null}
       {open ? <SwapView detail={open} office={office} onClose={() => setOpen(null)} onChanged={(d) => { if (d) setOpen(d); router.refresh(); }} /> : null}

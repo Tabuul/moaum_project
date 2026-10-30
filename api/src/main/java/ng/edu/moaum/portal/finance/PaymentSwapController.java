@@ -98,6 +98,18 @@ class PaymentSwapController {
 
     /** the payments a swap moves — school fees, and the old portal's outstanding fees (V660) — that a search finds, by the payment's
      *  reference, receipt or old-portal number, or the student's number or name */
+    /** V710: every wallet owing — a credited payment already used, moved to its owner by a swap — the most first, with the swap that left
+     *  it so; the count and the sum owed */
+    @GetMapping("/wallet-debts")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> walletDebts(@RequestParam(required = false) String q, @RequestParam(defaultValue = "200") int limit) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.putAll(jdbc.sql("SELECT count(*) AS students, coalesce(sum(owed), 0) AS owed FROM finance.wallet_debts(NULL, 5000)").query().singleRow());
+        out.put("rows", jdbc.sql("SELECT * FROM finance.wallet_debts(:q, :n)").param("q", q).param("n", Math.max(1, Math.min(limit, 1000))).query().listOfRows());
+        return out;
+    }
+
     @GetMapping("/payments")
     @PreAuthorize(INITIATORS)
     @Transactional(readOnly = true)

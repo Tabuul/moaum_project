@@ -207,3 +207,28 @@ Each notice gives the reference, the amount, the session and the correction numb
   wallet was used is refused, and a swap of it waiting fails on the decision. The reversal moves the credit back. V660's block now
   expects the verified and credited payments to swap. `PaymentSwapIT`: a payment credited to A's wallet is swapped through the API with
   its wallet credit. `lib/payment-swaps.test.ts`: the wallet words.
+
+## A wallet left owing (V710, 30 October 2026)
+
+The University's word on V708's refusal of a credited payment already used: "Swap anyway, they owe it".
+
+- **The swap goes through.** A credited outstanding-fees payment whose wallet no longer holds it is no longer refused
+  (`SWAP_OUTSTANDING_SPENT` is gone). The whole credit moves to the owner. The credited student's wallet is left owing the rest: a
+  balance below nought, settled first by whatever is credited to that wallet later. Their fees stay as they were paid.
+- **On the screens.** The check returns `payment.walletCredit.owesAfter`. The new swap says what the credited student's wallet will owe.
+- **On completion.** A completed swap carries the flag `FROM_WALLET_OWES`, and its result carries `walletOwes`. The student is told:
+  "Your wallet owes …" (`WALLET_OWED_AFTER_SWAP`, email, SMS and portal). Their own wallet page says what it owes and why.
+- **Wallets owing.** `finance.wallet_debts(q, limit)` lists every wallet owing, the most first, with the swap that left it so. It is
+  shown on the Bursar's and the Students Account Officer's dashboards (the few owing most, only when there are any), and in full with
+  a search on Payment swaps. API: `GET /api/v1/finance/payment-swaps/wallet-debts`.
+- **Reversal.** The Bursar's reversal of such a swap moves the credit back and the debt goes with it.
+
+Tests:
+
+- `check.sql` V710:
+  - a credited payment, 1,000 of it used, is checked free, swapped, flagged and told;
+  - it is on the list;
+  - the reversal clears the list.
+- `check.sql` V708's block now expects that swap to go through.
+- `PaymentSwapIT`: the same through the API, with the list read by the Bursary and refused to the Registry.
+- `lib/payment-swaps.test.ts`.

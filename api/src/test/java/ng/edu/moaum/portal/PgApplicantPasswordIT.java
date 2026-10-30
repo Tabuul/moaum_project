@@ -83,8 +83,8 @@ class PgApplicantPasswordIT {
         assertThat(it.get(firstToken, "/api/v1/pg/me").getStatusCode().value()).isEqualTo(200);
 
         // the desk: the Registry is refused; the School finds the applicant by the application number, the email and the name
-        assertThat(it.getList(ItSupport.token("registrar"), DESK + "/search?q=" + appNo).getStatusCode().value()).isEqualTo(403);
-        assertThat(it.getList(ItSupport.token("dbops"), DESK + "/search?q=" + appNo).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(ItSupport.token("registrar"), DESK + "/search?q=" + appNo).getStatusCode().value()).isEqualTo(403);
+        assertThat(it.get(ItSupport.token("bursar"), DESK + "/search?q=" + appNo).getStatusCode().value()).isEqualTo(403);
         assertThat((List<Map<String, Object>>) it.getList(school, DESK + "/search?q=" + appNo.toLowerCase()).getBody())
                 .extracting(h -> h.get("applicant_id")).containsExactly(applicant.toString());
         assertThat((List<Map<String, Object>>) it.getList(school, DESK + "/search?q=" + email.toUpperCase()).getBody())

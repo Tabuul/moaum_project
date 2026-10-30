@@ -110,6 +110,7 @@ class ApplicantPasswordDeskController {
     List<Map<String, Object>> history(@RequestParam(required = false) UUID account, @RequestParam(defaultValue = "200") int limit) {
         return jdbc.sql("""
                 SELECT r.id, r.account_id, r.method, r.reason, r.sent_to, r.expires_at, r.was_locked, r.sessions_ended, r.reset_at, r.reset_office,
+                       (SELECT b.reference FROM admissions.applicant_password_bulk b WHERE b.id = r.bulk_id) AS bulk_ref,
                        coalesce(p.surname || ', ' || p.given_names, 'Unknown officer') AS reset_by_name,
                        c.surname || ', ' || c.other_names AS applicant, a.jamb_key, ap.application_no, a.session
                   FROM admissions.applicant_password_reset r
@@ -144,12 +145,7 @@ class ApplicantPasswordDeskController {
                 Map<String, Object> r = json.readValue(done, Map.class);
                 boolean jamb = "JAMB".equals(r.get("numberKind"));
                 String number = jamb ? "JAMB registration number" : "application number";
-                String subject = "Your MOAUM application password was reset";
-                repo.queueNotice("EMAIL", a.email(), subject, "The password of your application " + (a.applicationNo() == null ? "" : a.applicationNo() + " ")
-                        + "was reset by the University at your request. Sign in with your " + number + " as the password; you will choose your own password at once. "
-                        + "If you did not ask for this, contact ICT Support.", a.applicationId());
-                repo.queueNotice("SMS", a.phone(), subject, "MOAUM: your application password was reset. Sign in with your " + (jamb ? "JAMB number" : "application number")
-                        + " as the password and choose your own.", a.applicationId());
+                // V710: the applicant is told by email and SMS in the database (admissions.applicant_password_default), the desk and the bulk alike
                 out.put("method", "DEFAULT_NUMBER");
                 out.put("number", r.get("number"));
                 out.put("numberKind", r.get("numberKind"));
@@ -180,6 +176,38 @@ class ApplicantPasswordDeskController {
             default -> throw new DomainRuleViolation("APW_METHOD", "A reset puts the password back to the applicant's JAMB number (or application number), or sends a link to their email and phone; "
                     + "a random temporary password is no longer given.", new DomainRuleViolation.Remedy("Choose DEFAULT or LINK.", "You"));
         }
+        return out;
+    }
+
+    public record BulkIn(@jakarta.validation.constraints.NotNull @Size(max = 2000) List<@Size(max = 200) String> numbers, @NotBlank @Size(max = 1000) String reason,
+                         Boolean commit) {
+    }
+
+    /**
+     * V710: passwords reset in bulk back to the default number — the JAMB numbers, application numbers or emails given, one each, checked
+     * first (commit false: what would be reset and what would not, and why) and then reset under one reference, each written down as the
+     * desk's own reset is and the applicant told (admissions.applicant_password_bulk_reset).
+     */
+    @PostMapping("/bulk")
+    @PreAuthorize(DESK)
+    @Transactional
+    Map<String, Object> bulk(@Valid @RequestBody BulkIn body) {
+        return bulkReset(jdbc, "UNDERGRADUATE", body.numbers(), body.reason(), Boolean.TRUE.equals(body.commit()));
+    }
+
+    /** the bulk reset, undergraduate or postgraduate: the rows, the outcomes counted, the reference once committed */
+    static Map<String, Object> bulkReset(JdbcClient jdbc, String kind, List<String> numbers, String reason, boolean commit) {
+        // one number to a line: the list goes to the database as one text, split there
+        String joined = String.join("\n", numbers.stream().map(n -> n == null ? "" : n.replaceAll("[\\r\\n]+", " ")).toList());
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM admissions.applicant_password_bulk_reset(:k, string_to_array(:n, chr(10)), :r, :c)")
+                .param("k", kind).param("n", joined).param("r", reason).param("c", commit).query().listOfRows();
+        Map<String, Long> counts = new java.util.TreeMap<>();
+        rows.forEach(r -> counts.merge(String.valueOf(r.get("outcome")), 1L, Long::sum));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("committed", commit);
+        out.put("bulkRef", rows.stream().map(r -> r.get("bulk_ref")).filter(java.util.Objects::nonNull).findFirst().orElse(null));
+        out.put("counts", counts);
+        out.put("rows", rows);
         return out;
     }
 

@@ -10,6 +10,7 @@ import { officeLabel } from "@/lib/offices";
 import { ResetData } from "./ResetData";
 import { PgLegacyPanel } from "@/components/pg/PgLegacyPanel";
 import { ResultMonitoringPanel } from "@/components/results/ResultMonitoringPanel";
+import { ApplicantPasswordsPanel } from "@/components/applicant/ApplicantPasswordsPanel";
 
 interface Status {
   service: string;
@@ -110,6 +111,8 @@ export async function PlatformDashboard({ me }: { me: Me | null }) {
       <ResultMonitoringPanel />
       {/* V679: the old-portal PG migration's figures, each opening its records on the desk (27 Oct 2026) */}
       <PgLegacyPanel />
+      {/* V710: applicants' passwords, undergraduate and postgraduate, from the dashboard (the desks the Director of ICT holds) */}
+      {["ict", "super"].includes(office ?? "") ? <ApplicantPasswordsPanel /> : null}
       {canManagePeople ? (
         <Panel title="People and access" right={persons.ok ? `${people.length} people · ${withAccount} with an account` : "not answering"}>
           <PBody>

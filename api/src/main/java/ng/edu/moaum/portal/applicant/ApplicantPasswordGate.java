@@ -35,8 +35,9 @@ class ApplicantPasswordGate implements HandlerInterceptor, WebMvcConfigurer {
 
     static final String CODE = "PASSWORD_CHANGE_REQUIRED";
 
+    /* V710: and what the portal's frame reads on every page — the session policy (the idle sign-out) and the manual's help for the page */
     private static final List<String> OPEN_EXACT = List.of("/api/v1/iam/me", "/api/v1/iam/session", "/api/v1/applicant/me/password", "/api/v1/applicant/sign-out",
-            "/api/v1/pg/me/password", "/api/v1/pg/sign-out");
+            "/api/v1/pg/me/password", "/api/v1/pg/sign-out", "/api/v1/auth/session-policy", "/api/v1/manual/context");
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;

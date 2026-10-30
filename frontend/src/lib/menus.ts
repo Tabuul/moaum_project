@@ -695,6 +695,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/candidatedata", "icon": "box", "label": "Upload Passport, DOB & O’Level" },
           { "id": "t/migrate", "icon": "box", "label": "Migrate Old-Portal Applicants" },
           { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+          { "id": "t/pgapplicantpw", "icon": "shield", "label": "PG Applicant Password Reset" },
           { "id": "t/postutme", "icon": "chart", "label": "Compute PUTME Score" },
           { "id": "t/screening", "icon": "chart", "label": "Screening Register" },
           { "id": "t/putme-cbt", "icon": "cal", "label": "Post-UTME CBT Schedule" },
@@ -987,6 +988,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
           { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" },
           { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+          { "id": "t/pgapplicantpw", "icon": "shield", "label": "PG Applicant Password Reset" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" }
         ]
       },

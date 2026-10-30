@@ -39,7 +39,7 @@ export interface SwapPayment {
   confirmedAt?: string | null; generatedAt?: string | null; note?: string | null; legacy?: boolean; legacyPayref?: string | null;
   kind?: SwapKind | null; outstandingStatus?: string | null;
   /** V708: an outstanding-fees payment credited to the wallet: the credit's batch and the credited student's wallet now */
-  walletCredit?: { batchRef?: string | null; walletBalance?: number | null } | null;
+  walletCredit?: { batchRef?: string | null; walletBalance?: number | null; owesAfter?: number | null } | null;
 }
 
 export interface SwapCheck {
@@ -129,7 +129,20 @@ export function movesWallet(p: { outstandingStatus?: string | null } | null | un
 export const FLAG_WORDS: Record<string, string> = {
   FROM_REGISTRATION_UNCLEARED: "The credited student has a course registration this session that their fees no longer clear — for the Bursary to follow up",
   TO_OVERPAID: "The student the payment belongs to has now paid more than this session's fees — an overpayment for the Bursary to carry forward or refund (Refunds & Credits)",
+  FROM_WALLET_OWES: "Part of the wallet credit had been used by the credited student: their wallet now owes it (Wallets owing), settled first by what is credited to it later",
 };
+
+/** V710: what the credited student's wallet will owe once the credit has moved — nothing when the wallet still holds it all */
+export function walletOwesAfter(p: { outstandingStatus?: string | null; walletCredit?: { owesAfter?: number | null } | null } | null | undefined): number {
+  return p?.outstandingStatus === "CREDITED" ? Math.max(Number(p.walletCredit?.owesAfter ?? 0), 0) : 0;
+}
+
+/** V710: a wallet owing, as the Bursary's list reads it */
+export interface WalletDebt {
+  student_id: string; matric_no: string | null; student: string; programme: string | null; owed: number; swap_id: string | null; swap_ref: string | null;
+  swapped_at: string | null; reference: string | null; moved_to: string | null; last_credit_at: string | null;
+}
+export interface WalletDebts { students: number; owed: number; rows: WalletDebt[] }
 
 /** a refusal as the server words it ("SWAP_SAME_STUDENT: Original and target …"): its code and its words */
 export function refusalParts(r: string): { code: string; words: string } {

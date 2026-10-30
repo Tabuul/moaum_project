@@ -3,7 +3,7 @@
  *  saying why — V706: back to the JAMB number (the application number where there is none; the applicant chooses their own at the
  *  sign-in), or the applicant's own link sent to the email and phone they registered. Never a password the officer chooses; every reset
  *  written down and the applicant told. */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { notify, notifyProblem } from "@/components/proto/Toast";
@@ -12,6 +12,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RESET_METHOD, accountState, defaultNumberWords, reasonProblem } from "@/lib/applicant-password";
+import { BulkPasswordReset } from "@/components/applicant/BulkPasswordReset";
 
 /* V688: and the Database Operators (over the whole University; the server holds the scope) */
 const DESK = ["ict", "academic", "ictagent", "helpdeskhead", "dbops", "super"];
@@ -24,6 +25,7 @@ interface Found {
 export interface ResetRow {
   id: string; account_id: string; method: string; reason: string; sent_to: string | null; expires_at: string; was_locked: boolean; sessions_ended: number;
   reset_at: string; reset_office: string; reset_by_name: string; applicant: string; jamb_key: string | null; application_no: string | null; session: string;
+  bulk_ref?: string | null;
 }
 interface Account {
   accountId: string; name: string; jambKey: string | null; applicationNo: string | null; session: string; email: string; phone: string; failedAttempts: number;
@@ -34,10 +36,12 @@ interface Done { method: string; number?: string; numberKind?: string; expiresAt
 
 const when = (v: string | null | undefined) => (v ? new Date(v).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
-export function ApplicantPasswords({ office, history, problem: loadProblem }: { office: string | null; history: ResetRow[]; problem: Problem | null }) {
+export function ApplicantPasswords({ office, history, problem: loadProblem, initialQuery = "" }: {
+  office: string | null; history: ResetRow[]; problem: Problem | null; initialQuery?: string;
+}) {
   const router = useRouter();
   const may = DESK.includes(office ?? "");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [found, setFound] = useState<Found[] | null>(null);
   const [acct, setAcct] = useState<Account | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,11 +57,19 @@ export function ApplicantPasswords({ office, history, problem: loadProblem }: { 
     setProblem(null);
     return j as T;
   }
-  async function search() {
-    if (q.trim().length < 3) { setProblem({ status: 400, title: "Type three characters or more: a JAMB or application number, an email, a phone or a name." }); return; }
+  async function search(text = q) {
+    if (text.trim().length < 3) { setProblem({ status: 400, title: "Type three characters or more: a JAMB or application number, an email, a phone or a name." }); return; }
     setBusy(true);
-    try { setFound(await call<Found[]>(`/search?q=${encodeURIComponent(q.trim())}`) ?? []); } finally { setBusy(false); }
+    try { setFound(await call<Found[]>(`/search?q=${encodeURIComponent(text.trim())}`) ?? []); } finally { setBusy(false); }
   }
+  /* V710: the Director of ICT's dashboard opens the desk with ?q=: the search runs once, on opening */
+  const searched = useRef(false);
+  useEffect(() => {
+    if (searched.current || !may || initialQuery.trim().length < 3) return;
+    searched.current = true;
+    void search(initialQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [may, initialQuery]);
   async function open(id: string) {
     setBusy(true); setDone(null); setReason(""); setMethod("DEFAULT");
     try { setAcct(await call<Account>(`/${id}`)); } finally { setBusy(false); }
@@ -107,6 +119,7 @@ export function ApplicantPasswords({ office, history, problem: loadProblem }: { 
           ) : <PBody><div className="sub2">No applicant matches. Try the JAMB number, the application number or the email they registered with.</div></PBody>) : null}
         </Panel>
       ) : <Note kind="info" title="The Director of ICT, the Academic Office and ICT Support reset applicants' passwords">Act in one of those offices to reset one.</Note>}
+      {may ? <BulkPasswordReset endpoint="/api/v1/applicant-passwords" onDone={() => router.refresh()} /> : null}
 
       <Panel title="Resets made" right={<span className="sub2">{history.length} most recent</span>}>
         {history.length ? (
@@ -115,7 +128,7 @@ export function ApplicantPasswords({ office, history, problem: loadProblem }: { 
             rows={history.map((h, i) => [
               <span key="n" className="tnum sub2">{i + 1}</span>, <span key="w" className="sub2 tnum">{when(h.reset_at)}</span>,
               <span key="a">{h.applicant}<div className="sub2 tnum">{h.jamb_key ?? h.application_no ?? ""}</div></span>,
-              <span key="m">{RESET_METHOD[h.method] ?? h.method}{h.sent_to ? <div className="sub2">to {h.sent_to}</div> : null}</span>,
+              <span key="m">{RESET_METHOD[h.method] ?? h.method}{h.sent_to ? <div className="sub2">to {h.sent_to}</div> : null}{h.bulk_ref ? <div className="sub2 tnum">{h.bulk_ref}</div> : null}</span>,
               <span key="r" className="sub2">{h.reason}</span>, <span key="b" className="sub2">{h.reset_by_name} · {h.reset_office}</span>,
             ])} />
         ) : <PBody><div className="sub2">No applicant&rsquo;s password has been reset yet.</div></PBody>}

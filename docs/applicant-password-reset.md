@@ -154,3 +154,70 @@ locked, the sessions ended, the officer and the office.
   password opens nothing, and the application number signs in to a session held until the change; the change refuses a wrong current
   password, the number and a short password; the same session goes on after it; the Secretary resets again; the history lists both.
 - `lib/applicant-password.test.ts`.
+
+# Follow-ups (V710, 30 October 2026)
+
+The University's word: "do 1-6", after V706 and V708.
+
+## The postgraduate desk
+
+- **Reset link.** The desk can also send the applicant's own one-hour link to the email and phone they applied with, as the
+  undergraduate desk does. The link is the sign-in page's own reset (`iam.password_reset`, `PGAPPLICANT`), so a password set by it
+  also clears a pending change. At most three links an hour reach one applicant (`PGPW_LINK_LIMIT`). The reset is written down as
+  `RESET_LINK`, with where the link went (masked) and when it stops.
+- **More offices.** The Academic Office (`academic`) and the Database Operators (`dbops`) use the postgraduate desk too. A Database
+  Operator needs a grant over the whole University (`SCOPE_UNIVERSITY`), as on the undergraduate desk. Both have **PG Applicant Password
+  Reset** beside the undergraduate desk in their menus.
+
+## Reset many at once
+
+Both desks have **Reset many at once**:
+
+1. Paste the numbers, one to a line (a column copied from Excel), at most 2,000:
+   - undergraduate desk: JAMB numbers, application numbers or emails;
+   - postgraduate desk: application numbers (this portal's or the old portal's) or emails.
+2. Give the reason and choose **Check the list**. Each number is answered, and nothing changes:
+   - will be reset;
+   - not found;
+   - more than one applicant (for example, one JAMB number in two sessions);
+   - already in the list;
+   - refused (no number to reset to).
+3. Choose **Reset N passwords**. Each password goes back to the default number under one reference (`APW-BULK/YYYY/NNNNNN`). Each reset
+   is written down as the desk's own is, with that reference, and each applicant is told by email and SMS. The results download to
+   Excel.
+
+Underneath:
+
+- `admissions.applicant_password_bulk_reset(kind, numbers, reason, commit)` does the check and the reset.
+- `admissions.applicant_password_bulk` holds each run; `bulk_id` links each reset record to its run.
+- The undergraduate reset now tells the applicant in the database (`admissions.applicant_password_default`), so the desk and the bulk
+  send the same words.
+- A postgraduate bulk stores one sealed password hash for the whole list. While the change is required the sign-in opens on either
+  number (V709), so no number is hashed into each account. A reset at the desk still hashes the application number.
+
+## Elsewhere
+
+- **The Director of ICT's dashboard** has an **Applicant passwords** panel. It finds an undergraduate or postgraduate applicant (the
+  desk opens with the search, `?q=`) and lists the latest resets of both.
+- **An applicant held on Change password** now also reaches the session policy (the idle sign-out) and the manual's help for the page
+  (`/api/v1/auth/session-policy`, `/api/v1/manual/context`). Before this, both were refused and the browser console showed errors.
+- **The sign-in page's reset** now also accepts the links stored as the applicant portal's own (`admissions.password_reset`): the
+  undergraduate desk's reset link and the applicant door's own "forgot password". Before this, such a link was answered "expired or
+  already used", because the page tried only the general reset.
+
+## Tests (V710)
+
+- `check.sql` V710, with made-up applicants:
+  - the postgraduate link is sent by the Academic Office, written down and limited to three an hour; a Database Operator may send it
+    and the Registry may not;
+  - the undergraduate bulk is checked with nothing changed: a JAMB number in small letters, a preliminary applicant's application
+    number, nobody's number, the same applicant again, one with no number, a JAMB number in two sessions, a number twice;
+  - then the bulk is reset under one reference, written down and the applicants told; the Registry is refused;
+  - the postgraduate bulk resets by this portal's number and the old portal's, with one sealed hash and the change required.
+- `ApplicantPasswordBulkIT`:
+  - the undergraduate bulk checked, refused to the Registry and to a short reason, then reset under one reference;
+  - a reset applicant signs in on the JAMB number, is held, and still reads the session policy and the manual;
+  - the postgraduate link is sent by the Academic Office, redeemed at the sign-in page's reset, and clears the change;
+  - a Database Operator held to a department is refused, and one over the University may search;
+  - the School's bulk resets by the application number, and the applicant signs in on it.
+- `lib/applicant-password.test.ts`: the pasted list, its size, the outcome words.

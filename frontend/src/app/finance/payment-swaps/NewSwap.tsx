@@ -13,7 +13,7 @@ import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notifyProblem } from "@/components/proto/Toast";
 import { formatDocDateTime } from "@/lib/document/institution";
-import { clearsWord, evidenceRefusal, isOutstanding, movesWallet, outstandingWords, reasonOk, refusalParts, studentLine, type FoundPayment, type FoundStudent, type SwapAccount, type SwapCheck, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
+import { clearsWord, evidenceRefusal, isOutstanding, movesWallet, outstandingWords, reasonOk, refusalParts, studentLine, walletOwesAfter, type FoundPayment, type FoundStudent, type SwapAccount, type SwapCheck, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
 import { fileAsDataUrl, swapGet, swapPost } from "./swap-call";
 
 function Account({ title, profile, account, after, outstanding, walletAfter }: {
@@ -214,6 +214,12 @@ export function NewSwap({ onClose, onDone }: { onClose: () => void; onDone: (d: 
             </Note>
           )}
           <SwapAccounts check={check} />
+          {check.ok && walletOwesAfter(check.payment) > 0 ? (
+            <Note kind="info" title={`${studentLine(check.fromProfile)}'s wallet will owe ${money(walletOwesAfter(check.payment))}`}>
+              Part of this credit was already used from their wallet. The whole credit still moves to {studentLine(check.toProfile)}; their wallet is left owing
+              the rest, which what is credited to it later settles first. Their fees stay as they were paid. They are told, and the wallet is on Wallets owing.
+            </Note>
+          ) : null}
           {check.ok && check.toAccount && check.payment && !isOutstanding(check.payment) && Number(check.toAccount.paid) + Number(check.payment.amount) > Number(check.toAccount.due) ? (
             <Note kind="info" title="The student it belongs to will have paid more than this session's fees">
               After the swap {studentLine(check.toProfile)} will have paid {money(Number(check.toAccount.paid) + Number(check.payment.amount) - Number(check.toAccount.due))} more

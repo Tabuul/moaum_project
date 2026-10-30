@@ -17,7 +17,29 @@ export const RESET_METHOD: Record<string, string> = {
 };
 
 /** the postgraduate desk's words for a reset's method */
-export const PG_RESET_METHOD: Record<string, string> = { DEFAULT_NUMBER: "Back to the application number" };
+export const PG_RESET_METHOD: Record<string, string> = { DEFAULT_NUMBER: "Back to the application number", RESET_LINK: "Reset link sent" };
+
+/** V710: what a bulk reset said of each number given — checked, then done */
+export const BULK_OUTCOME: Record<string, [string, "ok" | "warn" | "bad" | "grey" | "info"]> = {
+  WILL_RESET: ["Will be reset", "info"],
+  RESET: ["Reset", "ok"],
+  NOT_FOUND: ["Not found", "bad"],
+  AMBIGUOUS: ["More than one applicant", "warn"],
+  REPEATED: ["Already in the list", "grey"],
+  REFUSED: ["Refused", "bad"],
+};
+
+/** V710: the numbers a list gives, one each — pasted from a column (one to a line), or separated by commas, semicolons or tabs */
+export function bulkNumbers(text: string): string[] {
+  return text.split(/[\r\n,;\t]+/).map((x) => x.trim()).filter((x) => x.length > 0);
+}
+
+/** V710: why a list cannot be checked yet, or null: one number at least, two thousand at most */
+export function bulkProblem(numbers: string[]): string | null {
+  if (!numbers.length) return "Paste the numbers to reset, one to a line.";
+  if (numbers.length > 2000) return `At most 2,000 numbers at a time; this list has ${numbers.length.toLocaleString()}.`;
+  return null;
+}
 
 /** the number an undergraduate applicant's password is reset to, in words */
 export function defaultNumberWords(kind: string | null | undefined): string {

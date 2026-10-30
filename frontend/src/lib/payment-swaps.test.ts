@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evidenceRefusal, isOutstanding, movesWallet, outstandingWords, readSwapFilters, reasonOk, refusalParts, swapQuery, EMPTY_SWAP_FILTERS, EVENT_WORDS, KIND_WORDS } from "./payment-swaps.ts";
+import { evidenceRefusal, isOutstanding, movesWallet, outstandingWords, readSwapFilters, reasonOk, refusalParts, swapQuery, walletOwesAfter, EMPTY_SWAP_FILTERS, EVENT_WORDS, FLAG_WORDS, KIND_WORDS } from "./payment-swaps.ts";
 
 test("an old-portal outstanding-fees payment is told apart from school fees (V660)", () => {
   assert.equal(isOutstanding({ kind: "OUTSTANDING_FEES" }), true);
@@ -51,4 +51,12 @@ test("V708: an outstanding-fees payment credited to the wallet moves its wallet 
   assert.match(outstandingWords("VERIFIED"), /record on the Outstanding fees payments desk moves with it/);
   assert.match(outstandingWords("WAITING"), /never against the session's school fees/);
   assert.equal(EVENT_WORDS.PAYMENT_WALLET_CREDIT_MOVED, "Wallet credit moved to the student it belongs to");
+});
+
+test("V710: a credited payment already used leaves the wallet owing; the swap says how much", () => {
+  assert.equal(walletOwesAfter({ outstandingStatus: "CREDITED", walletCredit: { owesAfter: 1000 } }), 1000);
+  assert.equal(walletOwesAfter({ outstandingStatus: "CREDITED", walletCredit: { owesAfter: 0 } }), 0);
+  assert.equal(walletOwesAfter({ outstandingStatus: "VERIFIED", walletCredit: { owesAfter: 500 } }), 0);
+  assert.equal(walletOwesAfter(null), 0);
+  assert.match(FLAG_WORDS.FROM_WALLET_OWES, /their wallet now owes it/);
 });

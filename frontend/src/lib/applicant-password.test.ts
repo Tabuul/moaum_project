@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { accountState, defaultNumberWords, newPasswordProblem, pgAccountState, PG_RESET_METHOD, reasonProblem, RESET_METHOD } from "./applicant-password.ts";
+import { accountState, BULK_OUTCOME, bulkNumbers, bulkProblem, defaultNumberWords, newPasswordProblem, pgAccountState, PG_RESET_METHOD, reasonProblem, RESET_METHOD } from "./applicant-password.ts";
 
 test("a new password is eight characters or more, typed twice alike", () => {
   assert.equal(newPasswordProblem("short", "short"), "A password is eight characters or more.");
@@ -36,4 +36,15 @@ test("a reset's reason is ten characters or more, and its method is said in word
   assert.equal(reasonProblem("Applicant forgot password; identity checked by phone"), null);
   assert.equal(RESET_METHOD.TEMPORARY_PASSWORD, "Temporary password");
   assert.equal(RESET_METHOD.DEFAULT_NUMBER, "Back to the JAMB or application number");
+});
+
+test("V710: a pasted list gives its numbers one each, and is checked for size", () => {
+  assert.deepEqual(bulkNumbers("97109990001AB\r\n  APP/97/710012 \n\n one@example.test, two@example.test;PG/26/000001\tS00220260204082731"),
+    ["97109990001AB", "APP/97/710012", "one@example.test", "two@example.test", "PG/26/000001", "S00220260204082731"]);
+  assert.deepEqual(bulkNumbers("  \n "), []);
+  assert.equal(bulkProblem([]), "Paste the numbers to reset, one to a line.");
+  assert.equal(bulkProblem(["a"]), null);
+  assert.equal(bulkProblem(Array.from({ length: 2001 }, (_, i) => String(i))), "At most 2,000 numbers at a time; this list has 2,001.");
+  assert.deepEqual(BULK_OUTCOME.AMBIGUOUS, ["More than one applicant", "warn"]);
+  assert.equal(PG_RESET_METHOD.RESET_LINK, "Reset link sent");
 });

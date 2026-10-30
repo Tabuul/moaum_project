@@ -11,6 +11,7 @@ import { when } from "@/lib/bursary";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 import { BursaryAudit } from "./BursaryAudit";
 import { HistoricalFeesDashPanel } from "@/components/finance/HistoricalFeesDashPanel";
+import { WalletDebtsPanel } from "@/components/finance/WalletDebtsPanel";
 import type { ReconFigures } from "@/lib/legacy-reconciliation";
 
 /** the CCE applicant fees as the Bursary's dashboard reads them (V414): the CCE session's fees and whether CCE is in use */
@@ -86,6 +87,8 @@ export async function BursarDashboard({ session }: { session: string }) {
       ) : null}
       {/* V654: graduates' historical school fees and their financial clearance */}
       <HistoricalFeesDashPanel />
+      {/* V710: wallets left owing by a payment swap of a credit already used */}
+      <WalletDebtsPanel />
       <div className="grid grid--2">
         <Panel title="Collection by faculty" right={`${v.data.session} · from the register`}>
           {v.data.byFaculty.length ? (

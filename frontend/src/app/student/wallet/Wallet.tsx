@@ -71,6 +71,13 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
         ["NELFUND shortfall", naira(t.shortfall), Number(t.shortfall) ? "var(--red-ink)" : null, Number(t.shortfall) ? "What your funding does not cover" : "Your funding covers what is outstanding"],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {bal < 0 ? (
+        <Note kind="bad" title={`Your wallet owes ${naira(-bal)}`}>
+          A payment credited to your wallet belonged to another student, and the Bursary has moved it to them after part of it had been used. What is
+          credited to your wallet from now on settles this first; your fees stay as they were paid. If you believe this is wrong, contact the Bursary
+          with your own receipt.
+        </Note>
+      ) : null}
       {said ? <Note kind="ok" title={said}>On the record; the receipt is on your Fees page.</Note> : null}
       {st ? (
         <Note kind={st.state === "APPROVED" ? "ok" : st.state === "NOT_APPROVED" ? "bad" : "info"} title={st.state === "APPROVED" ? "The Fund approved your NELFUND loan" : st.state === "NOT_APPROVED" ? "The Fund did not approve your NELFUND loan" : "Your NELFUND application is with the Fund"}>

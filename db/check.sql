@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 538
+\set EXPECTED 539
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29857,7 +29857,7 @@ END $$;
 --          short reason refused; ICT Support's reset puts the account back on its first password (the sentinel: the JAMB number), requires
 --          the change, unlocks it, ends its session and is written down as DEFAULT_NUMBER with no expiry; a preliminary applicant with no
 --          JAMB number is reset to the application number; one with neither is refused (APW_NO_NUMBER); the desk's finder says the account is
---          on its number. Postgraduate: the Registry and the Database Operators refused, a short reason refused; the School's reset makes the
+--          on its number. Postgraduate: the Registry and the Bursary refused (V710: the Database Operators may), a short reason refused; the School's reset makes the
 --          password the application number (bcrypt cost 12), requires the change, unlocks the account, ends its session, is written down
 --          (kept) and the applicant told; an applicant with no application refused (PGPW_NO_APPLICATION); the finder by the application
 --          number, the old portal's, the email, the +234 phone and the name; the applicant's own password clears the change and ends every
@@ -29926,7 +29926,7 @@ BEGIN
     INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id) VALUES (pgapp, 'OLD/PG/706001', bat);
     INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (gen_random_bytes(32), pg, 'applicant', now() + interval '1 hour');
 
-    FOREACH p_office IN ARRAY ARRAY['registrar', 'dbops'] LOOP
+    FOREACH p_office IN ARRAY ARRAY['registrar', 'bursar'] LOOP
         PERFORM set_config('moaum.actor_office', p_office, true);
         BEGIN PERFORM admissions.pg_applicant_password_default(pg, 'Applicant forgot the password'); p_dbops := coalesce(p_dbops || ',', '') || 'done';
         EXCEPTION WHEN insufficient_privilege THEN p_dbops := coalesce(p_dbops || ',', '') || split_part(SQLERRM, ':', 1); END;
@@ -30094,8 +30094,8 @@ END $$;
 --          student they belong to. The verified one swaps, its desk record follows it, and the Bursary's credit then goes to the owner's
 --          wallet; a credited one swaps with its wallet credit — the same wallet entry moved to the owner's wallet, both wallets
 --          reconciled, no wallet entry written, the move said on the swap; the other credited one, once its wallet holds less than the
---          payment (money used from it), is refused (SWAP_OUTSTANDING_SPENT) and a swap of it waiting fails on the decision; the Bursar's
---          reversal moves the credit back. The block undoes its writes ──
+--          payment (money used from it), is no longer refused (V710: its waiting swap goes through on the decision, the wallet left
+--          owing); the Bursar's reversal moves the credit back. The block undoes its writes ──
 DO $$
 DECLARE
     ses text := '9708/9709'; v_prog text; v_entry text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
@@ -30188,9 +30188,9 @@ BEGIN
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM <> 'the V708 check undoes its writes' THEN RAISE; END IF;
   END;
-  PERFORM pg_temp.assert('V708: the old portal''s outstanding-fees payments swap when verified or credited to the wallet — a credited one''s wallet credit moving with it to the owner''s wallet, refused once that wallet no longer holds it',
+  PERFORM pg_temp.assert('V708: the old portal''s outstanding-fees payments swap when verified or credited to the wallet — a credited one''s wallet credit moving with it to the owner''s wallet (V710: even when that wallet no longer holds it)',
       coalesce(msg = 'check ver true cred true CREDITED 7000.00 | verified COMPLETED desk VERIFIED/S2, credited later to S2 | credited COMPLETED moved true, entry S2/true desk CREDITED/S2, wallets 3000.00/9000.00, on the swap t said 1, entries 3→3'
-               || ' | spent SWAP_OUTSTANDING_SPENT, decision FAILED SWAP_OUTSTANDING_SPENT | reversal COMPLETED entry S1 wallets 7000.00/5000.00', false),
+               || ' | spent SWAP_OPEN, decision COMPLETED  | reversal COMPLETED entry S1 wallets 4000.00/8000.00', false),
       msg);
 END $$;
 
@@ -30407,6 +30407,172 @@ BEGIN
                AND c_level = 'true/OUTSTANDING' AND c_cohort = 'false/NOT_OWED_SPILLOVER', false),
       format('spillover %s, within %s | eligibility %s / %s | desk %s | payable %s/%s | carry %s/%s | elective %s, core %s | added %s, %s | cohort-state student by level %s, by cohort %s',
              a_row, b_row, a_el, b_el, desk, a_pay, b_pay, a_carry, b_carry, t_elec, t_core, a_reg, a_req, c_level, c_cohort));
+END $$;
+
+-- ── V710: the follow-ups to V706 and V708, with made-up students and applicants. (1) An outstanding-fees payment credited to a
+--          student's wallet and partly used: the swap is checked free with what the wallet will owe, goes through whole, flags the
+--          wallet left owing and tells the student; the wallet owes it on the Bursary's list; the reversal takes the debt away. (3, 4) The
+--          postgraduate desk's link: the Academic Office sends it (iam.password_reset, PGAPPLICANT), written down with where it went
+--          and when it stops; three an hour; a Database Operator may, the Registry may not. (5) Bulk resets: the undergraduate list
+--          checked (a JAMB number in small letters, a preliminary applicant's application number, nobody's number, the same applicant
+--          by email, one with no number, an email two applicants share, a number twice, a blank line) and nothing changed; then reset —
+--          the two that may, under one reference, each written down with it and the applicant told; the Registry refused. The
+--          postgraduate list: by the application number and the old portal's number, one sealed hash for both, the change required.
+--          The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9710/9711'; v_prog text; v_entry text; pgprog text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid();
+    a_off uuid := gen_random_uuid(); b_off uuid := gen_random_uuid(); pay uuid; c jsonb; w uuid; d jsonb; w_back uuid; d_back jsonb;
+    s1_w numeric; s2_w numeric; flags text; told int; debt_row text; debt_after int; s1_back numeric;
+    pg uuid := gen_random_uuid(); pgapp uuid := gen_random_uuid(); lk jsonb; lk_logged text; lk_token int; lk_limit text; lk_dbops text; lk_registrar text; n int;
+    u1 uuid := gen_random_uuid(); c1 uuid := gen_random_uuid(); u2 uuid := gen_random_uuid(); c2 uuid := gen_random_uuid();
+    u3 uuid := gen_random_uuid(); c3 uuid := gen_random_uuid(); u4 uuid := gen_random_uuid(); c4 uuid := gen_random_uuid();
+    u5 uuid := gen_random_uuid(); c5 uuid := gen_random_uuid(); bat uuid := gen_random_uuid();
+    dry text; dry_hash text; done text; bulk text; carried int; u1_after admissions.applicant_account; u_told int; reg_bulk text;
+    g1 uuid := gen_random_uuid(); g1app uuid := gen_random_uuid(); g2 uuid := gen_random_uuid(); g2app uuid := gen_random_uuid();
+    pg_done text; g1p admissions.pg_applicant; g2p admissions.pg_applicant; msg text; v_err text;
+    nums text[];
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V710', true);
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, date '9710-10-01', date '9711-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    SELECT code INTO v_prog FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT name INTO v_entry FROM policy.academic_session ORDER BY starts_on DESC LIMIT 1;
+
+    -- (1) credited to s1's wallet, 1,000 of it used; swapped to s2 whole
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (s1, 'MOAUM/ADM/99/710001', 'MOAUM/ZZS/99/7101', 'CHECKV710', 'Credited in error', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now()),
+           (s2, 'MOAUM/ADM/99/710002', 'MOAUM/ZZS/99/7102', 'CHECKV710', 'It belongs to', v_prog, 'UTME', v_entry, 100, 200, 'ACTIVE', now());
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (s1, ses, 'MOAUM-LEG-CHECKV710-9710-9711-S1-OUTSTANDINGFEES', 'OUTSTANDING FEES (legacy) · semester 1', 4000, now(), now(), a_off, 'Legacy', 'LEG-CHECKV710-1', 'old ref PR710000001')
+    RETURNING id INTO pay;
+    PERFORM finance.legacy_outstanding_payment_verify(ARRAY[pay], 'checked against the old portal statement');
+    PERFORM set_config('moaum.actor_id', b_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.legacy_outstanding_payment_credit(ARRAY[pay], 'CHECK V710');
+    INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code) VALUES (s1, ses, 'APPLIED', 1000, 'CHECKV710-APPLIED', 'CHECK V710: used for the fees', 'LEGACY_OUTSTANDING');
+    c := finance.payment_swap_check(pay, s2);
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    w := finance.initiate_payment_swap(pay, s2, 'Credited to the wrong wallet and partly used: the old portal statement names the other student', NULL, true);
+    PERFORM set_config('moaum.actor_id', b_off::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    d := finance.decide_payment_swap(w, true, 'Confirmed with both students', true);
+    s1_w := finance.wallet_balance(s1);
+    s2_w := finance.wallet_balance(s2);
+    flags := (SELECT array_to_string(x.flags, ',') FROM finance.payment_swap x WHERE x.id = w);
+    told := (SELECT count(*) FROM platform.notice x WHERE x.template_key = 'WALLET_OWED_AFTER_SWAP' AND x.event_key LIKE '%' || w::text || '%');
+    debt_row := (SELECT x.matric_no || ' owes ' || x.owed || ' by ' || (x.swap_ref IS NOT NULL) || ' to ' || x.moved_to FROM finance.wallet_debts('MOAUM/ZZS/99/7101') x);
+    -- the Bursar's reversal, decided by another Bursar officer: the credit back, the debt gone
+    w_back := finance.initiate_payment_swap(NULL, NULL, 'Reversed: the statement was for the first student after all, per the bank', NULL, true, w);
+    PERFORM set_config('moaum.actor_id', a_off::text, true);
+    d_back := finance.decide_payment_swap(w_back, true, 'The bank statement settles it', true);
+    s1_back := finance.wallet_balance(s1);
+    debt_after := (SELECT count(*) FROM finance.wallet_debts('MOAUM/ZZS/99/7101'));
+
+    -- (3, 4) the postgraduate desk's link
+    pgprog := (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1);
+    INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, phone, password_hash)
+    VALUES (pg, ses, 'Checkpgpw', 'Linked Applicant', 'check.pglink.v710@example.test', '08037100001', crypt('An old password', gen_salt('bf', 12)));
+    INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+    VALUES (pgapp, pg, ses, 'PG/97/710001', pgprog, 800, 'SUBMITTED', now());
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    lk := admissions.pg_applicant_password_link(pg, md5('one'), 'The applicant asked by telephone for a link', 'c***0@example.test and *******0001');
+    lk_logged := (SELECT r.method || ':' || r.reset_office || ':' || r.sent_to || ':' || (r.expires_at > now() + interval '55 minutes')
+                    FROM admissions.pg_applicant_password_reset r WHERE r.applicant_id = pg);
+    lk_token := (SELECT count(*) FROM iam.password_reset r WHERE r.subject_kind = 'PGAPPLICANT' AND r.subject_id = pg AND r.token_hash = md5('one'));
+    PERFORM set_config('moaum.actor_office', 'dbops', true);
+    BEGIN PERFORM admissions.pg_applicant_password_link(pg, md5('two'), 'The applicant asked the Database Operations office', NULL); lk_dbops := 'ok';
+    EXCEPTION WHEN insufficient_privilege THEN lk_dbops := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM admissions.pg_applicant_password_link(pg, md5('three'), 'The applicant asked the Registry for a link', NULL); lk_registrar := 'ok';
+    EXCEPTION WHEN insufficient_privilege THEN lk_registrar := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    n := 0;
+    FOR i IN 1..3 LOOP
+        BEGIN PERFORM admissions.pg_applicant_password_link(pg, md5('more' || i), 'The applicant asked again for a link', NULL); n := n + 1;
+        EXCEPTION WHEN check_violation THEN lk_limit := split_part(SQLERRM, ':', 1); END;
+    END LOOP;
+
+    -- (5) the undergraduate bulk: u1 (JAMB), u2 (preliminary: the application number), u3 (no number), u4 and u5 (one email, two sessions)
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (c1, ses, '97109990001AB', 'CHECKBULK', 'Jamb Applicant', 'B.Sc. CHECK V710', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.candidate (id, session, surname, other_names, programme, entry_mode, entry_level, offer_state, sex) VALUES
+        (c2, ses, 'CHECKBULK', 'Preliminary', 'Preliminary Science', 'PRELIMINARY', 0, 'PROPOSED', 'F'),
+        (c3, ses, 'CHECKBULK', 'Numberless', 'Preliminary Science', 'PRELIMINARY', 0, 'PROPOSED', 'M');
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), '9709/9710', date '9709-10-01', date '9710-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    -- one JAMB number in two sessions: two applicants have it
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state) VALUES
+        (c4, ses, '97109990002AB', 'CHECKBULK', 'Twin One', 'B.Sc. CHECK V710', 'UTME', 100, 'PROPOSED'),
+        (c5, '9709/9710', '97109990002AB', 'CHECKBULK', 'Twin Two', 'B.Sc. CHECK V710', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+        (u1, ses, c1, '97109990001AB', 'checkbulk.one.v710@example.test', '08037100011', crypt('A chosen password', gen_salt('bf', 12))),
+        (u2, ses, c2, NULL, 'checkbulk.two.v710@example.test', '08037100012', crypt('A chosen password', gen_salt('bf', 12))),
+        (u3, ses, c3, NULL, 'checkbulk.three.v710@example.test', '08037100013', crypt('A chosen password', gen_salt('bf', 12))),
+        (u4, ses, c4, '97109990002AB', 'checkbulk.twin1.v710@example.test', '08037100014', crypt('A chosen password', gen_salt('bf', 12))),
+        (u5, '9709/9710', c5, '97109990002AB', 'checkbulk.twin2.v710@example.test', '08037100015', crypt('A chosen password', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES
+        (gen_random_uuid(), u1, c1, ses, 'APP/97/710011'), (gen_random_uuid(), u2, c2, ses, 'APP/97/710012');
+    nums := ARRAY['97109990001ab', '', 'APP/97/710012', 'NOBODY-710', 'checkbulk.one.v710@example.test', 'checkbulk.three.v710@example.test',
+                  '97109990002ab', '97109990001AB'];
+    dry := (SELECT string_agg(x.row_no || '=' || x.outcome || coalesce('/' || x.default_number, ''), ' ' ORDER BY x.row_no)
+              FROM admissions.applicant_password_bulk_reset('undergraduate', nums, 'Applicants at the screening desk asked for their numbers', false) x);
+    dry_hash := (SELECT left(password_hash, 4) FROM admissions.applicant_account WHERE id = u1);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM * FROM admissions.applicant_password_bulk_reset('undergraduate', nums, 'Applicants at the screening desk asked for their numbers', true); reg_bulk := 'ok';
+    EXCEPTION WHEN insufficient_privilege THEN reg_bulk := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    done := (SELECT string_agg(x.row_no || '=' || x.outcome, ' ' ORDER BY x.row_no)
+               FROM admissions.applicant_password_bulk_reset('undergraduate', nums, 'Applicants at the screening desk asked for their numbers', true) x);
+    bulk := (SELECT b.kind || ':' || b.asked || '/' || b.reset || '/' || b.passed_over || ':' || (b.reference ~ '^APW-BULK/[0-9]{4}/[0-9]{6}$')
+               FROM admissions.applicant_password_bulk b JOIN admissions.applicant_password_reset r ON r.bulk_id = b.id WHERE r.account_id = u1);
+    carried := (SELECT count(*) FROM admissions.applicant_password_reset r WHERE r.account_id IN (u1, u2) AND r.bulk_id IS NOT NULL AND r.method = 'DEFAULT_NUMBER');
+    SELECT * INTO u1_after FROM admissions.applicant_account WHERE id = u1;
+    u_told := (SELECT count(*) FROM platform.notice x WHERE x.recipient = 'checkbulk.one.v710@example.test' AND x.subject = 'Your MOAUM application password was reset'
+                AND x.body LIKE '%JAMB registration number as the password%');
+
+    -- (5) the postgraduate bulk: g1 by the application number, g2 by the old portal's number
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (b_off, 'ZZ-V710-CHK', 'CHECKV710', 'Officer') ON CONFLICT DO NOTHING;
+    INSERT INTO admissions.pg_migration_batch (id, reference, kind, file_name, rows_expected, started_by, started_office)
+    VALUES (bat, 'PG-MIG/9710/000001', 'APPLICANTS', 'check-v710.xlsx', 1, b_off, 'pgschool');
+    INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, password_hash) VALUES
+        (g1, ses, 'Checkpgbulk', 'First', 'check.pgbulk1.v710@example.test', crypt('An old password', gen_salt('bf', 12))),
+        (g2, ses, 'Checkpgbulk', 'Second', 'check.pgbulk2.v710@example.test', crypt('An old password', gen_salt('bf', 12)));
+    INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at) VALUES
+        (g1app, g1, ses, 'PG/97/710011', pgprog, 800, 'SUBMITTED', now()), (g2app, g2, ses, 'PG/97/710012', pgprog, 800, 'SUBMITTED', now());
+    INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id) VALUES (g2app, 'S00710202610000001', bat);
+    PERFORM set_config('moaum.actor_office', 'pgsecretary', true);
+    pg_done := (SELECT string_agg(x.row_no || '=' || x.outcome || coalesce('/' || x.default_number, ''), ' ' ORDER BY x.row_no)
+                  FROM admissions.applicant_password_bulk_reset('postgraduate', ARRAY['pg/97/710011', 's00710202610000001', 'nobody.v710@example.test'],
+                                                               'Applicants at the School asked for their numbers', true) x);
+    SELECT * INTO g1p FROM admissions.pg_applicant WHERE id = g1;
+    SELECT * INTO g2p FROM admissions.pg_applicant WHERE id = g2;
+
+    msg := format('(1) check %s owes %s | swap %s moved %s owes %s flags %s told %s, wallets %s/%s, list [%s] | reversal %s wallet %s listed %s'
+                  || ' || (3,4) link %s %s token %s, dbops %s, registrar %s, then %s more and %s'
+                  || ' || (5) dry %s, u1 hash %s | registrar %s | done %s | bulk %s, carried %s, u1 sentinel %s must %s, told %s'
+                  || ' || pg %s, must %s/%s, one sealed %s, not the number %s',
+                  c->>'ok', c->'payment'->'walletCredit'->>'owesAfter', d->>'status', d->>'walletMoved', d->>'walletOwes', flags, told, s1_w, s2_w, debt_row,
+                  d_back->>'status', s1_back, debt_after,
+                  lk->>'applicationNo', lk_logged, lk_token, lk_dbops, lk_registrar, n, lk_limit,
+                  dry, dry_hash, reg_bulk, done, bulk, carried, u1_after.password_hash = 'SET_ON_FIRST_LOGIN', u1_after.must_change_password, u_told,
+                  pg_done, g1p.must_change_password, g2p.must_change_password, g1p.password_hash = g2p.password_hash, g1p.password_hash <> crypt('PG/97/710011', g1p.password_hash));
+    RAISE EXCEPTION 'the V710 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V710 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V710: a swap of a credited payment already used leaves the wallet owing (listed, told, undone by the reversal); the postgraduate desk sends a link, the Academic Office and the Database Operators on it; applicants reset in bulk back to the default number',
+      coalesce(msg = '(1) check true owes 1000.00 | swap COMPLETED moved true owes 1000.00 flags FROM_WALLET_OWES told 1, wallets -1000.00/4000.00, list [MOAUM/ZZS/99/7101 owes 1000.00 by true to MOAUM/ZZS/99/7102] | reversal COMPLETED wallet 3000.00 listed 0'
+                     || ' || (3,4) link PG/97/710001 RESET_LINK:academic:c***0@example.test and *******0001:true token 1, dbops ok, registrar PGPW_OFFICE, then 1 more and PGPW_LINK_LIMIT'
+                     || ' || (5) dry 1=WILL_RESET/97109990001AB 3=WILL_RESET/APP/97/710012 4=NOT_FOUND 5=REPEATED/97109990001AB 6=REFUSED 7=AMBIGUOUS 8=REPEATED, u1 hash $2a$ | registrar APW_OFFICE | done 1=RESET 3=RESET 4=NOT_FOUND 5=REPEATED 6=REFUSED 7=AMBIGUOUS 8=REPEATED | bulk UNDERGRADUATE:7/2/5:true, carried 2, u1 sentinel t must t, told 1'
+                     || ' || pg 1=RESET/PG/97/710011 2=RESET/PG/97/710012 3=NOT_FOUND, must t/t, one sealed t, not the number t', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
