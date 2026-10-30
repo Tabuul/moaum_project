@@ -122,7 +122,9 @@ class SupportCourseOwnerIT {
         String x = course(deptA);
         Map<String, Object> may = (Map<String, Object>) ok(it.get(head, "/api/v1/catalogue/courses/" + x + "/detail")).get("may");
         assertThat(may).containsEntry("edit", true).containsEntry("changeOwner", true);
-        ok(it.call(head, HttpMethod.PUT, "/api/v1/catalogue/courses/" + x, Map.of("title", "Support owner check edited", "units", 2, "semester", 1, "level", 200)));
+        ok(it.call(head, HttpMethod.PUT, "/api/v1/catalogue/courses/" + x, Map.of("title", "Support owner check " + x, "units", 2, "semester", 1, "level", 200)));
+        ok(it.call(head, HttpMethod.POST, "/api/v1/catalogue/courses/" + x + "/correction",   // V713: the title corrected with its reason
+                Map.of("code", x, "title", "Support owner check edited", "reasonKind", "ICT_SUPPORT_CORRECTION", "version", jdbc.sql("SELECT catalogue.course_version(c) FROM catalogue.course c WHERE code = :c").param("c", x).query(String.class).single())));
         assertThat(jdbc.sql("SELECT title FROM catalogue.course WHERE code = :c").param("c", x).query(String.class).single()).isEqualTo("Support owner check edited");
         assertThat(ok(move(head, x, deptB, null))).containsEntry("dept_code", deptB);
         assertThat(deptOf(x)).isEqualTo(deptB);
@@ -145,7 +147,9 @@ class SupportCourseOwnerIT {
         assertThat(ok(move(tok, y, deptA2, number))).containsEntry("dept_code", deptA2);
         assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.ticket_event WHERE ticket_id = :t AND to_value LIKE 'Changed the owner of " + y + " from " + deptA + " to " + deptA2 + "%'")
                 .param("t", t).query(Integer.class).single()).isEqualTo(1);
-        ok(it.call(tok, HttpMethod.PUT, "/api/v1/catalogue/courses/" + y, Map.of("title", "Support owner check by the agent", "units", 3, "semester", 1, "level", 200)));
+        ok(it.call(tok, HttpMethod.PUT, "/api/v1/catalogue/courses/" + y, Map.of("title", "Support owner check " + y, "units", 3, "semester", 1, "level", 200)));
+        ok(it.call(tok, HttpMethod.POST, "/api/v1/catalogue/courses/" + y + "/correction",   // V713: EDIT_COURSES carries the title's correction
+                Map.of("code", y, "title", "Support owner check by the agent", "reasonKind", "ICT_SUPPORT_CORRECTION", "version", jdbc.sql("SELECT catalogue.course_version(c) FROM catalogue.course c WHERE code = :c").param("c", y).query(String.class).single())));
         ResponseEntity<Map> out = move(tok, y, deptB, null);
         assertThat(code(out)).as(String.valueOf(out.getBody())).isEqualTo("STRUCTURE_SCOPE");
         assertThat(deptOf(y)).isEqualTo(deptA2);

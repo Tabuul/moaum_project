@@ -103,9 +103,14 @@ class CourseOfferingIT {
         assertThat(it.call(hodOwn, HttpMethod.POST, b -> b.path("/api/v1/catalogue/courses/{c}/offers").build(CODE), Map.of("programme", OTHER_PROG, "level", 200)).getStatusCode().value()).isEqualTo(422);
         // the other Head cannot edit the course; its own Head edits it and it stays the same course
         assertThat(it.call(hodOther, HttpMethod.PUT, b -> b.path("/api/v1/catalogue/courses/{c}").build(CODE), Map.of("title", "Hijacked", "units", 2, "semester", 1, "level", 200)).getStatusCode().value()).isEqualTo(422);
-        ResponseEntity<Map> edited = it.call(hodOwn, HttpMethod.PUT, b -> b.path("/api/v1/catalogue/courses/{c}").build(CODE), Map.of("title", "Data Structures and Algorithms (IT)", "units", 4, "semester", 1, "level", 200, "kind", "Core"));
+        ResponseEntity<Map> edited = it.call(hodOwn, HttpMethod.PUT, b -> b.path("/api/v1/catalogue/courses/{c}").build(CODE), Map.of("title", "Data Structures (IT)", "units", 4, "semester", 1, "level", 200, "kind", "Core"));
         assertThat(edited.getStatusCode().value()).as(String.valueOf(edited.getBody())).isEqualTo(200);
         assertThat(String.valueOf(edited.getBody().get("id"))).isEqualTo(id);
+        // V713: the title is corrected with its reason, against the version read — the same course
+        ResponseEntity<Map> retitled = it.call(hodOwn, HttpMethod.POST, b -> b.path("/api/v1/catalogue/courses/{c}/correction").build(CODE),
+                Map.of("code", CODE, "title", "Data Structures and Algorithms (IT)", "reasonKind", "OFFICIAL_CORRECTION", "version", jdbc.sql("SELECT catalogue.course_version(c) FROM catalogue.course c WHERE code = :c").param("c", CODE).query(String.class).single()));
+        assertThat(retitled.getStatusCode().value()).as(String.valueOf(retitled.getBody())).isEqualTo(200);
+        assertThat(String.valueOf(retitled.getBody().get("id"))).isEqualTo(id);
         ResponseEntity<Map> renamed = it.call(hodOwn, HttpMethod.POST, b -> b.path("/api/v1/catalogue/courses/{c}/rename").build(CODE), Map.of("code", "zzo902"));
         assertThat(renamed.getStatusCode().value()).as(String.valueOf(renamed.getBody())).isEqualTo(200);
         assertThat(renamed.getBody().get("code")).isEqualTo(RENAMED);

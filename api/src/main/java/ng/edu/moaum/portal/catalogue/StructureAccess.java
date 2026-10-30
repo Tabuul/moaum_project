@@ -33,8 +33,12 @@ class StructureAccess {
     static final String EDIT = "EDIT_COURSES";
     static final String BIND = "BIND_COURSES";
     static final String PREREQ = "MANAGE_PREREQUISITES";
+    /** V713: a course's code, a course's title — corrected with a reason; EDIT_COURSES carries both */
+    static final String EDIT_CODE = "EDIT_COURSE_CODE";
+    static final String EDIT_TITLE = "EDIT_COURSE_TITLE";
     private static final Map<String, String> WORDS = Map.of(VIEW, "viewing the programme structure", EDIT, "editing courses",
-            BIND, "binding courses into programmes", PREREQ, "managing prerequisites");
+            BIND, "binding courses into programmes", PREREQ, "managing prerequisites",
+            EDIT_CODE, "changing a course's code", EDIT_TITLE, "changing a course's title");
 
     private static final Set<String> PG = Set.of("pgschool", "pgsecretary");
     private static final Set<String> SUPPORT = Set.of("ictagent", "helpdeskhead");
@@ -94,8 +98,8 @@ class StructureAccess {
     /** the capabilities the acting office holds anywhere, for the screen (each act is still checked where it lands) */
     List<String> held() {
         if (!special()) return List.of();
-        if (pg() || "helpdeskhead".equals(office())) return List.of(VIEW, EDIT, BIND, PREREQ);
-        return List.of(VIEW, EDIT, BIND, PREREQ).stream().filter(c -> !reach(c).none()).toList();
+        if (pg() || "helpdeskhead".equals(office())) return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE);
+        return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE).stream().filter(c -> !reach(c).none()).toList();
     }
 
     /** an agent reads the structure only with VIEW_PROGRAMME_STRUCTURE (every agent in service holds it) */
@@ -201,6 +205,40 @@ class StructureAccess {
         Reach r = require(capability);
         throw new DomainRuleViolation("STRUCTURE_SCOPE", code + " belongs to a department outside your support scope (" + (r.words().isBlank() ? "none" : r.words()) + ").",
                 new DomainRuleViolation.Remedy("Escalate it to the Head of the ICT Support Desk or the Director of ICT.", "Head of ICT Support Desk"));
+    }
+
+    /** V713: may the acting office correct the course's code ("CODE") or its title ("TITLE")? An agent with EDIT_COURSE_CODE or
+     *  EDIT_COURSE_TITLE — or EDIT_COURSES, which carries both — within the posting's faculties and departments; the Head and the
+     *  School as they edit the course */
+    boolean mayCorrect(String code, String field) {
+        if (!special()) return false;
+        if (!"ictagent".equals(office())) return mayCourse(code, EDIT);
+        Map<String, Object> c = course(code);
+        String cap = "CODE".equals(field) ? EDIT_CODE : EDIT_TITLE;
+        return reach(cap).covers((String) c.get("faculty_code"), (String) c.get("dept_code"))
+                || reach(EDIT).covers((String) c.get("faculty_code"), (String) c.get("dept_code"));
+    }
+
+    /** V713: the correction of a course's code and title, each part by the capability that carries it */
+    void assertCorrect(String code, boolean codeChanged, boolean titleChanged) {
+        if (!special()) return;
+        if (!"ictagent".equals(office())) {
+            assertCourse(code, EDIT);
+            return;
+        }
+        for (String field : List.of("CODE", "TITLE")) {
+            if (("CODE".equals(field) ? !codeChanged : !titleChanged) || mayCorrect(code, field)) continue;
+            String cap = "CODE".equals(field) ? EDIT_CODE : EDIT_TITLE;
+            Reach r = reach(cap);
+            Reach e = reach(EDIT);
+            if (r.none() && e.none()) {
+                throw new DomainRuleViolation("STRUCTURE_CAPABILITY", "Your support posting does not carry " + WORDS.get(cap) + ".",
+                        new DomainRuleViolation.Remedy("Ask the Head of the ICT Support Desk to grant it with your posting.", "Head of ICT Support Desk"));
+            }
+            String words = String.join("; ", List.of(r.words(), e.words()).stream().filter(w -> w != null && !w.isBlank()).distinct().toList());
+            throw new DomainRuleViolation("STRUCTURE_SCOPE", code + " belongs to a department outside your support scope (" + (words.isBlank() ? "none" : words) + ").",
+                    new DomainRuleViolation.Remedy("Escalate it to the Head of the ICT Support Desk or the Director of ICT.", "Head of ICT Support Desk"));
+        }
     }
 
     /** an edit by the School keeps the course a postgraduate one (700 to 900 level) */

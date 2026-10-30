@@ -34,7 +34,9 @@ export interface Proposal {
 export interface CourseDetail {
   course: CourseHead & { ended_on: string | null; curriculum: string | null; ca_max: number | null; general_office: string | null; lecture_hours: number | null; practical_hours: number | null; industrial_training: boolean | null; faculty_code: string | null;
     /** V338: the owner programme and the description */
-    owner_programme?: string | null; owner_programme_name?: string | null; description?: string | null };
+    owner_programme?: string | null; owner_programme_name?: string | null; description?: string | null;
+    /** V713: the version a correction of the code and title is made against */
+    version?: string };
   offers: Offer[];
   departments: { code: string; name: string; faculty: string | null; programmes: number; owner: boolean }[];
   sessions: { id: string; session: string; semester: number; allocated_on: string | null; lecturer: string | null; second_examiner: string | null; co_lecturers: { name: string; programme_code: string | null; programme: string | null }[]; registered: number; sheet_stage: string | null }[];
@@ -45,7 +47,8 @@ export interface CourseDetail {
   prerequisites?: { code: string; title: string }[];
   ownerHistory?: { from_dept: string | null; from_dept_name: string | null; to_dept: string | null; to_dept_name: string | null; from_programme: string | null; to_programme: string | null; to_programme_name: string | null; source: string | null; reason: string | null; changed_at: string; changed_office: string | null; changed_by: string | null }[];
   /** V471: prerequisites — may add and remove what the course requires; ticket — may name the support ticket a change answers */
-  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean; prerequisites?: boolean; ticket?: boolean; /** the department courses desk is this office's */ deptDesk?: boolean };
+  may: { edit: boolean; offer: boolean; central: boolean; actingDept: string; changeOwner?: boolean; prerequisites?: boolean; ticket?: boolean; /** the department courses desk is this office's */ deptDesk?: boolean;
+    /** V713: may correct the code, the title (the Director of ICT any course; ICT Support by its posting; the rest as they edit) */ correctCode?: boolean; correctTitle?: boolean; /** may read every course's code and title changes */ changes?: boolean };
   /** V386: the code asked for (a merged or differently written code opens the course held) and the codes merged into it */
   requested?: string;
   aliases?: { alias_code: string; title: string | null; evidence: string; reason: string; merged_at: string; merged_office: string | null; merged_by: string | null; moved: string }[];

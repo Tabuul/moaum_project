@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 540
+\set EXPECTED 541
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -30660,6 +30660,81 @@ BEGIN
                  AND kept_ret = 'kept' AND kept = 'OFFERED/false', false),
         format('plain %s | held %s, fee %s | applying %s | students %s | flags %s | fees %s/%s | screening here kept %s %s',
                plain, held, held_fee, sub, students, flags, fee_acc, fee_app, kept_ret, kept));
+END $$;
+
+-- ── V713: a course's code and title corrected on the same course. A made-up course with a class, a carry-over registration and a
+--          broadsheet omission is retitled (its registered class too, its units as they were), refused against a version read before,
+--          moved onto a code another course holds under another title (kept a separate course, everything following), refused onto
+--          the same code and title; a plain rename is on the trail too; the trail is never altered; the history reads the course
+--          under its first code. The block undoes its writes ──
+DO $$
+DECLARE
+    v_dept text; prog text; ses text := '9712/9713'; cid uuid; off uuid := gen_random_uuid(); stu uuid := gen_random_uuid(); reg uuid := gen_random_uuid();
+    r1 jsonb; r2 jsonb; stale text; same text; kept text; cls_title text; cls_units int; key text; entries int; omitted int; trail text; hist int; renamed text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'CHECK V713', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, '9712-10-01', '9713-09-30', 'CLOSED');
+    SELECT p.code, p.dept_code INTO prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (stu, 'MOAUM/ADM/12/712001', 'MOAUM/ZZJ/12/7121', 'CHECKV713', 'Student', prog, 'UTME', ses, 100, 400, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZJ 401', 'Check V713 Operating System', 3, 1, 400, v_dept, 'Core', 'LIVE'),
+        ('ZZJ 405', 'Check V713 Advanced Biology', 3, 1, 400, v_dept, 'Core', 'LIVE');
+    SELECT id INTO cid FROM catalogue.course WHERE code = 'ZZJ 401';
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (off, 'ZZJ 401', ses, 1);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (reg, stu, ses, 1, 400, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (reg, off, 3, 'CARRYOVER', 'REGISTERED');
+    INSERT INTO assessment.broadsheet_omission (programme_code, level, session, semester, course_code, reason) VALUES (prog, 400, ses, 1, 'ZZJ 401', 'Check V713 omission');
+
+    -- the title, and every class with it; the units as they were
+    r1 := catalogue.correct_course('ZZJ 401', 'ZZJ 401', 'Check V713 Operating Systems', 'TYPOGRAPHICAL_ERROR', 'misspelt',
+                                   (SELECT catalogue.course_version(c) FROM catalogue.course c WHERE c.id = cid), true, NULL);
+    SELECT o.title, o.units INTO cls_title, cls_units FROM catalogue.offering o WHERE o.id = off;
+    -- a version read before: refused
+    BEGIN
+        PERFORM catalogue.correct_course('ZZJ 401', 'ZZJ 409', NULL, 'OFFICIAL_CORRECTION', NULL, 'a version read before', true, NULL);
+        stale := 'accepted';
+    EXCEPTION WHEN check_violation THEN stale := split_part(SQLERRM, ':', 1);
+    END;
+    -- onto a code another course holds under another title: kept separate; the class, the carry-over and the omission follow
+    r2 := catalogue.correct_course('ZZJ 401', 'zzj405', NULL, 'CURRICULUM_CORRECTION', NULL,
+                                   (SELECT catalogue.course_version(c) FROM catalogue.course c WHERE c.id = cid), true, NULL);
+    SELECT c.code INTO key FROM catalogue.course c WHERE c.id = cid;
+    SELECT count(*) INTO entries FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE o.course_code = key AND e.entry_type = 'CARRYOVER';
+    SELECT count(*) INTO omitted FROM assessment.broadsheet_omission b WHERE b.course_code = key;
+    -- the same code and the same title: refused
+    BEGIN
+        PERFORM catalogue.correct_course('ZZJ 405', 'ZZJ 405', 'Check V713 Operating Systems', 'DUPLICATE_DATA_CORRECTION', NULL,
+                                         (SELECT catalogue.course_version(c) FROM catalogue.course c WHERE c.code = 'ZZJ 405'), true, NULL);
+        same := 'accepted';
+    EXCEPTION WHEN check_violation THEN same := split_part(SQLERRM, ':', 1);
+    END;
+    -- a plain rename (the department's desk) is on the trail too
+    renamed := catalogue.rename_course(key, 'ZZJ 407');
+    SELECT string_agg(ch.field || ':' || ch.old_value || '>' || ch.new_value || ':' || ch.source || ':' || coalesce(ch.reason_kind, '-'), ' | ' ORDER BY ch.changed_at)
+      INTO trail FROM catalogue.course_change ch WHERE ch.course_id = cid;
+    SELECT count(*) INTO hist FROM catalogue.course_history('ZZJ 407') h WHERE h.action = 'CREATED' AND h.new_value = 'ZZJ 401';
+    BEGIN
+        UPDATE catalogue.course_change SET remarks = 'altered' WHERE course_id = cid;
+        kept := 'altered';
+    EXCEPTION WHEN check_violation THEN kept := split_part(SQLERRM, ':', 1);
+    END;
+    RAISE EXCEPTION 'CHECK_V713_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V713_UNDONE' THEN RAISE; END IF;
+  END;
+
+  PERFORM pg_temp.assert('V713: a course''s code and title are corrected on the same course, everything on it following, for a reason, never over a newer version',
+      coalesce((r1->>'id')::uuid = cid AND cls_title = 'Check V713 Operating Systems' AND cls_units = 3 AND stale = 'COURSE_CHANGED_SINCE'
+               AND r2->>'code' = 'ZZJ 405 V2' AND (r2->>'separate')::boolean AND (r2->>'id')::uuid = cid AND entries = 1 AND omitted = 1
+               AND same = 'COURSE_SAME_CODE_AND_TITLE' AND renamed = 'ZZJ 407'
+               AND trail = 'TITLE:Check V713 Operating System>Check V713 Operating Systems:CORRECTION:TYPOGRAPHICAL_ERROR | CODE:ZZJ 401>ZZJ 405 V2:CORRECTION:CURRICULUM_CORRECTION | CODE:ZZJ 405 V2>ZZJ 407:EDIT:-'
+               AND hist = 1 AND kept = 'COURSE_CHANGE_KEPT', false),
+      format('first %s; class title %s, units %s; stale %s; second %s; key %s, carry-overs %s, omissions %s; same %s; renamed %s; trail %s; history %s; kept %s',
+             r1, cls_title, cls_units, stale, r2, key, entries, omitted, same, renamed, trail, hist, kept));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

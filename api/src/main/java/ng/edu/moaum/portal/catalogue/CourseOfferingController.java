@@ -52,6 +52,10 @@ class CourseOfferingController {
     private static final Set<String> SORTS = Set.of("code", "title", "level", "dept", "programmes", "state", "updated", "review");
     /** V386: the University's offices that merge one course into another */
     private static final String MERGERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+    /** V713: who corrects a course's code and title — the offices that edit courses, and the Director of ICT (each checked again on the course) */
+    private static final String CORRECTORS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_ict')";
+    /** V713: who reads every course's changes of code and title */
+    private static final String CHANGE_READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_dregistrar','OFFICE_registrar','OFFICE_admin','OFFICE_super','OFFICE_records','OFFICE_audit','OFFICE_deputyaudit','OFFICE_ict','OFFICE_ictagent','OFFICE_helpdeskhead')";
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
@@ -195,7 +199,11 @@ class CourseOfferingController {
                         OR d.name ILIKE :q OR f.name ILIKE :q
                         OR EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
                                     LEFT JOIN ref.department pd ON pd.code = p.dept_code
-                                   WHERE co.course_code = c.code AND (p.name ILIKE :q OR p.code ILIKE :q OR pd.name ILIKE :q)))
+                                   WHERE co.course_code = c.code AND (p.name ILIKE :q OR p.code ILIKE :q OR pd.name ILIKE :q))
+                        -- V713: the Course ID, and a code the course was held under before a correction
+                        OR c.id::text = :qid
+                        OR EXISTS (SELECT 1 FROM catalogue.course_change ch WHERE ch.course_id = c.id AND ch.field = 'CODE'
+                                      AND (ch.old_value ILIKE :q OR replace(ch.old_value, ' ', '') ILIKE replace(:q, ' ', ''))))
                    AND (:review::text IS NULL OR c.review_status = :review)
                    -- V541: every course's issues read once (catalogue.course_issues_all), not catalogue.course_issues for each course
                    AND (:issue::text IS NULL OR c.code IN (SELECT ci.code FROM catalogue.course_issues_all() ci
@@ -237,6 +245,7 @@ class CourseOfferingController {
         params.put("state", blank(state) == null ? null : state.trim().toUpperCase());
         params.put("session", blank(session));
         params.put("q", qText == null ? null : "%" + qText + "%");
+        params.put("qid", qText != null && qText.matches("(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$") ? qText.toLowerCase() : null);
         var count = jdbc.sql("SELECT count(*) " + where);
         var rows = jdbc.sql("""
                 SELECT c.id, c.code, c.title, c.units, c.level, c.semester, c.both_semesters, c.kind, c.state, c.ended_on, c.curriculum, c.general_office,
@@ -277,11 +286,19 @@ class CourseOfferingController {
     @Transactional(readOnly = true)
     Map<String, Object> detail(@PathVariable String code) {
         // V386: a code written differently, or merged into another course, opens the course the pool holds
-        String c = jdbc.sql("SELECT coalesce(catalogue.resolve_course_code(:c), :c)").param("c", code(code)).query(String.class).single();
+        // V713: and a code the course was held under before a correction or a rename opens the course it is now
+        String c = jdbc.sql("""
+                WITH r AS (SELECT coalesce(catalogue.resolve_course_code(:c), :c) AS code)
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM catalogue.course x WHERE x.code = r.code) THEN r.code
+                            ELSE coalesce((SELECT x.code FROM catalogue.course_change ch JOIN catalogue.course x ON x.id = ch.course_id
+                                            WHERE ch.field = 'CODE' AND ch.old_value = r.code ORDER BY ch.changed_at DESC LIMIT 1), r.code) END
+                  FROM r
+                """).param("c", code(code)).query(String.class).single();
         Map<String, Object> course = jdbc.sql("""
                 SELECT c.id, c.code, c.title, c.units, c.semester, c.both_semesters, c.level, c.kind, c.state, c.ended_on, c.curriculum, c.ca_max, c.general_office,
                        c.lecture_hours, c.practical_hours, c.industrial_training, c.dept_code, d.name AS dept_name, d.faculty_code, f.name AS faculty_name,
-                       c.owner_programme, op.name AS owner_programme_name, c.description
+                       c.owner_programme, op.name AS owner_programme_name, c.description,
+                       catalogue.course_version(c) AS version   -- V713: the version a correction is made against
                   FROM catalogue.course c LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
                   LEFT JOIN ref.programme op ON op.code = c.owner_programme
                  WHERE c.code = :c
@@ -397,6 +414,10 @@ class CourseOfferingController {
         may.put("changeOwner", Set.of("academic", "registrar", "dregistrar", "ict", "super").contains(office)
                 || (StructureAccess.supportDesk() && access.mayCourse(c, StructureAccess.EDIT)));
         may.put("ticket", StructureAccess.ticketOffice());
+        // V713: the code and the title corrected with a reason — the Director of ICT any course; the rest as they edit the course
+        may.put("correctCode", mayCorrect(c, dept, "CODE"));
+        may.put("correctTitle", mayCorrect(c, dept, "TITLE"));
+        may.put("changes", Set.of("academic", "dregistrar", "registrar", "admin", "super", "records", "audit", "deputyaudit", "ict", "ictagent", "helpdeskhead").contains(office));
         may.put("deptDesk", !special);                       // the department's own courses desk is the academic offices'; the School and the desk work the structure
         out.put("may", may);
         return out;
@@ -569,7 +590,13 @@ class CourseOfferingController {
         authority.assertOwns(authority.deptOfCourse(c), c);
         access.assertEditLevel(body.level());                // V471: the School keeps its courses postgraduate
         UUID on = access.ticket(ticket);
-        jdbc.sql("SELECT catalogue.update_course(:c, :t, :u, :s, :l, :k, :b)").param("c", c).param("t", body.title().trim()).param("u", body.units())
+        // V713: the title is corrected with its reason and its impact shown first (POST /courses/{code}/correction), not in passing here
+        String title = jdbc.sql("SELECT title FROM catalogue.course WHERE code = :c").param("c", c).query(String.class).optional().orElseThrow(() -> new NotFound("course", code));
+        if (!body.title().trim().equals(title.trim())) {
+            throw new DomainRuleViolation("COURSE_TITLE_BY_CORRECTION", "A course's title is changed with Change code or title, which shows what hangs on the course first and records why.",
+                    new DomainRuleViolation.Remedy("Open the course and choose Change code or title.", "Head of Department"));
+        }
+        jdbc.sql("SELECT catalogue.update_course(:c, :t, :u, :s, :l, :k, :b)").param("c", c).param("t", title).param("u", body.units())
                 .param("s", body.semester()).param("l", body.level()).param("k", blank(body.kind()), Types.VARCHAR).param("b", body.bothSemesters(), Types.BOOLEAN)
                 .query().singleRow();
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title, units, semester, both_semesters, level, kind, state FROM catalogue.course WHERE code = :c").param("c", c).query().singleRow());
@@ -592,6 +619,120 @@ class CourseOfferingController {
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT id, code, title FROM catalogue.course WHERE code = :c").param("c", n).query().singleRow());
         out.put("was", c);
         access.note(on, "Renamed " + c + " to " + n + " (the same course: its records follow)");
+        return out;
+    }
+
+    /* ── V713: the code and the title corrected — the same course, for a reason, its impact shown first, never over another's change ── */
+
+    public record CorrectionIn(@Size(max = 40) String code, @Size(max = 400) String title, @Size(max = 40) String reasonKind,
+                               @Size(max = 2000) String remarks, @Size(max = 64) String version, Boolean pastClasses) {
+    }
+
+    /** may the acting office correct the course's code ("CODE") or its title ("TITLE")? */
+    private boolean mayCorrect(String c, String dept, String field) {
+        String office = StructureAccess.office();
+        if ("ict".equals(office)) return true;                         // the Director of ICT: any course
+        if (StructureAccess.special()) return access.mayCorrect(c, field);
+        return Set.of("hod", "dean", "academic", "dregistrar", "registrar", "admin", "super").contains(office) && authority.ownsCourse(dept, c);
+    }
+
+    private void assertCorrect(String c, String dept, boolean codeChanged, boolean titleChanged) {
+        String office = StructureAccess.office();
+        if ("ict".equals(office)) return;
+        if (StructureAccess.special()) {
+            access.assertCorrect(c, codeChanged, titleChanged);
+            return;
+        }
+        authority.assertOwns(dept, c);
+    }
+
+    private Map<String, Object> jsonMap(String text) {
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() { });
+    }
+
+    /** what the correction would be — the code as it would be held, the courses already under that code and of that title, what
+     *  hangs on the course, and why it would be refused — changing nothing */
+    @PostMapping("/courses/{code}/correction/check")
+    @PreAuthorize(CORRECTORS)
+    @Transactional(readOnly = true)
+    Map<String, Object> correctionCheck(@PathVariable String code, @Valid @RequestBody CorrectionIn body) {
+        String c = code(code);
+        String dept = authority.deptOfCourse(c);
+        Map<String, Object> out = jsonMap(jdbc.sql("SELECT catalogue.correction_check(:c, :n, :t)::text").param("c", c)
+                .param("n", blank(body.code()), Types.VARCHAR).param("t", body.title(), Types.VARCHAR).query(String.class).single());
+        out.put("impact", jsonMap(jdbc.sql("SELECT catalogue.course_impact(:c)::text").param("c", c).query(String.class).single()));
+        out.put("may", Map.of("code", mayCorrect(c, dept, "CODE"), "title", mayCorrect(c, dept, "TITLE")));
+        return out;
+    }
+
+    /** the correction: the same course (its id unchanged) under the corrected code and title, for the reason given, against the
+     *  version the person read; every class, registration, result, carry-over, allocation, binding and examination stays on it */
+    @PostMapping("/courses/{code}/correction")
+    @PreAuthorize(CORRECTORS)
+    @Transactional
+    Map<String, Object> correct(@PathVariable String code, @Valid @RequestBody CorrectionIn body, @RequestParam(required = false) String ticket) {
+        String c = code(code);
+        String dept = authority.deptOfCourse(c);
+        Map<String, Object> chk = jsonMap(jdbc.sql("SELECT catalogue.correction_check(:c, :n, :t)::text").param("c", c)
+                .param("n", blank(body.code()), Types.VARCHAR).param("t", body.title(), Types.VARCHAR).query(String.class).single());
+        assertCorrect(c, dept, Boolean.TRUE.equals(chk.get("codeChanged")), Boolean.TRUE.equals(chk.get("titleChanged")));
+        UUID on = access.ticket(ticket);
+        Map<String, Object> out = jsonMap(jdbc.sql("SELECT catalogue.correct_course(:c, :n, :t, :k, :r, :v, :p, :tk)::text").param("c", c)
+                .param("n", blank(body.code()), Types.VARCHAR).param("t", body.title(), Types.VARCHAR)
+                .param("k", blank(body.reasonKind()), Types.VARCHAR).param("r", blank(body.remarks()), Types.VARCHAR)
+                .param("v", blank(body.version()), Types.VARCHAR).param("p", body.pastClasses() == null || body.pastClasses(), Types.BOOLEAN)
+                .param("tk", on, Types.OTHER).query(String.class).single());
+        access.note(on, "Corrected " + out.get("was") + " — " + out.get("wasTitle") + " to " + out.get("shown") + " — " + out.get("title")
+                + " (the same course, Course ID " + out.get("id") + "; everything on it follows): " + out.get("reason")
+                + (out.get("remarks") == null ? "" : " — " + out.get("remarks")));
+        return out;
+    }
+
+    /** every change of a course's code and title, searchable — by a correction, the department's desk, an upload, a migration */
+    @GetMapping("/course-changes")
+    @PreAuthorize(CHANGE_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> courseChanges(@RequestParam(required = false) String q, @RequestParam(required = false) String field,
+                                      @RequestParam(required = false) String source, @RequestParam(required = false) java.time.LocalDate from,
+                                      @RequestParam(required = false) java.time.LocalDate to, @RequestParam(defaultValue = "1") int page,
+                                      @RequestParam(defaultValue = "50") int size) {
+        access.requireView();
+        int pg = Math.max(1, page);
+        int sz = Math.min(2000, Math.max(1, size));
+        String qt = blank(q);
+        String f = blank(field) == null ? null : field.trim().toUpperCase();
+        String src = blank(source) == null ? null : source.trim().toUpperCase();
+        String where = """
+                  FROM catalogue.course_change ch
+                  LEFT JOIN catalogue.course c ON c.id = ch.course_id
+                  LEFT JOIN ref.department d ON d.code = c.dept_code
+                  LEFT JOIN helpdesk.ticket t ON t.id = ch.ticket_id
+                 WHERE (:f::text IS NULL OR ch.field = :f)
+                   AND (:src::text IS NULL OR ch.source = :src)
+                   AND (:from::date IS NULL OR ch.changed_at >= (:from::date)::timestamp AT TIME ZONE 'Africa/Lagos')
+                   AND (:to::date IS NULL OR ch.changed_at < ((:to::date) + 1)::timestamp AT TIME ZONE 'Africa/Lagos')
+                   AND (:q::text IS NULL OR c.code ILIKE :ql OR c.title ILIKE :ql OR ch.old_value ILIKE :ql OR ch.new_value ILIKE :ql
+                        OR replace(ch.old_value, ' ', '') ILIKE replace(:ql, ' ', '') OR replace(ch.new_value, ' ', '') ILIKE replace(:ql, ' ', '')
+                        OR ch.course_id::text = lower(:q) OR t.number ILIKE :ql OR ch.remarks ILIKE :ql OR d.name ILIKE :ql)
+                """;
+        var count = jdbc.sql("SELECT count(*) " + where);
+        var rows = jdbc.sql("""
+                SELECT ch.id, ch.course_id, c.code AS current_code, catalogue.shown_code(c.code) AS current_shown, c.title AS current_title,
+                       c.dept_code, d.name AS dept_name, ch.field, ch.old_value, ch.new_value, ch.reason_kind,
+                       catalogue.course_change_reason_words(ch.reason_kind) AS reason_words, ch.remarks, ch.reason, ch.source, ch.past_classes,
+                       t.number AS ticket, ch.changed_at, helpdesk.person_name(ch.changed_by) AS changed_by, ch.changed_office
+                """ + where + " ORDER BY ch.changed_at DESC, ch.id LIMIT :lim OFFSET :off");
+        for (var p : new String[][] {{"f", f}, {"src", src}, {"q", qt}, {"ql", qt == null ? null : "%" + qt + "%"}}) {
+            count = count.param(p[0], p[1], Types.VARCHAR);
+            rows = rows.param(p[0], p[1], Types.VARCHAR);
+        }
+        count = count.param("from", from, Types.DATE).param("to", to, Types.DATE);
+        rows = rows.param("from", from, Types.DATE).param("to", to, Types.DATE);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", count.query(Long.class).single());
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("rows", rows.param("lim", sz).param("off", (long) (pg - 1) * sz).query().listOfRows());
         return out;
     }
 

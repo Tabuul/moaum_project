@@ -26,6 +26,12 @@ export const CAPABILITIES: Record<string, [string, string]> = {
   BULK_ALLOCATE: ["Bulk course allocation", "Validate and import an allocation spreadsheet, each row held to the posting's scope"],
   BULK_RESET_PASSWORD: ["Bulk password reset", "Reset many students at once to the matriculation number, changed at the next sign-in — only students within the posting's scope, each checked, with a reason"],
   BULK_RESET_FROM_TICKETS: ["Password reset from tickets", "Tick login and password tickets on the queue and reset their students together — one reset a student, the tickets resolved with it; only tickets of students within the posting's scope"],
+  VIEW_PROGRAMME_STRUCTURE: ["View the programme structure", "The programmes' structures and the courses of the posting's faculty or department — read only"],
+  EDIT_COURSES: ["Edit courses", "A course's title, code, units, level and semester; end or restore it — within the posting's faculty or department, on a ticket where there is one"],
+  BIND_COURSES: ["Bind courses into programmes", "Add a course to a programme's structure at a level, or take it off, within the posting's scope"],
+  MANAGE_PREREQUISITES: ["Manage prerequisites", "Add or remove what a course requires first, within the posting's scope"],
+  EDIT_COURSE_CODE: ["Change a course's code", "Correct a course's code with a reason, the impact shown first — the same course, everything on it follows; within the posting's scope"],
+  EDIT_COURSE_TITLE: ["Change a course's title", "Correct a course's title with a reason, the impact shown first — the same course; within the posting's scope"],
 };
 export const CAPABILITY_CODES = Object.keys(CAPABILITIES);
 

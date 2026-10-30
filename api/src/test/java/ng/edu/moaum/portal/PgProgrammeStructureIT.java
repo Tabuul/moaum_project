@@ -166,7 +166,8 @@ class PgProgrammeStructureIT {
         assertThat(((Map<String, Object>) structure.get("may")).get("change")).isEqualTo(true);
 
         // edited: the title; a level below 700 refused; ended (deactivated) and restored, never deleted
-        ok(it.call(sec, HttpMethod.PUT, "/api/v1/catalogue/courses/" + methods, Map.of("title", "Research Methods " + tag, "units", 3, "semester", 1, "level", 700)));
+        ok(it.call(sec, HttpMethod.POST, "/api/v1/catalogue/courses/" + methods + "/correction",   // V713: the title corrected with its reason
+                Map.of("code", methods, "title", "Research Methods " + tag, "reasonKind", "OFFICIAL_CORRECTION", "version", jdbc.sql("SELECT catalogue.course_version(c) FROM catalogue.course c WHERE code = :c").param("c", methods).query(String.class).single())));
         assertThat(code(it.call(sec, HttpMethod.PUT, "/api/v1/catalogue/courses/" + methods, Map.of("title", "x", "units", 3, "semester", 1, "level", 400)))).isEqualTo("STRUCTURE_PG_ONLY");
         assertThat(ok(it.call(sec, HttpMethod.POST, "/api/v1/catalogue/courses/" + methods + "/end", Map.of())).get("state")).isEqualTo("ENDED");
         assertThat(ok(it.call(sec, HttpMethod.POST, "/api/v1/catalogue/courses/" + methods + "/restore", Map.of())).get("state")).isEqualTo("LIVE");

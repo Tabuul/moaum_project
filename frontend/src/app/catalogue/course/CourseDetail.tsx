@@ -15,6 +15,8 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { BASES, EVIDENCE, ISSUE, KINDS, LEVELS, PROPOSAL_STATE, REVIEW, SOURCE, STATE, courseSemName, semName, usageWords, type CourseDetail as Detail, type CourseHistoryData, type Directory } from "@/lib/catalogue";
 import { CourseUnitsImpactNote } from "../UnitsChange";
 import { codeVariant, shownCode } from "@/lib/course-code";
+import { CHANGE_SOURCE } from "@/lib/course-correction";
+import { CourseCorrection } from "./CourseCorrection";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
@@ -23,7 +25,8 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
   const c = data.course;
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<{ title: string; units: string; semester: string; level: string; kind: string } | null>(null);
-  const [rename, setRename] = useState<string | null>(null);
+  /* V713: the code and the title corrected with a reason, the impact shown first */
+  const [correcting, setCorrecting] = useState(false);
   const [adding, setAdding] = useState(false);
   const [fac, setFac] = useState("");
   const [dept, setDept] = useState("");
@@ -95,7 +98,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
         description={<>{c.units} units · {c.level} Level · {courseSemName(c.semester, c.both_semesters)} semester · {c.kind}{c.curriculum ? ` · ${c.curriculum}` : ""}{c.general_office ? ` · ${c.general_office}` : ""} · <Pil kind={STATE[c.state]?.[0] ?? "grey"}>{STATE[c.state]?.[1] ?? c.state}</Pil> <span className="sub2 tnum">Course ID {c.id}</span>{codeVariant(c.code) ? <span className="sub2 tnum"> · a separate course under {shownCode(c.code)} (key {c.code})</span> : null}</>}
         actions={<>
           {data.may.edit && c.state !== "ENDED" ? <Btn kind="secondary" onClick={() => setEdit({ title: c.title, units: String(c.units), semester: c.both_semesters ? "both" : String(c.semester), level: String(c.level), kind: c.kind })}>Edit</Btn> : null}
-          {data.may.edit ? <Btn kind="ghost" onClick={() => setRename(c.code)}>Rename the code</Btn> : null}
+          {(data.may.correctCode || data.may.correctTitle) && c.version ? <Btn kind="ghost" onClick={() => setCorrecting(true)}>Change code or title</Btn> : null}
           {data.may.edit && c.state !== "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`End ${c.code}? It leaves next session's registration and stays on every transcript that carries it.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/end`, {}, `End course ${c.code}`); }}>End</Btn> : null}
           {data.may.edit && c.state === "ENDED" ? <Btn kind="ghost" disabled={busy} onClick={() => { if (window.confirm(`Restore ${c.code}? It returns to Live.`)) void call("POST", `/courses/${encodeURIComponent(c.code)}/restore`, {}, `Restore course ${c.code}`); }}>Restore</Btn> : null}
           {data.may.changeOwner && !c.general_office ? <Btn kind="ghost" onClick={() => setOwning({ dept: ownDept, prog: c.owner_programme ?? "", why: "" })}>Change owner</Btn> : null}
@@ -266,7 +269,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
             if (await call("PUT", `/courses/${encodeURIComponent(c.code)}`, { title: edit.title.trim(), units: Number(edit.units), semester: both ? 1 : Number(edit.semester), level: Number(edit.level), kind: edit.kind, bothSemesters: both }, `${c.code} edited`)) setEdit(null);
           }}>Save</Btn></>}>
           <div className="stack">
-            <Field id="ed-title" label="Title" required><input id="ed-title" className="ctl" value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} maxLength={120} /></Field>
+            <Field id="ed-title" label="Title" hint="Changed with Change code or title, which records why"><input id="ed-title" className="ctl" value={edit.title} readOnly disabled maxLength={120} /></Field>
             <div className="grid grid--4">
               <Field id="ed-units" label="Units" hint="Reaches this department's programmes; another department's keep their own, changed on its Programme Structure"><input id="ed-units" className="ctl tnum" inputMode="numeric" value={edit.units} onChange={(e) => setEdit({ ...edit, units: e.target.value })} /></Field>
               <Field id="ed-level" label="Level"><select id="ed-level" className="ctl" value={edit.level} onChange={(e) => setEdit({ ...edit, level: e.target.value })}>{LEVELS.map((l) => <option key={l} value={String(l)}>{l}</option>)}</select></Field>
@@ -298,6 +301,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
       ) : null}
       {history ? (
         <Panel title="Change history" right={<span className="row row--inline row--tight">
+          {data.may.changes ? <Link className="lnk sub2" href={`/catalogue/changes?q=${encodeURIComponent(c.id)}`}>Code and title changes</Link> : null}
           {history.review_status ? <Pil kind={REVIEW[history.review_status][0]}>{REVIEW[history.review_status][1]}</Pil> : null}
           <span className="sub2">Created {history.created_at ? new Date(history.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}{history.created_by ? ` by ${history.created_by}` : ""} · last updated {history.updated_at ? new Date(history.updated_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}{history.updated_by ? ` by ${history.updated_by}` : ""}</span>
         </span>}>
@@ -305,7 +309,7 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
           {history.rows.length ? (
             <DTable pageSize={25} noPrint cols={["When|mid", "What", "Field", "From", "To", "By", "Reason"]} rows={history.rows.map((h, i) => [
               <span key="w" className="tnum sub2">{new Date(h.at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>,
-              <span key="a">{({ CHANGED: "Changed", CREATED: "Created", OWNER_CHANGED: "Owner changed", OFFER_ADDED: "Programme added", OFFER_ENDED: "Programme binding ended" } as Record<string, string>)[h.action] ?? h.action}{h.source && h.source !== "AUDIT" ? <span className="sub2"> · {({ DESK: "on the desk", IMPORT: "catalogue upload", BULK: "bulk correction", CODE: "by the code rule", RESET: "catalogue reset", UPLOAD: "structure upload" } as Record<string, string>)[h.source] ?? h.source.toLowerCase()}</span> : null}</span>,
+              <span key="a">{({ CHANGED: "Changed", CREATED: "Created", OWNER_CHANGED: "Owner changed", OFFER_ADDED: "Programme added", OFFER_ENDED: "Programme binding ended" } as Record<string, string>)[h.action] ?? h.action}{h.source && h.source !== "AUDIT" ? <span className="sub2"> · {({ DESK: "on the desk", IMPORT: "catalogue upload", BULK: "bulk correction", CODE: "by the code rule", RESET: "catalogue reset", UPLOAD: "structure upload", CORRECTION: "code or title correction", EDIT: "department desk or upload", MIGRATION: "by a migration" } as Record<string, string>)[h.source] ?? CHANGE_SOURCE[h.source] ?? h.source.toLowerCase()}</span> : null}</span>,
               <span key="f" className="sub2">{h.field ?? ""}</span>,
               <span key="o" className="sub2">{h.old_value ?? ""}</span>,
               <span key="n"><b>{h.new_value ?? ""}</b></span>,
@@ -333,15 +337,10 @@ export function CourseDetail({ data, directory, history = null }: { data: Detail
           <Field id="ow-why" label="Reason" hint="Kept on the owner history"><textarea id="ow-why" className="ctl" rows={2} maxLength={2000} value={owning.why} onChange={(e) => setOwning({ ...owning, why: e.target.value })} /></Field>
         </Modal>
       ) : null}
-      {rename !== null ? (
-        <Modal title={`Rename ${c.code}`} sub="The same course under a new code; everything on it follows" onClose={() => setRename(null)}
-          foot={<><Btn kind="ghost" onClick={() => setRename(null)}>Cancel</Btn><Btn kind="urgent" disabled={busy || !rename.trim() || rename.trim().toUpperCase() === c.code} onClick={async () => {
-            if (used && !window.confirm(`${c.code} is already used in student academic records (${used}). Changing the course code may affect existing registrations, results, transcripts or reports: every one of them will read ${rename.trim().toUpperCase()} from now on. Continue?`)) return;
-            const j = await call("POST", `/courses/${encodeURIComponent(c.code)}/rename`, { code: rename.trim() }, `${c.code} renamed`);
-            if (j) { setRename(null); router.replace(`/catalogue/course?code=${encodeURIComponent(String(j.code))}`); }
-          }}>Rename</Btn></>}>
-          <Field id="rn-code" label="New code" hint="CSC 201, or a prefix with its hyphen — MOAU-CHM 101"><input id="rn-code" className="ctl tnum" value={rename} onChange={(e) => setRename(e.target.value)} maxLength={20} autoComplete="off" /></Field>
-        </Modal>
+      {correcting && c.version ? (
+        <CourseCorrection course={{ id: c.id, code: c.code, title: c.title }} version={c.version} mayCode={!!data.may.correctCode} mayTitle={!!data.may.correctTitle}
+          ticket={mayTicket ? ticket : ""} why={why} onClose={() => setCorrecting(false)}
+          onDone={(d) => { setCorrecting(false); if (d.code !== c.code) router.replace(`/catalogue/course?code=${encodeURIComponent(d.code)}`); else router.refresh(); }} />
       ) : null}
     </>
   );
