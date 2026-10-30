@@ -221,3 +221,28 @@ Underneath:
   - a Database Operator held to a department is refused, and one over the University may search;
   - the School's bulk resets by the application number, and the applicant signs in on it.
 - `lib/applicant-password.test.ts`: the pasted list, its size, the outcome words.
+
+# Follow-ups (V714, 30 October 2026)
+
+The University's word: "do 1-5", after V710.
+
+- **Bulk resets listed.** Each desk has **Bulk resets**: every run, newest first, with who ran it, when, the reason, and how many
+  were asked, reset and passed over. **Open** shows every row the run was given (what each number was found to be and what was done),
+  and downloads to Excel. Underneath: `admissions.applicant_password_bulk_row` keeps the rows of a committed run;
+  `admissions.applicant_password_bulk_runs(kind, limit)` lists them. API: `GET …/bulk-runs` and `GET …/bulk-runs/{id}` on both desks.
+- **One reset table for applicants.** Every reset link an applicant gets is now kept on `iam.password_reset` (`APPLICANT`): from
+  "Forgot password" at either door, or sent by the desk. That is the table the sign-in page's reset reads, so the V710 fallback is gone.
+  `admissions.password_reset` is no longer written; links still open on it were carried over by V714. The limit of three links an hour
+  counts every one of them.
+- **The temporary password retired.** `admissions.applicant_password_temporary` is dropped. Any account still on a temporary password
+  was put back on its number by V714, with the change still required, and the applicant was told. The sign-in no longer checks for an
+  expired temporary password. Old resets still read "Temporary password" on the history.
+
+Tests (V714):
+
+- `check.sql`:
+  - V714: a bulk run keeps its rows and is listed; the desk's link is on `iam.password_reset`; the temporary function is gone;
+  - V687's block now resets to the number.
+- `ApplicantPasswordBulkIT`:
+  - the bulk run is listed and opens on its rows;
+  - the desk's link is redeemed at the general reset and the new password signs in.

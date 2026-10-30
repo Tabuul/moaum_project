@@ -1,8 +1,8 @@
 "use client";
 /** Applicant Passwords (V687): the Director of ICT, the Academic Office and ICT Support find a Post-UTME applicant and reset the password,
  *  saying why — V706: back to the JAMB number (the application number where there is none; the applicant chooses their own at the
- *  sign-in), or the applicant's own link sent to the email and phone they registered. Never a password the officer chooses; every reset
- *  written down and the applicant told. */
+ *  sign-in), or the applicant's own link sent to the email and phone they registered (V714: V687's temporary password retired; its resets
+ *  still read as they were). Never a password the officer chooses; every reset written down and the applicant told. */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -13,6 +13,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RESET_METHOD, accountState, defaultNumberWords, reasonProblem } from "@/lib/applicant-password";
 import { BulkPasswordReset } from "@/components/applicant/BulkPasswordReset";
+import { BulkRunsPanel } from "@/components/applicant/BulkRunsPanel";
 
 /* V688: and the Database Operators (over the whole University; the server holds the scope) */
 const DESK = ["ict", "academic", "ictagent", "helpdeskhead", "dbops", "super"];
@@ -47,6 +48,7 @@ export function ApplicantPasswords({ office, history, problem: loadProblem, init
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(loadProblem);
   const [method, setMethod] = useState<"DEFAULT" | "LINK">("DEFAULT");
+  const [runsTick, setRunsTick] = useState(0);
   const [reason, setReason] = useState("");
   const [done, setDone] = useState<Done | null>(null);
 
@@ -119,7 +121,8 @@ export function ApplicantPasswords({ office, history, problem: loadProblem, init
           ) : <PBody><div className="sub2">No applicant matches. Try the JAMB number, the application number or the email they registered with.</div></PBody>) : null}
         </Panel>
       ) : <Note kind="info" title="The Director of ICT, the Academic Office and ICT Support reset applicants' passwords">Act in one of those offices to reset one.</Note>}
-      {may ? <BulkPasswordReset endpoint="/api/v1/applicant-passwords" onDone={() => router.refresh()} /> : null}
+      {may ? <BulkPasswordReset endpoint="/api/v1/applicant-passwords" onDone={() => { setRunsTick((n) => n + 1); router.refresh(); }} /> : null}
+      {may ? <BulkRunsPanel endpoint="/api/v1/applicant-passwords" tick={runsTick} /> : null}
 
       <Panel title="Resets made" right={<span className="sub2">{history.length} most recent</span>}>
         {history.length ? (

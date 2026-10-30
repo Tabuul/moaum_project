@@ -232,3 +232,25 @@ Tests:
 - `check.sql` V708's block now expects that swap to go through.
 - `PaymentSwapIT`: the same through the API, with the list read by the Bursary and refused to the Registry.
 - `lib/payment-swaps.test.ts`.
+
+## A wallet that owes, refunded and paid (V714, 30 October 2026)
+
+- **No refund out of a wallet that owes.** Each source's figure (the Fund's money, the student's own) is floored at nothing, so a
+  wallet owing after a swap still showed money to refund. Now a refund is never more than the wallet holds in all:
+  - while it owes, nothing is refunded, and the reason says what it owes;
+  - a refund already waiting is refused at approval, and at payout (`WALLET_REFUND_WALLET_OWES`).
+  - The functions: `finance.withdrawal_eligibility`, `approve_withdrawal`, `pay_withdrawal`.
+- **The student pays what the wallet owes.** The student's wallet page says what it owes and offers **Pay ₦…**. That gives a
+  reference for the amount owed (`finance.wallet_debt_reference`, purpose "Wallet top-up — what the wallet owes"), paid by card or
+  USSD. Once confirmed it credits the wallet as a top-up, and the wallet owes nothing.
+  - A second reference retires the first. With nothing owed: `WALLET_NOTHING_OWED`.
+  - `finance.wallet_owed(student)` gives the amount, the swap that left it, and any reference still open. It is on `GET
+    /api/v1/me/wallet` as `owed`; the reference is `POST /api/v1/me/wallet/owed-reference`.
+
+Tests:
+
+- `check.sql` V714:
+  - the left-over money is refundable and asked for; then the wallet owes, nothing is refundable, and the request is refused at
+    approval;
+  - the reference for what is owed: a second retires the first; paid, the wallet owes nothing; a third is refused.
+- `PaymentSwapIT`: the student sees what the wallet owes, pays it through the reference, and is then refused another.

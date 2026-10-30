@@ -208,6 +208,30 @@ class PgApplicantPasswordDeskController {
         return out;
     }
 
+
+    /** V714: the bulk resets of this desk, newest first — who, when, the reason, how many asked, reset and passed over */
+    @GetMapping("/bulk-runs")
+    @PreAuthorize(DESK)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> bulkRuns(@RequestParam(defaultValue = "100") int limit) {
+        return jdbc.sql("SELECT * FROM admissions.applicant_password_bulk_runs(:k, :n)").param("k", "POSTGRADUATE").param("n", Math.max(1, Math.min(limit, 500))).query().listOfRows();
+    }
+
+    /** V714: one bulk reset with every row it was given — what each number was found to be and what was done */
+    @GetMapping("/bulk-runs/{run}")
+    @PreAuthorize(DESK)
+    @Transactional(readOnly = true)
+    Map<String, Object> bulkRun(@PathVariable UUID run) {
+        Map<String, Object> head = jdbc.sql("SELECT * FROM admissions.applicant_password_bulk_runs(:k, 100000) r WHERE r.id = :r").param("k", "POSTGRADUATE").param("r", run)
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("bulk reset", run));
+        Map<String, Object> out = new LinkedHashMap<>(head);
+        out.put("rows", jdbc.sql("""
+                SELECT row_no, given, outcome, account_id, applicant, default_number, detail FROM admissions.applicant_password_bulk_row
+                 WHERE bulk_id = :r ORDER BY row_no
+                """).param("r", run).query().listOfRows());
+        return out;
+    }
+
     /** an address as the desk is told it: enough to recognise, never the whole */
     static String mask(String v, boolean email) {
         if (v == null || v.isBlank()) return null;

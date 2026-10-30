@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 541
+\set EXPECTED 542
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -28406,12 +28406,12 @@ BEGIN
     INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (gen_random_bytes(32), acct, 'applicant', now() + interval '1 hour');
 
     PERFORM set_config('moaum.actor_office', 'registrar', true);
-    BEGIN PERFORM admissions.applicant_password_temporary(acct, crypt('Temp-Pass-123', gen_salt('bf', 12)), 'Applicant forgot the password', 24); r_office := 'done';
+    BEGIN PERFORM admissions.applicant_password_default(acct, 'Applicant forgot the password'); r_office := 'done';   -- V714: the temporary password retired
     EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
     PERFORM set_config('moaum.actor_office', 'ictagent', true);
-    BEGIN PERFORM admissions.applicant_password_temporary(acct, crypt('Temp-Pass-123', gen_salt('bf', 12)), 'forgot', 24); r_reason := 'done';
+    BEGIN PERFORM admissions.applicant_password_default(acct, 'forgot'); r_reason := 'done';
     EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
-    tmp := admissions.applicant_password_temporary(acct, crypt('Temp-Pass-123', gen_salt('bf', 12)), 'Applicant forgot the password; identity checked at the desk', 24);
+    tmp := admissions.applicant_password_default(acct, 'Applicant forgot the password; identity checked at the desk');
     SELECT * INTO a FROM admissions.applicant_account WHERE id = acct;
     open_sessions := (SELECT count(*) FROM platform.session WHERE person_id = acct AND ended_at IS NULL);
     logged := (SELECT r.method || ':' || r.reset_office || ':' || r.was_locked || ':' || r.sessions_ended FROM admissions.applicant_password_reset r WHERE r.account_id = acct);
@@ -28434,16 +28434,16 @@ BEGIN
     f_name := (SELECT count(*) FROM admissions.applicant_password_find('locked applicant checkapw') x WHERE x.account_id = acct)
             + (SELECT count(*) FROM admissions.applicant_password_find('checkapw locked') x WHERE x.account_id = acct);
     msg := format('office %s reason %s | temporary: must %s until %s locked %s failed %s sessions %s logged %s kept %s | links %s then %s | set: must %s temp %s | find %s/%s/%s/%s/%s',
-                  r_office, r_reason, a.must_change_password, a.temp_expires_at IS NOT NULL AND a.temp_expires_at > now() + interval '23 hours', a.locked_until, a.failed_attempts,
+                  r_office, r_reason, a.must_change_password, a.password_hash = 'SET_ON_FIRST_LOGIN', a.locked_until, a.failed_attempts,
                   open_sessions, logged, kept, links, r_limit, after_set.must_change_password, after_set.temp_expires_at, f_jamb, f_app, f_mail, f_phone, f_name);
     RAISE EXCEPTION 'the V687 check undoes its writes';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
     IF v_err <> 'the V687 check undoes its writes' THEN RAISE; END IF;
   END;
-  PERFORM pg_temp.assert('V687: an applicant''s password is reset by the Director of ICT, the Academic Office or ICT Support only, with a reason — a temporary password unlocks the account, ends its sessions and requires the change, written down and kept; links stop at three an hour; the applicant''s own password clears the change; the desk finds them',
-      coalesce(r_office = 'APW_OFFICE' AND r_reason = 'APW_REASON' AND a.must_change_password AND a.temp_expires_at > now() + interval '23 hours'
-               AND a.locked_until IS NULL AND a.failed_attempts = 0 AND open_sessions = 0 AND logged = 'TEMPORARY_PASSWORD:ictagent:true:1' AND kept = 'APW_KEPT'
+  PERFORM pg_temp.assert('V687: an applicant''s password is reset by the Director of ICT, the Academic Office or ICT Support only, with a reason — the reset (V714: back to the number) unlocks the account, ends its sessions and requires the change, written down and kept; links stop at three an hour; the applicant''s own password clears the change; the desk finds them',
+      coalesce(r_office = 'APW_OFFICE' AND r_reason = 'APW_REASON' AND a.must_change_password AND a.temp_expires_at IS NULL AND a.password_hash = 'SET_ON_FIRST_LOGIN'
+               AND a.locked_until IS NULL AND a.failed_attempts = 0 AND open_sessions = 0 AND logged = 'DEFAULT_NUMBER:ictagent:true:1' AND kept = 'APW_KEPT'
                AND links = 3 AND r_limit = 'APW_LINK_LIMIT' AND NOT after_set.must_change_password AND after_set.temp_expires_at IS NULL
                AND f_jamb = 1 AND f_app = 1 AND f_mail = 1 AND f_phone = 1 AND f_name = 2, false),
       msg);
@@ -30735,6 +30735,88 @@ BEGIN
                AND hist = 1 AND kept = 'COURSE_CHANGE_KEPT', false),
       format('first %s; class title %s, units %s; stale %s; second %s; key %s, carry-overs %s, omissions %s; same %s; renamed %s; trail %s; history %s; kept %s',
              r1, cls_title, cls_units, stale, r2, key, entries, omitted, same, renamed, trail, hist, kept));
+END $$;
+
+-- ── V714: the follow-ups to V710, with made-up students and applicants. (1) A student whose fees the wallet settled, with the Fund's
+--          money left over: refundable, and a refund asked for; then the wallet owes (a credit moved away after it was used) — nothing is
+--          refundable, the reason says what it owes, and the refund waiting is refused at approval (WALLET_REFUND_WALLET_OWES). (2) What the
+--          wallet owes, and the student's reference for it: a second retires the first; confirmed, the wallet is credited and owes nothing;
+--          a third is refused (WALLET_NOTHING_OWED). (3) A bulk reset keeps every row it was given and is listed with its counts. (4) The
+--          University's link is on iam.password_reset, not admissions.password_reset. (5) The temporary password's function is gone ──
+DO $$
+DECLARE
+    ses text := '9999/0000'; s uuid := gen_random_uuid(); a_req uuid := gen_random_uuid(); a_appr uuid := gen_random_uuid();
+    e1 record; e2 record; w finance.wallet_withdrawal; left_over numeric; appr text; o1 record; r1 record; r2 record; first_open boolean; after_pay record; again text;
+    cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); bulk_rows text; run_line text; link_iam int; link_old int; gone boolean; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V714', true);
+    PERFORM set_config('moaum.actor_id', a_req::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (s, 'MOAUM/ADM/99/990714', 'MOAUM/CHK/99/0714', 'CHECKV714', 'Owing', 'C00023', 'UTME', ses, 100, 100, 'ACTIVE', now());
+    -- (1) the Fund's money settles the fees; what is left over may be refunded, and is asked for
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.credit_wallet(s, ses, 500000, 'CHECK V714 NELFUND remittance', 'NELFUND');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM finance.apply_wallet(s, ses, NULL);
+    left_over := finance.wallet_balance(s);
+    SELECT * INTO e1 FROM finance.withdrawal_eligibility(s, ses);
+    w := finance.request_withdrawal(s, ses, left_over, 'Zenith', '0123456788', 'CHECKV714 Owing', 'NELFUND');
+    -- then the wallet owes: a credit of the old portal moved to its owner after it was used (V710) — 20,000 more used than it holds
+    INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code)
+    VALUES (s, ses, 'APPLIED', left_over + 20000, 'CHECKV714-USED', 'CHECK V714: a credit used, then moved to its owner', 'LEGACY_OUTSTANDING');
+    PERFORM set_config('moaum.actor_id', a_appr::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.approve_withdrawal(w.id); appr := 'approved';
+    EXCEPTION WHEN check_violation THEN appr := split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.reject_withdrawal(w.id, 'CHECK V714: the wallet owes');
+    -- nothing waiting now: what is refundable is what the wallet holds, and it owes
+    SELECT * INTO e2 FROM finance.withdrawal_eligibility(s, ses);
+
+    -- (2) what the wallet owes, paid by the student
+    SELECT * INTO o1 FROM finance.wallet_owed(s);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    SELECT * INTO r1 FROM finance.wallet_debt_reference(s);
+    SELECT * INTO r2 FROM finance.wallet_debt_reference(s);
+    first_open := (SELECT expires_at > now() FROM finance.payment_reference WHERE reference = r1.reference);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r2.reference, 'Card', 'CHECK V714: what the wallet owes, paid');
+    SELECT * INTO after_pay FROM finance.wallet_owed(s);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM finance.wallet_debt_reference(s); again := 'issued';
+    EXCEPTION WHEN check_violation THEN again := split_part(SQLERRM, ':', 1); END;
+
+    -- (3) a bulk reset keeps its rows; (4) the University's link on iam.password_reset
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (cand, ses, '99999990714AB', 'CHECKV714', 'Bulk Applicant', 'B.Sc. CHECK V714', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+    VALUES (acct, ses, cand, '99999990714AB', 'checkv714.bulk@example.test', '08037140001', crypt('A chosen password', gen_salt('bf', 12)));
+    PERFORM * FROM admissions.applicant_password_bulk_reset('undergraduate', ARRAY['99999990714ab', 'NOBODY-V714'], 'Applicants at the desk could not sign in', true);
+    bulk_rows := (SELECT string_agg(x.row_no || '=' || x.outcome, ' ' ORDER BY x.row_no) FROM admissions.applicant_password_bulk_row x
+                   JOIN admissions.applicant_password_reset r ON r.bulk_id = x.bulk_id WHERE r.account_id = acct);
+    run_line := (SELECT x.kind || ' ' || x.asked || '/' || x.reset || '/' || x.passed_over || ' ' || x.reason FROM admissions.applicant_password_bulk_runs('undergraduate', 1) x);
+    PERFORM admissions.applicant_password_link(acct, md5('v714'), 'The applicant asked by telephone for a link', 'c***@example.test');
+    link_iam := (SELECT count(*) FROM iam.password_reset r WHERE r.subject_kind = 'APPLICANT' AND r.subject_id = acct AND r.token_hash = md5('v714'));
+    link_old := (SELECT count(*) FROM admissions.password_reset r WHERE r.account_id = acct);
+    -- (5) the temporary password retired
+    gone := to_regprocedure('admissions.applicant_password_temporary(uuid, text, text, integer)') IS NULL;
+
+    msg := format('(1) left over %s refundable %s/%s | owing: %s/%s "%s" | approval %s || (2) owed %s, reference %s for %s, the first retired %s; paid: owed %s; again %s'
+                  || ' || (3) rows %s, run %s || (4) iam %s old %s || (5) gone %s',
+                  left_over > 0, e1.eligible, e1.balance = left_over, e2.eligible, e2.balance, e2.reason, appr,
+                  o1.owed, r2.reference IS NOT NULL, r2.amount, NOT first_open, after_pay.owed, again, bulk_rows, run_line, link_iam, link_old, gone);
+    RAISE EXCEPTION 'the V714 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V714 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V714: a refund never more than the wallet holds (a wallet owing refunds nothing); the student pays what it owes; a bulk reset keeps its rows; the applicant''s links on iam.password_reset; the temporary password retired',
+      coalesce(msg = '(1) left over t refundable t/t | owing: f/0 "Your wallet owes NGN 20,000.00; nothing is refunded until it is settled." | approval WALLET_REFUND_WALLET_OWES'
+                     || ' || (2) owed 20000.00, reference t for 20000.00, the first retired t; paid: owed 0.00; again WALLET_NOTHING_OWED'
+                     || ' || (3) rows 1=RESET 2=NOT_FOUND, run UNDERGRADUATE 2/1/1 Applicants at the desk could not sign in || (4) iam 1 old 0 || (5) gone t', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

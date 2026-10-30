@@ -10,7 +10,7 @@ test("a new password is eight characters or more, typed twice alike", () => {
 
 test("the desk says the account's state in words", () => {
   assert.deepEqual(accountState({ locked: true, must_change: true }), ["Locked (failed sign-ins)", "bad"]);
-  assert.deepEqual(accountState({ locked: false, mustChange: true }), ["Temporary password, change pending", "warn"]);
+  assert.deepEqual(accountState({ locked: false, mustChange: true }), ["Change pending at the next sign-in", "warn"]);
   assert.deepEqual(accountState({ locked: false, firstSignIn: true }), ["First sign-in not yet made", "grey"]);
   assert.deepEqual(accountState({ locked: false }), ["Active", "ok"]);
 });

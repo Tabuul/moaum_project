@@ -327,6 +327,20 @@ class PaymentSwapIT {
                 assertThat(r.get("swap_ref")).isEqualTo(swap.get("swap_ref"));
             });
             assertThat(it.get(ItSupport.token("registrar"), BASE + "/wallet-debts").getStatusCode().value()).isEqualTo(403);
+
+            // V714: A sees what the wallet owes and pays it — a reference for the 1,000, credited to the wallet once confirmed
+            String student = TestTokens.token(a, List.of("student"));
+            Map owed = (Map) it.get(student, "/api/v1/me/wallet").getBody().get("owed");
+            assertThat(((Number) owed.get("owed")).doubleValue()).isEqualTo(1000);
+            assertThat(owed.get("swap_ref")).isEqualTo(swap.get("swap_ref"));
+            ResponseEntity<Map> owedReference = it.call(student, HttpMethod.POST, "/api/v1/me/wallet/owed-reference", Map.of());
+            assertThat(owedReference.getStatusCode().value()).as(String.valueOf(owedReference.getBody())).isEqualTo(200);
+            assertThat(((Number) owedReference.getBody().get("amount")).doubleValue()).isEqualTo(1000);
+            String owedRef = String.valueOf(owedReference.getBody().get("reference"));
+            it.db(() -> jdbc.sql("SELECT finance.confirm_payment(:r, 'Card', 'IT V714: what the wallet owes, paid')").param("r", owedRef).query().listOfRows());
+            assertThat(jdbc.sql("SELECT finance.wallet_balance(:s)").param("s", a).query(Double.class).single()).isZero();
+            assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/wallet/owed-reference", Map.of()).getBody().get("code")).isEqualTo("WALLET_NOTHING_OWED");
+            it.db(() -> jdbc.sql("DELETE FROM finance.wallet_entry WHERE reference = :r").param("r", owedRef).update());
         } finally {
             it.db(() -> {
                 jdbc.sql("SELECT set_config('moaum.maintenance', 'on', true)").query().singleRow();

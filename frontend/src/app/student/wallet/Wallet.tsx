@@ -29,6 +29,10 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
   const [acct, setAcct] = useState<BankAccountValue>(EMPTY_ACCOUNT);
   const owed = Number(w.position.balance);
   const bal = Number(w.balance);
+  // V714: what the wallet owes, and a reference to pay it (one still open, or one asked for here)
+  const owes = Math.max(Number(w.owed?.owed ?? (bal < 0 ? -bal : 0)), 0);
+  const [owedRef, setOwedRef] = useState<{ reference: string; amount: number } | null>(
+    w.owed?.reference ? { reference: w.owed.reference, amount: Number(w.owed.amount ?? owes) } : null);
   const t = w.topup;
   const elig = w.eligibility;
   const wdl = w.withdrawal;
@@ -71,11 +75,18 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
         ["NELFUND shortfall", naira(t.shortfall), Number(t.shortfall) ? "var(--red-ink)" : null, Number(t.shortfall) ? "What your funding does not cover" : "Your funding covers what is outstanding"],
       ]} />
       {problem ? <ProblemNotice problem={problem} /> : null}
-      {bal < 0 ? (
-        <Note kind="bad" title={`Your wallet owes ${naira(-bal)}`}>
-          A payment credited to your wallet belonged to another student, and the Bursary has moved it to them after part of it had been used. What is
-          credited to your wallet from now on settles this first; your fees stay as they were paid. If you believe this is wrong, contact the Bursary
-          with your own receipt.
+      {owes > 0 ? (
+        <Note kind="bad" title={`Your wallet owes ${naira(owes)}`}
+          action={owedRef ? null : <Btn kind="primary" disabled={busy !== null} onClick={async () => { const r = await act("owed", "POST", "/me/wallet/owed-reference", {}, "Reference to pay what the wallet owes", ""); if (r) setOwedRef({ reference: String(r.reference), amount: Number(r.amount) }); }}>Pay {naira(owes)}</Btn>}>
+          A payment credited to your wallet belonged to another student{w.owed?.swap_ref ? ` (correction ${w.owed.swap_ref})` : ""}, and the Bursary has moved it to them after
+          part of it had been used. Pay what the wallet owes, or what is credited to your wallet from now on settles it first; your fees stay as they were
+          paid. If you believe this is wrong, contact the Bursary with your own receipt.
+          {owedRef ? (
+            <div className="mt-2" style={{ paddingTop: "var(--s-2)", borderTop: "1px solid var(--line-2)" }}>
+              <div className="sub2 mb-2">Reference <span className="tnum">{owedRef.reference}</span> for {naira(owedRef.amount)}. Pay by card or USSD; your wallet is credited once the gateway confirms.</div>
+              <PayByCard reference={owedRef.reference} amount={owedRef.amount} />
+            </div>
+          ) : null}
         </Note>
       ) : null}
       {said ? <Note kind="ok" title={said}>On the record; the receipt is on your Fees page.</Note> : null}

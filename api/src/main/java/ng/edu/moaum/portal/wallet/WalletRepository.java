@@ -89,6 +89,17 @@ class WalletRepository {
         return jdbc.sql("SELECT finance.apply_wallet(:s, :n, :a)").param("s", student).param("n", session).param("a", amount, Types.NUMERIC).query(String.class).single();
     }
 
+    /** V714: what the wallet owes (a credit moved to its owner after it was used, V710), the swap that left it so, and a reference to pay
+     *  it that is still open */
+    Map<String, Object> owed(UUID student) {
+        return jdbc.sql("SELECT * FROM finance.wallet_owed(:s)").param("s", student).query().singleRow();
+    }
+
+    /** V714: the student's reference to pay what the wallet owes; confirmed, it credits the wallet (a top-up) */
+    Map<String, Object> owedReference(UUID student) {
+        return jdbc.sql("SELECT * FROM finance.wallet_debt_reference(:s)").param("s", student).query().singleRow();
+    }
+
     String topup(UUID student, String session, BigDecimal amount) {
         return jdbc.sql("SELECT finance.wallet_topup_reference(:s, :n, :a)").param("s", student).param("n", session).param("a", amount).query(String.class).single();
     }

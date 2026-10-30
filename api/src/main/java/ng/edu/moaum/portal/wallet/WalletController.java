@@ -97,6 +97,13 @@ class WalletController {
         return service.topup(student(auth), body.session(), body.amount());
     }
 
+    /** V714: the student pays what the wallet owes — a reference for the amount owed, credited to the wallet once confirmed */
+    @PostMapping("/api/v1/me/wallet/owed-reference")
+    @PreAuthorize("hasAuthority('OFFICE_student')")
+    Map<String, Object> owedReference(Authentication auth) {
+        return service.owedReference(student(auth));
+    }
+
     /** the student asks to withdraw the wallet balance to their own bank account (fees must be cleared) */
     @PostMapping("/api/v1/me/wallet/withdrawal")
     @PreAuthorize("hasAuthority('OFFICE_student')")

@@ -54,7 +54,7 @@ export function accountState(a: {
   const onDefault = a.on_default ?? a.onDefault ?? a.firstSignIn ?? false;
   const must = a.must_change ?? a.mustChange ?? false;
   if (must && onDefault) return ["Reset to the number, change pending", "warn"];
-  if (must) return ["Temporary password, change pending", "warn"];
+  if (must) return ["Change pending at the next sign-in", "warn"];
   if (onDefault) return ["First sign-in not yet made", "grey"];
   return ["Active", "ok"];
 }

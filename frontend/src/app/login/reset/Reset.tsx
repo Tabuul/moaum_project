@@ -22,15 +22,10 @@ export function Reset({ token }: { token: string }) {
     setBusy(true);
     setProblem(null);
     try {
-      let r = await fetch("/api/auth/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password: pw }) });
-      let j = await r.json().catch(() => null);
-      /* V710: a link an applicant asked for at the applicant door, or one the Applicant Password Reset desk sent, is the applicant
-         portal's own (admissions.password_reset): the general reset does not know it, the applicant's does */
-      if (!r.ok && (j as Problem | null)?.code === "AUTH_RESET_TOKEN") {
-        const a = await fetch("/api/auth/applicant/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password: pw }) });
-        const aj = await a.json().catch(() => null);
-        if (a.ok || (aj as Problem | null)?.code !== "AUTH_RESET_TOKEN") { r = a; j = aj; }
-      }
+      /* V714: every reset link — staff, student, applicant (either door, or the desk), postgraduate applicant — is on one table, which
+         this reset reads */
+      const r = await fetch("/api/auth/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password: pw }) });
+      const j = await r.json().catch(() => null);
       if (!r.ok) {
         setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;

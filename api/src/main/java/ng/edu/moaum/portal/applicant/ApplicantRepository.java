@@ -264,16 +264,18 @@ class ApplicantRepository {
                 .param("c", channel).param("r", recipient).param("s", subject).param("b", body).param("a", applicationId).query().singleRow();
     }
 
-    /* ── the password reset (V025) ── */
+    /* ── the password reset (V025) — V714: on iam.password_reset (APPLICANT), the one table of every reset link the sign-in page's reset
+          knows, as the general "Forgot password" (V058) and the Applicant Password Reset desk's link write; admissions.password_reset
+          is no longer written ── */
 
-    /** V359: the reset links asked for on one account in the last hour */
+    /** V359: the reset links asked for on one account in the last hour — by the applicant at either door, or by the desk */
     long recentResets(UUID account) {
-        return jdbc.sql("SELECT count(*) FROM admissions.password_reset WHERE account_id = :a AND created_at > now() - interval '1 hour'")
+        return jdbc.sql("SELECT count(*) FROM iam.password_reset WHERE subject_kind = 'APPLICANT' AND subject_id = :a AND created_at > now() - interval '1 hour'")
                 .param("a", account).query(Long.class).single();
     }
 
     void newReset(UUID account, String tokenHash, Instant expires) {
-        jdbc.sql("INSERT INTO admissions.password_reset (account_id, token_hash, expires_at) VALUES (:a, :h, :e)")
+        jdbc.sql("INSERT INTO iam.password_reset (subject_kind, subject_id, token_hash, expires_at) VALUES ('APPLICANT', :a, :h, :e)")
                 .param("a", account).param("h", tokenHash).param("e", expires.atOffset(java.time.ZoneOffset.UTC)).update();
     }
 
@@ -281,12 +283,12 @@ class ApplicantRepository {
     }
 
     Optional<Reset> resetByHash(String tokenHash) {
-        return jdbc.sql("SELECT id, account_id, expires_at, used_at FROM admissions.password_reset WHERE token_hash = :h")
+        return jdbc.sql("SELECT id, subject_id AS account_id, expires_at, used_at FROM iam.password_reset WHERE token_hash = :h AND subject_kind = 'APPLICANT' ORDER BY created_at DESC LIMIT 1")
                 .param("h", tokenHash).query(Reset.class).optional();
     }
 
     void useReset(UUID id) {
-        jdbc.sql("UPDATE admissions.password_reset SET used_at = now() WHERE id = :id").param("id", id).update();
+        jdbc.sql("UPDATE iam.password_reset SET used_at = now() WHERE id = :id").param("id", id).update();
     }
 
     /** V687: the applicant's own change — the password set (the change no longer required, the account unlocked), every other open

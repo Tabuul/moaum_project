@@ -100,6 +100,14 @@ class ApplicantPasswordBulkIT {
         assertThat(ref).matches("APW-BULK/\\d{4}/\\d{6}");
         assertThat((List<Map<String, Object>>) it.getList(support, "/api/v1/applicant-passwords/history?account=" + a1).getBody())
                 .extracting(h -> h.get("bulk_ref")).containsExactly(ref);
+        // V714: the bulk is listed with its counts, and opens on every row it was given
+        Map<String, Object> run = ((List<Map<String, Object>>) it.getList(support, "/api/v1/applicant-passwords/bulk-runs").getBody()).stream()
+                .filter(r -> ref.equals(r.get("reference"))).findFirst().orElseThrow();
+        assertThat(run).containsEntry("asked", 4).containsEntry("reset", 2).containsEntry("passed_over", 2).containsEntry("kind", "UNDERGRADUATE");
+        assertThat((List<Map<String, Object>>) it.get(support, "/api/v1/applicant-passwords/bulk-runs/" + run.get("id")).getBody().get("rows"))
+                .extracting(r -> r.get("outcome")).containsExactly("RESET", "RESET", "NOT_FOUND", "REPEATED");
+        assertThat((List<Map<String, Object>>) it.getList(support, "/api/v1/pg/applicant-passwords/bulk-runs").getBody())
+                .noneMatch(r -> ref.equals(r.get("reference")));
 
         // the applicant signs in on the JAMB number, held on Change password — yet the frame reads the session policy and the manual
         ResponseEntity<Map> signed = post("/api/v1/applicant/sign-in", Map.of("identifier", j1, "password", j1.toLowerCase()));
@@ -109,6 +117,18 @@ class ApplicantPasswordBulkIT {
         assertThat(it.get(token, "/api/v1/applicant/me").getBody().get("code")).isEqualTo("PASSWORD_CHANGE_REQUIRED");
         assertThat(it.get(token, "/api/v1/auth/session-policy").getStatusCode().value()).isEqualTo(200);
         assertThat(it.getList(token, "/api/v1/manual/context?route=a%2Fmypassword").getStatusCode().value()).isEqualTo(200);
+
+        // V714: the desk's link is on the one reset table — the sign-in page's reset (the general one) takes it
+        ResponseEntity<Map> link = it.call(support, HttpMethod.POST, "/api/v1/applicant-passwords/" + a1 + "/reset", Map.of("method", "LINK", "reason", "The applicant asked by telephone for a link"));
+        assertThat(link.getStatusCode().value()).as(String.valueOf(link.getBody())).isEqualTo(200);
+        String body = jdbc.sql("SELECT n.body FROM platform.notice n WHERE n.recipient = :e AND n.channel = 'EMAIL' AND n.subject = 'Reset your MOAUM application password' ORDER BY n.created_at DESC LIMIT 1")
+                .param("e", "zzbulk1." + tag + "@example.com").query(String.class).single();
+        String resetToken = body.replaceAll("(?s).*token=([0-9a-f]+).*", "$1");
+        assertThat(jdbc.sql("SELECT count(*) FROM iam.password_reset WHERE subject_kind = 'APPLICANT' AND subject_id = :a").param("a", a1).query(Long.class).single()).isEqualTo(1L);
+        assertThat(post("/api/v1/auth/reset", Map.of("token", resetToken, "password", "A brand new password")).getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<Map> chosen = post("/api/v1/applicant/sign-in", Map.of("identifier", j1, "password", "A brand new password"));
+        assertThat(chosen.getStatusCode().value()).isEqualTo(200);
+        assertThat(chosen.getBody().get("mustChange")).isEqualTo(false);
     }
 
     @Test

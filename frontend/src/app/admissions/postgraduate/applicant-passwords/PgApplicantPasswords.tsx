@@ -13,6 +13,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PG_RESET_METHOD, pgAccountState, reasonProblem } from "@/lib/applicant-password";
 import { BulkPasswordReset } from "@/components/applicant/BulkPasswordReset";
+import { BulkRunsPanel } from "@/components/applicant/BulkRunsPanel";
 
 /* V710: and the Academic Office and the Database Operators (over the whole University; the server holds the scope) */
 export const PG_PASSWORD_DESK = ["pgschool", "pgsecretary", "ict", "ictagent", "helpdeskhead", "academic", "dbops", "super"];
@@ -47,6 +48,7 @@ export function PgApplicantPasswords({ office, history, problem: loadProblem, in
   const [problem, setProblem] = useState<Problem | null>(loadProblem);
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState<"DEFAULT" | "LINK">("DEFAULT");
+  const [runsTick, setRunsTick] = useState(0);
   const [done, setDone] = useState<Done | null>(null);
 
   async function call<T>(path: string, init?: RequestInit): Promise<T | null> {
@@ -120,7 +122,8 @@ export function PgApplicantPasswords({ office, history, problem: loadProblem, in
           ) : <PBody><div className="sub2">No postgraduate applicant matches. Try the application number, the old portal&rsquo;s number or the email they applied with.</div></PBody>) : null}
         </Panel>
       ) : <Note kind="info" title="The School of Postgraduate Studies, the Director of ICT, ICT Support, the Academic Office and the Database Operators reset postgraduate applicants' passwords">Act in one of those offices to reset one.</Note>}
-      {may ? <BulkPasswordReset endpoint="/api/v1/pg/applicant-passwords" postgraduate onDone={() => router.refresh()} /> : null}
+      {may ? <BulkPasswordReset endpoint="/api/v1/pg/applicant-passwords" postgraduate onDone={() => { setRunsTick((n) => n + 1); router.refresh(); }} /> : null}
+      {may ? <BulkRunsPanel endpoint="/api/v1/pg/applicant-passwords" postgraduate tick={runsTick} /> : null}
 
       <Panel title="Resets made" right={<span className="sub2">{history.length} most recent</span>}>
         {history.length ? (

@@ -294,13 +294,8 @@ public class ApplicantService {
                 throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
                 return badCredentials();
             }
-            // V687: a temporary password from the University opens the account for its hours only
-            if (a.mustChangePassword() && a.tempExpiresAt() != null && a.tempExpiresAt().isBefore(OffsetDateTime.now())) {
-                repo.event(identifier, a.id(), "TEMP_PASSWORD_EXPIRED", ip);
-                return new DomainRuleViolation("AUTH_TEMP_PASSWORD_EXPIRED", "The temporary password you were given has expired.",
-                        new DomainRuleViolation.Remedy("Ask the Academic Office or ICT Support for a new one, or choose \"Forgot password\": a link goes to the email and phone you gave.",
-                                "ICT Support"));
-            }
+            // V714: V687's temporary password is retired — a reset puts the account back on its number (V706), and the accounts that still
+            // held a temporary password were put back on theirs — so nothing here expires
             byte[] sid = new byte[32];
             random.nextBytes(sid);
             Instant end = Instant.now().plus(SESSION_LENGTH);
@@ -341,8 +336,7 @@ public class ApplicantService {
                 : encoder.matches(current == null ? "" : current, a.passwordHash());
         if (!ok) {
             throw new DomainRuleViolation("AUTH_CURRENT_PASSWORD", "The password you have now is not the one entered.",
-                    new DomainRuleViolation.Remedy(sentinel ? "Enter your JAMB number (your application number if you have none)."
-                            : a.mustChangePassword() ? "Enter the temporary password you were given." : "Enter the password you signed in with.", "You"));
+                    new DomainRuleViolation.Remedy(sentinel ? "Enter your JAMB number (your application number if you have none)." : "Enter the password you signed in with.", "You"));
         }
         if (next == null || next.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",

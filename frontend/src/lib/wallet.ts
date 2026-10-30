@@ -20,7 +20,11 @@ export interface StudentWallet {
   balances: SourceBalance[];
   sessionBalances: SourceBalance[];
   topup: TopupEligibility;
+  /** V714: what the wallet owes (a credit moved to its owner after it was used), the swap that left it so, a reference to pay it still open */
+  owed?: WalletOwed | null;
 }
+/** V714: what a wallet owes, and the reference to pay it */
+export interface WalletOwed { owed: number; swap_ref: string | null; reference: string | null; amount: number | null; expires_at: string | null }
 /** V327: the Bursary's figures over the funded population of a session */
 export interface NelfundFigures {
   received: number; students_funded: number; nelfund_credited: number; nelfund_applied: number; nelfund_remaining: number; nelfund_refundable: number; students_refundable: number;

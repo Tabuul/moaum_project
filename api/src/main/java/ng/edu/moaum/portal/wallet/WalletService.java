@@ -45,7 +45,15 @@ public class WalletService {
         out.put("balances", repo.balances(student));
         out.put("sessionBalances", repo.balancesSession(student, session));
         out.put("topup", repo.topupEligibility(student, session));
+        // V714: what the wallet owes, and the reference to pay it
+        out.put("owed", repo.owed(student));
         return out;
+    }
+
+    /** V714: a reference to pay what the wallet owes (WALLET_NOTHING_OWED when it owes nothing); an earlier unpaid one is retired */
+    @Transactional
+    public Map<String, Object> owedReference(UUID student) {
+        return repo.owedReference(student);
     }
 
     @Transactional
