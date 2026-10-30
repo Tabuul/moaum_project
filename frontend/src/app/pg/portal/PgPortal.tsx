@@ -150,6 +150,8 @@ export function PgPortal() {
       setProblem(null);
       if (r.status === 401) { setMe(null); setLoading(false); return; }
       const j = await r.json().catch(() => null);
+      /* V706: the University reset the password to the application number: the applicant's own password first */
+      if (r.status === 403 && j && typeof j === "object" && (j as Problem).code === "PASSWORD_CHANGE_REQUIRED") { window.location.replace("/pg/portal/password"); return; }
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); setLoading(false); return; }
       const m = j as Me;
       setMe(m);

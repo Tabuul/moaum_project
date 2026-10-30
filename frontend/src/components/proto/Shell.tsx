@@ -385,6 +385,7 @@ export const ROUTES: Record<string, string> = {
   "a/fee": "/applicant/fee",
   "a/mypassword": "/applicant/password",   // V687
   "t/applicantpw": "/admissions/applicant-passwords",   // V687
+  "t/pgapplicantpw": "/admissions/postgraduate/applicant-passwords",   // V706
   "a/screening": "/applicant/screening",
   "a/score": "/applicant/score",
   "a/status": "/applicant/status",
@@ -425,6 +426,7 @@ export const ROUTES: Record<string, string> = {
   "pg/portal": "/pg/portal",
   "pg/apply": "/pg/apply",
   "pg/summary": "/pg/summary/pdf",
+  "pg/password": "/pg/portal/password",   // V706
   /* V339: the JUPEB programme — the candidate's own portal, the JUPEB Office's desk, the Bursary's fees */
   "jupeb/portal": "/jupeb/portal",
   "jupeb/portal/profile": "/jupeb/portal?tab=profile",

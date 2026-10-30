@@ -1508,6 +1508,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
 { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+{ "id": "t/pgapplicantpw", "icon": "shield", "label": "PG Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
@@ -1795,6 +1796,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
 { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+{ "id": "t/pgapplicantpw", "icon": "shield", "label": "PG Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
@@ -2406,7 +2408,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "pg/portal", "icon": "home", "label": "Dashboard" },
           { "id": "pg/apply", "icon": "doc", "label": "Apply Form" },
-          { "id": "pg/summary", "icon": "print", "label": "Application Summary" }
+          { "id": "pg/summary", "icon": "print", "label": "Application Summary" },
+          { "id": "pg/password", "icon": "shield", "label": "Change Password" }
         ]
       }
     ]
@@ -2643,7 +2646,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
-          { "id": "t/pgmigration", "icon": "box", "label": "Legacy Migration" }
+          { "id": "t/pgmigration", "icon": "box", "label": "Legacy Migration" },
+          { "id": "t/pgapplicantpw", "icon": "shield", "label": "Applicant Password Reset" }
         ]
       },
       {
@@ -2882,7 +2886,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
-          { "id": "t/pgmigration", "icon": "box", "label": "Legacy Migration" }
+          { "id": "t/pgmigration", "icon": "box", "label": "Legacy Migration" },
+          { "id": "t/pgapplicantpw", "icon": "shield", "label": "Applicant Password Reset" }
         ]
       },
       {
@@ -2999,6 +3004,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
 { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+{ "id": "t/pgapplicantpw", "icon": "shield", "label": "PG Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },
@@ -3040,6 +3046,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/supportsignin", "icon": "shield", "label": "Sign-In Help Contacts" },
 { "id": "t/supportpassword", "icon": "shield", "label": "Student Password Reset" },
 { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
+{ "id": "t/pgapplicantpw", "icon": "shield", "label": "PG Applicant Password Reset" },
 { "id": "t/supportpwbulk", "icon": "shield", "label": "Bulk Password Reset" },
 { "id": "t/supportpwtickets", "icon": "shield", "label": "Ticket Password Resets" },
 { "id": "t/supportpwhistory", "icon": "clock", "label": "Password Reset History" },

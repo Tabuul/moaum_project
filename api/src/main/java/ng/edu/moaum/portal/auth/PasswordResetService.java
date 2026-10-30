@@ -259,9 +259,14 @@ public class PasswordResetService {
                         ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = false, failed_attempts = 0, locked_until = NULL,
                             temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL
                         """).param("h", pwHash).param("s", subject).update();
-                case "PGAPPLICANT" -> jdbc.sql("UPDATE admissions.pg_applicant SET password_hash = :h WHERE id = :s")
+                // V706: a reset by the University (the application number) is spent by the applicant's own password
+                case "PGAPPLICANT" -> jdbc.sql("UPDATE admissions.pg_applicant SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL WHERE id = :s")
                         .param("h", pwHash).param("s", subject).update();
-                default -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = :h WHERE id = :s")
+                // V706: and a reset to the JAMB number (or a temporary password) is spent by it
+                default -> jdbc.sql("""
+                        UPDATE admissions.applicant_account SET password_hash = :h, must_change_password = false, temp_expires_at = NULL, failed_attempts = 0, locked_until = NULL
+                         WHERE id = :s
+                        """)
                         .param("h", pwHash).param("s", subject).update();
             }
             jdbc.sql("UPDATE iam.password_reset SET used_at = now() WHERE id = :id").param("id", resetId).update();

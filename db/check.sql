@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 532
+\set EXPECTED 533
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -29850,6 +29850,138 @@ BEGIN
              dups_before, d_bursar, d_reason, d_same, d_none, d_after, d_entry, d_kinds, d_marks, d_transcript, d_again, d_undo_short, d_undone, '', d_kinds_back, d_undo_again,
              told_lec, left(told_body, 200), told_ict, l_bursar, l_reason, l_entry, l_rows, l_amends, h_opts, h_desk, fee_rows, fee_after, h_upload, h_written, k_upload,
              roll_h, roll_h3, adm, cos203));
+END $$;
+
+-- ── V706: an applicant's password reset back to the default number, and a postgraduate applicant's to the application number. Made-up
+--          applicants. Undergraduate: a Post-UTME applicant, locked after failed sign-ins and signed in elsewhere — the Registry refused, a
+--          short reason refused; ICT Support's reset puts the account back on its first password (the sentinel: the JAMB number), requires
+--          the change, unlocks it, ends its session and is written down as DEFAULT_NUMBER with no expiry; a preliminary applicant with no
+--          JAMB number is reset to the application number; one with neither is refused (APW_NO_NUMBER); the desk's finder says the account is
+--          on its number. Postgraduate: the Registry and the Database Operators refused, a short reason refused; the School's reset makes the
+--          password the application number (bcrypt cost 12), requires the change, unlocks the account, ends its session, is written down
+--          (kept) and the applicant told; an applicant with no application refused (PGPW_NO_APPLICATION); the finder by the application
+--          number, the old portal's, the email, the +234 phone and the name; the applicant's own password clears the change and ends every
+--          other session. The block undoes its writes ──
+DO $$
+DECLARE
+    ses constant text := '9706/9707'; who uuid := gen_random_uuid();
+    cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); pcand uuid := gen_random_uuid(); pacct uuid := gen_random_uuid();
+    ncand uuid := gen_random_uuid(); nacct uuid := gen_random_uuid();
+    pg uuid := gen_random_uuid(); pgapp uuid := gen_random_uuid(); pg2 uuid := gen_random_uuid(); bat uuid := gen_random_uuid(); prog text; keep bytea := gen_random_bytes(32);
+    r_office text; r_reason text; r_none text; d jsonb; dp jsonb; a admissions.applicant_account; open_sessions int; logged text;
+    f_on boolean; f_number text; after_set admissions.applicant_account;
+    p_office text; p_dbops text; p_reason text; p_none text; g jsonb; p admissions.pg_applicant; p_open int; p_logged text; p_kept text; p_told int;
+    f_app int; f_old int; f_mail int; f_phone int; f_name int; p_after admissions.pg_applicant; p_kept_session int; p_other_session int;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.reason', 'CHECK V706', true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, date '9706-10-01', date '9707-09-30', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    -- undergraduate: a Post-UTME applicant on their own password, locked and signed in; a preliminary one with no JAMB number; one with neither number
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (cand, ses, '97069990001AP', 'CHECKDPW', 'Locked Applicant', 'B.Sc. CHECK V706', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash, failed_attempts, locked_until)
+    VALUES (acct, ses, cand, '97069990001AP', 'checkdpw.v706@example.com', '08037060001', crypt('An old password', gen_salt('bf', 12)), 5, now() + interval '10 minutes');
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (gen_random_uuid(), acct, cand, ses, 'APP/97/706001');
+    INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (gen_random_bytes(32), acct, 'applicant', now() + interval '1 hour');
+    INSERT INTO admissions.candidate (id, session, surname, other_names, programme, entry_mode, entry_level, offer_state, sex)
+    VALUES (pcand, ses, 'CHECKDPW', 'Preliminary', 'Preliminary Science', 'PRELIMINARY', 0, 'PROPOSED', 'F'),
+           (ncand, ses, 'CHECKDPW', 'Numberless', 'Preliminary Science', 'PRELIMINARY', 0, 'PROPOSED', 'M');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, email, phone, password_hash) VALUES
+        (pacct, ses, pcand, 'checkdpw.prelim.v706@example.com', '08037060002', crypt('A chosen password', gen_salt('bf', 12))),
+        (nacct, ses, ncand, 'checkdpw.none.v706@example.com', '08037060003', crypt('A chosen password', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no) VALUES (gen_random_uuid(), pacct, pcand, ses, 'APP/97/706002');
+
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM admissions.applicant_password_default(acct, 'Applicant forgot the password'); r_office := 'done';
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ictagent', true);
+    BEGIN PERFORM admissions.applicant_password_default(acct, 'forgot'); r_reason := 'done';
+    EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+    d := admissions.applicant_password_default(acct, 'Applicant forgot the password; identity checked at the desk');
+    SELECT * INTO a FROM admissions.applicant_account WHERE id = acct;
+    open_sessions := (SELECT count(*) FROM platform.session WHERE person_id = acct AND ended_at IS NULL);
+    logged := (SELECT r.method || ':' || r.reset_office || ':' || r.was_locked || ':' || r.sessions_ended || ':' || coalesce(r.expires_at::text, 'none')
+                 FROM admissions.applicant_password_reset r WHERE r.account_id = acct);
+    SELECT x.on_default, x.default_number INTO f_on, f_number FROM admissions.applicant_password_find('97069990001ap') x WHERE x.account_id = acct;
+    dp := admissions.applicant_password_default(pacct, 'Preliminary applicant forgot the password');
+    BEGIN PERFORM admissions.applicant_password_default(nacct, 'An applicant with no number at all'); r_none := 'done';
+    EXCEPTION WHEN check_violation THEN r_none := split_part(SQLERRM, ':', 1); END;
+    PERFORM admissions.applicant_password_set(acct, crypt('My own password', gen_salt('bf', 12)));
+    SELECT * INTO after_set FROM admissions.applicant_account WHERE id = acct;
+
+    -- postgraduate: an applicant locked and signed in, migrated from the old portal; one with no application
+    prog := (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1);
+    INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, phone, password_hash, failed_attempts, locked_until) VALUES
+        (pg, ses, 'Checkpgpw', 'Locked Postgraduate', 'check.pgpw.v706@example.test', '08037060004', crypt('An old password', gen_salt('bf', 12)), 5, now() + interval '10 minutes'),
+        (pg2, ses, 'Checkpgpw', 'No Application', 'check.pgpw2.v706@example.test', NULL, crypt('An old password', gen_salt('bf', 12)), 0, NULL);
+    INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+    VALUES (pgapp, pg, ses, 'PG/97/706001', prog, 800, 'SUBMITTED', now());
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-V706-CHK', 'CHECKV706', 'Officer');
+    INSERT INTO admissions.pg_migration_batch (id, reference, kind, file_name, rows_expected, started_by, started_office)
+    VALUES (bat, 'PG-MIG/9706/000001', 'APPLICANTS', 'check-v706.xlsx', 1, who, 'pgschool');
+    INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id) VALUES (pgapp, 'OLD/PG/706001', bat);
+    INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (gen_random_bytes(32), pg, 'applicant', now() + interval '1 hour');
+
+    FOREACH p_office IN ARRAY ARRAY['registrar', 'dbops'] LOOP
+        PERFORM set_config('moaum.actor_office', p_office, true);
+        BEGIN PERFORM admissions.pg_applicant_password_default(pg, 'Applicant forgot the password'); p_dbops := coalesce(p_dbops || ',', '') || 'done';
+        EXCEPTION WHEN insufficient_privilege THEN p_dbops := coalesce(p_dbops || ',', '') || split_part(SQLERRM, ':', 1); END;
+    END LOOP;
+    PERFORM set_config('moaum.actor_office', 'pgschool', true);
+    BEGIN PERFORM admissions.pg_applicant_password_default(pg, 'forgot'); p_reason := 'done';
+    EXCEPTION WHEN check_violation THEN p_reason := split_part(SQLERRM, ':', 1); END;
+    g := admissions.pg_applicant_password_default(pg, 'Applicant forgot the password; identity checked at the School');
+    SELECT * INTO p FROM admissions.pg_applicant WHERE id = pg;
+    p_open := (SELECT count(*) FROM platform.session WHERE person_id = pg AND ended_at IS NULL);
+    p_logged := (SELECT r.method || ':' || r.reset_office || ':' || r.application_no || ':' || r.was_locked || ':' || r.sessions_ended
+                   FROM admissions.pg_applicant_password_reset r WHERE r.applicant_id = pg);
+    BEGIN UPDATE admissions.pg_applicant_password_reset SET reason = 'changed afterwards' WHERE applicant_id = pg; p_kept := 'altered';
+    EXCEPTION WHEN check_violation THEN p_kept := split_part(SQLERRM, ':', 1); END;
+    p_told := (SELECT count(*) FROM platform.notice n WHERE n.about_id = pgapp AND n.channel = 'EMAIL' AND n.subject = 'Your application password was reset'
+                AND n.body LIKE '%PG/97/706001%');
+    BEGIN PERFORM admissions.pg_applicant_password_default(pg2, 'An applicant with no application'); p_none := 'done';
+    EXCEPTION WHEN check_violation THEN p_none := split_part(SQLERRM, ':', 1); END;
+    f_app := (SELECT count(*) FROM admissions.pg_applicant_password_find('pg/97/706001') x WHERE x.applicant_id = pg);
+    f_old := (SELECT count(*) FROM admissions.pg_applicant_password_find('old/pg/706001') x WHERE x.applicant_id = pg);
+    f_mail := (SELECT count(*) FROM admissions.pg_applicant_password_find('Check.PgPw.V706@example.test') x WHERE x.applicant_id = pg);
+    f_phone := (SELECT count(*) FROM admissions.pg_applicant_password_find('+234 803 706 0004') x WHERE x.applicant_id = pg);
+    f_name := (SELECT count(*) FROM admissions.pg_applicant_password_find('locked postgraduate checkpgpw') x WHERE x.applicant_id = pg)
+            + (SELECT count(*) FROM admissions.pg_applicant_password_find('checkpgpw locked') x WHERE x.applicant_id = pg);
+    -- the applicant's own password, in the session they signed in to: the others end
+    INSERT INTO platform.session (id, person_id, active_office, absolute_end) VALUES (keep, pg, 'applicant', now() + interval '1 hour'),
+        (gen_random_bytes(32), pg, 'applicant', now() + interval '1 hour');
+    PERFORM admissions.pg_applicant_password_set(pg, crypt('My own password', gen_salt('bf', 12)), keep);
+    SELECT * INTO p_after FROM admissions.pg_applicant WHERE id = pg;
+    p_kept_session := (SELECT count(*) FROM platform.session WHERE id = keep AND ended_at IS NULL);
+    p_other_session := (SELECT count(*) FROM platform.session WHERE person_id = pg AND id <> keep AND ended_at IS NULL);
+
+    msg := format('ug: office %s reason %s | default %s: hash %s must %s temp %s locked %s failed %s sessions %s logged %s | find %s/%s | prelim %s | none %s | set: must %s on %s'
+                  || ' || pg: offices %s reason %s | %s: number %s must %s locked %s failed %s sessions %s logged %s kept %s told %s | none %s | find %s/%s/%s/%s/%s | set: must %s kept %s others %s',
+                  r_office, r_reason, d, a.password_hash, a.must_change_password, a.temp_expires_at, a.locked_until, a.failed_attempts, open_sessions, logged,
+                  f_on, f_number, dp, r_none, after_set.must_change_password, after_set.password_hash = 'SET_ON_FIRST_LOGIN',
+                  p_dbops, p_reason, g, p.password_hash = crypt('PG/97/706001', p.password_hash), p.must_change_password, p.locked_until, p.failed_attempts, p_open,
+                  p_logged, p_kept, p_told, p_none, f_app, f_old, f_mail, f_phone, f_name, p_after.must_change_password, p_kept_session, p_other_session);
+    RAISE EXCEPTION 'the V706 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V706 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V706: an applicant''s password is reset back to the JAMB number (the application number where there is none, refused with neither) and the change required; a postgraduate applicant''s to the application number by the School of Postgraduate Studies, the Director of ICT or ICT Support only — unlocked, sessions ended, written down and kept, the applicant told; their own password clears the change',
+      coalesce(r_office = 'APW_OFFICE' AND r_reason = 'APW_REASON' AND d ->> 'number' = '97069990001AP' AND d ->> 'numberKind' = 'JAMB'
+               AND a.password_hash = 'SET_ON_FIRST_LOGIN' AND a.must_change_password AND a.temp_expires_at IS NULL AND a.locked_until IS NULL AND a.failed_attempts = 0
+               AND open_sessions = 0 AND logged = 'DEFAULT_NUMBER:ictagent:true:1:none' AND f_on AND f_number = '97069990001AP'
+               AND dp ->> 'number' = 'APP/97/706002' AND dp ->> 'numberKind' = 'APPLICATION' AND r_none = 'APW_NO_NUMBER'
+               AND NOT after_set.must_change_password AND after_set.password_hash <> 'SET_ON_FIRST_LOGIN'
+               AND p_dbops = 'PGPW_OFFICE,PGPW_OFFICE' AND p_reason = 'APW_REASON' AND g ->> 'applicationNo' = 'PG/97/706001'
+               AND p.password_hash LIKE '$2%$12$%' AND p.password_hash = crypt('PG/97/706001', p.password_hash) AND p.must_change_password
+               AND p.locked_until IS NULL AND p.failed_attempts = 0 AND p_open = 0 AND p_logged = 'DEFAULT_NUMBER:pgschool:PG/97/706001:true:1' AND p_kept = 'APW_KEPT'
+               AND p_told = 1 AND p_none = 'PGPW_NO_APPLICATION' AND f_app = 1 AND f_old = 1 AND f_mail = 1 AND f_phone = 1 AND f_name = 2
+               AND NOT p_after.must_change_password AND p_kept_session = 1 AND p_other_session = 0, false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

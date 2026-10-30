@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { accountState, newPasswordProblem, reasonProblem, RESET_METHOD } from "./applicant-password.ts";
+import { accountState, defaultNumberWords, newPasswordProblem, pgAccountState, PG_RESET_METHOD, reasonProblem, RESET_METHOD } from "./applicant-password.ts";
 
 test("a new password is eight characters or more, typed twice alike", () => {
   assert.equal(newPasswordProblem("short", "short"), "A password is eight characters or more.");
@@ -15,8 +15,25 @@ test("the desk says the account's state in words", () => {
   assert.deepEqual(accountState({ locked: false }), ["Active", "ok"]);
 });
 
+test("V706: an account reset to its number says so, in the search's rows and in the account alike", () => {
+  assert.deepEqual(accountState({ locked: false, must_change: true, on_default: true }), ["Reset to the number, change pending", "warn"]);
+  assert.deepEqual(accountState({ locked: false, mustChange: true, firstSignIn: true }), ["Reset to the number, change pending", "warn"]);
+  assert.deepEqual(accountState({ locked: false, must_change: false, on_default: true }), ["First sign-in not yet made", "grey"]);
+  assert.equal(defaultNumberWords("JAMB"), "JAMB number");
+  assert.equal(defaultNumberWords("APPLICATION"), "application number");
+  assert.equal(defaultNumberWords(null), "JAMB number");
+});
+
+test("V706: the postgraduate desk says the account's state and the reset's method in words", () => {
+  assert.deepEqual(pgAccountState({ locked: true, must_change: true }), ["Locked (failed sign-ins)", "bad"]);
+  assert.deepEqual(pgAccountState({ locked: false, mustChange: true }), ["Reset to the application number, change pending", "warn"]);
+  assert.deepEqual(pgAccountState({ locked: false }), ["Active", "ok"]);
+  assert.equal(PG_RESET_METHOD.DEFAULT_NUMBER, "Back to the application number");
+});
+
 test("a reset's reason is ten characters or more, and its method is said in words", () => {
   assert.equal(reasonProblem(" forgot "), "Say why the password is reset, in ten characters or more.");
   assert.equal(reasonProblem("Applicant forgot password; identity checked by phone"), null);
   assert.equal(RESET_METHOD.TEMPORARY_PASSWORD, "Temporary password");
+  assert.equal(RESET_METHOD.DEFAULT_NUMBER, "Back to the JAMB or application number");
 });

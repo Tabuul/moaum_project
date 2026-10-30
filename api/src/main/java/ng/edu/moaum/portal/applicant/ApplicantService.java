@@ -53,7 +53,8 @@ public class ApplicantService {
             "JAMB_ADMISSION_LETTER", "STATE_OF_ORIGIN", "MARRIAGE_CERT", "CHANGE_OF_NAME", "PREVIOUS_QUALIFICATION", "OTHER", "PASSPORT_2", "PASSPORT_3");
     static final int MAX_DOCUMENT = 2 * 1024 * 1024;
 
-    /** V687: mustChange — signed in on a temporary password from the University: the applicant chooses their own before anything else */
+    /** V687: mustChange — signed in on a password the University set (V706: the JAMB or application number after a reset): the applicant
+     *  chooses their own before anything else */
     public record SignedIn(String token, Instant expiresAt, UUID accountId, String applicationNo, String surname, String otherNames, boolean mustChange) {
     }
 
@@ -244,6 +245,13 @@ public class ApplicantService {
         return false;
     }
 
+    /** V706: an account on its first password (the sentinel: migrated, or reset by the University) opens on the JAMB number, or on the
+     *  application number for an applicant with none (the preliminary and proficiency routes) — never once a password is chosen */
+    static boolean isDefaultNumber(ApplicantRepository.Account a, String password) {
+        String n = a.jambKey() != null && !a.jambKey().isBlank() ? a.jambKey() : a.applicationNo();
+        return n != null && !n.isBlank() && n.trim().equalsIgnoreCase(password == null ? "" : password.trim());
+    }
+
     private static DomainRuleViolation numberIsNoPassword() {
         return new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your JAMB or application number cannot be your password.",
                 new DomainRuleViolation.Remedy("Choose a password that is not your JAMB or application number.", "You"));
@@ -267,7 +275,8 @@ public class ApplicantService {
             }
             // the first sign-in (V178, restored by the University's decision of 13 Oct 2026): a migrated account holds the sentinel until
             // a password is chosen, and its first password is the JAMB number, checked directly; once one is chosen, the JAMB or
-            // application number opens nothing (V428)
+            // application number opens nothing (V428). V706: a reset by the University puts the account back on the sentinel, and an
+            // applicant with no JAMB number signs in on the application number
             boolean sentinel = "SET_ON_FIRST_LOGIN".equals(a.passwordHash());
             if (!sentinel && ownNumber(password, a.jambKey(), a.applicationNo())) {
                 repo.event(identifier, a.id(), "OWN_NUMBER_REFUSED", ip);
@@ -276,7 +285,7 @@ public class ApplicantService {
                         new DomainRuleViolation.Remedy("Use the password you chose. Forgotten it? Choose \"Forgot password\": a link goes to the email and phone you gave.", "ICT Support"));
             }
             boolean ok = sentinel
-                    ? a.jambKey() != null && a.jambKey().equalsIgnoreCase(password == null ? "" : password.trim())
+                    ? isDefaultNumber(a, password)
                     : encoder.matches(password == null ? "" : password, a.passwordHash());
             if (!ok) {
                 int attempts = a.failedAttempts() + 1;
@@ -328,11 +337,12 @@ public class ApplicantService {
         ApplicantRepository.Account a = repo.byId(account).orElseThrow(() -> new NotFound("application account", account));
         boolean sentinel = "SET_ON_FIRST_LOGIN".equals(a.passwordHash());
         boolean ok = sentinel
-                ? a.jambKey() != null && a.jambKey().equalsIgnoreCase(current == null ? "" : current.trim())
+                ? isDefaultNumber(a, current)
                 : encoder.matches(current == null ? "" : current, a.passwordHash());
         if (!ok) {
             throw new DomainRuleViolation("AUTH_CURRENT_PASSWORD", "The password you have now is not the one entered.",
-                    new DomainRuleViolation.Remedy(a.mustChangePassword() ? "Enter the temporary password you were given." : "Enter the password you signed in with.", "You"));
+                    new DomainRuleViolation.Remedy(sentinel ? "Enter your JAMB number (your application number if you have none)."
+                            : a.mustChangePassword() ? "Enter the temporary password you were given." : "Enter the password you signed in with.", "You"));
         }
         if (next == null || next.length() < MIN_PASSWORD) {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",

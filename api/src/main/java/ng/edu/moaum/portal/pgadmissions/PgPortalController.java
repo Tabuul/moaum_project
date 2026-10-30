@@ -90,7 +90,8 @@ class PgPortalController {
     public record SignIn(@NotBlank @Size(max = 160) String identifier, @NotBlank @Size(max = 100) String password) {
     }
 
-    public record SignedIn(String token, Instant expiresAt, UUID applicantId, String applicationNo, String surname, String otherNames) {
+    /** V706: mustChange — the University reset the password to the application number: the applicant chooses their own before anything else */
+    public record SignedIn(String token, Instant expiresAt, UUID applicantId, String applicationNo, String surname, String otherNames, boolean mustChange) {
     }
 
     private static DomainRuleViolation badCredentials() {
@@ -107,7 +108,7 @@ class PgPortalController {
         /* V359: whether the account is locked is decided in the database — the driver gives a java.sql.Timestamp, which a cast
            to OffsetDateTime refused (a locked applicant's sign-in failed with a server error instead of saying so) */
         Map<String, Object> a = firstOrNull(jdbc.sql("""
-                SELECT p.id, p.surname, p.other_names, p.password_hash, p.failed_attempts,
+                SELECT p.id, p.surname, p.other_names, p.password_hash, p.failed_attempts, p.must_change_password,
                        coalesce(p.locked_until > now(), false) AS locked, to_char(p.locked_until AT TIME ZONE 'Africa/Lagos', 'HH24:MI') AS locked_until_text,
                        (SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = p.id) AS application_no
                   FROM admissions.pg_applicant p
@@ -127,7 +128,11 @@ class PgPortalController {
                     + a.get("locked_until_text") + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
         }
         int attempts = ((Number) a.get("failed_attempts")).intValue();
-        if (!encoder.matches(body.password(), String.valueOf(a.get("password_hash")))) {
+        boolean mustChange = Boolean.TRUE.equals(a.get("must_change_password"));
+        String hash = String.valueOf(a.get("password_hash"));
+        /* V706: after a reset the application number opens the account, however its letters are typed */
+        boolean ok = encoder.matches(body.password(), hash) || (mustChange && encoder.matches(body.password().trim().toUpperCase(), hash));
+        if (!ok) {
             int next = attempts + 1;
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
             tx.execute(st -> jdbc.sql("UPDATE admissions.pg_applicant SET failed_attempts = :n, locked_until = :l WHERE id = :id")
@@ -148,7 +153,71 @@ class PgPortalController {
         String surname = String.valueOf(a.get("surname"));
         String otherNames = String.valueOf(a.get("other_names"));
         String token = issuer.issue(applicantId, surname + ", " + otherNames, List.of("applicant"), sid, end);
-        return new SignedIn(token, end, applicantId, (String) a.get("application_no"), surname, otherNames);
+        return new SignedIn(token, end, applicantId, (String) a.get("application_no"), surname, otherNames, mustChange);
+    }
+
+    /** V706: whether the applicant must choose their own password now (the University reset it to the application number) */
+    @GetMapping("/me/password")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> myPassword(Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        Map<String, Object> a = firstOrNull(jdbc.sql("""
+                SELECT p.must_change_password AS "mustChange", p.surname || ', ' || p.other_names AS name,
+                       (SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = p.id ORDER BY ap.created_at DESC LIMIT 1) AS "applicationNo",
+                       p.password_reset_at AS "resetAt"
+                  FROM admissions.pg_applicant p WHERE p.id = :me
+                """).param("me", me).query().listOfRows());
+        if (a == null) {
+            throw new NotFound("postgraduate application account", me);
+        }
+        return a;
+    }
+
+    public record PasswordIn(@NotBlank @Size(max = 100) String currentPassword, @NotBlank @Size(max = 100) String newPassword) {
+    }
+
+    /**
+     * V706: the applicant's own new password — the one they have (after a reset, the application number) first, then the new: eight
+     * characters or more, not their application number (nor the old portal's), not the one they have. Every other session ends; this one stays.
+     */
+    @PostMapping("/me/password")
+    @PreAuthorize("hasAuthority('OFFICE_applicant')")
+    Map<String, Object> changeMyPassword(@Valid @RequestBody PasswordIn body, Authentication authentication) {
+        UUID me = UUID.fromString(authentication.getName());
+        Map<String, Object> a = firstOrNull(jdbc.sql("SELECT password_hash, must_change_password FROM admissions.pg_applicant WHERE id = :me")
+                .param("me", me).query().listOfRows());
+        if (a == null) {
+            throw new NotFound("postgraduate application account", me);
+        }
+        String hash = String.valueOf(a.get("password_hash"));
+        boolean must = Boolean.TRUE.equals(a.get("must_change_password"));
+        String current = body.currentPassword();
+        if (!(encoder.matches(current, hash) || (must && encoder.matches(current.trim().toUpperCase(), hash)))) {
+            throw new DomainRuleViolation("AUTH_CURRENT_PASSWORD", "The password you have now is not the one entered.",
+                    new DomainRuleViolation.Remedy(must ? "Enter your application number, the password the University reset yours to." : "Enter the password you signed in with.", "You"));
+        }
+        String next = body.newPassword();
+        if (next.length() < 8) {
+            throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.", new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
+        }
+        List<String> own = jdbc.sql("""
+                SELECT ap.application_no FROM admissions.pg_application ap WHERE ap.applicant_id = :me
+                UNION ALL
+                SELECT lg.legacy_application_no FROM admissions.pg_legacy_application lg JOIN admissions.pg_application ap ON ap.id = lg.application_id WHERE ap.applicant_id = :me
+                """).param("me", me).query(String.class).list();
+        if (own.stream().anyMatch(n -> n != null && !n.isBlank() && n.trim().equalsIgnoreCase(next.trim()))) {
+            throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your application number cannot be your password.",
+                    new DomainRuleViolation.Remedy("Choose a password that is not your application number.", "You"));
+        }
+        if (encoder.matches(next, hash)) {
+            throw new DomainRuleViolation("AUTH_PASSWORD_SAME", "The new password is the one you have now.", new DomainRuleViolation.Remedy("Choose a different password.", "You"));
+        }
+        String sid = authentication instanceof JwtAuthenticationToken t ? t.getToken().getClaimAsString("sid") : null;
+        byte[] keep = sid == null || sid.isBlank() ? null : java.util.HexFormat.of().parseHex(sid);
+        String chosen = encoder.encode(next);
+        tx.execute(st -> jdbc.sql("SELECT admissions.pg_applicant_password_set(:a, :h, :k::bytea)")
+                .param("a", me).param("h", chosen).param("k", keep, java.sql.Types.BINARY).query().singleRow());
+        return Map.of("changed", true, "mustChange", false);
     }
 
     @PostMapping("/sign-out")

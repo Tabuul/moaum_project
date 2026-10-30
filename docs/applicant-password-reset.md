@@ -77,3 +77,80 @@ was locked, the sessions ended, the officer and the office. The desk lists the r
   - the Academic Office's link is sent to a masked address;
   - the history lists both resets.
 - `lib/applicant-password.test.ts`.
+
+# Back to the default number; postgraduate applicants too (V706, 30 October 2026)
+
+The University's word: "Applicant password reset, should reset to default jamb no and not … also add password reset for pg school
+too, it should be on pg dean dashboard and all it support staff, also ict director".
+
+## Undergraduate applicants: the JAMB number
+
+The desk no longer gives a random temporary password (`APW_METHOD` if one is asked for). Its two methods are now:
+
+- **Back to the JAMB number.** The account goes back on its first password, as at the first sign-in (V178: it holds the sentinel
+  `SET_ON_FIRST_LOGIN`). An applicant with no JAMB number (Preliminary Science, Preliminary Technology, the proficiency courses) goes
+  back to the application number; one with neither is refused (`APW_NO_NUMBER`). The number works until the applicant chooses their
+  own password, which they must do at the sign-in before anything else. The account is unlocked and its open sessions end. The reset is
+  written down as `DEFAULT_NUMBER`, with no expiry. The applicant is told by email and SMS to sign in with the number.
+- **Reset link**, as before.
+
+The number is typed in capitals or small letters alike. Once the applicant has chosen a password, the number opens nothing
+(`AUTH_FIRST_PASSWORD_RETIRED`). A password set through "Forgot password" also clears a pending reset.
+
+## Postgraduate applicants: the application number
+
+**Applicant Password Reset** (`/admissions/postgraduate/applicant-passwords`, route `t/pgapplicantpw`):
+
+- The Dean of the School of Postgraduate Studies (`pgschool`) and its Secretary (`pgsecretary`), under Admissions, and an
+  **Applicant passwords** panel on both their dashboards: a search box that opens the desk, and the latest resets.
+- The Director of ICT (`ict`) and ICT Support (`ictagent`, `helpdeskhead`), as **PG Applicant Password Reset** beside the
+  undergraduate desk.
+- The Super Administrator.
+
+Every other office is refused, by the API and by the database (`PGPW_OFFICE`): the Registry, the Academic Office and the Database
+Operators among them.
+
+1. **Find the applicant** by the application number, the old portal's number, the email, the phone (`0…` or `+234…`) or the name.
+2. **Reset the password**, saying why in ten characters or more (`APW_REASON`). The password becomes the application number (hashed by
+   the database, bcrypt cost 12). The account is unlocked and its sessions end. The applicant is told by email and SMS
+   (`admissions.pg_tell_applicant`). An applicant with no application is refused (`PGPW_NO_APPLICATION`).
+3. **The applicant** signs in with their email or application number, and the application number as the password. **Change
+   password** (`/pg/portal/password`, also in their menu) opens first; the portal opens nothing else until they choose their own
+   (`PASSWORD_CHANGE_REQUIRED`, the same gate). The new password is eight characters or more, not the application number (nor the old
+   portal's) and not the one they have. The session making the change stays signed in; every other session ends.
+
+Every reset is written once on `admissions.pg_applicant_password_reset`: the application number, the reason, whether the account was
+locked, the sessions ended, the officer and the office.
+
+## Underneath (V706)
+
+| Piece | What it is |
+|---|---|
+| `admissions.applicant_password_default(account, reason)` | an undergraduate account back on its first password |
+| `admissions.applicant_default_number(account)` | the JAMB number, or the application number where there is none |
+| `admissions.applicant_password_find` | restated: `on_default`, `default_number` |
+| `admissions.pg_applicant` | gains `must_change_password`, `password_reset_at` |
+| `admissions.pg_applicant_password_default(applicant, reason)` | a postgraduate password reset to the application number |
+| `admissions.pg_applicant_password_set(applicant, hash, keep)` | the applicant's own password, the change cleared |
+| `admissions.pg_applicant_password_find(q, limit)` | the postgraduate desk's finder |
+| `PgApplicantPasswordDeskController` | `GET /api/v1/pg/applicant-passwords/search`, `GET /{applicant}`, `POST /{applicant}/reset`, `GET /history` |
+| `PgPortalController` | the sign-in says `mustChange`; `GET` and `POST /api/v1/pg/me/password` |
+| `ApplicantPasswordGate` | holds a postgraduate applicant too |
+
+## Tests (V706)
+
+- `check.sql` V706, with made-up applicants:
+  - undergraduate: the Registry and a short reason are refused; the reset puts the account back on the sentinel, requires the change,
+    unlocks it, ends its session and is written down with no expiry; a preliminary applicant goes back to the application number, and
+    one with neither number is refused; the finder says the account is on its number;
+  - postgraduate: the Registry and the Database Operators are refused, and so is a short reason; the reset makes the password the
+    application number, requires the change, unlocks the account, ends its session, is written down and kept, and the applicant is
+    told; an applicant with no application is refused; the finder works by the application number, the old portal's, the email, the
+    +234 phone and the name; the applicant's own password clears the change and ends every other session.
+- `ApplicantIT`: a temporary password is refused; the reset goes back to the JAMB number and the applicant is told; the number, typed in
+  small letters, signs in to a session held until the change; the number is refused as the new password; once a password is chosen
+  the number opens nothing.
+- `PgApplicantPasswordIT`: the Registry and the Database Operators are refused; ICT Support's reset ends the open session; the old
+  password opens nothing, and the application number signs in to a session held until the change; the change refuses a wrong current
+  password, the number and a short password; the same session goes on after it; the Secretary resets again; the history lists both.
+- `lib/applicant-password.test.ts`.

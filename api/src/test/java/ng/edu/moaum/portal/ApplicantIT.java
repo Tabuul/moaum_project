@@ -268,42 +268,58 @@ class ApplicantIT {
         assertThat(it.get(fresh, PATH + "/applicants").getStatusCode().value()).isEqualTo(403);
 
         // ── V687: the Director of ICT, the Academic Office and ICT Support reset the password; the applicant chooses their own at once ──
+        // V706: the reset puts the password back to the JAMB number, not a random temporary password
         String pwDesk = "/api/v1/applicant-passwords";
         String support = ItSupport.token("ictagent");
         String accountId = String.valueOf(reset.getBody().get("accountId"));
         assertThat(it.getList(registrar, pwDesk + "/search?q=" + appNo).getStatusCode().value()).isEqualTo(403);
-        assertThat((List<Map<String, Object>>) it.getList(support, pwDesk + "/search?q=" + jamb).getBody()).extracting(h -> h.get("application_no")).containsExactly(appNo);
-        assertThat(it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "TEMPORARY", "reason", "short")).getBody().get("code"))
+        List<Map<String, Object>> foundRows = (List<Map<String, Object>>) it.getList(support, pwDesk + "/search?q=" + jamb).getBody();
+        assertThat(foundRows).extracting(h -> h.get("application_no")).containsExactly(appNo);
+        assertThat(foundRows.get(0).get("on_default")).isEqualTo(false);
+        assertThat(foundRows.get(0).get("default_number")).isEqualTo(jamb);
+        assertThat(it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "DEFAULT", "reason", "short")).getBody().get("code"))
                 .isEqualTo("APW_REASON");
-        ResponseEntity<Map> temp = it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset",
-                Map.of("method", "TEMPORARY", "reason", "Applicant forgot the password; identity checked at the desk"));
-        assertThat(temp.getStatusCode().value()).as(String.valueOf(temp.getBody())).isEqualTo(200);
-        String tempPw = String.valueOf(temp.getBody().get("temporaryPassword"));
-        assertThat(tempPw).hasSize(12);
-        // the password they had opens nothing now; the temporary one opens a session that changes it before anything else
+        assertThat(it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset",
+                Map.of("method", "TEMPORARY", "reason", "Applicant forgot the password; identity checked at the desk")).getBody().get("code"))
+                .as("no random temporary password any more").isEqualTo("APW_METHOD");
+        assertThat(it.get(support, pwDesk + "/" + accountId).getBody().get("defaultNumber")).isEqualTo(jamb);
+        ResponseEntity<Map> toNumber = it.call(support, HttpMethod.POST, pwDesk + "/" + accountId + "/reset",
+                Map.of("method", "DEFAULT", "reason", "Applicant forgot the password; identity checked at the desk"));
+        assertThat(toNumber.getStatusCode().value()).as(String.valueOf(toNumber.getBody())).isEqualTo(200);
+        assertThat(toNumber.getBody().get("method")).isEqualTo("DEFAULT_NUMBER");
+        assertThat(toNumber.getBody().get("number")).isEqualTo(jamb);
+        assertThat(toNumber.getBody().get("numberKind")).isEqualTo("JAMB");
+        assertThat(toNumber.getBody()).doesNotContainKey("temporaryPassword");
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM platform.notice n JOIN admissions.application a ON a.id = n.about_id
+                 WHERE a.application_no = :no AND n.channel = 'EMAIL' AND n.subject = 'Your MOAUM application password was reset' AND n.body LIKE '%JAMB registration number as the password%'
+                """).param("no", appNo).query(Long.class).single()).as("the applicant told by email").isEqualTo(1L);
+        // the password they had opens nothing now; the JAMB number (however its letters are typed) opens a session that changes it first
         assertThat(post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", "a brand new password")).getStatusCode().value()).isEqualTo(422);
-        ResponseEntity<Map> onTemp = post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", tempPw));
-        assertThat(onTemp.getStatusCode().value()).as(String.valueOf(onTemp.getBody())).isEqualTo(200);
-        assertThat(onTemp.getBody().get("mustChange")).isEqualTo(true);
-        String tempToken = String.valueOf(onTemp.getBody().get("token"));
-        ResponseEntity<Map> held = it.get(tempToken, "/api/v1/applicant/me");
+        ResponseEntity<Map> onNumber = post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", jamb.toLowerCase()));
+        assertThat(onNumber.getStatusCode().value()).as(String.valueOf(onNumber.getBody())).isEqualTo(200);
+        assertThat(onNumber.getBody().get("mustChange")).isEqualTo(true);
+        String numberToken = String.valueOf(onNumber.getBody().get("token"));
+        ResponseEntity<Map> held = it.get(numberToken, "/api/v1/applicant/me");
         assertThat(held.getStatusCode().value()).isEqualTo(403);
         assertThat(held.getBody().get("code")).isEqualTo("PASSWORD_CHANGE_REQUIRED");
-        assertThat(it.get(tempToken, "/api/v1/applicant/me/password").getBody().get("mustChange")).isEqualTo(true);
-        assertThat(it.call(tempToken, HttpMethod.POST, "/api/v1/applicant/me/password", Map.of("currentPassword", tempPw, "newPassword", jamb)).getBody().get("code"))
+        assertThat(it.get(numberToken, "/api/v1/applicant/me/password").getBody().get("mustChange")).isEqualTo(true);
+        assertThat(it.call(numberToken, HttpMethod.POST, "/api/v1/applicant/me/password", Map.of("currentPassword", jamb, "newPassword", jamb)).getBody().get("code"))
                 .isEqualTo("AUTH_PASSWORD_IS_NUMBER");
-        assertThat(it.call(tempToken, HttpMethod.POST, "/api/v1/applicant/me/password", Map.of("currentPassword", tempPw, "newPassword", "my chosen password"))
+        assertThat(it.call(numberToken, HttpMethod.POST, "/api/v1/applicant/me/password", Map.of("currentPassword", jamb, "newPassword", "my chosen password"))
                 .getStatusCode().value()).isEqualTo(200);
-        assertThat(it.get(tempToken, "/api/v1/applicant/me").getStatusCode().value()).as("the same session goes on").isEqualTo(200);
+        assertThat(it.get(numberToken, "/api/v1/applicant/me").getStatusCode().value()).as("the same session goes on").isEqualTo(200);
         ResponseEntity<Map> chosen = post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", "my chosen password"));
         assertThat(chosen.getStatusCode().value()).isEqualTo(200);
         assertThat(chosen.getBody().get("mustChange")).isEqualTo(false);
+        assertThat(post("/api/v1/applicant/sign-in", Map.of("identifier", appNo, "password", jamb)).getBody().get("code"))
+                .as("once a password is chosen the JAMB number opens nothing").isEqualTo("AUTH_FIRST_PASSWORD_RETIRED");
         // the Academic Office sends the applicant's own link instead: the address masked; both resets on the history
         ResponseEntity<Map> link = it.call(academic, HttpMethod.POST, pwDesk + "/" + accountId + "/reset", Map.of("method", "LINK", "reason", "The applicant asked by telephone for a link"));
         assertThat(link.getStatusCode().value()).as(String.valueOf(link.getBody())).isEqualTo(200);
         assertThat(String.valueOf(link.getBody().get("sentTo"))).contains("@example.com").doesNotContain(jamb.toLowerCase() + "@");
         assertThat((List<Map<String, Object>>) it.getList(support, pwDesk + "/history?account=" + accountId).getBody())
-                .extracting(h -> h.get("method")).containsExactly("RESET_LINK", "TEMPORARY_PASSWORD");
+                .extracting(h -> h.get("method")).containsExactly("RESET_LINK", "DEFAULT_NUMBER");
         // V688: a Database Operator over the whole University resets too; one held to a department is refused (SCOPE_UNIVERSITY)
         String operator = it.officer("dbops", "institution", "University");
         String heldOperator = it.officer("dbops", "department", jdbc.sql("SELECT code FROM ref.department ORDER BY code LIMIT 1").query(String.class).single());

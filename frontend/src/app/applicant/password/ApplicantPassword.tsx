@@ -1,5 +1,6 @@
 "use client";
-/** The applicant's own password (V687). After a temporary password from the Director of ICT, the Academic Office or ICT Support the
+/** The applicant's own password (V687). After a reset by the Director of ICT, the Academic Office or ICT Support (V706: back to the JAMB
+ *  number, or the application number where there is none; before V706 a temporary password) the
  *  portal opens nothing else until it is changed (the API's ApplicantPasswordGate); otherwise it is the applicant's to change at will. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -42,13 +43,15 @@ export function ApplicantPassword({ state }: { state: PasswordState }) {
     <div className="stack" style={{ maxWidth: 560 }}>
       {state.mustChange ? (
         <Note kind="bad" title="Choose your own password to continue">
-          {`You signed in with a temporary password from the University${until ? `, which works until ${until}` : ""}. Your application opens once you choose your own.`}
+          {until
+            ? `You signed in with a temporary password from the University, which works until ${until}. Your application opens once you choose your own.`
+            : "The University reset your password to your JAMB number (your application number if you have none). Your application opens once you choose your own."}
         </Note>
       ) : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
       <Panel title="Change password">
         <PBody>
-          <Field id="ap-cur" label={state.mustChange ? "Temporary password" : "Current password"} required>
+          <Field id="ap-cur" label={state.mustChange ? (until ? "Temporary password" : "Your JAMB number (or application number)") : "Current password"} required>
             <PasswordInput id="ap-cur" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} />
           </Field>
           <Field id="ap-new" label="New password" required hint="Eight characters or more; not your JAMB or application number">

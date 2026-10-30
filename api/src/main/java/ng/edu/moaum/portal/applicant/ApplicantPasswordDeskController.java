@@ -18,7 +18,6 @@ import ng.edu.moaum.portal.shared.OfficeScope;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -33,10 +32,10 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * V687 — Applicant Passwords: the Director of ICT, the Academic Office and ICT Support find a Post-UTME applicant (or a Direct Entry,
- * Centre or Preliminary Science one: the same account) and reset the password, saying why — a temporary password shown to the officer
- * once (good for 24 hours; the applicant chooses their own at the sign-in, ApplicantPasswordGate), or the applicant's own one-hour
- * link to the email and phone they registered. Never a password the officer chooses; never the hash; every reset written down
- * (admissions.applicant_password_reset) and the applicant told.
+ * Centre or Preliminary Science one: the same account) and reset the password, saying why — V706: back to the JAMB number (the
+ * application number for an applicant with none), the applicant choosing their own at the sign-in (ApplicantPasswordGate), or the
+ * applicant's own one-hour link to the email and phone they registered. Never a password the officer chooses; never the hash; every
+ * reset written down (admissions.applicant_password_reset) and the applicant told.
  */
 @RestController
 @RequestMapping("/api/v1/applicant-passwords")
@@ -44,14 +43,12 @@ class ApplicantPasswordDeskController {
 
     /* V688: and the Database Operators (one over the whole University: universityOperatorOnly) */
     static final String DESK = "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_dbops','OFFICE_super')";
-    private static final String TEMP_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
     private final JdbcClient jdbc;
     private final ApplicantRepository repo;
     private final ObjectMapper json;
     private final String portalUrl;
     private final OfficeScope scope;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
     ApplicantPasswordDeskController(JdbcClient jdbc, ApplicantRepository repo, ObjectMapper json, OfficeScope scope,
@@ -97,6 +94,9 @@ class ApplicantPasswordDeskController {
         out.put("mustChange", a.mustChangePassword());
         out.put("temporaryUntil", a.mustChangePassword() && a.tempExpiresAt() != null ? a.tempExpiresAt().toString() : null);
         out.put("firstSignIn", "SET_ON_FIRST_LOGIN".equals(a.passwordHash()));
+        /* V706: the first password an account is reset to — the JAMB number, or the application number where there is none */
+        out.put("defaultNumber", a.jambKey() != null && !a.jambKey().isBlank() ? a.jambKey() : a.applicationNo());
+        out.put("defaultKind", a.jambKey() != null && !a.jambKey().isBlank() ? "JAMB" : "APPLICATION");
         out.put("lastSignedIn", jdbc.sql("SELECT last_signed_in_at FROM admissions.applicant_account WHERE id = :a").param("a", account)
                 .query(java.time.OffsetDateTime.class).optional().map(Object::toString).orElse(null));
         out.put("resets", history(account, 50));
@@ -126,7 +126,7 @@ class ApplicantPasswordDeskController {
     public record ResetIn(@NotBlank String method, @NotBlank @Size(max = 1000) String reason) {
     }
 
-    /** the reset: a temporary password shown here once, or the applicant's own link sent to them; the applicant is told either way */
+    /** the reset: back to the JAMB number (V706), or the applicant's own link sent to them; the applicant is told either way */
     @PostMapping("/{account}/reset")
     @PreAuthorize(DESK)
     @Transactional
@@ -135,30 +135,27 @@ class ApplicantPasswordDeskController {
         String method = body.method().trim().toUpperCase();
         Map<String, Object> out = new LinkedHashMap<>();
         switch (method) {
-            case "TEMPORARY", "TEMPORARY_PASSWORD" -> {
-                String pw;
-                do {
-                    StringBuilder b = new StringBuilder(12);
-                    for (int i = 0; i < 12; i++) b.append(TEMP_LETTERS.charAt(random.nextInt(TEMP_LETTERS.length())));
-                    pw = b.toString();
-                } while (pw.equalsIgnoreCase(a.jambKey() == null ? "" : a.jambKey()) || pw.equalsIgnoreCase(a.applicationNo() == null ? "" : a.applicationNo()));
-                String done = jdbc.sql("SELECT admissions.applicant_password_temporary(:a, :h, :r, 24)::text")
-                        .param("a", account).param("h", encoder.encode(pw)).param("r", body.reason()).query(String.class).single();
+            /* V706: back to the first password — the JAMB number, or the application number where there is none — and the applicant
+               chooses their own at the sign-in; the University no longer gives a random temporary password */
+            case "DEFAULT", "DEFAULT_NUMBER" -> {
+                String done = jdbc.sql("SELECT admissions.applicant_password_default(:a, :r)::text")
+                        .param("a", account).param("r", body.reason()).query(String.class).single();
                 @SuppressWarnings("unchecked")
                 Map<String, Object> r = json.readValue(done, Map.class);
+                boolean jamb = "JAMB".equals(r.get("numberKind"));
+                String number = jamb ? "JAMB registration number" : "application number";
                 String subject = "Your MOAUM application password was reset";
-                repo.queueNotice("EMAIL", a.email(), subject, "The password of your application " + a.applicationNo() + " was reset by the University at your request. "
-                        + "Sign in with the temporary password you were given; it works within 24 hours, and you will choose your own password at once. "
+                repo.queueNotice("EMAIL", a.email(), subject, "The password of your application " + (a.applicationNo() == null ? "" : a.applicationNo() + " ")
+                        + "was reset by the University at your request. Sign in with your " + number + " as the password; you will choose your own password at once. "
                         + "If you did not ask for this, contact ICT Support.", a.applicationId());
-                repo.queueNotice("SMS", a.phone(), subject, "MOAUM: your application password was reset. Sign in with the temporary password you were given "
-                        + "within 24 hours and choose your own.", a.applicationId());
-                out.put("method", "TEMPORARY_PASSWORD");
-                out.put("temporaryPassword", pw);
-                out.put("expiresAt", r.get("expiresAt"));
+                repo.queueNotice("SMS", a.phone(), subject, "MOAUM: your application password was reset. Sign in with your " + (jamb ? "JAMB number" : "application number")
+                        + " as the password and choose your own.", a.applicationId());
+                out.put("method", "DEFAULT_NUMBER");
+                out.put("number", r.get("number"));
+                out.put("numberKind", r.get("numberKind"));
                 out.put("wasLocked", r.get("wasLocked"));
                 out.put("sessionsEnded", r.get("sessionsEnded"));
-                out.put("signInWith", a.jambKey() != null ? a.jambKey() : a.applicationNo());
-                out.put("note", "Give it to the applicant now; it is not shown again. It works within 24 hours, and the applicant must choose their own password at the sign-in.");
+                out.put("note", "The applicant signs in with their " + number + " as the password, and chooses their own password at once.");
             }
             case "LINK", "RESET_LINK" -> {
                 byte[] raw = new byte[24];
@@ -180,8 +177,8 @@ class ApplicantPasswordDeskController {
                 out.put("expiresAt", r.get("expiresAt"));
                 out.put("note", "The link went to the applicant's email and phone. It works once, within the hour.");
             }
-            default -> throw new DomainRuleViolation("APW_METHOD", "A reset is a temporary password given to the applicant, or a link sent to their email and phone.",
-                    new DomainRuleViolation.Remedy("Choose TEMPORARY or LINK.", "You"));
+            default -> throw new DomainRuleViolation("APW_METHOD", "A reset puts the password back to the applicant's JAMB number (or application number), or sends a link to their email and phone; "
+                    + "a random temporary password is no longer given.", new DomainRuleViolation.Remedy("Choose DEFAULT or LINK.", "You"));
         }
         return out;
     }

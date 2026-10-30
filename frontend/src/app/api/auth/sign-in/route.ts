@@ -134,7 +134,9 @@ export async function POST(request: NextRequest) {
   } else if (kind === "pgapplicant") {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;
-    home = "/pg/portal";
+    /* V706: the University reset the password to the application number: their own password first */
+    mustChange = signed.mustChange === true;
+    home = mustChange ? "/pg/portal/password" : "/pg/portal";
   } else if (kind === "jupeb") {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;

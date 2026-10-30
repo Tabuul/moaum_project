@@ -23,18 +23,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * V687 — the applicant's forced password change, on the server, as the student's (V485). An applicant signed in on a temporary
- * password from the University (the Director of ICT, the Academic Office or ICT Support reset it) reaches only what changing it needs —
- * the change and its state (/applicant/me/password), signing out, the session check and the signed-in person — and every other request
- * is refused with 403 PASSWORD_CHANGE_REQUIRED, which the portal answers by opening the change page. A JUPEB or postgraduate candidate
- * signs in as an applicant too; their accounts are not here, and they are never held.
+ * V687 — the applicant's forced password change, on the server, as the student's (V485). An applicant signed in on a password the
+ * University set (V706: reset to the JAMB or application number by the Director of ICT, the Academic Office or ICT Support) reaches only
+ * what changing it needs — the change and its state (/applicant/me/password), signing out, the session check and the signed-in person —
+ * and every other request is refused with 403 PASSWORD_CHANGE_REQUIRED, which the portal answers by opening the change page. V706: a
+ * postgraduate applicant whose password the School or ICT reset to the application number is held the same way (/pg/me/password). A
+ * JUPEB candidate signs in as an applicant too; their accounts are not here, and they are never held.
  */
 @Configuration(proxyBeanMethods = false)
 class ApplicantPasswordGate implements HandlerInterceptor, WebMvcConfigurer {
 
     static final String CODE = "PASSWORD_CHANGE_REQUIRED";
 
-    private static final List<String> OPEN_EXACT = List.of("/api/v1/iam/me", "/api/v1/iam/session", "/api/v1/applicant/me/password", "/api/v1/applicant/sign-out");
+    private static final List<String> OPEN_EXACT = List.of("/api/v1/iam/me", "/api/v1/iam/session", "/api/v1/applicant/me/password", "/api/v1/applicant/sign-out",
+            "/api/v1/pg/me/password", "/api/v1/pg/sign-out");
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;
@@ -59,8 +61,10 @@ class ApplicantPasswordGate implements HandlerInterceptor, WebMvcConfigurer {
         if (OPEN_EXACT.contains(path)) {
             return true;
         }
-        boolean required = jdbc.sql("SELECT must_change_password FROM admissions.applicant_account WHERE id = :a")
-                .param("a", ctx.get().actorId()).query(Boolean.class).optional().orElse(false);
+        boolean required = jdbc.sql("""
+                SELECT coalesce((SELECT must_change_password FROM admissions.applicant_account WHERE id = :a), false)
+                    OR coalesce((SELECT must_change_password FROM admissions.pg_applicant WHERE id = :a), false)
+                """).param("a", ctx.get().actorId()).query(Boolean.class).optional().orElse(false);
         if (!required) {
             return true;
         }
@@ -70,7 +74,7 @@ class ApplicantPasswordGate implements HandlerInterceptor, WebMvcConfigurer {
         problem.put("type", "https://api.moaum.edu.ng/problems/password-change-required");
         problem.put("title", "Password change required");
         problem.put("status", HttpStatus.FORBIDDEN.value());
-        problem.put("detail", "Choose your own password before you continue: you signed in with a temporary password.");
+        problem.put("detail", "Choose your own password before you continue: you signed in with the password the University set when it reset yours.");
         problem.put("code", CODE);
         problem.put("instance", path);
         problem.put("remedy", Map.of("message", "Open Change password and choose your own password.", "office", "You"));
