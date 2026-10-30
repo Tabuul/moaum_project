@@ -161,6 +161,7 @@ export function reasonWord(code: string | null | undefined): string {
     ALREADY_COMPLETED: `The ${office} courses of this level are already passed`,
     COURSE_NOT_OFFERED: `The ${office} course does not run this session`,
     NOT_APPLICABLE: `No ${office} course is offered to the programme at this level, and none is carried over`,
+    SPILLOVER_NOT_OWED: `In spillover the ${office} course of this level is not owed unless you add it as a carry-over`,
     NOT_COVERED_BY_GST_FEE: "An EPS course is owed, but the GST payment does not cover EPS: no fee is due for it",
   };
   if (code === "PROGRAMME_NOT_ELIGIBLE") return "The programme is not an undergraduate programme: GST and EPS do not apply";
@@ -173,6 +174,7 @@ export const SOURCE_WORD: Record<string, string> = { COURSE_OFFERING: "Programme
 export const COURSE_STATUS_WORD: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> = {
   OUTSTANDING: ["Owed", "warn"], REGISTERED: ["Registered", "info"], COMPLETED: ["Passed this session", "ok"], FAILED: ["Failed this session", "bad"],
   ALREADY_PASSED: ["Already passed", "ok"], NOT_OFFERED: ["Not run this session", "grey"],
+  NOT_OWED_SPILLOVER: ["Not owed in spillover — add it as a carry-over to take it", "grey"],
 };
 
 /** V366: "why is this student paying GST/EPS?" — finance.gst_eps_explain */

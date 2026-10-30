@@ -346,4 +346,57 @@ class SpilloverSemesterRegistrationIT {
         ok(it.call(token, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 1, "offerings", List.of())));
         assertThat(entries(sp)).isEmpty();
     }
+
+    /** V711: the University's word of 30 October 2026 — a spillover student is not asked the GST fee for the GST/EPS course of their level
+     *  ("free all spill over student from auto gst fee payment unless they add it as carry over"): the GST page reads it not owed, shows
+     *  nothing to pay for and offers it as a carry-over to pay for when added; and an elective they choose is registered as an elective
+     *  ("also allow spill over students to add elective courses"), while a core course of their level is still a carry-over (V674) */
+    @SuppressWarnings("unchecked")
+    @Test
+    void aSpilloverStudentOwesNoGstUntilAddedAndMayAddAnElective() {
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :p").param("p", prog4).query(String.class).single();
+            jdbc.sql("""
+                    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office)
+                    SELECT x.code, x.title, 2, 1, 500, :d, x.kind, 'LIVE', x.office
+                      FROM (VALUES ('ZQS 513', 'Spillover Registration Elective', 'Elective', NULL),
+                                   ('ZQS 514', 'Spillover Registration Entrepreneurship', 'GST', 'EPS')) x(code, title, kind, office)
+                     WHERE NOT EXISTS (SELECT 1 FROM catalogue.course c WHERE c.code = x.code)
+                    """).param("d", dept).update();
+            jdbc.sql("""
+                    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis)
+                    VALUES ('ZQS 513', :p, 500, 'Elective'), ('ZQS 514', :p, 500, 'GST') ON CONFLICT DO NOTHING
+                    """).param("p", prog4).update();
+            jdbc.sql("""
+                    INSERT INTO catalogue.offering (id, course_code, session, semester)
+                    VALUES (gen_random_uuid(), 'ZQS 513', :s, 1), (gen_random_uuid(), 'ZQS 514', :s, 1) ON CONFLICT DO NOTHING
+                    """).param("s", session).update();
+            return null;
+        });
+        UUID sp = it.student("ZZSPR" + tag, prog4, "MOAUM/ADM/16/" + tag + "64", "MOAUM/SPR/16/" + tag + "4", 500);
+        String token = TestTokens.token(sp, List.of("student"));
+
+        // the GST page: the EPS course of their level is not owed in spillover, nothing is shown to pay for, it is offered as a carry-over
+        Map<String, Object> gst = ok(it.get(token, u -> u.path("/api/v1/me/gst").queryParam("session", session).build()));
+        assertThat((Map<String, Object>) gst.get("entitlement")).containsEntry("required", false);
+        assertThat((List<Map<String, Object>>) gst.get("payable")).isEmpty();
+        assertThat((List<Map<String, Object>>) gst.get("carryPayable")).extracting(c -> c.get("course_code")).contains("ZQS 514");
+        Map<String, Object> eps = ((List<Map<String, Object>>) gst.get("courses")).stream().filter(c -> "ZQS 514".equals(c.get("code"))).findFirst().orElseThrow();
+        assertThat(eps).containsEntry("counts", false).containsEntry("status", "NOT_OWED_SPILLOVER");
+        assertThat((Map<String, Object>) gst.get("eligibility")).containsEntry("eps_reason", "EPS_SPILLOVER_NOT_OWED");
+
+        // the elective chosen on the draft is an elective; the core course of their level beside it a carry-over
+        Map<String, Object> view = ok(it.get(token, u -> u.path("/api/v1/me/registration").queryParam("session", session).queryParam("semester", 1).build()));
+        assertThat(view).containsEntry("carryOnly", true);
+        assertThat((List<Map<String, Object>>) view.get("menu")).extracting(m -> m.get("course_code")).contains("ZQS 513");
+        ok(it.call(token, HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 1, "offerings", List.of(offering("ZQS 513", 1), offering("ZQS 511", 1)))));
+        List<String> types = jdbc.sql("""
+                SELECT o.course_code || ':' || e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.entry e
+                  JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = :r AND e.status NOT IN ('DROPPED', 'WITHDRAWN') ORDER BY o.course_code
+                """).param("r", registration(sp, 1)).query(String.class).list();
+        assertThat(types).containsExactly("ZQS 511:CARRYOVER/CARRY_OVER_DECLARED", "ZQS 513:ELECTIVE/-");
+        // still nothing owed for GST: neither course is a GST/EPS course
+        Map<String, Object> after = ok(it.get(token, u -> u.path("/api/v1/me/gst").queryParam("session", session).build()));
+        assertThat((Map<String, Object>) after.get("entitlement")).containsEntry("required", false);
+    }
 }

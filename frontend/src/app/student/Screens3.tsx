@@ -94,7 +94,12 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   // V682: and no course is listed for them to register, the carry-overs the results state included (the picker lists those first):
   // the registration holds only the courses they add, each removable before submission
   const carryOnly = v.carryOnly === true;
-  const menu = carryOnly ? [] : v.menu;
+  // V711: except the programme's electives, which a spillover student may add as electives (fresh courses of their choice, never
+  // carry-overs); an elective already on the registration as a carry-over (as V674 entered it) stays with the carry-overs
+  const menu = carryOnly
+    ? v.menu.filter((m) => !m.carryover && !m.deferred && courseCategory({ basis: m.basis, kind: m.kind }) === "ELECTIVE"
+        && !(reg?.entries ?? []).some((e) => e.offeringId === m.offering_id && e.status !== "DROPPED" && courseCategory(e) !== "ELECTIVE"))
+    : v.menu;
   // V491: where the Head's approval is suspended, a registration that passes the rules is approved on submission
   const auto = v.approval?.mode === "AUTO_APPROVAL";
   const [askReset, setAskReset] = useState(false);
@@ -363,11 +368,12 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         </Note>
       ) : null}
       {carryOnly ? (
-        <Note kind="info" title="IN SPILLOVER, EVERY COURSE YOU REGISTER IS A CARRY-OVER"
+        <Note kind="info" title="IN SPILLOVER, THE COURSES YOU STILL OWE ARE CARRY-OVERS"
           action={!v.siwes && (!locked || v.addDropOpen) ? <Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn> : undefined}>
           You have completed your programme&rsquo;s years, so you register only the courses you still owe. Pick them with ADD CARRY-OVER &mdash; of your
           level and the levels before it, those your results show failed listed first. Each is registered as a carry-over, never as a fresh course; as you
-          pick, the window shows this semester&rsquo;s spillover fee, owed once a course is on your registration.
+          pick, the window shows this semester&rsquo;s spillover fee, owed once a course is on your registration. You may also add an elective of your
+          programme below; it is registered as an elective.
         </Note>
       ) : null}
       {v.siwes ? (
@@ -573,6 +579,11 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         <PBody>{elec.length ? elec.map((m) => pick(m, false, chosen.has(m.offering_id))) : <div className="sub2">No elective is open to your programme this semester.</div>}
           </PBody></Panel>
       </>) : null}
+      {!locked && carryOnly && elec.length ? (
+        <Panel title="ELECTIVE COURSES" right="optional">
+          <PBody>{elec.map((m) => pick(m, false, chosen.has(m.offering_id)))}
+            <div className="sub2 mt-2">An elective you tick is registered as an elective, not a carry-over. Untick it before you submit if you do not want it.</div></PBody></Panel>
+      ) : null}
       {!locked && special.length ? (
         <Panel title="Research and deficiency courses">
           <PBody>{special.map((m) => pick(m, false, chosen.has(m.offering_id)))}
@@ -581,7 +592,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       {!locked && !v.siwes ? (
         <Panel title={<span className="ink-red">CARRY-OVER COURSES</span>} right={<Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn>}>
           <PBody>
-            <div className="sub2">{carryOnly ? "Every course you register in spillover is a carry-over: pick the courses you still owe with ADD CARRY-OVER, of your level and the levels before it. Each one you add is listed here; remove one before you submit if you added it in error." : "Select courses from previous levels that you have not cleared."}</div>
+            <div className="sub2">{carryOnly ? "The courses you still owe are registered as carry-overs: pick them with ADD CARRY-OVER, of your level and the levels before it. Each one you add is listed here; remove one before you submit if you added it in error." : "Select courses from previous levels that you have not cleared."}</div>
             {carryOn.count ? (
               <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
                 <span><b className="tnum">{carryOn.count}</b> carry-over course{carryOn.count === 1 ? "" : "s"}</span>

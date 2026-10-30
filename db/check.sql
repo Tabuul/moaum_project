@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 537
+\set EXPECTED 538
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -30318,6 +30318,95 @@ BEGIN
     PERFORM pg_temp.assert('V709: a migrated postgraduate applicant opens on a number first and chooses their own — the student account too, the chosen password carried',
         coalesce(first_mig AND NOT first_pub AND sfirst_mig AND NOT sfirst_pub AND carried AND kept AND sealed = 0, false),
         format('applicant first %s/%s | student first %s/%s | carried %s | kept after sign-in %s | sealed %s', first_mig, first_pub, sfirst_mig, sfirst_pub, carried, kept, sealed));
+END $$;
+
+-- ── V711. Spillover students are free of the automatic GST fee, and free to add electives (the University's word of 30 October
+--          2026: "free all spill over student from auto gst fee payment unless they add it as carry over"; "also allow spill over
+--          students to add elective courses"). A made-up four-year programme binds an EPS course at 400 Level: a student at 400 Level
+--          in SP1 (the level basis) does not owe it — not owed in spillover, shown nothing to pay for, offered it as a carry-over to
+--          pay for when added — while a student at 400 Level within the programme's years owes it as before; added to the spillover
+--          student's registration it is owed. The spillover student chooses an elective and a core course: the elective stays an
+--          elective, the core course becomes a carry-over (V674). On the cohort basis a student in a spillover state below the final
+--          level is in spillover too. The block undoes its writes ──
+DO $$
+DECLARE
+    v_dept text; v_fac text; prog text; cur text := '9711/9712'; past text := '9706/9707';
+    sa uuid := gen_random_uuid(); sb uuid := gen_random_uuid(); sc uuid := gen_random_uuid(); r1 uuid := gen_random_uuid();
+    o_eps uuid := gen_random_uuid(); o_core uuid := gen_random_uuid(); o_elec uuid := gen_random_uuid();
+    a_row text; b_row text; a_el text; b_el text; a_pay int; b_pay int; a_carry int; b_carry int; desk text; a_reg text; a_req text;
+    t_elec text; t_core text; c_cohort text; c_level text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V711', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+      (gen_random_uuid(), past, '9706-10-01', '9707-09-30', 'CLOSED'),
+      (gen_random_uuid(), cur, '9711-10-01', '9712-09-30', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9711/01' WHERE name = cur;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), cur, 1, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V711', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (sa, 'MOAUM/ADM/06/711001', 'MOAUM/ZZE/06/7111', 'CHECKV711', 'Spillover', prog, 'UTME', past, 100, 400, 'ACTIVE', now()),
+        (sb, 'MOAUM/ADM/06/711002', 'MOAUM/ZZE/06/7112', 'CHECKV711', 'Within', prog, 'UTME', past, 100, 400, 'ACTIVE', now()),
+        (sc, 'MOAUM/ADM/06/711003', 'MOAUM/ZZE/06/7113', 'CHECKV711', 'Cohort', prog, 'UTME', past, 100, 300, 'ACTIVE', now());
+    -- the cohort engine's reading: the first and the third past the programme's years, the second within them
+    UPDATE people.academic_position SET spillover_state = 'SPILLOVER_YEAR_1' WHERE student_id IN (sa, sc);
+    UPDATE people.academic_position SET spillover_state = 'NORMAL' WHERE student_id = sb;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+        ('ZZE 402', 'Check V711 Entrepreneurship', 2, 1, 400, v_dept, 'GST', 'LIVE', 'EPS'),
+        ('ZZE 401', 'Check V711 Core', 3, 1, 400, v_dept, 'Core', 'LIVE', NULL),
+        ('ZZE 411', 'Check V711 Elective', 2, 1, 400, v_dept, 'Elective', 'LIVE', NULL),
+        ('ZZE 302', 'Check V711 Lower Entrepreneurship', 2, 1, 300, v_dept, 'GST', 'LIVE', 'EPS');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZE 402', prog, 400, 'GST'), ('ZZE 401', prog, 400, 'Core'), ('ZZE 411', prog, 400, 'Elective'), ('ZZE 302', prog, 300, 'GST');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_eps, 'ZZE 402', cur, 1), (o_core, 'ZZE 401', cur, 1), (o_elec, 'ZZE 411', cur, 1), (gen_random_uuid(), 'ZZE 302', cur, 1);
+
+    -- not owed in spillover; owed within the programme's years
+    SELECT x.source || '/' || x.counts || '/' || x.status INTO a_row FROM finance.gst_eps_rows(cur, sa) x WHERE x.course_code = 'ZZE 402';
+    SELECT x.source || '/' || x.counts || '/' || x.status INTO b_row FROM finance.gst_eps_rows(cur, sb) x WHERE x.course_code = 'ZZE 402';
+    SELECT e.required || '/' || e.eps_reason INTO a_el FROM finance.gst_eps_eligibility(sa, cur) e;
+    SELECT e.required || '/' || e.eps_reason INTO b_el FROM finance.gst_eps_eligibility(sb, cur) e;
+    SELECT p.eps_reason INTO desk FROM finance.gst_population(cur, NULL) p WHERE p.student_id = sa;
+    -- shown nothing to pay for; offered it as a carry-over, paid for when added
+    SELECT count(*) INTO a_pay FROM finance.gst_payable_courses(sa, cur);
+    SELECT count(*) INTO b_pay FROM finance.gst_payable_courses(sb, cur);
+    SELECT count(*) INTO a_carry FROM finance.gst_carry_payable(sa, cur) c WHERE c.course_code = 'ZZE 402';
+    SELECT count(*) INTO b_carry FROM finance.gst_carry_payable(sb, cur) c WHERE c.course_code = 'ZZE 402';
+
+    -- the spillover student chooses an elective and a core course on the draft: the elective stays an elective (V711), the core a
+    -- carry-over (V674); the EPS course added as a carry-over is owed
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (r1, sa, cur, 1, 400, 'DRAFT');
+    PERFORM registration.student_choose(r1, ARRAY[o_elec, o_core]);
+    SELECT e.entry_type || '/' || coalesce(e.added_as, '-') INTO t_elec FROM registration.entry e WHERE e.registration_id = r1 AND e.offering_id = o_elec;
+    SELECT e.entry_type || '/' || coalesce(e.added_as, '-') INTO t_core FROM registration.entry e WHERE e.registration_id = r1 AND e.offering_id = o_core;
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, added_as) VALUES (r1, o_eps, 2, 'CARRYOVER', 'REGISTERED', 'CARRY_OVER_DECLARED');
+    SELECT x.counts || '/' || x.status INTO a_reg FROM finance.gst_eps_rows(cur, sa) x WHERE x.course_code = 'ZZE 402';
+    SELECT e.eps_required || '/' || e.eps_reason INTO a_req FROM finance.gst_eps_eligibility(sa, cur) e;
+
+    -- the cohort basis: in a spillover state below the final level is in spillover (the level basis reads the level)
+    SELECT x.counts || '/' || x.status INTO c_level FROM finance.gst_eps_rows(cur, sc) x WHERE x.course_code = 'ZZE 302';
+    PERFORM set_config('moaum.spill_basis', 'COHORT', true);
+    SELECT x.counts || '/' || x.status INTO c_cohort FROM finance.gst_eps_rows(cur, sc) x WHERE x.course_code = 'ZZE 302';
+    RAISE EXCEPTION 'CHECK_V711_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V711_UNDONE' THEN RAISE; END IF;
+  END;
+
+  PERFORM pg_temp.assert('V711: a spillover student owes no GST/EPS course of their level until they add it, and an elective they choose stays an elective',
+      coalesce(a_row = 'COURSE_OFFERING/false/NOT_OWED_SPILLOVER' AND b_row = 'COURSE_OFFERING/true/OUTSTANDING'
+               AND a_el = 'false/EPS_SPILLOVER_NOT_OWED' AND b_el = 'true/EPS_REQUIRED_COURSE_OFFERING' AND desk = 'EPS_SPILLOVER_NOT_OWED'
+               AND a_pay = 0 AND b_pay = 1 AND a_carry = 1 AND b_carry = 0
+               AND t_elec = 'ELECTIVE/-' AND t_core = 'CARRYOVER/CARRY_OVER_DECLARED'
+               AND a_reg = 'true/REGISTERED' AND a_req = 'true/EPS_REQUIRED_REGISTERED'
+               AND c_level = 'true/OUTSTANDING' AND c_cohort = 'false/NOT_OWED_SPILLOVER', false),
+      format('spillover %s, within %s | eligibility %s / %s | desk %s | payable %s/%s | carry %s/%s | elective %s, core %s | added %s, %s | cohort-state student by level %s, by cohort %s',
+             a_row, b_row, a_el, b_el, desk, a_pay, b_pay, a_carry, b_carry, t_elec, t_core, a_reg, a_req, c_level, c_cohort));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
