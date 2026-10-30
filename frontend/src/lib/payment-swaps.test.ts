@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evidenceRefusal, isOutstanding, readSwapFilters, reasonOk, refusalParts, swapQuery, EMPTY_SWAP_FILTERS, KIND_WORDS } from "./payment-swaps.ts";
+import { evidenceRefusal, isOutstanding, movesWallet, outstandingWords, readSwapFilters, reasonOk, refusalParts, swapQuery, EMPTY_SWAP_FILTERS, EVENT_WORDS, KIND_WORDS } from "./payment-swaps.ts";
 
 test("an old-portal outstanding-fees payment is told apart from school fees (V660)", () => {
   assert.equal(isOutstanding({ kind: "OUTSTANDING_FEES" }), true);
@@ -40,4 +40,15 @@ test("evidence is a PDF, JPEG or PNG of up to 5 MB", () => {
   assert.equal(evidenceRefusal({ type: "application/pdf", size: 1000 }), null);
   assert.equal(evidenceRefusal({ type: "image/png", size: 6 * 1024 * 1024 }), "Evidence is up to 5 MB.");
   assert.equal(evidenceRefusal({ type: "application/msword", size: 10 }), "Evidence is a PDF, JPEG or PNG file.");
+});
+
+test("V708: an outstanding-fees payment credited to the wallet moves its wallet credit; one verified moves its desk record", () => {
+  assert.equal(movesWallet({ outstandingStatus: "CREDITED" }), true);
+  assert.equal(movesWallet({ outstandingStatus: "VERIFIED" }), false);
+  assert.equal(movesWallet({ outstandingStatus: "WAITING" }), false);
+  assert.equal(movesWallet(null), false);
+  assert.match(outstandingWords("CREDITED"), /wallet credit moves with it/);
+  assert.match(outstandingWords("VERIFIED"), /record on the Outstanding fees payments desk moves with it/);
+  assert.match(outstandingWords("WAITING"), /never against the session's school fees/);
+  assert.equal(EVENT_WORDS.PAYMENT_WALLET_CREDIT_MOVED, "Wallet credit moved to the student it belongs to");
 });

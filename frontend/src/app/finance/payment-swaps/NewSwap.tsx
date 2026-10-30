@@ -13,10 +13,14 @@ import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notifyProblem } from "@/components/proto/Toast";
 import { formatDocDateTime } from "@/lib/document/institution";
-import { clearsWord, evidenceRefusal, isOutstanding, reasonOk, refusalParts, studentLine, type FoundPayment, type FoundStudent, type SwapAccount, type SwapCheck, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
+import { clearsWord, evidenceRefusal, isOutstanding, movesWallet, outstandingWords, reasonOk, refusalParts, studentLine, type FoundPayment, type FoundStudent, type SwapAccount, type SwapCheck, type SwapDetail, type SwapProfile } from "@/lib/payment-swaps";
 import { fileAsDataUrl, swapGet, swapPost } from "./swap-call";
 
-function Account({ title, profile, account, after, outstanding }: { title: string; profile?: SwapProfile; account?: SwapAccount; after?: number | null; outstanding?: boolean }) {
+function Account({ title, profile, account, after, outstanding, walletAfter }: {
+  title: string; profile?: SwapProfile; account?: SwapAccount; after?: number | null; outstanding?: boolean;
+  /** V708: the wallet after the swap, where the payment's wallet credit moves with it */
+  walletAfter?: number | null;
+}) {
   if (!profile || !account) return null;
   return (
     <div className="card" style={{ padding: 12, minWidth: 0 }}>
@@ -29,6 +33,8 @@ function Account({ title, profile, account, after, outstanding }: { title: strin
         <tbody>
           {outstanding ? <tr><td>Outstanding-fees payments</td><td className="num tnum"><b>{money(Number(account.outstandingPaid ?? 0))}</b></td></tr> : null}
           {outstanding && after != null ? <tr><td>Outstanding-fees payments after the swap</td><td className="num tnum"><b>{money(after)}</b></td></tr> : null}
+          {walletAfter != null ? <tr><td>Wallet</td><td className="num tnum">{money(Number(account.wallet ?? 0))}</td></tr> : null}
+          {walletAfter != null ? <tr><td>Wallet after the swap</td><td className="num tnum"><b>{money(walletAfter)}</b></td></tr> : null}
           <tr><td>School fees due</td><td className="num tnum">{money(Number(account.due))}</td></tr>
           <tr><td>{outstanding ? "School fees paid (unchanged by the swap)" : "Paid"}</td><td className="num tnum">{money(Number(account.paid))}</td></tr>
           <tr><td>Balance</td><td className="num tnum"><b>{money(Number(account.balance))}</b></td></tr>
@@ -46,10 +52,14 @@ export function SwapAccounts({ check }: { check: SwapCheck }) {
   // V660: an outstanding-fees payment moves the outstanding-fees payments; a school-fees payment the school fees paid
   const out = !!check.payment && isOutstanding(check.payment);
   const figure = (a: SwapAccount) => Number(out ? a.outstandingPaid ?? 0 : a.paid);
+  // V708: a payment credited to the wallet takes its wallet credit with it
+  const wallet = out && movesWallet(check.payment);
   return (
     <div className="grid grid--2">
-      <Account title="Credited to (wrong student)" profile={check.fromProfile} account={check.fromAccount} outstanding={out} after={check.fromAccount ? figure(check.fromAccount) - amount : null} />
-      <Account title="Belongs to (correct student)" profile={check.toProfile} account={check.toAccount} outstanding={out} after={check.toAccount ? figure(check.toAccount) + amount : null} />
+      <Account title="Credited to (wrong student)" profile={check.fromProfile} account={check.fromAccount} outstanding={out} after={check.fromAccount ? figure(check.fromAccount) - amount : null}
+        walletAfter={wallet && check.fromAccount ? Number(check.fromAccount.wallet ?? 0) - amount : null} />
+      <Account title="Belongs to (correct student)" profile={check.toProfile} account={check.toAccount} outstanding={out} after={check.toAccount ? figure(check.toAccount) + amount : null}
+        walletAfter={wallet && check.toAccount ? Number(check.toAccount.wallet ?? 0) + amount : null} />
     </div>
   );
 }
@@ -157,7 +167,7 @@ export function NewSwap({ onClose, onDone }: { onClose: () => void; onDone: (d: 
         <Note kind="ok" title={`${payment.reference} · ${money(Number(payment.amount))} · ${payment.session}`}
           action={<Btn kind="ghost" onClick={() => { setPayment(null); setCheck(null); setStudents(null); }}>Change</Btn>}>
           {payment.purpose}, credited to {studentLine(payment)}{payment.confirmed_at ? `, confirmed ${formatDocDateTime(payment.confirmed_at)}` : ""}. The whole payment is swapped, never part of it.
-          {isOutstanding(payment) ? " An old-portal outstanding-fees payment: it moves with the outstanding-fees payments, never against the session's school fees; once the Bursary has verified or credited it for the wallet it is not swapped." : ""}
+          {isOutstanding(payment) ? ` An old-portal outstanding-fees payment. ${outstandingWords(check?.payment?.outstandingStatus)}` : ""}
         </Note>
       ) : null}
 

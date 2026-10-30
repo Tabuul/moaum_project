@@ -26,6 +26,8 @@ function Side({ title, profile, now, before, after, outstanding }: { title: stri
     ["Balance", (a) => <b>{money(Number(a.balance))}</b>],
     ["Clears registration", (a) => clearsWord(a.clearsRegistration)],
     ["Clears examination", (a) => clearsWord(a.clearsExamination)],
+    // V708: the wallet, where an outstanding-fees payment credited to it took its wallet credit along
+    ...(outstanding && now.wallet != null ? [["Wallet", (a: SwapAccount) => (a.wallet == null ? "—" : money(Number(a.wallet)))]] as [string, (a: SwapAccount) => React.ReactNode][] : []),
   ];
   return (
     <div className="card" style={{ padding: 12, minWidth: 0 }}>

@@ -99,6 +99,29 @@ swapped through the same screen, the same two officers and the same reversal. Th
 `payment.kind` with `payment.outstandingStatus` (WAITING, RETURNED, REJECTED, VERIFIED, CREDITED), the search returns `kind`, and a
 completed swap's before and after states name the kind.
 
+## Verified or credited outstanding-fees payments (V708, 30 October 2026)
+
+The University's word: "allow swap for Old-portal outstanding fees too", against a payment the swap refused because it was already
+credited to a wallet (`LEGACY-OUTSTANDING/2026/000005`). V660's two wallet-desk refusals are lifted:
+
+- **Verified for the wallet.** The payment swaps like a waiting one. Its record on the Outstanding fees payments desk follows it to the
+  owner, still verified, and the Bursary's credit, when it comes, goes to the owner's wallet.
+- **Credited to the wallet.** The payment swaps with its wallet credit. The same wallet entry moves from the credited student's wallet
+  to the owner's (`finance.wallet_entry.student_id`), and its note says by which swap. This mirrors how the swap moves the payment
+  itself. The ledger books the credit by account (3900 to 2100), never by student, so nothing is posted again and the bank
+  reconciliation is untouched.
+  - The swap is refused while the credited student's wallet holds less than the payment, because the money was used from it
+    (`SWAP_OUTSTANDING_SPENT`, with what the wallet holds). The Bursary settles that first.
+  - It is also refused when the credit no longer stands on that wallet as credited (`SWAP_OUTSTANDING_WALLET`).
+  - A swap that was waiting when the wallet was used fails on the decision for the same reason.
+- **On the decision.** `finance.decide_payment_swap` holds both wallets (the wallet's own lock) and reconciles them too: the credited
+  student's wallet goes down and the owner's goes up by exactly the amount, or nothing changes. It writes `PAYMENT_WALLET_CREDIT_MOVED`
+  on the timeline, and `finance.payment_swap.wallet_entry_id` names the credit moved. The Bursar's reversal moves the credit back the
+  same way.
+
+The accounts on the screen carry each student's wallet (`wallet`). For a credited payment, the new swap shows "Wallet" and "Wallet
+after the swap" on both sides; the check returns `payment.walletCredit` (the batch and the credited student's wallet now).
+
 ## The workflow
 
 1. **Initiate** (`finance.initiate_payment_swap`). The officer chooses the payment and the target student from search results. A typed-in student ID is never trusted. The server loads the amount, the session and both students itself. The officer gives a reason of 20 characters or more (not "wrong", "fix", "swap" and the like), the evidence, and the confirmation "I have verified that this payment belongs to the target student". The payment is locked and checked, and the swap waits as `PENDING_APPROVAL`.
@@ -179,3 +202,8 @@ Each notice gives the reference, the amount, the session and the correction numb
   - the student's own list without the other student's number
 - `check.sql` block V527, in the database: eligibility, refusals, separation of duties, execution, reconciliation, no second swap, the College Finance Controller refused, and the reversal.
 - `lib/payment-swaps.test.ts`: refusal wording, the reason test, filters and evidence types.
+- V708: `check.sql` block V708, with made-up students. A verified payment swaps and is then credited to the owner's wallet. A credited
+  one swaps with its wallet credit: the same entry, both wallets reconciled, no wallet entry written, the move on the timeline. One whose
+  wallet was used is refused, and a swap of it waiting fails on the decision. The reversal moves the credit back. V660's block now
+  expects the verified and credited payments to swap. `PaymentSwapIT`: a payment credited to A's wallet is swapped through the API with
+  its wallet credit. `lib/payment-swaps.test.ts`: the wallet words.

@@ -208,4 +208,68 @@ class PaymentSwapIT {
             });
         }
     }
+
+    /** V708: an OUTSTANDING FEES payment the Bursary already credited to A's wallet (V631) is free to swap, with its wallet credit: the
+     *  check shows both wallets, and once a Bursar officer approves, the same wallet entry stands on B's wallet — A's wallet down and
+     *  B's up by the amount — its desk record on B, and the swap says it moved the credit */
+    @Test
+    void anOutstandingFeesPaymentCreditedToTheWalletIsSwappedWithItsWalletCredit() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        int y = it.freeYear(3100, 3800);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        UUID a = it.student(it.freeSurname("ZZSWAPWA"), "C00023", it.freeNumber("MOAUM/ADM/26/9", 5), it.freeNumber("MOAU/SC/CSC/26/9", 5), 100);
+        UUID b = it.student(it.freeSurname("ZZSWAPWB"), "C00023", it.freeNumber("MOAUM/ADM/26/9", 5), it.freeNumber("MOAU/SC/CSC/26/9", 5), 100);
+        String ref = "MOAUM-LEG-ZZIT708-" + y + "-S1-OUTSTANDINGFEES";
+        UUID officer = it.person(it.freeNumber("ZZ-SWAPW-", 6), "ZZSWAPWSAO");
+        UUID crediter = it.person(it.freeNumber("ZZ-SWAPW-", 6), "ZZSWAPWCREDIT");
+        UUID payment = it.db(() -> jdbc.sql("""
+                INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                VALUES (:a, :s, :r, 'OUTSTANDING FEES (legacy) · semester 1', 4000, now(), now(), :by, 'Legacy', :r, 'IT V708 old ref')
+                RETURNING id
+                """).param("a", a).param("s", session).param("r", ref).param("by", officer).query(UUID.class).single());
+        // the wallet desk (V631): verified by the Students Account Officer, credited to A's wallet by a Bursar officer
+        it.db(() -> {
+            jdbc.sql("SELECT set_config('moaum.actor_id', :p, true), set_config('moaum.actor_office', 'studentaccounts', true)").param("p", officer.toString()).query().singleRow();
+            jdbc.sql("SELECT finance.legacy_outstanding_payment_verify(ARRAY[:p]::uuid[], 'checked against the old portal statement')").param("p", payment).query().listOfRows();
+            jdbc.sql("SELECT set_config('moaum.actor_id', :p, true), set_config('moaum.actor_office', 'bursar', true)").param("p", crediter.toString()).query().singleRow();
+            jdbc.sql("SELECT * FROM finance.legacy_outstanding_payment_credit(ARRAY[:p]::uuid[], 'IT V708')").param("p", payment).query().listOfRows();
+            return null;
+        });
+        UUID entry = jdbc.sql("SELECT wallet_entry_id FROM finance.legacy_outstanding_payment WHERE payment_id = :p").param("p", payment).query(UUID.class).single();
+        String sao = TestTokens.token(officer, List.of("studentaccounts"));
+        String bur = TestTokens.token(it.person(it.freeNumber("ZZ-SWAPW-", 6), "ZZSWAPWBURSAR"), List.of("bursar"));
+        try {
+            List<Map> found = it.getList(sao, BASE + "/payments?q=" + ref).getBody();
+            assertThat(found).singleElement().satisfies(p -> assertThat(p).as(String.valueOf(p)).containsEntry("eligible", true));
+            ResponseEntity<Map> check = it.get(sao, BASE + "/check?payment=" + payment + "&to=" + b);
+            assertThat(check.getBody()).as(String.valueOf(check.getBody())).containsEntry("ok", true);
+            Map paid = (Map) check.getBody().get("payment");
+            assertThat(paid).containsEntry("outstandingStatus", "CREDITED");
+            assertThat(((Number) ((Map) paid.get("walletCredit")).get("walletBalance")).doubleValue()).isEqualTo(4000);
+            assertThat(((Number) ((Map) check.getBody().get("fromAccount")).get("wallet")).doubleValue()).isEqualTo(4000);
+            assertThat(((Number) ((Map) check.getBody().get("toAccount")).get("wallet")).doubleValue()).isEqualTo(0);
+
+            Map swap = (Map) it.call(sao, HttpMethod.POST, BASE, Map.of("payment", payment, "to", b,
+                    "reason", "Credited to A's wallet in error: the old portal statement names B", "confirmed", true)).getBody().get("swap");
+            assertThat(swap).as(String.valueOf(swap)).containsEntry("status", "PENDING_APPROVAL");
+            ResponseEntity<Map> done = it.call(bur, HttpMethod.POST, BASE + "/" + swap.get("id") + "/decide", Map.of("approve", true, "confirmed", true, "note", "Checked"));
+            assertThat((Map) done.getBody().get("result")).as(String.valueOf(done.getBody())).containsEntry("status", "COMPLETED").containsEntry("walletMoved", true);
+            assertThat(jdbc.sql("SELECT student_id FROM finance.wallet_entry WHERE id = :e").param("e", entry).query(UUID.class).single()).as("the same entry, on B").isEqualTo(b);
+            assertThat(jdbc.sql("SELECT finance.wallet_balance(:s)").param("s", a).query(Double.class).single()).isZero();
+            assertThat(jdbc.sql("SELECT finance.wallet_balance(:s)").param("s", b).query(Double.class).single()).isEqualTo(4000);
+            assertThat(jdbc.sql("SELECT status || '/' || (student_id = :b) FROM finance.legacy_outstanding_payment WHERE payment_id = :p")
+                    .param("b", b).param("p", payment).query(String.class).single()).isEqualTo("CREDITED/true");
+            List<Map> events = (List<Map>) it.get(bur, BASE + "/" + swap.get("id")).getBody().get("events");
+            assertThat(events).extracting(e -> e.get("action")).contains("PAYMENT_WALLET_CREDIT_MOVED");
+        } finally {
+            it.db(() -> {
+                jdbc.sql("SELECT set_config('moaum.maintenance', 'on', true)").query().singleRow();
+                jdbc.sql("DELETE FROM finance.payment_swap WHERE payment_id = :p").param("p", payment).update();
+                jdbc.sql("DELETE FROM finance.wallet_entry WHERE id = :e").param("e", entry).update();
+                jdbc.sql("DELETE FROM finance.payment_reference WHERE id = :p").param("p", payment).update();
+                return null;
+            });
+        }
+    }
 }

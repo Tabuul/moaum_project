@@ -9,6 +9,8 @@ export interface SwapAccount {
   due: number; paid: number; balance: number; clearsRegistration?: boolean | null; clearsExamination?: boolean | null;
   /** V660: the old portal's outstanding-fees payments credited to the student in the session */
   outstandingPaid?: number | null;
+  /** V708: the student's wallet balance (an outstanding-fees payment credited to the wallet moves its credit with it) */
+  wallet?: number | null;
 }
 
 /** V660: what a swap moves — a school-fees payment, or one of the old portal's OUTSTANDING FEES payments (never counted against the
@@ -36,6 +38,8 @@ export interface SwapPayment {
   id: string; reference: string; amount: number; session: string; purpose: string; channel?: string | null; receiptNo?: string | null;
   confirmedAt?: string | null; generatedAt?: string | null; note?: string | null; legacy?: boolean; legacyPayref?: string | null;
   kind?: SwapKind | null; outstandingStatus?: string | null;
+  /** V708: an outstanding-fees payment credited to the wallet: the credit's batch and the credited student's wallet now */
+  walletCredit?: { batchRef?: string | null; walletBalance?: number | null } | null;
 }
 
 export interface SwapCheck {
@@ -107,7 +111,20 @@ export const EVENT_WORDS: Record<string, string> = {
   PAYMENT_SWAP_COMPLETED: "Swap completed",
   PAYMENT_SWAP_FAILED: "Swap failed",
   PAYMENT_SWAP_REVERSED: "Swap reversed",
+  PAYMENT_WALLET_CREDIT_MOVED: "Wallet credit moved to the student it belongs to",
 };
+
+/** V708: what a swap does with an old-portal outstanding-fees payment the Bursary has acted on for the wallet (V631) */
+export function outstandingWords(status: string | null | undefined): string {
+  if (status === "CREDITED") return "It is already credited to the wallet: the wallet credit moves with it, from the credited student's wallet to the owner's.";
+  if (status === "VERIFIED") return "It is verified for the wallet: its record on the Outstanding fees payments desk moves with it, and the Bursary's credit goes to the owner's wallet.";
+  return "It moves with the outstanding-fees payments, never against the session's school fees.";
+}
+
+/** V708: whether the swap moves a wallet credit too (the payment credited to the wallet) */
+export function movesWallet(p: { outstandingStatus?: string | null } | null | undefined): boolean {
+  return p?.outstandingStatus === "CREDITED";
+}
 
 export const FLAG_WORDS: Record<string, string> = {
   FROM_REGISTRATION_UNCLEARED: "The credited student has a course registration this session that their fees no longer clear — for the Bursary to follow up",
