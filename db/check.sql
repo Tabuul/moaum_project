@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 542
+\set EXPECTED 543
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -30817,6 +30817,129 @@ BEGIN
                      || ' || (2) owed 20000.00, reference t for 20000.00, the first retired t; paid: owed 0.00; again WALLET_NOTHING_OWED'
                      || ' || (3) rows 1=RESET 2=NOT_FOUND, run UNDERGRADUATE 2/1/1 Applicants at the desk could not sign in || (4) iam 1 old 0 || (5) gone t', false),
       msg);
+END $$;
+
+-- ── V715. Postgraduate record management (the University's master prompt of 30 October 2026). Made-up applicants of a made-up
+--          session and two postgraduate programmes: the School corrects an applicant's surname, e-mail (critical: confirmed), phone
+--          (+234 kept in its 0 form) and programme (the entry level follows, the specialisation of the old programme dropped),
+--          all in one save under PG-EDIT references and one application event; a save on the old reading is refused, so is a reason
+--          too thin, an unconfirmed critical change, another applicant's e-mail, a programme once the School decided, and the names
+--          of an applicant on the register; the previous degrees replaced as one change; the search finds the applicant by the new
+--          number, the old portal's number and the e-mail, and a postgraduate student by the matriculation number, never an
+--          undergraduate; the Director of ICT holds the student edit page's ordinary permissions for the postgraduate student and none
+--          for the undergraduate (nor the matriculation number for either); the grants read as granted. The block undoes its writes ──
+DO $$
+DECLARE s0 text := '9715/9716'; who uuid := gen_random_uuid(); dept text; fac text; prog1 text := 'C96751'; prog2 text := 'C96752';
+        app1 uuid; app2 uuid; app3 uuid; st_pg uuid := gen_random_uuid(); st_ug uuid := gen_random_uuid(); spec uuid := gen_random_uuid();
+        v1 text; saved jsonb; after record; events int; edits int; v_hist int;
+        r_stale text; r_reason text; r_confirm text; r_email text; r_decided text; r_register text; r_perm text;
+        degrees jsonb; found text; found_student text; found_ug int; perms_pg text[]; perms_ug text[]; perms_sc text[]; grants text; no1 text; no3 text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'CHECK V715', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHK/V715/S', 'CHECKV715', 'School', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9715-10-01', '9716-08-31');
+        SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research) VALUES
+            (prog1, 'M.Sc. Record Check One', dept, fac, 'POST GRADUATE', 0, 'MSC', false),
+            (prog2, 'Ph.D. Record Check Two', dept, fac, 'POST GRADUATE', 0, 'PHD', true);
+        INSERT INTO catalogue.programme_specialisation (id, programme_code, code, name, active, created_by, created_office)
+        VALUES (spec, prog1, 'RC1', 'Record Check Specialisation', true, who, 'pgschool');
+        SELECT x.application_id INTO app1 FROM admissions.pg_apply(jsonb_build_object('session', s0, 'programme', prog1, 'surname', 'CHECKVSEVENONEFIVE', 'otherNames', 'Correct Me',
+               'dob', '1985-01-01', 'phone', '08030007151', 'email', 'check.v715.one@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        SELECT x.application_id INTO app2 FROM admissions.pg_apply(jsonb_build_object('session', s0, 'programme', prog1, 'surname', 'CHECKVSEVENONEFIVE', 'otherNames', 'Decided Two',
+               'dob', '1986-02-02', 'phone', '08030007152', 'email', 'check.v715.two@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        SELECT x.application_id INTO app3 FROM admissions.pg_apply(jsonb_build_object('session', s0, 'programme', prog1, 'surname', 'CHECKVSEVENONEFIVE', 'otherNames', 'Registered Three',
+               'dob', '1987-03-03', 'phone', '08030007153', 'email', 'check.v715.three@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+        UPDATE admissions.pg_application SET specialisation_id = spec WHERE id = app1;
+        SELECT a.application_no INTO no1 FROM admissions.pg_application a WHERE a.id = app1;
+        SELECT a.application_no INTO no3 FROM admissions.pg_application a WHERE a.id = app3;
+        INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id, decided_on_old_portal)
+        SELECT app1, 'S00297150000000001', (admissions.pg_migration_open('APPLICANTS', 'v715.xlsx', NULL, 1, false) ->> 'id')::uuid, false;
+        UPDATE admissions.pg_application SET state = 'OFFERED', spgs_decided_at = now() WHERE id = app2;
+        -- a postgraduate student on the register (the third applicant's), and an undergraduate
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+            (st_pg, 'MOAUM/ADM/15/715001', 'MOAUM/ZZR/15/7151', 'CHECKVSEVENONEFIVE', 'Registered Three', prog1, 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()),
+            (st_ug, 'MOAUM/ADM/15/715002', 'MOAUM/ZZR/15/7152', 'CHECKVSEVENONEFIVE', 'Undergraduate Four', 'C00023', 'UTME', s0, 100, 200, 'ACTIVE', now());
+        UPDATE admissions.pg_application SET state = 'ADMITTED', student_id = st_pg, admitted_at = now() WHERE id = app3;
+
+        -- the grants: the School and ICT hold the ordinary permissions and the School the decision; the Academic Office reads the history
+        grants := (admissions.pg_edit_permissions('pgschool') @> ARRAY['EDIT_PG_APPLICANT', 'EDIT_PG_STUDENT', 'EDIT_PG_ADMISSION_DECISION'])::text || '/'
+               || (admissions.pg_edit_permissions('ict') @> ARRAY['EDIT_PG_APPLICANT', 'EDIT_PG_STUDENT'])::text || '/'
+               || (NOT admissions.pg_edit_may('ict', 'EDIT_PG_ADMISSION_DECISION') AND NOT admissions.pg_edit_may('ict', 'EDIT_PG_FINANCIAL_RECORD'))::text || '/'
+               || array_to_string(admissions.pg_edit_permissions('academic'), ',') || '/' || cardinality(admissions.pg_edit_permissions('hod'));
+
+        -- one save: the surname, the e-mail (critical, confirmed), the phone in its 0 form, the programme (the level and the specialisation follow)
+        v1 := admissions.pg_edit_version(app1);
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app1, '{"surname": "Checkvsevenonefive"}', 'fix', v1, false, NULL); r_reason := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_reason := split_part(SQLERRM, ':', 1); END;
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app1, '{"email": "check.v715.new@example.test"}', 'The e-mail on the form was mistyped; the applicant wrote in', v1, false, NULL); r_confirm := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_confirm := split_part(SQLERRM, ':', 1); END;
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app1, '{"email": "check.v715.two@example.test"}', 'The e-mail on the form was mistyped; the applicant wrote in', v1, true, NULL); r_email := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_email := split_part(SQLERRM, ':', 1); END;
+        saved := admissions.pg_applicant_edit_apply(app1,
+                 jsonb_build_object('surname', 'Checkv Seven-One', 'email', 'Check.V715.New@example.test', 'phone', '+234 803 000 7159', 'programme_code', prog2),
+                 'The certificate presented at screening names the applicant so; the PhD was applied for, the M.Sc. ticked in error', v1, true, 'Degree certificate');
+        SELECT p.surname, p.email, p.phone, a.programme_code, a.entry_level, a.specialisation_id INTO after
+          FROM admissions.pg_application a JOIN admissions.pg_applicant p ON p.id = a.applicant_id WHERE a.id = app1;
+        edits := (SELECT count(*) FROM admissions.pg_applicant_edit e WHERE e.application_id = app1 AND e.reference LIKE 'PG-EDIT/%');
+        events := (SELECT count(*) FROM admissions.pg_application_event v WHERE v.application_id = app1 AND v.kind = 'RECORD_CORRECTED');
+        -- the old reading is refused; the previous degrees replaced as one change
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app1, '{"lga": "Makurdi"}', 'The local government area on the form was blank; the certificate of origin names it', v1, false, NULL); r_stale := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_stale := split_part(SQLERRM, ':', 1); END;
+        degrees := admissions.pg_prior_degrees_set(app1, '[{"kind": "FIRST", "institution": "A Check University", "award": "B.Sc. Computer Science", "class_of_degree": "Second Class Upper", "cgpa": "4.10", "year": "2015"},
+                                                         {"kind": "MASTERS", "institution": "A Check University", "award": "M.Sc. Computer Science", "year": "2019"}]',
+                                                   'The transcripts presented at screening list two degrees; the form carried one', admissions.pg_edit_version(app1));
+        v_hist := (SELECT count(*) FROM admissions.pg_applicant_edit_history(app1) h WHERE h.change_type = 'EDIT');
+        -- a programme once the School decided; the names of an applicant on the register; a permission the office lacks
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app2, jsonb_build_object('programme_code', prog2), 'The PhD was applied for, the M.Sc. ticked in error on the form', admissions.pg_edit_version(app2), true, NULL); r_decided := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_decided := split_part(SQLERRM, ':', 1); END;
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app3, '{"surname": "Changed"}', 'The certificate presented at screening names the applicant so', admissions.pg_edit_version(app3), false, NULL); r_register := 'ACCEPTED';
+        EXCEPTION WHEN check_violation THEN r_register := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'hod', true);
+        BEGIN
+            PERFORM admissions.pg_applicant_edit_apply(app1, '{"lga": "Gboko"}', 'The local government area on the form was blank; the certificate of origin names it', admissions.pg_edit_version(app1), false, NULL); r_perm := 'ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN r_perm := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+
+        -- the search: the applicant by the new number, the old portal's and the e-mail; the student by the matriculation number; never the undergraduate
+        found := (SELECT string_agg(r.kind || ':' || coalesce(r.application_no, '-'), ',' ORDER BY r.kind) FROM admissions.pg_record_search('check.v715.new@example.test', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10) r)
+              || ' | ' || (SELECT count(*) FROM admissions.pg_record_search('S00297150000000001', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10))
+              || ' | ' || (SELECT count(*) FROM admissions.pg_record_search(NULL, NULL, NULL, prog2, s0, 'APPLICANT', NULL, 'PHD', 10));
+        found_student := (SELECT r.kind || ':' || coalesce(r.matric_no, '-') || ':' || coalesce(r.application_no, '-') FROM admissions.pg_record_search('MOAUM/ZZR/15/7151', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10) r);
+        found_ug := (SELECT count(*) FROM admissions.pg_record_search('MOAUM/ZZR/15/7152', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 10));
+        -- the student edit page's permissions for the Director of ICT and the School: the postgraduate student's, never the undergraduate's
+        perms_pg := people.student_edit_permissions('ict', st_pg);
+        perms_ug := people.student_edit_permissions('ict', st_ug);
+        perms_sc := people.student_edit_permissions('pgschool', st_pg);
+        RAISE EXCEPTION 'CHECK_V715_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V715_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V715: postgraduate records corrected from one place — the applicant''s identity, contacts and programme checked, confirmed and kept; the search and the grants',
+        coalesce(grants = 'true/true/true/VIEW_PG_CHANGE_HISTORY/0'
+                 AND r_reason = 'PG_EDIT_REASON' AND r_confirm = 'PG_EDIT_CONFIRM' AND r_email = 'PG_EDIT_EMAIL_TAKEN'
+                 AND (saved->>'changed')::int = 4 AND after.surname = 'CHECKV SEVEN-ONE' AND after.email = 'check.v715.new@example.test' AND after.phone = '08030007159'
+                 AND after.programme_code = prog2 AND after.entry_level = 900 AND after.specialisation_id IS NULL AND edits = 4 AND events = 1
+                 AND r_stale = 'PG_EDIT_STALE' AND (degrees->>'degrees')::int = 2 AND v_hist = 5
+                 AND r_decided = 'PG_EDIT_DECIDED' AND r_register = 'PG_EDIT_ON_REGISTER' AND r_perm = 'PG_EDIT_PERMISSION'
+                 AND found = 'APPLICANT:' || no1 || ' | 1 | 1'
+                 AND found_student = 'STUDENT:MOAUM/ZZR/15/7151:' || no3 AND found_ug = 0
+                 AND perms_pg @> ARRAY['EDIT_STUDENT_BIODATA', 'EDIT_STUDENT_STATUS', 'EDIT_STUDENT_PROGRAMME', 'VIEW_STUDENT_EDIT_HISTORY']
+                 AND NOT perms_pg @> ARRAY['EDIT_STUDENT_MATRICULATION'] AND NOT perms_pg @> ARRAY['EDIT_STUDENT_LEVEL']
+                 AND perms_ug = ARRAY['VIEW_STUDENT_EDIT_HISTORY'] AND perms_sc @> ARRAY['EDIT_STUDENT_BIODATA'] AND NOT perms_sc @> ARRAY['EDIT_STUDENT_GRADUATION_STATUS'], false),
+        format('grants %s | reason %s confirm %s email %s | saved %s → %s/%s/%s/%s/%s/%s edits %s events %s | stale %s degrees %s history %s | decided %s register %s perm %s | found %s | student %s ug %s | ict pg %s ug %s | school %s',
+               grants, r_reason, r_confirm, r_email, saved->>'changed', after.surname, after.email, after.phone, after.programme_code, after.entry_level, after.specialisation_id, edits, events,
+               r_stale, degrees->>'degrees', v_hist, r_decided, r_register, r_perm, found, found_student, found_ug, array_to_string(perms_pg, ','), array_to_string(perms_ug, ','), cardinality(perms_sc)));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

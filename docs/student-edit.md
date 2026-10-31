@@ -16,8 +16,11 @@ classification, enrolment, academic history, graduation status, carry-over, spil
 |---|---|
 | Academic Office, Registrar, Deputy Registrar, Super Administrator | EDIT_STUDENT_ACADEMIC_RECORD |
 | Records, ICT, Platform administration, Audit, Deputy Audit | VIEW_STUDENT_EDIT_HISTORY |
+| School of Postgraduate Studies, PG Secretary, Director of ICT — for a postgraduate student (V715) | the ordinary permissions EDIT_PG_STUDENT carries: never the matriculation number, graduation, the level desk or the registration override |
 
-The API checks the active office against the table on every read and write (`people.student_edit_may`), and the student's reach
+The API checks the active office against the table on every read and write (`people.student_edit_may`; since V715 for the
+student in hand, `people.student_edit_permissions(office, student)`, which opens a postgraduate student's record to the offices holding
+EDIT_PG_STUDENT on `admissions.pg_edit_grant` — docs/pg-record-management.md), and the student's reach
 (`StudentReach`). The screen hides what the office may not do; the server refuses it regardless.
 
 ## The sections

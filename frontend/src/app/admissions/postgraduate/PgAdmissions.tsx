@@ -551,7 +551,9 @@ export function PgApplicationPage({ id, session, actingOffice, heading }: {
     <>
       <PageHead eyebrow="Postgraduate admissions" title={heading ? heading.name : "Postgraduate application"}
         description={heading ? `${heading.applicationNo} · ${heading.programme}` : undefined}
-        actions={<LinkBtn kind="secondary" href={back}>&larr; Back to applications</LinkBtn>} />
+        actions={<span className="row row--inline row--tight">
+          {["pgschool", "pgsecretary", "ict", "super"].includes(actingOffice ?? "") ? <LinkBtn kind="primary" href={`/admissions/postgraduate/applications/${id}/edit`}>Edit record</LinkBtn> : null}
+          <LinkBtn kind="secondary" href={back}>&larr; Back to applications</LinkBtn></span>} />
       <Panel title="Application" right={heading ? <span className="tnum sub2">{heading.applicationNo}</span> : null}>
         <DetailPanel id={id} office={actingOffice} onChanged={() => router.refresh()} />
       </Panel>

@@ -110,6 +110,10 @@ export const ROUTES: Record<string, string> = {
   "t/pgexaminers": "/admissions/postgraduate/examiners",
   "t/pgresearch": "/admissions/postgraduate/research",
   "t/pgstages": "/admissions/postgraduate/stages",   // V651
+  "t/pgrecords": "/admissions/postgraduate/records",   // V715
+  "t/pgapplicantedit": "/admissions/postgraduate/records?kind=APPLICANT",
+  "t/pgstudentedit": "/admissions/postgraduate/records?kind=STUDENT",
+  "t/pgedithistory": "/admissions/postgraduate/records/history",
   "t/pgsupervision": "/admissions/postgraduate/research?stage=REGISTERED",
   "t/pgproposals": "/admissions/postgraduate/research?stage=PROPOSAL_SUBMITTED",
   "t/pgseminars": "/admissions/postgraduate/research?stage=PROPOSAL_APPROVED",

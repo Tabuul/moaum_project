@@ -52,7 +52,7 @@ class StudentEditController {
 
     /** the offices that hold any grant on the page; each act is then checked against the office's own grants */
     private static final String HOLDERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super',"
-            + "'OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_audit','OFFICE_deputyaudit')";
+            + "'OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_audit','OFFICE_deputyaudit','OFFICE_pgschool','OFFICE_pgsecretary')";   // V715: the School, for postgraduate students
 
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
@@ -80,20 +80,32 @@ class StudentEditController {
         return AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
     }
 
+    /** the office's own grants (V642) */
     private List<String> permissions() {
         return jdbc.sql("SELECT unnest(people.student_edit_permissions(:o))").param("o", office()).query(String.class).list();
     }
 
-    private void need(String permission) {
-        if (!Boolean.TRUE.equals(jdbc.sql("SELECT people.student_edit_may(:o, :p)").param("o", office()).param("p", permission).query(Boolean.class).single())) {
-            throw new AccessDeniedException("Your office does not hold " + permission + " on the student edit page.");
+    /** V715: the office's grants for this student — a postgraduate student's record is the School's and the Director of ICT's too */
+    private List<String> permissions(UUID student) {
+        return jdbc.sql("SELECT unnest(people.student_edit_permissions(:o, :s))").param("o", office()).param("s", student).query(String.class).list();
+    }
+
+    private void need(String permission, UUID student) {
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT people.student_edit_may(:o, :p, :s)").param("o", office()).param("p", permission).param("s", student).query(Boolean.class).single())) {
+            throw new AccessDeniedException("Your office does not hold " + permission + " on the student edit page for this student.");
         }
     }
 
-    private void anyGrant() {
-        if (permissions().isEmpty()) {
-            throw new AccessDeniedException("Your office holds no grant on the student edit page.");
+    private void anyGrant(UUID student) {
+        if (permissions(student).isEmpty()) {
+            throw new AccessDeniedException("Your office holds no grant on the student edit page for this student.");
         }
+    }
+
+    /** V715: an office whose only way onto the page is EDIT_PG_STUDENT searches postgraduate students alone */
+    private boolean postgraduateOnly() {
+        return !permissions().contains("EDIT_STUDENT_ACADEMIC_RECORD")
+                && Boolean.TRUE.equals(jdbc.sql("SELECT admissions.pg_edit_may(:o, 'EDIT_PG_STUDENT')").param("o", office()).query(Boolean.class).single());
     }
 
     private void fresh(UUID id, String version) {
@@ -128,7 +140,10 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> search(@RequestParam String q) {
-        anyGrant();
+        boolean pgOnly = postgraduateOnly();
+        if (permissions().isEmpty() && !pgOnly) {
+            throw new AccessDeniedException("Your office holds no grant on the student edit page.");
+        }
         String t = q == null ? "" : q.trim();
         if (t.length() < 3) return List.of();
         String digits = t.replaceAll("[\\s()+-]", "");
@@ -141,7 +156,7 @@ class StudentEditController {
                   LEFT JOIN ref.programme p ON p.code = s.programme_code
                   LEFT JOIN people.student_classification c ON c.student_id = s.id
                   LEFT JOIN finance.programme_type pt ON pt.code = c.programme_type
-                 WHERE s.duplicate_of IS NULL AND (
+                 WHERE s.duplicate_of IS NULL AND (NOT :pg OR people.is_postgraduate(s.entry_mode, p.category)) AND (
                          s.id::text = lower(:q)
                       OR upper(s.matric_no) LIKE upper(:q) || '%' OR upper(s.jamb_reg_no) = upper(:q) OR upper(s.admission_no) = upper(:q)
                       OR EXISTS (SELECT 1 FROM admissions.application ap WHERE ap.candidate_id = s.candidate_id AND upper(ap.application_no) = upper(:q))
@@ -150,7 +165,7 @@ class StudentEditController {
                       OR (upper(coalesce(s.other_names, '')) || ' ' || upper(s.surname)) LIKE '%' || upper(:q) || '%')
                  ORDER BY (upper(s.matric_no) = upper(:q) OR upper(s.jamb_reg_no) = upper(:q)) DESC, s.surname, s.other_names
                  LIMIT 20
-                """).param("q", t).param("d", digits).query().listOfRows();
+                """).param("q", t).param("d", digits).param("pg", pgOnly).query().listOfRows();
     }
 
     /* ── the page: the record, its enrolments, the engine's reading, and what the office may do ── */
@@ -159,7 +174,7 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional(readOnly = true)
     Map<String, Object> page(@PathVariable UUID id) {
-        anyGrant();
+        anyGrant(id);
         reach.check(id);
         Map<String, Object> s = jdbc.sql("""
                 SELECT s.id, s.person_id, s.surname, s.other_names, s.sex, s.date_of_birth, s.matric_no, s.matriculated_at, s.jamb_reg_no, s.admission_no,
@@ -187,7 +202,17 @@ class StudentEditController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("student", s);
         out.put("version", jdbc.sql("SELECT people.student_edit_version(:s)").param("s", id).query(String.class).single());
-        out.put("permissions", permissions());
+        out.put("permissions", permissions(id));
+        // V715: a postgraduate student's application and stage — the applicant's record is corrected on its own page, the stage on the stages desk
+        out.put("postgraduate", jdbc.sql("""
+                SELECT a.id AS application_id, a.application_no, a.state AS application_state, l.legacy_application_no,
+                       x.qualification, x.stage_code, x.stage_label, x.cycle_no, x.start_session, x.cycle_status, x.category, x.is_extension, x.official
+                  FROM people.student s JOIN ref.programme g ON g.code = s.programme_code
+                  LEFT JOIN admissions.pg_application a ON a.student_id = s.id
+                  LEFT JOIN admissions.pg_legacy_application l ON l.application_id = a.id
+                  LEFT JOIN LATERAL (SELECT * FROM admissions.pg_stages_of(admissions.pg_current_session(), ARRAY[s.id]) LIMIT 1) x ON true
+                 WHERE s.id = :s AND people.is_postgraduate(s.entry_mode, g.category)
+                """).param("s", id).query().listOfRows().stream().findFirst().orElse(null));
         out.put("contact", jdbc.sql("SELECT phone, email, address FROM people.student_contact WHERE student_id = :s").param("s", id).query().listOfRows().stream().findFirst().orElse(null));
         // one person, every enrolment: an undergraduate record and a postgraduate one are corrected apart
         out.put("enrolments", s.get("person_id") == null ? List.of() : jdbc.sql("""
@@ -255,7 +280,7 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional
     Map<String, Object> edit(@PathVariable UUID id, @Valid @RequestBody Edit body) {
-        anyGrant();
+        anyGrant(id);
         reach.check(id);
         if (body.changes() == null || body.changes().isEmpty()) {
             throw new DomainRuleViolation("STU_EDIT_NOTHING", "Nothing was changed.", new DomainRuleViolation.Remedy("Change a value, then save.", "You"));
@@ -281,7 +306,7 @@ class StudentEditController {
         if (!List.of("PROGRESS", "CORRECTION", "SPILLOVER").contains(action)) {
             throw new DomainRuleViolation("LEVEL_ACTION", "A level is progressed (PROGRESS), corrected (CORRECTION) or set to a spillover year (SPILLOVER).");
         }
-        need("SPILLOVER".equals(action) ? "EDIT_STUDENT_SPILLOVER" : "EDIT_STUDENT_LEVEL");
+        need("SPILLOVER".equals(action) ? "EDIT_STUDENT_SPILLOVER" : "EDIT_STUDENT_LEVEL", id);
         reach.check(id);
         fresh(id, body.version());
         String reason = body.reason().trim();
@@ -341,7 +366,7 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional
     Map<String, Object> status(@PathVariable UUID id, @Valid @RequestBody StatusIn body) {
-        need("EDIT_STUDENT_STATUS");
+        need("EDIT_STUDENT_STATUS", id);
         reach.check(id);
         String to = body.to().trim().toUpperCase();
         if ("GRADUATED".equals(to)) {
@@ -383,7 +408,7 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional(readOnly = true)
     Map<String, Object> registration(@PathVariable UUID id, @RequestParam(required = false) String session, @RequestParam(defaultValue = "0") int semester) {
-        anyGrant();
+        anyGrant(id);
         reach.check(id);
         String ses = blank(session) == null ? portal.sessionFor(id) : session.trim();
         int sem = semester < 1 || semester > 3 ? portal.openSemester(id, ses) : semester;
@@ -427,7 +452,7 @@ class StudentEditController {
     @Transactional(readOnly = true)
     Map<String, Object> checks(@PathVariable UUID id, @RequestParam String session, @RequestParam @Min(1) @Max(3) int semester, @RequestParam UUID offering,
                                @RequestParam(defaultValue = "add") String verb) {
-        anyGrant();
+        anyGrant(id);
         reach.check(id);
         String fn = "drop".equalsIgnoreCase(verb) ? "registration.support_drop_checks" : "registration.support_add_checks";
         List<Map<String, Object>> rules = jdbc.sql("SELECT * FROM " + fn + "(:s, :ses, :sem, :o) ORDER BY ord")
@@ -447,7 +472,7 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> offerings(@PathVariable UUID id, @RequestParam String session, @RequestParam @Min(1) @Max(3) int semester, @RequestParam String q) {
-        anyGrant();
+        anyGrant(id);
         reach.check(id);
         String t = q == null ? "" : q.trim();
         if (t.length() < 2) return List.of();
@@ -468,14 +493,14 @@ class StudentEditController {
     @PreAuthorize(HOLDERS)
     @Transactional
     Map<String, Object> registrationAct(@PathVariable UUID id, @PathVariable String verb, @Valid @RequestBody RegIn body) {
-        need("EDIT_STUDENT_REGISTRATION");
+        need("EDIT_STUDENT_REGISTRATION", id);
         reach.check(id);
         String v = verb.toLowerCase();
         String reason = body.reason().trim();
         reasoned(reason);
         boolean override = Boolean.TRUE.equals(body.override());
         if (override) {
-            need("OVERRIDE_STUDENT_REGISTRATION");
+            need("OVERRIDE_STUDENT_REGISTRATION", id);
             if (blank(body.description()) == null || body.description().trim().length() < 15) {
                 throw new DomainRuleViolation("STU_EDIT_OVERRIDE", "An academic override says which rule is set aside and why — the migration, the historical record or the decision behind it.",
                         new DomainRuleViolation.Remedy("Describe the rule that fails and the justification for setting it aside.", "You"));
@@ -529,7 +554,7 @@ class StudentEditController {
                                 @RequestParam(required = false) String user, @RequestParam(required = false) String field,
                                 @RequestParam(required = false) String type, @RequestParam(required = false) String q,
                                 @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
-        need("VIEW_STUDENT_EDIT_HISTORY");
+        need("VIEW_STUDENT_EDIT_HISTORY", id);
         reach.check(id);
         int sz = Math.min(Math.max(size, 1), 200);
         int pg = Math.max(page, 0);

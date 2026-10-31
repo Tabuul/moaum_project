@@ -48,6 +48,12 @@ export interface EditPage {
   statusHistory: { from_status: string | null; to_status: string; instrument: string; effective_on: string; reason: string | null }[];
   programmeHistory: { at: string | null; session: string | null; kind: string; programme_code: string; programme: string; level: number | null; from_programme: string | null; reference: string | null }[];
   finance: Record<string, unknown> | null;
+  /** V715: a postgraduate student's application and stage; null for an undergraduate */
+  postgraduate?: {
+    application_id: string | null; application_no: string | null; application_state: string | null; legacy_application_no: string | null;
+    qualification: string | null; stage_code: string | null; stage_label: string | null; cycle_no: number | null; start_session: string | null;
+    cycle_status: string | null; category: string | null; is_extension: boolean | null; official: boolean | null;
+  } | null;
   lists: {
     sessions: { name: string; state: string }[];
     entryModes: string[];

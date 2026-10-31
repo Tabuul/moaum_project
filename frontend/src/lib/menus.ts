@@ -1719,6 +1719,10 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
+          { "id": "t/pgstudents", "icon": "cap", "label": "PG Students" },
+          { "id": "t/pgrecords", "icon": "user", "label": "PG Record Management" },
+          { "id": "t/pgapplicantedit", "icon": "user", "label": "PG Applicant & Student Edit" },
+          { "id": "t/pgedithistory", "icon": "doc", "label": "PG Change History" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/graduationmanage", "icon": "cap", "label": "Graduation Management" },
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
@@ -2652,6 +2656,18 @@ export const MENUS: Record<string, Menu> = {
         ]
       },
       {
+        "name": "PG Management",
+        "items": [
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Applicants" },
+          { "id": "t/pgstudents", "icon": "cap", "label": "PG Students" },
+          { "id": "t/pgrecords", "icon": "user", "label": "Applicant & Student Search" },
+          { "id": "t/pgapplicantedit", "icon": "user", "label": "PG Applicant Edit" },
+          { "id": "t/pgstudentedit", "icon": "user", "label": "PG Student Edit" },
+          { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/pgedithistory", "icon": "doc", "label": "Change History" }
+        ]
+      },
+      {
         "name": "Admissions",
         "items": [
           { "id": "t/pgadmissions", "icon": "cap", "label": "Admissions" },
@@ -2889,6 +2905,18 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/pgstudents", "icon": "user", "label": "PG Students" }
+        ]
+      },
+      {
+        "name": "PG Management",
+        "items": [
+          { "id": "t/pgadmissions", "icon": "cap", "label": "Applicants" },
+          { "id": "t/pgstudents", "icon": "cap", "label": "PG Students" },
+          { "id": "t/pgrecords", "icon": "user", "label": "Applicant & Student Search" },
+          { "id": "t/pgapplicantedit", "icon": "user", "label": "PG Applicant Edit" },
+          { "id": "t/pgstudentedit", "icon": "user", "label": "PG Student Edit" },
+          { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
+          { "id": "t/pgedithistory", "icon": "doc", "label": "Change History" }
         ]
       },
       {

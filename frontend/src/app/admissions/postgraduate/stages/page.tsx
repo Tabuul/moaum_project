@@ -16,7 +16,7 @@ export default async function PgStagesPage({ searchParams }: { searchParams: Pro
   const [me, config] = await Promise.all([api<Me>("/api/v1/iam/me"), api<Config>("/api/v1/pg/academic/config")]);
   return (
     <Shell route="t/pgstages" me={me.ok ? me.data : null}>
-      {config.ok ? <PgStages config={config.data} initialTab={tab} initialStage={stage} /> : <ProblemNotice problem={config.problem} />}
+      {config.ok ? <PgStages config={config.data} initialTab={tab} initialStage={stage} initialQ={typeof p.q === "string" ? p.q : ""} /> : <ProblemNotice problem={config.problem} />}
     </Shell>
   );
 }

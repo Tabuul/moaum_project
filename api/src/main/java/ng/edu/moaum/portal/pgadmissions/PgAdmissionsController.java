@@ -54,7 +54,7 @@ class PgAdmissionsController {
 
     /* who may read the postgraduate applications */
     private static final String READERS =
-            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dean','OFFICE_hod','OFFICE_dvc','OFFICE_vc','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dean','OFFICE_hod','OFFICE_dvc','OFFICE_vc','OFFICE_super','OFFICE_ict')";   // V715: and the Director of ICT
     /* the department's postgraduate committee (the HOD) */
     private static final String DEPT = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_super')";
     /* the faculty (the Dean) vets after the department */
@@ -66,7 +66,7 @@ class PgAdmissionsController {
     private static final String CONFIRMERS = "hasAnyAuthority('OFFICE_pgsecretary','OFFICE_bursar','OFFICE_super')";
     /* the offices that read the whole School, held to no department or faculty (V337) */
     private static final String SCHOOL_WIDE =
-            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_super')";
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_super','OFFICE_ict')";
     /* the physical screening of accepted applicants (V337): the School's officers and the Registry's screening offices; a
        department never clears an applicant */
     private static final String SCREENERS =

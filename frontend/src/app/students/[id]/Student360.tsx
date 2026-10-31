@@ -103,7 +103,9 @@ export function Student360({
   const [portalOpen, setPortalOpen] = useState(false);
   const mayViewPortal = ["ictagent", "helpdeskhead", "ict", "admin", "super"].includes(actingOffice ?? "");
   // V642: the offices that hold EDIT_STUDENT_ACADEMIC_RECORD open the Academic Office student edit page
-  const mayEdit = ["academic", "registrar", "dregistrar", "super"].includes(actingOffice ?? "");
+  const mayEdit = ["academic", "registrar", "dregistrar", "super"].includes(actingOffice ?? "")
+    // V715: the School of Postgraduate Studies and the Director of ICT edit a postgraduate student's record
+    || (["pgschool", "pgsecretary", "ict"].includes(actingOffice ?? "") && record.student.entryMode === "POSTGRADUATE");
   const [to, setTo] = useState("ACTIVE");
   const [instrument, setInstrument] = useState("");
   const [reason, setReason] = useState("");

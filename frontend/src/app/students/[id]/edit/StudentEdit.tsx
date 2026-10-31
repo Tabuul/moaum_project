@@ -28,9 +28,9 @@ import {
   type EditPage, type HistoryRow, type Permission,
 } from "@/lib/student-edit";
 
-type Section = "identity" | "admission" | "placement" | "level" | "status" | "matriculation" | "registration" | "graduation" | "finance" | "history";
+type Section = "identity" | "admission" | "placement" | "level" | "postgraduate" | "status" | "matriculation" | "registration" | "graduation" | "finance" | "history";
 const SECTIONS: [Section, string][] = [
-  ["identity", "Biodata"], ["admission", "Admission"], ["placement", "Academic placement"], ["level", "Level & spillover"], ["status", "Academic status"],
+  ["identity", "Biodata"], ["admission", "Admission"], ["placement", "Academic placement"], ["level", "Level & spillover"], ["postgraduate", "Postgraduate stage"], ["status", "Academic status"],
   ["matriculation", "Matriculation"], ["registration", "Registration & carry-over"], ["graduation", "Graduation"], ["finance", "Finance"], ["history", "Change history"],
 ];
 
@@ -87,7 +87,7 @@ export function StudentEdit({ page, record, faculties, actingOffice, initialSect
   return (
     <>
       <Panel title={<span>Student record · <span className="tnum">{s.matric_no ?? s.admission_no ?? s.jamb_reg_no ?? ""}</span></span>}
-        right={<span className="row row--inline row--tight"><LinkBtn kind="ghost" href={`/students/${s.id}`}>Full record</LinkBtn><LinkBtn kind="ghost" href="/students/edit">Another student</LinkBtn></span>}>
+        right={<span className="row row--inline row--tight"><LinkBtn kind="ghost" href={`/students/${s.id}`}>Full record</LinkBtn><LinkBtn kind="ghost" href={page.postgraduate ? "/admissions/postgraduate/records" : "/students/edit"}>Another student</LinkBtn></span>}>
         <PBody>
           <div className="row" style={{ alignItems: "baseline", flexWrap: "wrap", gap: "var(--s-3)" }}>
             <b style={{ fontSize: "1.15rem" }}>{name}</b>
@@ -115,13 +115,14 @@ export function StudentEdit({ page, record, faculties, actingOffice, initialSect
       ) : null}
 
       <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-        <Tabs look="line" label="Sections of the record" value={section} onChange={choose} items={SECTIONS.map(([id, label]) => ({ id, label }))} />
+        <Tabs look="line" label="Sections of the record" value={section} onChange={choose} items={SECTIONS.filter(([k]) => k !== "postgraduate" || page.postgraduate).map(([id, label]) => ({ id, label }))} />
       </div>
 
       {section === "identity" ? <IdentitySection key={page.version} page={page} record={record} may={may} settle={settle} /> : null}
       {section === "admission" ? <AdmissionSection key={page.version} page={page} may={may} settle={settle} /> : null}
       {section === "placement" ? <PlacementSection key={page.version} page={page} faculties={faculties} may={may} settle={settle} /> : null}
       {section === "level" ? <LevelSection key={page.version} page={page} may={may} settle={settle} /> : null}
+      {section === "postgraduate" && page.postgraduate ? <PostgraduateSection page={page} /> : null}
       {section === "status" ? <StatusSection key={page.version} page={page} may={may} settle={settle} /> : null}
       {section === "matriculation" ? <MatriculationSection page={page} may={may} /> : null}
       {section === "registration" ? <RegistrationSection page={page} may={may} /> : null}
@@ -964,5 +965,30 @@ function HistorySection({ page, may }: { page: EditPage; may: May }) {
         </>
       ) : <PBody><div className="sub2">No change matches.</div></PBody>}
     </Panel>
+  );
+}
+
+/* ── V715: a postgraduate student's application and stage — the applicant's record on its own page, the stage on the stages desk ── */
+
+function PostgraduateSection({ page }: { page: EditPage }) {
+  const g = page.postgraduate;
+  if (!g) return null;
+  return (
+    <>
+      <Panel title="Postgraduate application" right={g.application_id ? <LinkBtn kind="primary" href={`/admissions/postgraduate/applications/${g.application_id}/edit`}>Applicant record</LinkBtn> : <span className="sub2">Loaded by the register upload: no application on this portal</span>}>
+        <PBody>
+          <KvGrid cls="grid--4" pairs={[["Application number", g.application_no ?? "—"], ["Old portal number", g.legacy_application_no ?? "—"], ["Application state", words(g.application_state)],
+            ["Qualification", g.qualification ?? "—"]]} />
+          <div className="sub2 mt-2">The application&rsquo;s contacts, previous education and documents are corrected on the applicant record; the names, programme, level and status of a student on the register are corrected here.</div>
+        </PBody>
+      </Panel>
+      <Panel title="Stage and academic cycle" right={<LinkBtn kind="primary" href={`/admissions/postgraduate/stages?q=${encodeURIComponent(page.student.matric_no ?? page.student.admission_no ?? "")}`}>Stages &amp; restarts desk</LinkBtn>}>
+        <PBody>
+          <KvGrid cls="grid--4" pairs={[["Current stage", g.stage_label ?? g.stage_code ?? "Not recorded"], ["Cycle", g.cycle_no ? `Cycle ${g.cycle_no} · from ${g.start_session ?? "—"} · ${words(g.cycle_status)}` : "—"],
+            ["Category", words(g.category)], ["Extension", g.is_extension ? "In an extension stage" : "No"]]} />
+          <div className="sub2 mt-2">A postgraduate&rsquo;s level is a stage of their qualification (PGD 700, Master&rsquo;s 800 A&ndash;C, PhD 900 A&ndash;E). The stage, the semester, an extension and a restart are set on the stages and restarts desk, which validates them against the programme structure and keeps every cycle; the level desk above does not apply to a postgraduate student.</div>
+        </PBody>
+      </Panel>
+    </>
   );
 }

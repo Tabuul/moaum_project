@@ -50,7 +50,7 @@ function useRead<T>(path: string | null, key: number): { data: T | null; problem
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : "—");
 
-export function PgStages({ config, initialTab, initialStage }: { config: Config; initialTab: Tab; initialStage: string }) {
+export function PgStages({ config, initialTab, initialStage, initialQ = "" }: { config: Config; initialTab: Tab; initialStage: string; initialQ?: string }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [session, setSession] = useState(config.session ?? config.sessions[0] ?? "");
   const [reload, setReload] = useState(0);
@@ -60,7 +60,7 @@ export function PgStages({ config, initialTab, initialStage }: { config: Config;
   const [cat, setCat] = useState("");
   const [rec, setRec] = useState("");
   const [off, setOff] = useState("");
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQ);   // V715: opened on a student from the student edit page
   const [page, setPage] = useState(0);
   const [chosen, setChosen] = useState<string[]>([]);
   const [historyOf, setHistoryOf] = useState<StageRow | null>(null);
