@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 543
+\set EXPECTED 544
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -30940,6 +30940,95 @@ BEGIN
         format('grants %s | reason %s confirm %s email %s | saved %s → %s/%s/%s/%s/%s/%s edits %s events %s | stale %s degrees %s history %s | decided %s register %s perm %s | found %s | student %s ug %s | ict pg %s ug %s | school %s',
                grants, r_reason, r_confirm, r_email, saved->>'changed', after.surname, after.email, after.phone, after.programme_code, after.entry_level, after.specialisation_id, edits, events,
                r_stale, degrees->>'degrees', v_hist, r_decided, r_register, r_perm, found, found_student, found_ug, array_to_string(perms_pg, ','), array_to_string(perms_ug, ','), cardinality(perms_sc)));
+END $$;
+
+-- ── V716: a programme's code corrected by ICT. A made-up undergraduate programme with two students, a fee line, a course binding and
+--          what JAMB calls it: the check reads the impact; a code of the wrong shape, one another programme holds, the Registry, a
+--          stale version and "Other" without remarks are refused; the Director of ICT corrects it — the students, the fee line and the
+--          binding on the new code, the old archived and an alias, the JAMB names following, the correction written down; a student
+--          written with the old code lands on the new; the old code is not corrected again (merged); the Head of ICT Support undoes it —
+--          everything back, the old code in use, the new archived with the alias ended; the new code taken again by a second
+--          correction; undone twice refused; the record never altered. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9716/9717'; v_dept text; v_fac text; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); v_course text;
+    chk jsonb; r_taken text; r_shape text; r_office text; r_stale text; r_other text; d jsonb; d1 jsonb; after_ text; landed text; r_again text;
+    u jsonb; undone_ text; chk2 jsonb; d2 jsonb; r_twice text; r_kept text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'CHECK V716', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, date '9716-10-01', date '9717-09-30', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    SELECT d.code, d.faculty_code INTO v_dept, v_fac FROM ref.department d WHERE d.faculty_code IS NOT NULL ORDER BY d.code LIMIT 1;
+    SELECT code INTO v_course FROM catalogue.course WHERE state = 'LIVE' ORDER BY code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, archived, category, matric_code) VALUES ('C97161', 'B.Sc. Check Studies', v_dept, v_fac, 0, false, 'UNDER GRADUATE', 'CHK');
+    INSERT INTO ref.jamb_alias (code, jamb_name) VALUES ('C97161', 'CHECK STUDIES V716');
+    INSERT INTO ref.jamb_alias_name (jamb_key, jamb_name, code) VALUES ('checkstudiesv716bsc', 'CHECK STUDIES V716 (BSC)', 'C97161');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (s1, 'MOAUM/ADM/97/971601', 'MOAUM/CHK/97/7161', 'CHECKV716', 'One', 'C97161', 'UTME', ses, 100, 200, 'ACTIVE', now()),
+        (s2, 'MOAUM/ADM/97/971602', 'MOAUM/CHK/97/7162', 'CHECKV716', 'Two', 'C97161', 'UTME', ses, 100, 100, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, programme_code, level) VALUES (ses, 'School fees (check V716)', 100000, 'C97161', 100);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (v_course, 'C97161', 100, 'Core');
+
+    chk := ref.programme_code_check('C97161', 'c 97162');
+    r_taken := ref.programme_code_check('C97161', 'C00023')->'refusal'->>'code';
+    r_shape := ref.programme_code_check('C97161', 'X1')->'refusal'->>'code';
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM ref.correct_programme_code('C97161', 'C97162', 'WRONG_CODE_ENTERED', NULL, chk->>'version'); r_office := 'done';
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM ref.correct_programme_code('C97161', 'C97162', 'WRONG_CODE_ENTERED', NULL, 'stale'); r_stale := 'done';
+    EXCEPTION WHEN check_violation THEN r_stale := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM ref.correct_programme_code('C97161', 'C97162', 'OTHER', NULL, chk->>'version'); r_other := 'done';
+    EXCEPTION WHEN check_violation THEN r_other := split_part(SQLERRM, ':', 1); END;
+
+    d := ref.correct_programme_code('C97161', 'C97162', 'WRONG_CODE_ENTERED', 'JAMB lists it as C97162', chk->>'version');
+    after_ := format('students %s old archived %s alias %s fee %s offer %s jamb %s names %s trail %s',
+        (SELECT count(*) FROM people.student WHERE programme_code = 'C97162'), (SELECT archived FROM ref.programme WHERE code = 'C97161'), ref.programme_now('C97161'),
+        (SELECT programme_code FROM finance.fee_schedule WHERE item = 'School fees (check V716)'),
+        (SELECT programme_code FROM catalogue.course_offer WHERE course_code = v_course AND programme_code IN ('C97161', 'C97162')),
+        (SELECT string_agg(code, ',' ORDER BY code) FROM ref.jamb_alias WHERE jamb_name = 'CHECK STUDIES V716'), (SELECT code FROM ref.jamb_alias_name WHERE jamb_key = 'checkstudiesv716bsc'),
+        (SELECT c.old_code || '>' || c.new_code || ':' || c.reason_kind || ':' || c.students || ':' || c.changed_office FROM ref.programme_code_change c WHERE c.id = (d->>'id')::uuid));
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (s3, 'MOAUM/ADM/97/971603', 'MOAUM/CHK/97/7163', 'CHECKV716', 'Three', 'C97161', 'UTME', ses, 100, 100, 'ACTIVE', now());
+    landed := (SELECT programme_code FROM people.student WHERE id = s3);
+    DELETE FROM people.student WHERE id = s3;
+    r_again := ref.programme_code_check('C97161', 'C97163')->'refusal'->>'code';
+
+    PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+    d1 := d;
+    u := ref.undo_programme_code_correction((d->>'id')::uuid, 'The code was right after all');
+    undone_ := format('students %s old archived %s new archived %s alias ended %s names %s named %s',
+        (SELECT count(*) FROM people.student WHERE programme_code = 'C97161'), (SELECT archived FROM ref.programme WHERE code = 'C97161'),
+        (SELECT archived FROM ref.programme WHERE code = 'C97162'), NOT EXISTS (SELECT 1 FROM ref.programme_alias WHERE alias_code = 'C97161' AND ended_at IS NULL),
+        (SELECT code FROM ref.jamb_alias_name WHERE jamb_key = 'checkstudiesv716bsc'), u->>'newCodeNamed');
+    -- the code the undone correction left, taken again
+    chk2 := ref.programme_code_check('C97161', 'C97162');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    d2 := ref.correct_programme_code('C97161', 'C97162', 'JAMB_CODE_CHANGED', NULL, chk2->>'version');
+    BEGIN PERFORM ref.undo_programme_code_correction((d1->>'id')::uuid, 'undone a second time'); r_twice := 'done';
+    EXCEPTION WHEN check_violation THEN r_twice := split_part(SQLERRM, ':', 1); END;
+    BEGIN UPDATE ref.programme_code_change SET remarks = 'altered' WHERE id = (d1->>'id')::uuid; r_kept := 'altered';
+    EXCEPTION WHEN check_violation THEN r_kept := split_part(SQLERRM, ':', 1); END;
+
+    msg := format('check: new %s refusal %s students %s rows %s | refused %s %s %s %s %s | done %s students %s | after: %s | landed %s | again %s | undone: %s | reuse: refusal %s reused %s → %s on new %s archived %s alias %s | twice %s kept %s',
+                  chk->>'newCode', chk->'refusal', chk->'impact'->>'students', chk->'impact'->'rows', r_taken, r_shape, r_office, r_stale, r_other,
+                  d->>'code', d->>'students', after_, landed, r_again, undone_, chk2->'refusal', chk2->>'reused', d2->>'reused',
+                  (SELECT count(*) FROM people.student WHERE programme_code = 'C97162'), (SELECT archived FROM ref.programme WHERE code = 'C97162'), ref.programme_now('C97161'),
+                  r_twice, r_kept);
+    RAISE EXCEPTION 'the V716 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V716 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V716: a programme''s code is corrected by ICT — the new code the same programme (students, fees, bindings and JAMB names following), the old an alias; refused as it should be; undone from the record, and the code taken again',
+      coalesce(msg = 'check: new C97162 refusal null students 2 rows {"people.student.programme_code": 2, "finance.fee_schedule.programme_code": 1, "catalogue.course_offer.programme_code": 1}'
+                     || ' | refused PROGRAMME_CODE_TAKEN PROGRAMME_CODE_SHAPE PROGRAMME_CODE_OFFICE PROGRAMME_CHANGED_SINCE PROGRAMME_CHANGE_REASON | done C97162 students 2'
+                     || ' | after: students 2 old archived t alias C97162 fee C97162 offer C97162 jamb C97161,C97162 names C97162 trail C97161>C97162:WRONG_CODE_ENTERED:2:ict | landed C97162 | again PROGRAMME_MERGED'
+                     || ' | undone: students 2 old archived f new archived t alias ended t names C97161 named false | reuse: refusal null reused true → true on new 2 archived f alias C97162'
+                     || ' | twice PROGRAMME_CODE_CHANGE_UNDONE kept PROGRAMME_CODE_CHANGE_KEPT', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

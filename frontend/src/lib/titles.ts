@@ -146,6 +146,7 @@ export const TITLES: Record<string, string> = {
   "t/allcourses": "All Courses",
   "t/coursereview": "Course ownership review",
   "t/coursechanges": "Course code and title changes",
+  "t/programmecodechanges": "Programme code changes",
   "t/structurecheck": "Programme structure checks",
   "t/allocationtemplates": "Course allocation templates",
   "t/structureprogrammes": "Programmes and their structures",

@@ -23,7 +23,7 @@ export default async function StructureProgrammesPage({ searchParams }: { search
   return (
     <Shell route="t/structureprogrammes" me={me.ok ? me.data : null}>
       {!rows.ok ? <ProblemNotice problem={rows.problem} /> : (
-        <Programmes rows={rows.data} directory={directory.ok ? directory.data : null} filters={filters} pgOnly={pgOnly} />
+        <Programmes rows={rows.data} directory={directory.ok ? directory.data : null} filters={filters} pgOnly={pgOnly} office={office ?? null} />
       )}
     </Shell>
   );

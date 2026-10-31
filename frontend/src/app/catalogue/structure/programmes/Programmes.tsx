@@ -2,7 +2,11 @@
 /** V471: the programmes with their structure counted — courses bound, live and ended, the levels they reach — filtered by kind,
  *  faculty, department, a search, or the programmes that carry nothing; each opened on its Programme Structure. */
 import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryNav } from "@/lib/query-nav";
+import { notify } from "@/components/proto/Toast";
+import { ProgrammeCodeCorrection } from "./ProgrammeCodeCorrection";
 import { Btn, LinkBtn, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -18,8 +22,16 @@ export interface ProgrammeFilters { category: string; fac: string; dept: string;
 
 const HEAD = ["Programme code", "Programme", "Programme type", "Award", "Faculty", "Department", "Courses", "Active courses", "Inactive courses", "Levels", "Status"];
 
-export function Programmes({ rows, directory, filters, pgOnly }: { rows: ProgrammeRow[]; directory: Directory | null; filters: ProgrammeFilters; pgOnly: boolean }) {
+/* V716: the Director of ICT and the ICT Support Desk correct a programme's code (an agent within its posting's scope: the server decides) */
+const CORRECTORS = ["ict", "ictagent", "helpdeskhead", "super"];
+
+export function Programmes({ rows, directory, filters, pgOnly, office = null }: {
+  rows: ProgrammeRow[]; directory: Directory | null; filters: ProgrammeFilters; pgOnly: boolean; office?: string | null;
+}) {
   const go = useQueryNav();
+  const router = useRouter();
+  const corrector = CORRECTORS.includes(office ?? "");
+  const [fixing, setFixing] = useState<ProgrammeRow | null>(null);
   const nav = (patch: Partial<ProgrammeFilters>) => {
     const next = { ...filters, ...patch };
     const qs = new URLSearchParams();
@@ -67,10 +79,13 @@ export function Programmes({ rows, directory, filters, pgOnly }: { rows: Program
             <span key="x" className="row row--tight row--right">
               <LinkBtn href={`/catalogue/structure?prog=${encodeURIComponent(r.code)}`}>{r.courses ? "Manage courses" : "Add courses"}</LinkBtn>
               <LinkBtn href={`/catalogue/all?prog=${encodeURIComponent(r.code)}`}>Courses</LinkBtn>
+              {corrector && !r.archived ? <Btn kind="ghost" size="sm" onClick={() => setFixing(r)}>Correct code</Btn> : null}
             </span>,
           ])} texts={rows.map((r) => `${r.code} ${r.name} ${r.dept_name ?? ""} ${r.faculty_name ?? ""} ${r.pg_award ?? ""}`)} />
         ) : <PBody><div className="sub2">No programme in view.</div></PBody>}
       </Panel>
+      {fixing ? <ProgrammeCodeCorrection programme={fixing} onClose={() => setFixing(null)}
+        onDone={(d) => { setFixing(null); notify(`${d.was} is now ${d.code}: ${d.name}, the same programme`); router.refresh(); }} /> : null}
     </>
   );
 }

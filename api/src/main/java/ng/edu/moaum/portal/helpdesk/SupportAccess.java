@@ -52,7 +52,9 @@ class SupportAccess {
             // V471: the programme structure within the posting (the database's vocabulary had them; the posting screen now grants them)
             "VIEW_PROGRAMME_STRUCTURE", "EDIT_COURSES", "BIND_COURSES", "MANAGE_PREREQUISITES",
             // V713: a course's code, a course's title, corrected with a reason (EDIT_COURSES carries both)
-            "EDIT_COURSE_CODE", "EDIT_COURSE_TITLE");
+            "EDIT_COURSE_CODE", "EDIT_COURSE_TITLE",
+            // V716: a programme's code corrected with a reason, within the posting's faculties and departments
+            "EDIT_PROGRAMME_CODE");
     static final Map<String, String> WORDS = Map.ofEntries(
             Map.entry("VIEW_STUDENT", "viewing student records"), Map.entry("EDIT_CONTACT", "editing contact details"),
             Map.entry("EDIT_PERSONAL", "editing personal details"), Map.entry("EDIT_FAMILY", "editing family and sponsor details"),
@@ -72,7 +74,8 @@ class SupportAccess {
             Map.entry("BULK_RESET_FROM_TICKETS", "resetting passwords from login and password tickets"),
             Map.entry("VIEW_PROGRAMME_STRUCTURE", "viewing the programme structure"), Map.entry("EDIT_COURSES", "editing courses"),
             Map.entry("BIND_COURSES", "binding courses into programmes"), Map.entry("MANAGE_PREREQUISITES", "managing prerequisites"),
-            Map.entry("EDIT_COURSE_CODE", "changing a course's code"), Map.entry("EDIT_COURSE_TITLE", "changing a course's title"));
+            Map.entry("EDIT_COURSE_CODE", "changing a course's code"), Map.entry("EDIT_COURSE_TITLE", "changing a course's title"),
+            Map.entry("EDIT_PROGRAMME_CODE", "changing a programme's code"));
 
     private final JdbcClient jdbc;
     private final NoticeRepository notices;

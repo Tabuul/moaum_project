@@ -32,6 +32,7 @@ export const CAPABILITIES: Record<string, [string, string]> = {
   MANAGE_PREREQUISITES: ["Manage prerequisites", "Add or remove what a course requires first, within the posting's scope"],
   EDIT_COURSE_CODE: ["Change a course's code", "Correct a course's code with a reason, the impact shown first — the same course, everything on it follows; within the posting's scope"],
   EDIT_COURSE_TITLE: ["Change a course's title", "Correct a course's title with a reason, the impact shown first — the same course; within the posting's scope"],
+  EDIT_PROGRAMME_CODE: ["Change a programme's code", "Correct a programme's code with a reason, the impact shown first — the same programme under the new code, every student and record following, the old code kept as an alias; within the posting's scope"],
 };
 export const CAPABILITY_CODES = Object.keys(CAPABILITIES);
 

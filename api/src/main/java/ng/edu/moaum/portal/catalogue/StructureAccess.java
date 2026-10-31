@@ -36,9 +36,12 @@ class StructureAccess {
     /** V713: a course's code, a course's title — corrected with a reason; EDIT_COURSES carries both */
     static final String EDIT_CODE = "EDIT_COURSE_CODE";
     static final String EDIT_TITLE = "EDIT_COURSE_TITLE";
+    /** V716: a programme's code corrected with a reason, within the posting's faculties and departments */
+    static final String EDIT_PROGRAMME_CODE = "EDIT_PROGRAMME_CODE";
     private static final Map<String, String> WORDS = Map.of(VIEW, "viewing the programme structure", EDIT, "editing courses",
             BIND, "binding courses into programmes", PREREQ, "managing prerequisites",
-            EDIT_CODE, "changing a course's code", EDIT_TITLE, "changing a course's title");
+            EDIT_CODE, "changing a course's code", EDIT_TITLE, "changing a course's title",
+            EDIT_PROGRAMME_CODE, "changing a programme's code");
 
     private static final Set<String> PG = Set.of("pgschool", "pgsecretary");
     private static final Set<String> SUPPORT = Set.of("ictagent", "helpdeskhead");
@@ -98,8 +101,9 @@ class StructureAccess {
     /** the capabilities the acting office holds anywhere, for the screen (each act is still checked where it lands) */
     List<String> held() {
         if (!special()) return List.of();
-        if (pg() || "helpdeskhead".equals(office())) return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE);
-        return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE).stream().filter(c -> !reach(c).none()).toList();
+        if (pg()) return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE);
+        if ("helpdeskhead".equals(office())) return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE, EDIT_PROGRAMME_CODE);
+        return List.of(VIEW, EDIT, BIND, PREREQ, EDIT_CODE, EDIT_TITLE, EDIT_PROGRAMME_CODE).stream().filter(c -> !reach(c).none()).toList();
     }
 
     /** an agent reads the structure only with VIEW_PROGRAMME_STRUCTURE (every agent in service holds it) */
@@ -205,6 +209,28 @@ class StructureAccess {
         Reach r = require(capability);
         throw new DomainRuleViolation("STRUCTURE_SCOPE", code + " belongs to a department outside your support scope (" + (r.words().isBlank() ? "none" : r.words()) + ").",
                 new DomainRuleViolation.Remedy("Escalate it to the Head of the ICT Support Desk or the Director of ICT.", "Head of ICT Support Desk"));
+    }
+
+    /** V716: may the acting office correct a programme's code? The Director of ICT, the Head of the ICT Support Desk and super anywhere;
+     *  an agent with EDIT_PROGRAMME_CODE over the programme's faculty or department; nobody else (the database refuses them too) */
+    boolean mayProgrammeCode(String code) {
+        String o = office();
+        if ("ict".equals(o) || "super".equals(o) || "helpdeskhead".equals(o)) return true;
+        if (!"ictagent".equals(o)) return false;
+        Map<String, Object> p = programme(code);
+        return reach(EDIT_PROGRAMME_CODE).covers((String) p.get("faculty_code"), (String) p.get("dept_code"));
+    }
+
+    /** V716: the correction of a programme's code — refused with why, for the agent without the capability or outside its scope */
+    void assertProgrammeCode(String code) {
+        if (mayProgrammeCode(code)) return;
+        if ("ictagent".equals(office())) {
+            Reach r = require(EDIT_PROGRAMME_CODE);
+            throw new DomainRuleViolation("STRUCTURE_SCOPE", code + " belongs to a faculty and department outside your support scope (" + (r.words().isBlank() ? "none" : r.words()) + ").",
+                    new DomainRuleViolation.Remedy("Escalate it to the Head of the ICT Support Desk or the Director of ICT.", "Head of ICT Support Desk"));
+        }
+        throw new DomainRuleViolation("PROGRAMME_CODE_OFFICE", "A programme's code is corrected by the Director of ICT or the ICT Support Desk.",
+                new DomainRuleViolation.Remedy("Ask the Director of ICT.", "Director of ICT"));
     }
 
     /** V713: may the acting office correct the course's code ("CODE") or its title ("TITLE")? An agent with EDIT_COURSE_CODE or
