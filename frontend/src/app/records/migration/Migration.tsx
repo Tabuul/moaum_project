@@ -623,7 +623,7 @@ export function Migration({ actingOffice }: { actingOffice: string | null }) {
       add("name", at(/full\s*name/, /^name$/, /student\s*name/, /^names$/));
       add("programme", at(/programme/, /program/, /course of study/, /department|dept/));
       add("sex", at(/^sex$/, /gender/));
-      add("dob", at(/birth/, /^dob$/, /d\.o\.b/));
+      add("dob", at(/birth/, /^dob$/, /d\.o\.b/), normDob);   // V717: day first, as the other tabs
       add("entryMode", at(/entry\s*mode/, /mode of entry/, /^mode$/, /admission type/));
       add("entrySession", at(/entry\s*session/, /admission\s*session/, /year of entry/, /session admitted/));
       add("level", at(/current\s*level/, /^level$/, /^lvl$/));

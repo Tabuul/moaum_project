@@ -18,6 +18,11 @@ import { OlevelDuplicates } from "./OlevelDuplicates";
 
 interface Pas { num: string; file: string; how: string; size: number; w: number; h: number; url: string }
 
+/** V717: the register read against JAMB's date-of-birth file (people.jamb_dates_of_birth) */
+interface DobRegisterRow { student_id: string; jamb_reg_no: string; surname: string; other_names: string; programme_code: string; jamb_text: string | null; jamb_date: string | null; held: string | null; form_value: string | null; action: string }
+interface DobRegister { session: string; applied: boolean; counts: { total: number; agrees: number; filled: number; corrected: number; differs: number; unreadable: number }; rows: DobRegisterRow[] }
+const ACTION_WORD: Record<string, string> = { AGREES: "Agrees", FILLED: "Filled from JAMB", CORRECTED: "Corrected (was the misreading)", DIFFERS: "Differs — for the Registry", UNREADABLE: "JAMB's text is no date" };
+
 const CD_TABS: [string, string, string][] = [
   ["pas", "Passports", "A folder of images, named by the JAMB number"],
   ["dob", "Dates of birth", "One spreadsheet row per candidate"],
@@ -42,6 +47,37 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
   const [stream, setStream] = useState<{ read: number; recorded: number; attached: number; unreadable: number; total: number } | null>(null);
   const [streamSample, setStreamSample] = useState<Pas[]>([]);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
+  /* V717: who writes JAMB's dates of birth onto the register (people.jamb_dob_officer) */
+  const mayReconcile = ["academic", "registrar", "dregistrar", "records", "ict", "super"].includes(actingOffice ?? "");
+  const [reg, setReg] = useState<DobRegister | null>(null);
+  const [regBusy, setRegBusy] = useState(false);
+  const [regProblem, setRegProblem] = useState<Problem | null>(null);
+
+  async function readRegister() {
+    setRegBusy(true); setRegProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data/dates-of-birth`, { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setRegProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      setReg(j as DobRegister);
+    } finally { setRegBusy(false); }
+  }
+
+  async function applyRegister() {
+    if (!mayReconcile) return;
+    setRegBusy(true); setRegProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/admissions/sessions/${state.session}/candidate-data/dates-of-birth/reconcile`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Dates of birth written from JAMB's file for ${state.session}`) }, body: JSON.stringify({}),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { setRegProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+      const d = j as DobRegister;
+      setReg(d);
+      notify(`${d.counts.corrected} record${d.counts.corrected === 1 ? "" : "s"} corrected, ${d.counts.filled} filled from JAMB's date of birth${d.counts.differs ? ` · ${d.counts.differs} differ, left for the Registry` : ""}`);
+      router.refresh();
+    } finally { setRegBusy(false); }
+  }
 
   /* V038: a file attaches only to a candidate on a committed list, so the matcher sees only committed candidates */
   const cands = state.candidates.filter((c) => c.committed).map((c) => ({ num: c.jambKey, name: `${c.surname}, ${c.otherNames}`, list: c.entryMode === "DIRECT_ENTRY" ? "de" : "utme", has: c }));
@@ -379,8 +415,9 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
               <Note kind="info" title={`${dob.trimmed} registration number${dob.trimmed === 1 ? "" : "s"} had a trailing space, and were trimmed`} />
             ) : null}
             {amb.length ? (
-              <Note kind="bad" title={`${amb.length} ${amb.length === 1 ? "date of birth is" : "dates of birth are"} ambiguous`} action={<Btn kind="urgent">Confirm the format with the Academic Office</Btn>}>
-                Where day and month are both 12 or less (<span className="tnum">05-07-2002</span>), the date reads either way and is <b>not parsed on an assumption</b>. Confirm the format with JAMB.
+              <Note kind="info" title={`${amb.length} ${amb.length === 1 ? "date of birth reads" : "dates of birth read"} day first, as JAMB writes dates`}>
+                Where day and month are both 12 or less (<span className="tnum">12-09-2003</span>), the portal reads the date as JAMB writes it — day, month, year: <b>12 September 2003</b>, never 9 December.
+                A row whose second figure is above 12 (<span className="tnum">09-13-2003</span>) is read the only way it can be.
               </Note>
             ) : null}
             {orphans(m, "rows", (o) => (o as DobRow).raw)}
@@ -400,7 +437,57 @@ export function CandidateData({ state, actingOffice, dups }: { state: Attachment
             {missing(m, "date of birth")}
           </>
         )}
+        {registerBody()}
       </>
+    );
+  };
+
+  /* ── V717: the register read against JAMB's date-of-birth file ── */
+  const registerBody = () => {
+    const c = reg?.counts;
+    const pending = c ? c.filled + c.corrected : 0;
+    return (
+      <Panel title="The register against JAMB's dates of birth" right={reg ? `${reg.counts.total} students linked to a candidate with a date on file` : state.session}>
+        <PBody>
+          <p className="sub2">
+            Every student admitted from this session&rsquo;s list, read against the date JAMB sent: a record holding none takes JAMB&rsquo;s date; one holding
+            exactly the old month-first misreading (9 December for <span className="tnum">12-09-2003</span>) is corrected; one holding another date is left for the Registry and listed.
+          </p>
+          {regProblem ? <ProblemNotice problem={regProblem} /> : null}
+          {c ? (
+            <Tiles cls="grid--5" items={[
+              ["Agree", String(c.agrees), "var(--green-ink)", "The record holds JAMB's date"],
+              [reg.applied ? "Filled" : "To fill", String(c.filled), c.filled ? "var(--brand-ink)" : null, "The record held no date"],
+              [reg.applied ? "Corrected" : "To correct", String(c.corrected), c.corrected ? "var(--brand-ink)" : null, "The record held the old misreading"],
+              ["Differ", String(c.differs), c.differs ? "var(--red-ink)" : null, "Another date stands; the Registry decides"],
+              ["Unreadable", String(c.unreadable), c.unreadable ? "var(--red-ink)" : null, "JAMB's text is no date"],
+            ]} />
+          ) : null}
+          {reg && reg.rows.length ? (
+            <DTable
+              cols={["JAMB number|mid", "Student", "Programme|mid", "JAMB wrote|mid", "Read as|mid", "On the record|mid", "Reading"]}
+              rows={reg.rows.map((r) => [
+                <span className="tnum" key="n">{r.jamb_reg_no}</span>,
+                <span key="s"><strong>{r.surname}</strong>, {r.other_names}</span>,
+                <span className="tnum" key="p">{r.programme_code}</span>,
+                <span className="tnum" key="t">{r.jamb_text ?? "—"}</span>,
+                <span className="tnum" key="j">{r.jamb_date ?? "—"}</span>,
+                <span className="tnum" key="h">{r.held ?? "—"}</span>,
+                <Pil key="a" kind={r.action === "DIFFERS" || r.action === "UNREADABLE" ? "bad" : r.action === "AGREES" ? "ok" : "info"}>{ACTION_WORD[r.action] ?? r.action}</Pil>,
+              ])}
+            />
+          ) : reg ? <Note kind="ok" title="Every record agrees with JAMB's date of birth" /> : null}
+          <div className="row row--inline row--tight mt-3">
+            <Btn kind="secondary" disabled={regBusy} onClick={() => void readRegister()}>{reg ? "Read the register again" : "Read the register against JAMB's file"}</Btn>
+            {reg && !reg.applied && pending ? (
+              <Btn kind="primary" disabled={regBusy || !mayReconcile} onClick={() => void applyRegister()}>
+                Write JAMB&rsquo;s date to {pending} record{pending === 1 ? "" : "s"}
+              </Btn>
+            ) : null}
+          </div>
+          {reg && !reg.applied && pending && !mayReconcile ? <div className="sub2 mt-1">The Academic Office, the Registry, Records or the Director of ICT writes the register.</div> : null}
+        </PBody>
+      </Panel>
     );
   };
 

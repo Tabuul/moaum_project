@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 544
+\set EXPECTED 545
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31028,6 +31028,96 @@ BEGIN
                      || ' | after: students 2 old archived t alias C97162 fee C97162 offer C97162 jamb C97161,C97162 names C97162 trail C97161>C97162:WRONG_CODE_ENTERED:2:ict | landed C97162 | again PROGRAMME_MERGED'
                      || ' | undone: students 2 old archived f new archived t alias ended t names C97161 named false | reuse: refusal null reused true → true on new 2 archived f alias C97162'
                      || ' | twice PROGRAMME_CODE_CHANGE_UNDONE kept PROGRAMME_CODE_CHANGE_KEPT', false),
+      msg);
+END $$;
+
+-- ── V717: dates read day first — "12-09-2003" is 12 September 2003 in the session's own reading, in platform.read_date (ISO, figures with
+--          -, /, . or a two-digit year, the month in words on either side, an Excel day number; month first only when the figures force
+--          it) and recognised as the old misreading by platform.date_misread; a committed list with five candidates whose JAMB file says
+--          12-09-2003 (one "n/a") and five students on the register — the preview writes nothing; the Bursary may not write; the
+--          Academic Office writes: the misread corrected, the empty filled, the agreeing kept, another date left and listed, the
+--          unreadable listed, the Biodata form following, the correction on the audit spine with its reason; read again, everything
+--          written agrees; a Biodata form written 12-09-2003 reaches the record as 12 September; the Post-UTME door's date-of-birth
+--          factor takes the date however it is written and refuses the misreading. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9717/9718'; who uuid := gen_random_uuid(); batch uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+    cand uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+    st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+    names text[] := ARRAY['Misread', 'Empty', 'Agrees', 'Differs', 'Unreadable'];
+    helds date[] := ARRAY[date '2003-12-09', NULL, date '2003-09-12', date '2001-01-01', NULL];
+    reads text; misreads text; acts text; acts2 text; r_office text; v_door text; msg text; v_err text; i int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'CHECK V717', true);
+    -- the session reads day first; the reader; the old misreading recognised
+    reads := concat_ws(',', current_setting('datestyle'), '12-09-2003'::date,
+                       platform.read_date('12-09-2003'), platform.read_date('12/09/2003'), platform.read_date('12.09.2003'), platform.read_date('12-09-03'), platform.read_date('31-08-75'),
+                       platform.read_date('2003-09-12'), platform.read_date('2003-09-12T00:00:00Z'), platform.read_date('12 Sep 2003'), platform.read_date('12th September 2003'), platform.read_date('September 12, 2003'),
+                       platform.read_date('09-13-2003'), platform.read_date('13-09-2003'), platform.read_date((date '2003-09-12' - date '1899-12-30')::text),
+                       coalesce(platform.read_date('31-02-2003')::text, 'null'), coalesce(platform.read_date('last year')::text, 'null'), coalesce(platform.read_date('')::text, 'null'));
+    misreads := concat_ws(',', platform.date_misread('12-09-2003'), coalesce(platform.date_misread('13-09-2003')::text, 'null'), coalesce(platform.date_misread('12-12-2003')::text, 'null'), coalesce(platform.date_misread('2003-09-12')::text, 'null'));
+    -- the old-portal readers and the import functions: day first too (a two-digit year, a time after the date, the function-level DateStyle)
+    misreads := misreads || ' | legacy ' || concat_ws(',', finance.legacy_date('12/09/23')::date, finance.legacy_date('12/09/2023 10:15')::date, finance.legacy_date('2023-09-12')::date,
+                                                  admissions.pg_legacy_ts('12-09-2023')::date, admissions.pg_legacy_ts('2023-09-12 10:15')::date,
+                                                  (SELECT count(*) FROM pg_proc p WHERE p.proname IN ('import_students_rows', 'import_biography_rows', 'import_postgraduate', 'import_paydirect', 'legacy_date', 'pg_legacy_ts')
+                                                     AND EXISTS (SELECT 1 FROM unnest(p.proconfig) c WHERE lower(c) = 'datestyle=iso, dmy')));
+    -- a committed list, five candidates with JAMB's date-of-birth file, five students on the register
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), ses, date '9717-10-01', date '9718-09-30', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office, committed_at)
+    VALUES (batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x7170'::bytea, 5, current_date, who, 'academic', now());
+    FOR i IN 1..5 LOOP
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+        VALUES (gen_random_uuid(), batch, ses, '97170000000' || i || 'DB', '{}'::jsonb, 'CHECKV717', names[i], 'C00023', 210, 'UTME');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (cand[i], ses, '97170000000' || i || 'DB', 'CHECKV717', names[i], (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload)
+        VALUES (gen_random_uuid(), ses, 'DATE_OF_BIRTH', '97170000000' || i || 'DB', '97170000000' || i || 'DB', 'COLUMN', cand[i], now(),
+                jsonb_build_object('dob', CASE WHEN i = 5 THEN 'n/a' ELSE '12-09-2003' END, 'ambiguous', true));
+        INSERT INTO people.student (id, candidate_id, admission_no, jamb_reg_no, surname, other_names, date_of_birth, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+        VALUES (st[i], cand[i], 'MOAUM/ADM/17/97170' || i, '97170000000' || i || 'DB', 'CHECKV717', names[i], helds[i], 'C00023', 'UTME', ses, 100, 100, 'ADMITTED');
+    END LOOP;
+    INSERT INTO people.biodata (student_id, field, value) VALUES (st[1], 'date_of_birth', '2003-12-09'), (st[4], 'date_of_birth', '2001-01-01');
+    -- the preview writes nothing
+    SELECT string_agg(other_names || ':' || action, ',' ORDER BY other_names) INTO acts FROM people.jamb_dates_of_birth(ses, false, NULL);
+    msg := 'reads ' || reads || ' | misreads ' || misreads || ' | preview ' || acts
+        || ' held ' || (SELECT date_of_birth FROM people.student WHERE id = st[1]) || '/' || coalesce((SELECT date_of_birth::text FROM people.student WHERE id = st[2]), 'null');
+    -- the Bursary may not write it
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM count(*) FROM people.jamb_dates_of_birth(ses, true, NULL); r_office := 'written';
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    -- the Academic Office writes it
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM count(*) FROM people.jamb_dates_of_birth(ses, true, 'CHECK V717: JAMB''s date');
+    SELECT string_agg(other_names || ':' || action, ',' ORDER BY other_names) INTO acts2 FROM people.jamb_dates_of_birth(ses, false, NULL);
+    msg := msg || ' | ' || r_office || ' | written '
+        || (SELECT string_agg(s.other_names || '=' || coalesce(s.date_of_birth::text, 'null') || '/' || coalesce((SELECT b.value FROM people.biodata b WHERE b.student_id = s.id AND b.field = 'date_of_birth'), '-'), ',' ORDER BY s.other_names)
+              FROM people.student s WHERE s.id = ANY(st))
+        || ' audit ' || (SELECT count(*) FROM audit.entries e WHERE e.subject_id = st[1] AND e.reason = 'CHECK V717: JAMB''s date')
+        || ' again ' || acts2;
+    -- a Biodata form written day first reaches the record (an office's entry)
+    INSERT INTO people.biodata (student_id, field, value) VALUES (st[5], 'date_of_birth', '12-09-2003') ON CONFLICT (student_id, field) DO UPDATE SET value = EXCLUDED.value;
+    -- the Post-UTME door's date-of-birth factor, however the date is written
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+    VALUES (acct, ses, cand[1], '971700000001DB', 'check.v717@example.com', '08031234717', crypt('x', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at) VALUES (app, acct, cand[1], ses, 'APP/17/000001', now(), now());
+    v_door := concat_ws(',', coalesce((admissions.putme_verify_as(ses, '971700000001DB', '2003-09-12', 'DATE_OF_BIRTH') = app)::text, 'null'),
+                        coalesce((admissions.putme_verify_as(ses, '971700000001DB', '12/09/2003', 'DATE_OF_BIRTH') = app)::text, 'null'),
+                        coalesce((admissions.putme_verify_as(ses, '971700000001DB', '12092003', 'DATE_OF_BIRTH') = app)::text, 'null'),
+                        coalesce(admissions.putme_verify_as(ses, '971700000001DB', '2003-12-09', 'DATE_OF_BIRTH')::text, 'null'));
+    msg := msg || ' | form ' || coalesce((SELECT date_of_birth::text FROM people.student WHERE id = st[5]), 'null') || ' | door ' || v_door;
+    RAISE EXCEPTION 'the V717 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V717 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V717: dates are read day first — JAMB''s 12-09-2003 is 12 September 2003 in the session, the reader and the forms; the register takes JAMB''s date of birth where it held none or the old misreading, keeps the rest and lists what differs; the Post-UTME door takes the date however it is written',
+      coalesce(msg = 'reads ISO, DMY,2003-09-12,2003-09-12,2003-09-12,2003-09-12,2003-09-12,1975-08-31,2003-09-12,2003-09-12,2003-09-12,2003-09-12,2003-09-12,2003-09-13,2003-09-13,2003-09-12,null,null,null'
+                     || ' | misreads 2003-12-09,null,null,null | legacy 2023-09-12,2023-09-12,2023-09-12,2023-09-12,2023-09-12,6 | preview Agrees:AGREES,Differs:DIFFERS,Empty:FILLED,Misread:CORRECTED,Unreadable:UNREADABLE held 2003-12-09/null'
+                     || ' | DOB_RECONCILE_OFFICE | written Agrees=2003-09-12/2003-09-12,Differs=2001-01-01/2001-01-01,Empty=2003-09-12/2003-09-12,Misread=2003-09-12/2003-09-12,Unreadable=null/- audit 1'
+                     || ' again Agrees:AGREES,Differs:DIFFERS,Empty:AGREES,Misread:AGREES,Unreadable:UNREADABLE | form 2003-09-12 | door true,true,true,null', false),
       msg);
 END $$;
 

@@ -4,6 +4,8 @@
  * browser, matched on the registration number, counted both ways.
  */
 
+import { readDate } from "./format.ts";
+
 /** twelve digits then two or three letters — the shape of every number JAMB sends */
 export const JNUM = /(\d{12}[A-Za-z]{2,3})/;
 
@@ -60,13 +62,16 @@ export function dobParse(rows: string[][]): { rows: DobRow[]; trimmed: number } 
     const num = jkey(raw);
     if (String(raw) !== num) trimmed++;
     const d = String(r[ix.dob] ?? "").trim();
-    const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(d);
-    const amb = !!(m && Number(m[1]) <= 12 && Number(m[2]) <= 12);
+    /* V717: JAMB writes day, month, year — 12-09-2003 is 12 September 2003 and is read so; a row whose day and month are both
+       twelve or less is still marked ambiguous (the reading rests on JAMB's order), one whose month is above twelve is not */
+    const m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(d);
+    const amb = !!(m && Number(m[1]) <= 12 && Number(m[2]) <= 12 && m[1] !== m[2]);
+    const read = readDate(d);
     out.push({
       num, raw: String(raw),
       surname: r[ix.surname] ?? "", first: r[ix.first] ?? "", middle: r[ix.middle] ?? "",
       dob: d, ambiguous: amb,
-      reading: m ? `${m[1]} ${MONTHS[Number(m[2]) - 1] ?? "?"} ${m[3]}` : "",
+      reading: read ? `${read.getUTCDate()} ${MONTHS[read.getUTCMonth()]} ${read.getUTCFullYear()}` : "",
       kind: r[ix.kind] ?? "",
     });
   }

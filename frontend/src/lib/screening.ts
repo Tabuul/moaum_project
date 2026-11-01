@@ -1,3 +1,4 @@
+import { ageAt } from "./format.ts";
 /** The admission lifecycle and the online screening (V269): the shapes the endpoints answer with, and the words for them. */
 
 export type ScreeningState = "PENDING" | "IN_REVIEW" | "CORRECTION_REQUIRED" | "SUCCESSFUL" | "UNSUCCESSFUL" | "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "RETURNED";
@@ -130,4 +131,5 @@ export function fieldProblem(field: string, value: string, ctx: { states: RefSta
   if (field === "lga" && ctx.states.length) { const st = ctx.states.find((s) => s.name.toLowerCase() === (ctx.answers.state_of_origin ?? "").toLowerCase()); if (!st || !(JSON.parse(st.lgas) as string[]).some((l) => l.toLowerCase() === v.toLowerCase())) return "Choose a local government of the chosen state"; }
   return null;
 }
-export const ageOn = (dob: string | null | undefined) => { if (!dob) return null; const d = new Date(dob); if (isNaN(d.getTime())) return null; const now = new Date(); let a = now.getFullYear() - d.getFullYear(); if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) a--; return a; };
+/** V717: full years from a date of birth, read day first ("12-09-2003" is 12 September 2003) */
+export const ageOn = (dob: string | null | undefined) => ageAt(dob);

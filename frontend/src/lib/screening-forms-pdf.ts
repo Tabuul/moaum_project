@@ -12,6 +12,7 @@
  * type stripping for its test; the crest and the passport come in as images.
  */
 import { A4, type Image, Page, pdf } from "./pdf-write.ts";
+import { ageAt, readDate } from "./format.ts";
 import { currentInstitution } from "./document/institution-cache.ts";
 
 export const UNIVERSITY = () => currentInstitution().name.toUpperCase();
@@ -49,22 +50,18 @@ const W = R - L;
 const CX = A4.w / 2;
 const GREY: [number, number, number] = [0.35, 0.35, 0.35];
 
-const longDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "");
+/* V717: every date here is read day first (readDate) — JAMB's "12-09-2003" is 12 September 2003, and the forms print it so */
+const longDate = (iso: string | null | undefined) => {
+  const d = readDate(iso);
+  return d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }) : "";
+};
 const dmy = (iso: string | null | undefined) => {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+  const d = readDate(iso);
+  if (!d) return iso;
+  return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
 };
-const ageOn = (iso: string | null | undefined): number | null => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  if (now.getMonth() < d.getMonth() || (now.getMonth() === d.getMonth() && now.getDate() < d.getDate())) a -= 1;
-  return a;
-};
+const ageOn = (iso: string | null | undefined): number | null => ageAt(iso);
 const words = (s: string) => s.replace(/_/g, " ");
 /** the same wrapping rule pdf-write's paragraph uses, so a table row's height is known before it is drawn */
 function wrap(s: string, width: number, size: number): string[] {

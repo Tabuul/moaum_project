@@ -55,6 +55,14 @@ test("the five screening forms print as one PDF under the University's name, fil
   if (out) fs.writeFileSync(out, bytes);
 });
 
+test("V717: a date of birth as JAMB writes it (12-09-2003) prints as 12 September, never 9 December", () => {
+  const bytes = screeningFormsPdf({ ...fixture, prefill: { ...fixture.prefill, date_of_birth: "12-09-2003" } });
+  const text = new TextDecoder("latin1").decode(bytes);
+  assert.ok(text.includes("12-09-2003"), "the day-month-year form");
+  assert.ok(text.includes("12/09/2003"), "the slashed form on the data capture form");
+  assert.ok(!text.includes("09-12-2003") && !text.includes("09/12/2003"), "never month first");
+});
+
 test("the faculty group ticked follows the faculty's name", () => {
   assert.equal(facultyTick("SCIENCE"), "Scs.");
   assert.equal(facultyTick("Basic Medical Sciences"), "CHS");

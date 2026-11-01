@@ -295,6 +295,60 @@ class CandidateDataController {
         return olevelDuplicates(session, year);
     }
 
+    /* ── V717: the register read against JAMB's date-of-birth file, and put right ── */
+
+    private static final String RECONCILERS =
+            "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_ict','OFFICE_super')";
+
+    public record DobCounts(long total, long agrees, long filled, long corrected, long differs, long unreadable) {
+    }
+
+    /** the rows worth a look (everything but AGREES), with the counts of all of them */
+    public record DobRegister(String session, boolean applied, DobCounts counts, List<Map<String, Object>> rows) {
+    }
+
+    public record ReconcileIn(@Size(max = 500) String reason) {
+    }
+
+    /** V717: every student linked to a candidate with a JAMB date of birth on file, read against the record — nothing written */
+    @GetMapping("/dates-of-birth")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    DobRegister datesOfBirth(@PathVariable String session, @PathVariable String year) {
+        return dobRegister(session + "/" + year, false, null);
+    }
+
+    /** V717: JAMB's date written to an empty record and to one holding the old month-first misreading; the Biodata form follows;
+     *  another date on the record is left for the Registry. The Academic Office, the Registry, Records, the Director of ICT, super. */
+    @PostMapping("/dates-of-birth/reconcile")
+    @PreAuthorize(RECONCILERS)
+    @Transactional
+    DobRegister reconcileDatesOfBirth(@PathVariable String session, @PathVariable String year, @RequestBody(required = false) ReconcileIn body) {
+        return dobRegister(session + "/" + year, true, body == null ? null : body.reason());
+    }
+
+    private DobRegister dobRegister(String s, boolean commit, String reason) {
+        List<Map<String, Object>> all = jdbc.sql("""
+                SELECT student_id, jamb_reg_no, surname, other_names, programme_code, jamb_text, jamb_date::text AS jamb_date, held::text AS held, form_value, action
+                  FROM people.jamb_dates_of_birth(:s, :c, :r)
+                """).param("s", s).param("c", commit).param("r", reason, Types.VARCHAR).query().listOfRows();
+        long agrees = 0, filled = 0, corrected = 0, differs = 0, unreadable = 0;
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Map<String, Object> r : all) {
+            switch (String.valueOf(r.get("action"))) {
+                case "AGREES" -> agrees++;
+                case "FILLED" -> filled++;
+                case "CORRECTED" -> corrected++;
+                case "DIFFERS" -> differs++;
+                default -> unreadable++;
+            }
+            if (!"AGREES".equals(r.get("action")) && rows.size() < 2000) {
+                rows.add(r);
+            }
+        }
+        return new DobRegister(s, commit, new DobCounts(all.size(), agrees, filled, corrected, differs, unreadable), rows);
+    }
+
     /** the little JSON the payload needs, without another dependency on the mapper's configuration */
     static final class Json {
         private static final tools.jackson.databind.ObjectMapper MAPPER = new tools.jackson.databind.ObjectMapper();

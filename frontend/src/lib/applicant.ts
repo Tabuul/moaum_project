@@ -1,4 +1,5 @@
 import type { StatusChecking } from "@/lib/screening";
+import { readDate } from "./format.ts";
 
 /**
  * The applicant's journey as the API states it (V021, proto/part13.html):
@@ -185,13 +186,9 @@ export function confirmedReference(a: Application, kind: "APPLICATION" | "ACCEPT
   return a.feeReferences.find((r) => r.kind === kind && r.confirmedAt) ?? null;
 }
 
-/** DD-MM-YYYY, or whatever JAMB sent, shown as a date where it can be read as one */
+/** DD-MM-YYYY, or whatever JAMB sent, shown as a date where it can be read as one — day first (V717: readDate) */
 export function dob(v: string | null): string {
   if (!v) return "—";
-  const m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(v.trim());
-  if (m) {
-    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-  }
-  return v;
+  const d = readDate(v);
+  return d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }) : v;
 }

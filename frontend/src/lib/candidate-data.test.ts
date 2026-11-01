@@ -19,10 +19,16 @@ test("a trailing space is trimmed on the way in, and counted", () => {
   assert.equal(r.rows[0].reading, "31 August 2005");
 });
 
-test("a date whose day and month are both twelve or less is ambiguous, not guessed", () => {
-  const r = dobParse([["Reg. Number", "DateofBirth"], ["202699711714BJ", "05-07-2002"]]);
+test("a date whose day and month are both twelve or less is read day first, as JAMB writes it, and marked ambiguous (V717)", () => {
+  const r = dobParse([["Reg. Number", "DateofBirth"], ["202699711714BJ", "05-07-2002"], ["202699711715BJ", "12-09-2003"], ["202699711716BJ", "09-13-2003"], ["202699711717BJ", "12-12-2003"]]);
   assert.ok("rows" in r);
   assert.equal(r.rows[0].ambiguous, true);
+  assert.equal(r.rows[0].reading, "5 July 2002");
+  assert.equal(r.rows[1].reading, "12 September 2003", "the University's case: never 9 December");
+  assert.equal(r.rows[1].ambiguous, true);
+  assert.equal(r.rows[2].reading, "13 September 2003", "a month above twelve reads the only way it can");
+  assert.equal(r.rows[2].ambiguous, false);
+  assert.equal(r.rows[3].ambiguous, false, "the same figure either way is not ambiguous");
 });
 
 test("a file with no registration number column is refused by name", () => {

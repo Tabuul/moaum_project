@@ -57,7 +57,7 @@ class PutmeCbtController {
     /** the examination session lasts this long from the door; the attempt's own clock is the server's regardless */
     private static final Duration SESSION_LENGTH = Duration.ofHours(6);
     private static final Map<String, String> FACTOR_WORD = Map.of("NONE", "None",
-            "APPLICATION_NO", "Application number", "SLIP_TOKEN", "Screening slip code", "PHONE", "Phone number you registered with", "DATE_OF_BIRTH", "Date of birth (yyyy-mm-dd)");
+            "APPLICATION_NO", "Application number", "SLIP_TOKEN", "Screening slip code", "PHONE", "Phone number you registered with", "DATE_OF_BIRTH", "Date of birth, as on your JAMB slip (e.g. 12/09/2003)");
 
     /** V388: {@code proof} is blank when the examination asks for the JAMB registration number alone */
     public record VerifyIn(@Size(max = 9) String session, @NotBlank @Size(max = 40) String jambRegNo, @Size(max = 80) String proof) {

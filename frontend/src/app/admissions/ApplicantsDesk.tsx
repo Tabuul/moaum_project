@@ -19,6 +19,7 @@ import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
+import { ageAt } from "@/lib/format";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
@@ -68,15 +69,7 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [nowMs] = useState(() => Date.now());
   const base = `/api/bff/api/v1/admissions/sessions/${desk.session}`;
   const office = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
-  const ageOf = (iso: string | null): number | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    const n = new Date(nowMs);
-    let a = n.getFullYear() - d.getFullYear();
-    if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) a--;
-    return a >= 0 && a < 130 ? a : null;
-  };
+  const ageOf = (iso: string | null): number | null => ageAt(iso, new Date(nowMs));   // V717: JAMB's "12-09-2003" is 12 September
 
   async function send(key: string, method: "PUT" | "POST", path: string, body: unknown, reason: string): Promise<Record<string, unknown> | null> {
     setBusy(key);

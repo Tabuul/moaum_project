@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
-import { BODY, type Application } from "@/lib/applicant";
+import { BODY, dob, type Application } from "@/lib/applicant";
 import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 
@@ -57,7 +57,7 @@ export async function GET() {
     ["Application number", clean(a.applicationNo)],
     ["Name", clean(a.name)],
     ["JAMB registration", clean(a.jambKey)],
-    ["Date of birth", day(a.biodata.dateOfBirth)],
+    ["Date of birth", dob(a.biodata.dateOfBirth)],   // V717: JAMB's 12-09-2003 is 12 September, never 9 December
     ["Sex", a.biodata.sex === "F" ? "Female" : a.biodata.sex === "M" ? "Male" : "—"],
     ["State / LGA of origin", `${clean(a.biodata.stateOfOrigin) || "—"} · ${clean(a.biodata.lga) || "—"}`],
     ["Programme", `${clean(a.programme) || "—"}${a.faculty ? ` · Faculty of ${clean(a.faculty)}` : ""}`],
