@@ -147,7 +147,7 @@ class PreliminaryTechnologyIT {
         assertThat((List<Map<String, Object>>) list.get("rows")).singleElement()
                 .satisfies(r -> assertThat(r).containsEntry("specialisation_name", "Accounting Education").containsEntry("target_programme", "C67773"));
         List<Map<String, Object>> mine = (List<Map<String, Object>>) (List) it.getList(tech, "/api/v1/admissions/preliminary/routes").getBody();
-        assertThat(mine).extracting(r -> r.get("route")).containsExactlyInAnyOrder("PRELIMINARY_TECHNOLOGY", "PROFICIENCY_CERTIFICATE");
+        assertThat(mine).extracting(r -> r.get("route")).containsExactly("PRELIMINARY_TECHNOLOGY", "PROFICIENCY_CERTIFICATE");   // V721: the preliminary programme first, whatever the fee types' order
     }
 
     @Test

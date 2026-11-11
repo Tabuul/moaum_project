@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 547
+\set EXPECTED 548
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31241,6 +31241,87 @@ BEGIN
   PERFORM pg_temp.assert('V719: a postgraduate student''s programme is changed by the School of Postgraduate Studies through the programme swap — for a postgraduate alone, onto a postgraduate programme alone, with a reason; the admission record follows, the number and the record kept one',
       coalesce(msg = 'may t/f/f/t | refused PSW_OFFICE PSW_CATEGORY PSW_OFFICE | swap COMPLETED PROGRAMME_CORRECTION C97191>C97192 by pgschool decided pgschool reason t | student C97192@900'
                      || ' | application C97192 spec none number t state ADMITTED student t apps 1 | events 1 said t', false),
+      msg);
+END $$;
+
+-- ── V721: the follow-ups of 11 November. The screening facts carry the date of birth as a date beside JAMB's text (a made-up
+--          candidate whose file says 12-09-2003: date_of_birth "12-09-2003", date_of_birth_iso 2003-09-12; a student on the register
+--          with a date: the record's). Old-portal students' dates of birth re-read from the file: seven rows against the register — one
+--          holding the misreading (corrected), one holding none (filled), one agreeing, one holding another date (left), one the file
+--          cannot date, one under no record, one under two records (by the JAMB number); the preview writes nothing; the Bursary is
+--          refused; Records writes — the records and the Biodata forms, the audit spine carrying the reason; read again, all written
+--          agree. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9720/9721'; who uuid := gen_random_uuid(); batch uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+    st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+    names text[] := ARRAY['Misread', 'Empty', 'Agrees', 'Differs', 'Unreadable', 'TwinOne', 'TwinTwo'];
+    helds date[] := ARRAY[date '2003-12-09', NULL, date '2003-09-12', date '2001-01-01', NULL, NULL, NULL];
+    rows jsonb; facts jsonb; facts_iso text; facts_raw text; st_iso text; n_issue int; acts text; acts2 text; r_office text; written text; n_audit int; msg text; v_err text; i int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM set_config('moaum.reason', 'CHECK V721', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9720-10-01', date '9721-08-31') ON CONFLICT (name) DO NOTHING;
+    -- (1) the screening facts: a candidate on a committed list with JAMB's date-of-birth file, an account and an application
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office, committed_at)
+    VALUES (batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x7200'::bytea, 1, current_date, who, 'academic', now());
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+    VALUES (gen_random_uuid(), batch, ses, '972000000001DB', '{}'::jsonb, 'CHECKV720', 'Facts', 'C00023', 210, 'UTME');
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (cand, ses, '972000000001DB', 'CHECKV720', 'Facts', (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at, payload)
+    VALUES (gen_random_uuid(), ses, 'DATE_OF_BIRTH', '972000000001DB', '972000000001DB', 'COLUMN', cand, now(), '{"dob":"12-09-2003","ambiguous":true}'::jsonb);
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+    VALUES (acct, ses, cand, '972000000001DB', 'check.v720@example.test', '08030007201', crypt('x', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at) VALUES (app, acct, cand, ses, 'APP/20/000001', now(), now());
+    facts := admissions.screening_facts(app);
+    facts_raw := facts -> 'identity' ->> 'date_of_birth'; facts_iso := facts -> 'identity' ->> 'date_of_birth_iso';
+    -- the same candidate on the register with a date: the record's date wins
+    INSERT INTO people.student (id, candidate_id, admission_no, jamb_reg_no, surname, other_names, date_of_birth, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+    VALUES (st[7], cand, 'MOAUM/ADM/20/972007', '972000000001DB', 'CHECKV720', 'Facts', date '2003-09-13', 'C00023', 'UTME', ses, 100, 100, 'ADMITTED');
+    st_iso := admissions.screening_facts(app) -> 'identity' ->> 'date_of_birth_iso';
+    DELETE FROM people.student WHERE id = st[7];
+    -- the issued forms are not re-minted for the new key: the issuer compares the facts without it (both sides)
+    n_issue := (SELECT (length(d) - length(replace(d, '#- ''{identity,date_of_birth_iso}''', ''))) / length('#- ''{identity,date_of_birth_iso}''') FROM pg_get_functiondef('admissions.issue_screening_forms(uuid)'::regprocedure) d);
+    -- (2) the old portal's file against the register: six students under their matriculation numbers, two twins under one JAMB number
+    FOR i IN 1..7 LOOP
+        INSERT INTO people.student (id, admission_no, matric_no, jamb_reg_no, surname, other_names, date_of_birth, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st[i], 'MOAUM/ADM/20/97200' || i, CASE WHEN i <= 5 THEN 'MOAUM/ZZT/20/720' || i END, CASE WHEN i >= 6 THEN '972000000099DB' ELSE NULL END,
+                'CHECKV720', names[i], helds[i], 'C00023', 'UTME', ses, 100, 100, CASE WHEN i <= 5 THEN 'ACTIVE' ELSE 'ADMITTED' END, CASE WHEN i <= 5 THEN now() END);
+    END LOOP;
+    INSERT INTO people.biodata (student_id, field, value) VALUES (st[1], 'date_of_birth', '2003-12-09'), (st[4], 'date_of_birth', '2001-01-01');
+    rows := jsonb_build_array(
+        jsonb_build_object('matric', 'moaum/zzt/20/7201', 'dob', '12-09-2003'),
+        jsonb_build_object('matric', 'MOAUM/ZZT/20/7202 ', 'dob', '12/09/2003'),
+        jsonb_build_object('matric', 'MOAUM/ZZT/20/7203', 'dob', '2003-09-12'),
+        jsonb_build_object('matric', 'MOAUM/ZZT/20/7204', 'dob', '12-09-2003'),
+        jsonb_build_object('matric', 'MOAUM/ZZT/20/7205', 'dob', 'unknown'),
+        jsonb_build_object('matric', 'MOAUM/ZZT/20/7299', 'dob', '12-09-2003'),
+        jsonb_build_object('jamb', '972000000099DB', 'dob', '12-09-2003'));
+    SELECT string_agg(coalesce(other_names, '-') || ':' || action, ',' ORDER BY row_no) INTO acts FROM people.file_dates_of_birth(rows, false, NULL);
+    msg := 'facts ' || facts_raw || '/' || facts_iso || ' record ' || st_iso || ' issuer ' || n_issue || ' | preview ' || acts
+        || ' held ' || (SELECT date_of_birth FROM people.student WHERE id = st[1]) || '/' || coalesce((SELECT date_of_birth::text FROM people.student WHERE id = st[2]), 'null');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM count(*) FROM people.file_dates_of_birth(rows, true, NULL); r_office := 'written';
+    EXCEPTION WHEN insufficient_privilege THEN r_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    PERFORM count(*) FROM people.file_dates_of_birth(rows, true, 'CHECK V721: the old portal''s file');
+    SELECT string_agg(s.other_names || '=' || coalesce(s.date_of_birth::text, 'null') || '/' || coalesce((SELECT b.value FROM people.biodata b WHERE b.student_id = s.id AND b.field = 'date_of_birth'), '-'), ',' ORDER BY s.other_names)
+      INTO written FROM people.student s WHERE s.id = ANY(st[1:5]);
+    SELECT count(*) INTO n_audit FROM audit.entries e WHERE e.subject_id = st[1] AND e.reason = 'CHECK V721: the old portal''s file';
+    SELECT string_agg(coalesce(other_names, '-') || ':' || action, ',' ORDER BY row_no) INTO acts2 FROM people.file_dates_of_birth(rows, false, NULL);
+    msg := msg || ' | ' || r_office || ' | written ' || written || ' audit ' || n_audit || ' | again ' || acts2;
+    RAISE EXCEPTION 'the V721 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V721 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V721: the screening facts carry the date of birth as a date beside JAMB''s text; the old portal''s file is read against the register — the misreading corrected, the empty filled, the agreeing kept, another date left, no date and no record listed, twins left — by Records with the reason, never by the Bursary',
+      coalesce(msg = 'facts 12-09-2003/2003-09-12 record 2003-09-13 issuer 2 | preview Misread:CORRECTED,Empty:FILLED,Agrees:AGREES,Differs:DIFFERS,Unreadable:UNREADABLE,-:NO_STUDENT,-:AMBIGUOUS held 2003-12-09/null'
+                     || ' | DOB_RECONCILE_OFFICE | written Agrees=2003-09-12/2003-09-12,Differs=2001-01-01/2001-01-01,Empty=2003-09-12/2003-09-12,Misread=2003-09-12/2003-09-12,Unreadable=null/- audit 1'
+                     || ' | again Misread:AGREES,Empty:AGREES,Agrees:AGREES,Differs:DIFFERS,Unreadable:UNREADABLE,-:NO_STUDENT,-:AMBIGUOUS', false),
       msg);
 END $$;
 

@@ -4,6 +4,7 @@ import java.sql.Types;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -22,6 +23,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -48,9 +50,70 @@ class PgRecordController {
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
     private final JdbcClient jdbc;
+    private final ng.edu.moaum.portal.shared.FileObjects files;
 
-    PgRecordController(JdbcClient jdbc) {
+    PgRecordController(JdbcClient jdbc, ng.edu.moaum.portal.shared.FileObjects files) {
         this.jdbc = jdbc;
+        this.files = files;
+    }
+
+    /* ── V721: a document uploaded or replaced by the desk ── */
+
+    /** the kinds a desk may upload: what the applicant uploads, and the application's own papers */
+    private static final Set<String> DESK_DOC_KINDS = Set.of("TRANSCRIPT", "DEGREE_CERTIFICATE", "CV", "PROPOSAL", "NYSC", "CREDENTIALS", "OTHER",
+            "HIGHER_DEGREE", "UNDERGRAD_CERT", "OLEVEL", "BIRTH_CERTIFICATE", "LGA_CERTIFICATE", "NAME_CHANGE");
+
+    public record DocumentIn(@NotBlank @Size(max = 40) String kind, @NotBlank @Size(max = 200) String filename, @NotBlank @Size(max = 120) String contentType,
+                             @NotBlank String base64, @Size(max = 500) String reason) { }
+
+    /** V721: the desk uploads a postgraduate applicant's document, or replaces the one of that kind (a higher-degree certificate is one
+     *  of several, never replaced) — the School and the Director of ICT (EDIT_PG_RECORD); kept on the application's history */
+    @PostMapping("/applications/{id}/documents")
+    @Transactional
+    Map<String, Object> uploadDocument(@PathVariable UUID id, @Valid @RequestBody DocumentIn body) {
+        need("EDIT_PG_RECORD");
+        String kind = body.kind().trim().toUpperCase();
+        if (!DESK_DOC_KINDS.contains(kind)) {
+            throw new DomainRuleViolation("PG_DOC_KIND", "'" + body.kind() + "' is not a document of a postgraduate application.",
+                    new DomainRuleViolation.Remedy("Choose one of " + String.join(", ", new java.util.TreeSet<>(DESK_DOC_KINDS)) + ".", "You"));
+        }
+        if (jdbc.sql("SELECT count(*) FROM admissions.pg_application WHERE id = :id").param("id", id).query(Long.class).single() == 0L) {
+            throw new NotFound("postgraduate application", id);
+        }
+        byte[] content;
+        try {
+            content = java.util.Base64.getDecoder().decode(body.base64());
+        } catch (IllegalArgumentException notBase64) {
+            throw new DomainRuleViolation("PG_DOC_ENCODING", "The file did not arrive intact.", new DomainRuleViolation.Remedy("Try the upload again.", "You"));
+        }
+        if (content.length == 0 || content.length > PgPortalController.MAX_DOC) {
+            throw new DomainRuleViolation("PG_DOC_SIZE", "A document is between 1 byte and 8 MB; this one is " + content.length + " bytes.",
+                    new DomainRuleViolation.Remedy("Reduce the scan's resolution and upload it again.", "You"));
+        }
+        String replaced = null;
+        if (!"HIGHER_DEGREE".equals(kind)) {
+            List<Map<String, Object>> old = jdbc.sql("DELETE FROM admissions.pg_document WHERE application_id = :app AND kind = :k RETURNING filename, object_id")
+                    .param("app", id).param("k", kind).query().listOfRows();
+            for (Map<String, Object> o : old) {
+                if (o.get("object_id") != null) files.forget((UUID) o.get("object_id"));
+                replaced = String.valueOf(o.get("filename"));
+            }
+        }
+        UUID oid = files.store("admissions.pg_document", id, body.filename().trim(), body.contentType(), content);
+        UUID docId = jdbc.sql("INSERT INTO admissions.pg_document (application_id, kind, filename, content_type, bytes, object_id) VALUES (:app, :k, :fn, :ct, :b, :o) RETURNING id")
+                .param("app", id).param("k", kind).param("fn", body.filename().trim()).param("ct", body.contentType()).param("b", oid == null ? content : null, java.sql.Types.BINARY)
+                .param("o", oid, java.sql.Types.OTHER).query(UUID.class).single();
+        jdbc.sql("SELECT admissions.pg_app_event(:app, 'DOCUMENT_UPLOADED_BY_DESK', :n)").param("app", id)
+                .param("n", "Document " + kind + " uploaded by the " + office() + " desk: " + body.filename().trim() + (replaced != null ? " (replacing " + replaced + ")" : "")
+                        + (body.reason() != null && !body.reason().isBlank() ? " — " + body.reason().trim() : "")).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("id", docId);
+        out.put("kind", kind);
+        out.put("filename", body.filename().trim());
+        out.put("replaced", replaced);
+        out.put("documents", jdbc.sql("SELECT id, kind, filename, content_type, uploaded_at FROM admissions.pg_document WHERE application_id = :id ORDER BY uploaded_at")
+                .param("id", id).query().listOfRows());
+        return out;
     }
 
     private static String office() {

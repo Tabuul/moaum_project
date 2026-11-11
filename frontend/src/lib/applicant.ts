@@ -80,7 +80,7 @@ export interface Application {
   offerState: string;
   email: string;
   phone: string;
-  biodata: { sex: string | null; stateOfOrigin: string | null; lga: string | null; dateOfBirth: string | null; utme: number | null; nextOfKin: string | null };
+  biodata: { sex: string | null; stateOfOrigin: string | null; lga: string | null; dateOfBirth: string | null; dateOfBirthIso?: string | null; utme: number | null; nextOfKin: string | null };
   olevel: OlSitting[];
   fees: { applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee?: number | null; stated: boolean;
     /** V419: a session whose fees are not stated — which session's amounts are carried, and the Bursary's rule */

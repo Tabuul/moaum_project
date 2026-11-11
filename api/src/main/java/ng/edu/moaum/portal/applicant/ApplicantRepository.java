@@ -97,6 +97,7 @@ class ApplicantRepository {
                            (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)), false) AS index_programme,
                        (SELECT f.name FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS faculty_name,
                        (SELECT d.payload ->> 'dob' FROM admissions.attachment d WHERE d.candidate_id = c.id AND d.kind = 'DATE_OF_BIRTH' ORDER BY d.arrived_at DESC LIMIT 1) AS dob,
+                       (SELECT platform.read_date(d.payload ->> 'dob')::text FROM admissions.attachment d WHERE d.candidate_id = c.id AND d.kind = 'DATE_OF_BIRTH' ORDER BY d.arrived_at DESC LIMIT 1) AS dob_iso,   -- V721: read day first
                        acc.email, acc.phone,
                        s.admission_no, s.matric_no, s.programme_code AS student_programme, s.id AS student_id,
                        sb.label AS batch_label, sb.held_on, sb.starts_at, sb.ends_at, sb.venue, sb.state AS batch_state,

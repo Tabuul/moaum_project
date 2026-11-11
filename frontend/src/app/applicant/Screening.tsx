@@ -14,6 +14,7 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Passport } from "@/components/proto/blocks";
+import { day } from "@/lib/format";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Unsaved } from "@/components/Unsaved";
 import { DOC_WORD, STATE_WORD, dayOf, parseTracker, whenAt, type Facts, type Institution, type ScreeningView } from "@/lib/screening";
@@ -203,7 +204,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
       <Panel title="What the University holds on you" right="Read from JAMB, your application and your documents; the officers screen this record">
         <PBody>
           <div className="eyebrow mb-1">Identity</div>
-          <KvGrid cls="grid--4" pairs={[["Surname", val(id.surname)], ["Other names", val(id.other_names)], ["Sex", id.sex === "M" ? "Male" : id.sex === "F" ? "Female" : val(id.sex)], ["Date of birth", val(id.date_of_birth)], ["State of origin", val(id.state_of_origin)], ["Local government", val(id.lga)], ["Email", val(id.email)], ["Phone", val(id.phone)], ["Next of kin", val(id.next_of_kin)], ["Photograph", id.passport ? "As JAMB sent it" : "Not received"]]} />
+          <KvGrid cls="grid--4" pairs={[["Surname", val(id.surname)], ["Other names", val(id.other_names)], ["Sex", id.sex === "M" ? "Male" : id.sex === "F" ? "Female" : val(id.sex)], ["Date of birth", id.date_of_birth ? `${day(String(id.date_of_birth_iso ?? id.date_of_birth))}${id.date_of_birth_iso && String(id.date_of_birth) !== String(id.date_of_birth_iso) ? ` (JAMB wrote ${String(id.date_of_birth)})` : ""}` : "—"], ["State of origin", val(id.state_of_origin)], ["Local government", val(id.lga)], ["Email", val(id.email)], ["Phone", val(id.phone)], ["Next of kin", val(id.next_of_kin)], ["Photograph", id.passport ? "As JAMB sent it" : "Not received"]]} />
           <div className="eyebrow mt-3 mb-1">JAMB</div>
           <KvGrid cls="grid--4" pairs={[["Registration number", val(jb.jamb_reg_no)], ["UTME aggregate", val(jb.utme_aggregate)], ["UTME subjects", val(jb.utme_subjects)], ["Entry mode", val(jb.entry_mode)], ["Entry level", val(jb.entry_level)], ["Programme on the list", val(jb.programme)], ["Session", val(jb.session)], ["List source", val(jb.list_source)]]} />
           <div className="eyebrow mt-3 mb-1">Admission</div>

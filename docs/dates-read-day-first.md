@@ -60,3 +60,18 @@ file against the record:
 Every write is on the audit spine with the reason. The migration ran it once over every session. The Academic Office, the
 Registry, Records, the Director of ICT and super may run it again from Admissions › Candidate data › Dates of birth
 (`GET`/`POST …/candidate-data/dates-of-birth[/reconcile]`); anyone who reads the desk may preview it.
+
+## V721 — the old portal's file, and the screening prefill
+
+`people.file_dates_of_birth(rows, commit, reason)` reads the migration file's rows (a matriculation or JAMB number, the date of
+birth as the file writes it) against the register the way `people.jamb_dates_of_birth` reads JAMB's file: AGREES, FILLED, CORRECTED
+(the record holds the file's day and month swapped — the old reading), DIFFERS (left, listed), UNREADABLE, NO_STUDENT, AMBIGUOUS
+(two records under the number). Commit writes the record and an empty or misread Biodata form with the reason, by the offices of
+`people.jamb_dob_officer`. The desk is Records › Dates of Birth (Old Portal) (`/records/dates-of-birth`, beside Data Migration):
+the file is read in the browser by its headers, read against the register, and written with a reason;
+`POST /api/v1/results/legacy/dates-of-birth` carries the rows (`commit` false previews).
+
+`admissions.screening_facts` gives the identity block `date_of_birth_iso` — the record's date, else JAMB's text read day first —
+beside the raw `date_of_birth`; the applicant's screening and the Screening Review show the date formatted with JAMB's text
+beside it where they differ; the API's prefill queries carry `date_of_birth_iso` / `dateOfBirthIso` likewise. The raw text stays
+for the forms and the Post-UTME door.

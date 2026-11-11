@@ -447,22 +447,36 @@ class ProgrammeSwapController {
 
     /* ── the swaps ── */
 
+    /** V721: the School of Postgraduate Studies reads the swaps of postgraduate students alone — its own report of programme changes */
+    private static final String SWAP_READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records',"
+            + "'OFFICE_super','OFFICE_admin','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_dvc','OFFICE_pgschool','OFFICE_pgsecretary')";
+    private static final Set<String> SCHOOL = Set.of("pgschool", "pgsecretary");
+
     @GetMapping
-    @PreAuthorize(READERS)
+    @PreAuthorize(SWAP_READERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> list(@RequestParam(required = false) String status, @RequestParam(required = false) String session,
                                    @RequestParam(required = false) String fac, @RequestParam(required = false) String dept,
                                    @RequestParam(required = false) String from, @RequestParam(required = false) String to,
                                    @RequestParam(required = false) Integer level, @RequestParam(required = false) String kind,
                                    @RequestParam(required = false) String fromDate, @RequestParam(required = false) String toDate,
-                                   @RequestParam(required = false) String q, @RequestParam(required = false) Integer limit) {
+                                   @RequestParam(required = false) String q, @RequestParam(required = false) Integer limit,
+                                   @RequestParam(required = false) Boolean postgraduate) {
         OfficeScope.Bound b = scope.bound(fac, dept, null);
-        return jdbc.sql("SELECT * FROM people.programme_swaps(:status, :session, :fac, :dept, :from, :to, :level, :kind, :fd, :td, :q, :limit)")
+        // V721: the School sees postgraduate students' swaps alone, whatever it asks; anyone else may ask for them
+        boolean pgOnly = Boolean.TRUE.equals(postgraduate) || SCHOOL.contains(String.valueOf(AuditContextHolder.current().map(c -> c.actorOffice()).orElse("")));
+        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM people.programme_swaps(:status, :session, :fac, :dept, :from, :to, :level, :kind, :fd, :td, :q, :limit)")
                 .param("status", blank(status), Types.VARCHAR).param("session", blank(session), Types.VARCHAR)
                 .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR)
                 .param("from", blank(from), Types.VARCHAR).param("to", blank(to), Types.VARCHAR).param("level", level, Types.INTEGER)
                 .param("kind", blank(kind), Types.VARCHAR).param("fd", date(fromDate), Types.DATE).param("td", date(toDate), Types.DATE)
-                .param("q", blank(q), Types.VARCHAR).param("limit", limit == null ? 500 : limit).query().listOfRows().stream().map(this::unwrapped).toList();
+                .param("q", blank(q), Types.VARCHAR).param("limit", pgOnly ? 5000 : limit == null ? 500 : limit).query().listOfRows().stream().map(this::unwrapped).toList();
+        if (!pgOnly) return rows;
+        Set<UUID> pg = new java.util.HashSet<>(jdbc.sql("""
+                SELECT s.id FROM people.student s JOIN ref.programme g ON g.code = s.programme_code
+                 WHERE s.id = ANY(:ids) AND people.is_postgraduate(s.entry_mode, g.category)
+                """).param("ids", rows.stream().map(r -> (UUID) r.get("student_id")).toArray(UUID[]::new)).query(UUID.class).list());
+        return rows.stream().filter(r -> pg.contains((UUID) r.get("student_id"))).limit(limit == null ? 500 : limit).toList();
     }
 
     @GetMapping("/{id}")

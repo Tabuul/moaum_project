@@ -66,6 +66,37 @@ class ResultsController {
         return service.importStudents(body.rows());
     }
 
+    /** V721: old-portal students' dates of birth re-read from the migration file — the rows (matric or JAMB number, the date as the file
+     *  writes it) read against the register; commit writes the record and the Biodata form with the reason (people.jamb_dob_officer's
+     *  offices; the database refuses the rest), preview writes nothing */
+    public record DatesOfBirthIn(@NotNull List<Map<String, Object>> rows, boolean commit, String reason) { }
+    private static final tools.jackson.databind.ObjectMapper DOB_JSON = new tools.jackson.databind.ObjectMapper();
+
+    @PostMapping("/legacy/dates-of-birth")
+    @PreAuthorize(MIGRATE)
+    @org.springframework.transaction.annotation.Transactional
+    Map<String, Object> datesOfBirth(@Valid @RequestBody DatesOfBirthIn body) {
+        scope.requireUniversityOperator("The old-portal migration");
+        String rowsJson;
+        try {
+            rowsJson = DOB_JSON.writeValueAsString(body.rows());
+        } catch (RuntimeException e) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("DOB_FILE_ROWS", "The rows could not be read.", new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Upload the file again.", "You"));
+        }
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT row_no, matric_no, jamb_reg_no, student_id, surname, other_names, programme_code, file_text, file_date::text AS file_date, held::text AS held, form_value, action
+                  FROM people.file_dates_of_birth(:rows::jsonb, :commit, :reason)
+                """).param("rows", rowsJson).param("commit", body.commit()).param("reason", body.reason(), java.sql.Types.VARCHAR).query().listOfRows();
+        Map<String, Long> counts = new java.util.TreeMap<>();
+        for (Map<String, Object> r : rows) counts.merge(String.valueOf(r.get("action")), 1L, Long::sum);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("applied", body.commit());
+        out.put("total", rows.size());
+        out.put("counts", counts);
+        out.put("rows", rows);
+        return out;
+    }
+
     /** V459: what each register upload would change before it changes anyone — shown to the office to confirm */
     @PostMapping("/legacy/students/preview")
     @PreAuthorize(MIGRATE)

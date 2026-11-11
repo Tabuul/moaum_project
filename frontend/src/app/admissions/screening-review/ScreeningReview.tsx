@@ -14,6 +14,7 @@ import type { Problem } from "@/lib/api";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
+import { day } from "@/lib/format";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { DOC_WORD, SECTION_WORD, STATE_WORD, dayOf, parseTracker, whenAt, type Facts, type ReviewDetail, type ReviewList, type ReviewRow, type ScreeningState } from "@/lib/screening";
@@ -149,7 +150,7 @@ export function ScreeningReview({ list, filters, actingOffice }: { list: ReviewL
             {open.missing.length ? <div className="sub2">Not on the record (the University does not hold it; the form leaves it blank): {open.missing.map((m) => m.label).join(" · ")}</div> : null}
             {facts ? <FactsBlock facts={facts} /> : null}
             <div className="eyebrow">On record</div>
-            <KvGrid cls="grid--4" pairs={[["Sex", open.prefill.sex ?? "—"], ["Date of birth", open.prefill.date_of_birth ?? "—"], ["State / LGA (JAMB)", `${open.prefill.state_of_origin ?? "—"} / ${open.prefill.lga ?? "—"}`], ["UTME", open.utme ? `${open.utme.aggregate ?? "—"} · ${open.utme.subjects ?? ""}` : "—"], ["Email", open.prefill.email], ["Phone", open.prefill.phone], ["Next of kin (application)", open.prefill.next_of_kin ?? "—"], ["Admission no.", a.admission_no ?? "Not yet on the register"]]} />
+            <KvGrid cls="grid--4" pairs={[["Sex", open.prefill.sex ?? "—"], ["Date of birth", open.prefill.date_of_birth ? `${day(open.prefill.date_of_birth_iso ?? open.prefill.date_of_birth)}${open.prefill.date_of_birth_iso && open.prefill.date_of_birth !== open.prefill.date_of_birth_iso ? ` (JAMB wrote ${open.prefill.date_of_birth})` : ""}` : "—"], ["State / LGA (JAMB)", `${open.prefill.state_of_origin ?? "—"} / ${open.prefill.lga ?? "—"}`], ["UTME", open.utme ? `${open.utme.aggregate ?? "—"} · ${open.utme.subjects ?? ""}` : "—"], ["Email", open.prefill.email], ["Phone", open.prefill.phone], ["Next of kin (application)", open.prefill.next_of_kin ?? "—"], ["Admission no.", a.admission_no ?? "Not yet on the register"]]} />
             {sections.map((sec) => <div key={sec}><div className="eyebrow mb-1">{SECTION_WORD[sec] ?? sec}</div><KvGrid cls="grid--3" pairs={open.answers.filter((x) => x.section === sec).map((x) => [x.label, x.value] as [string, string])} /></div>)}
             {f?.membership ? <KvGrid cls="grid--1" pairs={[["Membership of associations", f.membership]]} /> : null}
             <div className="eyebrow">Institutions attended</div>
@@ -202,7 +203,7 @@ function FactsBlock({ facts }: { facts: Facts }) {
   return (
     <div className="stack">
       <div className="eyebrow">Identity (JAMB and the application)</div>
-      <KvGrid cls="grid--4" pairs={[["Sex", id.sex === "M" ? "Male" : id.sex === "F" ? "Female" : v(id.sex)], ["Date of birth", v(id.date_of_birth)], ["State of origin", v(id.state_of_origin)], ["Local government", v(id.lga)], ["Email", v(id.email)], ["Phone", v(id.phone)], ["Next of kin", v(id.next_of_kin)], ["Photograph", id.passport ? "As JAMB sent it" : "Not received"]]} />
+      <KvGrid cls="grid--4" pairs={[["Sex", id.sex === "M" ? "Male" : id.sex === "F" ? "Female" : v(id.sex)], ["Date of birth", id.date_of_birth ? `${day(String(id.date_of_birth_iso ?? id.date_of_birth))}${id.date_of_birth_iso && String(id.date_of_birth) !== String(id.date_of_birth_iso) ? ` (JAMB wrote ${String(id.date_of_birth)})` : ""}` : "—"], ["State of origin", v(id.state_of_origin)], ["Local government", v(id.lga)], ["Email", v(id.email)], ["Phone", v(id.phone)], ["Next of kin", v(id.next_of_kin)], ["Photograph", id.passport ? "As JAMB sent it" : "Not received"]]} />
       <div className="eyebrow">JAMB information</div>
       <KvGrid cls="grid--4" pairs={[["Registration number", v(jb.jamb_reg_no)], ["UTME aggregate", v(jb.utme_aggregate)], ["UTME subjects", v(jb.utme_subjects)], ["Entry mode / level", `${v(jb.entry_mode)} · ${v(jb.entry_level)}`], ["Programme on the list", v(jb.programme)], ["List source", v(jb.list_source)]]} />
       <div className="eyebrow">Admission information</div>

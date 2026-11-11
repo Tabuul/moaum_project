@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { notifyProblem } from "@/components/proto/Toast";
 /**
  * The postgraduate register (V211): every postgraduate student with their coursework CGPA, academic
@@ -28,7 +29,7 @@ const RESEARCH: Record<string, string> = {
   CORRECTIONS: "Corrections", FINAL_SUBMITTED: "Final", CLEARED: "Cleared", AWARD_RECOMMENDED: "To Senate", AWARDED: "Awarded", WITHDRAWN: "Withdrawn",
 };
 
-export function StudentsRegister({ view, problem, mayEdit }: { view: View | null; problem: Problem | null; mayEdit: boolean }) {
+export function StudentsRegister({ view, problem, mayEdit, mayOpenEdit = false }: { view: View | null; problem: Problem | null; mayEdit: boolean; mayOpenEdit?: boolean }) {
   const [progs, setProgs] = useState<Prog[]>([]);
   const [programme, setProgramme] = useState("");
   const [level, setLevel] = useState("");
@@ -138,7 +139,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
         </span>
       }>
         {shown.length ? (
-          <DTable cols={["Student", "Programme", "Level|mid", "Sex|mid", "Status|mid", "CGPA|num", "Standing|mid", "Research|mid", ...(mayEdit ? ["|mid"] : [])]}
+          <DTable cols={["Student", "Programme", "Level|mid", "Sex|mid", "Status|mid", "CGPA|num", "Standing|mid", "Research|mid", ...(mayOpenEdit ? ["|mid"] : []), ...(mayEdit ? ["|mid"] : [])]}
             rows={shown.map((r) => [
               <span key="n"><span className="b600">{r.surname}, {r.other_names}</span><div className="sub2 tnum">{r.matric_no ?? r.admission_no ?? ""}</div></span>,
               <span key="p"><span>{r.programme_name}</span><div className="sub2">{r.department_name}</div></span>,
@@ -148,6 +149,7 @@ export function StudentsRegister({ view, problem, mayEdit }: { view: View | null
               <span key="c" className="tnum">{r.cgpa == null ? "—" : Number(r.cgpa).toFixed(2)}</span>,
               r.standing === "PROBATION" ? <Pil key="s" kind="bad">Probation</Pil> : r.standing === "GOOD" ? <Pil key="s" kind="ok">Good</Pil> : <Pil key="s" kind="grey">New</Pil>,
               <span key="r" className="sub2">{r.research_stage ? (RESEARCH[r.research_stage] ?? r.research_stage) : "—"}</span>,
+              ...(mayOpenEdit ? [<Link key="e" className="btn btn--ghost btn--sm" href={`/students/${r.id}/edit`}>Edit</Link>] : []),   // V721: the record, on the student edit page
               ...(mayEdit ? [
                 <select key="a" className="ctl" style={{ width: "auto", padding: "2px 6px" }} disabled={busy} value=""
                   onChange={(e) => { const to = e.target.value; e.currentTarget.value = ""; if (to) void changeStatus(r.id, to); }} aria-label="Change status">

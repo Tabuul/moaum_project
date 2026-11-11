@@ -65,9 +65,14 @@ class PaymentClassificationIT {
         return ref;
     }
 
+    /** V721: the PRELIMINARY fee type as it stood — the Bursary's PUT below re-states its order, description and study mode, which the
+     *  preliminary desks read (the nightly suite-twice run found the Vocational office opening on the proficiency courses) */
+    Map<String, Object> prelimType;
+
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
+        prelimType = jdbc.sql("SELECT ord, description, study_mode FROM finance.programme_type WHERE code = 'PRELIMINARY'").query().singleRow();
         it.session(S, 2135);
         tag = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         bursar = TestTokens.token(it.person("ZZ-PC-BURSAR", "ZZPCBURSAR"), List.of("bursar"));
@@ -107,7 +112,8 @@ class PaymentClassificationIT {
     void tearDown() {
         it.db(() -> {
             jdbc.sql("DELETE FROM finance.payment_classification WHERE purpose = 'SCHOOL_FEES' AND programme_type = 'SANDWICH'").update();
-            jdbc.sql("UPDATE finance.programme_type SET programme_categories = '{}' WHERE code = 'PRELIMINARY'").update();
+            jdbc.sql("UPDATE finance.programme_type SET programme_categories = '{}', ord = :o, description = :d, study_mode = :m WHERE code = 'PRELIMINARY'")
+                    .param("o", prelimType.get("ord")).param("d", prelimType.get("description"), java.sql.Types.VARCHAR).param("m", prelimType.get("study_mode"), java.sql.Types.VARCHAR).update();   // V721
             return null;
         });
     }

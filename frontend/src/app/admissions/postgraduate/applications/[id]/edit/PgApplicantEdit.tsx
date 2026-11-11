@@ -123,7 +123,7 @@ export function PgApplicantEdit({ page, initialSection }: { page: EditPage; init
         note="The e-mail is the one the applicant signs in with: changing it is a critical change, confirmed before it is saved. A phone is eleven digits (0…) or +234…." /> : null}
       {section === "programme" ? <ProgrammeSection key={page.version} page={page} may={may} settle={settle} /> : null}
       {section === "education" ? <EducationSection key={page.version} page={page} may={may} settle={settle} /> : null}
-      {section === "documents" ? <DocumentsSection page={page} /> : null}
+      {section === "documents" ? <DocumentsSection key={page.version} page={page} may={may} /> : null}
       {section === "admission" ? <AdmissionSection page={page} /> : null}
       {section === "fees" ? <FeesSection page={page} /> : null}
       {section === "history" ? <HistorySection page={page} may={may} /> : null}
@@ -260,8 +260,8 @@ function ProgrammeSection({ page, may, settle }: { page: EditPage; may: May; set
   const [evidence, setEvidence] = useState("");
   const [review, setReview] = useState(false);
   const { busy, save } = useFieldEdit(page, settle);
-  const canProg = may("EDIT_PG_PROGRAMME") && !page.student && !a.spgs_decided_at;
-  const canSession = may("EDIT_PG_ADMISSION") && !page.student && !page.fees.some((x) => x.confirmed_at);
+  const canProg = may("EDIT_PG_PROGRAMME") && !page.student && !a.student_id && !a.spgs_decided_at;   // V721: on the register, the student edit page
+  const canSession = may("EDIT_PG_ADMISSION") && !page.student && !a.student_id && !page.fees.some((x) => x.confirmed_at);
   const departments = L.departments.filter((d) => !faculty || d.faculty_code === faculty);
   const programmes = L.programmes.filter((p) => (!faculty || p.faculty_code === faculty) && (!dept || p.dept_code === dept));
   const changes = diff(f, was);
@@ -281,7 +281,12 @@ function ProgrammeSection({ page, may, settle }: { page: EditPage; may: May; set
           <KvGrid cls="grid--4" pairs={[["Application number", <span key="n" className="tnum">{a.application_no}</span>], ["Old portal number", a.legacy_application_no ?? "—"],
             ["Applied", day(a.submitted_at ?? a.created_at)], ["State", stateWord(a.state)], ["Qualification", awardWord(a.award)], ["Entry level", `${a.entry_level}`],
             ["Research degree", a.research ? "Yes" : "No"], ["Research proposal", a.proposal_title ?? "—"]]} />
-          {page.student ? <Note kind="info" title="On the register">The programme and the session are the student&rsquo;s now: the programme is changed by the programme swap on the student edit page.</Note>
+          {page.student ? (
+            <Note kind="info" title="On the register"
+              action={a.student_id ? <LinkBtn kind="primary" size="sm" href={`/students/${a.student_id}/edit?section=placement`}>Change the programme on the student edit page</LinkBtn> : undefined}>
+              The programme and the session are the student&rsquo;s now: the programme is changed by the programme swap on the student edit page (V719: the School, for a postgraduate student),
+              where the admission record follows and the history is kept.
+            </Note>)
             : a.spgs_decided_at ? <Note kind="info" title="Decided by the School">The School decided this application on {day(a.spgs_decided_at)} for {a.programme}. The programme is corrected before the decision, or by the programme swap once the applicant is on the register; return the application to change the decision.</Note>
             : !may("EDIT_PG_PROGRAMME") ? <Note kind="info" title="Read only">Your office does not hold EDIT_PG_PROGRAMME.</Note> : null}
           <div className="grid grid--4 mt-2">
@@ -410,10 +415,54 @@ function EducationSection({ page, may, settle }: { page: EditPage; may: May; set
 
 /* ── documents and referees: read here, managed where they are ── */
 
-function DocumentsSection({ page }: { page: EditPage }) {
+const DESK_DOC_KINDS = ["TRANSCRIPT", "DEGREE_CERTIFICATE", "HIGHER_DEGREE", "UNDERGRAD_CERT", "OLEVEL", "CV", "PROPOSAL", "NYSC", "BIRTH_CERTIFICATE", "LGA_CERTIFICATE", "NAME_CHANGE", "CREDENTIALS", "OTHER"];
+
+function DocumentsSection({ page, may }: { page: EditPage; may: May }) {
   const a = page.application;
+  const router = useRouter();
+  const canUpload = may("EDIT_PG_RECORD");
+  const [kind, setKind] = useState("TRANSCRIPT");
+  const [file, setFile] = useState<File | null>(null);
+  const [why, setWhy] = useState("");
+  const [up, setUp] = useState(false);
+  /* V721: the desk uploads a document the applicant could not, or replaces a wrong one — the one of that kind is replaced (a
+     higher-degree certificate is added), the upload kept on the application's history with the reason */
+  async function upload() {
+    if (!file) return;
+    setUp(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      const r = await call<{ replaced: string | null; filename: string }>("POST", `/api/v1/pg/records/applications/${a.id}/documents`,
+        { kind, filename: file.name, contentType: file.type || "application/octet-stream", base64, reason: why.trim() || null }, `Document ${kind} uploaded by the desk for ${a.application_no}`);
+      if (r.ok) { notify(`${r.data.filename} uploaded${r.data.replaced ? ` (replacing ${r.data.replaced})` : ""}`); setFile(null); setWhy(""); router.refresh(); }
+      else notifyProblem(r.problem);
+    } finally { setUp(false); }
+  }
   return (
     <>
+      {canUpload ? (
+        <Panel title="Upload or replace a document" right={<span className="sub2">By the desk, kept on the application&rsquo;s history</span>}>
+          <PBody>
+            <div className="grid grid--3">
+              <Field id="pd-kind" label="Document">
+                <select id="pd-kind" className="ctl" value={kind} onChange={(e) => setKind(e.target.value)}>{DESK_DOC_KINDS.map((k) => <option key={k} value={k}>{words(k)}</option>)}</select>
+              </Field>
+              <Field id="pd-file" label="File" hint="PDF or image, up to 8 MB; the document of that kind is replaced (a higher-degree certificate is added)">
+                <input id="pd-file" type="file" className="ctl" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              </Field>
+              <Field id="pd-why" label="Note (optional)" hint="Why the desk uploads it — e.g. brought to the School in person">
+                <input id="pd-why" className="ctl" value={why} onChange={(e) => setWhy(e.target.value)} />
+              </Field>
+            </div>
+            <div className="row mt-2"><Btn kind="primary" busy={up} busyLabel="Uploading…" disabled={!file} onClick={() => void upload()}>Upload the document</Btn></div>
+          </PBody>
+        </Panel>
+      ) : null}
       <Panel title="Documents" right={<span className="sub2">{a.documents_state ? `${words(a.documents_state)} · ${a.documents_uploaded ?? 0} of ${a.documents_required ?? 0}` : ""}</span>}>
         <PBody>
           <div className="sub2">The applicant uploads their documents on the applicant portal; the School reads and prints them from the application desk. A document is never deleted here; the old portal&rsquo;s are attached on the legacy migration desk.</div>

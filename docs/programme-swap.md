@@ -98,3 +98,11 @@ On the page a postgraduate student is moved among the approved postgraduate prog
 the programme chosen is read out (faculty, department, degree type, code); the change is checked, a reason given, then
 confirmed in a dialog that sets the current placement against the proposed one before anything is written; the swap reference
 is notified on success, the refusal on failure. Tests: `PgProgrammeChangeIT`, check.sql V719, `lib/programme-swap.test.ts`.
+
+## V721 — the School's report of programme changes
+
+`GET /api/v1/programme-swaps?postgraduate=true` lists the swaps of postgraduate students alone; the School of Postgraduate
+Studies (`pgschool`, `pgsecretary`) may read the list and is held to that scope whatever it asks. The page
+`/admissions/postgraduate/programme-changes` (menu: PG Management › Programme Changes; ICT: PG Programme Changes) shows each
+change — the student, the programmes before and after, the level, the effective session, the reason, who made it and when, the
+state — with the swap report's Excel and print, filtered by state, session, dates and a search carried in the address.

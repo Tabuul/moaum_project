@@ -423,6 +423,7 @@ public class ApplicantService {
         bio.put("stateOfOrigin", a.get("state_of_origin"));
         bio.put("lga", a.get("lga"));
         bio.put("dateOfBirth", a.get("dob"));
+        bio.put("dateOfBirthIso", a.get("dob_iso"));   // V721: the same date as a date, read day first
         bio.put("utme", a.get("utme"));
         bio.put("nextOfKin", a.get("next_of_kin"));
         v.put("biodata", bio);

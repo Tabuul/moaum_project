@@ -196,6 +196,7 @@ class ApplicantScreeningController {
         Map<String, Object> prefill = jdbc.sql("""
                 SELECT c.surname, c.other_names, c.jamb_reg_no, c.programme, c.entry_mode, a.session, a.application_no, r.sex, r.state_of_origin, r.lga, f.name AS faculty, d.name AS department,
                        (SELECT x.payload ->> 'dob' FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth,
+                       (SELECT platform.read_date(x.payload ->> 'dob')::text FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth_iso,
                        acc.email, acc.phone, a.next_of_kin,
                        (SELECT x.payload ->> 'dataUrl' FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND jsonb_exists(x.payload, 'dataUrl') ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport,
                        (SELECT x.object_id FROM admissions.attachment x WHERE x.session = c.session AND x.jamb_key = c.jamb_key AND x.kind = 'PASSPORT' AND x.object_id IS NOT NULL ORDER BY x.arrived_at DESC LIMIT 1) AS jamb_passport_object

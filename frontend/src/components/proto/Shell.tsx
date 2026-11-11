@@ -87,6 +87,7 @@ export const ROUTES: Record<string, string> = {
   "t/compliance": "/biodata/compliance",
   "t/api": "/api-keys",
   "t/migration": "/migrations",
+  "t/dobfromfile": "/records/dates-of-birth",   // V721
   "t/admissions": "/admissions",
   "t/admissionsetup": "/admissions/settings",
   "t/admeligibility": "/admissions/eligibility",
@@ -115,6 +116,7 @@ export const ROUTES: Record<string, string> = {
   "t/pgapplicantedit": "/admissions/postgraduate/records?kind=APPLICANT",
   "t/pgstudentedit": "/admissions/postgraduate/records?kind=STUDENT",
   "t/pgedithistory": "/admissions/postgraduate/records/history",
+  "t/pgprogrammechanges": "/admissions/postgraduate/programme-changes",   // V721
   "t/pgsupervision": "/admissions/postgraduate/research?stage=REGISTERED",
   "t/pgproposals": "/admissions/postgraduate/research?stage=PROPOSAL_SUBMITTED",
   "t/pgseminars": "/admissions/postgraduate/research?stage=PROPOSAL_APPROVED",

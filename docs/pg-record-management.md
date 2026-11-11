@@ -94,3 +94,16 @@ reallocation, V649; the student edit page's "report financial issue" ticket). Pu
 - `PgRecordEditIT`: the same through the API — the School searches and corrects, a Head of Department is refused, the Director of
   ICT corrects a postgraduate student on the student edit page, the School is refused an undergraduate's, the latest corrections
   list both.
+
+## V721 — the hand-off to the student edit page, the register's Edit link, the desk's document upload
+
+- An admitted applicant's programme is changed on the student edit page (V719): the applicant editor's Application & programme
+  section says so and links to `/students/{student_id}/edit?section=placement`.
+- The postgraduate register (`/admissions/postgraduate/students`) carries an Edit link per row for the offices that open the
+  student edit page (the School, ICT, super, the Academic Office, the Registry).
+- The desk uploads or replaces a postgraduate applicant's document: `POST /api/v1/pg/records/applications/{id}/documents`
+  (`kind`, `filename`, `contentType`, `base64`, an optional `reason`; EDIT_PG_RECORD; up to 8 MB; the document of that kind is
+  replaced, a higher-degree certificate added), written on the application's history as DOCUMENT_UPLOADED_BY_DESK (the file table itself is
+  exempt from the audit spine, as every file store is; the who, when and why live on that event). The applicant's own fee and state
+  gates do not hold the desk. On the editor: Documents › Upload or replace a document.
+- The School's report of programme changes: PG Management › Programme Changes (`/admissions/postgraduate/programme-changes`).

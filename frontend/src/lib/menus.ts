@@ -1501,6 +1501,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
+          { "id": "t/dobfromfile", "icon": "calendar", "label": "Dates of Birth (Old Portal)" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
           { "id": "t/institution", "icon": "doc", "label": "Institution Profile" },
           { "id": "t/api", "icon": "swap", "label": "Integrations" },
@@ -1728,6 +1729,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgrecords", "icon": "user", "label": "PG Record Management" },
           { "id": "t/pgapplicantedit", "icon": "user", "label": "PG Applicant & Student Edit" },
           { "id": "t/pgedithistory", "icon": "doc", "label": "PG Change History" },
+          { "id": "t/pgprogrammechanges", "icon": "clock", "label": "PG Programme Changes" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/graduationmanage", "icon": "cap", "label": "Graduation Management" },
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
@@ -2671,7 +2673,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgapplicantedit", "icon": "user", "label": "PG Applicant Edit" },
           { "id": "t/pgstudentedit", "icon": "user", "label": "PG Student Edit" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
-          { "id": "t/pgedithistory", "icon": "doc", "label": "Change History" }
+          { "id": "t/pgedithistory", "icon": "doc", "label": "Change History" },
+          { "id": "t/pgprogrammechanges", "icon": "clock", "label": "Programme Changes" }
         ]
       },
       {
@@ -2923,7 +2926,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgapplicantedit", "icon": "user", "label": "PG Applicant Edit" },
           { "id": "t/pgstudentedit", "icon": "user", "label": "PG Student Edit" },
           { "id": "t/structure", "icon": "book", "label": "Programme Structure" },
-          { "id": "t/pgedithistory", "icon": "doc", "label": "Change History" }
+          { "id": "t/pgedithistory", "icon": "doc", "label": "Change History" },
+          { "id": "t/pgprogrammechanges", "icon": "clock", "label": "Programme Changes" }
         ]
       },
       {

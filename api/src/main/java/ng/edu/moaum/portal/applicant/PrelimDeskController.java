@@ -98,9 +98,12 @@ class PrelimDeskController {
     private String route(String requested) {
         String o = office();
         if ((requested == null || requested.isBlank()) && ROUTE_OFFICES.contains(o)) {
+            // V721: the office's first route by the routes' own rank — a preliminary, remedial or foundation programme before a proficiency course, then the
+            // fee types' order, then the name — never by the fee types' order alone, which the Bursary's desk (and a test before this
+            // one in the same suite) may change; the nightly suite-twice run found the Vocational office opening on the proficiency courses
             requested = jdbc.sql("""
                     SELECT p.route FROM admissions.prelim_programme p LEFT JOIN finance.programme_type pt ON pt.code = p.programme_type
-                     WHERE p.office_code = :o ORDER BY pt.ord, p.name LIMIT 1
+                     WHERE p.office_code = :o ORDER BY (p.programme_type NOT IN ('PRELIMINARY', 'REMEDIAL', 'FOUNDATION')), pt.ord, p.name LIMIT 1
                     """).param("o", o).query(String.class).optional().orElse(null);
         }
         String r = prelim.routeOf(requested);
@@ -148,8 +151,8 @@ class PrelimDeskController {
                        (SELECT cm.name FROM ref.campus cm WHERE cm.code = p.campus_code) AS campus, p.target_word, p.group_word
                   FROM admissions.prelim_programme p LEFT JOIN finance.programme_type pt ON pt.code = p.programme_type LEFT JOIN ref.office o ON o.code = p.office_code
                  WHERE NOT :own OR p.office_code = :o
-                 ORDER BY pt.ord, p.name
-                """).param("own", ROUTE_OFFICES.contains(o)).param("o", o).query().listOfRows();
+                 ORDER BY (p.programme_type NOT IN ('PRELIMINARY', 'REMEDIAL', 'FOUNDATION')), pt.ord, p.name
+                """).param("own", ROUTE_OFFICES.contains(o)).param("o", o).query().listOfRows();   // V721: the same rank as the default route
     }
 
     /* ── the dashboard ── */

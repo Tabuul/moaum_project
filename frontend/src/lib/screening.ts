@@ -52,7 +52,7 @@ export interface ScreeningEvent { action: string; detail: string | null; actor_o
 export interface ChangeRow { id: string; from_programme: string; to_programme: string; state: string; requested_at: string; decided_at: string | null; decision_note: string | null; note?: string | null }
 export interface Prefill {
   surname: string; other_names: string; jamb_reg_no: string; programme: string; entry_mode: string; session: string; application_no: string; sex: string | null; state_of_origin: string | null; lga: string | null;
-  faculty: string | null; department: string | null; date_of_birth: string | null; email: string; phone: string; next_of_kin: string | null;
+  faculty: string | null; department: string | null; date_of_birth: string | null; date_of_birth_iso?: string | null; email: string; phone: string; next_of_kin: string | null;
   /** the photograph as JAMB sent it (a data URL), the one every screen shows; the form takes no other (V274) */
   jamb_passport?: string | null;
 }
@@ -103,7 +103,7 @@ export interface ReviewStats { total: number; pending: number; submitted: number
 export interface ReviewList { session: string; rows: ReviewRow[]; stats: ReviewStats; policy: ScreeningPolicy | null; options: { faculty_code: string; faculty: string; dept_code: string | null; department: string | null; programme_code: string; programme: string }[] }
 export interface ReviewDetail {
   application: ReviewRow; form: ScreeningForm | null; answers: { section: string; field: string; label: string; ord: number; value: string }[]; institutions: Institution[]; olevel: OlevelRow[]; jambOlevel: JambOlevel[];
-  utme: { aggregate: number | null; subjects: string | null } | null; prefill: { sex: string | null; state_of_origin: string | null; lga: string | null; email: string; phone: string; next_of_kin: string | null; entry_mode: string; entry_level: number; date_of_birth: string | null };
+  utme: { aggregate: number | null; subjects: string | null } | null; prefill: { sex: string | null; state_of_origin: string | null; lga: string | null; email: string; phone: string; next_of_kin: string | null; entry_mode: string; entry_level: number; date_of_birth: string | null; date_of_birth_iso?: string | null };
   documents: ScreeningDocument[]; missing: Missing[]; events: ScreeningEvent[]; eligibility: { applied_result: string; alternatives: number; evaluated_at: string; rules_version: number | null; eligible_alternatives: string | null; reasons: string[] | null } | null;
   changes: ChangeRow[]; status: AdmissionStatus; tracker: string; entitlement: Entitlement; facts?: string; forms?: FormsState;
 }

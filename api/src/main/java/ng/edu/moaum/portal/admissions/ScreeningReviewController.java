@@ -160,7 +160,8 @@ class ScreeningReviewController {
                 """).param("a", app).query().listOfRows().stream().findFirst().orElse(null));
         out.put("prefill", jdbc.sql("""
                 SELECT r.sex, r.state_of_origin, r.lga, acc.email, acc.phone, a.next_of_kin, c.entry_mode, c.entry_level,
-                       (SELECT x.payload ->> 'dob' FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth
+                       (SELECT x.payload ->> 'dob' FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth,
+                       (SELECT platform.read_date(x.payload ->> 'dob')::text FROM admissions.attachment x WHERE x.candidate_id = c.id AND x.kind = 'DATE_OF_BIRTH' ORDER BY x.arrived_at DESC LIMIT 1) AS date_of_birth_iso
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.applicant_account acc ON acc.id = a.account_id LEFT JOIN admissions.caps_row r ON r.id = c.admitted_from WHERE a.id = :a
                 """).param("a", app).query().singleRow());
         out.put("documents", jdbc.sql("SELECT id, kind, filename, content_type, bytes, uploaded_at, status, review_note, reviewed_at FROM admissions.application_document WHERE application_id = :a ORDER BY kind, uploaded_at DESC").param("a", app).query().listOfRows());
