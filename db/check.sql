@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 549
+\set EXPECTED 550
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31430,6 +31430,111 @@ BEGIN
                AND pg_before = s0 || ',' || s1 AND pg_after = s0, false),
       format('accounts b %s | g %s | pa %s | pg %s | summaries %s | whole/part %s | refs %s/%s cur %s over %s | stale %s->%s refreshed %s then %s | pg bound %s -> %s',
              acct_b, acct_g, acct_pa, acct_pg, summ, whole_part, ref1, ref2, r_cur, r_over, stale_b, stale_after, refreshed, acct_a, pg_before, pg_after));
+END $$;
+
+-- ── V723: the follow-ups of V720's review. A student who left after one session (WITHDRAWN) owes that session alone, never the
+--          sessions since; a payment of theirs marks nothing stale and finance.historical_refresh given their id keeps no summary;
+--          made a student again they are marked stale and the next read summarises them with the calendar's bound (both sessions,
+--          the second owed in whole); the University's next session made current, their standing summary is marked stale; their
+--          entry session corrected, it is marked stale and worked out again from the new first session; WITHDRAWN again the summary
+--          goes; named on the graduation list awaiting the Senate nothing is marked, an award approved for them marks them stale. A postgraduate
+--          student's past ends before the University's session when the School of Postgraduate Studies has no CURRENT row and the
+--          University is between sessions — where admissions.pg_current_session() falls back to its literal and V720 read no past
+--          at all. The block undoes its writes ──
+DO $$
+DECLARE
+    prog text; pgprog text := 'C90002'; s0 text := '9725/9726'; s1 text := '9726/9727'; cur text := '9727/9728'; nxt text := '9728/9729';
+    w uuid := gen_random_uuid(); pa uuid := gen_random_uuid();
+    acct_w text; stale_w int; refreshed int; summ_w0 int; stale_back int; summ_active text; summ_w2 int; pg_sessions text; pg_literal text;
+    stale_moved int; summ_moved text; stale_grad int; stale_cal int; stale_cal_after int; stale_awaiting int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V723', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), s0, '9725-10-01', '9726-08-31', 'CLOSED'), (gen_random_uuid(), s1, '9726-10-01', '9727-08-31', 'CLOSED'),
+        (gen_random_uuid(), cur, '9727-10-01', '9728-08-31', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9727/01' WHERE name = cur;
+    -- the School of Postgraduate Studies has no CURRENT row
+    UPDATE admissions.pg_academic_session SET state = 'CLOSED' WHERE state = 'CURRENT';
+    SELECT p.code INTO prog FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND d.ended_on IS NULL ORDER BY p.code LIMIT 1;
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+        (s0, 'Check V723 fees', 30000, 100, prog, 1), (s0, 'Check V723 fees', 20000, 100, prog, 2), (s1, 'Check V723 fees', 50000, 200, prog, NULL);
+    INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, semester) VALUES
+        (s0, 'Check V723 PG fees', 100000, '800A', 1), (s0, 'Check V723 PG fees', 50000, '800A', 2), (s1, 'Check V723 PG fees', 80000, '800B', 1);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (w, 'MOAUM/ADM/23/972301', 'MOAUM/ZZK/23/7231', 'CHECKV723', 'Left', prog, 'UTME', s0, 100, 100, 'ACTIVE', now()),
+        (pa, 'MOAUM/ADM/23/972302', 'MOAUM/ZZK/23/7232', 'CHECKV723', 'PG Active', pgprog, 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now());
+    INSERT INTO people.enrolment (id, student_id, session, level)
+    SELECT gen_random_uuid(), x.id, x.ses, x.lvl FROM (VALUES (w, s0, 100), (pa, s0, 800), (pa, s1, 800), (pa, cur, 800)) x(id, ses, lvl);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (pa, s0, 'MOAUM-FEE-ZZK-7232A', 'School fees ' || s0, 100000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7232A');
+    -- the student leaves after the first session: the account holds that session alone, both semesters owed
+    UPDATE people.student SET status = 'WITHDRAWN' WHERE id = w;
+    SELECT string_agg(x.session || 'S' || x.semester || ':' || x.outstanding, ' ' ORDER BY x.session, x.semester) INTO acct_w FROM finance.historical_account(w) x;
+    -- a payment of theirs marks nothing stale; a refresh given their id keeps no summary
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (w, s0, 'MOAUM-FEE-ZZK-7231A', 'School fees ' || s0, 10000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7231A');
+    SELECT count(*) INTO stale_w FROM finance.historical_stale WHERE student_id = w;
+    refreshed := finance.historical_refresh(ARRAY[w]);
+    SELECT count(*) INTO summ_w0 FROM finance.historical_summary WHERE student_id = w;
+    -- a student again: marked stale, and the next read summarises them with the calendar's bound — the first session owed in part,
+    -- the second (never attended, but theirs while studying) in whole
+    UPDATE people.student SET status = 'ACTIVE' WHERE id = w;
+    SELECT count(*) INTO stale_back FROM finance.historical_stale WHERE student_id = w;
+    PERFORM finance.historical_refresh_stale(100000);
+    SELECT h.financial_status || '/' || h.outstanding || '/' || h.whole_sessions || '/' || h.part_sessions INTO summ_active FROM finance.historical_summary h WHERE h.student_id = w;
+    -- the University's calendar moves on (the next session made current): the end of every studying student's past moves, and
+    -- their standing summary is marked stale; the calendar put back, the queue is drained for the steps below. (Closing the current
+    -- session alone moves nothing: the University stands in the session just closed until the next is made current.)
+    SELECT count(*) INTO stale_cal FROM finance.historical_stale WHERE student_id = w;
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), nxt, '9728-10-01', '9729-08-31', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE name = cur;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9728/01' WHERE name = nxt;
+    SELECT count(*) INTO stale_cal_after FROM finance.historical_stale WHERE student_id = w;
+    UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = nxt;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now() WHERE name = cur;
+    PERFORM finance.historical_refresh_stale(100000);
+    -- the entry session corrected while the summary stands: marked stale, and worked out again from the new first session (their
+    -- 100 Level now falls in a session that states a 200 Level line alone: for review, where the old summary read 90,000 owed)
+    UPDATE people.student SET entry_session = s1 WHERE id = w;
+    SELECT count(*) INTO stale_moved FROM finance.historical_stale WHERE student_id = w;
+    PERFORM finance.historical_refresh_stale(100000);
+    SELECT h.financial_status || '/' || h.outstanding || '/' || h.whole_sessions || '/' || h.part_sessions INTO summ_moved FROM finance.historical_summary h WHERE h.student_id = w;
+    UPDATE people.student SET entry_session = s0 WHERE id = w;
+    -- gone again: the summary goes with them
+    UPDATE people.student SET status = 'WITHDRAWN' WHERE id = w;
+    SELECT count(*) INTO summ_w2 FROM finance.historical_summary WHERE student_id = w;
+    -- the graduation list names them, awaiting the Senate: nothing about their account moves, nothing is marked
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute, graduated_at, approved_at, final_level, duration_years, entry_session)
+    VALUES (gen_random_uuid(), w, s1, 2.50, 'Pass', 'AWAITING', NULL, NULL, NULL, 100, 1, s0);
+    SELECT count(*) INTO stale_awaiting FROM finance.historical_stale WHERE student_id = w;
+    -- the Senate approves an award for them: an approved graduand is of the population, marked stale
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute, graduated_at, approved_at, final_level, duration_years, entry_session)
+    VALUES (gen_random_uuid(), w, s0, 2.50, 'Pass', 'APPROVED', 'SEN/9727/02', now(), now(), 100, 1, s0);
+    SELECT count(*) INTO stale_grad FROM finance.historical_stale WHERE student_id = w;
+    -- the University between sessions (none CURRENT) and the School with no CURRENT row: the postgraduate student's past ends before
+    -- the University's session (its latest closed one), not before the literal admissions.pg_current_session() falls back to
+    UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = cur;
+    -- (far-future sessions other blocks closed and left are set aside, so the University's latest closed session is s1)
+    UPDATE policy.academic_session SET state = 'PLANNED' WHERE name > s1 AND state IN ('CLOSED', 'ARCHIVED');
+    pg_literal := admissions.pg_current_session();
+    SELECT string_agg(DISTINCT x.session, ',' ORDER BY x.session) INTO pg_sessions FROM finance.historical_account(pa) x;
+    RAISE EXCEPTION 'CHECK_V723_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V723_UNDONE' THEN RAISE; END IF;
+  END;
+
+  PERFORM pg_temp.assert('V723: a departed student owes the sessions attended alone and keeps no summary; a student again, summarised; a postgraduate student''s past ends before the University''s session when the School has no current row',
+      coalesce(acct_w = s0 || 'S1:30000.00 ' || s0 || 'S2:20000.00' AND stale_w = 0 AND refreshed = 0 AND summ_w0 = 0
+               AND stale_back = 1 AND summ_active = 'FINANCIAL_OBLIGATION/90000.00/1/1'
+               AND stale_cal = 0 AND stale_cal_after = 1
+               AND stale_moved = 1 AND summ_moved = 'HISTORICAL_FEE_REVIEW_REQUIRED/0.00/0/0' AND summ_w2 = 0 AND stale_awaiting = 0 AND stale_grad = 1
+               AND pg_literal = '2025/2026' AND pg_sessions = s0, false),
+      format('account %s | stale after payment %s | refresh by id %s summaries %s | active: stale %s summary %s | calendar moved: stale %s -> %s | entry moved: stale %s summary %s | withdrawn again: summaries %s | awaiting: stale %s approved: stale %s | pg literal %s sessions %s',
+             acct_w, stale_w, refreshed, summ_w0, stale_back, summ_active, stale_cal, stale_cal_after, stale_moved, summ_moved, summ_w2, stale_awaiting, stale_grad, pg_literal, pg_sessions));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ export function PgDashboard({ s, pg, outstanding = null }: { s: Me; pg?: PgSumma
   const f = s.fees;
   // V720: what is owed across every session of the record — the past stages from the historical engine, this session from the position
   const owedTotal = outstanding ? owedNum(outstanding.summary.outstanding) : f.balance;
+  // V723: a period still being assessed is never "nothing owed"
+  const beingAssessed = outstanding?.summary.beingAssessed ?? 0;
   const reg = pg?.registration ?? null;
   const registered = !!reg && (reg.state === "SUBMITTED" || reg.state === "ENDORSED");
   const cgpaShown = pg && pg.standing !== "NEW" && pg.cgpa != null;
@@ -78,8 +80,11 @@ export function PgDashboard({ s, pg, outstanding = null }: { s: Me; pg?: PgSumma
         ["Programme", awardWord(s.entryLevel), null, s.programme],
         ["Registered courses", reg ? String(reg.courses) : "0", registered ? "var(--green-ink)" : null, reg ? `${SEM[reg.semester] ?? `Semester ${reg.semester}`} · ${regWord}` : "Not yet registered", "/student/register"],
         ["CGPA", cgpaShown ? Number(pg!.cgpa).toFixed(2) : "—", pg?.standing === "PROBATION" ? "var(--red-ink)" : cgpaShown ? "var(--green-ink)" : null, pg?.standing === "PROBATION" ? "Probation · below 2.50" : cgpaShown ? "of 5.00 · good standing" : "No results yet", "/student/pg-courses"],
-        ["Outstanding fees", outstanding ? naira(owedTotal) : noCharge ? "—" : f.balance > 0 ? naira(f.balance) : "₦0", owedTotal > 0 ? "var(--red-ink)" : outstanding || (!noCharge && f.paidInFull) ? "var(--green-ink)" : null,
-         outstanding ? (owedTotal > 0 ? `${outstanding.summary.sessions} session${outstanding.summary.sessions === 1 ? "" : "s"} · ${outstanding.summary.periods} fee period${outstanding.summary.periods === 1 ? "" : "s"}` : "Nothing owed on any session") : noCharge ? `Not yet stated · ${f.session}` : f.paidInFull ? `Settled · ${f.session}` : `Outstanding · ${f.session}`, "/student/fees"],
+        ["Outstanding fees", owedTotal > 0 ? naira(owedTotal) : beingAssessed > 0 || noCharge ? "—" : "₦0",
+         owedTotal > 0 ? "var(--red-ink)" : beingAssessed > 0 ? "var(--amber-ink)" : noCharge ? null : outstanding || f.paidInFull ? "var(--green-ink)" : null,
+         owedTotal > 0 ? (outstanding ? `${outstanding.summary.sessions} session${outstanding.summary.sessions === 1 ? "" : "s"} · ${outstanding.summary.periods} fee period${outstanding.summary.periods === 1 ? "" : "s"}` : `Outstanding · ${f.session}`)
+           : beingAssessed > 0 ? `${beingAssessed} fee period${beingAssessed === 1 ? "" : "s"} being assessed by the Bursary`
+           : noCharge ? `Not yet stated · ${f.session}` : outstanding ? "Nothing owed on any session" : `Settled · ${f.session}`, "/student/fees"],
         ["Research", research ? (RESEARCH_WORD[research.stage] ?? research.stage) : "—", research && research.stage !== "WITHDRAWN" ? "var(--chrome)" : null, research ? (step ? step[0] : "") : "Not started", "/student/research"],
         ["Supervisor", supervisors[0]?.name ?? "—", null, supervisors.length > 1 ? `and ${supervisors.length - 1} more` : supervisors.length ? (supervisors[0].role === "FIRST" ? "Main supervisor" : supervisors[0].role.toLowerCase()) : "Not yet assigned", "/student/research"],
         ["Pending tasks", String(deadlines.filter((d) => d[2] !== "grey").length), deadlines.some((d) => d[2] === "bad") ? "var(--red-ink)" : deadlines.some((d) => d[2] === "warn") ? "var(--amber-ink)" : null, deadlines.length ? deadlines.filter((d) => d[2] !== "grey").map((d) => d[0]).join(" · ") || "Nothing overdue" : "Nothing due"],

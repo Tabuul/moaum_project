@@ -5,12 +5,13 @@
 import type { Me } from "@/lib/student-portal";
 import { KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { RESEARCH_WORD, awardWord, eligibility, fmtDay, type PgSummary } from "../pg-common";
+import type { OutstandingFees } from "@/lib/outstanding-fees";
 
 const STATE: Record<string, ["ok" | "warn" | "bad", string, string]> = { MET: ["ok", "✓", "Completed"], PENDING: ["warn", "⚠", "Pending"], NOT_MET: ["bad", "✕", "Not satisfied"] };
 
-export function Progress({ s, pg }: { s: Me; pg: PgSummary }) {
+export function Progress({ s, pg, outstanding = null }: { s: Me; pg: PgSummary; outstanding?: OutstandingFees | null }) {
   const cw = pg.coursework;
-  const checks = eligibility(pg, s.fees);
+  const checks = eligibility(pg, s.fees, outstanding);   // V723: every session of the record
   const met = checks.filter((c) => c.state === "MET").length;
   const notMet = checks.filter((c) => c.state === "NOT_MET").length;
   const graduated = s.status === "GRADUATED" || !!pg.graduand;

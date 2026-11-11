@@ -216,7 +216,7 @@ export function Dashboard({ s, gst = null, outstanding = null }: { s: Me; gst?: 
       {s.status === "GRADUATED" ? (
         /* V602: a graduated record — no school fees to pay, no courses to register; the history, documents and clearance stay open */
         <Note kind="ok" title="You have graduated" action={<div className="row"><LinkBtn kind="go" href="/student/graduation">Graduation & clearance</LinkBtn><LinkBtn kind="ghost" href="/student/documents">Documents</LinkBtn></div>}>
-          Your award is confirmed on the University register. {owedTotal > 0 ? <>Course registration is closed on this record, but school fees from your sessions remain unpaid: see <strong>Outstanding school fees</strong> below.</> : "School fees and course registration are closed on this record;"} Your registrations, results, payments and receipts stay here, and transcripts and the certificate are requested from Documents.
+          Your award is confirmed on the University register. {owedTotal > 0 ? <>Course registration is closed on this record, but school fees from your sessions remain unpaid: see <strong>Outstanding school fees</strong> below.</> : "School fees and course registration are closed on this record."} Your registrations, results, payments and receipts stay here, and transcripts and the certificate are requested from Documents.
         </Note>
       ) : noScheme ? (
         <Note kind="info" title="Payment scheme not yet stated">

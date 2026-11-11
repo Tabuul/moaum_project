@@ -76,6 +76,74 @@ The portal holds two engines that say what a student owes.
   - The desk: Standing, Programme type and Level filters, a Standing column, three new doors; the reports take standing and programme
     type and print them; the Bursar's and the Students Account Officer's dashboards show the population tiles.
 
+## V723: what the review of V720 found, and what changed
+
+An adversarial review of V720 (four finders, two refuters a finding; fifteen findings stood) led to V723, the same day.
+
+- **A departed student read as owing sessions never attended.** `finance.historical_rows_read` bounded every student not graduated
+  by the session before their calendar's current one, so a student WITHDRAWN, EXPELLED, TRANSFERRED_OUT, RUSTICATED, DORMANT,
+  DECEASED or on VOLUNTARY_WITHDRAWAL years ago read as owing every session since; V720's payment trigger kept a summary for them and
+  the pay door would have taken their money for those sessions. A student who has left (or was admitted and never came) is now
+  bounded by the last session they enrolled or registered in, as `records.graduation_session` falls back — never past the calendar's
+  bound; with no such session, no past at all. ACTIVE, PROBATION, DEFERRED and SUSPENDED keep the calendar's bound. The pay door
+  follows the account and is not changed.
+- **The summary is kept for the population alone, and follows the student's standing.** The payment trigger marks only students
+  of `finance.historical_population`; `historical_refresh` given names outside it removes their summary and mark;
+  `finance.historical_mark` — called by a trigger on `people.student` (status, entry session) and one on `records.graduand` (an
+  approved award given, withdrawn or moved; an entry awaiting the Senate changes nothing) — marks a student of the population stale,
+  an existing summary too (a corrected entry session moves the first session, a graduation by reconciliation the last), and removes
+  summary and mark for one outside it; summaries and marks outside the population were removed once.
+- **A calendar's move marks its studying students.** When a session is made current on the University's, the School's or the
+  Centre's calendar, every studying student's past ends one session on. The end last seen on each calendar is kept
+  (`finance.historical_bound`); a statement on `policy.academic_session`, `admissions.pg_academic_session` or `policy.study_route`
+  that moves it marks that calendar's studying students stale (`finance.historical_bounds_moved`). The desk then works them out
+  500 a read, or the Bursar's full refresh does it at once. Opening a student's record on the desk refreshes their summary for any
+  student of the population, not graduates alone.
+- **A postgraduate student's bound read `admissions.pg_current_session()`**, whose literal fallback ('2025/2026') is reached when the
+  School has no CURRENT row and the University is between sessions: their last finished session dropped off the account. The
+  School's own CURRENT row is read directly, the University's session when it has none. The postgraduate population was marked
+  stale once for the new bound.
+- **`/me/outstanding-fees`.** A graduate (or approved graduand) whose award is of the session the University stands in read that
+  session twice, as the past and as the current; it is read once, as the past. Only the newest open reference of a session was
+  attached and counted: every open reference of a session is now attached to one owed row of it (the row whose balance it
+  matches first, else the next owed row, oldest first) and `summary.pending` sums the references shown on rows (a leftover
+  reference of a settled session counts for nothing). A current session charged for the
+  first semester alone (a spillover student's semester, a second semester not yet stated) was labelled "Entire session"; it is
+  the first semester, and "Entire session" is kept for a whole-session structure. A past session takes one Pay now, on its first
+  owed period (the historical door's payments settle the first semester first); the row also offers the session's whole balance
+  (`sessionBalance`), and the later rows say they are paid from the first (`payNote`). `POST /me/outstanding-fees/references`
+  routes by the same rule: a session on the historical account goes through the historical door (the graduate of the current
+  session too), the current session otherwise through the fees page's door.
+- **The School of Postgraduate Studies read any student by id.** `/students/{id}`, an assessment, a waiver, payment evidence and
+  their files are not found for the School when the student is not postgraduate; the assessment, waiver, evidence, reconciliation
+  and quality lists, the figures (assessments, evidence, waivers, batches pending, ready to graduate), the cohort batches, the
+  reconciliation runs (listed when they hold postgraduate students, counted over them) and the evidence search carry the same
+  bound (`pgOnly()`, `PG_ONLY_WHERE`, `PG_BATCH`, `PG_RUN_COUNTS`); so do a payment-evidence record's candidate payments (an
+  undergraduate payer is not shown to the School) and its old-portal holds (not shown to the School).
+- **Screens.** The card resyncs from the server's read (a reference minted on the fees page's historical form is seen by the card
+  before the next Pay now), keeping the note on a reference just made while the rows still carry it; each row shows its own
+  reference, never one session-wide; the postgraduate "Outstanding fees" tile
+  reads "—" with "N fee periods being assessed" while a period is assessed and "Not yet stated" while the charge is unstated,
+  never "₦0 · Nothing owed"; the progress page grades "School fees settled" across every session, as the dashboard does; the
+  graduated note's punctuation.
+- **Reports and tests.** `/report` takes `admission` (the entry session) so an integration test's students are never cut by the
+  3,000-student cap; `HistoricalFeesIT` gains the departed student, the two references on one session (and a leftover reference
+  of a settled session counted for nothing), the graduate of the current session (read once, and paid through the historical
+  door), the postgraduate bound with no School row, the School's 404 on an undergraduate, an undergraduate's assessment, cohort
+  batch and reconciliation run seen by the Bursary and not by the School, and the report's admission filter; the V720 test drains
+  the queue before reading the desk. check.sql gains V723 (EXPECTED 550): the departed student, the stale and summary rules, the
+  calendar's move, the corrected entry session, the graduation list awaiting the Senate and an approved award, and the postgraduate
+  bound with no School row.
+- **CI** (its own commit, before V723). The runners' apt mirror list, led by azure.archive.ubuntu.com, stopped resolving on
+  11 November 2026. The image already ships PostgreSQL 16's client and Chromium's libraries, so those steps no longer need apt.
+- **V723 reviewed in turn** (three finders, two refuters a finding: five stood, seven refuted) — the stale mark on an existing
+  summary, the door for the graduate of the current session, pending from the rows, the School's remaining reads and the card's
+  note are the five, fixed above. Those fixes were verified (all five resolved) and the verification's own findings — the
+  calendar's move, the graduation list's unapproved entries, the evidence record's candidates, the tests asserting the School's
+  bounds with data — are fixed above too.
+- **Not changed from the review:** V720's `ALTER TABLE` and backfill ran in one transaction (the lock held through the backfill);
+  the migration has run and is not rewritten — a later migration that adds a column and backfills should commit the DDL first.
+
 ## Not changed, on purpose
 
 - Sessions before the Bursar's assessment start (`finance.historical_start()`) stay unassessed and unlisted — the University's word of

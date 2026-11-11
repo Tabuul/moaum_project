@@ -72,6 +72,35 @@ class HistoricalFeesController {
     private static String scopeOf(String scope) {
         return scope == null ? "GRADUATES" : "ALL".equalsIgnoreCase(scope.trim()) ? "ALL" : "ACTIVE".equalsIgnoreCase(scope.trim()) ? "ACTIVE" : "GRADUATES";
     }
+    /** V723: the School of Postgraduate Studies reads postgraduate students alone — on every list and every record read by id */
+    private static boolean pgOnly() {
+        return "PG".equals(typeFor(null));
+    }
+    static final String PG_ONLY_WHERE = "\n                  AND (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))\n";
+    /** V723: a cohort batch is the School's when it assesses a postgraduate student */
+    static final String PG_BATCH = "(NOT CAST(:pgonly AS boolean) OR EXISTS (SELECT 1 FROM finance.historical_assessment a JOIN people.student s ON s.id = a.student_id"
+            + " JOIN ref.programme p ON p.code = s.programme_code WHERE a.batch_id = b.id AND people.is_postgraduate(s.entry_mode, p.category)))";
+    /** V723: a reconciliation run's counts over its postgraduate rows alone — what the School reads of a run */
+    static final String PG_RUN_COUNTS = """
+            SELECT count(*) AS students, count(*) FILTER (WHERE y.status = 'CLEARED') AS cleared, count(*) FILTER (WHERE y.status = 'OWING') AS owing,
+                   count(*) FILTER (WHERE y.status = 'REQUIRES_REVIEW') AS review, count(*) FILTER (WHERE y.status = 'PENDING_APPROVAL') AS pending,
+                   count(*) FILTER (WHERE y.status = 'PAYMENT_REVIEW') AS payment_review, count(*) FILTER (WHERE y.status = 'NO_PERIOD') AS no_period,
+                   coalesce(sum(y.assessed), 0) AS assessed, coalesce(sum(y.paid), 0) AS paid, coalesce(sum(y.waived), 0) AS waived,
+                   coalesce(sum(y.outstanding), 0) AS outstanding
+              FROM finance.clearance_recon_row y JOIN people.student s ON s.id = y.student_id JOIN ref.programme p ON p.code = s.programme_code
+             WHERE y.run_id = r.id AND people.is_postgraduate(s.entry_mode, p.category)
+            """;
+    /** V723: a record outside the office's bound is not found for it, whatever the screen asks */
+    private void inScope(UUID student) {
+        if (student == null) throw new NotFound("student", "none");
+        if (pgOnly() && !Boolean.TRUE.equals(jdbc.sql("SELECT people.is_postgraduate(s.entry_mode, p.category) FROM people.student s JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :id")
+                .param("id", student).query(Boolean.class).optional().orElse(false))) {
+            throw new NotFound("student", student);
+        }
+    }
+    private UUID studentOf(String table, UUID id) {
+        return jdbc.sql("SELECT student_id FROM " + table + " WHERE id = :id").param("id", id).query(UUID.class).optional().orElse(null);
+    }
     static final String SCOPE_WHERE = """
                   AND (CAST(:scope AS text) = 'ALL'
                        OR (:scope = 'ACTIVE' AND s.status IN ('ACTIVE', 'PROBATION'))
@@ -242,12 +271,19 @@ class HistoricalFeesController {
                        count(*) FILTER (WHERE s.status = 'GRADUATED' AND h.outstanding > 0) AS graduated_with_obligation,
                        coalesce(sum(h.assessed), 0) AS assessed, coalesce(sum(h.paid), 0) AS paid, coalesce(sum(h.outstanding), 0) AS outstanding,
                        coalesce(sum(h.credit), 0) AS credit
-                  FROM finance.historical_summary h JOIN people.student s ON s.id = h.student_id
-                 WHERE s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED')
-                """).query().singleRow());
-        out.put("assessments", jdbc.sql("SELECT a.state, count(*) AS n, coalesce(sum(a.amount), 0) AS amount FROM finance.historical_assessment a GROUP BY a.state")
-                .query().listOfRows());
-        out.put("batchesPending", jdbc.sql("SELECT count(*) FROM finance.historical_batch WHERE state = 'PENDING_BURSAR_APPROVAL'").query(Long.class).single());
+                  FROM finance.historical_summary h JOIN people.student s ON s.id = h.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
+                   AND (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query().singleRow());
+        // V723 (the School of Postgraduate Studies): every aggregate below counts postgraduate students alone for the School
+        out.put("assessments", jdbc.sql("""
+                SELECT a.state, count(*) AS n, coalesce(sum(a.amount), 0) AS amount
+                  FROM finance.historical_assessment a JOIN people.student s ON s.id = a.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))
+                 GROUP BY a.state
+                """).param("pgonly", pgOnly()).query().listOfRows());
+        out.put("batchesPending", jdbc.sql("SELECT count(*) FROM finance.historical_batch b WHERE b.state = 'PENDING_BURSAR_APPROVAL' AND " + PG_BATCH)
+                .param("pgonly", pgOnly()).query(Long.class).single());
         // V683: graduates' payment evidence by state, and graduates with a school-fee payment archived for review
         out.put("evidence", jdbc.sql("""
                 SELECT count(*) FILTER (WHERE e.state = 'SUBMITTED') AS submitted, coalesce(sum(e.amount) FILTER (WHERE e.state = 'SUBMITTED'), 0) AS submitted_amount,
@@ -255,33 +291,41 @@ class HistoricalFeesController {
                        count(*) FILTER (WHERE e.state = 'VERIFIED') AS verified,
                        count(*) FILTER (WHERE e.state = 'VERIFIED' AND finance.historical_evidence_payment_state(e.payment_id, e.student_id, e.session) <> 'COUNTED') AS verified_to_put_right,
                        count(*) FILTER (WHERE e.state = 'REJECTED') AS rejected
-                  FROM finance.historical_payment_evidence e
-                """).query().singleRow());
+                  FROM finance.historical_payment_evidence e JOIN people.student s ON s.id = e.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query().singleRow());
         out.put("archivedSchoolFees", jdbc.sql("""
                 SELECT count(DISTINCT a.student_id) AS students, coalesce(sum(a.amount), 0) AS amount
-                  FROM finance.payment_archive a JOIN people.student s ON s.id = a.student_id
+                  FROM finance.payment_archive a JOIN people.student s ON s.id = a.student_id JOIN ref.programme p ON p.code = s.programme_code
                  WHERE a.settled_at IS NULL AND a.purpose LIKE 'School fees%'
                    AND (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
-                """).query().singleRow());
+                   AND (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query().singleRow());
         // V665: waivers awaiting the Bursar, the approved total, and the approved graduands whose final clearance is still to complete
         out.put("waivers", jdbc.sql("""
                 SELECT count(*) FILTER (WHERE w.state = 'PENDING_BURSAR_APPROVAL') AS pending,
                        coalesce(sum(w.amount) FILTER (WHERE w.state = 'PENDING_BURSAR_APPROVAL'), 0) AS pending_amount,
                        count(*) FILTER (WHERE w.state = 'APPROVED') AS approved, coalesce(sum(w.amount) FILTER (WHERE w.state = 'APPROVED'), 0) AS approved_amount
-                  FROM finance.historical_waiver w
-                """).query().singleRow());
+                  FROM finance.historical_waiver w JOIN people.student s ON s.id = w.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query().singleRow());
         // V668: the final clearances waiting only on the Bursary, and how many are ready (nothing owed, for review or pending)
-        out.put("readyToGraduate", jdbc.sql("SELECT count(*) FILTER (WHERE r.ready) AS ready, count(*) AS waiting FROM clearance.ready_to_graduate(NULL, NULL, NULL, NULL, 5000) r")
-                .query().singleRow());
+        out.put("readyToGraduate", jdbc.sql("""
+                SELECT count(*) FILTER (WHERE r.ready) AS ready, count(*) AS waiting
+                  FROM clearance.ready_to_graduate(NULL, NULL, NULL, NULL, 5000) r JOIN people.student s ON s.id = r.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query().singleRow());
         out.put("awaitingGraduation", jdbc.sql("""
-                SELECT count(*) FROM people.student s WHERE s.status <> 'GRADUATED'
+                SELECT count(*) FROM people.student s JOIN ref.programme p ON p.code = s.programme_code WHERE s.status <> 'GRADUATED'
                    AND EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED')
-                """).query(Long.class).single());
+                   AND (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query(Long.class).single());
         out.put("unsummarised", jdbc.sql("""
-                SELECT count(*) FROM people.student s
+                SELECT count(*) FROM people.student s JOIN ref.programme p ON p.code = s.programme_code
                  WHERE (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
                    AND NOT EXISTS (SELECT 1 FROM finance.historical_summary h WHERE h.student_id = s.id)
-                """).query(Long.class).single());
+                   AND (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
+                """).param("pgonly", pgOnly()).query(Long.class).single());
         out.put("refreshedAt", jdbc.sql("SELECT refreshed_at FROM finance.historical_setting WHERE id = 1").query().singleRow().get("refreshed_at"));
         out.put("start", jdbc.sql("SELECT finance.historical_start()").query(String.class).optional().orElse(null));
         // V720: the whole population by standing and programme type — studying or graduated, undergraduate or postgraduate — each with
@@ -397,6 +441,7 @@ class HistoricalFeesController {
                   LEFT JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE s.id = :id
                 """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("student", id));
+        inScope(id);   // V723
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("student", st);
         out.put("start", jdbc.sql("SELECT finance.historical_start()").query(String.class).optional().orElse(null));
@@ -413,10 +458,11 @@ class HistoricalFeesController {
                   FROM finance.historical_payment_evidence e LEFT JOIN finance.payment_reference r ON r.id = e.payment_id
                  WHERE e.student_id = :id ORDER BY e.submitted_at DESC
                 """).param("id", id).query().listOfRows());
-        // the graduate's summary brought up to date with the account just read, so the lists and figures agree with it
+        // the student's summary brought up to date with the account just read, so the lists and figures agree with it (V723: every
+        // student of the population, studying too)
         jdbc.sql("""
                 SELECT finance.historical_refresh(ARRAY[s.id]) FROM people.student s
-                 WHERE s.id = :id AND (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
+                 WHERE s.id = :id AND finance.historical_population(s.status, s.id, s.entry_session)
                 """).param("id", id).query().listOfRows();
         out.put("assessments", jdbc.sql("""
                 SELECT a.id, a.reference, a.session, a.semester, a.level, a.amount, a.components::text AS components, a.source, a.source_reference, a.reason, a.remarks,
@@ -533,8 +579,9 @@ class HistoricalFeesController {
                 WHERE (CAST(:st AS text) IS NULL OR a.state = :st) AND (CAST(:ses AS text) IS NULL OR a.session = :ses)
                   AND (CAST(:q AS text) IS NULL OR a.reference ILIKE '%' || :q || '%' OR s.matric_no ILIKE '%' || :q || '%'
                        OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """ + PG_ONLY_WHERE + """
                 """;
-        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("ses", blank(session), Types.VARCHAR).param("q", term, Types.VARCHAR)
+        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("ses", blank(session), Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly())
                 .query(Long.class).single();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT a.id, a.reference, a.session, a.semester, a.level, a.amount, a.source, a.source_reference, a.state, a.created_at, a.submitted_at,
@@ -542,7 +589,7 @@ class HistoricalFeesController {
                        (SELECT b.reference FROM finance.historical_batch b WHERE b.id = a.batch_id) AS batch,
                        s.id AS student_id, s.surname, s.other_names, s.matric_no, s.jamb_reg_no, p.name AS programme, d.name AS department, f.name AS faculty
                 """ + where + " ORDER BY coalesce(a.submitted_at, a.created_at) LIMIT :lim OFFSET :off")
-                .param("st", st, Types.VARCHAR).param("ses", blank(session), Types.VARCHAR).param("q", term, Types.VARCHAR)
+                .param("st", st, Types.VARCHAR).param("ses", blank(session), Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly())
                 .param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER)
                 .param("lim", PAGE).param("off", p * PAGE).query().listOfRows();
         // the period's account beside each: what is paid towards it and what would be owed
@@ -586,6 +633,7 @@ class HistoricalFeesController {
                  WHERE a.id = :id
                 """).param("id", id).param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER)
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("historical assessment", id));
+        inScope(UUID.fromString(String.valueOf(a.get("student_id"))));   // V723
         Map<String, Object> out = new LinkedHashMap<>(a);
         out.put("period", jdbc.sql("SELECT x.* FROM finance.historical_account(:st) x WHERE x.session = :ses AND x.semester = :sem")
                 .param("st", a.get("student_id")).param("ses", a.get("session")).param("sem", a.get("semester")).query().listOfRows().stream().findFirst().orElse(null));
@@ -644,6 +692,7 @@ class HistoricalFeesController {
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> evidenceFile(@PathVariable UUID id, @PathVariable UUID evidence) {
         need("VIEW_HISTORICAL_FEE_ASSESSMENT");
+        inScope(studentOf("finance.historical_assessment", id));   // V723
         Map<String, Object> e = jdbc.sql("SELECT filename, content_type, content, object_id FROM finance.historical_assessment_evidence WHERE id = :e AND assessment_id = :x")
                 .param("e", evidence).param("x", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("evidence", evidence));
         byte[] bytes = e.get("content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(e.get("object_id"))));
@@ -711,6 +760,7 @@ class HistoricalFeesController {
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> waiverEvidenceFile(@PathVariable UUID id, @PathVariable UUID evidence) {
         need("VIEW_HISTORICAL_FEE_ASSESSMENT");
+        inScope(studentOf("finance.historical_waiver", id));   // V723
         Map<String, Object> e = jdbc.sql("SELECT filename, content_type, content, object_id FROM finance.historical_waiver_evidence WHERE id = :e AND waiver_id = :x")
                 .param("e", evidence).param("x", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("evidence", evidence));
         byte[] bytes = e.get("content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(e.get("object_id"))));
@@ -762,14 +812,15 @@ class HistoricalFeesController {
                 WHERE (CAST(:st AS text) IS NULL OR w.state = :st)
                   AND (CAST(:q AS text) IS NULL OR w.reference ILIKE '%' || :q || '%' OR s.matric_no ILIKE '%' || :q || '%'
                        OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """ + PG_ONLY_WHERE + """
                 """;
-        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).query(Long.class).single();
+        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly()).query(Long.class).single();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT w.id, w.reference, w.session, w.semester, w.kind, w.amount, w.reason, w.authority, w.state, w.created_at,
                        helpdesk.person_name(w.created_by) AS created_by_name, w.created_by = CAST(:me AS uuid) AS mine, w.decided_at,
                        s.id AS student_id, s.surname, s.other_names, s.matric_no, s.status AS student_status, p.name AS programme
                 """ + where + " ORDER BY w.created_at LIMIT :lim OFFSET :off")
-                .param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR)
+                .param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly())
                 .param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER)
                 .param("lim", PAGE).param("off", p * PAGE).query().listOfRows();
         List<UUID> ids = rows.stream().map(r -> UUID.fromString(String.valueOf(r.get("student_id")))).distinct().toList();
@@ -810,6 +861,7 @@ class HistoricalFeesController {
                  WHERE w.id = :id
                 """).param("id", id).param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER)
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("waiver", id));
+        inScope(UUID.fromString(String.valueOf(w.get("student_id"))));   // V723
         Map<String, Object> out = new LinkedHashMap<>(w);
         out.put("period", jdbc.sql("SELECT x.* FROM finance.historical_account(:st) x WHERE x.session = :ses AND x.semester = :sem")
                 .param("st", w.get("student_id")).param("ses", w.get("session")).param("sem", w.get("semester")).query().listOfRows().stream().findFirst().orElse(null));
@@ -840,8 +892,9 @@ class HistoricalFeesController {
                 WHERE (CAST(:st AS text) IS NULL OR e.state = :st)
                   AND (CAST(:q AS text) IS NULL OR e.reference ILIKE '%' || :q || '%' OR e.payment_reference ILIKE '%' || :q || '%'
                        OR s.matric_no ILIKE '%' || :q || '%' OR s.jamb_reg_no ILIKE '%' || :q || '%' OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """ + PG_ONLY_WHERE + """
                 """;
-        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).query(Long.class).single();
+        long total = jdbc.sql("SELECT count(*) " + where).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly()).query(Long.class).single();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT e.id, e.reference, e.session, e.semester, e.amount, e.paid_on::text AS paid_on, e.channel, e.payment_reference, e.state, e.submitted_at,
                        e.decided_at, (SELECT count(*) FROM finance.historical_payment_evidence_file f WHERE f.evidence_id = e.id) AS files,
@@ -849,7 +902,7 @@ class HistoricalFeesController {
                        finance.historical_evidence_payment_state(e.payment_id, e.student_id, e.session) AS payment_state,
                        s.id AS student_id, s.surname, s.other_names, s.matric_no, s.status AS student_status, p.name AS programme
                 """ + where + " ORDER BY e.submitted_at LIMIT :lim OFFSET :off")
-                .param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("lim", PAGE).param("off", pg * PAGE).query().listOfRows();
+                .param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly()).param("lim", PAGE).param("off", pg * PAGE).query().listOfRows();
         List<UUID> ids = rows.stream().map(r -> UUID.fromString(String.valueOf(r.get("student_id")))).distinct().toList();
         if (!ids.isEmpty()) {
             List<Map<String, Object>> acct = jdbc.sql("SELECT x.student_id, x.session, x.semester, x.assessed, x.paid, x.waived, x.outstanding, x.status FROM finance.historical_rows(CAST(:ids AS uuid[])) x")
@@ -889,6 +942,7 @@ class HistoricalFeesController {
                   FROM finance.historical_payment_evidence e JOIN people.student s ON s.id = e.student_id JOIN ref.programme p ON p.code = s.programme_code
                  WHERE e.id = :id
                 """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("payment evidence", id));
+        inScope(UUID.fromString(String.valueOf(e.get("student_id"))));   // V723
         Map<String, Object> out = new LinkedHashMap<>(e);
         out.put("period", jdbc.sql("SELECT x.* FROM finance.historical_account(:st) x WHERE x.session = :ses AND x.semester = :sem")
                 .param("st", e.get("student_id")).param("ses", e.get("session")).param("sem", e.get("semester")).query().listOfRows().stream().findFirst().orElse(null));
@@ -900,13 +954,18 @@ class HistoricalFeesController {
                 SELECT v.action, v.at, v.office, v.note, CASE WHEN v.office = 'student' THEN 'The graduate' ELSE helpdesk.person_name(v.actor) END AS by_name
                   FROM finance.historical_payment_evidence_event v WHERE v.evidence_id = :id ORDER BY v.at
                 """).param("id", id).query().listOfRows());
-        out.put("candidates", jdbc.sql("SELECT c.* FROM finance.historical_evidence_candidates(:id) c").param("id", id).query().listOfRows());
+        // V723: the payer of a candidate is the School's to see only when a postgraduate student; an old-portal hold names no one it may see
+        out.put("candidates", jdbc.sql("""
+                SELECT c.* FROM finance.historical_evidence_candidates(:id) c
+                  LEFT JOIN people.student s ON s.id = c.student_id LEFT JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE NOT CAST(:pgonly AS boolean) OR coalesce(people.is_postgraduate(s.entry_mode, p.category), false)
+                """).param("id", id).param("pgonly", pgOnly()).query().listOfRows());
         // an old-portal record held because its number named no student (V647): reconciled on School Fees History Reconciliation first
         out.put("held", jdbc.sql("""
                 SELECT h.payref, h.original_identifier, h.purpose, h.session, h.semester, h.amount, h.status
                   FROM finance.legacy_payment_held h
-                 WHERE h.payref IN (btrim(:r), upper(btrim(:r)), lower(btrim(:r))) LIMIT 10
-                """).param("r", e.get("payment_reference")).query().listOfRows());
+                 WHERE h.payref IN (btrim(:r), upper(btrim(:r)), lower(btrim(:r))) AND NOT CAST(:pgonly AS boolean) LIMIT 10
+                """).param("r", e.get("payment_reference")).param("pgonly", pgOnly()).query().listOfRows());
         return out;
     }
 
@@ -918,6 +977,7 @@ class HistoricalFeesController {
         need("VIEW_HISTORICAL_PAYMENT");
         Map<String, Object> e = jdbc.sql("SELECT e.id, e.student_id, e.session FROM finance.historical_payment_evidence e WHERE e.id = :id").param("id", id)
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("payment evidence", id));
+        inScope(UUID.fromString(String.valueOf(e.get("student_id"))));   // V723
         String r = blank(ref);
         if (r == null || r.length() < 4) return List.of();
         return jdbc.sql("""
@@ -925,10 +985,11 @@ class HistoricalFeesController {
                        r.confirmed_at, r.channel, r.archived_at IS NOT NULL AS archived, 'SEARCH' AS why,
                        finance.historical_evidence_payment_state(r.id, CAST(:st AS uuid), :ses) AS state,
                        (SELECT v.reference FROM finance.historical_payment_evidence v WHERE v.payment_id = r.id AND v.state = 'VERIFIED') AS verified_for
-                  FROM finance.payment_reference r LEFT JOIN people.student s ON s.id = r.student_id
+                  FROM finance.payment_reference r LEFT JOIN people.student s ON s.id = r.student_id LEFT JOIN ref.programme p ON p.code = s.programme_code
                  WHERE r.confirmed_at IS NOT NULL AND (r.reference IN (:r, upper(:r), lower(:r)) OR r.receipt_no IN (:r, upper(:r), lower(:r)))
+                   AND (NOT CAST(:pgonly AS boolean) OR coalesce(people.is_postgraduate(s.entry_mode, p.category), false))   -- V723
                  LIMIT 20
-                """).param("r", r).param("st", e.get("student_id"), Types.OTHER).param("ses", e.get("session")).query().listOfRows();
+                """).param("r", r).param("pgonly", pgOnly()).param("st", e.get("student_id"), Types.OTHER).param("ses", e.get("session")).query().listOfRows();
     }
 
     @GetMapping("/evidence/{id}/files/{file}")
@@ -936,6 +997,7 @@ class HistoricalFeesController {
     @Transactional(readOnly = true)
     ResponseEntity<byte[]> evidenceUpload(@PathVariable UUID id, @PathVariable UUID file) {
         need("VIEW_HISTORICAL_PAYMENT");
+        inScope(studentOf("finance.historical_payment_evidence", id));   // V723
         Map<String, Object> f = jdbc.sql("SELECT filename, content_type, content, object_id FROM finance.historical_payment_evidence_file WHERE id = :f AND evidence_id = :x")
                 .param("f", file).param("x", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("evidence file", file));
         byte[] bytes = f.get("content") instanceof byte[] b ? b : files.load(UUID.fromString(String.valueOf(f.get("object_id"))));
@@ -980,6 +1042,14 @@ class HistoricalFeesController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> reconRuns() {
         need("VIEW_FINANCIAL_CLEARANCE");
+        if (pgOnly()) {
+            // V723: the School reads the runs that hold postgraduate students, each counted over those students alone
+            return jdbc.sql("""
+                    SELECT r.id, r.reference, r.population, r.scope::text AS scope, x.students, r.capped, x.cleared, x.owing, x.review, x.pending, x.payment_review,
+                           x.no_period, x.assessed, x.paid, x.waived, x.outstanding, r.run_at, r.run_office, helpdesk.person_name(r.run_by) AS run_by_name
+                      FROM finance.clearance_recon_run r CROSS JOIN LATERAL (""" + PG_RUN_COUNTS + ") x WHERE x.students > 0 ORDER BY r.run_at DESC LIMIT 100")
+                    .query().listOfRows();
+        }
         return jdbc.sql("""
                 SELECT r.id, r.reference, r.population, r.scope::text AS scope, r.students, r.capped, r.cleared, r.owing, r.review, r.pending, r.payment_review,
                        r.no_period, r.assessed, r.paid, r.waived, r.outstanding, r.run_at, r.run_office, helpdesk.person_name(r.run_by) AS run_by_name
@@ -999,6 +1069,14 @@ class HistoricalFeesController {
                        r.no_period, r.assessed, r.paid, r.waived, r.outstanding, r.run_at, r.finished_at, r.run_office, helpdesk.person_name(r.run_by) AS run_by_name
                   FROM finance.clearance_recon_run r WHERE r.id = :id
                 """).param("id", id).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("reconciliation run", id));
+        if (pgOnly()) {
+            // V723: the School reads a run that holds postgraduate students, its counts over those students alone
+            Map<String, Object> mine = jdbc.sql("SELECT x.* FROM finance.clearance_recon_run r CROSS JOIN LATERAL (" + PG_RUN_COUNTS + ") x WHERE r.id = :id")
+                    .param("id", id).query().singleRow();
+            if (((Number) mine.get("students")).longValue() == 0) throw new NotFound("reconciliation run", id);
+            run = new LinkedHashMap<>(run);
+            run.putAll(mine);
+        }
         String st = blank(status) != null && RECON_STATUSES.contains(status.trim()) ? status.trim() : null;
         String term = blank(q);
         int p = Math.max(0, Math.min(page, 2000));
@@ -1008,15 +1086,16 @@ class HistoricalFeesController {
                 LEFT JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                 WHERE x.run_id = :id AND (CAST(:st AS text) IS NULL OR x.status = :st)
                   AND (CAST(:q AS text) IS NULL OR s.matric_no ILIKE '%' || :q || '%' OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%')
+                """ + PG_ONLY_WHERE + """
                 """;
-        long total = jdbc.sql("SELECT count(*) " + where).param("id", id).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).query(Long.class).single();
+        long total = jdbc.sql("SELECT count(*) " + where).param("id", id).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly()).query(Long.class).single();
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT x.student_id, s.surname || ', ' || s.other_names AS student, s.matric_no, s.jamb_reg_no, f.name AS faculty, d.name AS department,
                        p.name AS programme, x.status, x.student_status, x.awaiting_graduation, x.graduation_session, x.periods, x.assessed, x.paid, x.waived,
                        x.outstanding, x.credit, x.owing, x.review_periods, x.pending_periods, x.other_payments, x.other_amount, x.process_id, x.clearance_ref,
                        x.bursary_state
                 """ + where + " ORDER BY CASE x.status WHEN 'CLEARED' THEN 9 ELSE 0 END, x.outstanding DESC, s.surname, s.other_names LIMIT :lim OFFSET :off")
-                .param("id", id).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("lim", size).param("off", export ? 0 : p * PAGE)
+                .param("id", id).param("st", st, Types.VARCHAR).param("q", term, Types.VARCHAR).param("pgonly", pgOnly()).param("lim", size).param("off", export ? 0 : p * PAGE)
                 .query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("run", run);
@@ -1076,8 +1155,9 @@ class HistoricalFeesController {
                        b.created_at, helpdesk.person_name(b.created_by) AS created_by_name, b.created_by = CAST(:me AS uuid) AS mine, b.decided_at, b.decision_note
                   FROM finance.historical_batch b
                  WHERE (:st = 'ALL' OR b.state = :st)
+                   AND """ + PG_BATCH + """
                  ORDER BY b.created_at DESC LIMIT 200
-                """).param("st", state).param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER).query().listOfRows();
+                """).param("st", state).param("pgonly", pgOnly()).param("me", AuditContextHolder.current().map(AuditContext::actorId).orElse(null), Types.OTHER).query().listOfRows();
     }
 
     @PostMapping("/batches/{id}/decide")
@@ -1099,7 +1179,8 @@ class HistoricalFeesController {
                                @RequestParam(required = false) String dept, @RequestParam(required = false) String programme,
                                @RequestParam(required = false) String status, @RequestParam(required = false) String financial,
                                @RequestParam(required = false) String graduation, @RequestParam(required = false) String source,
-                               @RequestParam(required = false) String scope, @RequestParam(required = false) String type) {
+                               @RequestParam(required = false) String scope, @RequestParam(required = false) String type,
+                               @RequestParam(required = false) String admission) {   // V723: the entry session, as the list takes it
         need("VIEW_HISTORICAL_FEE_REPORT");
         freshen();
         String fin = blank(financial) != null && FINANCIAL.contains(financial.trim()) ? financial.trim() : null;
@@ -1110,10 +1191,11 @@ class HistoricalFeesController {
                 """ + SCOPE_WHERE + """
                    AND (CAST(:fac AS text) IS NULL OR p.faculty_code = :fac) AND (CAST(:dept AS text) IS NULL OR p.dept_code = :dept)
                    AND (CAST(:prog AS text) IS NULL OR p.code = :prog) AND (CAST(:grad AS text) IS NULL OR h.last_session = :grad)
+                   AND (CAST(:adm AS text) IS NULL OR s.entry_session = :adm)
                    AND (CAST(:fin AS text) IS NULL OR h.financial_status = :fin) AND h.periods > 0
                  ORDER BY s.surname, s.other_names LIMIT 3000
                 """).param("fac", blank(faculty), Types.VARCHAR).param("dept", blank(dept), Types.VARCHAR).param("prog", blank(programme), Types.VARCHAR)
-                .param("grad", blank(graduation), Types.VARCHAR).param("fin", fin, Types.VARCHAR)
+                .param("grad", blank(graduation), Types.VARCHAR).param("fin", fin, Types.VARCHAR).param("adm", blank(admission), Types.VARCHAR)
                 .param("scope", scopeOf(scope)).param("type", typeFor(type), Types.VARCHAR).query(String.class).list();
         List<Map<String, Object>> rows = ids.isEmpty() ? List.of() : jdbc.sql("""
                 SELECT s.surname || ', ' || s.other_names AS student, s.matric_no, s.jamb_reg_no, f.name AS faculty, d.name AS department, p.name AS programme,
@@ -1182,8 +1264,9 @@ class HistoricalFeesController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT q.issue, q.detail, s.id AS student_id, s.surname, s.other_names, s.matric_no, p.name AS programme
                   FROM finance.historical_quality(2000) q JOIN people.student s ON s.id = q.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE (NOT CAST(:pgonly AS boolean) OR people.is_postgraduate(s.entry_mode, p.category))   -- V723
                  ORDER BY q.issue, s.surname
-                """).query().listOfRows();
+                """).param("pgonly", pgOnly()).query().listOfRows();
         Map<String, Long> by = new LinkedHashMap<>();
         rows.forEach(r -> by.merge(String.valueOf(r.get("issue")), 1L, Long::sum));
         Map<String, Object> out = new LinkedHashMap<>();

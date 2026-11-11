@@ -2,21 +2,24 @@
 /**
  * V720: every outstanding school fee of the student's record on the dashboard and the fees page — each past session and semester as
  * the Bursary's historical engine assesses it, the current session as the fees position reads it — with a summary, a status and a
- * Pay now on each row. A past session is paid through the historical door (any student, up to the balance; a session's payments
- * settle its first semester first), the current session through the fees page's own. A row whose session already has an open
- * reference offers that reference, never a second. The button is disabled while a reference is being made.
+ * Pay now. A past session is paid through the historical door (any student, up to the balance; a session's payments settle its
+ * first semester first): one Pay now on its first owed period, for that period or the whole session (V723); the current session
+ * through the fees page's own, a Pay now a semester. Each open reference is shown on the row the server attached it to, never one
+ * session-wide (V723). The button is disabled while a reference is being made.
  */
 import { useState } from "react";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { BREAKDOWN_HEAD, STATUS_WORDS, attentionRows, breakdownRows, expiresWords, naira, num, payWords, settledRows, summaryWords, type OutstandingFees as Data, type OutstandingRow } from "@/lib/outstanding-fees";
+import { BREAKDOWN_HEAD, STATUS_WORDS, attentionRows, breakdownRows, expiresWords, naira, num, payWords, sessionPayWords, settledRows, summaryWords, type OutstandingFees as Data, type OutstandingRow } from "@/lib/outstanding-fees";
 import { PayByCard, useAct } from "./common";
 
-function Row({ r, d, busy, onPay, made }: { r: OutstandingRow; d: Data; busy: boolean; onPay: (r: OutstandingRow) => void; made: { session: string; reference: string; amount: number } | null }) {
+function Row({ r, d, busy, onPay }: { r: OutstandingRow; d: Data; busy: boolean; onPay: (r: OutstandingRow, amount?: number) => void }) {
   const words = STATUS_WORDS[r.status] ?? [r.status, "grey" as const];
   const pay = payWords(r, d);
-  const open = made && made.session === r.session && num(r.balance) > 0 ? { reference: made.reference, amount: made.amount } : r.reference ? { reference: r.reference.reference, amount: num(r.reference.amount) } : null;
+  const whole = sessionPayWords(r);
+  // V723: the reference shown is the row's own, as the server attached it — never one session-wide
+  const open = r.reference ? { reference: r.reference.reference, amount: num(r.reference.amount) } : null;
   return (
     <div className="of-row" style={{ display: "grid", gridTemplateColumns: "minmax(140px, 1.3fr) minmax(110px, 1fr) minmax(90px, 1fr) minmax(90px, 1fr) minmax(100px, 1fr) minmax(120px, 1fr) minmax(150px, 1.2fr)", gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line-2)" }}>
       <div><b className="tnum">{r.session}</b><div className="sub2">{r.period}{r.level ? ` · ${r.level} Level` : ""}{r.kind === "CURRENT" ? " · this session" : ""}</div></div>
@@ -32,7 +35,10 @@ function Row({ r, d, busy, onPay, made }: { r: OutstandingRow; d: Data; busy: bo
             <PayByCard reference={open.reference} amount={open.amount} />
           </div>
         ) : r.payable && pay ? (
-          <Btn kind="urgent" size="sm" disabled={busy} onClick={() => onPay(r)}>{busy ? "Generating…" : "Pay now"}</Btn>
+          <div className="stack" style={{ gap: 4 }}>
+            <Btn kind="urgent" size="sm" disabled={busy} onClick={() => onPay(r)}>{busy ? "Generating…" : `Pay now · ${naira(r.payAmount ?? r.balance)}`}</Btn>
+            {whole ? <Btn kind="ghost" size="sm" disabled={busy} onClick={() => onPay(r, num(r.sessionBalance))}>{whole}</Btn> : null}
+          </div>
         ) : pay ? <span className="sub2">{pay}</span> : null}
       </div>
     </div>
@@ -44,12 +50,21 @@ export function OutstandingFeesCard({ data: initial, compact = false, generatedB
   const [made, setMade] = useState<{ session: string; reference: string; amount: number } | null>(null);
   const [showSettled, setShowSettled] = useState(false);
   const { act, busy, problem } = useAct();
+  // V723: the server's read is the truth — a refresh from another panel (the fees page's historical form, a payment by card) replaces
+  // what the card holds (state adjusted as the prop changes, the React way)
+  const [seen, setSeen] = useState(initial);
+  if (initial !== seen) {
+    setSeen(initial);
+    setData(initial);
+    // the note on the reference just made stays while the refreshed rows still carry it
+    if (made && !initial.rows.some((r) => r.reference?.reference === made.reference)) setMade(null);
+  }
   const owed = attentionRows(data.rows);
   const settled = settledRows(data.rows);
   const total = num(data.summary.outstanding);
 
-  async function pay(r: OutstandingRow) {
-    const amount = num(r.payAmount ?? r.balance);
+  async function pay(r: OutstandingRow, chosen?: number) {
+    const amount = chosen ?? num(r.payAmount ?? r.balance);
     const j = await act(`pay:${r.session}:${r.semester ?? 0}`, "POST", "/me/outstanding-fees/references", { session: r.session, amount },
       `Outstanding school fees reference for ${r.session}${r.semester ? ` semester ${r.semester}` : ""}`, "");
     if (j && typeof j.reference === "string") {
@@ -90,7 +105,7 @@ export function OutstandingFeesCard({ data: initial, compact = false, generatedB
         {owed.length ? (
           <div className="mt-2" style={{ overflowX: "auto" }}>
             {head}
-            {owed.map((r) => <Row key={`${r.session}-${r.semester ?? 0}-${r.kind}`} r={r} d={data} busy={busy !== null} onPay={pay} made={made} />)}
+            {owed.map((r) => <Row key={`${r.session}-${r.semester ?? 0}-${r.kind}`} r={r} d={data} busy={busy !== null} onPay={pay} />)}
           </div>
         ) : null}
         {made ? <div className="sub2 mt-2">Reference <b className="tnum">{made.reference}</b> for {made.session} · {naira(made.amount)}: pay by card now, or at a bank with this reference within 24 hours. A session&rsquo;s payments settle its first semester first.</div> : null}
@@ -98,7 +113,7 @@ export function OutstandingFeesCard({ data: initial, compact = false, generatedB
         {settled.length && !compact ? (
           <div className="mt-2">
             <Btn kind="ghost" size="sm" onClick={() => setShowSettled((v) => !v)}>{showSettled ? "Hide settled periods" : `Show ${settled.length} settled period${settled.length === 1 ? "" : "s"}`}</Btn>
-            {showSettled ? <div className="mt-1" style={{ overflowX: "auto" }}>{head}{settled.map((r) => <Row key={`${r.session}-${r.semester ?? 0}-${r.kind}-s`} r={r} d={data} busy={false} onPay={pay} made={null} />)}</div> : null}
+            {showSettled ? <div className="mt-1" style={{ overflowX: "auto" }}>{head}{settled.map((r) => <Row key={`${r.session}-${r.semester ?? 0}-${r.kind}-s`} r={r} d={data} busy={false} onPay={pay} />)}</div> : null}
           </div>
         ) : null}
       </PBody>

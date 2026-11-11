@@ -29,6 +29,10 @@ export interface OutstandingRow {
   reference?: OpenReference | null;
   payable: boolean;
   payAmount: Money | null;
+  /** V723: on a past session's first owed row, the session's whole balance when more than this row is owed */
+  sessionBalance?: Money | null;
+  /** V723: why a row owed takes no Pay now of its own (a later semester of a past session) */
+  payNote?: string | null;
   door: "HISTORICAL" | "CURRENT";
 }
 
@@ -87,8 +91,15 @@ export function payWords(r: OutstandingRow, d: Pick<OutstandingFees, "onlinePaym
   if (num(r.balance) <= 0) return null;
   if (r.status === "BEING_ASSESSED") return "Awaiting the Bursary's assessment";
   if (r.door === "HISTORICAL" && !d.onlinePayment) return "Settled with the Bursary";
+  if (!r.payable && r.payNote) return r.payNote;
   if (r.door === "CURRENT" && !d.windowOpen) return "Payment window closed";
   return `Pay ${naira(r.payAmount ?? r.balance)}`;
+}
+
+/** V723: the second choice on a past session's first owed row — the session's whole balance, when more than the row is owed */
+export function sessionPayWords(r: OutstandingRow): string | null {
+  if (!r.payable || r.sessionBalance == null) return null;
+  return num(r.sessionBalance) > num(r.payAmount ?? r.balance) ? `Pay the whole session ${naira(r.sessionBalance)}` : null;
 }
 
 /** a reference's time left, for the pending row */

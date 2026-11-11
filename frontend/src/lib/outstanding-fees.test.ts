@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { attentionRows, breakdownRows, payWords, settledRows, summaryWords, type OutstandingFees, type OutstandingRow } from "./outstanding-fees.ts";
+import { attentionRows, breakdownRows, payWords, sessionPayWords, settledRows, summaryWords, type OutstandingFees, type OutstandingRow } from "./outstanding-fees.ts";
 
 const row = (patch: Partial<OutstandingRow>): OutstandingRow => ({
   kind: "PAST", session: "2021/2022", semester: 1, period: "First semester", level: 100, description: "School fees", due: 50000, paid: 0, balance: 50000,
@@ -48,4 +48,12 @@ test("the breakdown rows carry S/N first, amounts as numbers and the status word
   const r = breakdownRows([row({}), row({ semester: 2, period: "Second semester", due: 20000, paid: 5000, balance: 15000, status: "PARTIALLY_PAID" })]);
   assert.deepEqual(r[0], [1, "2021/2022", "First semester", 100, "School fees", 50000, 0, 50000, "Unpaid", ""]);
   assert.deepEqual(r[1].slice(5), [20000, 5000, 15000, "Partially paid", ""]);
+});
+
+test("a later semester of a past session says it is paid from the first semester's row; the first row may pay the whole session (V723)", () => {
+  const note = "Paid from the first semester's row: a session's payments settle its first semester first";
+  assert.equal(payWords(row({ semester: 2, period: "Second semester", due: 20000, balance: 20000, payable: false, payAmount: null, payNote: note }), { onlinePayment: true, windowOpen: true }), note);
+  assert.equal(sessionPayWords(row({ due: 30000, balance: 30000, payAmount: 30000, sessionBalance: 50000 })), "Pay the whole session ₦50,000");
+  assert.equal(sessionPayWords(row({ sessionBalance: null })), null);
+  assert.equal(sessionPayWords(row({ payable: false, payAmount: null, sessionBalance: 50000 })), null);
 });

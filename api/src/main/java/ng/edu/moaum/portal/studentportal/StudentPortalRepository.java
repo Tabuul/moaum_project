@@ -604,6 +604,12 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT finance.historical_reference(:s, :ses, :a)").param("s", student).param("ses", session).param("a", amount).query(String.class).single();
     }
 
+    /** V723: whether the session is on the student's historical account — the door a reference for it goes through */
+    boolean onHistoricalAccount(UUID student, String session) {
+        return Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.historical_account(:s) x WHERE x.session = :ses)")
+                .param("s", student).param("ses", session).query(Boolean.class).single());
+    }
+
     Map<String, Object> pgStage(UUID student, String session) {
         return jdbc.sql("""
                 SELECT x.cycle_no, x.qualification, q.label AS qualification_label, x.stage_code, x.stage_label, x.category, x.official, x.beyond,
