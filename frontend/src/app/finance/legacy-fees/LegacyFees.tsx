@@ -25,6 +25,7 @@ import { fileTally } from "@/lib/old-fees-history";
 import { OldFeesDoubleCharges } from "./OldFeesDoubleCharges";
 import { OldFeesBankList } from "./OldFeesBankList";
 import { OldFeesDoubles } from "./OldFeesDoubles";
+import { OldFeesDuplicateCleanup } from "./OldFeesDuplicateCleanup";
 import { OldFeesLedger } from "./OldFeesLedger";
 import { OldFeesMislabelled } from "./OldFeesMislabelled";
 import { OldFeesNotReceived } from "./OldFeesNotReceived";
@@ -420,6 +421,9 @@ export function LegacyFees({ actingOffice }: { actingOffice: string | null }) {
       <OldFeesMislabelled key={`codes-${codesTick}`} may={may} tick={changed} onChanged={bump} />
 
       <OldFeesDoubles may={may} tick={changed} onChanged={bump} />
+
+      {/* V726: the records repeating another on all six fields, deleted for good on deployment — each run's counts, the groups left whole */}
+      <OldFeesDuplicateCleanup tick={changed} />
 
       <OldFeesPaymentHistoryLeft tick={changed} />
 

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 552
+\set EXPECTED 553
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31799,6 +31799,148 @@ BEGIN
                band1, band2, band3, mon_outstanding, r_office, r_same, gate_off, gate_na, fs_na, st_not_avail, href_not_avail,
                gate_unpaid, fs_avail, st_pending, href_pending, cov_utme, cov_de, gate_cleared, fs_part, fs_first, st_part, mon_fee, mon_portal, mon_first,
                gate_full_unpaid, r_exc_office, r_exc_long, gate_exc, r_exc_twice, gate_revoked, gate_paid, fs_paid, st_paid_lbl, gate_old, gate_mat, gate_noacct, gate_off_again));
+END $$;
+
+-- ── V726: legacy school-fee duplicates on all six fields, permanently deleted. Made-up students and records in 9726/9727:
+--          A — three records of one payment (the number linked to A1, written in A2's and A3's notes, A3's in other case and spaces):
+--              A1 kept (it holds the number), A2 and A3 deleted; A's semester-2 and next-day records of the same number stay.
+--          B — two records of one number with different amounts: left whole (AMOUNTS_DIFFER).
+--          C — two records, one refunded: left whole (LINKED_RECORD).
+--          D — two records, the number linked to D1: D1 kept; D2, posted to the ledger, deleted — its journal moves to D1.
+--          H — two records, the number in their notes alone: the earlier imported kept, the number sealed on it in legacy_payref.
+--          E — two records both posted: the deleted one's journal reversed and let go; the kept one's untouched.
+--          F — two records, one archived: left whole (ARCHIVED_OR_UNDER_REVIEW).
+--          G — a portal payment and an old-portal GST record carrying A's number: out of scope, untouched.
+--          The run: DELETED, the counts, each check passed, each student's paid total lower by the deleted amounts; a second run deletes
+--          nothing; a new record of A's payment is not inserted, one of another semester is. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9726/9727'; who uuid := gen_random_uuid(); day timestamptz := timestamptz '2025-03-14 00:00:00+00';
+    st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+    v_income text; jd uuid; je1 uuid; je2 uuid; r1 finance.legacy_fee_duplicate_run; r2 finance.legacy_fee_duplicate_run;
+    roles text; paid_a_before numeric; paid_a_after numeric; left_a text; seal_a text; seal_d text; seal_h text; jd_ref text; je2_state text; je1_ref text;
+    guard_same int; guard_other int; out_scope int; msg text; v_err text; i int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V726', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9726-10-01', date '9727-08-31') ON CONFLICT (name) DO NOTHING;
+    FOR i IN 1..8 LOOP
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st[i], 'MOAUM/ADM/26/7260' || lpad(i::text, 2, '0'), 'MOAUM/ZZY/26/726' || i, 'CHECKV726', 'Student ' || i, 'F', 'C00023', 'UTME', ses, 100, 100, 'ACTIVE', now());
+    END LOOP;
+    -- the records, as older uploads left them: inserted with a note of their own, then the old portal's number written into the notes
+    -- (the guard of section 5 refuses a second record of a payment as it is inserted, so they could not be made directly)
+    CREATE TEMP TABLE chk726 (s int, reference text, purpose text, amount numeric, gen timestamptz, conf timestamptz, channel text, receipt text, note text);
+    INSERT INTO chk726 VALUES
+        -- A: one payment three times, and the same number on another semester and another day
+        (1, 'MOAUM-LEG-CHK7261-9726-9727-S1', 'School fees (legacy) · semester 1', 85000, day + interval '2 hours', day, 'Legacy', 'LEG-CHK7261-A1', 'Imported from the old portal · old ref PR726A'),
+        (1, 'MOAUM-LEG-CHK7261-9726-9727-S1-PR726A', 'School fees (legacy) · semester 1', 85000, day + interval '1 hour', day, 'Legacy', 'LEG-CHK7261-A2', 'Imported from the old portal · old ref PR726A'),
+        (1, 'MOAUM-LEG-CHK7261-9726-9727-S1-X', 'School fees (legacy) · semester 1', 85000, day + interval '3 hours', day, 'Legacy', 'LEG-CHK7261-A3', 'Imported from the old portal · Interswitch · old ref  pr726a '),
+        (1, 'MOAUM-LEG-CHK7261-9726-9727-S2', 'School fees (legacy) · semester 2', 85000, day, day, 'Legacy', 'LEG-CHK7261-A4', 'Imported from the old portal · old ref PR726A'),
+        (1, 'MOAUM-LEG-CHK7261-9726-9727-S1-D', 'School fees (legacy) · semester 1', 85000, day, day + interval '1 day', 'Legacy', 'LEG-CHK7261-A5', 'Imported from the old portal · old ref PR726A'),
+        -- B: amounts differ
+        (2, 'MOAUM-LEG-CHK7262-9726-9727-S1', 'School fees (legacy) · semester 1', 85000, day, day, 'Legacy', 'LEG-CHK7262-B1', 'Imported from the old portal · old ref PR726B'),
+        (2, 'MOAUM-LEG-CHK7262-9726-9727-S1-B', 'School fees (legacy) · semester 1', 84000, day, day, 'Legacy', 'LEG-CHK7262-B2', 'Imported from the old portal · old ref PR726B'),
+        -- C: one of them refunded
+        (3, 'MOAUM-LEG-CHK7263-9726-9727-S1', 'School fees (legacy) · semester 1', 85000, day, day, 'Legacy', 'LEG-CHK7263-C1', 'Imported from the old portal · old ref PR726C'),
+        (3, 'MOAUM-LEG-CHK7263-9726-9727-S1-C', 'School fees (legacy) · semester 1', 85000, day + interval '1 hour', day, 'Legacy', 'LEG-CHK7263-C2', 'Imported from the old portal · old ref PR726C'),
+        -- D: the number linked to D1; D2 posted
+        (4, 'MOAUM-LEG-CHK7264-9726-9727', 'School fees (legacy)', 170000, day, day, 'Legacy', 'LEG-CHK7264-D1', 'Imported from the old portal · old ref PR726D'),
+        (4, 'MOAUM-LEG-CHK7264-9726-9727-D', 'School fees (legacy)', 170000, day + interval '1 hour', day, 'Legacy', 'LEG-CHK7264-D2', 'Imported from the old portal · old ref PR726D'),
+        -- E: both posted
+        (5, 'MOAUM-LEG-CHK7265-9726-9727-S2', 'School fees (legacy) · semester 2', 85000, day, day, 'Legacy', 'LEG-CHK7265-E1', 'Imported from the old portal · old ref PR726E'),
+        (5, 'MOAUM-LEG-CHK7265-9726-9727-S2-E', 'School fees (legacy) · semester 2', 85000, day + interval '1 hour', day, 'Legacy', 'LEG-CHK7265-E2', 'Imported from the old portal · old ref PR726E'),
+        -- F: one archived
+        (6, 'MOAUM-LEG-CHK7266-9726-9727-S1', 'School fees (legacy) · semester 1', 85000, day, day, 'Legacy', 'LEG-CHK7266-F1', 'Imported from the old portal · old ref PR726F'),
+        (6, 'MOAUM-LEG-CHK7266-9726-9727-S1-F', 'School fees (legacy) · semester 1', 85000, day + interval '1 hour', day, 'Legacy', 'LEG-CHK7266-F2', 'Imported from the old portal · old ref PR726F'),
+        -- H: the number in the notes alone
+        (8, 'MOAUM-LEG-CHK7268-9726-9727-S1', 'School fees (legacy) · semester 1', 85000, day, day, 'Legacy', 'LEG-CHK7268-H1', 'Imported from the old portal · old ref PR726H'),
+        (8, 'MOAUM-LEG-CHK7268-9726-9727-S1-H', 'School fees (legacy) · semester 1', 85000, day + interval '1 hour', day, 'Legacy', 'LEG-CHK7268-H2', 'Imported from the old portal · old ref PR726H'),
+        -- G: out of scope, carrying A's number
+        (1, 'MOAUM-CHK7267-PORTAL', 'School fees 9726/9727', 85000, day, day, 'Card · Paystack', 'RCP-CHK7267', 'Imported from the old portal · old ref PR726A'),
+        (1, 'MOAUM-LEG-GST-CHK7267-9726-9727', 'GST fee 9726/9727', 5000, day, day, 'Legacy', 'LEG-CHK7267-G', 'Imported from the old portal · old ref PR726A');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    SELECT st[c.s], ses, c.reference, c.purpose, c.amount, c.gen, c.conf, c.conf, who, c.channel, c.receipt, 'CHECK V726 · ' || c.reference FROM chk726 c;
+    UPDATE finance.payment_reference p SET note = c.note FROM chk726 c WHERE p.reference = c.reference;
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES
+        ('PR726A', 'MOAUM-LEG-CHK7261-9726-9727-S1', 85000), ('PR726B', 'MOAUM-LEG-CHK7262-9726-9727-S1', 85000),
+        ('PR726C', 'MOAUM-LEG-CHK7263-9726-9727-S1', 85000), ('PR726D', 'MOAUM-LEG-CHK7264-9726-9727', 170000), ('PR726E', 'MOAUM-LEG-CHK7265-9726-9727-S2', 85000),
+        ('PR726F', 'MOAUM-LEG-CHK7266-9726-9727-S1', 85000);
+    INSERT INTO finance.refund (reference, student_id, payer, reason, amount, proposed_by, source_reference)
+    VALUES ('CHK-V726-RF', st[3], 'CHECKV726 Student 3', 'CHECK', 100, who, 'MOAUM-LEG-CHK7263-9726-9727-S1-C');
+    PERFORM set_config('moaum.payment_archive', 'settling', true);
+    UPDATE finance.payment_reference SET archived_at = now() WHERE reference = 'MOAUM-LEG-CHK7266-9726-9727-S1-F';
+    PERFORM set_config('moaum.payment_archive', '', true);
+    v_income := finance.gl_income_account(finance.payment_category('School fees (legacy)'));
+    jd := finance.gl_post(current_date, 'Fee receipt MOAUM-LEG-CHK7264-9726-9727-D', 'AUTO', 'PAYMENT', 'MOAUM-LEG-CHK7264-9726-9727-D',
+        jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 170000, 'narration', 'CHECK', 'session', ses),
+                          jsonb_build_object('account', v_income, 'credit', 170000, 'narration', 'CHECK', 'session', ses)));
+    je1 := finance.gl_post(current_date, 'Fee receipt MOAUM-LEG-CHK7265-9726-9727-S2', 'AUTO', 'PAYMENT', 'MOAUM-LEG-CHK7265-9726-9727-S2',
+        jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 85000, 'narration', 'CHECK', 'session', ses),
+                          jsonb_build_object('account', v_income, 'credit', 85000, 'narration', 'CHECK', 'session', ses)));
+    je2 := finance.gl_post(current_date, 'Fee receipt MOAUM-LEG-CHK7265-9726-9727-S2-E', 'AUTO', 'PAYMENT', 'MOAUM-LEG-CHK7265-9726-9727-S2-E',
+        jsonb_build_array(jsonb_build_object('account', '1010', 'debit', 85000, 'narration', 'CHECK', 'session', ses),
+                          jsonb_build_object('account', v_income, 'credit', 85000, 'narration', 'CHECK', 'session', ses)));
+
+    -- the plan
+    SELECT string_agg(regexp_replace(p.reference, '^MOAUM-LEG-CHK726', '') || ':' || p.role || coalesce('/' || p.reason, ''), ',' ORDER BY p.reference) INTO roles
+      FROM finance.legacy_fee_duplicate_plan() p WHERE p.student_id = ANY (st);
+    paid_a_before := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = st[1] AND session = ses AND purpose LIKE 'School fees%' AND archived_at IS NULL);
+
+    -- the run
+    r1 := finance.legacy_fee_duplicates_remove('CHECK V726');
+    paid_a_after := (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = st[1] AND session = ses AND purpose LIKE 'School fees%' AND archived_at IS NULL);
+    SELECT string_agg(regexp_replace(reference, '^MOAUM-LEG-CHK726', ''), ',' ORDER BY reference) INTO left_a FROM finance.payment_reference WHERE student_id = st[1] AND reference LIKE 'MOAUM-LEG-CHK7261-%';
+    seal_a := (SELECT regexp_replace(reference, '^MOAUM-LEG-CHK726', '') FROM finance.legacy_payref WHERE payref = 'PR726A');
+    seal_d := (SELECT regexp_replace(reference, '^MOAUM-LEG-CHK726', '') FROM finance.legacy_payref WHERE payref = 'PR726D');
+    seal_h := (SELECT regexp_replace(reference, '^MOAUM-LEG-CHK726', '') FROM finance.legacy_payref WHERE payref = 'PR726H');
+    jd_ref := (SELECT source_type || ':' || regexp_replace(source_ref, '^MOAUM-LEG-CHK726', '') || ':' || status FROM finance.gl_journal WHERE id = jd);
+    je2_state := (SELECT source_type || ':' || status FROM finance.gl_journal WHERE id = je2);
+    je1_ref := (SELECT source_type || ':' || regexp_replace(source_ref, '^MOAUM-LEG-CHK726', '') || ':' || status FROM finance.gl_journal WHERE id = je1);
+    out_scope := (SELECT count(*) FROM finance.payment_reference WHERE reference IN ('MOAUM-CHK7267-PORTAL', 'MOAUM-LEG-GST-CHK7267-9726-9727'));
+
+    -- a second run deletes nothing
+    r2 := finance.legacy_fee_duplicates_remove('CHECK V726 again');
+
+    -- the guard: A's payment again is not inserted; the same number on semester 3 is
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (st[1], ses, 'MOAUM-LEG-CHK7261-9726-9727-S1-AGAIN', 'School fees (legacy) · semester 1', 85000, day, day, who, 'Legacy', 'LEG-CHK7261-AGAIN', 'Imported from the old portal · old ref PR726A');
+    guard_same := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHK7261-9726-9727-S1-AGAIN');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (st[1], ses, 'MOAUM-LEG-CHK7261-9726-9727-S3', 'School fees (legacy) · semester 3', 85000, day, day, who, 'Legacy', 'LEG-CHK7261-S3', 'Imported from the old portal · old ref PR726A');
+    guard_other := (SELECT count(*) FROM finance.payment_reference WHERE reference = 'MOAUM-LEG-CHK7261-9726-9727-S3');
+
+    msg := 'plan ' || roles
+        || ' | run ' || r1.status || ' groups ' || r1.groups_found || ' cleaned ' || r1.groups_cleaned || ' kept ' || r1.retained || ' deleted ' || r1.deleted
+        || ' skipped ' || r1.groups_skipped || '/' || r1.records_skipped || ' ' || r1.skipped_by_reason::text || ' amount ' || r1.amount_deleted
+        || ' students ' || r1.students || ' sealed ' || r1.numbers_sealed || ' ledger ' || r1.ledger_moved || '/' || r1.ledger_released
+        || ' receipts ' || r1.receipts_voided || ' ' || r1.reconciliation || '/' || r1.integrity
+        || ' | A paid ' || paid_a_before || '->' || paid_a_after || ' left ' || left_a || ' sealed ' || seal_a || ' | D sealed ' || seal_d || ' journal ' || jd_ref || ' | H sealed ' || seal_h
+        || ' | E ' || je2_state || ' kept ' || je1_ref || ' | out of scope ' || out_scope
+        || ' | again ' || r2.status || ' ' || r2.deleted || ' groups ' || r2.groups_found || ' skipped ' || r2.groups_skipped
+        || ' | guard ' || guard_same || '/' || guard_other;
+    RAISE EXCEPTION 'the V726 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V726 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V726: legacy school-fee duplicates on all six fields are deleted for good, one kept per group — conflicting, linked and archived groups left whole; the ledger moved or released, the number sealed on the kept record; a second run deletes nothing; a new record of the same payment is refused',
+      coalesce(msg = 'plan 1-9726-9727-S1:KEEP,1-9726-9727-S1-PR726A:DELETE,1-9726-9727-S1-X:DELETE,'
+                     || '2-9726-9727-S1:SKIP/AMOUNTS_DIFFER,2-9726-9727-S1-B:SKIP/AMOUNTS_DIFFER,'
+                     || '3-9726-9727-S1:SKIP/LINKED_RECORD,3-9726-9727-S1-C:SKIP/LINKED_RECORD,'
+                     || '4-9726-9727:KEEP,4-9726-9727-D:DELETE,5-9726-9727-S2:KEEP,5-9726-9727-S2-E:DELETE,'
+                     || '6-9726-9727-S1:SKIP/ARCHIVED_OR_UNDER_REVIEW,6-9726-9727-S1-F:SKIP/ARCHIVED_OR_UNDER_REVIEW,'
+                     || '8-9726-9727-S1:KEEP,8-9726-9727-S1-H:DELETE'
+                     || ' | run DELETED groups 7 cleaned 4 kept 4 deleted 5 skipped 3/6 {"LINKED_RECORD": 1, "AMOUNTS_DIFFER": 1, "ARCHIVED_OR_UNDER_REVIEW": 1} amount 510000.00'
+                     || ' students 4 sealed 1 ledger 1/1 receipts 5 PASSED/PASSED'
+                     || ' | A paid 510000.00->340000.00 left 1-9726-9727-S1,1-9726-9727-S1-D,1-9726-9727-S2 sealed 1-9726-9727-S1'
+                     || ' | D sealed 4-9726-9727 journal PAYMENT:4-9726-9727:POSTED | H sealed 8-9726-9727-S1'
+                     || ' | E PAYMENT_DUPLICATE_DELETED:REVERSED kept PAYMENT:5-9726-9727-S2:POSTED | out of scope 2'
+                     || ' | again NOTHING_TO_DELETE 0 groups 3 skipped 3'
+                     || ' | guard 0/1', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
