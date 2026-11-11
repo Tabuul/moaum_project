@@ -14,7 +14,8 @@ export default async function HistoricalFeesPage({ searchParams }: { searchParam
   const p = await searchParams;
   const s = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
   const tab = (TABS as readonly string[]).includes(s("tab")) ? (s("tab") as (typeof TABS)[number]) : s("financial") || s("filter") || s("q") ? "students" : "overview";
-  const filters: Filters = { q: s("q"), faculty: s("faculty"), programme: s("programme"), admission: s("admission"), graduation: s("graduation"), financial: s("financial"), filter: s("filter") };
+  const filters: Filters = { q: s("q"), faculty: s("faculty"), programme: s("programme"), admission: s("admission"), graduation: s("graduation"), financial: s("financial"), filter: s("filter"),
+    scope: s("scope"), type: s("type"), level: s("level") };   // V720
   const [me, desk, figures, faculties, programmes] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Desk>("/api/v1/finance/historical/permissions"),

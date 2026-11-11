@@ -60,7 +60,24 @@ import org.springframework.web.bind.annotation.RestController;
 class HistoricalFeesController {
 
     static final String READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_audit','OFFICE_deputyaudit','OFFICE_super','OFFICE_registrar',"
-            + "'OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_vc','OFFICE_dvc','OFFICE_ict','OFFICE_admin')";
+            + "'OFFICE_dregistrar','OFFICE_academic','OFFICE_records','OFFICE_vc','OFFICE_dvc','OFFICE_ict','OFFICE_admin',"
+            + "'OFFICE_pgschool','OFFICE_pgsecretary')";   // V720: the School of Postgraduate Studies, its postgraduate students only
+    /** V720: the School of Postgraduate Studies reads postgraduate students alone, whatever the screen asks */
+    private static String typeFor(String type) {
+        String office = ng.edu.moaum.portal.shared.AuditContextHolder.current().map(ng.edu.moaum.portal.shared.AuditContext::actorOffice).orElse("");
+        if ("pgschool".equals(office) || "pgsecretary".equals(office)) return "PG";
+        return type == null ? null : "PG".equalsIgnoreCase(type.trim()) ? "PG" : "UG".equalsIgnoreCase(type.trim()) ? "UG" : null;
+    }
+    /** V720: GRADUATES (graduated, or an approved graduand), ACTIVE (studying: ACTIVE, PROBATION) or ALL */
+    private static String scopeOf(String scope) {
+        return scope == null ? "GRADUATES" : "ALL".equalsIgnoreCase(scope.trim()) ? "ALL" : "ACTIVE".equalsIgnoreCase(scope.trim()) ? "ACTIVE" : "GRADUATES";
+    }
+    static final String SCOPE_WHERE = """
+                  AND (CAST(:scope AS text) = 'ALL'
+                       OR (:scope = 'ACTIVE' AND s.status IN ('ACTIVE', 'PROBATION'))
+                       OR (:scope = 'GRADUATES' AND (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))))
+                  AND (CAST(:type AS text) IS NULL OR (:type = 'PG') = people.is_postgraduate(s.entry_mode, p.category))
+            """;
     static final Set<String> EVIDENCE_TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
     static final Set<String> FINANCIAL = Set.of("FINANCIALLY_CLEARED", "FINANCIAL_OBLIGATION", "FINANCIAL_CLEARANCE_PENDING", "HISTORICAL_FEE_REVIEW_REQUIRED",
             "NO_HISTORICAL_PERIOD");
@@ -267,6 +284,21 @@ class HistoricalFeesController {
                 """).query(Long.class).single());
         out.put("refreshedAt", jdbc.sql("SELECT refreshed_at FROM finance.historical_setting WHERE id = 1").query().singleRow().get("refreshed_at"));
         out.put("start", jdbc.sql("SELECT finance.historical_start()").query(String.class).optional().orElse(null));
+        // V720: the whole population by standing and programme type — studying or graduated, undergraduate or postgraduate — each with
+        // those owing, the sessions owed in whole and in part, and the amounts; the School of Postgraduate Studies sees its own
+        String type = typeFor(null);
+        out.put("population", jdbc.sql("""
+                SELECT CASE WHEN s.status IN ('ACTIVE', 'PROBATION') THEN 'ACTIVE' ELSE 'GRADUATED' END AS standing,
+                       CASE WHEN people.is_postgraduate(s.entry_mode, p.category) THEN 'PG' ELSE 'UG' END AS type,
+                       count(*) AS students, count(*) FILTER (WHERE h.outstanding > 0) AS with_outstanding,
+                       count(*) FILTER (WHERE h.whole_sessions > 0) AS whole_sessions, count(*) FILTER (WHERE h.part_sessions > 0) AS part_sessions,
+                       count(*) FILTER (WHERE h.review_periods > 0) AS requires_review,
+                       coalesce(sum(h.outstanding), 0) AS outstanding, coalesce(sum(h.paid), 0) AS paid
+                  FROM finance.historical_summary h JOIN people.student s ON s.id = h.student_id JOIN ref.programme p ON p.code = s.programme_code
+                 WHERE finance.historical_population(s.status, s.id, s.entry_session)
+                   AND (CAST(:type AS text) IS NULL OR (:type = 'PG') = people.is_postgraduate(s.entry_mode, p.category))
+                 GROUP BY 1, 2 ORDER BY 1, 2
+                """).param("type", type, Types.VARCHAR).query().listOfRows());
         return out;
     }
 
@@ -279,9 +311,11 @@ class HistoricalFeesController {
                                  @RequestParam(required = false) String dept, @RequestParam(required = false) String programme,
                                  @RequestParam(required = false) String admission, @RequestParam(required = false) String graduation,
                                  @RequestParam(required = false) String financial, @RequestParam(required = false) String filter,
-                                 @RequestParam(defaultValue = "GRADUATES") String scope, @RequestParam(defaultValue = "0") int page) {
+                                 @RequestParam(defaultValue = "GRADUATES") String scope, @RequestParam(defaultValue = "0") int page,
+                                 @RequestParam(required = false) String type, @RequestParam(required = false) Integer level) {
         need("VIEW_HISTORICAL_FEE_ASSESSMENT");
         freshen();
+        String typ = typeFor(type);   // V720
         String fin = blank(financial) != null && FINANCIAL.contains(financial.trim()) ? financial.trim() : null;
         String flt = blank(filter);
         String term = blank(q);
@@ -293,8 +327,9 @@ class HistoricalFeesController {
                 LEFT JOIN ref.department d ON d.code = p.dept_code
                 LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                 LEFT JOIN finance.historical_summary h ON h.student_id = s.id
-                WHERE (CAST(:scope AS text) = 'ALL' OR s.status = 'GRADUATED'
-                       OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
+                WHERE true
+                """ + SCOPE_WHERE + """
+                  AND (CAST(:lvl AS integer) IS NULL OR s.current_level = :lvl)
                   AND (CAST(:fac AS text) IS NULL OR p.faculty_code = :fac) AND (CAST(:dept AS text) IS NULL OR p.dept_code = :dept)
                   AND (CAST(:prog AS text) IS NULL OR p.code = :prog) AND (CAST(:adm AS text) IS NULL OR s.entry_session = :adm)
                   AND (CAST(:grad AS text) IS NULL OR h.last_session = :grad)
@@ -302,6 +337,9 @@ class HistoricalFeesController {
                   AND (CAST(:flt AS text) IS NULL
                        OR (:flt = 'OUTSTANDING' AND h.outstanding > 0)
                        OR (:flt = 'GRADUATED_OWING' AND s.status = 'GRADUATED' AND h.outstanding > 0)
+                       OR (:flt = 'ACTIVE_OWING' AND s.status IN ('ACTIVE', 'PROBATION') AND h.outstanding > 0)
+                       OR (:flt = 'WHOLE_SESSION' AND h.whole_sessions > 0)
+                       OR (:flt = 'PART_SESSION' AND h.part_sessions > 0)
                        OR (:flt = 'PARTIALLY_PAID' AND h.partial_periods > 0)
                        OR (:flt = 'NO_OUTSTANDING' AND h.outstanding = 0 AND h.financial_status <> 'NO_HISTORICAL_PERIOD')
                        OR (:flt = 'CREDIT' AND h.credit >= 1)
@@ -313,11 +351,13 @@ class HistoricalFeesController {
                        OR EXISTS (SELECT 1 FROM people.student_identifier i WHERE i.student_id = s.id AND upper(i.identifier_value) = upper(:q))
                        OR (s.surname || ' ' || s.other_names) ILIKE '%' || :q || '%' OR (s.other_names || ' ' || s.surname) ILIKE '%' || :q || '%')
                 """;
-        JdbcClient.StatementSpec count = bind(jdbc.sql("SELECT count(*) " + where), scope, faculty, dept, programme, admission, graduation, fin, flt, term);
+        JdbcClient.StatementSpec count = bind(jdbc.sql("SELECT count(*) " + where), scope, faculty, dept, programme, admission, graduation, fin, flt, term)
+                .param("type", typ, Types.VARCHAR).param("lvl", level, Types.INTEGER);
         long total = count.query(Long.class).single();
         List<Map<String, Object>> rows = bind(jdbc.sql("""
                 SELECT s.id AS student_id, s.surname, s.other_names, s.matric_no, s.admission_no, s.jamb_reg_no, s.status, s.entry_session,
                        p.code AS programme_code, p.name AS programme, d.name AS department, f.name AS faculty,
+                       people.is_postgraduate(s.entry_mode, p.category) AS postgraduate, s.current_level, h.whole_sessions, h.part_sessions,   -- V720
                        h.first_session, h.last_session AS graduation_session, h.periods, h.assessed, h.paid, h.outstanding, h.credit, h.owing_periods,
                        h.review_periods, h.pending_periods, h.partial_periods, h.owing, h.financial_status, h.last_payment_at, h.refreshed_at,
                        (SELECT i.state FROM clearance.process q
@@ -326,6 +366,7 @@ class HistoricalFeesController {
                        (SELECT q.reference FROM clearance.process q WHERE q.student_id = s.id AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL LIMIT 1) AS clearance_ref
                 """ + where + " ORDER BY h.outstanding DESC NULLS LAST, s.surname, s.other_names LIMIT :lim OFFSET :off"),
                 scope, faculty, dept, programme, admission, graduation, fin, flt, term)
+                .param("type", typ, Types.VARCHAR).param("lvl", level, Types.INTEGER)
                 .param("lim", PAGE).param("off", p * PAGE).query().listOfRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("total", total);
@@ -337,7 +378,7 @@ class HistoricalFeesController {
 
     private static JdbcClient.StatementSpec bind(JdbcClient.StatementSpec spec, String scope, String faculty, String dept, String programme, String admission,
                                                  String graduation, String fin, String flt, String q) {
-        return spec.param("scope", "ALL".equalsIgnoreCase(scope) ? "ALL" : "GRADUATES").param("fac", blank(faculty), Types.VARCHAR)
+        return spec.param("scope", scopeOf(scope)).param("fac", blank(faculty), Types.VARCHAR)
                 .param("dept", blank(dept), Types.VARCHAR).param("prog", blank(programme), Types.VARCHAR).param("adm", blank(admission), Types.VARCHAR)
                 .param("grad", blank(graduation), Types.VARCHAR).param("fin", fin, Types.VARCHAR).param("flt", flt, Types.VARCHAR).param("q", q, Types.VARCHAR);
     }
@@ -1057,21 +1098,26 @@ class HistoricalFeesController {
                                @RequestParam(required = false) Integer level, @RequestParam(required = false) String faculty,
                                @RequestParam(required = false) String dept, @RequestParam(required = false) String programme,
                                @RequestParam(required = false) String status, @RequestParam(required = false) String financial,
-                               @RequestParam(required = false) String graduation, @RequestParam(required = false) String source) {
+                               @RequestParam(required = false) String graduation, @RequestParam(required = false) String source,
+                               @RequestParam(required = false) String scope, @RequestParam(required = false) String type) {
         need("VIEW_HISTORICAL_FEE_REPORT");
         freshen();
         String fin = blank(financial) != null && FINANCIAL.contains(financial.trim()) ? financial.trim() : null;
+        // V720: graduates by default, the students studying or everyone on request; undergraduate or postgraduate on request
         List<String> ids = jdbc.sql("""
                 SELECT s.id::text FROM people.student s JOIN ref.programme p ON p.code = s.programme_code JOIN finance.historical_summary h ON h.student_id = s.id
-                 WHERE (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
+                 WHERE true
+                """ + SCOPE_WHERE + """
                    AND (CAST(:fac AS text) IS NULL OR p.faculty_code = :fac) AND (CAST(:dept AS text) IS NULL OR p.dept_code = :dept)
                    AND (CAST(:prog AS text) IS NULL OR p.code = :prog) AND (CAST(:grad AS text) IS NULL OR h.last_session = :grad)
                    AND (CAST(:fin AS text) IS NULL OR h.financial_status = :fin) AND h.periods > 0
                  ORDER BY s.surname, s.other_names LIMIT 3000
                 """).param("fac", blank(faculty), Types.VARCHAR).param("dept", blank(dept), Types.VARCHAR).param("prog", blank(programme), Types.VARCHAR)
-                .param("grad", blank(graduation), Types.VARCHAR).param("fin", fin, Types.VARCHAR).query(String.class).list();
+                .param("grad", blank(graduation), Types.VARCHAR).param("fin", fin, Types.VARCHAR)
+                .param("scope", scopeOf(scope)).param("type", typeFor(type), Types.VARCHAR).query(String.class).list();
         List<Map<String, Object>> rows = ids.isEmpty() ? List.of() : jdbc.sql("""
                 SELECT s.surname || ', ' || s.other_names AS student, s.matric_no, s.jamb_reg_no, f.name AS faculty, d.name AS department, p.name AS programme,
+                       s.status AS academic_status, CASE WHEN people.is_postgraduate(s.entry_mode, p.category) THEN 'PG' ELSE 'UG' END AS programme_type,   -- V720
                        h.last_session AS graduation_session, x.session, x.semester, x.level, x.assessed, x.paid, x.outstanding, x.credit, x.source, x.source_ref,
                        x.status, a.state AS assessment_state, h.financial_status,
                        (SELECT i.state FROM clearance.process q JOIN clearance.item i ON i.process_id = q.id AND i.unit = 'BURSARY' AND i.superseded_by IS NULL
@@ -1101,12 +1147,15 @@ class HistoricalFeesController {
     @PreAuthorize(READERS)
     @Transactional
     List<Map<String, Object>> clearanceReport(@RequestParam(required = false) String faculty, @RequestParam(required = false) String programme,
-                                              @RequestParam(required = false) String financial, @RequestParam(required = false) String graduation) {
+                                              @RequestParam(required = false) String financial, @RequestParam(required = false) String graduation,
+                                              @RequestParam(required = false) String scope, @RequestParam(required = false) String type) {
         need("VIEW_HISTORICAL_FEE_REPORT");
         freshen();
         String fin = blank(financial) != null && FINANCIAL.contains(financial.trim()) ? financial.trim() : null;
         return jdbc.sql("""
                 SELECT s.surname || ', ' || s.other_names AS student, s.matric_no, s.jamb_reg_no, f.name AS faculty, d.name AS department, p.name AS programme,
+                       s.status AS academic_status, CASE WHEN people.is_postgraduate(s.entry_mode, p.category) THEN 'PG' ELSE 'UG' END AS programme_type,   -- V720
+                       h.whole_sessions, h.part_sessions,
                        h.last_session AS graduation_session, h.owing, h.assessed, h.paid, h.outstanding, h.credit, h.financial_status, h.last_payment_at,
                        ci.state AS bursary_clearance, helpdesk.person_name(ci.officer_id) AS bursary_officer, ci.decided_at AS bursary_at
                   FROM finance.historical_summary h JOIN people.student s ON s.id = h.student_id JOIN ref.programme p ON p.code = s.programme_code
@@ -1114,13 +1163,14 @@ class HistoricalFeesController {
                   LEFT JOIN LATERAL (SELECT i.state, i.officer_id, i.decided_at FROM clearance.process q
                                        JOIN clearance.item i ON i.process_id = q.id AND i.unit = 'BURSARY' AND i.superseded_by IS NULL
                                       WHERE q.student_id = s.id AND q.workflow = 'FINAL' AND q.cancelled_at IS NULL ORDER BY i.decided_at DESC LIMIT 1) ci ON true
-                 WHERE (s.status = 'GRADUATED' OR EXISTS (SELECT 1 FROM records.graduand g WHERE g.student_id = s.id AND g.senate_state = 'APPROVED'))
+                 WHERE true
+                """ + SCOPE_WHERE + """
                    AND (CAST(:fac AS text) IS NULL OR p.faculty_code = :fac) AND (CAST(:prog AS text) IS NULL OR p.code = :prog)
                    AND (CAST(:fin AS text) IS NULL OR h.financial_status = :fin) AND (CAST(:grad AS text) IS NULL OR h.last_session = :grad)
                  ORDER BY h.outstanding DESC, s.surname, s.other_names
                  LIMIT 20000
                 """).param("fac", blank(faculty), Types.VARCHAR).param("prog", blank(programme), Types.VARCHAR).param("fin", fin, Types.VARCHAR)
-                .param("grad", blank(graduation), Types.VARCHAR).query().listOfRows();
+                .param("grad", blank(graduation), Types.VARCHAR).param("scope", scopeOf(scope)).param("type", typeFor(type), Types.VARCHAR).query().listOfRows();
     }
 
     @GetMapping("/quality")

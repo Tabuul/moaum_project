@@ -481,6 +481,28 @@ class StudentPortalRepository {
         return out;
     }
 
+    /** V720: the student's open, unexpired school-fee references — of any session, the historical door's included — newest first */
+    List<Map<String, Object>> openSchoolFeeReferences(UUID student) {
+        return jdbc.sql("""
+                SELECT r.reference, r.session, r.amount, r.expires_at, r.purpose FROM finance.payment_reference r
+                 WHERE r.student_id = :s AND r.confirmed_at IS NULL AND r.archived_at IS NULL AND r.expires_at > now() AND r.purpose LIKE 'School fees%'
+                 ORDER BY r.generated_at DESC
+                """).param("s", student).query().listOfRows();
+    }
+
+    /** V720: the session the historical assessment starts from (finance.historical_start) */
+    String historicalStart() {
+        return jdbc.sql("SELECT finance.historical_start()").query(String.class).optional().orElse(null);
+    }
+
+    String entrySession(UUID student) {
+        return jdbc.sql("SELECT entry_session FROM people.student WHERE id = :s").param("s", student).query(String.class).optional().orElse(null);
+    }
+
+    Integer levelOf(UUID student) {
+        return jdbc.sql("SELECT current_level FROM people.student WHERE id = :s").param("s", student).query(Integer.class).optional().orElse(null);
+    }
+
     /** V665: whether the student's award is approved, the record not yet GRADUATED, and the session after the graduation session */
     boolean awaitingFinalClearanceAfter(UUID student, String session) {
         if (session == null) return false;

@@ -37,6 +37,8 @@ export interface StudentRow {
   graduation_session: string | null; periods: number | null; assessed: Money | null; paid: Money | null; outstanding: Money | null; credit: Money | null;
   owing_periods: number | null; review_periods: number | null; pending_periods: number | null; partial_periods: number | null; owing: string | null;
   financial_status: FinancialStatus | null; last_payment_at: string | null; refreshed_at: string | null; bursary_clearance: string | null; clearance_ref: string | null;
+  /** V720: undergraduate or postgraduate, the level now, the sessions owed in whole and in part */
+  postgraduate?: boolean; current_level?: number | null; whole_sessions?: number | null; part_sessions?: number | null;
 }
 
 export interface StudentAccount {
@@ -146,7 +148,10 @@ export interface Figures {
   /** V683: graduates' payment evidence by state, and graduates with a school-fee payment archived for review */
   evidence?: { submitted: number; submitted_amount: Money; more_information: number; verified: number; verified_to_put_right: number; rejected: number };
   archivedSchoolFees?: { students: number; amount: Money };
+  /** V720: the whole population by standing (ACTIVE / GRADUATED) and programme type (UG / PG) */
+  population?: PopulationRow[];
 }
+export interface PopulationRow { standing: "ACTIVE" | "GRADUATED"; type: "UG" | "PG"; students: number; with_outstanding: number; whole_sessions: number; part_sessions: number; requires_review: number; outstanding: Money; paid: Money }
 
 export const PERIOD_WORDS: Record<PeriodStatus, [string, Tone]> = {
   CLEARED: ["Cleared", "ok"], PARTIALLY_PAID: ["Partially paid", "warn"], OUTSTANDING: ["Outstanding", "bad"], CREDIT: ["Credit / overpayment", "info"],
@@ -210,7 +215,7 @@ export function readComponents(rows: { item: string; amount: string }[]): { item
   return rows.filter((r) => r.item.trim() || r.amount.trim()).map((r) => ({ item: r.item.trim(), amount: Number(r.amount.replace(/[^0-9.]/g, "")) }));
 }
 
-export const REPORT_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Graduation Session", "Fee Session", "Semester",
+export const REPORT_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Academic Status", "Programme Type", "Graduation Session", "Fee Session", "Semester",
   "Level", "Amount Assessed (₦)", "Amount Paid (₦)", "Outstanding (₦)", "Assessment Source", "Assessment Status", "Financial Clearance Status",
   "Bursar Approval Status", "Date"];
 
@@ -219,12 +224,14 @@ export interface ReportRow {
   graduation_session: string | null; session: string; semester: number; level: number | null; assessed: Money | null; paid: Money; outstanding: Money | null;
   credit: Money; source: string; source_ref: string | null; status: PeriodStatus; assessment_state: AssessmentState | null; financial_status: FinancialStatus;
   bursary_clearance: string | null; dated: string | null;
+  /** V720 */
+  academic_status?: string; programme_type?: string;
 }
 
 /** the historical fee report's rows: S/N first and numeric, matriculation and JAMB numbers as text, amounts as numbers */
 export function reportRows(rows: ReportRow[]): (string | number)[][] {
   return rows.map((r, i) => [
-    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, r.graduation_session ?? "", r.session,
+    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, standingWords(r.academic_status), r.programme_type ?? "", r.graduation_session ?? "", r.session,
     semesterWords(r.semester), r.level ?? "", r.assessed == null ? "" : num(r.assessed), num(r.paid), r.outstanding == null ? "" : num(r.outstanding),
     r.source === "ASSESSMENT" ? `Approved assessment ${r.source_ref ?? ""}`.trim() : r.source === "STRUCTURE" ? r.source_ref ?? "Fee structure" : "None — requires review",
     PERIOD_WORDS[r.status]?.[0] ?? r.status, FINANCIAL_WORDS[r.financial_status]?.[0] ?? r.financial_status,
@@ -233,18 +240,24 @@ export function reportRows(rows: ReportRow[]): (string | number)[][] {
   ]);
 }
 
-export const CLEARANCE_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Graduation Session", "Historical Sessions With Debt",
+/** V720: a status as the reports print it */
+export const standingWords = (status: string | null | undefined) => (!status ? "" : status === "GRADUATED" ? "Graduated" : status === "ACTIVE" ? "Studying" : status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, " "));
+
+export const CLEARANCE_HEAD = ["S/N", "Student Name", "Matric No.", "JAMB No.", "Faculty", "Department", "Programme", "Academic Status", "Programme Type", "Graduation Session", "Historical Sessions With Debt", "Sessions Owed In Whole", "Sessions Owed In Part",
   "Total Assessed (₦)", "Total Paid (₦)", "Total Outstanding (₦)", "Financial Status", "Clearance Status", "Last Payment Date", "Bursary Officer", "Bursar Approval"];
 
 export interface ClearanceRow {
   student: string; matric_no: string | null; jamb_reg_no: string | null; faculty: string | null; department: string | null; programme: string;
   graduation_session: string | null; owing: string | null; assessed: Money; paid: Money; outstanding: Money; credit: Money; financial_status: FinancialStatus;
   last_payment_at: string | null; bursary_clearance: string | null; bursary_officer: string | null; bursary_at: string | null;
+  /** V720 */
+  academic_status?: string; programme_type?: string; whole_sessions?: number | null; part_sessions?: number | null;
 }
 
 export function clearanceRows(rows: ClearanceRow[]): (string | number)[][] {
   return rows.map((r, i) => [
-    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, r.graduation_session ?? "", r.owing ?? "—",
+    i + 1, r.student, r.matric_no ?? "", r.jamb_reg_no ?? "", r.faculty ?? "", r.department ?? "", r.programme, standingWords(r.academic_status), r.programme_type ?? "", r.graduation_session ?? "", r.owing ?? "—",
+    r.whole_sessions ?? 0, r.part_sessions ?? 0,
     num(r.assessed), num(r.paid), num(r.outstanding), FINANCIAL_WORDS[r.financial_status]?.[0] ?? r.financial_status,
     r.bursary_clearance ? r.bursary_clearance.replace(/_/g, " ").toLowerCase() : "Not started", r.last_payment_at ? r.last_payment_at.slice(0, 10) : "",
     r.bursary_officer ?? "", r.bursary_at ? `${r.bursary_clearance === "CLEARED" ? "Cleared" : "Decided"} ${r.bursary_at.slice(0, 10)}` : "",

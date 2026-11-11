@@ -10,14 +10,18 @@ import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/pr
 import { Passport } from "@/components/proto/blocks";
 import { naira } from "./common";
 import { RESEARCH_WORD, awardWord, eligibility, fmtDay, nextStep, type PgSummary } from "./pg-common";
+import { num as owedNum, type OutstandingFees } from "@/lib/outstanding-fees";
+import { OutstandingFeesCard } from "./OutstandingFees";
 
 const SEM = ["", "First semester", "Second semester", "Third semester"];
 const STEP_WORD: Record<string, string> = { DONE: "Done", ACTION: "To do", WAITING: "Waiting", BLOCKED: "Not yet" };
 
 export type { PgSummary };
 
-export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
+export function PgDashboard({ s, pg, outstanding = null }: { s: Me; pg?: PgSummary | null; outstanding?: OutstandingFees | null }) {
   const f = s.fees;
+  // V720: what is owed across every session of the record — the past stages from the historical engine, this session from the position
+  const owedTotal = outstanding ? owedNum(outstanding.summary.outstanding) : f.balance;
   const reg = pg?.registration ?? null;
   const registered = !!reg && (reg.state === "SUBMITTED" || reg.state === "ENDORSED");
   const cgpaShown = pg && pg.standing !== "NEW" && pg.cgpa != null;
@@ -33,7 +37,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
     : `Fully paid for ${f.session}.`;
   const sem = pg?.semester ?? null;
   const cw = pg?.coursework ?? null;
-  const elig = pg ? eligibility(pg, f) : null;
+  const elig = pg ? eligibility(pg, f, outstanding) : null;
   const met = elig ? elig.filter((e) => e.state === "MET").length : 0;
   const supervisors = pg?.supervisors ?? [];
   const graduated = s.status === "GRADUATED" || !!pg?.graduand;
@@ -43,7 +47,7 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
   if (sem?.registration_closes && !registered) deadlines.push(["Course registration closes", fmtDay(sem.registration_closes), new Date(sem.registration_closes) < new Date() ? "bad" : "warn"]);
   if (pg?.researchDates?.corrections_due && research?.stage === "CORRECTIONS") deadlines.push(["Corrections due", fmtDay(pg.researchDates.corrections_due), new Date(pg.researchDates.corrections_due) < new Date() ? "bad" : "warn"]);
   if (sem?.exams_from) deadlines.push(["Examinations", `${fmtDay(sem.exams_from)}${sem.exams_to ? ` to ${fmtDay(sem.exams_to)}` : ""}`, "grey"]);
-  if (f.balance > 0) deadlines.push(["School fees outstanding", naira(f.balance), "bad"]);
+  if (owedTotal > 0) deadlines.push(["School fees outstanding", naira(owedTotal), "bad"]);
 
   return (
     <>
@@ -74,13 +78,17 @@ export function PgDashboard({ s, pg }: { s: Me; pg?: PgSummary | null }) {
         ["Programme", awardWord(s.entryLevel), null, s.programme],
         ["Registered courses", reg ? String(reg.courses) : "0", registered ? "var(--green-ink)" : null, reg ? `${SEM[reg.semester] ?? `Semester ${reg.semester}`} · ${regWord}` : "Not yet registered", "/student/register"],
         ["CGPA", cgpaShown ? Number(pg!.cgpa).toFixed(2) : "—", pg?.standing === "PROBATION" ? "var(--red-ink)" : cgpaShown ? "var(--green-ink)" : null, pg?.standing === "PROBATION" ? "Probation · below 2.50" : cgpaShown ? "of 5.00 · good standing" : "No results yet", "/student/pg-courses"],
-        ["Outstanding fees", noCharge ? "—" : f.balance > 0 ? naira(f.balance) : "₦0", f.balance > 0 ? "var(--red-ink)" : !noCharge && f.paidInFull ? "var(--green-ink)" : null, noCharge ? `Not yet stated · ${f.session}` : f.paidInFull ? `Paid in full · ${f.session}` : f.session, "/student/fees"],
+        ["Outstanding fees", outstanding ? naira(owedTotal) : noCharge ? "—" : f.balance > 0 ? naira(f.balance) : "₦0", owedTotal > 0 ? "var(--red-ink)" : outstanding || (!noCharge && f.paidInFull) ? "var(--green-ink)" : null,
+         outstanding ? (owedTotal > 0 ? `${outstanding.summary.sessions} session${outstanding.summary.sessions === 1 ? "" : "s"} · ${outstanding.summary.periods} fee period${outstanding.summary.periods === 1 ? "" : "s"}` : "Nothing owed on any session") : noCharge ? `Not yet stated · ${f.session}` : f.paidInFull ? `Settled · ${f.session}` : `Outstanding · ${f.session}`, "/student/fees"],
         ["Research", research ? (RESEARCH_WORD[research.stage] ?? research.stage) : "—", research && research.stage !== "WITHDRAWN" ? "var(--chrome)" : null, research ? (step ? step[0] : "") : "Not started", "/student/research"],
         ["Supervisor", supervisors[0]?.name ?? "—", null, supervisors.length > 1 ? `and ${supervisors.length - 1} more` : supervisors.length ? (supervisors[0].role === "FIRST" ? "Main supervisor" : supervisors[0].role.toLowerCase()) : "Not yet assigned", "/student/research"],
         ["Pending tasks", String(deadlines.filter((d) => d[2] !== "grey").length), deadlines.some((d) => d[2] === "bad") ? "var(--red-ink)" : deadlines.some((d) => d[2] === "warn") ? "var(--amber-ink)" : null, deadlines.length ? deadlines.filter((d) => d[2] !== "grey").map((d) => d[0]).join(" · ") || "Nothing overdue" : "Nothing due"],
         ["Deferment", s.status === "DEFERRED" ? "Active" : "None", s.status === "DEFERRED" ? "var(--amber-ink)" : null, s.status === "DEFERRED" ? "See your expected return" : "Defer a semester or session", "/student/deferment"],
         ["Graduation", graduated ? "Graduated" : elig ? `${met} / ${elig.length}` : "—", graduated ? "var(--green-ink)" : elig && met === elig.length ? "var(--green-ink)" : null, graduated ? (pg?.graduand?.award ? `${pg.graduand.award} · ${pg.graduand.session}` : "Award recorded") : "Requirements met", "/student/pg-progress"],
       ]} />
+
+      {/* V720: every outstanding school fee of the record, each with its Pay now — past stages through the historical door */}
+      {outstanding && (owedTotal > 0 || outstanding.rows.some((r) => r.status === "PAYMENT_PENDING" || r.status === "BEING_ASSESSED")) ? <OutstandingFeesCard data={outstanding} compact /> : null}
 
       {pg?.next?.length ? (
         <Panel title="Next steps" right={pg.session ? `${pg.session} session` : undefined}>

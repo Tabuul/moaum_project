@@ -464,6 +464,185 @@ public class StudentPortalService {
         return repo.historicalFees(id);
     }
 
+    /* ── V720: every outstanding school fee of the record, in one read ── */
+
+    private static BigDecimal money(Object o) {
+        return o == null ? BigDecimal.ZERO : o instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(o));
+    }
+
+    private static String periodWords(Integer semester) {
+        return semester == null ? "Entire session" : semester == 1 ? "First semester" : semester == 2 ? "Second semester" : "Third semester";
+    }
+
+    /** the status words the brief asks for: UNPAID, PARTIALLY_PAID, PAYMENT_PENDING, PAID — and the engine's own for a period being
+     *  assessed, under review, or in credit */
+    private static String statusOf(String engine, BigDecimal due, BigDecimal paid, BigDecimal balance, boolean pending) {
+        if ("BEING_ASSESSED".equals(engine) || "REQUIRES_REVIEW".equals(engine) || "PENDING_APPROVAL".equals(engine)) return "BEING_ASSESSED";
+        if ("CREDIT".equals(engine)) return "CREDIT";
+        if (balance == null || balance.signum() <= 0) return "PAID";
+        if (pending) return "PAYMENT_PENDING";
+        return paid != null && paid.signum() > 0 ? "PARTIALLY_PAID" : "UNPAID";
+    }
+
+    /**
+     * Every outstanding school fee of the student's record: each past session and semester as the historical engine assesses it
+     * (finance.historical_account — the level of the session, a postgraduate stage's lines, approved assessments and waivers), and
+     * the current session as the fees position reads it (finance.position, by semester) — never one engine standing in for the
+     * other. An open, unexpired reference of a session makes its first owed period PAYMENT_PENDING and is the one offered to pay.
+     * The summary counts what is owed across sessions. Nothing here is a new detection: the two engines are the authorities.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> outstandingFees(UUID id) {
+        String session = sessionFor(id);
+        Map<String, Object> hist = repo.historicalFees(id);
+        Map<String, Object> cur = fees(id, session);
+        List<Map<String, Object>> open = repo.openSchoolFeeReferences(id);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", session);
+        out.put("graduated", hist.get("graduated"));
+        out.put("graduationSession", hist.get("graduationSession"));
+        out.put("awaitingFinalClearance", hist.get("awaitingFinalClearance"));
+        out.put("onlinePayment", hist.get("onlinePayment"));
+        Map<String, Object> window = cur.get("window") instanceof Map<?, ?> w ? (Map<String, Object>) w : null;
+        boolean windowOpen = window == null || window.get("state") == null || "OPEN".equals(String.valueOf(window.get("state")));
+        out.put("windowOpen", windowOpen);
+        String assessedFrom = repo.historicalStart();
+        String entrySession = repo.entrySession(id);
+        out.put("assessedFrom", assessedFrom);
+        out.put("entrySession", entrySession);
+        out.put("unassessedBefore", assessedFrom != null && entrySession != null && entrySession.compareTo(assessedFrom) < 0);
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        java.util.Set<String> pendingSessions = new java.util.HashSet<>();
+        // the past: the historical account, each period in the session's order; the session's open reference pays its first owed period.
+        // A session whose structure is one whole-session line is assessed on its first semester with nothing on the others: shown as
+        // one row, "Entire session", the empty semesters left out (the engine's amounts, the brief's words)
+        List<Map<String, Object>> periods = (List<Map<String, Object>>) hist.get("periods");
+        java.util.Set<String> wholeSessions = new java.util.HashSet<>();
+        for (Map<String, Object> p : periods) {
+            String ses = String.valueOf(p.get("session"));
+            boolean others = periods.stream().filter(q -> ses.equals(String.valueOf(q.get("session"))) && !Integer.valueOf(1).equals(q.get("semester")))
+                    .allMatch(q -> q.get("assessed") != null && money(q.get("assessed")).signum() == 0 && money(q.get("paid")).signum() == 0
+                            && !"BEING_ASSESSED".equals(String.valueOf(q.get("status"))));
+            boolean first = Integer.valueOf(1).equals(p.get("semester")) && p.get("assessed") != null && money(p.get("assessed")).signum() > 0;
+            if (first && others) wholeSessions.add(ses);
+        }
+        for (Map<String, Object> p : periods) {
+            String ses = String.valueOf(p.get("session"));
+            Integer sem = p.get("semester") == null ? null : ((Number) p.get("semester")).intValue();
+            if (wholeSessions.contains(ses) && !Integer.valueOf(1).equals(sem)) continue;
+            BigDecimal due = p.get("assessed") == null ? null : money(p.get("assessed"));
+            BigDecimal paid = money(p.get("paid"));
+            BigDecimal balance = p.get("outstanding") == null ? null : money(p.get("outstanding"));
+            String engine = String.valueOf(p.get("status"));
+            Map<String, Object> ref = balance != null && balance.signum() > 0 && !pendingSessions.contains(ses)
+                    ? open.stream().filter(r -> ses.equals(String.valueOf(r.get("session")))).findFirst().orElse(null) : null;
+            if (ref != null) pendingSessions.add(ses);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("kind", "PAST");
+            row.put("session", ses);
+            row.put("semester", wholeSessions.contains(ses) ? null : sem);
+            row.put("period", wholeSessions.contains(ses) ? "Entire session" : periodWords(sem));
+            row.put("level", p.get("level"));
+            row.put("description", "School fees");
+            row.put("due", due);
+            row.put("paid", paid);
+            row.put("balance", balance);
+            row.put("credit", p.get("credit"));
+            row.put("waived", p.get("waived"));
+            row.put("status", statusOf(engine, due, paid, balance, ref != null));
+            row.put("review", p.get("review"));
+            row.put("reference", ref);
+            boolean payable = balance != null && balance.signum() > 0 && Boolean.TRUE.equals(hist.get("onlinePayment"))
+                    && !"BEING_ASSESSED".equals(row.get("status"));
+            row.put("payable", payable);
+            row.put("payAmount", payable ? balance : null);
+            row.put("door", "HISTORICAL");
+            rows.add(row);
+        }
+        // the current session: what the position says is due, by semester (a whole-session structure is one row)
+        BigDecimal due = money(cur.get("due"));
+        if (Boolean.TRUE.equals(cur.get("stated")) && due.signum() > 0) {
+            BigDecimal paid = money(cur.get("paid"));
+            BigDecimal balance = money(cur.get("balance"));
+            BigDecimal firstDue = repo.dueForSemester(id, session, 1);
+            BigDecimal firstOut = money(cur.get("firstSemesterOutstanding"));
+            BigDecimal secondOut = money(cur.get("secondSemesterOutstanding"));
+            Map<String, Object> ref = balance.signum() > 0
+                    ? open.stream().filter(r -> session.equals(String.valueOf(r.get("session")))).findFirst().orElse(null) : null;
+            List<Object[]> parts = new ArrayList<>();
+            if (firstDue.compareTo(due) >= 0) {
+                parts.add(new Object[] {null, due, paid.min(due), balance});
+            } else {
+                parts.add(new Object[] {1, firstDue, paid.min(firstDue), firstOut});
+                parts.add(new Object[] {2, due.subtract(firstDue), paid.subtract(firstDue).max(BigDecimal.ZERO).min(due.subtract(firstDue)), secondOut});
+            }
+            boolean pendingGiven = false;
+            for (Object[] part : parts) {
+                Integer sem = (Integer) part[0];
+                BigDecimal rowDue = (BigDecimal) part[1], rowPaid = (BigDecimal) part[2], rowBal = (BigDecimal) part[3];
+                boolean pending = ref != null && !pendingGiven && rowBal.signum() > 0;
+                if (pending) pendingGiven = true;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("kind", "CURRENT");
+                row.put("session", session);
+                row.put("semester", sem);
+                row.put("period", periodWords(sem));
+                row.put("level", repo.levelOf(id));
+                row.put("description", "School fees");
+                row.put("due", rowDue);
+                row.put("paid", rowPaid);
+                row.put("balance", rowBal);
+                row.put("status", statusOf(null, rowDue, rowPaid, rowBal, pending));
+                row.put("reference", pending ? ref : null);
+                boolean payable = rowBal.signum() > 0 && windowOpen;
+                row.put("payable", payable);
+                row.put("payAmount", payable ? rowBal : null);
+                row.put("door", "CURRENT");
+                rows.add(row);
+            }
+        }
+        out.put("rows", rows);
+        // the summary: sessions and periods with a balance, the total, what open references would settle, what has been paid
+        BigDecimal outstanding = BigDecimal.ZERO, paidTotal = BigDecimal.ZERO, pending = BigDecimal.ZERO;
+        java.util.Set<String> owingSessions = new java.util.TreeSet<>();
+        int periodsOwed = 0;
+        for (Map<String, Object> r : rows) {
+            BigDecimal b = r.get("balance") == null ? BigDecimal.ZERO : money(r.get("balance"));
+            paidTotal = paidTotal.add(money(r.get("paid")));
+            if (b.signum() > 0) { outstanding = outstanding.add(b); owingSessions.add(String.valueOf(r.get("session"))); periodsOwed++; }
+            if (r.get("reference") instanceof Map<?, ?> rf) pending = pending.add(money(((Map<String, Object>) rf).get("amount")));
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("sessions", owingSessions.size());
+        summary.put("periods", periodsOwed);
+        summary.put("items", periodsOwed);
+        summary.put("outstanding", outstanding);
+        summary.put("pending", pending);
+        summary.put("paid", paidTotal);
+        summary.put("beingAssessed", rows.stream().filter(r -> "BEING_ASSESSED".equals(r.get("status"))).count());
+        out.put("summary", summary);
+        return out;
+    }
+
+    /** V720: a reference for one outstanding fee — a past session through the historical door (any student; the database caps it at
+     *  the balance), the current session through the fees page's own (its window, its position); the outstanding fees read again */
+    @Transactional
+    public Map<String, Object> outstandingReference(UUID id, String session, BigDecimal amount) {
+        if (session == null || !session.matches("^[0-9]{4}/[0-9]{4}$")) {
+            throw new DomainRuleViolation("HFA_PERIOD", "Choose the session to pay for.", new DomainRuleViolation.Remedy("Pick a row that shows a balance.", "You"));
+        }
+        String reference;
+        if (session.equals(sessionFor(id))) {
+            reference = String.valueOf(newReference(id, session, amount).get("reference"));
+        } else {
+            reference = repo.historicalReference(id, session, amount);
+        }
+        Map<String, Object> out = new LinkedHashMap<>(outstandingFees(id));
+        out.put("reference", reference);
+        return out;
+    }
+
     /** V683: payment evidence a graduate submits for a past semester — the database checks the period (on their history, not settled),
      *  that one is open at a time, and the fields; it counts for nothing until the Bursary verifies the payment it shows */
     @Transactional

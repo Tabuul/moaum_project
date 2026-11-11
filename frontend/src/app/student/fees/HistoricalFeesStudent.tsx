@@ -40,12 +40,14 @@ export function HistoricalFeesStudent({ data }: { data: HistoricalFees }) {
   }
 
   return (
-    <Panel title="Historical school fees" right={data.graduationSession ? `${data.awaitingFinalClearance ? "Graduating" : "Graduated"} ${data.graduationSession}` : undefined}>
+    <Panel title="Historical school fees" right={data.graduationSession && (data.graduated || data.awaitingFinalClearance) ? `${data.awaitingFinalClearance ? "Graduating" : "Graduated"} ${data.graduationSession}` : data.graduated ? undefined : "Sessions before your current one"}>
       <PBody>
         <Note kind={owing.length ? "bad" : "ok"} title={owing.length ? "School fees from your sessions remain unpaid" : "No historical school fees are owed on what is assessed"}>
           {data.awaitingFinalClearance
             ? "Your award is approved and your final clearance is under way: your record reads GRADUATED once every office has cleared you and the Bursar confirms your clearance, with nothing owed for any session."
-            : "Your academic status is graduated; it does not change because of a balance. The Bursary clears you financially once every session of your record is settled."}
+            : data.graduated
+              ? "Your academic status is graduated; it does not change because of a balance. The Bursary clears you financially once every session of your record is settled."
+              : "These are the sessions before your current one, assessed as you were then. A balance is paid here at any time, outside that session's payment window; a session's payments settle its first semester first."}
           Amounts are the University&rsquo;s fees for each session at your level then, or an amount the Bursar approved for you.
         </Note>
         <HistoricalTotals periods={data.periods} />

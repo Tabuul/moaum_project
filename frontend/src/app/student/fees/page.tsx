@@ -10,6 +10,8 @@ import { PaymentCorrections, type PaymentCorrection } from "@/components/finance
 import { PaymentsUnderReview } from "@/components/finance/PaymentsUnderReview";
 import type { MyArchive } from "@/lib/payment-archive";
 import { HistoricalFeesStudent, type HistoricalFees } from "./HistoricalFeesStudent";
+import type { OutstandingFees } from "@/lib/outstanding-fees";
+import { OutstandingFeesCard } from "../OutstandingFees";
 
 /** s/fees — the charge computed from the schedule, the payments, and what the scheme releases */
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -21,17 +23,19 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   if (typeof q.paid === "string" && q.paid) {
     await api("/api/v1/payments/verify", { method: "POST", body: { reference: q.paid }, reason: `Verify payment ${q.paid}` });
   }
-  const [fees, corrections, historical, archives] = await Promise.all([
+  const [fees, corrections, historical, archives, outstanding] = await Promise.all([
     api<Fees>(`/api/v1/me/fees?session=${encodeURIComponent(session)}`),
     api<PaymentCorrection[]>("/api/v1/me/payment-corrections"),   // V527: payments the Bursary reallocated on this account
-    api<HistoricalFees>("/api/v1/me/historical-fees"),   // V654: a graduate's historical school fees
+    api<HistoricalFees>("/api/v1/me/historical-fees"),   // V654: the historical school fees of any student's record
     api<MyArchive[]>("/api/v1/me/payment-archives"),   // V670: payments on this account archived for review by the Bursary
+    api<OutstandingFees>("/api/v1/me/outstanding-fees"),   // V720: every outstanding fee of the record, past and current, each payable
   ]);
   return (
     <Shell route="s/fees" me={loaded.me} sub={`${fees.ok ? fees.data.session : session} session`}>
       {archives.ok ? <PaymentsUnderReview items={archives.data} /> : null}
       {corrections.ok ? <PaymentCorrections items={corrections.data} /> : null}
-      {historical.ok && historical.data.graduated ? <HistoricalFeesStudent data={historical.data} /> : null}
+      {outstanding.ok ? <OutstandingFeesCard data={outstanding.data} generatedBy={loaded.me?.name ?? null} /> : null}
+      {historical.ok && historical.data.periods.length ? <HistoricalFeesStudent data={historical.data} /> : null}
       {fees.ok ? <FeesScreen s={loaded.student} fees={fees.data} paid={typeof q.paid === "string" ? q.paid : null} /> : <ProblemNotice problem={fees.problem} />}
     </Shell>
   );

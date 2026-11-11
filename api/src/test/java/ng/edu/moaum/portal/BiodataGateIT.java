@@ -88,12 +88,16 @@ class BiodataGateIT {
             assertThat(status(on)).as(String.valueOf(on.getBody())).isEqualTo(200);
             assertThat(on.getBody().get("enabled")).isEqualTo(true);
 
-            // ON: refused everywhere but what completing the biodata needs, whatever the address
-            for (String path : List.of("/api/v1/me/fees", "/api/v1/me/registration", "/api/v1/me/results", "/api/v1/me/timetable",
+            // ON: refused everywhere but what completing the biodata needs, whatever the address — V720: the school fees, seen and
+            // paid whatever the biodata stands at, are never held
+            for (String path : List.of("/api/v1/me/registration", "/api/v1/me/results", "/api/v1/me/timetable",
                     "/api/v1/me/transcripts", "/api/v1/me/gst", "/api/v1/me/id-card")) {
                 assertThat(gated(it.get(student, path))).as(path).isTrue();
             }
-            assertThat(gated(it.call(student, HttpMethod.POST, "/api/v1/me/fees/references", Map.of()))).isTrue();
+            for (String path : List.of("/api/v1/me/fees", "/api/v1/me/historical-fees", "/api/v1/me/outstanding-fees")) {
+                assertThat(gated(it.get(student, path))).as(path).isFalse();
+            }
+            assertThat(gated(it.call(student, HttpMethod.POST, "/api/v1/me/fees/references", Map.of()))).isFalse();
             ResponseEntity<Map> me = it.get(student, "/api/v1/me");
             assertThat(status(me)).isEqualTo(200);
             assertThat(me.getHeaders().getFirst("X-Biodata-Gate")).isEqualTo("REQUIRED");
@@ -128,9 +132,9 @@ class BiodataGateIT {
             assertThat(status(it.call(cpo, HttpMethod.POST, B + "/exceptions", ex))).isEqualTo(403);
             ResponseEntity<Map> granted = it.call(ict, HttpMethod.POST, B + "/exceptions", ex);
             assertThat(status(granted)).as(String.valueOf(granted.getBody())).isEqualTo(200);
-            assertThat(gated(it.get(student, "/api/v1/me/fees"))).isFalse();
+            assertThat(gated(it.get(student, "/api/v1/me/results"))).isFalse();
             assertThat(status(it.call(ict, HttpMethod.POST, B + "/exceptions/" + granted.getBody().get("id") + "/revoke", Map.of("reason", "integration test")))).isEqualTo(200);
-            assertThat(gated(it.get(student, "/api/v1/me/fees"))).isTrue();
+            assertThat(gated(it.get(student, "/api/v1/me/results"))).isTrue();
 
             // the student completes the fields: still held while the photograph is missing
             for (String[] fv : new String[][] {{"nationality", "Nigeria"}, {"home_address", "No 1, Integration Street, Makurdi"}, {"state_of_origin", "Benue"},

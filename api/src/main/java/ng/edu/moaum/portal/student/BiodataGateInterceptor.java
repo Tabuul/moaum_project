@@ -44,7 +44,11 @@ class BiodataGateInterceptor implements HandlerInterceptor, WebMvcConfigurer {
     private static final List<String> OPEN_EXACT = List.of(
             "/api/v1/me", "/api/v1/me/passport", "/api/v1/me/contact", "/api/v1/me/biodata-status",
             "/api/v1/iam/me", "/api/v1/iam/session", "/api/v1/iam/me/scope",
-            "/api/v1/ref/states", "/api/v1/ref/countries");
+            "/api/v1/ref/states", "/api/v1/ref/countries",
+            // V720: school fees are seen and paid whatever the biodata stands at — a balance owed never waits on a form
+            "/api/v1/me/fees", "/api/v1/me/fees/references", "/api/v1/me/historical-fees", "/api/v1/me/historical-fees/references",
+            "/api/v1/me/outstanding-fees", "/api/v1/me/outstanding-fees/references", "/api/v1/payments/checkout", "/api/v1/payments/verify",
+            "/api/v1/payments/gateways");
     /** … and everything under these */
     private static final List<String> OPEN_UNDER = List.of(
             "/api/v1/me/biodata", "/api/v1/me/notices", "/api/v1/me/notifications", "/api/v1/me/requests", "/api/v1/student-auth", "/api/v1/manual");

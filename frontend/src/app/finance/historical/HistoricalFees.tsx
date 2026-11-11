@@ -29,9 +29,13 @@ type Tab = "overview" | "students" | "approvals" | "waivers" | "evidence" | "rec
 const FILTER_WORDS: Record<string, string> = {
   OUTSTANDING: "Outstanding fees", GRADUATED_OWING: "Graduated, money owed", PARTIALLY_PAID: "A semester paid in part", NO_OUTSTANDING: "No outstanding balance",
   CREDIT: "Credit / overpayment", AUTO_ASSESSED: "Every semester from the fee structure", WITH_ASSESSMENT: "With an approved assessment",
+  ACTIVE_OWING: "Still studying, money owed", WHOLE_SESSION: "A whole session owed", PART_SESSION: "Part of a session owed",
 };
+const SCOPE_WORDS: Record<string, string> = { "": "Graduates and approved graduands", ACTIVE: "Students still studying", ALL: "Everyone" };
 
-export interface Filters { q: string; faculty: string; programme: string; admission: string; graduation: string; financial: string; filter: string }
+export interface Filters { q: string; faculty: string; programme: string; admission: string; graduation: string; financial: string; filter: string;
+  /** V720: GRADUATES (blank), ACTIVE or ALL; UG or PG; the current level */
+  scope: string; type: string; level: string }
 interface Page { total: number; page: number; size: number; rows: StudentRow[] }
 interface QueueRow { id: string; reference: string; session: string; semester: number; level: number | null; amount: number | string; source: string; source_reference: string | null;
   state: string; created_at: string; submitted_at: string | null; created_by_name: string | null; mine: boolean; batch: string | null; student_id: string; surname: string;
@@ -84,7 +88,7 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
     return () => { alive = false; };
   }, [tab, tick]);
 
-  const show = (financial: string, filter = "") => { setF({ ...initialFilters, q: "", financial, filter }); setPage(0); setTab("students"); };
+  const show = (financial: string, filter = "", scope = "") => { setF({ ...initialFilters, q: "", financial, filter, scope }); setPage(0); setTab("students"); };
   const pending = figures?.assessments.find((x) => x.state === "PENDING_BURSAR_APPROVAL");
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" }, { id: "students", label: "Students" },
@@ -147,6 +151,11 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
                 <Door label="Auto-assessed" n={figures.auto_assessed} sub="Every semester read from the fee structure" onClick={() => show("", "AUTO_ASSESSED")} />
                 <Door label="No outstanding balance" n={figures.no_outstanding} sub="On what is assessed" onClick={() => show("", "NO_OUTSTANDING")} />
                 <Door label="Graduated with a financial obligation" n={figures.graduated_with_obligation} sub="Academic status GRADUATED, money owed" bad onClick={() => show("", "GRADUATED_OWING")} />
+                {/* V720: the students still studying with a past session owed, and the sessions owed in whole or in part across everyone */}
+                <Door label="Still studying, money owed" n={(figures.population ?? []).filter((x) => x.standing === "ACTIVE").reduce((a, x) => a + Number(x.with_outstanding), 0)}
+                  sub={`${naira((figures.population ?? []).filter((x) => x.standing === "ACTIVE").reduce((a, x) => a + Number(x.outstanding), 0))} from past sessions`} bad onClick={() => show("", "ACTIVE_OWING", "ACTIVE")} />
+                <Door label="A whole session owed" n={(figures.population ?? []).reduce((a, x) => a + Number(x.whole_sessions), 0)} sub="Nothing of the session paid" bad onClick={() => show("", "WHOLE_SESSION", "ALL")} />
+                <Door label="Part of a session owed" n={(figures.population ?? []).reduce((a, x) => a + Number(x.part_sessions), 0)} sub="Something paid, a balance left" warn onClick={() => show("", "PART_SESSION", "ALL")} />
                 <Door label="Awaiting final clearance" n={figures.awaitingGraduation ?? 0} sub="Award approved; the Bursar's clearance graduates them" warn onClick={() => setTab("recon")} />
                 <Door label="Waivers awaiting the Bursar" n={Number(figures.waivers?.pending ?? 0)} sub={`${naira(figures.waivers?.pending_amount)} proposed · ${naira(figures.waivers?.approved_amount)} approved in force`} warn onClick={() => setTab("waivers")} />
                 {/* V683: what graduates say they paid, being checked; and school-fee payments archived for review, counted for nothing meanwhile */}
@@ -170,7 +179,7 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
       ) : null}
 
       {tab === "students" ? (
-        <Panel title="Search graduated students" right={list ? `${list.total.toLocaleString()} found` : undefined}>
+        <Panel title="Search students" right={list ? `${list.total.toLocaleString()} found` : undefined}>
           <PBody>
             <div className="row row--end" style={{ flexWrap: "wrap" }}>
               <Field id="hf-q" label="Search" hint="Name, matric, JAMB, admission or application number, or the record's id">
@@ -202,17 +211,34 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
                   <option value="">Any</option>{(Object.keys(FINANCIAL_WORDS) as FinancialStatus[]).map((k) => <option key={k} value={k}>{FINANCIAL_WORDS[k][0]}</option>)}
                 </select>
               </Field>
+              {/* V720: graduates by default; the students still studying, or everyone; undergraduate or postgraduate; the level now */}
+              <Field id="hf-scope" label="Standing">
+                <select id="hf-scope" className="ctl" value={f.scope} onChange={(e) => { setF({ ...f, scope: e.target.value }); setPage(0); }}>
+                  {Object.entries(SCOPE_WORDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </Field>
+              <Field id="hf-type" label="Programme type">
+                <select id="hf-type" className="ctl" value={f.type} onChange={(e) => { setF({ ...f, type: e.target.value }); setPage(0); }}>
+                  <option value="">Any</option><option value="UG">Undergraduate</option><option value="PG">Postgraduate</option>
+                </select>
+              </Field>
+              <Field id="hf-level" label="Level now">
+                <select id="hf-level" className="ctl" value={f.level} onChange={(e) => { setF({ ...f, level: e.target.value }); setPage(0); }}>
+                  <option value="">Any</option>{[100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => <option key={l} value={String(l)}>{l}</option>)}
+                </select>
+              </Field>
             </div>
             {f.filter ? <div className="row mt-1"><Pil kind="info">{FILTER_WORDS[f.filter] ?? f.filter.replace(/_/g, " ").toLowerCase()}</Pil><Btn kind="ghost" onClick={() => setF({ ...f, filter: "" })}>Clear</Btn></div> : null}
           </PBody>
           {!list ? <PBody><div className="row row--tight sub2"><Spinner /> Reading…</div></PBody> : (
             <>
-              <DTable cols={["S/N|num", "Student", "Programme", "Graduation", "Assessed|num", "Paid|num", "Outstanding|num", "Financial status", "Bursary clearance", "|num"]}
+              <DTable cols={["S/N|num", "Student", "Programme", "Standing", "Graduation", "Assessed|num", "Paid|num", "Outstanding|num", "Financial status", "Bursary clearance", "|num"]}
                 rows={list.rows.map((r, i) => [
                   <span key="n" className="tnum sub2">{page * list.size + i + 1}</span>,
                   <span key="s"><strong>{r.surname}, {r.other_names}</strong><span className="blk sub2 tnum">{r.matric_no ?? r.admission_no ?? "—"}{r.jamb_reg_no ? ` · JAMB ${r.jamb_reg_no}` : ""}</span></span>,
                   <span key="p" className="sub2">{r.programme}{r.department ? <span className="blk">{r.department}</span> : null}</span>,
-                  <span key="g" className="tnum">{r.graduation_session ?? "—"}</span>,
+                  <span key="st" className="sub2">{r.status === "GRADUATED" ? "Graduated" : r.status === "ACTIVE" ? "Studying" : r.status.charAt(0) + r.status.slice(1).toLowerCase()} · {r.postgraduate ? "PG" : "UG"}{r.current_level ? <span className="blk">{r.current_level} Level</span> : null}</span>,
+                  <span key="g" className="tnum">{r.status === "GRADUATED" ? r.graduation_session ?? "—" : "—"}</span>,
                   <span key="a" className="tnum">{r.assessed == null ? "—" : naira(r.assessed)}</span>,
                   <span key="pd" className="tnum">{r.paid == null ? "—" : naira(r.paid)}</span>,
                   <span key="o" className="tnum" style={{ color: num(r.outstanding) > 0 ? "var(--red-ink)" : undefined }}>{r.outstanding == null ? "—" : naira(r.outstanding)}{r.owing ? <span className="blk sub2">{r.owing}</span> : null}</span>,
@@ -220,7 +246,7 @@ export function HistoricalFees({ desk, figures, initialTab, initialFilters, facu
                   <span key="c" className="sub2">{r.bursary_clearance ? r.bursary_clearance.replace(/_/g, " ").toLowerCase() : r.clearance_ref ? "pending" : "not started"}</span>,
                   <Btn key="x" kind="secondary" onClick={() => setOpen(r.student_id)}>Review fees</Btn>,
                 ])} />
-              {!list.rows.length ? <PBody><div className="sub2">No graduate matches.</div></PBody> : null}
+              {!list.rows.length ? <PBody><div className="sub2">No student matches.</div></PBody> : null}
               {list.total > list.size ? (
                 <PBody><div className="row row--right">
                   <Btn kind="ghost" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>Previous</Btn>

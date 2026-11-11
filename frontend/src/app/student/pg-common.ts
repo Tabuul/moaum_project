@@ -1,6 +1,7 @@
 /** What the postgraduate student's screens share: the summary the coursework endpoint gives, the words for
  *  a research stage, the next step it asks of the candidate, and the graduation checks read from the record. */
 import type { Fees } from "@/lib/student-portal";
+import { num as owedNum, type OutstandingFees } from "@/lib/outstanding-fees";
 
 export interface PgSemester { number: number; registration_opens: string | null; registration_closes: string | null; lectures_from: string | null; lectures_to: string | null; exams_from: string | null; exams_to: string | null; results_due: string | null; state: string }
 export interface PgSupervisor { name: string; role: string; is_external: boolean; assigned_at: string; department: string | null; email: string | null }
@@ -70,7 +71,9 @@ export interface Check { label: string; state: CheckState; detail: string; href?
 
 /** the graduation requirements as the record answers them today. Nothing here invents a rule: coursework
  *  passed, standing, the research at or past clearance, fees settled, and each convocation clearance unit. */
-export function eligibility(pg: PgSummary, fees: Fees): Check[] {
+export function eligibility(pg: PgSummary, fees: Fees, outstanding: OutstandingFees | null = null): Check[] {
+  // V720: school fees are settled only when nothing is owed on any session of the record, past stages included
+  const owedAll = outstanding ? owedNum(outstanding.summary.outstanding) : null;
   const cw = pg.coursework;
   const r = pg.research;
   const out: Check[] = [];
@@ -101,8 +104,8 @@ export function eligibility(pg: PgSummary, fees: Fees): Check[] {
   });
   out.push({
     label: "School fees settled",
-    state: fees.paidInFull ? "MET" : fees.balance > 0 ? "NOT_MET" : "PENDING",
-    detail: fees.paidInFull ? `Paid in full · ${fees.session}` : fees.balance > 0 ? `Outstanding balance for ${fees.session}` : "No charge stated yet",
+    state: owedAll != null && owedAll > 0 ? "NOT_MET" : fees.paidInFull ? "MET" : fees.balance > 0 ? "NOT_MET" : "PENDING",
+    detail: owedAll != null && owedAll > 0 ? `${outstanding!.summary.sessions} session${outstanding!.summary.sessions === 1 ? "" : "s"} with a balance` : fees.paidInFull ? `Paid in full · ${fees.session}` : fees.balance > 0 ? `Outstanding balance for ${fees.session}` : "No charge stated yet",
     href: "/student/fees",
   });
   for (const u of pg.clearance ?? []) {

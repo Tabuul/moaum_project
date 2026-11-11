@@ -17,7 +17,7 @@ import { hfCall } from "./hf-call";
 
 export function Reports({ desk, faculties, programmes }: { desk: Desk; faculties: { code: string; name: string }[]; programmes: { code: string; name: string; faculty_code: string }[] }) {
   const [kind, setKind] = useState<"periods" | "clearance">("periods");
-  const [f, setF] = useState({ session: "", semester: "", level: "", faculty: "", programme: "", status: "", financial: "", graduation: "", source: "" });
+  const [f, setF] = useState({ session: "", semester: "", level: "", faculty: "", programme: "", status: "", financial: "", graduation: "", source: "", scope: "", type: "" });
   const [rows, setRows] = useState<ReportRow[] | null>(null);
   const [crows, setCrows] = useState<ClearanceRow[] | null>(null);
   const [capped, setCapped] = useState(false);
@@ -44,6 +44,7 @@ export function Reports({ desk, faculties, programmes }: { desk: Desk; faculties
     ["Faculty", faculties.find((x) => x.code === f.faculty)?.name ?? "All"], ["Programme", programmes.find((x) => x.code === f.programme)?.name ?? "All"],
     ["Period status", f.status ? PERIOD_WORDS[f.status as PeriodStatus]?.[0] ?? f.status : "All"],
     ["Financial status", f.financial ? FINANCIAL_WORDS[f.financial as FinancialStatus]?.[0] ?? f.financial : "All"], ["Graduation session", f.graduation || "All"],
+    ["Standing", f.scope === "ALL" ? "Everyone" : f.scope === "ACTIVE" ? "Students still studying" : "Graduates"], ["Programme type", f.type === "PG" ? "Postgraduate" : f.type === "UG" ? "Undergraduate" : "All"],
   ];
 
   async function exportAs(format: "XLSX" | "PDF") {
@@ -84,6 +85,8 @@ export function Reports({ desk, faculties, programmes }: { desk: Desk; faculties
               <Field id="r-src" label="Assessment source"><select id="r-src" className="ctl" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}><option value="">All</option><option value="STRUCTURE">Fee structure</option><option value="ASSESSMENT">Approved assessment</option><option value="NONE">None (requires review)</option></select></Field>
             </>
           ) : null}
+          <Field id="r-scope" label="Standing"><select id="r-scope" className="ctl" value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })}><option value="">Graduates</option><option value="ACTIVE">Students still studying</option><option value="ALL">Everyone</option></select></Field>
+          <Field id="r-type" label="Programme type"><select id="r-type" className="ctl" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}><option value="">All</option><option value="UG">Undergraduate</option><option value="PG">Postgraduate</option></select></Field>
           <Field id="r-fac" label="Faculty"><select id="r-fac" className="ctl" value={f.faculty} onChange={(e) => setF({ ...f, faculty: e.target.value, programme: "" })}><option value="">All</option>{faculties.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field>
           <Field id="r-prog" label="Programme"><select id="r-prog" className="ctl" value={f.programme} onChange={(e) => setF({ ...f, programme: e.target.value })}><option value="">All</option>{programmes.filter((x) => !f.faculty || x.faculty_code === f.faculty).map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select></Field>
           <Field id="r-fin" label="Financial status"><select id="r-fin" className="ctl" value={f.financial} onChange={(e) => setF({ ...f, financial: e.target.value })}><option value="">All</option>{(Object.keys(FINANCIAL_WORDS) as FinancialStatus[]).map((k) => <option key={k} value={k}>{FINANCIAL_WORDS[k][0]}</option>)}</select></Field>

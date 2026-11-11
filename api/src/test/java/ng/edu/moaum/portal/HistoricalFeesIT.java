@@ -385,4 +385,145 @@ class HistoricalFeesIT {
         List<Map<String, Object>> seen = (List<Map<String, Object>>) it.get(student, "/api/v1/me/historical-fees").getBody().get("evidence");
         assertThat(seen.get(0)).containsEntry("state", "VERIFIED");
     }
+
+    /**
+     * V720: every outstanding school fee of a record, shown to and paid by every student. Three sessions made up, the last made
+     * CURRENT. An undergraduate still studying at 300 Level never paid their 100 Level session (a whole-session line) and paid the
+     * rest; a graduate paid the first semester of a per-semester session only; a postgraduate student still studying owes the second
+     * semester of their first stage. Each reads the balance on /me/outstanding-fees (the session, the period, due, paid, balance, the
+     * status words), the student studying pays the past session through the historical door (the reference's purpose names the
+     * session; the same reference on a second click; the current session paid by its own door), a pending reference makes the row
+     * PAYMENT_PENDING and is never counted as paid; the desk lists the student studying under scope=ACTIVE and the postgraduate under
+     * type=PG with the sessions owed in whole and in part, the School of Postgraduate Studies reading postgraduate students only, and
+     * the report takes the same scope.
+     */
+    @Test
+    void outstandingFeesOfPastSessionsAreShownToAndPaidByEveryStudent() {
+        int y = it.freeYear(8300, 8700, 0, 3);
+        String s0 = y + "/" + (y + 1), s1 = (y + 1) + "/" + (y + 2), cur = (y + 2) + "/" + (y + 3);
+        for (int i = 0; i < 3; i++) { it.session((y + i) + "/" + (y + i + 1), y + i); }
+        sessions.addAll(List.of(s0, s1, cur));
+        String wasCurrent = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1").query(String.class).optional().orElse(null);
+        String pgWasCurrent = jdbc.sql("SELECT name FROM admissions.pg_academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1").query(String.class).optional().orElse(null);
+        UUID active = it.student(it.freeSurname("ZZOSFACT"), "C00023", it.freeNumber("MOAUM/ADM/83/", 6), it.freeNumber("MOAUM/OSF/83/", 6), 300);
+        UUID grad = it.student(it.freeSurname("ZZOSFGRAD"), "C00023", it.freeNumber("MOAUM/ADM/83/", 6), it.freeNumber("MOAUM/OSF/83/", 6), 400);
+        UUID pg = it.student(it.freeSurname("ZZOSFPG"), "C90002", it.freeNumber("MOAUM/ADM/83/", 6), it.freeNumber("MOAUM/OSF/83/", 6), 800);
+        try {
+            it.db(() -> {
+                jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT'").update();
+                jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = coalesce(senate_minute, 'SEN/TEST/V720') WHERE name = :c").param("c", cur).update();
+                jdbc.sql("UPDATE admissions.pg_academic_session SET state = 'CLOSED' WHERE state = 'CURRENT'").update();
+                jdbc.sql("INSERT INTO admissions.pg_academic_session (name, state) VALUES (:c, 'CURRENT') ON CONFLICT (name) DO UPDATE SET state = 'CURRENT'").param("c", cur).update();
+                jdbc.sql("UPDATE people.student SET entry_session = :e, entry_level = 100 WHERE id IN (:a, :g)").param("e", s0).param("a", active).param("g", grad).update();
+                jdbc.sql("UPDATE people.student SET status = 'GRADUATED' WHERE id = :g").param("g", grad).update();
+                jdbc.sql("UPDATE people.student SET entry_session = :e, entry_mode = 'POSTGRADUATE', entry_level = 800 WHERE id = :p").param("e", s0).param("p", pg).update();
+                jdbc.sql("""
+                        INSERT INTO people.enrolment (id, student_id, session, level) VALUES
+                            (gen_random_uuid(), :a, :s0, 100), (gen_random_uuid(), :a, :s1, 200), (gen_random_uuid(), :a, :c, 300),
+                            (gen_random_uuid(), :g, :s0, 100), (gen_random_uuid(), :g, :s1, 200),
+                            (gen_random_uuid(), :p, :s0, 800), (gen_random_uuid(), :p, :s1, 800), (gen_random_uuid(), :p, :c, 800)
+                        """).param("a", active).param("g", grad).param("p", pg).param("s0", s0).param("s1", s1).param("c", cur).update();
+                jdbc.sql("""
+                        INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute, graduated_at, approved_at, final_level, duration_years, entry_session)
+                        VALUES (gen_random_uuid(), :g, :s1, 3.50, 'Second Class Upper', 'APPROVED', 'SEN/TEST/V720', now(), now(), 400, 4, :s0)
+                        """).param("g", grad).param("s1", s1).param("s0", s0).update();
+                jdbc.sql("""
+                        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+                            (:s0, 'V720 IT fees', 50000, 100, 'C00023', NULL), (:s1, 'V720 IT fees', 30000, 200, 'C00023', 1), (:s1, 'V720 IT fees', 20000, 200, 'C00023', 2),
+                            (:c, 'V720 IT fees', 35000, 300, 'C00023', 1), (:c, 'V720 IT fees', 25000, 300, 'C00023', 2)
+                        """).param("s0", s0).param("s1", s1).param("c", cur).update();
+                jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, semester) VALUES (:s0, 'V720 IT PG fees', 100000, '800A', 1), (:s0, 'V720 IT PG fees', 50000, '800A', 2), (:s1, 'V720 IT PG fees', 80000, '800B', 1)")
+                        .param("s0", s0).param("s1", s1).update();
+                return jdbc.sql("""
+                        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+                            (:a, :s1, :r1, 'School fees ' || :s1, 50000, now(), now(), gen_random_uuid(), 'Bank branch', :r1),
+                            (:g, :s0, :r2, 'School fees ' || :s0, 50000, now(), now(), gen_random_uuid(), 'Bank branch', :r2),
+                            (:g, :s1, :r3, 'School fees ' || :s1, 30000, now(), now(), gen_random_uuid(), 'Bank branch', :r3),
+                            (:p, :s0, :r4, 'School fees ' || :s0, 100000, now(), now(), gen_random_uuid(), 'Bank branch', :r4),
+                            (:p, :s1, :r5, 'School fees ' || :s1, 80000, now(), now(), gen_random_uuid(), 'Bank branch', :r5)
+                        """).param("a", active).param("g", grad).param("p", pg).param("s0", s0).param("s1", s1)
+                        .param("r1", "MOAUM-FEE-OSF-" + y + "A").param("r2", "MOAUM-FEE-OSF-" + y + "B").param("r3", "MOAUM-FEE-OSF-" + y + "C")
+                        .param("r4", "MOAUM-FEE-OSF-" + y + "D").param("r5", "MOAUM-FEE-OSF-" + y + "E").update();
+            });
+            String tActive = TestTokens.token(active, List.of("student"));
+            String tGrad = TestTokens.token(grad, List.of("student"));
+            String tPg = TestTokens.token(pg, List.of("student"));
+
+            // the student studying: the 100 Level session owed in whole (the historical engine, at the level then), the current session by semester
+            Map<String, Object> mine = it.get(tActive, "/api/v1/me/outstanding-fees").getBody();
+            assertThat(mine).containsEntry("graduated", false).containsEntry("session", cur);
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) mine.get("rows");
+            Map<String, Object> owed = rows.stream().filter(r -> s0.equals(r.get("session"))).findFirst().orElseThrow();
+            assertThat(owed).containsEntry("kind", "PAST").containsEntry("period", "Entire session").containsEntry("level", 100).containsEntry("status", "UNPAID")
+                    .containsEntry("payable", true).containsEntry("door", "HISTORICAL");
+            assertThat(money(owed.get("balance"))).isEqualByComparingTo("50000");
+            assertThat(rows.stream().filter(r -> s1.equals(r.get("session"))).map(r -> r.get("status"))).containsOnly("PAID");
+            assertThat(rows.stream().filter(r -> cur.equals(r.get("session"))).map(r -> r.get("period") + "/" + r.get("status"))).containsExactly("First semester/UNPAID", "Second semester/UNPAID");
+            Map<String, Object> summary = (Map<String, Object>) mine.get("summary");
+            assertThat(money(summary.get("outstanding"))).isEqualByComparingTo("110000");
+            assertThat(summary).containsEntry("sessions", 2).containsEntry("periods", 3);
+
+            // pays the past session through the historical door: the purpose names the session; a second click, the same reference
+            ResponseEntity<Map> ref = it.call(tActive, HttpMethod.POST, "/api/v1/me/outstanding-fees/references", Map.of("session", s0, "amount", 50000));
+            assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
+            String paying = String.valueOf(ref.getBody().get("reference"));
+            assertThat(jdbc.sql("SELECT purpose FROM finance.payment_reference WHERE reference = :r").param("r", paying).query(String.class).single()).isEqualTo("School fees " + s0 + " (historical)");
+            assertThat(it.call(tActive, HttpMethod.POST, "/api/v1/me/outstanding-fees/references", Map.of("session", s0, "amount", 50000)).getBody().get("reference")).isEqualTo(paying);
+            // the pending reference makes the row PAYMENT_PENDING, never paid
+            Map<String, Object> pendingRow = ((List<Map<String, Object>>) ref.getBody().get("rows")).stream().filter(r -> s0.equals(r.get("session"))).findFirst().orElseThrow();
+            assertThat(pendingRow).containsEntry("status", "PAYMENT_PENDING");
+            assertThat(((Map<String, Object>) pendingRow.get("reference")).get("reference")).isEqualTo(paying);
+            assertThat(money(pendingRow.get("balance"))).isEqualByComparingTo("50000");
+            assertThat(money(((Map<String, Object>) ref.getBody().get("summary")).get("pending"))).isEqualByComparingTo("50000");
+            // more than the balance is refused; the current session goes through the fees page's own door
+            ResponseEntity<Map> above = it.call(tActive, HttpMethod.POST, "/api/v1/me/outstanding-fees/references", Map.of("session", s0, "amount", 60000));
+            assertThat(above.getStatusCode().value()).isEqualTo(422);
+            assertThat(above.getBody()).containsEntry("code", "HFA_PAY_AMOUNT");
+            ResponseEntity<Map> now = it.call(tActive, HttpMethod.POST, "/api/v1/me/outstanding-fees/references", Map.of("session", cur, "amount", 35000));
+            assertThat(now.getStatusCode().value()).as(String.valueOf(now.getBody())).isEqualTo(200);
+            assertThat(jdbc.sql("SELECT purpose FROM finance.payment_reference WHERE reference = :r").param("r", String.valueOf(now.getBody().get("reference"))).query(String.class).single())
+                    .startsWith("School fees " + cur);
+
+            // the graduate: the second semester owed, nothing else; the fees page's historical read serves them as before
+            Map<String, Object> g = it.get(tGrad, "/api/v1/me/outstanding-fees").getBody();
+            assertThat(g).containsEntry("graduated", true);
+            List<Map<String, Object>> gOwed = ((List<Map<String, Object>>) g.get("rows")).stream().filter(r -> money(r.get("balance")).signum() > 0).toList();
+            assertThat(gOwed).hasSize(1);
+            assertThat(gOwed.get(0)).containsEntry("session", s1).containsEntry("period", "Second semester").containsEntry("status", "UNPAID");
+            assertThat(money(gOwed.get(0).get("balance"))).isEqualByComparingTo("20000");
+
+            // the postgraduate student studying: the first stage's second semester owed, from the stage's lines; their past ends at the School's own calendar
+            Map<String, Object> p = it.get(tPg, "/api/v1/me/outstanding-fees").getBody();
+            List<Map<String, Object>> pOwed = ((List<Map<String, Object>>) p.get("rows")).stream().filter(r -> money(r.get("balance")).signum() > 0).toList();
+            assertThat(pOwed).hasSize(1);
+            assertThat(pOwed.get(0)).containsEntry("session", s0).containsEntry("period", "Second semester").containsEntry("kind", "PAST");
+            assertThat(money(pOwed.get(0).get("balance"))).isEqualByComparingTo("50000");
+
+            // the desk: the student studying under scope=ACTIVE (the sessions owed in whole), the postgraduate under type=PG; the School reads PG only
+            String bursar = ItSupport.token("bursar");
+            Map<String, Object> listed = it.get(bursar, u -> u.path(PATH + "/students").queryParam("scope", "ACTIVE").queryParam("filter", "WHOLE_SESSION").queryParam("q", active.toString()).build()).getBody();
+            assertThat(listed.get("total")).isEqualTo(1);
+            assertThat(((List<Map<String, Object>>) listed.get("rows")).get(0)).containsEntry("whole_sessions", 1).containsEntry("postgraduate", false);
+            assertThat(it.get(bursar, u -> u.path(PATH + "/students").queryParam("scope", "GRADUATES").queryParam("q", active.toString()).build()).getBody().get("total")).isEqualTo(0);
+            assertThat(it.get(bursar, u -> u.path(PATH + "/students").queryParam("scope", "ALL").queryParam("type", "PG").queryParam("filter", "PART_SESSION").queryParam("q", pg.toString()).build()).getBody().get("total")).isEqualTo(1);
+            String school = ItSupport.token("pgschool");
+            assertThat(it.get(school, u -> u.path(PATH + "/students").queryParam("scope", "ALL").queryParam("q", pg.toString()).build()).getBody().get("total")).isEqualTo(1);
+            assertThat(it.get(school, u -> u.path(PATH + "/students").queryParam("scope", "ALL").queryParam("q", active.toString()).build()).getBody().get("total")).isEqualTo(0);
+            Map<String, Object> figures = it.get(bursar, PATH + "/figures").getBody();
+            assertThat((List<Map<String, Object>>) figures.get("population")).anySatisfy(x -> assertThat(x).containsEntry("standing", "ACTIVE").containsEntry("type", "UG"));
+            Map<String, Object> report = it.get(bursar, u -> u.path(PATH + "/report").queryParam("scope", "ACTIVE").queryParam("session", s0).build()).getBody();
+            assertThat((List<Map<String, Object>>) report.get("rows")).anySatisfy(r -> assertThat(r).containsEntry("academic_status", "ACTIVE").containsEntry("programme_type", "UG").containsEntry("status", "OUTSTANDING"));
+        } finally {
+            // the calendar as the test found it: the test's session planned again (a closed far-future session would become every
+            // returning student's "latest run" between sessions, as StudentPortalIT reads it), the one that was current current again
+            it.db(() -> {
+                jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :c AND name IS DISTINCT FROM :w AND state <> 'PLANNED'")
+                        .param("c", cur).param("w", wasCurrent, java.sql.Types.VARCHAR).update();
+                if (wasCurrent != null) jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT' WHERE name = :w AND state <> 'CURRENT'").param("w", wasCurrent).update();
+                jdbc.sql("DELETE FROM admissions.pg_academic_session WHERE name = :c").param("c", cur).update();
+                if (pgWasCurrent != null) jdbc.sql("UPDATE admissions.pg_academic_session SET state = 'CURRENT' WHERE name = :w").param("w", pgWasCurrent).update();
+                return 0;
+            });
+        }
+    }
 }

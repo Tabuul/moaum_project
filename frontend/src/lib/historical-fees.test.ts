@@ -29,13 +29,14 @@ test("the report and statement rows: S/N first and numeric, numbers as text, amo
     programme: "B.Sc. Computer Science", graduation_session: "2024/2025", session: "2022/2023", semester: 2, level: 200, assessed: "120000.00", paid: "60000.00",
     outstanding: "60000.00", credit: 0, source: "ASSESSMENT", source_ref: "HFA/2026/000001", status: "PARTIALLY_PAID", assessment_state: "APPROVED",
     financial_status: "FINANCIAL_OBLIGATION", bursary_clearance: null, dated: "2026-10-25T09:00:00Z" }]);
-  assert.deepEqual(r[0], [1, "DOE, John", "MOAUM/SC/20/0001", "20123456AB", "Science", "Computer Science", "B.Sc. Computer Science", "2024/2025", "2022/2023",
+  assert.deepEqual(r[0], [1, "DOE, John", "MOAUM/SC/20/0001", "20123456AB", "Science", "Computer Science", "B.Sc. Computer Science", "", "", "2024/2025", "2022/2023",
     "Second semester", 200, 120000, 60000, 60000, "Approved assessment HFA/2026/000001", "Partially paid", "Financial obligation", "Approved — in force", "2026-10-25"]);
   const c = clearanceRows([{ student: "DOE, John", matric_no: "M1", jamb_reg_no: null, faculty: null, department: null, programme: "P", graduation_session: "2024/2025",
     owing: "2022/2023 S2", assessed: 340000, paid: 280000, outstanding: 60000, credit: 0, financial_status: "FINANCIAL_OBLIGATION", last_payment_at: null,
     bursary_clearance: "NOT_CLEARED", bursary_officer: null, bursary_at: null }]);
   assert.equal(c[0][0], 1);
-  assert.equal(c[0][13], "not cleared");
+  assert.equal(c[0][17], "not cleared");   // V720: academic status, programme type, sessions owed in whole and in part precede it
+  assert.deepEqual(c[0].slice(7, 13), ["", "", "2024/2025", "2022/2023 S2", 0, 0]);
   assert.deepEqual(statementRows(periods).map((x) => x.slice(1, 8)), [
     ["2021/2022", "First semester", 100, 100000, 0, 100000, 0], ["2021/2022", "Second semester", 100, "Being assessed", 0, 10000, "—"],
     ["2022/2023", "First semester", 200, 120000, 0, 120000, 0], ["2022/2023", "Second semester", 200, 120000, 0, 60000, 60000],

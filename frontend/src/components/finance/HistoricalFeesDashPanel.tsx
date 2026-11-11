@@ -10,6 +10,11 @@ import { LinkBtn, Panel, PBody, Tiles } from "@/components/proto/ui";
 import { naira, num, type Figures } from "@/lib/historical-fees";
 
 const LINK = "/finance/historical";
+/* V720: the population figures by standing and programme type */
+const pop = (f: Figures, standing: string, key: "with_outstanding" | "students") => Number((f.population ?? []).filter((x) => x.standing === standing).reduce((a, x) => a + Number(x[key]), 0)).toLocaleString("en-GB");
+const sum = (f: Figures, standing: string, key: "outstanding" | "paid") => (f.population ?? []).filter((x) => x.standing === standing).reduce((a, x) => a + Number(x[key]), 0);
+const sumType = (f: Figures, type: string) => (f.population ?? []).filter((x) => x.type === type).reduce((a, x) => a + Number(x.outstanding), 0);
+const countType = (f: Figures, type: string) => (f.population ?? []).filter((x) => x.type === type).reduce((a, x) => a + Number(x.with_outstanding), 0).toLocaleString("en-GB");
 
 export function HistoricalFeesDashPanel({ officer = false }: { officer?: boolean }) {
   const [f, setF] = useState<Figures | null>(null);
@@ -43,6 +48,15 @@ export function HistoricalFeesDashPanel({ officer = false }: { officer?: boolean
           ["Total historical amount assessed", f ? naira(f.assessed) : "…", null, `${f ? naira(f.paid) : "…"} paid`, `${LINK}?tab=reports`],
           ["Total historical outstanding", f ? naira(f.outstanding) : "…", f && num(f.outstanding) > 0 ? "var(--red-ink)" : null, "On what is assessed", `${LINK}?financial=FINANCIAL_OBLIGATION`],
         ]} />
+        {/* V720: the students still studying who owe a past session, and the whole population's arrears by programme type */}
+        {f?.population?.length ? (
+          <Tiles items={[
+            ["Still studying, owing past sessions", pop(f, "ACTIVE", "with_outstanding"), pop(f, "ACTIVE", "with_outstanding") !== "0" ? "var(--red-ink)" : null, `${naira(sum(f, "ACTIVE", "outstanding"))} outstanding`, `${LINK}?scope=ACTIVE&filter=ACTIVE_OWING`],
+            ["Graduated, owing", pop(f, "GRADUATED", "with_outstanding"), pop(f, "GRADUATED", "with_outstanding") !== "0" ? "var(--red-ink)" : null, `${naira(sum(f, "GRADUATED", "outstanding"))} outstanding`, `${LINK}?filter=GRADUATED_OWING`],
+            ["Undergraduate arrears", naira(sumType(f, "UG")), null, `${countType(f, "UG")} students owing`, `${LINK}?scope=ALL&type=UG&filter=OUTSTANDING`],
+            ["Postgraduate arrears", naira(sumType(f, "PG")), null, `${countType(f, "PG")} students owing`, `${LINK}?scope=ALL&type=PG&filter=OUTSTANDING`],
+          ]} />
+        ) : null}
       </PBody>
     </Panel>
   );

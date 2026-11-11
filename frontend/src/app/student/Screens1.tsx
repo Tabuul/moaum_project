@@ -10,6 +10,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { GstView, Me } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
+import { num as owedNum, type OutstandingFees } from "@/lib/outstanding-fees";
+import { OutstandingFeesCard } from "./OutstandingFees";
 import type { StudentRecord } from "@/lib/student";
 import { Btn, Ico, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -129,7 +131,9 @@ function Quick({ icon, title, sub, href }: { icon: string; title: string; sub: s
     : <button type="button" className="tile" style={{ textAlign: "left", alignItems: "flex-start" }} disabled>{inner}</button>;
 }
 
-export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
+export function Dashboard({ s, gst = null, outstanding = null }: { s: Me; gst?: GstView | null; outstanding?: OutstandingFees | null }) {
+  // V720: what is owed across every session of the record, past and current
+  const owedTotal = outstanding ? owedNum(outstanding.summary.outstanding) : 0;
   const f = s.fees;
   const cleared = f.clearsRegistration === true;
   const noScheme = f.clearsRegistration === null;
@@ -212,7 +216,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
       {s.status === "GRADUATED" ? (
         /* V602: a graduated record — no school fees to pay, no courses to register; the history, documents and clearance stay open */
         <Note kind="ok" title="You have graduated" action={<div className="row"><LinkBtn kind="go" href="/student/graduation">Graduation & clearance</LinkBtn><LinkBtn kind="ghost" href="/student/documents">Documents</LinkBtn></div>}>
-          Your award is confirmed on the University register. School fees and course registration are closed on this record; your registrations, results, payments and receipts stay here, and transcripts and the certificate are requested from Documents.
+          Your award is confirmed on the University register. {owedTotal > 0 ? <>Course registration is closed on this record, but school fees from your sessions remain unpaid: see <strong>Outstanding school fees</strong> below.</> : "School fees and course registration are closed on this record;"} Your registrations, results, payments and receipts stay here, and transcripts and the certificate are requested from Documents.
         </Note>
       ) : noScheme ? (
         <Note kind="info" title="Payment scheme not yet stated">
@@ -227,6 +231,9 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
           {f.paidInFull ? `School fees settled in full for ${f.session}.` : `Your payment so far releases registration for ${f.session}; ${naira(f.balance)} remains.`}
         </Note>
       )}
+
+      {/* V720: every outstanding school fee of the record, each with its Pay now — past sessions through the historical door */}
+      {outstanding && (owedTotal > 0 || outstanding.rows.some((r) => r.status === "PAYMENT_PENDING" || r.status === "BEING_ASSESSED")) ? <OutstandingFeesCard data={outstanding} compact /> : null}
 
       <div className="grid grid--2">
         <div className="card"><div className="card__body">
@@ -303,7 +310,7 @@ export function Dashboard({ s, gst = null }: { s: Me; gst?: GstView | null }) {
 
       <div className="grid grid--4">
         <Quick icon="cap" title="My results" sub={published ? `${published} semester${published === 1 ? "" : "s"} published` : "Nothing published yet"} href="/student/results" />
-        <Quick icon="card" title="Fees & payments" sub={f.balance > 0 ? `${naira(f.balance)} outstanding` : f.due > 0 ? "Fully paid" : "No charge stated yet"} href="/student/fees" />
+        <Quick icon="card" title="Fees & payments" sub={owedTotal > 0 ? `${naira(owedTotal)} outstanding${outstanding && outstanding.summary.sessions > 1 ? ` · ${outstanding.summary.sessions} sessions` : ""}` : f.balance > 0 ? `${naira(f.balance)} outstanding` : f.due > 0 ? "Fully paid" : "No charge stated yet"} href="/student/fees" />
         {s.graduation && (s.graduation.finalist || s.graduation.audited) ? (
           <Quick icon="cap" title="Graduation" sub={s.graduation.senate_state === "APPROVED" ? `${s.graduation.class_of_degree ?? "Approved"} · ${s.graduation.certificate_no ? "certificate printed" : s.graduation.cleared ? "cleared for convocation" : `${s.graduation.units_holding} unit${s.graduation.units_holding === 1 ? "" : "s"} holding`}` : s.graduation.audited ? (s.graduation.unmet ? "A requirement is unmet" : "Awaiting Senate") : "Final year — the audit runs at the end"} href="/student/graduation" />
         ) : (

@@ -288,6 +288,19 @@ class MeController {
         return portal.requestTranscript(id(auth), body.destination(), body.destinationName(), body.mode(), body.copies());
     }
 
+    /** V720: every outstanding school fee of the student's record in one read — each past session and semester from the historical
+     *  account, the current session from the fees position — with its status and the reference that pays it; and a reference for
+     *  any one of them: a past session through the historical door, the current session through the fees page's */
+    @GetMapping("/outstanding-fees")
+    Map<String, Object> outstandingFees(Authentication auth) {
+        return portal.outstandingFees(id(auth));
+    }
+
+    @PostMapping("/outstanding-fees/references")
+    Map<String, Object> outstandingReference(Authentication auth, @RequestBody NewReference body) {
+        return portal.outstandingReference(id(auth), body == null ? null : body.session(), body == null ? null : body.amount());
+    }
+
     /** V654: a graduate's historical school fees — the official amounts by session and semester — and a reference to pay a balance */
     @GetMapping("/historical-fees")
     Map<String, Object> historicalFees(Authentication auth) {

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 548
+\set EXPECTED 549
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -25590,7 +25590,7 @@ BEGIN
         AND coalesce(superseded = 'SUPERSEDED>' || corr.reference AND returned = 'RETURNED_FOR_CORRECTION' AND rejected = 'REJECTED'
                  AND b.verdict = 'REQUIRES_ASSESSMENT' AND a3.created = 1 AND a3.skipped = 1 AND r_batch_same = 'HFA_SAME_OFFICER' AND bdec.decided = 1 AND bdec.state = 'APPROVED'
                  AND acct2 = '9883/9884S1:85000.00/10000.00/75000.00/PARTIALLY_PAID 9883/9884S2:55000.00/0/55000.00/OUTSTANDING'
-                 AND r_pay_above = 'HFA_PAY_AMOUNT' AND r_pay_active = 'HFA_PAY_GRADUATES' AND purpose = 'School fees ' || s2 || ' (historical)'
+                 AND r_pay_above = 'HFA_PAY_AMOUNT' AND r_pay_active = 'HFA_NOTHING_OWED' AND purpose = 'School fees ' || s2 || ' (historical)'
                  AND stale_before = 1 AND summ_after = 'FINANCIAL_OBLIGATION/110000.00/0'
                  AND blk2 LIKE 'Not cleared — outstanding school fees: %110,000%' AND status_after = 'GRADUATED'
                  AND NOT new_before AND new_after = 'FINANCIAL_OBLIGATION/100000.00', false),
@@ -31323,6 +31323,113 @@ BEGIN
                      || ' | DOB_RECONCILE_OFFICE | written Agrees=2003-09-12/2003-09-12,Differs=2001-01-01/2001-01-01,Empty=2003-09-12/2003-09-12,Misread=2003-09-12/2003-09-12,Unreadable=null/- audit 1'
                      || ' | again Misread:AGREES,Empty:AGREES,Agrees:AGREES,Differs:DIFFERS,Unreadable:UNREADABLE,-:NO_STUDENT,-:AMBIGUOUS', false),
       msg);
+END $$;
+
+-- ── V720: outstanding school fees of past sessions are shown to and paid by every student. Made-up sessions, an undergraduate
+--          programme's lines (a whole-session line, then per-semester lines) and a Master's stage's lines; a student still studying
+--          at 300 Level who never paid their 100 Level session and one who paid it in part, a graduate owing a second semester, a
+--          postgraduate student studying and one graduated: the historical account reads each as owed; the summary is kept for
+--          the students studying too (the sessions owed in whole and in part counted; a payment marks them stale); the student
+--          studying pays the past session through the historical door (the same reference handed back the second time; the
+--          current session and more than the balance refused); a postgraduate student's past ends before the School's own current
+--          session. The block undoes its writes ──
+DO $$
+DECLARE
+    prog text; pgprog text := 'C90002'; s0 text := '9721/9722'; s1 text := '9722/9723'; cur text := '9723/9724';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); g uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); pgg uuid := gen_random_uuid();
+    acct_a text; acct_b text; acct_g text; acct_pa text; acct_pg text; summ text; whole_part text; ref1 text; ref2 text; r_cur text; r_over text;
+    stale_b int; stale_after int; pg_before text; pg_after text; refreshed int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V720', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), s0, '9721-10-01', '9722-08-31', 'CLOSED'), (gen_random_uuid(), s1, '9722-10-01', '9723-08-31', 'CLOSED'),
+        (gen_random_uuid(), cur, '9723-10-01', '9724-08-31', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9723/01' WHERE name = cur;
+    -- the School of Postgraduate Studies stands in the same session for now
+    UPDATE admissions.pg_academic_session SET state = 'CLOSED' WHERE state = 'CURRENT';
+    INSERT INTO admissions.pg_academic_session (name, state) VALUES (cur, 'CURRENT') ON CONFLICT (name) DO UPDATE SET state = 'CURRENT';
+    SELECT p.code INTO prog FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND d.ended_on IS NULL ORDER BY p.code LIMIT 1;
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+        (s0, 'Check V720 fees', 50000, 100, prog, NULL), (s1, 'Check V720 fees', 30000, 200, prog, 1), (s1, 'Check V720 fees', 20000, 200, prog, 2),
+        (cur, 'Check V720 fees', 35000, 300, prog, 1), (cur, 'Check V720 fees', 25000, 300, prog, 2);
+    INSERT INTO finance.fee_schedule (session, item, amount, pg_stage, semester) VALUES
+        (s0, 'Check V720 PG fees', 100000, '800A', 1), (s0, 'Check V720 PG fees', 50000, '800A', 2), (s1, 'Check V720 PG fees', 80000, '800B', 1);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/21/972001', 'MOAUM/ZZK/21/7201', 'CHECKV720', 'Active Arrears', prog, 'UTME', s0, 100, 300, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/21/972002', 'MOAUM/ZZK/21/7202', 'CHECKV720', 'Active Partial', prog, 'UTME', s0, 100, 300, 'ACTIVE', now()),
+        (g, 'MOAUM/ADM/21/972003', 'MOAUM/ZZK/21/7203', 'CHECKV720', 'Graduate', prog, 'UTME', s0, 100, 400, 'GRADUATED', now()),
+        (pa, 'MOAUM/ADM/21/972004', 'MOAUM/ZZK/21/7204', 'CHECKV720', 'PG Active', pgprog, 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()),
+        (pgg, 'MOAUM/ADM/21/972005', 'MOAUM/ZZK/21/7205', 'CHECKV720', 'PG Graduate', pgprog, 'POSTGRADUATE', s0, 800, 800, 'GRADUATED', now());
+    INSERT INTO people.enrolment (id, student_id, session, level)
+    SELECT gen_random_uuid(), x.id, x.ses, x.lvl FROM (VALUES (a, s0, 100), (a, s1, 200), (a, cur, 300), (b, s0, 100), (b, s1, 200), (b, cur, 300), (g, s0, 100), (g, s1, 200),
+                                                              (pa, s0, 800), (pa, s1, 800), (pa, cur, 800), (pgg, s0, 800), (pgg, s1, 800)) x(id, ses, lvl);
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute, graduated_at, approved_at, final_level, duration_years, entry_session) VALUES
+        (gen_random_uuid(), g, s1, 3.50, 'Second Class Upper', 'APPROVED', 'SEN/9723/02', now(), now(), 400, 4, s0),
+        (gen_random_uuid(), pgg, s1, 4.00, 'M.Sc.', 'APPROVED', 'SEN/9723/03', now(), now(), 800, 2, s0);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (a, s1, 'MOAUM-FEE-ZZK-7201A', 'School fees ' || s1, 50000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7201A'),
+        (a, cur, 'MOAUM-FEE-ZZK-7201B', 'School fees ' || cur, 60000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7201B'),
+        (b, s0, 'MOAUM-FEE-ZZK-7202A', 'School fees ' || s0, 20000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7202A'),
+        (b, s1, 'MOAUM-FEE-ZZK-7202B', 'School fees ' || s1, 50000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7202B'),
+        (g, s0, 'MOAUM-FEE-ZZK-7203A', 'School fees ' || s0, 50000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7203A'),
+        (g, s1, 'MOAUM-FEE-ZZK-7203B', 'School fees ' || s1, 30000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7203B'),
+        (pa, s0, 'MOAUM-FEE-ZZK-7204A', 'School fees ' || s0, 100000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7204A'),
+        (pa, s1, 'MOAUM-FEE-ZZK-7204B', 'School fees ' || s1, 80000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7204B'),
+        (pgg, s0, 'MOAUM-FEE-ZZK-7205A', 'School fees ' || s0, 150000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZK-7205A');
+
+    -- the account reads each as the engine does: the level of the session, a stage's lines, payments first semester first
+    SELECT string_agg(x.session || 'S' || x.semester || ':' || x.outstanding || '/' || x.status, ' ' ORDER BY x.session, x.semester) INTO acct_a FROM finance.historical_account(a) x WHERE x.outstanding > 0;
+    SELECT string_agg(x.session || 'S' || x.semester || ':' || x.outstanding || '/' || x.status, ' ' ORDER BY x.session, x.semester) INTO acct_b FROM finance.historical_account(b) x WHERE x.outstanding > 0;
+    SELECT string_agg(x.session || 'S' || x.semester || ':' || x.outstanding || '/' || x.status, ' ' ORDER BY x.session, x.semester) INTO acct_g FROM finance.historical_account(g) x WHERE x.outstanding > 0;
+    SELECT string_agg(x.session || 'S' || x.semester || ':' || x.outstanding || '/' || x.status, ' ' ORDER BY x.session, x.semester) INTO acct_pa FROM finance.historical_account(pa) x WHERE x.outstanding > 0;
+    SELECT string_agg(x.session || 'S' || x.semester || ':' || x.outstanding || '/' || x.status, ' ' ORDER BY x.session, x.semester) INTO acct_pg FROM finance.historical_account(pgg) x WHERE x.outstanding > 0;
+    -- the summary is kept for the students studying too, the sessions owed in whole and in part counted
+    PERFORM finance.historical_refresh_stale(100000);
+    SELECT string_agg(s.other_names || '=' || h.financial_status || '/' || h.outstanding, ' ' ORDER BY s.other_names) INTO summ
+      FROM finance.historical_summary h JOIN people.student s ON s.id = h.student_id WHERE s.surname = 'CHECKV720';
+    SELECT string_agg(s.other_names || '=' || h.whole_sessions || '/' || h.part_sessions, ' ' ORDER BY s.other_names) INTO whole_part
+      FROM finance.historical_summary h JOIN people.student s ON s.id = h.student_id WHERE s.surname = 'CHECKV720';
+    -- the student studying pays the past session through the historical door: the same reference the second time; the current
+    -- session and more than the balance refused
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    ref1 := finance.historical_reference(a, s0, 50000);
+    ref2 := finance.historical_reference(a, s0, 50000);
+    BEGIN PERFORM finance.historical_reference(a, cur, 1000); EXCEPTION WHEN check_violation THEN r_cur := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.historical_reference(a, s0, 60000); EXCEPTION WHEN check_violation THEN r_over := split_part(SQLERRM, ':', 1); END;
+    -- a confirmed payment marks a student studying stale, and the next read works their summary out again
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT count(*) INTO stale_b FROM finance.historical_stale WHERE student_id = a;
+    UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = gen_random_uuid(), channel = 'Interswitch', receipt_no = 'RCPT-' || ref1 WHERE reference = ref1;
+    SELECT count(*) INTO stale_after FROM finance.historical_stale WHERE student_id = a;
+    refreshed := finance.historical_refresh_stale(10);
+    SELECT h.financial_status || '/' || h.outstanding INTO acct_a FROM finance.historical_summary h WHERE h.student_id = a;
+    -- a postgraduate student's past ends before the School's own current session
+    SELECT string_agg(DISTINCT x.session, ',' ORDER BY x.session) INTO pg_before FROM finance.historical_account(pa) x;
+    PERFORM set_config('moaum.actor_office', 'pgschool', true);
+    UPDATE admissions.pg_academic_session SET state = 'CLOSED' WHERE state = 'CURRENT';
+    INSERT INTO admissions.pg_academic_session (name, state) VALUES (s1, 'CURRENT') ON CONFLICT (name) DO UPDATE SET state = 'CURRENT';
+    SELECT string_agg(DISTINCT x.session, ',' ORDER BY x.session) INTO pg_after FROM finance.historical_account(pa) x;
+    RAISE EXCEPTION 'CHECK_V720_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V720_UNDONE' THEN RAISE; END IF;
+  END;
+
+  PERFORM pg_temp.assert('V720: outstanding school fees of past sessions are read, summarised and paid for every student — studying or graduated, undergraduate or postgraduate',
+      coalesce(acct_b = s0 || 'S1:30000.00/PARTIALLY_PAID' AND acct_g = s1 || 'S2:20000.00/OUTSTANDING'
+               AND acct_pa = s0 || 'S2:50000.00/OUTSTANDING' AND acct_pg = s1 || 'S1:80000.00/OUTSTANDING'
+               AND summ = 'Active Arrears=FINANCIAL_OBLIGATION/50000.00 Active Partial=FINANCIAL_OBLIGATION/30000.00 Graduate=FINANCIAL_OBLIGATION/20000.00 PG Active=FINANCIAL_OBLIGATION/50000.00 PG Graduate=FINANCIAL_OBLIGATION/80000.00'
+               AND whole_part = 'Active Arrears=1/0 Active Partial=0/1 Graduate=0/1 PG Active=0/1 PG Graduate=1/0'
+               AND ref1 IS NOT NULL AND ref2 = ref1 AND r_cur = 'HFA_NOTHING_OWED' AND r_over = 'HFA_PAY_AMOUNT'
+               AND stale_b = 0 AND stale_after = 1 AND refreshed >= 1 AND acct_a = 'FINANCIALLY_CLEARED/0.00'
+               AND pg_before = s0 || ',' || s1 AND pg_after = s0, false),
+      format('accounts b %s | g %s | pa %s | pg %s | summaries %s | whole/part %s | refs %s/%s cur %s over %s | stale %s->%s refreshed %s then %s | pg bound %s -> %s',
+             acct_b, acct_g, acct_pa, acct_pg, summ, whole_part, ref1, ref2, r_cur, r_over, stale_b, stale_after, refreshed, acct_a, pg_before, pg_after));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
