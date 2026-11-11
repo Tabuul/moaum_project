@@ -21,6 +21,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem, toast } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
+import { PortalFeeGatePanel } from "@/app/finance/intake-fees/PortalFeeGate";
 import { PgFees } from "./PgFees";
 import { PgFeeStructure } from "./PgFeeStructure";
 import { FeeCopy } from "./FeeCopy";
@@ -66,9 +67,20 @@ export interface ApplicantFees {
   session: string; stated: boolean; carriedFrom?: string | null; applicationFee: number; portalCharge: number; acceptanceFee: number; checkingFee: number;
   /** V419: the rule for an unstated session, and whether its application window is open */
   policy?: "CARRY" | "REFUSE" | null; windowOpen?: boolean;
+  /** V724: when the figures were stated, the acceptance fee before the last revision, and the session's statements
+   *  (admissions.applicant_fee_revision) — each only where the GET returns it; the panel reads what it is given */
+  statedAt?: string | null; previousAcceptanceFee?: number | string | null; revisions?: ApplicantFeeRevision[] | null;
+}
+/** V724: one statement of a session's applicant fees, as admissions.applicant_fee_revision keeps it — GET …/applicant-fees sends
+ *  when, the acceptance fee, the one before, who (by name), from which office and why; the other figures only where it adds them */
+export interface ApplicantFeeRevision {
+  statedAt: string; acceptanceFee: number | string; previousAcceptanceFee: number | string | null;
+  statedBy?: string | null; statedOffice?: string | null; reason?: string | null;
+  applicationFee?: number | string; portalCharge?: number | string; checkingFee?: number | string | null;
 }
 
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
+const whenStated = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null);
 
 export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, feePolicy = null, permissions = null, pgStages = [] }: { gstFee?: GstFeePage | null; feePolicy?: "CARRY" | "REFUSE" | null; permissions?: string[] | null; pgStages?: PgStageOption[]; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -260,6 +272,12 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     acceptanceFee: String(applicantFees?.acceptanceFee ?? ""),
     checkingFee: String(applicantFees?.checkingFee ?? ""),
   });
+  // V724: why the figures are stated again — kept with the revision (the PUT's X-Reason reaches moaum.reason); a revised
+  // acceptance fee is owed by every applicant of the session who paid the earlier figure, as the difference
+  const [afReason, setAfReason] = useState("");
+  const statedAcceptance = applicantFees?.stated ? Number(applicantFees.acceptanceFee) : null;
+  const typedAcceptance = Number(af.acceptanceFee) || 0;
+  const acceptanceRevised = statedAcceptance !== null && typedAcceptance > 0 && typedAcceptance !== statedAcceptance;
 
   // the applicant fees live under admissions, not finance, so they have their own save
   // the deferment application fee (V264): stated by the Bursary in people.deferment_setting, read by the student's Deferment screen
@@ -362,11 +380,20 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/admissions/sessions/${session}/applicant-fees`, {
-        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Applicant / Post-UTME fees stated for ${session}`) },
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(afReason.trim() || `Applicant / Post-UTME fees stated for ${session}`) },
         body: JSON.stringify({ applicationFee: Number(af.applicationFee) || 0, portalCharge: Number(af.portalCharge) || 0, acceptanceFee: Number(af.acceptanceFee) || 0, checkingFee: Number(af.checkingFee) || 0 }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
+      // V724: a revised acceptance fee is said for what it does: the earlier payers owe the difference, the letter waits for it
+      if (acceptanceRevised && statedAcceptance !== null) {
+        notify(typedAcceptance > statedAcceptance
+          ? `Acceptance fee revised from ${naira(statedAcceptance)} to ${naira(typedAcceptance)}: applicants who paid ${naira(statedAcceptance)} now owe ${naira(typedAcceptance - statedAcceptance)}; their admission letters wait for it`
+          : `Acceptance fee revised from ${naira(statedAcceptance)} to ${naira(typedAcceptance)}`);
+      } else {
+        notify(`Applicant fees stated for ${session}`);
+      }
+      setAfReason("");
       router.refresh();
     } finally {
       setBusy(null);
@@ -830,8 +857,37 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
             <Field id="af-acc" label="Acceptance fee" hint="Paid on an offer; credited to first-session charges"><input id="af-acc" className="ctl tnum" inputMode="numeric" value={af.acceptanceFee} onChange={(e) => setAf({ ...af, acceptanceFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="30000" disabled={!may} /></Field>
             <Field id="af-chk" label="Admission checking fee" hint="Paid on its own, once, to view the released admission status; the acceptance fee follows separately"><input id="af-chk" className="ctl tnum" inputMode="numeric" value={af.checkingFee} onChange={(e) => setAf({ ...af, checkingFee: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="0" disabled={!may} /></Field>
           </div>
-          <div className="row mt-2">
-            <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim()} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : "State the applicant fees"}</Btn>
+          {/* V724: the acceptance fee's revisions — every statement is kept (admissions.applicant_fee_revision); an applicant who paid an
+              earlier figure owes the difference, never the fee again, and the admission letter waits for the balance */}
+          <div className="mt-2" style={{ borderTop: "1px solid var(--line-2)", paddingTop: 10 }}>
+            <div className="eyebrow">Acceptance fee revisions</div>
+            {applicantFees?.revisions?.length ? (
+              <DTable noPrint pageSize={0} cols={["Stated", "Acceptance fee|num", "Before|num", "By", "Reason"]} rows={[...applicantFees.revisions].sort((a, b) => (b.statedAt ?? "").localeCompare(a.statedAt ?? "")).map((v) => [
+                <span key="w" className="sub2 tnum">{whenStated(v.statedAt)}</span>,
+                <span key="a" className="tnum"><b>{naira(v.acceptanceFee)}</b></span>,
+                <span key="b" className="tnum sub2">{v.previousAcceptanceFee !== null && v.previousAcceptanceFee !== undefined ? naira(v.previousAcceptanceFee) : "—"}</span>,
+                <span key="o" className="sub2">{[v.statedBy, v.statedOffice].filter(Boolean).join(" · ") || "—"}</span>,
+                <span key="r" className="sub2">{v.reason ?? "—"}</span>,
+              ])} />
+            ) : (
+              <div className="sub2 mt-1">
+                {applicantFees?.stated
+                  ? <>Acceptance fee as stated now: <b>{naira(applicantFees.acceptanceFee)}</b>{whenStated(applicantFees.statedAt) ? ` · stated ${whenStated(applicantFees.statedAt)}` : ""}{applicantFees.previousAcceptanceFee !== null && applicantFees.previousAcceptanceFee !== undefined ? ` · before that ${naira(applicantFees.previousAcceptanceFee)}` : ""}.</>
+                  : <>No acceptance fee is stated for {session} yet.</>}
+                {" "}Every statement of the session&rsquo;s applicant fees is kept on the audit spine with who made it, from which office and why.
+              </div>
+            )}
+            {acceptanceRevised && statedAcceptance !== null ? (
+              <Note kind={typedAcceptance > statedAcceptance ? "bad" : "info"} title={`Revising the acceptance fee from ${naira(statedAcceptance)} to ${naira(typedAcceptance)}`}>
+                {typedAcceptance > statedAcceptance
+                  ? <>Every applicant of {session} who paid {naira(statedAcceptance)} will owe <b>{naira(typedAcceptance - statedAcceptance)}</b> — never the fee again — and see it on the applicant dashboard; their admission letter is issued once the balance is paid. A reference still open at the earlier figure stops being payable. The place held by the first payment is kept.</>
+                  : <>Applicants who paid {naira(statedAcceptance)} owe nothing more; a reference still open at the earlier figure stops being payable.</>}
+              </Note>
+            ) : null}
+          </div>
+          <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
+            <Btn kind="primary" disabled={!may || busy !== null || !af.applicationFee.trim() || (acceptanceRevised && afReason.trim().length < 5)} onClick={() => void saveApplicantFees()}>{busy === "af" ? "Saving…" : acceptanceRevised ? "Revise the applicant fees" : "State the applicant fees"}</Btn>
+            {may ? <Field id="af-reason" label={acceptanceRevised ? "Reason for the revision" : "Reason (optional)"} hint="Kept with the statement"><input id="af-reason" className="ctl" value={afReason} maxLength={500} onChange={(e) => setAfReason(e.target.value)} placeholder="e.g. Council's approval of 11 November 2026" disabled={busy !== null} /></Field> : null}
             <span className="sub2">Applying costs the screening fee plus the portal charge &mdash; {naira((Number(af.applicationFee) || 0) + (Number(af.portalCharge) || 0))}. Accepting an offer costs the acceptance fee plus the checking fee &mdash; {naira((Number(af.acceptanceFee) || 0) + (Number(af.checkingFee) || 0))}.</span>
           </div>
           <div className="row row--end mt-3" style={{ borderTop: "1px solid var(--line-2)", paddingTop: 10 }}>
@@ -845,6 +901,9 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
           </div>
         </PBody>
       </Panel>
+      {/* V724: the student portal's fee gate for fresh admits — set here by the Bursar (the Director of ICT and an administrator too),
+          its exceptions the Bursary's; read by the API on every student request */}
+      <PortalFeeGatePanel actingOffice={actingOffice} sessions={sessions} />
       <Panel title="Postgraduate · application &amp; acceptance fees" right={pgfStated ? `Stated for ${session}` : pgfCarried ? `Not yet stated for ${session} — ${pgfCarried}'s charged` : `Default (not yet stated for ${session})`}>
         <PBody>
           {!pgfStated && pgfIntake ? (

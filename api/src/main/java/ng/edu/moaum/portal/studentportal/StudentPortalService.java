@@ -12,6 +12,7 @@ import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.platform.SupportView;
 
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -35,9 +36,13 @@ public class StudentPortalService {
     /** V512: the GST/EPS registration log's own transaction — a refused add rolls back, its attempt and its hold stay recorded */
     private final TransactionTemplate ownTransaction;
 
-    StudentPortalService(StudentPortalRepository repo, CheckCodes codes, PlatformTransactionManager transactions) {
+    /** V724: the student portal's fee gate, read for GET /me (finance.portal_access_state) */
+    private final JdbcClient jdbc;
+
+    StudentPortalService(StudentPortalRepository repo, CheckCodes codes, PlatformTransactionManager transactions, JdbcClient jdbc) {
         this.repo = repo;
         this.codes = codes;
+        this.jdbc = jdbc;
         this.ownTransaction = new TransactionTemplate(transactions);
         this.ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -248,6 +253,10 @@ public class StudentPortalService {
         v.put("jambRegNo", s.jambRegNo());
         v.put("loginId", s.matricNo() != null ? s.matricNo() : s.jambRegNo() != null ? s.jambRegNo() : s.admissionNo());
         v.put("lifecycle", repo.lifecycle(id));
+        // V724: where the record stands at the student portal's fee gate (OPEN, EXCEPTION, CLEARED, HELD_ACCEPTANCE_BALANCE,
+        // HELD_FEES_NOT_AVAILABLE, HELD_FEES_UNPAID), read now in one query — GET /me is open to a held student, so the portal sends
+        // them to the applicant dashboard even on a client-side navigation the X-Portal-Access header never reached
+        v.put("portalAccess", jdbc.sql("SELECT finance.portal_access_state(:s)").param("s", id).query(String.class).single());
         v.put("programmeCode", s.programmeCode());
         v.put("programme", s.programme());
         v.put("faculty", s.facultyName());
@@ -316,7 +325,10 @@ public class StudentPortalService {
         int rank = switch (lifecycle == null ? "" : lifecycle) {
             case "ACCEPTANCE_PENDING", "OFFERED", "APPROVED", "CHECKING_FEE_PENDING" -> 1;
             case "SCREENING_PENDING", "SCREENING_IN_REVIEW", "SCREENING_CORRECTION", "CHANGE_OF_PROGRAMME_PENDING", "CHANGE_OF_PROGRAMME_REQUIRED" -> 2;
-            case "SCHOOL_FEES_PENDING" -> 3;
+            // V724: the fees not yet stated, not yet open to pay, or paid in part — and an acceptance fee balance owed (the fee revised
+            // after part of it was paid: the acceptance is made, the screening done, the balance paid before the school fees) — stand
+            // where SCHOOL_FEES_PENDING stands
+            case "SCHOOL_FEES_PENDING", "SCHOOL_FEES_NOT_AVAILABLE", "SCHOOL_FEES_NOT_OPEN", "SCHOOL_FEES_PART_PAID", "ACCEPTANCE_BALANCE_PENDING" -> 3;
             case "REGISTER_PENDING" -> 4;
             case "COURSE_REGISTRATION_PENDING" -> 5;
             case "MATRICULATION_PENDING" -> 6;

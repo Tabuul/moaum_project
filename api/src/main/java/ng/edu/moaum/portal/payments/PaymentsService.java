@@ -271,7 +271,7 @@ public class PaymentsService {
                 .or(() -> repo.studentReference(reference))
                 .or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
-        if (!r.accountId().equals(account)) {
+        if (!owns(r, account)) {
             throw new NotFound("fee reference", reference);
         }
         if (r.confirmedAt() != null) {
@@ -293,7 +293,7 @@ public class PaymentsService {
         if ("paydirect".equals(g)) {
             return payOnQuickteller(r, account);
         }
-        String back = backOf(r);
+        String back = backOf(r, account);
         /* the card gateways open a checkout on an email address; a record without one (a migrated student
            who never gave a contact) cannot be sent to them — say so, rather than fail inside the request */
         if (("paystack".equals(g) || "flutterwave".equals(g)) && (r.email() == null || r.email().isBlank())) {
@@ -440,9 +440,19 @@ public class PaymentsService {
         return gst(r) ? "GST fee" : feeName(r.kind());
     }
 
-    /** where the gateway returns the payer: the page that shows this fee paid, which verifies the reference on arrival */
-    private String backOf(PaymentsRepository.Reference r) {
+    /** where the gateway returns the payer: the page that shows this fee paid, which verifies the reference on arrival — V724: a
+     *  school-fee reference the applicant paid from the applicant dashboard returns there, not to the student portal the fee opens */
+    private String backOf(PaymentsRepository.Reference r, UUID payer) {
+        if ("FEES".equals(r.kind()) && payer != null && r.applicantAccountId() != null && payer.equals(r.applicantAccountId()) && !payer.equals(r.accountId())) {
+            return portalUrl + "/applicant/admission?paid=" + r.reference();
+        }
         return gst(r) ? portalUrl + "/student/gst?paid=" + r.reference() : backUrl(r.kind(), r.reference());
+    }
+
+    /** whose reference it is: the account it was drawn for — and, since V724, for a student's school-fee reference, the applicant account
+     *  that owns the student: a fresh admit pays the session's school fees from the applicant dashboard before the student portal opens */
+    private static boolean owns(PaymentsRepository.Reference r, UUID account) {
+        return r.accountId().equals(account) || (r.applicantAccountId() != null && r.applicantAccountId().equals(account));
     }
 
     /** a reference wherever it lives: an applicant's fee, a student's fee, a postgraduate applicant's fee, a JUPEB candidate's fee */
@@ -559,7 +569,7 @@ public class PaymentsService {
         }
         String said = String.valueOf(outcome.getOrDefault("outcome", ""));
         boolean paid = r.confirmedAt() != null || "SETTLED".equals(said) || "already confirmed".equals(said) || "ALREADY_SETTLED".equals(said);
-        String back = backOf(r) + (paid ? "" : "&outcome=" + enc(resp.isEmpty() ? "pending" : resp + " " + desc));
+        String back = backOf(r, repo.lastAttemptAccount(r.reference()).orElse(null)) + (paid ? "" : "&outcome=" + enc(resp.isEmpty() ? "pending" : resp + " " + desc));
         String title = paid ? "Payment received" : "Payment not confirmed";
         String body = paid ? "Your " + nameOf(r) + " against " + r.reference() + " is confirmed. Returning you to the portal…"
                 : "Interswitch answered " + (resp.isEmpty() ? "nothing yet" : resp + (desc.isEmpty() ? "" : " — " + desc)) + " for " + r.reference()
@@ -1400,7 +1410,7 @@ public class PaymentsService {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
         PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
-        if (!office && !r.accountId().equals(account)) {
+        if (!office && !owns(r, account)) {
             throw new NotFound("fee reference", reference);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1431,7 +1441,7 @@ public class PaymentsService {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
         PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
-        if (!office && !r.accountId().equals(account)) {
+        if (!office && !owns(r, account)) {
             throw new NotFound("fee reference", reference);
         }
         if (channel != null && !channel.isBlank() && !java.util.Set.of("QUICKTELLER", "BANK", "OTHER").contains(channel.trim().toUpperCase())) {
@@ -1488,7 +1498,7 @@ public class PaymentsService {
         if (!office) {
             PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
                     .orElseThrow(() -> new NotFound("fee reference", reference));
-            if (!r.accountId().equals(account)) {
+            if (!owns(r, account)) {
                 throw new NotFound("fee reference", reference);
             }
         }

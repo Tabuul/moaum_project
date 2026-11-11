@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 551
+\set EXPECTED 552
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31579,6 +31579,226 @@ BEGIN
   END;
   PERFORM pg_temp.assert('V722: the register intake runs in one pass and in tranches — a tranche of three brings three by surname and reports one remaining, their positions written by the run''s one refresh and the deferral cleared; the plain run brings the last; a further run brings nobody',
       coalesce(msg = 'tranche 3/1 taken Alpha,Bravo,Charlie positions 3 defer "/" | rest 1 again 0/0 positions 4', false), msg);
+END $$;
+
+-- ── V724. The acceptance fee revised after part of it was paid: the balance is owed against the fee as stated now, never the
+--          whole fee again — a reference for the balance, one at a time, closed when the figure changes; the letter waits for
+--          the balance (a letter issued before the revision is not printed again on it) while the undertaking, the register and
+--          the admission number do not; every statement of the fees is kept; the acceptance monitor bands the offers. The
+--          student portal's fee gate holds a fresh admit of a gated session out until the session's fees are stated and the
+--          first semester's paid (or the session's in full, as the Bursar sets it), lets a named student through on an
+--          exception until it ends, and never touches a matriculated or earlier student; the applicant dashboard says the fees
+--          are not yet available, payable here, or part paid; the readiness monitor reads the same ──
+DO $$
+DECLARE S text := '9982/9983'; who uuid := gen_random_uuid(); prog text; prog_name text; fac text;
+        cand1 uuid := gen_random_uuid(); acct1 uuid := gen_random_uuid(); app1 uuid := gen_random_uuid();
+        cand2 uuid := gen_random_uuid(); acct2 uuid := gen_random_uuid(); app2 uuid := gen_random_uuid();
+        cand3 uuid := gen_random_uuid(); acct3 uuid := gen_random_uuid(); app3 uuid := gen_random_uuid();
+        old_st uuid := gen_random_uuid(); mat_st uuid := gen_random_uuid(); stu uuid; ex uuid;
+        batch uuid := gen_random_uuid(); row1 uuid := gen_random_uuid(); row2 uuid := gen_random_uuid(); row3 uuid := gen_random_uuid(); row4 uuid := gen_random_uuid(); cand4 uuid := gen_random_uuid();
+        chk text; acc1 text; acc1_amt numeric; letter1 credentials.issued; letter_no text;
+        e_before record; e_after record; e_settled record; rev_n int; rev_prev numeric;
+        r_letter text := 'issued'; r_again text := 'issued'; r_settled text := 'issued'; tr_letter_before text; tr_letter_after text; tr_letter_settled text;
+        bal_ref text; bal_amt numeric; bal_stated numeric; bal_again text; bal_same boolean; bal_after_36 text; bal_after_36_amt numeric; old_ref_expired boolean; ref_count int;
+        letter2 credentials.issued; acc2 text; acc2_amt numeric; band1 text; band2 text; band3 text; mon_outstanding numeric;
+        st_not_avail text; href_not_avail text; st_pending text; href_pending text; st_part text; st_paid_lbl text;
+        gate_off text; gate_na text; gate_unpaid text; gate_cleared text; gate_full_unpaid text; gate_exc text; gate_revoked text; gate_paid text; gate_old text; gate_mat text; gate_off_again text;
+        r_office text := 'accepted'; r_same text := 'accepted'; r_exc_office text := 'accepted'; r_exc_long text := 'accepted'; r_exc_twice text := 'accepted'; r_kept text := 'accepted';
+        fs_na text; fs_avail text; fs_part text; fs_paid text; fs_first boolean; cov_utme boolean; cov_de boolean; mon_fee text; mon_portal text; mon_first numeric;
+        fee1 text; fee2 text; msg text;
+        gate_bal text; st_bal text; rev_bal boolean; rev_first boolean; noacct uuid := gen_random_uuid(); gate_noacct text; mon_bal text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true); PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.reason', 'CHECK V724', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'CHK/V724', 'CHECKV724', 'Bursar');
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), S, date '9982-09-01', date '9983-08-31', 'DRAFT') ON CONFLICT (name) DO NOTHING;
+        SELECT p.code, p.name, p.faculty_code INTO prog, prog_name, fac FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.faculty_code IS NOT NULL ORDER BY p.code LIMIT 1;
+        -- the Bursary states the session's applicant fees: the acceptance fee at 25,000
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO admissions.applicant_fee (session, application_fee, portal_charge, acceptance_fee, checking_fee) VALUES (S, 2000, 0, 25000, 3000);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        -- three released offers: one pays before the revision, one after, one not at all
+        INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (batch, S, 'CAPS_DOWNLOAD', 'UTME', '§'::bytea, 3, current_date, who, 'academic');
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+            (row1, batch, S, '99820000001CK', '{}'::jsonb, 'V724-PART', 'Paid Before', prog, 280, 'UTME'),
+            (row2, batch, S, '99820000002CK', '{}'::jsonb, 'V724-FULL', 'Paid After', prog, 279, 'UTME'),
+            (row3, batch, S, '99820000003CK', '{}'::jsonb, 'V724-NONE', 'Paid Nothing', prog, 278, 'UTME'),
+            (row4, batch, S, '99820000004CK', '{}'::jsonb, 'V724-NOACCT', 'No Account', prog, 277, 'UTME');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from) VALUES
+            (cand1, S, '99820000001CK', 'V724-PART', 'Paid Before', prog_name, 'UTME', 100, 'ADMITTED', row1),
+            (cand2, S, '99820000002CK', 'V724-FULL', 'Paid After', prog_name, 'UTME', 100, 'ADMITTED', row2),
+            (cand3, S, '99820000003CK', 'V724-NONE', 'Paid Nothing', prog_name, 'UTME', 100, 'ADMITTED', row3),
+            (cand4, S, '99820000004CK', 'V724-NOACCT', 'No Account', prog_name, 'UTME', 100, 'ADMITTED', row4);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+            (acct1, S, cand1, '99820000001CK', 'v724.part@example.com', '08030000001', crypt('x', gen_salt('bf', 12))),
+            (acct2, S, cand2, '99820000002CK', 'v724.full@example.com', '08030000002', crypt('x', gen_salt('bf', 12))),
+            (acct3, S, cand3, '99820000003CK', 'v724.none@example.com', '08030000003', crypt('x', gen_salt('bf', 12)));
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, decision, decided_at, decision_released_at) VALUES
+            (app1, acct1, cand1, S, 'APP/82/997231', now(), now(), 'OFFERED', now(), now()),
+            (app2, acct2, cand2, S, 'APP/82/997232', now(), now(), 'OFFERED', now(), now()),
+            (app3, acct3, cand3, S, 'APP/82/997233', now(), now(), 'OFFERED', now(), now());
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        PERFORM policy.window_act('ADMISSION_STATUS_CHECKING', S, NULL, 'OPEN', NULL, NULL, NULL, false, 'check', gen_random_uuid(), 'ict');
+        -- the first two check their status (the checking fee), sign the undertaking
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        chk := admissions.new_fee_reference(app1, 'CHECKING');
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM admissions.confirm_fee(chk, 'Card', 'check');
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        chk := admissions.new_fee_reference(app2, 'CHECKING');
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM admissions.confirm_fee(chk, 'Card', 'check');
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        PERFORM admissions.admission_status_checked(app1); PERFORM admissions.admission_status_checked(app2);
+        PERFORM admissions.sign_undertaking(app1); PERFORM admissions.sign_undertaking(app2);
+        -- the first pays the acceptance fee as stated: 25,000, and is accepted, on the register, with a letter
+        acc1 := admissions.new_fee_reference(app1, 'ACCEPTANCE');
+        SELECT amount INTO acc1_amt FROM admissions.fee_reference WHERE reference = acc1;
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM admissions.confirm_fee(acc1, 'Card', 'check');
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        letter1 := admissions.issue_admission_letter(app1);
+        letter_no := letter1.number;
+        SELECT * INTO e_before FROM admissions.acceptance_entitlement(app1);
+        SELECT s.id INTO stu FROM people.student s WHERE s.candidate_id = cand1;
+        -- the Bursary revises the acceptance fee to 35,000: kept, with the figure before
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V724: revised by Council', true);
+        UPDATE admissions.applicant_fee SET acceptance_fee = 35000, stated_at = now() WHERE session = S;
+        SELECT count(*), max(previous_acceptance_fee) INTO rev_n, rev_prev FROM admissions.applicant_fee_revision WHERE session = S;
+        BEGIN UPDATE admissions.applicant_fee_revision SET acceptance_fee = 1 WHERE session = S; EXCEPTION WHEN check_violation THEN r_kept := split_part(SQLERRM, ':', 1); END;
+        SELECT * INTO e_after FROM admissions.acceptance_entitlement(app1);
+        -- the gate on for the session: the balance holds the student first, and the status says the balance
+        PERFORM finance.set_portal_fee_gate(true, S, 'FIRST_SEMESTER', 'CHECK: on for the session', who, 'bursar');
+        gate_bal := finance.portal_access_state(stu);
+        SELECT status INTO st_bal FROM admissions.admission_status(app1);
+        SELECT portal_state INTO mon_bal FROM finance.intake_fee_monitor(S) WHERE student_id = stu;
+        -- the letter waits for the balance — the one issued before is not printed again; the tracker says so; the balance is a reference of its own
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        BEGIN PERFORM admissions.issue_admission_letter(app1); EXCEPTION WHEN check_violation THEN r_letter := split_part(SQLERRM, ':', 1); END;
+        SELECT string_agg(x->>'state', ',') INTO tr_letter_after FROM jsonb_array_elements(admissions.admission_tracker(app1)) x WHERE x->>'key' = 'ACCEPTANCE_LETTER';
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        bal_ref := admissions.new_fee_reference(app1, 'ACCEPTANCE');
+        SELECT amount, stated_fee INTO bal_amt, bal_stated FROM admissions.fee_reference WHERE reference = bal_ref;
+        bal_again := admissions.new_fee_reference(app1, 'ACCEPTANCE');   -- the one still open, never a second
+        bal_same := bal_again = bal_ref;
+        -- revised again while the reference is open: the old one closes, the next is for the new balance
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        UPDATE admissions.applicant_fee SET acceptance_fee = 36000, stated_at = now() WHERE session = S;
+        SELECT expires_at <= now() INTO old_ref_expired FROM admissions.fee_reference WHERE reference = bal_ref;
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        bal_after_36 := admissions.new_fee_reference(app1, 'ACCEPTANCE');
+        SELECT amount INTO bal_after_36_amt FROM admissions.fee_reference WHERE reference = bal_after_36;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        UPDATE admissions.applicant_fee SET acceptance_fee = 35000, stated_at = now() WHERE session = S;
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        bal_ref := admissions.new_fee_reference(app1, 'ACCEPTANCE');   -- 10,000 again
+        -- the balance paid: settled, the letter the same letter, nothing more owed
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM admissions.confirm_fee(bal_ref, 'Card', 'check');
+        SELECT * INTO e_settled FROM admissions.acceptance_entitlement(app1);
+        -- the balance confirmed in error is reversible by the Bursary; the payment the acceptance rests on is not
+        SELECT reversible INTO rev_bal FROM admissions.fee_reversal_check(bal_ref);
+        SELECT reversible INTO rev_first FROM admissions.fee_reversal_check(acc1);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        letter2 := admissions.issue_admission_letter(app1);
+        SELECT string_agg(x->>'state', ',') INTO tr_letter_settled FROM jsonb_array_elements(admissions.admission_tracker(app1)) x WHERE x->>'key' = 'ACCEPTANCE_LETTER';
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        BEGIN PERFORM admissions.new_fee_reference(app1, 'ACCEPTANCE'); EXCEPTION WHEN check_violation THEN r_settled := split_part(SQLERRM, ':', 1); END;
+        SELECT count(*) INTO ref_count FROM admissions.fee_reference WHERE application_id = app1 AND kind = 'ACCEPTANCE' AND confirmed_at IS NOT NULL;
+        -- the second pays after the revision: the whole 35,000, once
+        acc2 := admissions.new_fee_reference(app2, 'ACCEPTANCE');
+        SELECT amount INTO acc2_amt FROM admissions.fee_reference WHERE reference = acc2;
+        PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM admissions.confirm_fee(acc2, 'Card', 'check');
+        SELECT band INTO band1 FROM admissions.acceptance_fee_monitor(S) WHERE application_id = app1;
+        SELECT band INTO band2 FROM admissions.acceptance_fee_monitor(S) WHERE application_id = app2;
+        SELECT band INTO band3 FROM admissions.acceptance_fee_monitor(S) WHERE application_id = app3;
+        SELECT sum(balance) INTO mon_outstanding FROM admissions.acceptance_fee_monitor(S);
+        -- ── the student portal's fee gate ──
+        -- set by the Bursar (not the Academic Office), not to what it is; a fresh admit of the session with no fee stated is held, told so
+        BEGIN PERFORM finance.set_portal_fee_gate(true, S, 'FIRST_SEMESTER', 'CHECK', who, 'academic'); EXCEPTION WHEN check_violation THEN r_office := split_part(SQLERRM, ':', 1); END;
+        PERFORM finance.set_portal_fee_gate(false, S, 'FIRST_SEMESTER', 'CHECK: off', who, 'bursar');
+        gate_off := finance.portal_access_state(stu);
+        BEGIN PERFORM finance.set_portal_fee_gate(false, S, 'FIRST_SEMESTER', 'CHECK', who, 'bursar'); EXCEPTION WHEN check_violation THEN r_same := split_part(SQLERRM, ':', 1); END;
+        PERFORM finance.set_portal_fee_gate(true, NULL, NULL, 'CHECK: on', who, 'bursar');
+        gate_na := finance.portal_access_state(stu);
+        SELECT state INTO fs_na FROM finance.school_fee_state(stu, S);
+        SELECT status, next_href INTO st_not_avail, href_not_avail FROM admissions.admission_status(app1);
+        SELECT covered INTO cov_utme FROM finance.programme_fee_coverage(S) WHERE programme_code = prog AND entry_mode = 'UTME';
+        -- the Bursary states the programme's fees by semester: payable here, held until the first semester's are paid
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+            (S, 'Check V724: school fees (semester 1)', 100000.00, 100, prog, 1),
+            (S, 'Check V724: school fees (semester 2)', 50000.00, 100, prog, 2);
+        gate_unpaid := finance.portal_access_state(stu);
+        SELECT state INTO fs_avail FROM finance.school_fee_state(stu, S);
+        SELECT status, next_href INTO st_pending, href_pending FROM admissions.admission_status(app1);
+        SELECT covered INTO cov_utme FROM finance.programme_fee_coverage(S) WHERE programme_code = prog AND entry_mode = 'UTME';
+        SELECT covered INTO cov_de FROM finance.programme_fee_coverage(S) WHERE programme_code = prog AND entry_mode = 'DIRECT_ENTRY';
+        fee1 := finance.new_reference(stu, S, 100000, NULL);
+        PERFORM finance.confirm_payment(fee1, 'Card', 'check');
+        gate_cleared := finance.portal_access_state(stu);
+        SELECT state, first_semester_cleared INTO fs_part, fs_first FROM finance.school_fee_state(stu, S);
+        SELECT status INTO st_part FROM admissions.admission_status(app1);
+        SELECT fee_state, portal_state, due_first_semester INTO mon_fee, mon_portal, mon_first FROM finance.intake_fee_monitor(S) WHERE student_id = stu;
+        -- the session's fees in full, as the Bursar may set it; an exception from the Bursary (not the Academic Office, not beyond 200 days, one at a time) until revoked
+        PERFORM finance.set_portal_fee_gate(NULL, NULL, 'PAID_IN_FULL', 'CHECK: in full', who, 'bursar');
+        gate_full_unpaid := finance.portal_access_state(stu);
+        BEGIN PERFORM finance.grant_portal_fee_exception(stu, 'INSTALMENT_POLICY', 'CHECK', now(), now() + interval '30 days', who, 'academic'); EXCEPTION WHEN check_violation THEN r_exc_office := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.grant_portal_fee_exception(stu, 'INSTALMENT_POLICY', 'CHECK', now(), now() + interval '300 days', who, 'bursar'); EXCEPTION WHEN check_violation THEN r_exc_long := split_part(SQLERRM, ':', 1); END;
+        ex := finance.grant_portal_fee_exception(stu, 'INSTALMENT_POLICY', 'CHECK: the Bursar''s instalment arrangement', now(), now() + interval '30 days', who, 'bursar');
+        BEGIN PERFORM finance.grant_portal_fee_exception(stu, 'WAIVER', 'CHECK again', now(), now() + interval '30 days', who, 'bursar'); EXCEPTION WHEN check_violation THEN r_exc_twice := split_part(SQLERRM, ':', 1); END;
+        gate_exc := finance.portal_access_state(stu);
+        PERFORM finance.revoke_portal_fee_exception(ex, 'CHECK: done', who, 'bursar');
+        gate_revoked := finance.portal_access_state(stu);
+        fee2 := finance.new_reference(stu, S, 50000, NULL);
+        PERFORM finance.confirm_payment(fee2, 'Card', 'check');
+        gate_paid := finance.portal_access_state(stu);
+        SELECT state INTO fs_paid FROM finance.school_fee_state(stu, S);
+        SELECT label INTO st_paid_lbl FROM admissions.admission_status(app1);
+        -- an earlier cohort's admit and a matriculated student are outside the gate; off, everyone is
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, candidate_id)
+        VALUES (old_st, 'MOAUM/ADM/81/997230', NULL, 'V724-OLD', 'Cohort Before', prog, 'UTME', '9981/9982', 100, 100, 'ADMITTED', NULL);
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (mat_st, 'MOAUM/ADM/82/997239', 'MOAUM/' || fac || '/82/997239', 'V724-MAT', 'Matriculated', prog, 'UTME', S, 100, 100, 'ACTIVE', now());
+        gate_old := finance.portal_access_state(old_st);
+        gate_mat := finance.portal_access_state(mat_st);
+        -- a fresh admit of the session on the register with no applicant account (brought on from a list) has no dashboard to pay on: not held
+        INSERT INTO people.student (id, admission_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, candidate_id)
+        VALUES (noacct, 'MOAUM/ADM/82/997238', 'V724-NOACCT', 'No Account', prog, 'UTME', S, 100, 100, 'ADMITTED', cand4);
+        gate_noacct := finance.portal_access_state(noacct);
+        PERFORM finance.set_portal_fee_gate(false, NULL, NULL, 'CHECK: off again', who, 'ict');
+        gate_off_again := finance.portal_access_state(stu);
+        RAISE EXCEPTION 'the V724 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V724 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V724: the acceptance fee revised after a part payment — the balance owed against the fee as stated now, a reference for it (one at a time, closed when the figure changes), the letter withheld until it is paid and the same letter after, never the whole fee again, every statement kept; the student portal''s fee gate for fresh admits — held while nothing is stated, payable on the applicant dashboard, cleared on the first semester (or in full), an exception from the Bursary, never an earlier cohort or a matriculated student',
+        coalesce(acc1_amt = 25000 AND e_before.paid AND e_before.settled AND e_before.balance = 0 AND stu IS NOT NULL AND letter_no IS NOT NULL
+                 AND rev_n = 2 AND rev_prev = 25000 AND r_kept = 'APPLICANT_FEE_REVISION_KEPT'
+                 AND gate_bal = 'HELD_ACCEPTANCE_BALANCE' AND st_bal = 'ACCEPTANCE_BALANCE_PENDING' AND mon_bal = 'HELD_ACCEPTANCE_BALANCE' AND rev_bal AND NOT rev_first
+                 AND e_after.paid AND NOT e_after.settled AND e_after.fee_due = 35000 AND e_after.paid_total = 25000 AND e_after.balance = 10000
+                 AND r_letter = 'ACCEPTANCE_BALANCE_DUE' AND tr_letter_after = 'now'
+                 AND bal_amt = 10000 AND bal_stated = 35000 AND bal_same AND old_ref_expired AND bal_after_36_amt = 11000
+                 AND e_settled.settled AND e_settled.balance = 0 AND e_settled.payments = 2 AND letter2.number = letter_no AND tr_letter_settled = 'done'
+                 AND r_settled = 'ACCEPTANCE_SETTLED' AND ref_count = 2
+                 AND acc2_amt = 35000 AND band1 = 'SETTLED_IN_PARTS' AND band2 = 'PAID_IN_FULL' AND band3 = 'NOT_PAID' AND mon_outstanding = 35000
+                 AND r_office = 'PORTAL_FEE_GATE_OFFICE' AND r_same = 'PORTAL_FEE_GATE_UNCHANGED' AND gate_off = 'OPEN'
+                 AND gate_na = 'HELD_FEES_NOT_AVAILABLE' AND fs_na = 'NOT_CONFIGURED' AND st_not_avail = 'SCHOOL_FEES_NOT_AVAILABLE' AND href_not_avail = '/applicant/admission'
+                 AND gate_unpaid = 'HELD_FEES_UNPAID' AND fs_avail = 'AVAILABLE' AND st_pending = 'SCHOOL_FEES_PENDING' AND href_pending = '/applicant/admission#fees'
+                 AND cov_utme AND NOT cov_de
+                 AND gate_cleared = 'CLEARED' AND fs_part = 'PART_PAID' AND fs_first AND st_part = 'SCHOOL_FEES_PART_PAID'
+                 AND mon_fee = 'PART_PAID' AND mon_portal = 'CLEARED' AND mon_first = 100000
+                 AND gate_full_unpaid = 'HELD_FEES_UNPAID' AND r_exc_office = 'PORTAL_FEE_GATE_OFFICE' AND r_exc_long = 'PORTAL_FEE_GATE_SPAN'
+                 AND gate_exc = 'EXCEPTION' AND r_exc_twice = 'PORTAL_FEE_GATE_EXCEPTION_ACTIVE' AND gate_revoked = 'HELD_FEES_UNPAID'
+                 AND gate_paid = 'CLEARED' AND fs_paid = 'PAID' AND st_paid_lbl = 'School fees paid'
+                 AND gate_old = 'OPEN' AND gate_mat = 'OPEN' AND gate_noacct = 'OPEN' AND gate_off_again = 'OPEN', false),
+        format('bal=%s/%s/%s rev=%s/%s acc1=%s before=%s/%s/%s stu=%s letter=%s rev=%s/%s kept=%s after=%s/%s/%s/%s/%s letter=%s/%s bal=%s/%s/%s expired=%s after36=%s settled=%s/%s/%s/%s/%s again=%s refs=%s acc2=%s bands=%s/%s/%s outstanding=%s gate: office=%s same=%s off=%s na=%s/%s/%s/%s unpaid=%s/%s/%s/%s cov=%s/%s cleared=%s/%s/%s/%s mon=%s/%s/%s full=%s exc=%s/%s/%s/%s revoked=%s paid=%s/%s/%s old=%s mat=%s noacct=%s offagain=%s',
+               gate_bal, st_bal, mon_bal, rev_bal, rev_first, acc1_amt, e_before.paid, e_before.settled, e_before.balance, stu IS NOT NULL, letter_no, rev_n, rev_prev, r_kept,
+               e_after.paid, e_after.settled, e_after.fee_due, e_after.paid_total, e_after.balance, r_letter, tr_letter_after,
+               bal_amt, bal_stated, bal_same, old_ref_expired, bal_after_36_amt,
+               e_settled.settled, e_settled.balance, e_settled.payments, letter2.number = letter_no, tr_letter_settled, r_settled, ref_count, acc2_amt,
+               band1, band2, band3, mon_outstanding, r_office, r_same, gate_off, gate_na, fs_na, st_not_avail, href_not_avail,
+               gate_unpaid, fs_avail, st_pending, href_pending, cov_utme, cov_de, gate_cleared, fs_part, fs_first, st_part, mon_fee, mon_portal, mon_first,
+               gate_full_unpaid, r_exc_office, r_exc_long, gate_exc, r_exc_twice, gate_revoked, gate_paid, fs_paid, st_paid_lbl, gate_old, gate_mat, gate_noacct, gate_off_again));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

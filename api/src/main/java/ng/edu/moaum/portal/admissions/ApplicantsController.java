@@ -507,6 +507,41 @@ class ApplicantsController {
         // V419: the rule for an unstated session, and whether its application window is already open — the page says so while both hold
         out.put("policy", jdbc.sql("SELECT admissions.applicant_fee_policy()").query(String.class).single());
         out.put("windowOpen", "OPEN".equals(jdbc.sql("SELECT w.state FROM policy.window_state('POST_UTME_REGISTRATION', :s, NULL) w").param("s", session + "/" + year).query(String.class).optional().orElse(null)));
+        // V724: when the session's own figures were stated (none when they are carried forward), the acceptance fee before its last
+        // revision, and the session's statements newest first (admissions.applicant_fee_revision, kept by the trigger: who, from which
+        // office, why) — the Bursary reads what a revised acceptance fee left owing against what was stated before; the figure before is
+        // that of the last statement that changed the acceptance fee (a restatement of the other fees leaves it as it was)
+        String s = session + "/" + year;
+        out.put("statedAt", jdbc.sql("SELECT f.stated_at FROM admissions.applicant_fee f WHERE f.session = :s")
+                .param("s", s).query(java.time.OffsetDateTime.class).optional().orElse(null));
+        out.put("previousAcceptanceFee", jdbc.sql("""
+                SELECT v.previous_acceptance_fee FROM admissions.applicant_fee_revision v
+                 WHERE v.session = :s AND v.previous_acceptance_fee IS NOT NULL AND v.previous_acceptance_fee <> v.acceptance_fee
+                 ORDER BY v.stated_at DESC LIMIT 1
+                """).param("s", s).query(BigDecimal.class).optional().orElse(null));
+        List<Map<String, Object>> revisions = new ArrayList<>();
+        for (Map<String, Object> r : jdbc.sql("""
+                SELECT v.stated_at, v.application_fee, v.portal_charge, v.acceptance_fee, v.checking_fee, v.previous_acceptance_fee,
+                       nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.given_names, '')), ',') AS stated_by, v.stated_office, v.reason
+                  FROM admissions.applicant_fee_revision v
+                  LEFT JOIN iam.person p ON p.id = v.stated_by
+                 WHERE v.session = :s
+                 ORDER BY v.stated_at DESC, v.id DESC
+                 LIMIT 20
+                """).param("s", s).query().listOfRows()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("statedAt", r.get("stated_at"));
+            m.put("applicationFee", r.get("application_fee"));
+            m.put("portalCharge", r.get("portal_charge"));
+            m.put("acceptanceFee", r.get("acceptance_fee"));
+            m.put("checkingFee", r.get("checking_fee"));
+            m.put("previousAcceptanceFee", r.get("previous_acceptance_fee"));
+            m.put("statedBy", r.get("stated_by"));
+            m.put("statedOffice", r.get("stated_office"));
+            m.put("reason", r.get("reason"));
+            revisions.add(m);
+        }
+        out.put("revisions", revisions);
         return out;
     }
 

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import ng.edu.moaum.portal.shared.CheckCodes;
+import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
 /**
@@ -50,7 +51,11 @@ public class AdmissionDocuments {
                        admissions.screening_required(a.id) AS screening_required,
                        coalesce((SELECT k.fee FROM admissions.status_checking(a.id) k), 0) AS checking_fee,
                        coalesce((SELECT k.decision_visible FROM admissions.status_checking(a.id) k), false) AS decision_visible,
-                       s.id AS student_id, s.matric_no, sf.state AS screening_state, sf.screening_no
+                       s.id AS student_id, s.matric_no, sf.state AS screening_state, sf.screening_no,
+                       -- V724: the acceptance fee as stated now less what is confirmed; the letter waits for the balance (UTME and Direct Entry)
+                       (SELECT e.balance FROM admissions.acceptance_entitlement(a.id) e) AS acceptance_balance,
+                       (SELECT e.balance_due FROM admissions.acceptance_entitlement(a.id) e) AS acceptance_balance_due,
+                       c.entry_mode, EXISTS (SELECT 1 FROM admissions.prelim_review pr WHERE pr.application_id = a.id) AS prelim
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                   LEFT JOIN people.student s ON s.candidate_id = c.id
                   LEFT JOIN admissions.screening_form sf ON sf.application_id = a.id
@@ -59,14 +64,20 @@ public class AdmissionDocuments {
         // an offer shows here only once Admission Status Checking lets the applicant read it (V295): the rows say nothing before
         boolean offered = "OFFERED".equals(a.get("decision")) && a.get("decision_released_at") != null && Boolean.TRUE.equals(a.get("decision_visible"));
         boolean accepted = a.get("accepted_at") != null;
+        // V724: the letter waits for the acceptance fee in full — a fee revised after a part payment leaves a balance (UTME and Direct
+        // Entry; a CCE or preliminary admission as before, as admissions.issue_admission_letter reads it)
+        java.math.BigDecimal acceptanceBalance = a.get("acceptance_balance") instanceof java.math.BigDecimal b ? b : java.math.BigDecimal.ZERO;
+        boolean balanceDue = accepted && !"CCE".equals(a.get("entry_mode")) && !Boolean.TRUE.equals(a.get("prelim")) && Boolean.TRUE.equals(a.get("acceptance_balance_due"));
         List<Map<String, Object>> rows = new ArrayList<>();
 
-        // 1 · the offer / confirmation letter: a numbered document once the acceptance settles, a version per approved change of programme
+        // 1 · the offer / confirmation letter: a numbered document once the acceptance settles — and, since V724, the balance of a revised
+        //     acceptance fee is paid — a version per approved change of programme
         Map<String, Object> letter = issued(app, "ADMISSION_LETTER");
         rows.add(row("OFFER_LETTER", "ADMISSION", "Offer / confirmation letter",
-                accepted ? (letter == null ? "AVAILABLE" : stateOf(letter)) : "PENDING",
-                accepted ? null : offered ? "after the acceptance fee" : "after an offer of admission",
-                letter, null, accepted ? "letter" : null));
+                accepted && !balanceDue ? (letter == null ? "AVAILABLE" : stateOf(letter)) : "PENDING",
+                balanceDue ? "Issued once the acceptance fee balance of ₦" + naira(acceptanceBalance) + " is paid"
+                        : accepted ? null : offered ? "after the acceptance fee" : "after an offer of admission",
+                letter, null, accepted && !balanceDue ? "letter" : null));
 
         // 2 · the receipts of the fees paid to accept: the admission checking fee where the session charges one, the acceptance fee
         Map<String, Object> checking = feeReference(app, "CHECKING");
@@ -110,7 +121,19 @@ public class AdmissionDocuments {
 
     /** the letter as the applicant's page and the student's library open it: the document, and the application it states */
     public Map<String, Object> letter(UUID app, String event) {
-        Map<String, Object> row = jdbc.sql("SELECT id, number, version, verification_code, statement::text AS statement, issued_on, supersedes FROM admissions.issue_admission_letter(:a)").param("a", app).query().singleRow();
+        Map<String, Object> row;
+        try {
+            row = jdbc.sql("SELECT id, number, version, verification_code, statement::text AS statement, issued_on, supersedes FROM admissions.issue_admission_letter(:a)").param("a", app).query().singleRow();
+        } catch (org.springframework.dao.DataAccessException e) {
+            // V724: the letter waits for the acceptance fee in full; the function's refusal (ACCEPTANCE_BALANCE_DUE) is told with where
+            // the balance is paid, as the other coded refusals are told; everything else is the database's to say
+            String m = sqlMessage(e);
+            if (m != null && m.startsWith("ACCEPTANCE_BALANCE_DUE:")) {
+                throw new DomainRuleViolation("ACCEPTANCE_BALANCE_DUE", m.substring("ACCEPTANCE_BALANCE_DUE:".length()).trim(),
+                        new DomainRuleViolation.Remedy("Pay the balance of the acceptance fee from your applicant dashboard; the letter is issued once the payment is confirmed.", "Bursary"));
+            }
+            throw e;
+        }
         log(row.get("id"), event, "Offer letter");
         Map<String, Object> out = new LinkedHashMap<>(row);
         out.remove("id");
@@ -168,6 +191,21 @@ public class AdmissionDocuments {
     }
 
     /* ── the parts ── */
+
+    /** the database's own words for a refusal: the server message without the driver's "ERROR:" and the PL/pgSQL context */
+    private static String sqlMessage(org.springframework.dao.DataAccessException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof org.postgresql.util.PSQLException pg) {
+                return pg.getServerErrorMessage() == null ? pg.getMessage() : pg.getServerErrorMessage().getMessage();
+            }
+        }
+        return e.getMostSpecificCause() == null ? e.getMessage() : e.getMostSpecificCause().getMessage();
+    }
+
+    /** a naira figure as the notes read it: thousands separated, kobo only when there are any (₦10,000; ₦10,000.50) */
+    private static String naira(java.math.BigDecimal amount) {
+        return new java.text.DecimalFormat("#,##0.##").format(amount);
+    }
 
     private Map<String, Object> issued(UUID app, String kind) {
         return jdbc.sql("""

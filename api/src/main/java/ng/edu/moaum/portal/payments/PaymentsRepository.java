@@ -22,13 +22,17 @@ class PaymentsRepository {
         this.jdbc = jdbc;
     }
 
+    /** V724: applicantAccountId — for a student's school-fee reference, the applicant account of the student's candidate (one account a
+     *  candidate), so that a fresh admit pays the entry session's school fees from the applicant dashboard before the student portal
+     *  opens; null for every other reference */
     record Reference(UUID id, UUID applicationId, UUID accountId, String kind, String reference, BigDecimal amount,
-                     OffsetDateTime expiresAt, OffsetDateTime confirmedAt, String email, String applicationNo) {
+                     OffsetDateTime expiresAt, OffsetDateTime confirmedAt, String email, String applicationNo, UUID applicantAccountId) {
     }
 
     Optional<Reference> byReference(String reference) {
         return jdbc.sql("""
-                SELECT f.id, f.application_id, a.account_id, f.kind, f.reference, f.amount, f.expires_at, f.confirmed_at, acc.email, a.application_no
+                SELECT f.id, f.application_id, a.account_id, f.kind, f.reference, f.amount, f.expires_at, f.confirmed_at, acc.email, a.application_no,
+                       NULL::uuid AS applicant_account_id
                   FROM admissions.fee_reference f
                   JOIN admissions.application a ON a.id = f.application_id
                   JOIN admissions.applicant_account acc ON acc.id = a.account_id
@@ -52,7 +56,12 @@ class PaymentsRepository {
     Optional<Reference> studentReference(String reference) {
         return jdbc.sql("""
                 SELECT r.id, NULL::uuid AS application_id, r.student_id AS account_id, 'FEES' AS kind, r.reference, r.amount, r.expires_at, r.confirmed_at,
-                       reach.email, coalesce(s.matric_no, s.admission_no) AS application_no
+                       reach.email, coalesce(s.matric_no, s.admission_no) AS application_no,
+                       -- V724: the applicant account behind the student — an admitted applicant pays the entry session's school fees from
+                       -- the applicant dashboard before the student portal opens (the same person, two doors). The account of the
+                       -- candidate (applicant_account.candidate_id is unique), with no session condition: the student's entry session is
+                       -- not always the application's (an applicant of one session admitted into the next), and the reference is theirs
+                       (SELECT acc.id FROM admissions.applicant_account acc WHERE acc.candidate_id = s.candidate_id) AS applicant_account_id
                   FROM finance.payment_reference r
                   JOIN people.student s ON s.id = r.student_id
                   LEFT JOIN LATERAL people.student_reach(s.id) reach ON true
@@ -76,7 +85,7 @@ class PaymentsRepository {
     Optional<Reference> pgReference(String reference) {
         return jdbc.sql("""
                 SELECT fr.id, fr.application_id, p.id AS account_id, 'PG_' || fr.kind AS kind, fr.reference, fr.amount,
-                       fr.expires_at, fr.confirmed_at, p.email, a.application_no
+                       fr.expires_at, fr.confirmed_at, p.email, a.application_no, NULL::uuid AS applicant_account_id
                   FROM admissions.pg_fee_reference fr
                   JOIN admissions.pg_application a ON a.id = fr.application_id
                   JOIN admissions.pg_applicant p ON p.id = a.applicant_id
@@ -97,7 +106,7 @@ class PaymentsRepository {
     Optional<Reference> jupebReference(String reference) {
         return jdbc.sql("""
                 SELECT fr.id, fr.application_id, a.id AS account_id, 'JUPEB_' || fr.kind AS kind, fr.reference, fr.amount,
-                       fr.expires_at, fr.confirmed_at, a.email, a.application_no
+                       fr.expires_at, fr.confirmed_at, a.email, a.application_no, NULL::uuid AS applicant_account_id
                   FROM jupeb.fee_reference fr
                   JOIN jupeb.application a ON a.id = fr.application_id
                  WHERE upper(fr.reference) = upper(btrim(:r))
@@ -172,6 +181,13 @@ class PaymentsRepository {
     void quicktellerAttempt(String reference, String txnRef, String kind, UUID account) {
         jdbc.sql("INSERT INTO finance.gateway_attempt (reference, gateway, kind, account_id, txn_ref) VALUES (:r, 'quickteller', :k, :a, :t)")
                 .param("r", reference).param("k", kind).param("a", account).param("t", txnRef).update();
+    }
+
+    /** V724: who opened the latest checkout of a reference — the student, or the applicant account paying the school fees from the
+     *  applicant dashboard — so the gateway's return page sends the payer back to the dashboard they paid from */
+    Optional<UUID> lastAttemptAccount(String reference) {
+        return jdbc.sql("SELECT account_id FROM finance.gateway_attempt WHERE reference = :r ORDER BY opened_at DESC LIMIT 1")
+                .param("r", reference).query(UUID.class).optional();
     }
 
     /** the txn_refs rendered for a reference so far, oldest first */

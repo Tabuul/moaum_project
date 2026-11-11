@@ -14,10 +14,10 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Passport } from "@/components/proto/blocks";
-import { day } from "@/lib/format";
+import { day, money } from "@/lib/format";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Unsaved } from "@/components/Unsaved";
-import { DOC_WORD, STATE_WORD, dayOf, parseTracker, whenAt, type Facts, type Institution, type ScreeningView } from "@/lib/screening";
+import { ACCEPTANCE_BALANCE_PENDING, DOC_WORD, STATE_WORD, acceptanceFigures, dayOf, parseTracker, whenAt, type Facts, type Institution, type ScreeningView } from "@/lib/screening";
 import { Tracker, stepHref, useAdmission } from "./Admission";
 import { Eligibility } from "./Eligibility";
 
@@ -66,6 +66,14 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
   }
   const o = adm?.offer;
   const ent = adm?.entitlement;
+  /* V724: the acceptance fee as stated now against what is confirmed — the letter waits for the balance */
+  const acc = acceptanceFigures(ent);
+  /* V724: while the student portal's fee gate stands the school fees are paid on the applicant dashboard (the status says where);
+     the student portal's own fees page only when the status sends them there (the gate off) */
+  /* V724: an acceptance fee balance owed comes first — the school fees, the letter and the student portal follow it (the Accept page) */
+  const balanceFirst = adm?.status === ACCEPTANCE_BALANCE_PENDING;
+  const feesHref = balanceFirst ? "/applicant/accept" : adm?.next_href && adm.status.startsWith("SCHOOL_FEES") ? stepHref(adm.next_href) : "/applicant/admission#fees";
+  const feesWord = balanceFirst ? "Pay the acceptance fee balance" : adm?.status === "SCHOOL_FEES_NOT_AVAILABLE" ? "School fees" : adm?.status === "SCHOOL_FEES_PART_PAID" ? "Pay the balance of the school fees" : "Pay school fees";
   const forms = v.forms;
   const editable = ["PENDING", "IN_REVIEW", "CORRECTION_REQUIRED"].includes(f.state);
 
@@ -126,18 +134,24 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
         </PBody>
       </Panel>
 
-      <Panel title="Acceptance successful" right={<span className="sub2">Congratulations — your acceptance payment has been confirmed</span>}>
+      <Panel title="Acceptance successful" right={<span className="sub2">{acc.partPaid ? `Your acceptance payment has been confirmed · a balance of ${money(acc.balance)} is outstanding after the fee was revised` : "Congratulations — your acceptance payment has been confirmed"}</span>}>
         <PBody>
           <div className="row row--between">
             <KvGrid cls="grid--4" pairs={[
               ["Student name", `${p.surname}, ${p.other_names}`], ["Application number", <span key="a" className="tnum">{p.application_no}</span>], ["JAMB registration number", <span key="j" className="tnum">{p.jamb_reg_no}</span>], ["Admission session", p.session],
               ["Faculty", o?.faculty ?? p.faculty ?? "—"], ["Department", o?.department ?? p.department ?? "—"], ["Programme", o?.changed_to ?? p.programme], ["Admission type", `${p.entry_mode.replace("_", " ")}${o?.entry_level ? ` · ${o.entry_level} Level` : ""}`],
               ["Acceptance payment reference", <span key="r" className="tnum">{ent?.reference ?? "—"}</span>], ["Payment date", ent?.confirmed_at ? whenAt(ent.confirmed_at) : "—"],
-              ["Acceptance letter", o?.accepted_at ? <a key="l" className="lnk" href="/applicant/status/letter" target="_blank" rel="noopener">Available · view and print</a> : <span key="l" className="sub2">After acceptance</span>],
+              /* V724: the letter waits for a balance owed after a revision of the fee alone (the part-paid truth), as the server's letter does */
+              ["Acceptance letter", o?.accepted_at && !acc.partPaid ? <a key="l" className="lnk" href="/applicant/status/letter" target="_blank" rel="noopener">Available · view and print</a>
+                : acc.partPaid ? <span key="l" className="sub2">After the acceptance fee balance of {money(acc.balance)} · <a className="lnk" href="/applicant/accept">pay it</a></span>
+                : <span key="l" className="sub2">After acceptance</span>],
               ["Admission number", <span key="n" className="tnum">{o?.admission_no ?? "Issued when the screening succeeds"}</span>],
             ]} />
             <span title="Passport photograph, as JAMB sent it">{photo}</span>
           </div>
+          {acc.partPaid ? (
+            <div className="sub2 mt-2">Required acceptance fee <b className="tnum">{money(acc.feeDue)}</b> · amount previously paid <b className="tnum">{money(acc.paidTotal)}</b> · outstanding balance <b className="tnum">{money(acc.balance)}</b> · <Pil kind="warn">PARTIALLY PAID</Pil> — only the balance is owed, never the full fee again. <LinkBtn kind="urgent" size="sm" href="/applicant/accept">Pay outstanding balance</LinkBtn></div>
+          ) : null}
         </PBody>
       </Panel>
 
@@ -159,7 +173,7 @@ export function Screening({ fallback }: { fallback?: React.ReactNode }) {
       ) : null}
       {f.state === "SUCCESSFUL" ? (
         <>
-          <Note kind="ok" title="Screening successful" action={<LinkBtn kind="primary" href={stepHref("/student/fees")}>Pay school fees</LinkBtn>}>Screening completed{f.decided_at ? ` on ${dayOf(f.decided_at)}` : ""}. Next: school fees, then course registration.</Note>
+          <Note kind="ok" title="Screening successful" action={<LinkBtn kind="primary" href={feesHref}>{feesWord}</LinkBtn>}>Screening completed{f.decided_at ? ` on ${dayOf(f.decided_at)}` : ""}. Next: {balanceFirst ? `the acceptance fee balance of ${money(acc.balance)}, then ` : ""}school fees{adm?.status === "SCHOOL_FEES_NOT_AVAILABLE" ? ` — not yet published for ${adm.offer?.session ?? p.session}; your dashboard says when they are` : ""}, then course registration.</Note>
           <Panel title="Screening forms" right={forms?.number ? <span className="sub2 tnum">{forms.number} · version {forms.version}{forms.state === "DOWNLOADED" ? ` · opened ${forms.downloads} time${forms.downloads === 1 ? "" : "s"}` : ""}</span> : <span className="sub2">Generated from your record</span>}>
             <PBody>
               <div className="sub2">Fill any blank fields by hand. Each print carries a document number and verification code.</div>

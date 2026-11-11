@@ -17,6 +17,7 @@ import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.shared.Throttle;
 
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -47,14 +48,60 @@ public class StudentAuthService {
     private final TokenIssuer issuer;
     private final TransactionTemplate tx;
     private final Throttle throttle;
+    /** V724: the student portal's fee gate is read at the door (finance.portal_access_state) — on every sign-in, never cached */
+    private final JdbcClient jdbc;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
-    StudentAuthService(StudentPortalRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, Throttle throttle) {
+    StudentAuthService(StudentPortalRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, Throttle throttle, JdbcClient jdbc) {
         this.repo = repo;
         this.throttle = throttle;
         this.issuer = issuer;
+        this.jdbc = jdbc;
         this.tx = new TransactionTemplate(transactions);
+    }
+
+    /* ── V724: the student portal's fee gate for a fresh admit ── */
+
+    /** the portal held until the session's school fees are paid as the gate requires */
+    public static final String PORTAL_HELD_FEES = "STUDENT_PORTAL_HELD_FEES";
+    /** the portal held while the Bursary has not yet stated the session's school fees for the student */
+    public static final String PORTAL_FEES_NOT_AVAILABLE = "STUDENT_PORTAL_FEES_NOT_AVAILABLE";
+    /** the portal held while the acceptance fee, revised after part of it was paid, is still owed — before the school fees */
+    public static final String PORTAL_ACCEPTANCE_BALANCE = "STUDENT_PORTAL_ACCEPTANCE_BALANCE";
+    /** V724: how a held student reaches the applicant dashboard — a fresh admit signing in with the admission number has no
+     *  applicant door there, so every held remedy names the number and the password the applicant portal opens on */
+    private static final String APPLICANT_DOOR = "Sign in with your JAMB number (or application number) and your applicant password; ";
+
+    /**
+     * V724: the refusal a held fresh admit is given at the student door — and, in the same words, by the school-fees access gate
+     * on every request to the student portal — for the state finance.portal_access_state reads: HELD_ACCEPTANCE_BALANCE (the
+     * acceptance fee, revised after part of it was paid, is still owed: the brief's "acceptance fee partially paid — pay the
+     * outstanding balance; no access", read before the school fees), HELD_FEES_UNPAID (the session's fees are stated and are paid
+     * on the applicant dashboard) or HELD_FEES_NOT_AVAILABLE (the Bursary has not yet stated them). Null for every other state —
+     * OPEN (the gate off, or not a fresh UTME or Direct Entry admit of a gated session: a matriculated student is never held),
+     * CLEARED, EXCEPTION. The session named is the student's entry session, whose fees the gate waits for. Every remedy says how
+     * to reach the applicant dashboard: the student door's number (the admission number) does not open it.
+     */
+    public static DomainRuleViolation heldAtTheGate(String state, String session) {
+        String ses = session == null || session.isBlank() ? "" : session + " ";
+        return switch (state == null ? "" : state) {
+            case "HELD_ACCEPTANCE_BALANCE" -> new DomainRuleViolation(PORTAL_ACCEPTANCE_BALANCE,
+                    "The student portal opens once the acceptance fee is paid in full and your school fees are paid.",
+                    new DomainRuleViolation.Remedy(APPLICANT_DOOR + "pay the outstanding balance of your acceptance fee on your applicant dashboard, then your "
+                            + ses + "school fees there; the portal opens when they are verified.", "Bursary"));
+            case "HELD_FEES_UNPAID" -> new DomainRuleViolation(PORTAL_HELD_FEES, "The student portal opens once your school fees are paid and verified.",
+                    new DomainRuleViolation.Remedy(APPLICANT_DOOR + "pay your " + ses + "school fees on your applicant dashboard; the portal opens when the payment is verified.", "Bursary"));
+            case "HELD_FEES_NOT_AVAILABLE" -> new DomainRuleViolation(PORTAL_FEES_NOT_AVAILABLE,
+                    "The University has not yet published the school fees for your session; the student portal opens once they are stated and paid.",
+                    new DomainRuleViolation.Remedy(APPLICANT_DOOR + "your applicant dashboard says when your " + ses + "school fees are published, and you pay them there.", "Bursary"));
+            default -> null;
+        };
+    }
+
+    /** V724: where the record stands at the student portal's fee gate, read now */
+    private String portalAccessState(UUID student) {
+        return jdbc.sql("SELECT finance.portal_access_state(:s)").param("s", student).query(String.class).single();
     }
 
     private <T> T atTheDoor(UUID actor, String reason, Supplier<T> work) {
@@ -154,6 +201,13 @@ public class StudentAuthService {
                     throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
                     return badCredentials();
                 }
+                // V724: held at the fee gate — said only to the person whose password opened the record (never to a number typed with any
+                // password), and before the applicant account is carried over, so nothing is written for a held student
+                DomainRuleViolation held = heldAtTheGate(portalAccessState(s.id()), s.entrySession());
+                if (held != null) {
+                    repo.event(matricNo, s.id(), "PORTAL_HELD_FEES", ip);
+                    return held;
+                }
                 Carried c = carried(applicantHash);
                 repo.openAccount(s.id(), c.hash(), c.mustChange());
                 repo.event(matricNo, s.id(), "CARRIED_OVER", ip);
@@ -187,6 +241,15 @@ public class StudentAuthService {
                 throttle.count(Throttle.Door.STUDENT_SIGN_IN, ip);
                 return badCredentials();
             }
+            // V724: a fresh admit of a gated session is held out of the student portal until the session's school fees are stated and
+            // paid as the gate requires (finance.portal_access_state, read now) — said once the password has opened the record, before
+            // a session is opened; the sign-in page sends them on to the applicant dashboard, where the fees are paid. Nothing of the
+            // gate is decided here: a matriculated student, an earlier cohort, a postgraduate read OPEN from it.
+            DomainRuleViolation heldNow = heldAtTheGate(portalAccessState(s.id()), s.entrySession());
+            if (heldNow != null) {
+                repo.event(matricNo, s.id(), "PORTAL_HELD_FEES", ip);
+                return heldNow;
+            }
             byte[] sid = new byte[32];
             random.nextBytes(sid);
             Instant end = Instant.now().plus(SESSION_LENGTH);
@@ -219,6 +282,13 @@ public class StudentAuthService {
                         new DomainRuleViolation.Remedy("Your student account opens when your screening is successful, or on acceptance where no screening is needed. Until then, use the applicant portal.", "Registry"));
             }
             String number = s.matricNo() != null ? s.matricNo() : s.admissionNo();
+            // V724: on the register, but held at the student portal's fee gate: the applicant stays on their dashboard and pays the
+            // session's school fees there; the portal opens when the payment is verified (finance.portal_access_state, read now)
+            DomainRuleViolation held = heldAtTheGate(portalAccessState(s.id()), s.entrySession());
+            if (held != null) {
+                repo.event(number, s.id(), "PORTAL_HELD_FEES", ip);
+                return held;
+            }
             StudentPortalRepository.Account a = repo.account(s.id()).orElse(null);
             if (a == null) {
                 String applicantHash = repo.applicantHash(s.candidateId()).orElse(null);

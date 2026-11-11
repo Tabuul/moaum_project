@@ -6,10 +6,10 @@
  * record: the seat the Academic Office assigned, the result under the
  * session's own weighting, and the Board's decision once it is released.
  */
-import { at, type Application } from "@/lib/applicant";
+import { acceptanceOf, at, type Application } from "@/lib/applicant";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Tick, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { Bar } from "@/components/proto/blocks";
+import { Bar, money } from "@/components/proto/blocks";
 import { Rail, when } from "./common";
 import { AdmissionStatusCheck } from "./Admission";
 import { scoreReleased, screeningResultOpen, utmeMeetsCutoff } from "@/lib/applicant-score";
@@ -130,6 +130,8 @@ export function Status({ a }: { a: Application }) {
     );
   }
   const r = a.result;
+  /* V724: the acceptance fee as stated now against what is confirmed — a balance after a revision is owed once, and the letter waits for it */
+  const acc = acceptanceOf(a);
   if (a.decision !== "OFFERED") {
     return (
       <>
@@ -159,7 +161,12 @@ export function Status({ a }: { a: Application }) {
           ]} />
         </PBody>
       </div>
-      {at(a, 6) ? (
+      {at(a, 6) && acc.partPaid ? (
+        /* V724: the acceptance fee revised after part of it was paid — the balance is owed once, and the letter waits for it */
+        <Note kind="bad" title={`Acceptance fee balance of ${money(acc.balance)} to pay`} action={<LinkBtn kind="urgent" href="/applicant/accept">Pay outstanding balance</LinkBtn>}>
+          You accepted this offer on {when(a.acceptedAt)}; the acceptance fee was then revised to {money(acc.feeDue)}, of which {money(acc.paidTotal)} is paid. Your place is held; only the balance is owed, never the full fee again. The admission letter is issued once the balance is paid.
+        </Note>
+      ) : at(a, 6) ? (
         <Note kind="ok" title={`You accepted this offer on ${when(a.acceptedAt)}`} action={<LinkBtn kind="primary" href="/applicant/clearance">Clearance checklist</LinkBtn>}>
           Your place is held. Document clearance is the next step.
         </Note>
@@ -173,10 +180,13 @@ export function Status({ a }: { a: Application }) {
       <Note kind="info" title="Provisional admission">
         A result that fails verification with WAEC, NECO or JAMB voids the admission at any point, including after graduation.
       </Note>
-      {at(a, 6) ? (
+      {/* V724: the letter waits only for a balance owed after a revision of the fee (the part-paid truth), as the server's letter does */}
+      {at(a, 6) && !acc.partPaid ? (
         <div className="row">
-          <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--primary">Print Offer Letter</a>
+          <a href="/applicant/status/letter" target="_blank" rel="noopener" className="btn btn--primary">Print offer letter</a>
         </div>
+      ) : at(a, 6) ? (
+        <div className="sub2">The admission letter is issued once the acceptance fee of {money(acc.feeDue)} is paid in full; {money(acc.balance)} remains. <a className="lnk" href="/applicant/accept">Pay the balance</a>.</div>
       ) : null}
     </>
   );

@@ -1,6 +1,8 @@
 package ng.edu.moaum.portal.applicant;
 
+import java.math.BigDecimal;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +14,8 @@ import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.ErrorResponseException;
 
 /**
  * The applicant's admission lifecycle (V269): the status and the tracker after the offer, and the online screening form —
@@ -64,6 +69,7 @@ class ApplicantScreeningController {
         UUID app = myApplication(a);
         Map<String, Object> out = new LinkedHashMap<>(jdbc.sql("SELECT * FROM admissions.admission_status(:a)").param("a", app).query().singleRow());
         out.put("tracker", jdbc.sql("SELECT admissions.admission_tracker(:a)::text").param("a", app).query(String.class).single());
+        // V724: the entitlement carries fee_due, paid_total, balance, settled, payments, balance_due and the open reference beside what it said
         out.put("entitlement", jdbc.sql("SELECT * FROM admissions.acceptance_entitlement(:a)").param("a", app).query().singleRow());
         out.put("screeningRequired", jdbc.sql("SELECT admissions.screening_required(:a)").param("a", app).query(Boolean.class).single());
         boolean checkingDue = jdbc.sql("SELECT admissions.checking_due(:a)").param("a", app).query(Boolean.class).single();
@@ -108,8 +114,158 @@ class ApplicantScreeningController {
         return admission(a);
     }
 
+    /* ── V724: the entry session's school fees, read and paid from the applicant dashboard before the student portal opens ── */
+
+    /** the register row behind the applicant's account, once the Registry has brought them onto it: the student the session's fees are
+     *  charged to (people.student through the candidate, never a duplicate) and the student's entry session — V724: the school fees are
+     *  read and drawn for the session the student entered in (people.student.entry_session), as finance.portal_access_state and
+     *  admissions.admission_status read them, never the application's session (an applicant of one session admitted into the next) */
+    private Map<String, Object> myRegisterRow(Authentication a) {
+        UUID account;
+        try {
+            account = UUID.fromString(a.getName());
+        } catch (IllegalArgumentException e) {
+            throw new NotFound("application", a.getName());
+        }
+        return jdbc.sql("""
+                SELECT ap.id AS application_id, ap.session, s.id AS student_id, s.admission_no, s.entry_session
+                  FROM admissions.application ap
+                  LEFT JOIN people.student s ON s.candidate_id = ap.candidate_id AND s.duplicate_of IS NULL
+                 WHERE ap.account_id = :acc
+                 ORDER BY s.matriculated_at NULLS LAST, s.id
+                 LIMIT 1
+                """).param("acc", account).query().listOfRows().stream().findFirst()
+                .orElseThrow(() -> new NotFound("application for account", account));
+    }
+
+    /** V724: what the school fees of the student's entry session say for the applicant now on the register — stated or not (nothing is
+     *  charged at a guess), the payment window, due, paid, the balance, the first semester's due, a reference awaiting the bank — with
+     *  the acceptance fee balance still owed (it comes first: the school fees are not drawn while it stands), the student portal's fee
+     *  gate as it stands and where the record stands at it (finance.school_fee_state, admissions.acceptance_balance_of_student,
+     *  finance.portal_access_state, read on every request, never cached); before the register: REGISTER_PENDING under the application's
+     *  session and nothing else */
+    @GetMapping("/api/v1/applicant/me/school-fees")
+    @PreAuthorize(APPLICANT)
+    @Transactional(readOnly = true)
+    Map<String, Object> schoolFees(Authentication a) {
+        Map<String, Object> me = myRegisterRow(a);
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (me.get("student_id") == null) {
+            out.put("onRegister", false);
+            out.put("session", me.get("session"));
+            out.put("state", "REGISTER_PENDING");
+            return out;
+        }
+        UUID student = (UUID) me.get("student_id");
+        String session = String.valueOf(me.get("entry_session"));
+        Map<String, Object> sf = jdbc.sql("""
+                SELECT f.state, f.due, f.paid, f.balance, f.paid_in_full, f.first_semester_cleared, f.instalments_paid, f.window_state, f.opens_at,
+                       f.open_reference, f.open_amount, f.open_expires_at, array_to_string(f.unstated_semesters, ',') AS unstated_semesters,
+                       coalesce(finance.due_for_semester(:s, :ses, 1), 0) AS due_first_semester
+                  FROM finance.school_fee_state(:s, :ses) f
+                """).param("s", student).param("ses", session).query().singleRow();
+        out.put("onRegister", true);
+        out.put("admissionNo", me.get("admission_no"));
+        out.put("session", session);
+        out.put("state", sf.get("state"));
+        out.put("due", sf.get("due"));
+        out.put("dueFirstSemester", sf.get("due_first_semester"));
+        out.put("paid", sf.get("paid"));
+        out.put("balance", sf.get("balance"));
+        out.put("paidInFull", sf.get("paid_in_full"));
+        out.put("firstSemesterCleared", sf.get("first_semester_cleared"));
+        out.put("instalmentsPaid", sf.get("instalments_paid"));
+        out.put("windowState", sf.get("window_state"));
+        out.put("opensAt", sf.get("opens_at"));
+        out.put("openReference", sf.get("open_reference"));
+        out.put("openAmount", sf.get("open_amount"));
+        out.put("openExpiresAt", sf.get("open_expires_at"));
+        out.put("unstatedSemesters", semesters(sf.get("unstated_semesters")));
+        // V724: the acceptance fee balance (a fee revised after part of it was paid) holds the school fees and the portal until it is paid
+        BigDecimal acceptanceBalance = acceptanceBalance(student);
+        out.put("acceptanceBalance", acceptanceBalance);
+        out.put("acceptanceBalanceDue", acceptanceBalance.signum() > 0);
+        Map<String, Object> g = jdbc.sql("SELECT enabled, clears_on, from_session FROM finance.portal_fee_gate WHERE id = 1").query().singleRow();
+        Map<String, Object> gate = new LinkedHashMap<>();
+        gate.put("enabled", g.get("enabled"));
+        gate.put("clearsOn", g.get("clears_on"));
+        gate.put("fromSession", g.get("from_session"));
+        out.put("gate", gate);
+        out.put("portalState", jdbc.sql("SELECT finance.portal_access_state(:s)").param("s", student).query(String.class).single());
+        return out;
+    }
+
+    /** V724: the acceptance fee balance the student still owes over the candidate's offers (0 when none) */
+    private BigDecimal acceptanceBalance(UUID student) {
+        BigDecimal b = jdbc.sql("SELECT admissions.acceptance_balance_of_student(:s)").param("s", student).query(BigDecimal.class).single();
+        return b == null ? BigDecimal.ZERO : b;
+    }
+
+    /** a naira figure as the notes read it: thousands separated, kobo only when there are any (₦10,000; ₦10,000.50) */
+    private static String naira(BigDecimal amount) {
+        return new java.text.DecimalFormat("#,##0.##").format(amount);
+    }
+
+    /** the semesters a fee line is not stated for, as the database lists them ("1,2" → [1, 2]; nothing → []) */
+    private static List<Integer> semesters(Object joined) {
+        List<Integer> out = new ArrayList<>();
+        if (joined == null || String.valueOf(joined).isBlank()) {
+            return out;
+        }
+        for (String part : String.valueOf(joined).split(",")) {
+            if (!part.isBlank()) {
+                out.add(Integer.parseInt(part.trim()));
+            }
+        }
+        return out;
+    }
+
+    public record SchoolFeesReferenceIn(BigDecimal amount) {
+    }
+
+    /** V724: a payment reference for the school fees of the student's entry session, drawn for the student the applicant has become —
+     *  the student's own reference (finance.new_reference: the window, the position and the amount are its to refuse, as
+     *  SCHOOL_FEES_PAYMENT_CLOSED and the rest) and paid through the gateway from the applicant dashboard; the balance when no amount is
+     *  given; 409 APPLICANT_NOT_ON_REGISTER before the Registry brings the applicant onto the register; 422 ACCEPTANCE_BALANCE_DUE while
+     *  a balance of the acceptance fee stands (the brief: the acceptance fee first, then the school fees) */
+    @PostMapping("/api/v1/applicant/me/school-fees/references")
+    @PreAuthorize(APPLICANT)
+    @Transactional
+    Map<String, Object> schoolFeesReference(Authentication a, @RequestBody(required = false) SchoolFeesReferenceIn body) {
+        Map<String, Object> me = myRegisterRow(a);
+        if (me.get("student_id") == null) {
+            String session = String.valueOf(me.get("session"));
+            ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                    "You are not yet on the register under an admission number; the " + session + " school fees are paid once the Registry brings you onto it.");
+            problem.setTitle("Not yet on the register");
+            problem.setProperty("code", "APPLICANT_NOT_ON_REGISTER");
+            problem.setProperty("remedy", Map.of("message", "Wait for the Registry; your applicant dashboard says when the school fees open.", "office", "Registry"));
+            throw new ErrorResponseException(HttpStatus.CONFLICT, problem, null);
+        }
+        UUID student = (UUID) me.get("student_id");
+        String session = String.valueOf(me.get("entry_session"));
+        BigDecimal acceptanceBalance = acceptanceBalance(student);
+        if (acceptanceBalance.signum() > 0) {
+            throw new DomainRuleViolation("ACCEPTANCE_BALANCE_DUE",
+                    "Pay the acceptance fee balance of ₦" + naira(acceptanceBalance) + " first; the school fees follow it.",
+                    new DomainRuleViolation.Remedy("Pay the balance on the Accept page of your applicant dashboard; you are never charged the full fee again.", "Bursary"));
+        }
+        BigDecimal amount = body == null ? null : body.amount();
+        if (amount == null) {
+            amount = jdbc.sql("SELECT f.balance FROM finance.school_fee_state(:s, :ses) f").param("s", student).param("ses", session).query(BigDecimal.class).single();
+        }
+        String reference = jdbc.sql("SELECT finance.new_reference(:s, :ses, :a, NULL)").param("s", student).param("ses", session).param("a", amount).query(String.class).single();
+        Map<String, Object> r = jdbc.sql("SELECT reference, amount, expires_at FROM finance.payment_reference WHERE reference = :r").param("r", reference).query().singleRow();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("reference", r.get("reference"));
+        out.put("amount", r.get("amount"));
+        out.put("expiresAt", r.get("expires_at"));
+        return out;
+    }
+
     /** the letter of provisional admission as a digital document (V275): issued on first request once the offer is accepted, a new
-     *  version when the programme changed; the number, the verification code and the statement the PDF is drawn from */
+     *  version when the programme changed; the number, the verification code and the statement the PDF is drawn from — V724: refused
+     *  with ACCEPTANCE_BALANCE_DUE while a balance of the acceptance fee stands */
     @GetMapping("/api/v1/applicant/me/letter")
     @PreAuthorize(APPLICANT)
     @Transactional

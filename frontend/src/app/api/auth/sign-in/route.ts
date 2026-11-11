@@ -47,17 +47,27 @@ function problem(text: string, status: number, contentType: string | null) {
   return new NextResponse(text, { status, headers: { "content-type": contentType ?? "application/problem+json" } });
 }
 
-/* V718: whether a door that refused knows the account — locked, a temporary password spent or standing (any 422 but "do not
-   match"): that door's answer is the one for the person, in place of the staff door's. Reading a copy leaves the body for later. */
-async function knowsTheAccount(r: Response): Promise<boolean> {
-  if (r.status !== 422) return false;
+/** the problem code a door refused with, or null — read from a copy, which leaves the body for later */
+async function codeOf(r: Response): Promise<string | null> {
   try {
     const code = (JSON.parse(await r.clone().text()) as { code?: unknown }).code;
-    return typeof code === "string" && code !== "AUTH_BAD_CREDENTIALS";
+    return typeof code === "string" ? code : null;
   } catch {
-    return false;
+    return null;
   }
 }
+
+/* V718: whether a door that refused knows the account — locked, a temporary password spent or standing (any 422 but "do not
+   match"): that door's answer is the one for the person, in place of the staff door's. */
+async function knowsTheAccount(r: Response): Promise<boolean> {
+  if (r.status !== 422) return false;
+  const code = await codeOf(r);
+  return code !== null && code !== "AUTH_BAD_CREDENTIALS";
+}
+
+/* V724: the student door's refusals of a fresh admit the student portal's fee gate holds — the school fees unpaid, not yet stated,
+   or the acceptance fee's balance owed. The door says them only once the password has opened the record. */
+const HELD_AT_THE_FEE_GATE = ["STUDENT_PORTAL_HELD_FEES", "STUDENT_PORTAL_FEES_NOT_AVAILABLE", "STUDENT_PORTAL_ACCEPTANCE_BALANCE"];
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -107,6 +117,13 @@ export async function POST(request: NextRequest) {
       kind = "student";
     } else {
       r = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+      /* V724: the student door held the record at the fee gate (said only after the password matched) and the applicant door does
+         not take the same password — a student account whose password has since changed: the student door's words are the true
+         ones (pay the fees, or the acceptance balance, on the applicant dashboard), never "do not match" */
+      if (r && !r.ok && asStudent && !asStudent.ok && HELD_AT_THE_FEE_GATE.includes((await codeOf(asStudent)) ?? "")
+          && (await codeOf(r)) === "AUTH_BAD_CREDENTIALS") {
+        r = asStudent;
+      }
     }
   } else {
     r = await upstream("/api/v1/auth/sign-in", { username: identifier, password, office: preferredOffice }, request);

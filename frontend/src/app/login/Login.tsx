@@ -21,6 +21,8 @@ const JAMB = /^[0-9]{12}[A-Z]{2,3}$/i;
 const APPLICATION = /^APP\/[0-9]{2}\/[0-9]{6}$/i;
 const JUPEB = /^JUPEB\/APP\/[0-9]{4}\/[0-9]{6}$/i;
 const PG_APPLICATION = /^PG\/[0-9]{2}\/[0-9]{6}$/i;
+/** V724: an address on the applicant side of this site — the one place an applicant's sign-in follows ?next= to */
+const APPLICANT_SIDE = /^\/applicant(\/|$|\?|#)/;
 
 function whoIs(id: string): string {
   const s = id.trim();
@@ -51,7 +53,8 @@ function Icon({ name, className }: { name: "shield" | "user" | "lock" | "eye" | 
 
 export function Login({ next, sso, ssoProblem = null, reason = null }: {
   next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null;
-  /** V437: why the person is back here — "idle" when the session ended for inactivity */
+  /** V437: why the person is back here — "idle" when the session ended for inactivity; V724: "held-fees" when the student portal's
+   *  fee gate sent a fresh admit back to pay on the applicant dashboard */
   reason?: string | null;
   /** V312: which application windows are open — no longer shown here: the sign-in page is for signing in alone, and applicants reach their application pages directly */
   applications?: { postUtme: boolean; postgraduate: boolean } | null;
@@ -77,8 +80,10 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
         setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
         return;
       }
-      /* staff go where they were heading; a student or an applicant has one home */
-      const home: string = j.kind === "staff" && !j.mustChange ? next : j.mustChange && j.kind === "staff" ? `/account/password?next=${encodeURIComponent(next)}` : j.home;
+      /* staff go where they were heading; a student has one home; V724: an applicant goes where they were heading on the applicant
+         side (the fee gate sends a held fresh admit to pay on the applicant dashboard), else to their home */
+      const home: string = j.kind === "staff" && !j.mustChange ? next : j.mustChange && j.kind === "staff" ? `/account/password?next=${encodeURIComponent(next)}`
+        : j.kind === "applicant" && !j.mustChange && APPLICANT_SIDE.test(next) ? next : j.home;
       router.push(home);
       router.refresh();
     } finally {
@@ -127,6 +132,11 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
             {reason === "idle" && !problem ? (
               <div className="mt-1">
                 <Note kind="info" title="Session expired">Your session ended because you were inactive. Sign in again to continue where you were.</Note>
+              </div>
+            ) : null}
+            {reason === "held-fees" && !problem ? (
+              <div className="mt-1">
+                <Note kind="info" title="Student portal not yet open">Your student portal opens once your fees are paid. Sign in with your JAMB number (or application number) and your applicant password to pay them on your applicant dashboard.</Note>
               </div>
             ) : null}
             {problem || ssoProblem ? (

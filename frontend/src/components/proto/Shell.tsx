@@ -96,6 +96,8 @@ export const ROUTES: Record<string, string> = {
   "t/capsintake": "/admissions/caps",
   "t/applicants": "/admissions/applicants",
   "t/paidapplicants": "/admissions/paid-applicants",
+  "t/acceptancefees": "/admissions/acceptance-fees",   // V724
+  "t/intakefees": "/finance/intake-fees",   // V724
   "t/merit": "/admissions/merit",
   "t/offers": "/admissions/offers",
   "t/de-screening": "/admissions/de-screening",
@@ -577,6 +579,8 @@ const OVERRIDES: Record<string, string> = {
   "f/heldfees": "Held students' fees",
   "r/dbops": "Database Operations",
   "t/paidapplicants": "Paid Post-UTME applicants",
+  "t/acceptancefees": "Acceptance fee monitor",
+  "t/intakefees": "School fees readiness",
   "t/classification": "Student classification",
   "t/finanalytics": "Financial analytics",
   "t/feereport": "School fees report",

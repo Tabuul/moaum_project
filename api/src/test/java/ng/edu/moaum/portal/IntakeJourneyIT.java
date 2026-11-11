@@ -106,6 +106,22 @@ class IntakeJourneyIT {
         return l(readiness.get("checks")).stream().filter(c -> key.equals(c.get("key"))).findFirst().orElseThrow();
     }
 
+    /** V724: the student portal's fee gate as found, put back after the test (the test sets it for its own session) */
+    Map<String, Object> gateBefore;
+
+    void gateOnFor(String session) {
+        gateBefore = jdbc.sql("SELECT enabled, from_session, clears_on FROM finance.portal_fee_gate WHERE id = 1").query().singleRow();
+        it.db(() -> jdbc.sql("UPDATE finance.portal_fee_gate SET enabled = true, from_session = :s, clears_on = 'FIRST_SEMESTER', reason = 'test: on for its own session' WHERE id = 1")
+                .param("s", session).update());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void putTheGateBack() {
+        if (gateBefore == null) return;
+        it.db(() -> jdbc.sql("UPDATE finance.portal_fee_gate SET enabled = :e, from_session = :f, clears_on = :c, reason = 'test: put back as found' WHERE id = 1")
+                .param("e", gateBefore.get("enabled")).param("f", gateBefore.get("from_session")).param("c", gateBefore.get("clears_on")).update());
+    }
+
     ResponseEntity<Map> ok(ResponseEntity<Map> r) {
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
         return r;
@@ -232,20 +248,32 @@ class IntakeJourneyIT {
         int level = ((Number) student.get("current_level")).intValue();
         assertThat(student.get("entry_session")).isEqualTo(INTAKE);
 
-        // 9 · the same account continues into the student portal, standing in the intake session while the other is current
+        // 9 · V724: the student portal waits for the school fees — not yet stated, the hand-off says so; the Bursar states the intake
+        // session's charge and the applicant pays it from the applicant dashboard, on the student's own reference; verified, the same
+        // account continues into the student portal, standing in the intake session while the other is current
+        gateOnFor(INTAKE);
+        ResponseEntity<Map> held = it.call(token, HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
+        assertThat(held.getStatusCode().value()).isEqualTo(422);
+        assertThat(held.getBody().get("code")).isEqualTo("STUDENT_PORTAL_FEES_NOT_AVAILABLE");
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/2196/2197/schedule", Map.of("item", "School fees", "amount", 120000, "level", level)));
+        Map<String, Object> applicantFees = ok(it.get(token, "/api/v1/applicant/me/school-fees")).getBody();
+        assertThat(applicantFees.get("session")).isEqualTo(INTAKE);
+        assertThat(new BigDecimal(String.valueOf(applicantFees.get("due")))).isEqualByComparingTo("120000");
+        assertThat(applicantFees.get("portalState")).isEqualTo("HELD_FEES_UNPAID");
+        assertThat(it.call(token, HttpMethod.POST, "/api/v1/student-auth/continue", Map.of()).getBody().get("code")).isEqualTo("STUDENT_PORTAL_HELD_FEES");
+        String feeRef = String.valueOf(ok(it.call(token, HttpMethod.POST, "/api/v1/applicant/me/school-fees/references", Map.of("amount", 120000))).getBody().get("reference"));
+        assertThat(jdbc.sql("SELECT session FROM finance.payment_reference WHERE reference = :r").param("r", feeRef).query(String.class).single()).isEqualTo(INTAKE);
+        ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + feeRef + "/confirm", Map.of("channel", "Bank transfer", "note", "intake journey")));
+        assertThat(ok(it.get(token, "/api/v1/applicant/me/school-fees")).getBody().get("portalState")).isEqualTo("CLEARED");
         String studentToken = String.valueOf(ok(it.call(token, HttpMethod.POST, "/api/v1/student-auth/continue", Map.of())).getBody().get("token"));
         Map<String, Object> me = ok(it.get(studentToken, "/api/v1/me")).getBody();
         assertThat(me.get("session")).isEqualTo(INTAKE);
         assertThat(m(me.get("academic")).get("current_session")).isEqualTo(CURRENT);
 
-        // 10 · school fees: the Bursar states the intake session's charge; the student's fees and reference are that session's
-        ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/2196/2197/schedule", Map.of("item", "School fees", "amount", 120000, "level", level)));
+        // 10 · school fees, read from the student side: the intake session's, paid on the applicant dashboard
         Map<String, Object> fees = ok(it.get(studentToken, "/api/v1/me/fees")).getBody();
         assertThat(fees.get("session")).isEqualTo(INTAKE);
         assertThat(new BigDecimal(String.valueOf(fees.get("due")))).isEqualByComparingTo("120000");
-        String feeRef = String.valueOf(ok(it.call(studentToken, HttpMethod.POST, "/api/v1/me/fees/references", Map.of("amount", 120000))).getBody().get("reference"));
-        assertThat(jdbc.sql("SELECT session FROM finance.payment_reference WHERE reference = :r").param("r", feeRef).query(String.class).single()).isEqualTo(INTAKE);
-        ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/references/" + feeRef + "/confirm", Map.of("channel", "Bank transfer", "note", "intake journey")));
         it.db(() -> {
             // a clearance scheme in force, as StudentPortalIT puts one, where none is
             jdbc.sql("""

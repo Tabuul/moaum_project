@@ -74,10 +74,11 @@ const OPEN_EXACT = new Set([
 ]);
 const API_URL = (process.env.PORTAL_API_URL ?? "http://localhost:8081").replace(/\/$/, "");
 
-function toLogin(request: NextRequest, clear: boolean, reason = ""): NextResponse {
+function toLogin(request: NextRequest, clear: boolean, reason = "", next: string | null = null): NextResponse {
   const { pathname, search } = request.nextUrl;
   const to = new URL("/login", request.url);
-  if (pathname !== "/") to.searchParams.set("next", pathname + search);
+  if (next) to.searchParams.set("next", next);
+  else if (pathname !== "/") to.searchParams.set("next", pathname + search);
   if (reason) to.searchParams.set("reason", reason);
   const response = NextResponse.redirect(to);
   if (clear) {
@@ -121,6 +122,16 @@ export async function proxy(request: NextRequest) {
            The API refuses everything else whatever the address; this only spares the student a page of refusals. */
         if (r.headers.get("x-biodata-gate") === "REQUIRED" && pathname.startsWith("/student") && !gateOpenPage(pathname)) {
           return NextResponse.redirect(new URL("/student/biodata", request.url));
+        }
+        /* V724: a fresh admit the student portal's fee gate holds — the acceptance fee's balance owed, the session's school fees not
+           yet stated, or not paid as the gate asks — has no student screen to reach: the API refuses every student request but the
+           few that read the state, and says where the record stands on this header. The fees (and the acceptance balance) are paid
+           on the applicant dashboard; a student session lists the one office, so that dashboard opens through the sign-in, which
+           sends a JAMB or application number the student door refuses to the applicant's door. The student cookies are cleared
+           here so the sign-in is a fresh one. */
+        const access = r.headers.get("x-portal-access");
+        if ((access === "HELD_ACCEPTANCE_BALANCE" || access === "HELD_FEES_UNPAID" || access === "HELD_FEES_NOT_AVAILABLE") && pathname.startsWith("/student")) {
+          return toLogin(request, true, "held-fees", "/applicant/admission#fees");
         }
       } catch {
         /* the API is unreachable for a moment; do not lock the user out */

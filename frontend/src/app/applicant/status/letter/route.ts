@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
-import type { Application } from "@/lib/applicant";
+import { acceptanceOf, type Application } from "@/lib/applicant";
+import { money } from "@/lib/format";
 import { admissionLetterPdf, type LetterDoc } from "@/lib/admission-letter-pdf";
 import { crestImage, signatureImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
@@ -38,6 +39,15 @@ export async function GET(req: Request) {
   }
   if (!a.acceptedAt) {
     return NextResponse.json({ status: 409, title: "Accept your offer first", detail: "The admission letter is issued once you have accepted the offer and the acceptance fee is confirmed. Sign the undertaking and pay the acceptance fee, then print the letter." }, { status: 409 });
+  }
+  /* V724: the acceptance fee revised after part of it was paid — the letter waits for the balance, as admissions.issue_admission_letter
+     does (ACCEPTANCE_BALANCE_DUE); said here first, in the applicant's words. The same truth as the server's (balanceDue: a payment
+     made through a reference short of the fee as stated now), never a balance alone, so a CCE acceptance paid once or one confirmed
+     by hand is never refused here when the server issues the letter */
+  const acc = acceptanceOf(a);
+  if (acc.partPaid) {
+    return NextResponse.json({ status: 409, title: "Pay the acceptance fee balance first", code: "ACCEPTANCE_BALANCE_DUE",
+      detail: `The admission letter is issued once the acceptance fee of ${money(acc.feeDue)} is paid in full; ${money(acc.balance)} remains. Pay the outstanding balance from your applicant dashboard (Accept the offer), then print the letter.` }, { status: 409 });
   }
   const url = new URL(req.url);
   const print = url.searchParams.get("print") === "1", download = url.searchParams.get("download") === "1";

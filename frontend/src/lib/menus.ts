@@ -710,6 +710,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "t/applicants", "icon": "user", "label": "Report on Post-UTME Registration" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" },
@@ -794,6 +796,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/heldscripts", "icon": "alert", "label": "Held Scripts" },
           { "id": "t/collegepayments", "icon": "card", "label": "College Payment Report" },
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
@@ -877,6 +881,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "School Fees",
         "items": [
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "f/heldfees", "icon": "card", "label": "Held Students' Fees" }
         ]
       },
@@ -1331,7 +1337,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reports", "icon": "chart", "label": "Reports & Returns" },
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
-          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" }
         ]
       },
       {
@@ -1479,6 +1487,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regstudents", "icon": "user", "label": "Student Register" },
           { "id": "t/regstaff", "icon": "user", "label": "Staff Register" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
         ]
       },
@@ -1629,6 +1639,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/screeningreview", "icon": "shield", "label": "Screening Review" },
           { "id": "t/applicants", "icon": "user", "label": "Admitted List" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" }
         ]
@@ -1755,7 +1767,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putmebank", "icon": "book", "label": "Post-UTME Question Bank" },
           { "id": "t/putmescores", "icon": "chart", "label": "Post-UTME CBT Scores" },
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
-          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" }
+          { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" }
         ]
       },
       {
@@ -1952,6 +1966,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
           { "id": "t/admissions", "icon": "doc", "label": "Admissions" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
+          { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" }
         ]
       },

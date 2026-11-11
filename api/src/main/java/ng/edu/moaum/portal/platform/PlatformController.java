@@ -176,6 +176,38 @@ class PlatformController {
                         : examProg + " programme(s) screen by examination, but no Post-UTME CBT is set up for " + in,
                 examProg == 0 ? "/admissions/settings?session=" + in : "/ict/cbt"));
 
+        // V724: the school fees of the intake session reach every programme with admitted freshers — the student portal's fee gate holds a
+        // fresh UTME or Direct Entry admit until the session's fees are stated and paid, so a programme without a 100 Level (UTME) or 200
+        // Level (Direct Entry) FEE line in force is a cohort told "school fees not yet available" and kept out of the portal
+        Map<String, Object> cov = jdbc.sql("""
+                SELECT count(DISTINCT programme_code) FILTER (WHERE admitted > 0) AS programmes,
+                       count(DISTINCT programme_code) FILTER (WHERE admitted > 0 AND NOT covered) AS uncovered,
+                       coalesce(sum(admitted) FILTER (WHERE NOT covered), 0) AS freshers_uncovered,
+                       count(DISTINCT programme_code) FILTER (WHERE NOT covered) AS uncovered_all,
+                       count(DISTINCT programme_code) AS census
+                  FROM finance.programme_fee_coverage(:s)
+                """).param("s", in).query().singleRow();
+        long covProgrammes = ((Number) cov.get("programmes")).longValue();
+        long covUncovered = ((Number) cov.get("uncovered")).longValue();
+        long covFreshers = ((Number) cov.get("freshers_uncovered")).longValue();
+        long covUncoveredAll = ((Number) cov.get("uncovered_all")).longValue();
+        long covCensus = ((Number) cov.get("census")).longValue();
+        // V724: before any fresher is on the register nobody is held yet, but a programme without a fee line will hold its cohort the
+        // day they arrive — a warning, not "ok"; a programme with freshers and no fee line is "bad"
+        String covStatus = covUncovered > 0 ? "bad" : covProgrammes == 0 && covUncoveredAll > 0 ? "warn" : "ok";
+        checks.add(chk(INTAKE, "intake_fee_schedule", "School fees stated for the intake", covStatus,
+                covProgrammes == 0
+                        ? "No UTME or Direct Entry fresher of " + in + " is on the register yet; "
+                                + (covUncoveredAll == 0 ? "every undergraduate programme has a fee line for its fresh entrants"
+                                        : covUncoveredAll + " of " + covCensus + " undergraduate programme" + (covCensus == 1 ? " has" : "s have") + " none yet")
+                        : covUncovered == 0
+                        ? "Every programme with admitted freshers (" + covProgrammes + ") has a school fee stated for " + in
+                        : covUncovered + " of " + covProgrammes + " programme" + (covProgrammes == 1 ? "" : "s") + " with admitted freshers "
+                                + (covUncovered == 1 ? "has" : "have") + " no school fee stated for " + in + " ("
+                                + String.format(java.util.Locale.ENGLISH, "%,d", covFreshers) + " fresher" + (covFreshers == 1 ? "" : "s")
+                                + "): they read \"school fees not yet available\" and the student portal's fee gate holds them",
+                "/finance/fees?session=" + in));
+
         // ── the running session ──
         String sesState = jdbc.sql("SELECT state FROM policy.academic_session WHERE name=:s").param("s", s).query(String.class).optional().orElse(null);
         checks.add(chk(RUNNING, "session", "Session on the calendar", sesState == null ? "bad" : "CURRENT".equals(sesState) ? "ok" : "warn",

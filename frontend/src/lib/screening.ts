@@ -9,8 +9,63 @@ export function stepHref(href: string | null | undefined): string {
   const h = href ?? "/applicant/admission";
   return /^\/student(\/|$)/.test(h) ? `/applicant/to-student?next=${encodeURIComponent(h)}` : h;
 }
+/** admissions.admission_status: `status` is one of the lifecycle's words — since V724 among them ACCEPTANCE_BALANCE_PENDING (the
+ *  acceptance fee revised after part of it was paid: the balance is paid on the Accept page, /applicant/accept, before the letter, the
+ *  school fees and the student portal) and the school-fee statuses of SCHOOL_FEE_STATUSES */
 export interface AdmissionStatus { status: string; label: string; next_action: string | null; next_href: string | null; detail: string | null }
-export interface Entitlement { paid: boolean; reference: string | null; confirmed_at: string | null; amount: number | null; checking_paid?: boolean; checking_reference?: string | null; checking_confirmed_at?: string | null; checking_amount?: number | null }
+/** V724: the acceptance fee's balance owed after a revision of the fee (admissions.admission_status) */
+export const ACCEPTANCE_BALANCE_PENDING = "ACCEPTANCE_BALANCE_PENDING";
+/** the acceptance as admissions.acceptance_entitlement reads it: `paid` is any confirmed ACCEPTANCE reference (the place is held);
+ *  since V724 the fee as stated now, the total confirmed, the balance owed after a revision of the fee, and `settled` — paid with
+ *  nothing outstanding, which the admission letter waits for — with the reference still open for the balance, if any */
+export interface Entitlement {
+  paid: boolean; reference: string | null; confirmed_at: string | null; amount: number | null; checking_paid?: boolean; checking_reference?: string | null; checking_confirmed_at?: string | null; checking_amount?: number | null;
+  fee_due?: number | string | null; paid_total?: number | string | null; balance?: number | string | null; settled?: boolean; payments?: number | null; balance_due?: boolean | null;
+  open_reference?: string | null; open_amount?: number | string | null; open_expires_at?: string | null;
+}
+/** V724: the acceptance figures as numbers — the fee stated now, what is confirmed, the balance — from the entitlement alone, never typed;
+ *  an entitlement from before V724 (no balance) reads as settled once paid */
+export function acceptanceFigures(e: Entitlement | null | undefined): { paid: boolean; feeDue: number; paidTotal: number; balance: number; settled: boolean; partPaid: boolean } {
+  const paid = !!e?.paid;
+  const paidTotal = e?.paid_total != null ? Number(e.paid_total) : paid && e?.amount != null ? Number(e.amount) : 0;
+  const balance = e?.balance != null ? Math.max(0, Number(e.balance)) : 0;
+  const feeDue = e?.fee_due != null ? Number(e.fee_due) : paidTotal + balance;
+  const settled = e?.settled != null ? !!e.settled : paid && balance === 0;
+  // part paid as the database reads it (balance_due): a payment through a reference short of the fee as stated now — never an acceptance confirmed by hand
+  const partPaid = e?.balance_due != null ? !!e.balance_due : paid && Number(e?.payments ?? 0) > 0 && balance > 0;
+  return { paid, feeDue, paidTotal, balance, settled, partPaid };
+}
+/** V724: the admitted applicant's school fees before the student portal opens, GET /api/v1/applicant/me/school-fees: the state
+ *  finance.school_fee_state reads for the application's session, the figures, the window, the open reference, and where the
+ *  student portal's fee gate leaves them (finance.portal_access_state). Off the register: {onRegister:false, session, state:'REGISTER_PENDING'}. */
+export type SchoolFeeState = "REGISTER_PENDING" | "NOT_CONFIGURED" | "PAID" | "PAYMENT_PENDING" | "NOT_OPEN" | "PART_PAID" | "AVAILABLE";
+/** finance.portal_access_state: HELD_ACCEPTANCE_BALANCE (V724) — the acceptance fee's balance comes before the school fees */
+export type PortalAccessState = "OPEN" | "EXCEPTION" | "HELD_ACCEPTANCE_BALANCE" | "CLEARED" | "HELD_FEES_NOT_AVAILABLE" | "HELD_FEES_UNPAID";
+export interface SchoolFees {
+  onRegister: boolean; session: string; state: SchoolFeeState; admissionNo?: string | null;
+  due?: number | string | null; dueFirstSemester?: number | string | null; paid?: number | string | null; balance?: number | string | null;
+  paidInFull?: boolean; firstSemesterCleared?: boolean; instalmentsPaid?: number | null;
+  windowState?: string | null; opensAt?: string | null; openReference?: string | null; openAmount?: number | string | null; openExpiresAt?: string | null; unstatedSemesters?: number[] | null;
+  gate?: { enabled: boolean; clearsOn: "FIRST_SEMESTER" | "PAID_IN_FULL" | string; fromSession?: string | null } | null; portalState?: PortalAccessState | null;
+  /** V724: the acceptance fee's balance the student still owes (admissions.acceptance_balance_of_student; 0 when none), and whether one
+   *  is owed — while it is, the school fees wait for it and nothing of them is offered for payment */
+  acceptanceBalance?: number | string | null; acceptanceBalanceDue?: boolean | null;
+}
+/** V724: what the applicant may pay now, as the student fees page offers it — the first semester (the first semester's cumulative due
+ *  less what is paid, while that is positive and less than the balance) and the whole balance; never a figure typed freely */
+export function schoolFeeChoices(f: SchoolFees): { key: "first" | "full"; label: string; amount: number }[] {
+  const balance = Math.max(0, Number(f.balance ?? 0));
+  if (balance <= 0) return [];
+  const first = Math.max(0, Number(f.dueFirstSemester ?? 0) - Number(f.paid ?? 0));
+  if (first > 0 && first < balance) {
+    return [{ key: "first", label: "First semester", amount: first }, { key: "full", label: "Full session · both semesters", amount: balance }];
+  }
+  return [{ key: "full", label: first > 0 ? "First semester" : "Balance of the session", amount: balance }];
+}
+/** V724: what clears the student portal's fee gate, in words — the first semester's fees (the University's choice) or the session's */
+export const gateClearsWord = (clearsOn: string | null | undefined) => (clearsOn === "PAID_IN_FULL" ? "the session's fees are" : "the first semester's fees are");
+/** V724: the statuses of an accepted applicant whose school fees are read on their own dashboard, and the register before them */
+export const SCHOOL_FEE_STATUSES = ["REGISTER_PENDING", "SCHOOL_FEES_NOT_AVAILABLE", "SCHOOL_FEES_NOT_OPEN", "SCHOOL_FEES_PENDING", "SCHOOL_FEES_PART_PAID", "COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING", "MATRICULATED"];
 export interface Offer {
   application_no: string; session: string; decision: string | null; decision_released_at: string | null; decision_basis: string | null; accepted_at: string | null; undertaking_at: string | null; acceptance_confirmed_at: string | null; cleared_at: string | null;
   surname: string; other_names: string; jamb_reg_no: string; programme: string; entry_mode: string; entry_level: number; programme_code: string | null; degree_type: string | null; faculty: string | null; department: string | null;

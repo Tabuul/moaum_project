@@ -67,12 +67,14 @@ public class ApplicantService {
 
     private final String portalUrl;
     private final ng.edu.moaum.portal.shared.Throttle throttle;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;   // V724: the acceptance entitlement, read as the database states it
 
     ApplicantService(ApplicantRepository repo, TokenIssuer issuer, PlatformTransactionManager transactions, ApplicationWindows windows,
                      @org.springframework.beans.factory.annotation.Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl,
-                     ng.edu.moaum.portal.shared.Throttle throttle) {
+                     ng.edu.moaum.portal.shared.Throttle throttle, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.repo = repo;
         this.throttle = throttle;
+        this.jdbc = jdbc;
         this.issuer = issuer;
         this.tx = new TransactionTemplate(transactions);
         this.windows = windows;
@@ -471,6 +473,24 @@ public class ApplicantService {
         }
         v.put("fees", feeMap);
         v.put("feeReferences", repo.feeReferences(applicationId));
+        /* V724: the acceptance fee as stated now, what is confirmed and the balance — a fee revised after a part payment (₦25,000 paid
+           against ₦35,000) leaves a balance the applicant pays on a reference of its own, never the whole fee again; the letter waits
+           for it. "settled" is paid with nothing owed; the open reference is the one still payable (admissions.acceptance_entitlement).
+           balanceDue is the one "part paid" truth: a payment made through a reference short of the fee as stated now (UTME and Direct
+           Entry; a CCE or preliminary acceptance paid once, or one confirmed by hand, owes nothing). */
+        Map<String, Object> ent = jdbc.sql("SELECT fee_due, paid_total, balance, settled, payments, balance_due, open_reference, open_amount, open_expires_at FROM admissions.acceptance_entitlement(:a)")
+                .param("a", applicationId).query().listOfRows().stream().findFirst().orElse(Map.of());
+        Map<String, Object> acceptance = new LinkedHashMap<>();
+        acceptance.put("feeDue", ent.get("fee_due"));
+        acceptance.put("paidTotal", ent.get("paid_total"));
+        acceptance.put("balance", ent.get("balance"));
+        acceptance.put("settled", ent.get("settled"));
+        acceptance.put("payments", ent.get("payments"));
+        acceptance.put("balanceDue", ent.get("balance_due"));
+        acceptance.put("openReference", ent.get("open_reference"));
+        acceptance.put("openAmount", ent.get("open_amount"));
+        acceptance.put("openExpiresAt", ent.get("open_expires_at"));
+        v.put("acceptance", acceptance);
         v.put("feeConfirmedAt", a.get("fee_confirmed_at"));
         v.put("documents", repo.documents(applicationId));
         v.put("jambPassport", repo.jambPassport(session, key).orElse(null));

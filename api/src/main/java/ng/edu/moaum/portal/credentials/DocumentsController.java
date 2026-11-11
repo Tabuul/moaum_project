@@ -169,7 +169,8 @@ class DocumentsController {
         return Map.of("ok", true);
     }
 
-    /** the student's own document, statement and all, for the portal's PDF; the download is logged */
+    /** the student's own document, statement and all, for the portal's PDF; the download is logged — V724: an admission letter is
+     *  refused with ACCEPTANCE_BALANCE_DUE while a balance of the acceptance fee stands */
     @GetMapping("/api/v1/me/documents/{id}")
     @PreAuthorize(STUDENT)
     @Transactional
@@ -177,8 +178,26 @@ class DocumentsController {
         UUID me = student(auth);
         Map<String, Object> d = document(id);
         if (!me.equals(d.get("student_id"))) throw new NotFound("document", id);
+        letterAwaitsAcceptanceBalance(id, me);
         if (download) jdbc.sql("SELECT credentials.record_download(:i, :a, 'STUDENT', :ip, :ua)").param("i", id).param("a", me).param("ip", ip(req), Types.VARCHAR).param("ua", agent(req), Types.VARCHAR).query().listOfRows();
         return d;
+    }
+
+    /** V724: an admission letter issued before the acceptance fee was revised is not opened, nor a link to it made, while the balance
+     *  of the fee as stated now stands — admissions.acceptance_entitlement(the letter's application).balance_due, the one "part paid"
+     *  truth (UTME and Direct Entry; a CCE or preliminary acceptance paid once, or one confirmed by hand, owes nothing), as
+     *  admissions.issue_admission_letter refuses a new one. The library still lists it; only the student's own document is read. */
+    private void letterAwaitsAcceptanceBalance(UUID id, UUID me) {
+        jdbc.sql("""
+                SELECT e.balance
+                  FROM credentials.issued i
+                  CROSS JOIN LATERAL admissions.acceptance_entitlement(i.application_id) e
+                 WHERE i.id = :i AND i.student_id = :s AND i.kind = 'ADMISSION_LETTER' AND i.application_id IS NOT NULL AND e.balance_due
+                """).param("i", id).param("s", me).query(BigDecimal.class).optional().ifPresent(balance -> {
+                    throw new DomainRuleViolation("ACCEPTANCE_BALANCE_DUE",
+                            "The admission letter is issued once the acceptance fee is paid in full; ₦" + new java.text.DecimalFormat("#,##0.##").format(balance) + " remains.",
+                            new DomainRuleViolation.Remedy("Pay the acceptance fee balance from your applicant dashboard.", "Bursary"));
+                });
     }
 
     private Map<String, Object> document(UUID id) {
@@ -197,6 +216,7 @@ class DocumentsController {
     @PreAuthorize(STUDENT)
     @Transactional
     Map<String, Object> myLink(Authentication auth, @PathVariable UUID id, @RequestBody(required = false) LinkIn body) {
+        letterAwaitsAcceptanceBalance(id, student(auth));   // V724: no link to an admission letter while the acceptance fee balance stands
         String t = jdbc.sql("SELECT credentials.new_download_token(:i, :s, :d)").param("i", id).param("s", student(auth)).param("d", body == null || body.days() == null ? 7 : body.days(), Types.INTEGER).query(String.class).single();
         return Map.of("token", t, "path", "/documents/d/" + t);
     }

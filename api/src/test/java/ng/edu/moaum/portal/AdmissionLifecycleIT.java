@@ -59,10 +59,27 @@ class AdmissionLifecycleIT {
     final String bursar = ItSupport.token("bursar");
     final String housing = ItSupport.token("housing");
 
+    /** V724: the student portal's fee gate as found, put back after the test (the test sets it for its own session) */
+    Map<String, Object> gateBefore;
+
+    void gateOnFor(String session) {
+        gateBefore = jdbc.sql("SELECT enabled, from_session, clears_on FROM finance.portal_fee_gate WHERE id = 1").query().singleRow();
+        it.db(() -> jdbc.sql("UPDATE finance.portal_fee_gate SET enabled = true, from_session = :s, clears_on = 'FIRST_SEMESTER', reason = 'test: on for its own session' WHERE id = 1")
+                .param("s", session).update());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void putTheGateBack() {
+        if (gateBefore == null) return;
+        it.db(() -> jdbc.sql("UPDATE finance.portal_fee_gate SET enabled = :e, from_session = :f, clears_on = :c, reason = 'test: put back as found' WHERE id = 1")
+                .param("e", gateBefore.get("enabled")).param("f", gateBefore.get("from_session")).param("c", gateBefore.get("clears_on")).update());
+    }
+
     @BeforeEach
     void setUp() {
         it = new ItSupport(port, jdbc, transactions);
         it.session(SESSION, 2084);
+        gateOnFor(SESSION);
         // V295: the applicants check their status while the Director of ICT has Admission Status Checking open
         it.openChecking(SESSION);
         it.db(() -> {
@@ -167,6 +184,13 @@ class AdmissionLifecycleIT {
     void upload(Applicant a, String kind) {
         ResponseEntity<Map> r = it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/documents", Map.of("kind", kind, "filename", kind.toLowerCase() + ".pdf", "contentType", "application/pdf", "contentBase64", PDF));
         assertThat(r.getStatusCode().value()).as(kind + ": " + r.getBody()).isEqualTo(200);
+    }
+
+    /** V724: the Bursary lets a fresh admit through the student portal's fee gate for a month, by its own decision */
+    void letThrough(UUID student) {
+        ResponseEntity<Map> e = it.call(bursar, HttpMethod.POST, "/api/v1/finance/portal-gate/exceptions", Map.of("studentId", student, "basis", "BURSARY_DECISION",
+                "reason", "AdmissionLifecycleIT: no fee is stated for the test session", "expiresAt", java.time.OffsetDateTime.now().plusDays(30).toString()));
+        assertThat(e.getStatusCode().value()).as(String.valueOf(e.getBody())).isEqualTo(200);
     }
 
     UUID intake(Applicant a) {
@@ -308,6 +332,12 @@ class AdmissionLifecycleIT {
         assertThat(pubForms.getStatusCode().value()).isEqualTo(200);
         assertThat(String.valueOf(pubForms.getBody())).contains("SCREENING_FORMS").contains(a.surname());
         assertThat(jdbc.sql("SELECT admissions.screening_ok_student(:s)").param("s", sa).query(Boolean.class).single()).isTrue();
+        // V724: on the register, but no school fee is stated for the test session — the student portal waits for the fees (the fee gate);
+        // the Bursary lets this student through by a decision of its own, as it may, for the journey to continue past the portal's door
+        ResponseEntity<Map> heldA = it.call(a.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
+        assertThat(heldA.getStatusCode().value()).isEqualTo(422);
+        assertThat(heldA.getBody().get("code")).isEqualTo("STUDENT_PORTAL_FEES_NOT_AVAILABLE");
+        letThrough(sa);
         // the applicant continues into the student portal as the student they have become: the same person, no second password (V278)
         ResponseEntity<Map> crossed = it.call(a.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
         assertThat(crossed.getStatusCode().value()).as(String.valueOf(crossed.getBody())).isEqualTo(200);
@@ -342,13 +372,16 @@ class AdmissionLifecycleIT {
         // the student's sign-in is the JAMB number until the matriculation number is issued; the password is the applicant's own
         assertThat(asStudent.get("jambRegNo")).isEqualTo(a.jamb());
         assertThat(asStudent.get("loginId")).isEqualTo(a.jamb());
-        assertThat(String.valueOf(asStudent.get("lifecycle"))).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        assertThat(String.valueOf(asStudent.get("lifecycle"))).isIn("SCHOOL_FEES_PENDING", "SCHOOL_FEES_NOT_AVAILABLE", "COURSE_REGISTRATION_PENDING");
         ResponseEntity<Map> byJamb = it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", a.jamb(), "password", "x"));
         assertThat(byJamb.getStatusCode().value()).as(String.valueOf(byJamb.getBody())).isEqualTo(200);
         // the tracker runs to the end of the journey
         assertThat(String.valueOf(admission(a).get("tracker"))).contains("\"key\": \"STUDENT_ACCOUNT\"").contains("\"key\": \"USERNAME\"");
-        // no fee schedule is stated for the test session, so the fees read as settled and the status moves straight on
-        assertThat(admission(a).get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        // no fee schedule is stated for the test session, never read as "settled"; this student was let through by the Bursary, and the
+        // status says so (V724) — the fees are still to pay
+        Map<String, Object> afterThrough = admission(a);
+        assertThat(afterThrough.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        if ("SCHOOL_FEES_PENDING".equals(afterThrough.get("status"))) assertThat(afterThrough.get("label")).isEqualTo("Student portal opened by the Bursary");
         assertThat(it.db(() -> { try { jdbc.sql("SELECT finance.new_reference(:s, :ses, 1000, 'test')").param("s", sa).param("ses", SESSION).query(String.class).single(); return "opened"; } catch (org.springframework.dao.DataAccessException e) { return e.getMostSpecificCause().getMessage(); } })).doesNotContain("SCHOOL FEES UNAVAILABLE");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE '%successfully screened%'").param("a", a.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);
         // V287 · a planned semester takes no registration until the calendar opens it — or dates the early window for the session's fresh students
@@ -367,7 +400,7 @@ class AdmissionLifecycleIT {
         // 16–18 · registration opens (the gate lets the insert through), the readiness reads it, the matriculation candidates no longer name the screening
         it.db(() -> jdbc.sql("INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (gen_random_uuid(), :s, :ses, 1, 100, 'APPROVED', now()) ON CONFLICT (student_id, session, semester) DO UPDATE SET status = 'APPROVED', approved_at = now()").param("s", sa).param("ses", SESSION).update());
         // registered; the fees stay pending until the Bursary states the session's schedule (V271: nothing due is not "paid")
-        assertThat(admission(a).get("status")).isIn("MATRICULATION_PENDING", "SCHOOL_FEES_PENDING");
+        assertThat(admission(a).get("status")).isIn("MATRICULATION_PENDING", "SCHOOL_FEES_PENDING", "SCHOOL_FEES_NOT_AVAILABLE");
         assertThat(jdbc.sql("SELECT reason FROM people.matric_candidates(:s, 'SC') x WHERE x.student_id = :id").param("s", SESSION).param("id", sa).query().singleRow().get("reason")).isNull();
 
         // 13–17 · PATH B: unsuccessful with the reason → alternatives → change requested after the Board's decision → approved → no second acceptance fee
@@ -402,13 +435,14 @@ class AdmissionLifecycleIT {
         assertThat(jdbc.sql("SELECT count(*) FROM admissions.fee_reference WHERE application_id = :a AND kind = 'ACCEPTANCE'").param("a", b.app()).query(Long.class).single()).isEqualTo(1);   // 13/33
         assertThat(jdbc.sql("SELECT admissions.screening_ok_student(:s)").param("s", sb).query(Boolean.class).single()).isTrue();
         bst = admission(b);
-        assertThat(bst.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        assertThat(bst.get("status")).isIn("SCHOOL_FEES_PENDING", "SCHOOL_FEES_NOT_AVAILABLE", "COURSE_REGISTRATION_PENDING");   // V724: none stated
         assertThat(m(bst.get("offer")).get("changed_to")).isEqualTo("B.Sc. ACCOUNTING");
         // an applicant account still on its first-login sentinel (V178) crosses too, from the applicant's own session: the student account
         // opens on a password nobody knows, to be chosen at once — the sentinel is not a hash and the account table refuses it (this stopped
         // real applicants). The JAMB number — the number the student signs in with before a matriculation number — opens it while
         // the password is still to be chosen (the first password, V178; V428's refusal holds once one is).
         it.db(() -> jdbc.sql("UPDATE admissions.applicant_account SET password_hash = 'SET_ON_FIRST_LOGIN' WHERE id = :id").param("id", b.account()).update());
+        letThrough(jdbc.sql("SELECT id FROM people.student WHERE candidate_id = :c").param("c", b.candidate()).query(UUID.class).single());   // V724, as for A
         ResponseEntity<Map> crossedB = it.call(b.token(), HttpMethod.POST, "/api/v1/student-auth/continue", Map.of());
         assertThat(crossedB.getStatusCode().value()).as(String.valueOf(crossedB.getBody())).isEqualTo(200);
         assertThat(crossedB.getBody().get("mustChange")).isEqualTo(true);
@@ -458,7 +492,7 @@ class AdmissionLifecycleIT {
         Map<String, Object> cforms = it.get(cc.token(), "/api/v1/applicant/me/screening/forms").getBody();
         assertThat(String.valueOf(cforms.get("statement"))).contains("ACCOUNTING");
         Map<String, Object> cst = admission(cc);
-        assertThat(cst.get("status")).isIn("SCHOOL_FEES_PENDING", "COURSE_REGISTRATION_PENDING");
+        assertThat(cst.get("status")).isIn("SCHOOL_FEES_PENDING", "SCHOOL_FEES_NOT_AVAILABLE", "COURSE_REGISTRATION_PENDING");   // V724: none stated
         assertThat(m(cst.get("entitlement")).get("paid")).isEqualTo(true);
         assertThat(it.call(cc.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getStatusCode().value()).isEqualTo(422);
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'application' AND about_id = :a AND subject ILIKE 'Programme change approved%'").param("a", cc.app()).query(Long.class).single()).isGreaterThanOrEqualTo(1);

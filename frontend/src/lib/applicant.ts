@@ -109,6 +109,10 @@ export interface Application {
   notices: Notice[];
   undertakingAt: string | null;
   acceptanceConfirmedAt: string | null;
+  /** V724: the acceptance fee as admissions.acceptance_entitlement reads it — the fee stated now, the total confirmed, the balance,
+   *  whether it is settled, balanceDue (the one "part paid" truth: a payment made through a reference short of the fee as stated now,
+   *  UTME and Direct Entry alone — what the admission letter and the student portal wait for), and the reference open for the balance */
+  acceptance?: { feeDue: number | string | null; paidTotal: number | string | null; balance: number | string | null; settled: boolean; payments: number | null; balanceDue?: boolean | null; openReference: string | null; openAmount: number | string | null; openExpiresAt: string | null } | null;
   acceptedAt: string | null;
   declinedAt: string | null;
   clearance: ClearanceItem[];
@@ -184,6 +188,33 @@ export function openReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE"
 
 export function confirmedReference(a: Application, kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"): FeeReference | null {
   return a.feeReferences.find((r) => r.kind === kind && r.confirmedAt) ?? null;
+}
+
+/** every confirmed reference for a fee, oldest first: an acceptance fee revised after part of it was paid has two (V724) */
+export function confirmedReferences(a: Application, kind: "APPLICATION" | "ACCEPTANCE" | "CHECKING"): FeeReference[] {
+  return a.feeReferences.filter((r) => r.kind === kind && r.confirmedAt).sort((x, y) => String(x.confirmedAt).localeCompare(String(y.confirmedAt)));
+}
+
+/** V724: the acceptance fee's figures from the record — the API's `acceptance` (admissions.acceptance_entitlement) where it is
+ *  given, else the stated fee against the confirmed references; never a figure typed on a screen. `settled` is what the admission
+ *  letter waits for: paid, with no balance outstanding after a revision of the fee. */
+export function acceptanceOf(a: Application): { paid: boolean; feeDue: number; paidTotal: number; balance: number; settled: boolean; partPaid: boolean; openReference: string | null; openAmount: number | null; openExpiresAt: string | null } {
+  const confirmed = confirmedReferences(a, "ACCEPTANCE");
+  const paid = !!a.acceptanceConfirmedAt || confirmed.length > 0;
+  if (a.acceptance) {
+    const c = a.acceptance;
+    const balance = Math.max(0, Number(c.balance ?? 0));
+    const paidTotal = Number(c.paidTotal ?? 0);
+    return { paid, feeDue: c.feeDue != null ? Number(c.feeDue) : paidTotal + balance, paidTotal, balance, settled: paid && (c.settled ?? balance === 0),
+      // V724: part paid as the database reads it — a payment made through a reference, short of the fee as stated now (never an acceptance confirmed by hand)
+      partPaid: c.balanceDue != null ? !!c.balanceDue : paid && Number(c.payments ?? 0) > 0 && balance > 0,
+      openReference: c.openReference ?? null, openAmount: c.openAmount != null ? Number(c.openAmount) : null, openExpiresAt: c.openExpiresAt ?? null };
+  }
+  const paidTotal = confirmed.reduce((s, r) => s + Number(r.amount), 0);
+  const feeDue = paid ? Math.max(Number(a.fees.acceptanceFee), paidTotal) : Number(a.fees.acceptanceFee);
+  const balance = Math.max(0, feeDue - paidTotal);
+  const open = openReference(a, "ACCEPTANCE");
+  return { paid, feeDue, paidTotal, balance, settled: paid && balance === 0, partPaid: paid && confirmed.length > 0 && balance > 0, openReference: open?.reference ?? null, openAmount: open ? Number(open.amount) : null, openExpiresAt: open?.expiresAt ?? null };
 }
 
 /** DD-MM-YYYY, or whatever JAMB sent, shown as a date where it can be read as one — day first (V717: readDate) */
