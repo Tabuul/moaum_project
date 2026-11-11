@@ -180,7 +180,7 @@ export function CceApplication({ id, powers }: { id: string; powers: Powers }) {
   }
   async function view(doc: DeskDoc) {
     const res = await fetch(`/api/bff/api/v1/cce/applications/${id}/documents/${doc.id}`);
-    if (!res.ok) { notifyProblem({ status: res.status, title: "The document could not be opened" }); return; }
+    if (!res.ok) { const refusalBody = await res.json().catch(() => null); notifyProblem(refusalBody && typeof refusalBody === "object" && "status" in refusalBody ? refusalBody : { status: res.status, title: "The document could not be opened" }); return; }
     setViewing({ doc, url: URL.createObjectURL(await res.blob()) });
   }
 

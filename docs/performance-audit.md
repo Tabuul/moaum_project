@@ -737,24 +737,41 @@ staff sign-ins), local PostgreSQL 18, cold then warm:
 ### What stopped it, named on the answer and kept for ICT (11 November 2026, after V722)
 
 - The answer to SQLSTATE 57014 used to say, for every stopped statement, "This took longer than the portal allows a screen to
-  read" — also for the intake, a write the portal never limits. `ProblemHandler` now reads the database's own words and the
-  request's transaction (`AttributedTransactionManager` notes on the request whether it began a READ or a WRITE, and the read
-  limit it placed) and answers with the cause: `PORTAL_READ_LIMIT` (a screen's read cut at `moaum.db.request-read-timeout-ms`),
-  `DATABASE_STATEMENT_TIMEOUT` (a statement timeout the portal did not set: the server's configuration, the database, the role
-  or the connection's options), `CANCEL_REQUEST` (`pg_cancel_backend` or a client's query timeout), `RECOVERY_CONFLICT`, or
-  `OTHER`. The code stays `QUERY_TOO_LONG` for a time limit and is `QUERY_CANCELLED` otherwise; the title and detail say which,
-  with how long the request had run (`CorrelationIdFilter` notes its arrival). The error toast no longer reads a 503 carrying
-  either code as "The portal could not reach the server … nothing was saved": the server answered, and its words are shown.
-- Each stopped statement is logged once at WARN (cause, the database's words, the transaction, the read limit, how long the
-  request had run, the method and route pattern, the acting office, the reference) and kept in memory, the last fifty since the
-  API started (`QueryCancellations`): the route pattern, never the address, which can carry a student's id.
+  read" — also for the intake, a write the portal never limits. It now names the cause from the database's own words and the
+  portal's limit that was on the failing statement: `PORTAL_READ_LIMIT` (a screen's read cut at
+  `moaum.db.request-read-timeout-ms`), `PAYDIRECT_DOOR_LIMIT` (the PAYDirect door's own pool, whose connections carry
+  `moaum.paydirect.statement-timeout-ms`), `DATABASE_STATEMENT_TIMEOUT` (a statement timeout other than the portal's own: the
+  server's configuration, the database, the role, every role, or the connection's options), `CANCEL_REQUEST`
+  (`pg_cancel_backend`, or a client's query timeout) or `OTHER`. The code stays `QUERY_TOO_LONG` for a time limit and is
+  `QUERY_CANCELLED` otherwise; the title and detail say which, with how long the request had run.
+- The portal's limit is noted where the statement failed, not read afterwards from the request: `StoppedStatement.Translator`
+  sits on the portal's JdbcTemplate (behind the JdbcClient every module injects; PlatformConfig) and on the PAYDirect door's,
+  and turns each 57014 into a `StoppedStatement` carrying the transaction it ran in and the limit on it. A statement that ran on
+  a pool thread (FigureCache, FinanceSummaryCache, ReadinessSnapshot) had no portal limit on its connection, whatever the
+  request's own transaction was; an outer transaction's statement after an inner one ended is judged by its own transaction. The
+  request's note of its latest transaction (`AttributedTransactionManager`) is the fallback for a statement that did not pass
+  the portal's JdbcTemplate.
+- The error toast no longer reads a 503 carrying either code as "The portal could not reach the server … nothing was saved":
+  the server answered, and its words are shown. Seven screens that threw the answer away and passed the status alone now pass
+  the answer (Lifecycle, Lifecycle history, Above final, Level corrections, Level fee effect, CCE applications, Old fees uploads).
+- Each stopped statement is logged once at WARN (cause, the database's words, the transaction, the limit, how long the request
+  had run, the method and route pattern, the office the request acted as, the reference) and kept in memory: the last fifty
+  stopped on a request this API instance answered, since it started (`QueryCancellations`: the route pattern, never the address,
+  which can carry a student's id). Each instance keeps its own list and a redeploy empties it; a scheduled job's or background
+  work's stopped statements are in the server's logs alone. Only statement timeouts and cancels (57014) are listed: a lock wait
+  (55P03) is answered as a refusal, and a transaction or idle limit closes the connection.
 - `GET /api/v1/platform/database-limits` (ICT, admin, super) reads, on a connection outside any transaction so the portal's own
-  read limit is not mistaken for the database's: `statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`,
-  `transaction_timeout` and `idle_session_timeout` from `pg_settings` with their source; the defaults stated on the database
-  and the role (`pg_db_role_setting`, the time limits alone); the portal's own limits (the read limit, a transaction or query
-  timeout if one was configured, the connection's `options` alone, never the rest of the address); a sentence that says whether
-  the database stops the portal's statements, after how long and set where; and the stopped statements, newest first. ICT's
-  Slow statements page (`/platform/slow-statements`) shows it above the statements, as "Time limits and stopped statements".
+  read limit is not taken for the database's: `statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`,
+  `transaction_timeout` and `idle_session_timeout` from `pg_settings` with their source; the defaults stated on the database,
+  the role and every role (`pg_db_role_setting`, the time limits alone); the portal's own limits (the read limit, a transaction
+  or query timeout if one is configured, the PAYDirect door's statement and lock limits, the connection's `options` alone, never
+  the rest of the address); sentences saying whether the database stops the portal's statements, after how long and set where,
+  that a screen's read runs under the portal's own limit instead (its `set_config` replaces the database's for that read), what
+  limits a write, and any other limit the database places on the portal's transactions and connections; and the stopped
+  statements, newest first, with the database's own words. ICT's Slow statements page (`/platform/slow-statements`) shows it
+  above the statements as "Time limits and stopped statements".
 - Tested for real in `StatementStoppedIT` with a 1.5 s read limit: a screen's read waits on a table the test holds locked and is
   cut at the limit; the intake waits on the session's intake lock (V722) the test holds and is stopped by `pg_cancel_backend`;
-  ICT reads both by their routes. `StatementStoppedTest` covers the wording, the fifty kept and the read-out's sentences.
+  ICT reads both by their routes; every wait is bounded and every lock released on every path. `StatementStoppedTest` covers the
+  translator on a request's thread, a pool thread, a write, outside a transaction and on the door's pool; the answer per cause;
+  the office from the audit context; the fifty kept; the read-out's sentences.

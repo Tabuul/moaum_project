@@ -85,7 +85,7 @@ export function OldFeesUploads({ office, tick: changed = 0, onChanged }: { offic
       const all: Row[] = [];
       for (let off = 0; off < u.row_count; off += 5000) {
         const r = await fetch(`${API}/${u.id}/rows?offset=${off}&limit=5000`, { cache: "no-store" });
-        if (!r.ok) { notifyProblem({ status: r.status, title: "The rows could not be read" }); return; }
+        if (!r.ok) { const refusalBody = await r.json().catch(() => null); notifyProblem(refusalBody && typeof refusalBody === "object" && "status" in refusalBody ? refusalBody : { status: r.status, title: "The rows could not be read" }); return; }
         all.push(...((await r.json()) as { rows: Row[] }).rows);
       }
       const blob = await brandedXlsx(`Old fees upload ${u.ref}`, ["Matriculation Number", "Session", "Semester", "Level", "Amount Paid", "Purpose / Payment Item", "Paid On", "Payment number", "Channel", "Note"],

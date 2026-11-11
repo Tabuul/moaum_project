@@ -145,7 +145,7 @@ class ProblemHandler {
             return problem;
         }
         if ("57014".equals(state)) {
-            return stopped(message, request);
+            return stopped(message, request, e);
         }
         if ("23505".equals(state) || "23503".equals(state)) {
             ProblemDetail problem = problem(HttpStatus.CONFLICT, message, request);
@@ -187,19 +187,36 @@ class ProblemHandler {
 
     /**
      * SQLSTATE 57014: the database stopped a statement before it finished. Oct 2026 answered every one as the portal's read limit;
-     * since 11 November 2026 the answer names what stopped it — the portal's limit on a screen's read, a statement timeout set
-     * outside the portal (on the server, the database, the role or the connection), or a cancel request — from the database's own
-     * words and the request's transaction (AttributedTransactionManager), logs it once at WARN with how long the request had run,
-     * and keeps it for ICT (QueryCancellations). The code stays QUERY_TOO_LONG for a time limit; a cancel is QUERY_CANCELLED.
+     * since 11 November 2026 the answer names what stopped it — the portal's limit on a screen's read, the PAYDirect door's own
+     * limit, a statement timeout set outside the portal (the server, the database, the role or the connection), or a cancel request
+     * — from the database's own words and the portal's limit noted on the failing statement where it failed (StoppedStatement; the
+     * request's note of its latest transaction only where the statement did not pass the portal's JdbcTemplate), logs it once at
+     * WARN with how long the request had run, and keeps it for ICT (QueryCancellations). The code stays QUERY_TOO_LONG for a time
+     * limit; a cancel is QUERY_CANCELLED.
      */
-    ProblemDetail stopped(String databaseSaid, HttpServletRequest request) {
-        String transaction = request.getAttribute(AttributedTransactionManager.TRANSACTION_ATTRIBUTE) instanceof String t ? t : null;
-        Long limit = request.getAttribute(AttributedTransactionManager.READ_LIMIT_ATTRIBUTE) instanceof Long l ? l : null;
-        QueryCancellations.Cause cause = QueryCancellations.cause(databaseSaid, transaction, limit);
+    ProblemDetail stopped(String databaseSaid, HttpServletRequest request, Throwable failure) {
+        StoppedStatement noted = StoppedStatement.in(failure);
+        String transaction;
+        Long limit;
+        StoppedStatement.Limit limitKind;
+        if (noted != null) {
+            transaction = noted.transaction();
+            limit = noted.portalLimitMs();
+            limitKind = noted.portalLimit();
+        } else {
+            transaction = request.getAttribute(AttributedTransactionManager.TRANSACTION_ATTRIBUTE) instanceof String t ? t : null;
+            limit = "READ".equals(transaction) && request.getAttribute(AttributedTransactionManager.READ_LIMIT_ATTRIBUTE) instanceof Long l ? l : null;
+            limitKind = limit == null ? null : StoppedStatement.Limit.SCREEN_READ;
+        }
+        QueryCancellations.Cause cause = QueryCancellations.cause(databaseSaid, limitKind);
+        if (cause != QueryCancellations.Cause.PORTAL_READ_LIMIT && cause != QueryCancellations.Cause.PAYDIRECT_DOOR_LIMIT) {
+            limit = null;   // a limit the portal placed but which did not stop this statement is not shown as its cause
+        }
         Long ranFor = CorrelationIdFilter.ranForMs(request);
         String route = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) instanceof String p
                 ? p : "(no route)";
-        String office = request.getHeader(AuditContextFilter.ACTIVE_OFFICE_HEADER);
+        // the office the request acted as (AuditContextFilter's: the header checked against the token, else the token's first office)
+        String office = ng.edu.moaum.portal.shared.AuditContextHolder.current().map(ng.edu.moaum.portal.shared.AuditContext::actorOffice).orElse(null);
         String reference = CorrelationIdFilter.of(request).toString();
         String ran = ranFor == null ? "" : " after " + seconds(ranFor);
         String detail;
@@ -212,6 +229,12 @@ class ProblemHandler {
                         + " so other work is not kept waiting.";
                 remedy = "Narrow the list (a session, a faculty, a department) and try again; if it recurs, tell the Directorate of ICT which screen.";
             }
+            case PAYDIRECT_DOOR_LIMIT -> {
+                title = "The payment door stopped this: it ran too long";
+                detail = "This took longer than the portal allows the PAYDirect door one statement (" + seconds(limit) + "), and was stopped" + ran
+                        + ". The work it was doing when it was stopped was not saved.";
+                remedy = "The bank's system asks again; if it recurs, tell the Directorate of ICT — its Slow statements page lists what was stopped.";
+            }
             case DATABASE_STATEMENT_TIMEOUT -> {
                 title = "The database stopped this: it ran too long";
                 detail = "The database stopped this" + ran + ": it ran longer than the database allows one statement to run. "
@@ -220,7 +243,8 @@ class ProblemHandler {
             }
             case CANCEL_REQUEST -> {
                 title = "This was stopped before it finished";
-                detail = "A cancel request stopped this" + ran + " before it finished. The work it was doing when it was stopped was not saved.";
+                detail = "A cancel request stopped this" + (ranFor == null ? "" : " " + seconds(ranFor) + " in") + ", before it finished. "
+                        + "The work it was doing when it was stopped was not saved.";
                 remedy = "Try again; if it recurs, tell the Directorate of ICT which screen and when — its Slow statements page lists what was stopped.";
             }
             default -> {
@@ -232,11 +256,11 @@ class ProblemHandler {
         ProblemDetail problem = problem(HttpStatus.SERVICE_UNAVAILABLE, detail, request);
         problem.setTitle(title);
         problem.setProperty("code", cause == QueryCancellations.Cause.CANCEL_REQUEST || cause == QueryCancellations.Cause.OTHER
-                || cause == QueryCancellations.Cause.RECOVERY_CONFLICT ? "QUERY_CANCELLED" : "QUERY_TOO_LONG");
+                ? "QUERY_CANCELLED" : "QUERY_TOO_LONG");
         problem.setProperty("cause", cause.name());
         problem.setProperty("remedy", Map.of("message", remedy, "office", "Directorate of ICT"));
         log.warn("statement stopped: {} — the database said \"{}\"; {} transaction{}, {} ms into {} {}, office {}, reference {}",
-                cause, databaseSaid, transaction == null ? "no" : transaction, limit == null ? "" : " under the portal's " + limit + " ms read limit",
+                cause, databaseSaid, transaction == null ? "no" : transaction, limit == null ? "" : " under the portal's " + limit + " ms limit",
                 ranFor == null ? "?" : ranFor, request.getMethod(), route, office == null ? "-" : office, reference);
         cancellations.record(new QueryCancellations.Cancellation(java.time.Instant.now(), cause, transaction, limit, ranFor,
                 request.getMethod(), route, office, reference, databaseSaid));

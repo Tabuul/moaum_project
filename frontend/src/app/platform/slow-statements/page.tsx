@@ -22,7 +22,8 @@ export default async function SlowStatementsPage({ searchParams }: { searchParam
   const office = me.ok ? me.data.activeOffice : null;
   return (
     <Shell route="t/slowstatements" me={me.ok ? me.data : null}>
-      {limits.ok ? <DatabaseLimits d={limits.data} /> : <ProblemNotice problem={limits.problem} />}
+      {/* the slow-statements refusal is shown once below; an API not yet carrying the read-out (404) shows no panel */}
+      {limits.ok ? <DatabaseLimits d={limits.data} /> : data.ok && limits.problem.status !== 404 ? <ProblemNotice problem={limits.problem} /> : null}
       {data.ok ?<SlowStatements d={data.data} order={order} minCalls={minCalls} days={days} may={office === "ict" || office === "super"} /> : <ProblemNotice problem={data.problem} />}
     </Shell>
   );

@@ -41,16 +41,20 @@ class DatabaseLimitsController {
     private final ObjectProvider<JdbcTemplate> templates;
     private final DataSource dataSource;
     private final long readLimitMs;
+    private final long doorLimitMs;
 
     DatabaseLimitsController(JdbcClient jdbc, QueryCancellations cancellations, PlatformTransactionManager transactions,
                              ObjectProvider<JdbcTemplate> templates, DataSource dataSource,
-                             @Value("${moaum.db.request-read-timeout-ms:90000}") long readLimitMs) {
+                             @Value("${moaum.db.request-read-timeout-ms:90000}") long readLimitMs,
+                             @Value("${moaum.paydirect.statement-timeout-ms:8000}") long doorLimitMs) {
         this.jdbc = jdbc;
         this.cancellations = cancellations;
         this.transactions = transactions;
         this.templates = templates;
         this.dataSource = dataSource;
         this.readLimitMs = readLimitMs;
+        // as PayDirectLane places it on its pool's connections
+        this.doorLimitMs = Math.max(1000, doorLimitMs);
     }
 
     @GetMapping("/api/v1/platform/database-limits")
@@ -70,7 +74,8 @@ class DatabaseLimitsController {
         // the defaults stated on the database and on the role (ALTER DATABASE / ALTER ROLE … SET), the time limits alone
         try {
             out.put("defaults", jdbc.sql("""
-                    SELECT CASE WHEN s.setdatabase = 0 THEN 'role'
+                    SELECT CASE WHEN s.setdatabase = 0 AND s.setrole = 0 THEN 'all roles'
+                                WHEN s.setdatabase = 0 THEN 'role'
                                 WHEN s.setrole = 0 THEN 'database'
                                 ELSE 'role in database' END AS scope,
                            split_part(c, '=', 1) AS name, substr(c, length(split_part(c, '=', 1)) + 2) AS value
@@ -95,8 +100,10 @@ class DatabaseLimitsController {
         HikariDataSource hikari = hikari(dataSource);
         portal.put("connectionOptions", hikari == null ? null : options(hikari.getJdbcUrl(), hikari.getDataSourceProperties()));
         portal.put("poolSize", hikari == null ? null : hikari.getMaximumPoolSize());
+        portal.put("paydirectDoorLimitMs", doorLimitMs);
+        portal.put("paydirectDoorLockLimitMs", Math.max(500, doorLimitMs / 2));
         out.put("portal", portal);
-        out.put("reading", reading(settings, readLimitMs));
+        out.put("reading", reading(settings, readLimitMs, (Integer) portal.get("queryTimeoutSeconds"), (Integer) portal.get("transactionTimeoutSeconds"), doorLimitMs));
         // the statements stopped since the API started, newest first
         List<Map<String, Object>> stopped = new ArrayList<>();
         for (QueryCancellations.Cancellation c : cancellations.latest()) {
@@ -119,21 +126,58 @@ class DatabaseLimitsController {
         return out;
     }
 
-    /** the statement timeout in a sentence: whether the database stops the portal's statements, after how long, set where */
-    static String reading(List<Map<String, Object>> settings, long readLimitMs) {
-        Map<String, Object> st = settings.stream().filter(r -> "statement_timeout".equals(r.get("name"))).findFirst().orElse(null);
-        String portal = readLimitMs > 0
-                ? "The portal limits a screen's read to " + ProblemHandler.seconds(readLimitMs) + "; it places no limit on a write."
-                : "The portal places no limit of its own on a screen's read or a write.";
-        if (st == null) {
-            return portal;
+    /**
+     * The time limits in sentences: whether the database stops the portal's statements, after how long and set where; that a
+     * screen's read runs under the portal's own limit instead (its set_config replaces the database's for that read); what limits a
+     * write; the PAYDirect door's own limits; and any other limit the database places on the portal's transactions and connections.
+     */
+    static String reading(List<Map<String, Object>> settings, long readLimitMs, Integer queryTimeoutSeconds, Integer transactionTimeoutSeconds,
+                          long doorLimitMs) {
+        List<String> out = new ArrayList<>();
+        Map<String, Object> st = setting(settings, "statement_timeout");
+        long statementMs = st == null ? 0 : millis(String.valueOf(st.get("setting")), unit(st));
+        out.add(statementMs > 0
+                ? "The database stops the portal's statements after " + ProblemHandler.seconds(statementMs) + " — set by " + source(String.valueOf(st.get("source"))) + "."
+                : "The database places no time limit on one statement of the portal's connections.");
+        if (readLimitMs > 0) {
+            out.add("A screen's read runs under the portal's own limit of " + ProblemHandler.seconds(readLimitMs)
+                    + (statementMs > 0 ? ", which takes the place of the database's for that read." : "."));
         }
-        long ms = millis(String.valueOf(st.get("setting")), st.get("unit") == null ? "ms" : String.valueOf(st.get("unit")));
-        if (ms <= 0) {
-            return "The database places no time limit on one statement of the portal's connections. " + portal;
+        if (queryTimeoutSeconds == null && transactionTimeoutSeconds == null) {
+            out.add(statementMs > 0 ? "The portal places no limit of its own on a write: the database's applies."
+                    : "The portal places no limit of its own on a write.");
+        } else {
+            if (queryTimeoutSeconds != null) {
+                out.add("The portal also limits every statement, read or write, to " + queryTimeoutSeconds + " s (its query timeout).");
+            }
+            if (transactionTimeoutSeconds != null) {
+                out.add("The portal also limits every transaction, read or write, to " + transactionTimeoutSeconds + " s (its transaction timeout).");
+            }
         }
-        return "The database stops any statement of the portal's, read or write, after " + ProblemHandler.seconds(ms)
-                + " — set by " + source(String.valueOf(st.get("source"))) + ". " + portal;
+        out.add("The PAYDirect door's own connections stop a statement after " + ProblemHandler.seconds(doorLimitMs)
+                + " and a wait for a lock after " + ProblemHandler.seconds(Math.max(500, doorLimitMs / 2)) + ".");
+        String[][] others = {
+            {"transaction_timeout", "ends any transaction of the portal's, read or write, and closes its connection, after "},
+            {"idle_in_transaction_session_timeout", "closes a connection left idle inside a transaction after "},
+            {"lock_timeout", "stops a statement that waits for a lock after "},
+            {"idle_session_timeout", "closes a connection left idle after "},
+        };
+        for (String[] o : others) {
+            Map<String, Object> s = setting(settings, o[0]);
+            long ms = s == null ? 0 : millis(String.valueOf(s.get("setting")), unit(s));
+            if (ms > 0) {
+                out.add("The database also " + o[1] + ProblemHandler.seconds(ms) + " — set by " + source(String.valueOf(s.get("source"))) + ".");
+            }
+        }
+        return String.join(" ", out);
+    }
+
+    private static Map<String, Object> setting(List<Map<String, Object>> settings, String name) {
+        return settings.stream().filter(r -> name.equals(r.get("name"))).findFirst().orElse(null);
+    }
+
+    private static String unit(Map<String, Object> s) {
+        return s.get("unit") == null ? "ms" : String.valueOf(s.get("unit"));
     }
 
     static long millis(String setting, String unit) {
@@ -158,7 +202,8 @@ class DatabaseLimitsController {
             case "database" -> "a setting on the database (ALTER DATABASE … SET)";
             case "user" -> "a setting on the portal's database role (ALTER ROLE … SET)";
             case "database user" -> "a setting on the portal's role in this database (ALTER ROLE … IN DATABASE … SET)";
-            case "client" -> "the connection's own options (the DATABASE_URL's options, or PGOPTIONS)";
+            case "client" -> "the connection's own options (options= on the DATABASE_URL, or the pool's options property)";
+            case "global" -> "a setting on every role (ALTER ROLE ALL … SET)";
             case "session" -> "a setting made on the connection";
             case "environment variable" -> "the database server's environment";
             case "command line" -> "the database server's command line";

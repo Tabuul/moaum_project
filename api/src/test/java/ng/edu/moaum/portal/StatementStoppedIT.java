@@ -69,48 +69,58 @@ class StatementStoppedIT {
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
     void aStoppedStatementNamesWhatStoppedItAndIctReadsIt() throws Exception {
-        // 1 · a screen's read waits on a table held locked and is cut at the portal's 1.5 s limit
-        try (Connection holder = dataSource.getConnection()) {
-            holder.setAutoCommit(false);
-            try (Statement s = holder.createStatement()) {
-                s.execute("LOCK TABLE platform.statement_screen IN ACCESS EXCLUSIVE MODE");
-            }
-            ResponseEntity<Map> read = get(ict, "ict", "/api/v1/platform/slow-statements");
-            holder.rollback();
-            assertThat(read.getStatusCode().value()).as(String.valueOf(read.getBody())).isEqualTo(503);
-            assertThat(read.getBody()).containsEntry("code", "QUERY_TOO_LONG").containsEntry("cause", "PORTAL_READ_LIMIT")
-                    .containsEntry("title", "This screen took too long to read");
-            assertThat((String) read.getBody().get("detail")).contains("(1.5 s)");
-        }
-
-        // 2 · the intake, a write, waits on the session's intake lock held here and is stopped by a cancel request
         ExecutorService pool = Executors.newSingleThreadExecutor();
-        try (Connection holder = dataSource.getConnection()) {
-            holder.setAutoCommit(true);
-            try (Statement s = holder.createStatement()) {
-                s.execute("SELECT pg_advisory_lock(hashtext('people.intake:" + SESSION + "'))");
+        try {
+            // 1 · a screen's read waits on a table held locked and is cut at the portal's 1.5 s limit (bounded: a missing limit fails, never hangs)
+            try (Connection holder = dataSource.getConnection()) {
+                holder.setAutoCommit(false);
+                try {
+                    try (Statement s = holder.createStatement()) {
+                        s.execute("LOCK TABLE platform.statement_screen IN ACCESS EXCLUSIVE MODE");
+                    }
+                    Future<ResponseEntity<Map>> pending = pool.submit(() -> get(ict, "ict", "/api/v1/platform/slow-statements"));
+                    ResponseEntity<Map> read = pending.get(60, TimeUnit.SECONDS);
+                    assertThat(read.getStatusCode().value()).as(String.valueOf(read.getBody())).isEqualTo(503);
+                    assertThat(read.getBody()).containsEntry("code", "QUERY_TOO_LONG").containsEntry("cause", "PORTAL_READ_LIMIT")
+                            .containsEntry("title", "This screen took too long to read");
+                    assertThat((String) read.getBody().get("detail")).contains("(1.5 s)");
+                } finally {
+                    holder.rollback();
+                }
             }
-            Future<ResponseEntity<Map>> intake = pool.submit(() -> client.post().uri("/api/v1/student/intake/" + SESSION + "?limit=10")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + academic).header("X-Active-Office", "academic")
-                    .header("X-Reason", "StatementStoppedIT").contentType(MediaType.APPLICATION_JSON).body(Map.of())
-                    .retrieve().toEntity(Map.class));
-            Integer waiting = null;
-            for (int i = 0; i < 300 && waiting == null; i++) {
-                waiting = jdbc.sql("""
-                        SELECT pid FROM pg_stat_activity
-                         WHERE wait_event_type = 'Lock' AND wait_event = 'advisory' AND query LIKE '%intake_tranche%' AND pid <> pg_backend_pid()
-                         LIMIT 1
-                        """).query(Integer.class).optional().orElse(null);
-                if (waiting == null) Thread.sleep(100);
-            }
-            assertThat(waiting).as("the intake waiting on the session's lock").isNotNull();
-            jdbc.sql("SELECT pg_cancel_backend(:pid)").param("pid", waiting).query(Boolean.class).single();
-            ResponseEntity<Map> write = intake.get(2, TimeUnit.MINUTES);
-            assertThat(write.getStatusCode().value()).as(String.valueOf(write.getBody())).isEqualTo(503);
-            assertThat(write.getBody()).containsEntry("code", "QUERY_CANCELLED").containsEntry("cause", "CANCEL_REQUEST")
-                    .containsEntry("title", "This was stopped before it finished");
-            try (Statement s = holder.createStatement()) {
-                s.execute("SELECT pg_advisory_unlock(hashtext('people.intake:" + SESSION + "'))");
+
+            // 2 · the intake, a write, waits on the session's intake lock held here and is stopped by a cancel request
+            try (Connection holder = dataSource.getConnection()) {
+                holder.setAutoCommit(true);
+                try {
+                    try (Statement s = holder.createStatement()) {
+                        s.execute("SELECT pg_advisory_lock(hashtext('people.intake:" + SESSION + "'))");
+                    }
+                    Future<ResponseEntity<Map>> intake = pool.submit(() -> client.post().uri("/api/v1/student/intake/" + SESSION + "?limit=10")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + academic).header("X-Active-Office", "academic")
+                            .header("X-Reason", "StatementStoppedIT").contentType(MediaType.APPLICATION_JSON).body(Map.of())
+                            .retrieve().toEntity(Map.class));
+                    Integer waiting = null;
+                    for (int i = 0; i < 300 && waiting == null; i++) {
+                        waiting = jdbc.sql("""
+                                SELECT pid FROM pg_stat_activity
+                                 WHERE wait_event_type = 'Lock' AND wait_event = 'advisory' AND query LIKE '%intake_tranche%' AND pid <> pg_backend_pid()
+                                 LIMIT 1
+                                """).query(Integer.class).optional().orElse(null);
+                        if (waiting == null) Thread.sleep(100);
+                    }
+                    assertThat(waiting).as("the intake waiting on the session's lock").isNotNull();
+                    jdbc.sql("SELECT pg_cancel_backend(:pid)").param("pid", waiting).query(Boolean.class).single();
+                    ResponseEntity<Map> write = intake.get(2, TimeUnit.MINUTES);
+                    assertThat(write.getStatusCode().value()).as(String.valueOf(write.getBody())).isEqualTo(503);
+                    assertThat(write.getBody()).containsEntry("code", "QUERY_CANCELLED").containsEntry("cause", "CANCEL_REQUEST")
+                            .containsEntry("title", "This was stopped before it finished");
+                } finally {
+                    // released on every path, before the connection goes back to the pool (Hikari keeps session-level locks)
+                    try (Statement s = holder.createStatement()) {
+                        s.execute("SELECT pg_advisory_unlock_all()");
+                    }
+                }
             }
         } finally {
             pool.shutdownNow();
@@ -124,7 +134,8 @@ class StatementStoppedIT {
         assertThat(settings.get(0)).containsKeys("setting", "unit", "source", "reset_val", "boot_val");
         // read outside any transaction: the portal's 1.5 s read limit is not mistaken for the database's
         assertThat(settings.get(0).get("source")).isNotEqualTo("session");
-        assertThat((String) limits.getBody().get("reading")).contains("The portal limits a screen's read to 1.5 s; it places no limit on a write.");
+        assertThat((String) limits.getBody().get("reading")).contains("A screen's read runs under the portal's own limit of 1.5 s")
+                .contains("The PAYDirect door's own connections stop a statement after");
         assertThat((Map<String, Object>) limits.getBody().get("portal")).containsEntry("readLimitMs", 1500);
         List<Map<String, Object>> stopped = (List<Map<String, Object>>) limits.getBody().get("stopped");
         assertThat(stopped).hasSizeGreaterThanOrEqualTo(2);

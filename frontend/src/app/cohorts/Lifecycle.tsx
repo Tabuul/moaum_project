@@ -142,7 +142,7 @@ export function Lifecycle({ params, scope, structure, canAct, generatedBy }: { p
     const rows: LifeRow[] = [];
     for (let p = 1; (p - 1) * 2000 < list.total && p <= 25; p++) {
       const r = await fetch(`${API}/students?${qs({ page: p, size: 2000 })}`, { cache: "no-store" });
-      if (!r.ok) { notifyProblem({ status: r.status, title: "The list could not be read." } as Problem); return; }
+      if (!r.ok) { const refusalBody = await r.json().catch(() => null); notifyProblem(refusalBody && typeof refusalBody === "object" && "status" in refusalBody ? refusalBody : { status: r.status, title: "The list could not be read." }); return; }
       const j = (await r.json()) as LifeList;
       rows.push(...j.rows);
       if (j.rows.length < 2000) break;

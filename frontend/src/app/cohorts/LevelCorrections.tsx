@@ -148,7 +148,7 @@ export function LevelCorrections({ fac, dept, canApply, canStateFees = false }: 
     const rows: LevelRow[] = [];
     for (let p = 1; (p - 1) * 500 < data.total && p <= 100; p++) {
       const r = await fetch(query(p, 500), { cache: "no-store" });
-      if (!r.ok) { notifyProblem({ status: r.status, title: "The list could not be read." }); return; }
+      if (!r.ok) { const refusalBody = await r.json().catch(() => null); notifyProblem(refusalBody && typeof refusalBody === "object" && "status" in refusalBody ? refusalBody : { status: r.status, title: "The list could not be read." }); return; }
       const j = (await r.json()) as LevelPage;
       rows.push(...j.rows);
       if (j.rows.length < 500) break;

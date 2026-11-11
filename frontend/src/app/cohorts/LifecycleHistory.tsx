@@ -95,7 +95,7 @@ export function LifecycleHistory({ params, scope, canAct, generatedBy, href, onC
     const rows: Reconciliation[] = [];
     for (let p = 1; (p - 1) * 2000 < history.total && p <= 25; p++) {
       const r = await fetch(query(p, 2000), { cache: "no-store" });
-      if (!r.ok) { notifyProblem({ status: r.status, title: "The history could not be read." } as Problem); return; }
+      if (!r.ok) { const refusalBody = await r.json().catch(() => null); notifyProblem(refusalBody && typeof refusalBody === "object" && "status" in refusalBody ? refusalBody : { status: r.status, title: "The history could not be read." }); return; }
       const j = (await r.json()) as { rows: Reconciliation[] };
       rows.push(...j.rows);
       if (j.rows.length < 2000) break;

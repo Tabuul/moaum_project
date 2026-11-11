@@ -108,7 +108,7 @@ export function LevelFeeEffectRun({ mayStart, mayStateFees = false, mayCorrect =
   async function excelStudents() {
     if (!run) return;
     const r = await fetch(`${URL_}/${run.id}/rows`, { cache: "no-store" });
-    if (!r.ok) { notifyProblem({ status: r.status, title: "The students could not be read." }); return; }
+    if (!r.ok) { const refusalBody = await r.json().catch(() => null); notifyProblem(refusalBody && typeof refusalBody === "object" && "status" in refusalBody ? refusalBody : { status: r.status, title: "The students could not be read." }); return; }
     const rows = (await r.json()) as Row[];
     downloadBlob(await brandedXlsx("Level corrections — fee effect", ["Student", "Number", "Faculty", "Programme", "Basis", "Level on record", "Corrected level",
       `Charged ${run.session} now`, `Charged ${run.session} after`, "Difference"],

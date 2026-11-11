@@ -76,7 +76,11 @@ class PayDirectLane implements DisposableBean {
         }
         this.own = pool;
         DataSource ds = pool != null ? pool : portal;
-        this.jdbc = JdbcClient.create(ds);
+        // 11 Nov 2026: a statement the door's own limit stops is answered as the door's limit, not as a limit set outside the portal
+        org.springframework.jdbc.core.JdbcTemplate template = new org.springframework.jdbc.core.JdbcTemplate(ds);
+        template.setExceptionTranslator(new ng.edu.moaum.portal.platform.StoppedStatement.Translator(template.getExceptionTranslator(), 0,
+                pool != null ? Math.max(1000, statementTimeoutMs) : null));
+        this.jdbc = JdbcClient.create(template);
         this.tx = new TransactionTemplate(new AttributedTransactionManager(ds));
         AtomicInteger n = new AtomicInteger();
         this.settlers = Executors.newFixedThreadPool(Math.max(1, settlers), r -> {
