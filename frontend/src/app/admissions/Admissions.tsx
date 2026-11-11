@@ -12,11 +12,15 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/c
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
+/** V722: how many admitted candidates one call of the intake run brings onto the register (about 300 × 8 ms on the live-shaped copy) */
+const TRANCHE = 300;
+
 export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; actingOffice: string | null }) {
   const router = useRouter();
   const [problem, setProblem] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
+  const [brought, setBrought] = useState(0);
   const [recording, setRecording] = useState(false);
   const [recorded, setRecorded] = useState<string | null>(null);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
@@ -42,20 +46,43 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
     }
   }
 
+  // V722: the admitted candidates are brought onto the register in tranches — one call brings at most TRANCHE of them and says how
+  // many remain — so no single request outlasts what a screen is allowed, however long the list (2,359 waited on 11 November 2026).
+  // Each tranche is its own transaction: what a tranche brought on stays whatever happens to the next, so the page is re-read after
+  // any run that brought somebody on, and a refusal mid-run says how many came on before it.
   async function intake() {
     setBusy(true);
     setProblem(null);
+    setSaid(null);
+    setBrought(0);
+    let total = 0;
     try {
-      const r = await fetch(`/api/bff/api/v1/student/intake/${cycle.session}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Admitted candidates of ${cycle.session} brought onto the register`) }, body: "{}" });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) {
-        setProblem(r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText }); notifyProblem(r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText });
-        return;
+      let remaining = cycle.notYetOnRegister;
+      for (let round = 0; round < 1000 && remaining > 0; round++) {
+        const r = await fetch(`/api/bff/api/v1/student/intake/${cycle.session}?limit=${TRANCHE}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Admitted candidates of ${cycle.session} brought onto the register`) }, body: "{}" });
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const refusal: Problem = r.status === 404 ? { status: 404, title: "The student register is not yet served", detail: "The intake endpoint has not arrived on the portal; the admission numbers are issued the moment it does." } : j ?? { status: r.status, title: r.statusText };
+          setProblem(refusal);
+          if (total) {
+            // the tranches before this one are on the register; a refusal's "nothing was saved" would be untrue of them
+            setSaid(`${total.toLocaleString()} candidate${total === 1 ? "" : "s"} brought onto the register before the run stopped; the rest wait for another press.`);
+            notify(`The run stopped after ${total.toLocaleString()} candidate${total === 1 ? " was" : "s were"} brought onto the register; press the button again for the rest`, "bad");
+          } else {
+            notifyProblem(refusal);
+          }
+          return;
+        }
+        const n = Number(j?.broughtOnto ?? 0);
+        total += n;
+        remaining = Number(j?.remaining ?? 0);
+        setBrought(total);
+        if (!n) break;   // nothing more could be taken; the server's count says what is left
       }
-      setSaid(`${j.broughtOnto} candidate${j.broughtOnto === 1 ? "" : "s"} brought onto the register, each with an admission number.`);
-      notify(`${j.broughtOnto} candidate${j.broughtOnto === 1 ? "" : "s"} brought onto the register`);
-      router.refresh();
+      setSaid(`${total.toLocaleString()} candidate${total === 1 ? "" : "s"} brought onto the register, each with an admission number.${remaining > 0 ? ` ${remaining.toLocaleString()} remain; press the button again.` : ""}`);
+      notify(`${total.toLocaleString()} candidate${total === 1 ? "" : "s"} brought onto the register`);
     } finally {
+      if (total) router.refresh();
       setBusy(false);
     }
   }
@@ -76,7 +103,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       {said ? <Note kind="ok" title="On the register">{said}</Note> : null}
       {cycle.notYetOnRegister ? (
         <Note kind="bad" title={`${cycle.notYetOnRegister.toLocaleString()} admitted candidate${cycle.notYetOnRegister === 1 ? " is" : "s are"} not yet on the register`}
-          action={<Btn kind="urgent" disabled={busy || !may} onClick={() => void intake()}>{busy ? "Bringing them on…" : `Bring ${cycle.notYetOnRegister.toLocaleString()} candidate${cycle.notYetOnRegister === 1 ? "" : "s"} onto the register`}</Btn>}>
+          action={<Btn kind="urgent" disabled={busy || !may} onClick={() => void intake()}>{busy ? (brought ? `Bringing them on… ${brought.toLocaleString()} of ${cycle.notYetOnRegister.toLocaleString()}` : "Bringing them on…") : `Bring ${cycle.notYetOnRegister.toLocaleString()} candidate${cycle.notYetOnRegister === 1 ? "" : "s"} onto the register`}</Btn>}>
           Until they are on the student register nobody can screen, clear or register them. Each gets an admission number from the committed CAPS list.
         </Note>
       ) : (

@@ -45,7 +45,8 @@ public class StudentService {
     public record BiodataWritten(String field, String tier, String value, UUID changeId, boolean pending) {
     }
 
-    public record Intake(String session, int broughtOnto) {
+    /** V722: what one call of the intake run did — how many it brought onto the register and how many admitted candidates remain */
+    public record Intake(String session, int broughtOnto, int remaining) {
     }
 
     @Transactional(readOnly = true)
@@ -136,10 +137,13 @@ public class StudentService {
         return record(id, session);
     }
 
-    /** Bringing a session's admitted candidates onto the register, each with an admission number. */
+    /** Bringing a session's admitted candidates onto the register, each with an admission number — V722: in one pass (the
+     *  academic positions refreshed together once), and at most {@code limit} of them a call (null, or under one: all), so the
+     *  dashboard brings a large list on in tranches no single request of which outlasts a screen. */
     @Transactional
-    Intake intake(String session) {
-        return new Intake(session, students.intake(session));
+    Intake intake(String session, Integer limit) {
+        java.util.Map<String, Object> r = students.intake(session, limit == null || limit < 1 ? null : limit);
+        return new Intake(session, ((Number) r.get("brought")).intValue(), ((Number) r.get("remaining")).intValue());
     }
 
     private static String blankToNull(String s) {

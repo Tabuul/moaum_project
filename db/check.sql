@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 550
+\set EXPECTED 551
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31535,6 +31535,50 @@ BEGIN
                AND pg_literal = '2025/2026' AND pg_sessions = s0, false),
       format('account %s | stale after payment %s | refresh by id %s summaries %s | active: stale %s summary %s | calendar moved: stale %s -> %s | entry moved: stale %s summary %s | withdrawn again: summaries %s | awaiting: stale %s approved: stale %s | pg literal %s sessions %s',
              acct_w, stale_w, refreshed, summ_w0, stale_back, summ_active, stale_cal, stale_cal_after, stale_moved, summ_moved, summ_w2, stale_awaiting, stale_grad, pg_literal, pg_sessions));
+END $$;
+
+-- ── V722: the register intake in one pass and in tranches. Four made-up admitted candidates on a committed list: a tranche of three
+--          brings three, by surname, and reports one remaining — their academic positions written by the run's one refresh, the
+--          deferral cleared behind it; the plain run brings the last; a further run brings nobody; all four stand with a position.
+--          The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9722/9723'; who uuid := gen_random_uuid(); batch uuid := gen_random_uuid();
+    names text[] := ARRAY['Delta', 'Alpha', 'Charlie', 'Bravo']; i int; r record; again record; rest int; n_pos int; order_taken text; defer_after text;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V722', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9722-10-01', date '9723-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office, committed_at)
+    VALUES (batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x7220'::bytea, 4, current_date, who, 'academic', now());
+    FOR i IN 1..4 LOOP
+        INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode)
+        VALUES (('72200000-0000-4000-8000-00000000000' || i)::uuid, batch, ses, '97220000000' || i || 'XX', '{}'::jsonb, 'CHECKV722' || names[i], 'Intake', 'C00023', 200, 'UTME');
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (gen_random_uuid(), ses, '97220000000' || i || 'XX', 'CHECKV722' || names[i], 'Intake', (SELECT name FROM ref.programme WHERE code = 'C00023'), 'UTME', 100, 'ADMITTED',
+                ('72200000-0000-4000-8000-00000000000' || i)::uuid);
+    END LOOP;
+    -- a tranche of three, by surname: Alpha, Bravo, Charlie; Delta remains
+    SELECT * INTO r FROM people.intake_tranche(ses, 3);
+    SELECT string_agg(replace(s.surname, 'CHECKV722', ''), ',' ORDER BY s.admission_no) INTO order_taken FROM people.student s WHERE s.entry_session = ses;
+    SELECT count(*) INTO n_pos FROM people.academic_position ap JOIN people.student s ON s.id = ap.student_id WHERE s.entry_session = ses AND ap.entry_session = ses;
+    defer_after := coalesce(current_setting('moaum.position_defer', true), '') || '/' || coalesce(current_setting('moaum.position_pending', true), '');
+    msg := 'tranche ' || r.brought || '/' || r.remaining || ' taken ' || order_taken || ' positions ' || n_pos || ' defer "' || defer_after || '"';
+    -- the plain run brings the last; a further run brings nobody; the four stand with a position
+    rest := people.intake(ses);
+    SELECT * INTO again FROM people.intake_tranche(ses, NULL);
+    SELECT count(*) INTO n_pos FROM people.academic_position ap JOIN people.student s ON s.id = ap.student_id WHERE s.entry_session = ses AND ap.entry_session = ses;
+    msg := msg || ' | rest ' || rest || ' again ' || again.brought || '/' || again.remaining || ' positions ' || n_pos;
+    RAISE EXCEPTION 'the V722 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V722 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V722: the register intake runs in one pass and in tranches — a tranche of three brings three by surname and reports one remaining, their positions written by the run''s one refresh and the deferral cleared; the plain run brings the last; a further run brings nobody',
+      coalesce(msg = 'tranche 3/1 taken Alpha,Bravo,Charlie positions 3 defer "/" | rest 1 again 0/0 positions 4', false), msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

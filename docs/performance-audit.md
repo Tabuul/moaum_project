@@ -707,3 +707,29 @@ staff sign-ins), local PostgreSQL 18, cold then warm:
 - `.card__body.row` now lays out as a row. `.card__body` is a flex column and `.row` never set a direction, so on about 16
   screens (export log, record views, eligibility, readiness, results sheets, the overview, NELFUND and others) the filters stood
   stacked down the right edge of their card. One rule in `prototype.css` puts them side by side.
+
+## X. The register intake in one pass, and in tranches (11 November 2026, V722)
+
+- The Admissions dashboard's **Bring N candidates onto the register** stopped with "This took longer than the portal allows a
+  screen to read" on 11 November 2026, with 2,359 admitted candidates waiting. `people.intake` (V278) brought them on one by one,
+  and each `people.student` it inserted fired `trg_position_student_insert` → `people.position_touch` →
+  `people.refresh_academic_position` for that one student. Profiled on the live-shaped copy (`track_functions = all`, 200 invented
+  candidates, rolled back): 125 ms a candidate, 117 ms of it that refresh — 2,359 candidates were some five minutes of one
+  statement. The API's own 90 s limit is on read-only transactions alone (this is a write; run locally with a 3 s limit, the intake
+  of 200 took 33 s and completed), so the cut came from outside the API: a `statement_timeout` on the server, the database or the
+  role, or `options=-c statement_timeout=` in the `DATABASE_URL`'s query (which `DatabaseUrlConfig` passes through), or a cancel
+  request — SQLSTATE 57014 is the same for all of them, and `ProblemHandler` drops the server's message. The database's log line
+  names the cause: "canceling statement due to statement timeout" against "canceling statement due to user request".
+- `people.intake_tranche(session, limit)` (V722) runs the intake the way V463 runs a register upload: `people.defer_positions()`
+  first, so the triggers note each student instead of refreshing, then `people.refresh_deferred_positions()` once — the run's
+  students computed together in one statement (measured for V722 on the same copy: the positions of 2,400 students in 0.7–1.6 s).
+  It takes a per-session advisory lock first, so a second run of the session (another officer, another tab, a resent request)
+  waits for the first to commit and then takes what is still off the register instead of racing it onto `ux_student_candidate`.
+  It brings on at most `limit` candidates (by surname; null or under one: all) and answers how many it brought and how many
+  remain. `people.intake(session)` is the same run with no limit. On the copy, 200 candidates: 21 s before, 1.7 s after.
+- `POST /api/v1/student/intake/{session}?limit=` answers `{session, broughtOnto, remaining}`; the dashboard calls it in tranches
+  of 300 until none remain, the button counting them on ("Bringing them on… 600 of 2,359"), so no single request outlasts what
+  a screen — or a proxy — allows. Each tranche is its own transaction: a candidate the run cannot take (a programme the University
+  does not run, 23503 → 409; a JAMB number already on the register with a history, 23514 → 422) refuses that tranche, which rolls
+  back, while the tranches already committed stay; the page then re-reads the count and the notice says how many were brought on
+  before the run stopped, and the next press continues from there.

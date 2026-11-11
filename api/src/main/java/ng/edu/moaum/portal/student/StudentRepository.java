@@ -229,8 +229,11 @@ class StudentRepository {
     }
 
     /** The Academic Office brings a session's admitted candidates onto the register. */
-    int intake(String session) {
-        return jdbc.sql("SELECT people.intake(:s)").param("s", session).query(Integer.class).single();
+    /** V722: a tranche of the intake run — at most {@code limit} candidates (null: all), the positions refreshed together once —
+     *  as {@code brought} and {@code remaining} */
+    java.util.Map<String, Object> intake(String session, Integer limit) {
+        return jdbc.sql("SELECT brought, remaining FROM people.intake_tranche(:s, :limit)")
+                .param("s", session).param("limit", limit, Types.INTEGER).query().singleRow();
     }
 
     private JdbcClient.StatementSpec scoped(JdbcClient.StatementSpec spec, Scope scope) {

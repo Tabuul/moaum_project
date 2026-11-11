@@ -322,11 +322,13 @@ class StudentController {
         return records.view(view, Scope.of(b.fac(), b.dept(), b.prog(), level, course, session, sem));
     }
 
-    /** The intake run: the session's admitted candidates, brought onto the register. */
+    /** The intake run: the session's admitted candidates, brought onto the register — V722: at most {@code limit} a call (none:
+     *  all), answering how many were brought on and how many remain, so a large list is brought on in tranches. */
     @PostMapping("/intake/{session}/{year}")
     @PreAuthorize(WRITERS)
-    StudentService.Intake intake(@PathVariable String session, @PathVariable String year) {
-        return students.intake(session + "/" + year);
+    StudentService.Intake intake(@PathVariable String session, @PathVariable String year,
+                                 @RequestParam(required = false) Integer limit) {
+        return students.intake(session + "/" + year, limit);
     }
 
     private static String blankToNull(String s) {

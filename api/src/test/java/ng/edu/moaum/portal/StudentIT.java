@@ -254,6 +254,7 @@ class StudentIT {
         assertThat(r.getStatusCode().value()).as(String.valueOf(r.getBody())).isEqualTo(200);
         assertThat(r.getBody().get("session")).isEqualTo(SESSION);
         assertThat(r.getBody().get("broughtOnto")).isEqualTo(0);
+        assertThat(r.getBody().get("remaining")).isEqualTo(0);   // V722
     }
 
     // ── helpers ─────────────────────────────────────────────────────────
