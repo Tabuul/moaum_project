@@ -31,7 +31,7 @@ function whoIs(id: string): string {
   if (PG_APPLICATION.test(s)) return "A postgraduate applicant, on the PG application number";
   if (JAMB.test(s) || APPLICATION.test(s)) return "An applicant, on the JAMB or application number";
   if (s.includes("@")) return "A member of staff or an applicant, on the email address";
-  return "A member of staff on the staff number, or a postgraduate applicant on the old portal's number";
+  return "A member of staff on the staff number, or a postgraduate or JUPEB student on the old portal's number";
 }
 
 /** the line icons the form uses, drawn as the CMS draws them */

@@ -148,12 +148,12 @@ class JupebPublicController {
     public record SignIn(@NotBlank @Size(max = 160) String identifier, @NotBlank @Size(max = 100) String password) {
     }
 
-    public record SignedIn(String token, Instant expiresAt, UUID applicationId, String applicationNo, String surname, String otherNames) {
+    public record SignedIn(String token, Instant expiresAt, UUID applicationId, String applicationNo, String surname, String otherNames, boolean mustChange) {
     }
 
     private static DomainRuleViolation badCredentials() {
         return new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "That email or application number and password do not match a JUPEB application.",
-                new DomainRuleViolation.Remedy("Use the email you applied with (or your JUPEB application number) and the password you chose; five failures lock the account for fifteen minutes.", "JUPEB Office"));
+                new DomainRuleViolation.Remedy("Use the email you applied with (or your JUPEB application number) and the password you chose — a student uploaded from the old portal who has not yet chosen one signs in with the application number as the password; five failures lock the account for fifteen minutes.", "JUPEB Office"));
     }
 
     /** the account behind an email or an application number, with its latest application */
@@ -161,16 +161,17 @@ class JupebPublicController {
         return jdbc.sql("""
                 SELECT acc.id, acc.email, acc.password_hash, acc.failed_attempts, coalesce(acc.locked_until > now(), false) AS locked,
                        to_char(acc.locked_until AT TIME ZONE 'Africa/Lagos', 'HH24:MI') AS locked_until_text,
-                       acc.temp_expires_at IS NOT NULL AS temporary,
+                       acc.temp_expires_at IS NOT NULL AS temporary, acc.must_change_password,
                        (acc.temp_expires_at IS NOT NULL AND (acc.temp_used_at IS NOT NULL OR acc.temp_expires_at <= now())) AS temporary_spent,
                        a.id AS application_id, a.application_no, a.surname, a.first_name, a.middle_name, a.phone
                   FROM jupeb.account acc
                   JOIN LATERAL (SELECT * FROM jupeb.application x WHERE x.account_id = acc.id
                                  ORDER BY (upper(x.application_no) = upper(:id)) DESC, x.created_at DESC LIMIT 1) a ON true
                  WHERE lower(acc.email) = lower(:id)
-                    OR EXISTS (SELECT 1 FROM jupeb.application x WHERE x.account_id = acc.id AND upper(x.application_no) = upper(:id))
+                    OR EXISTS (SELECT 1 FROM jupeb.application x WHERE x.account_id = acc.id
+                                 AND (upper(x.application_no) = upper(:id) OR upper(coalesce(x.legacy_ref, '')) = upper(:id)))   -- V718: the old portal's number too
                  LIMIT 1
-                """).param("id", identifier.trim()).query().listOfRows().stream().findFirst().orElse(null);
+                """).param("id", identifier.replaceAll("\\s+", "")).query().listOfRows().stream().findFirst().orElse(null);
     }
 
     @PostMapping("/sign-in")
@@ -188,7 +189,11 @@ class JupebPublicController {
             throw new DomainRuleViolation("AUTH_LOCKED", "This account is locked after repeated failures; try again after "
                     + a.get("locked_until_text") + ".", new DomainRuleViolation.Remedy("Wait fifteen minutes.", "You"));
         }
-        if (!encoder.matches(body.password(), String.valueOf(a.get("password_hash")))) {
+        /* V718: a student uploaded from the old portal who is still to choose a password signs in with the application number
+           (jupeb.first_password_opens: must change, no temporary password from the desk, the number however typed) */
+        boolean opens = encoder.matches(body.password(), String.valueOf(a.get("password_hash")))
+                || Boolean.TRUE.equals(jdbc.sql("SELECT jupeb.first_password_opens(:a, :t)").param("a", account).param("t", body.password()).query(Boolean.class).single());
+        if (!opens) {
             int next = ((Number) a.get("failed_attempts")).intValue() + 1;
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
             tx.execute(st -> jdbc.sql("UPDATE jupeb.account SET failed_attempts = :n, locked_until = :l WHERE id = :id")
@@ -222,7 +227,7 @@ class JupebPublicController {
         String surname = String.valueOf(a.get("surname"));
         String otherNames = a.get("first_name") + (a.get("middle_name") == null ? "" : " " + a.get("middle_name"));
         String token = issuer.issue(app, surname + ", " + otherNames, List.of("applicant"), sid, end);
-        return new SignedIn(token, end, app, (String) a.get("application_no"), surname, otherNames);
+        return new SignedIn(token, end, app, (String) a.get("application_no"), surname, otherNames, Boolean.TRUE.equals(a.get("must_change_password")));
     }
 
     @PostMapping("/sign-out")

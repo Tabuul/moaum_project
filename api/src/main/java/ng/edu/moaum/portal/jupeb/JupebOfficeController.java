@@ -979,7 +979,8 @@ class JupebOfficeController {
                         """).param("h", sha256(token)).param("id", app).update();
                 jdbc.sql("SELECT jupeb.tell(:id, :s, :b)").param("id", app).param("s", "Your JUPEB portal account is ready")
                         .param("b", "Your JUPEB record from the old portal is now on the University's portal. Sign in at " + portalUrl + "/login with your "
-                                + "application number " + c.get("applicationNo") + " (or this email).\n\nSet your password with this link (it works for seven days): "
+                                + "application number " + c.get("applicationNo") + " (or this email); the first time, your application number is also your password, "
+                                + "and you choose your own at once.\n\nOr set your password with this link (it works for seven days): "
                                 + portalUrl + "/jupeb/reset?token=" + token + "\n\nIf the JUPEB Office gave you a temporary password, you may sign in with it instead; "
                                 + "you will be asked to choose your own.")
                         .query().listOfRows();

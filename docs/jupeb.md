@@ -113,6 +113,10 @@ copies of them.
   Each student becomes an active JUPEB student of the session chosen, with the old App No as the
   application number and username, marked as from the old portal; a **temporary password** is generated for each, shown to
   the office once in a downloadable login sheet (never stored readable, never emailed), and must be changed at first sign-in;
+  since V718 the **application number itself is the first password** of a student who has not yet chosen one (compared at the
+  door — `jupeb.first_password_opens` — never hashed into the account; a temporary password from ICT Support's desk takes
+  precedence while it stands), and the one sign-in page tries the JUPEB door for an old-portal-shaped number such as
+  S007202609174486 after the staff and postgraduate doors;
   each student can also be emailed a seven-day link to set their own password. Nothing else is announced while the records
   are written; no fee reminder reaches them (what they paid on the old portal is the Bursary's), and the Payments tab says
   so. Their programme is set by the combination they register.

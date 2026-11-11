@@ -1812,7 +1812,7 @@ export function JupebOldPortalImport({ office }: { office?: string | null } = {}
     if (!done) return;
     const blob = await brandedXlsx(`JUPEB login details — ${session}`, ["Username (App No)", "Name", "Email", "Temporary password"],
       done.credentials.map((c) => [c.applicationNo, c.name, c.email, c.password]),
-      { sheetName: "Logins", serial: docSerial("JUPEBLOGIN"), meta: [["Session", session], ["Upload", done.refs.join(", ")], ["Note", "Each student must change the temporary password at first sign-in"]] });
+      { sheetName: "Logins", serial: docSerial("JUPEBLOGIN"), meta: [["Session", session], ["Upload", done.refs.join(", ")], ["Note", "Each student signs in the first time with the App No as the password (or this temporary password) and then chooses their own"]] });
     downloadBlob(blob, `jupeb-login-details-${session.replace("/", "-")}.xlsx`);
   }
   async function exportToCorrect() {
@@ -1882,12 +1882,12 @@ export function JupebOldPortalImport({ office }: { office?: string | null } = {}
     <>
       <PageHead title="Upload students from the old portal" eyebrow={jupebDesk ? <Link href="/jupeb/applications">← JUPEB applications</Link> : undefined}
         actions={<LinkBtn kind="ghost" href="/jupeb/import/payments">Their old-portal payments →</LinkBtn>}
-        description="Students registered on the old portal, uploaded from its export. Each gets a login: the old App No as username and a temporary password changed at first sign-in." />
+        description="Students registered on the old portal, uploaded from its export. Each gets a login: the old App No as username and, until they choose their own, as the first password; a temporary password is also issued, changed at first sign-in." />
       {done ? (
         <Note kind={done.applied ? "ok" : "info"} title={`${done.applied} student${done.applied === 1 ? "" : "s"} uploaded`}
           action={done.credentials.length ? <Btn kind="primary" onClick={() => void downloadLogins()}>Download login details (Excel)</Btn> : null}>
           {done.credentials.length
-            ? `Download the login details now: the temporary passwords are shown this once and kept nowhere. ${emailLinks ? "Each student was also emailed a link to set their own password." : ""} Upload ${done.refs.join(", ")}.`
+            ? `Download the login details now: the temporary passwords are shown this once and kept nowhere; each student can also sign in the first time with the App No as the password. ${emailLinks ? "Each student was also emailed a link to set their own password." : ""} Upload ${done.refs.join(", ")}.`
             : "Nothing new was uploaded."}
         </Note>
       ) : null}

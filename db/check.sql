@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 545
+\set EXPECTED 546
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31119,6 +31119,57 @@ BEGIN
                      || ' | DOB_RECONCILE_OFFICE | written Agrees=2003-09-12/2003-09-12,Differs=2001-01-01/2001-01-01,Empty=2003-09-12/2003-09-12,Misread=2003-09-12/2003-09-12,Unreadable=null/- audit 1'
                      || ' again Agrees:AGREES,Differs:DIFFERS,Empty:AGREES,Misread:AGREES,Unreadable:UNREADABLE | form 2003-09-12 | door true,true,true,null', false),
       msg);
+END $$;
+
+-- ── V718. A JUPEB student uploaded from the old portal signs in with the application number as the first password (the University's
+--          word of 11 November 2026). Two made-up students uploaded as the old portal's export is (jupeb.import_old_portal_students,
+--          the import's temporary password hashed as the API hashes it): the number opens the account however its letters and spaces
+--          are typed, another number does not, the email does not; once the student has chosen a password the number opens nothing;
+--          a temporary password from ICT Support's desk takes precedence while it stands; an applicant of this portal is untouched. The
+--          block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); ses text := jupeb.current_session(); rows jsonb; done jsonb; acc1 uuid; acc2 uuid; acc3 uuid;
+        o_lower boolean; o_spaced boolean; o_other boolean; o_email boolean; o_chosen boolean; o_temp boolean; o_portal boolean; o_none boolean;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'CHECK V718', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'jupeb', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHK/V718/J', 'CHECKV718', 'Office', NULL);
+        rows := jsonb_build_array(
+            jsonb_build_object('row', 2, 'appNo', 'S007CHECK7180001', 'firstName', 'Terfa', 'surname', 'Iorver', 'sex', 'Male', 'phone', '08030007181', 'dob', '12/03/2005',
+                               'email', 'check.v718.one@example.test', 'passwordHash', crypt('temporary-one', gen_salt('bf', 12))),
+            jsonb_build_object('row', 3, 'appNo', 's007check7180002', 'firstName', 'Mimi', 'surname', 'Agbo', 'sex', 'Female', 'phone', '08030007182', 'dob', '01/07/2005',
+                               'email', 'check.v718.two@example.test', 'passwordHash', crypt('temporary-two', gen_salt('bf', 12))));
+        done := jupeb.import_old_portal_students(rows, ses, true, true, 'check-v718.xlsx', who);
+        SELECT a.account_id INTO acc1 FROM jupeb.application a WHERE a.application_no = 'S007CHECK7180001';
+        SELECT a.account_id INTO acc2 FROM jupeb.application a WHERE a.application_no = 'S007CHECK7180002';
+        -- the number opens, however typed; another number and the email do not
+        o_lower := jupeb.first_password_opens(acc1, 's007check7180001');
+        o_spaced := jupeb.first_password_opens(acc1, ' S007 CHECK 718 0001 ');
+        o_other := jupeb.first_password_opens(acc1, 'S007CHECK7180002');
+        o_email := jupeb.first_password_opens(acc1, 'check.v718.one@example.test');
+        o_none := jupeb.first_password_opens(acc1, '');
+        -- the student has chosen a password: the number opens nothing
+        UPDATE jupeb.account SET password_hash = crypt('My-own-password-718', gen_salt('bf', 12)), must_change_password = false WHERE id = acc1;
+        o_chosen := jupeb.first_password_opens(acc1, 'S007CHECK7180001');
+        -- a temporary password from the desk stands: the number does not open the account meanwhile
+        UPDATE jupeb.account SET temp_expires_at = now() + interval '1 day', temp_issued_by = who WHERE id = acc2;
+        o_temp := jupeb.first_password_opens(acc2, 'S007CHECK7180002');
+        -- an applicant of this portal (not uploaded): their number is not their password
+        INSERT INTO jupeb.account (id, email, password_hash, must_change_password) VALUES (gen_random_uuid(), 'check.v718.three@example.test', crypt('Applied-here-718', gen_salt('bf', 12)), false) RETURNING id INTO acc3;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state)
+        VALUES (acc3, ses, 'JUPEB/APP/' || left(ses, 4) || '/997180', 'CHECKV718', 'Three', 'check.v718.three@example.test', 'DRAFT');
+        o_portal := jupeb.first_password_opens(acc3, 'JUPEB/APP/' || left(ses, 4) || '/997180');
+        RAISE EXCEPTION 'CHECK_V718_UNDONE' USING ERRCODE = 'P0001';
+    EXCEPTION WHEN raise_exception THEN
+        IF SQLERRM <> 'CHECK_V718_UNDONE' THEN RAISE; END IF;
+    END;
+
+    PERFORM pg_temp.assert('V718: an old-portal JUPEB student''s application number is their first password — however typed, until they choose their own, never while a desk temporary password stands, never a portal applicant''s',
+        coalesce(o_lower AND o_spaced AND NOT o_other AND NOT o_email AND NOT o_none AND NOT o_chosen AND NOT o_temp AND NOT o_portal, false),
+        format('lower %s spaced %s | other %s email %s empty %s | chosen %s | desk temporary %s | portal applicant %s | created %s',
+               o_lower, o_spaced, o_other, o_email, o_none, o_chosen, o_temp, o_portal, done->>'created'));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

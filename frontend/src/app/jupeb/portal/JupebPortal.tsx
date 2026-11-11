@@ -124,7 +124,7 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
     return (
       <Bare>
         {problem ? <ProblemNotice problem={problem} /> : null}
-        <Note kind="info" title="Sign in to your JUPEB application">Sign in with the email you applied with, or your JUPEB application number, and your password.</Note>
+        <Note kind="info" title="Sign in to your JUPEB application">Sign in with the email you applied with, or your JUPEB application number, and your password. Uploaded from the old portal and not yet chosen a password? Your application number is your password the first time; you choose your own at once.</Note>
         <div className="row mt-3"><LinkBtn kind="primary" href="/login?next=/jupeb/portal">Sign in</LinkBtn><LinkBtn kind="ghost" href="/jupeb/apply">Apply</LinkBtn></div>
       </Bare>
     );
@@ -988,9 +988,9 @@ function ChangePassword({ forced, onDone }: { forced?: boolean; onDone: (c: Cand
   return (
     <Panel title={forced ? "Choose your own password" : "Change your password"}>
       <PBody>
-        {forced ? <Note kind="info" title="You signed in with a temporary password">Choose your own password to continue.</Note> : null}
+        {forced ? <Note kind="info" title="Choose your own password to continue">You signed in with your application number (a student uploaded from the old portal) or a temporary password. Choose your own now; your application number cannot be it.</Note> : null}
         <div className="grid grid--3">
-          <Field id="pw-cur" label={forced ? "Temporary password" : "Current password"} required><PasswordInput id="pw-cur" className="ctl" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
+          <Field id="pw-cur" label={forced ? "The password you signed in with" : "Current password"} hint={forced ? "Your application number, or the temporary password you were given" : undefined} required><PasswordInput id="pw-cur" className="ctl" autoComplete="current-password" value={f.current} onChange={(e) => setF({ ...f, current: e.target.value })} /></Field>
           <Field id="pw-new" label="New password" required hint="At least eight characters" error={short ? "At least eight characters" : undefined}><PasswordInput id="pw-new" className="ctl" autoComplete="new-password" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} /></Field>
           <Field id="pw-again" label="New password again" required error={differs ? "The two do not match" : undefined}><PasswordInput id="pw-again" className="ctl" autoComplete="new-password" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} /></Field>
         </div>

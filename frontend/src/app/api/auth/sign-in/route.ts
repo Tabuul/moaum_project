@@ -124,6 +124,14 @@ export async function POST(request: NextRequest) {
       if (pg && pg.ok) {
         r = pg;
         kind = "pgapplicant";
+      } else {
+        /* V718: or the old portal's JUPEB application number (S007202609174486 and the like), which the JUPEB door finds an
+           uploaded student by */
+        const jupeb = await upstream("/api/v1/jupeb/sign-in", { identifier, password }, request);
+        if (jupeb && jupeb.ok) {
+          r = jupeb;
+          kind = "jupeb";
+        }
       }
     }
   }
@@ -157,6 +165,8 @@ export async function POST(request: NextRequest) {
   } else if (kind === "jupeb") {
     office = "applicant";
     name = `${signed.surname}, ${signed.otherNames}`;
+    /* V718: a student uploaded from the old portal signed in on the application number: the portal asks their own password first */
+    mustChange = signed.mustChange === true;
     home = "/jupeb/portal";
   } else {
     const offices = (signed.offices as { code: string }[] | undefined) ?? [];

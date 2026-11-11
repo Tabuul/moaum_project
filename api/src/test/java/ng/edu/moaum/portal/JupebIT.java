@@ -612,6 +612,13 @@ class JupebIT {
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_id = :a AND channel = 'EMAIL' AND body LIKE '%/jupeb/reset?token=%' AND body NOT LIKE '%' || :p || '%'")
                 .param("a", created).param("p", temporary).query(Integer.class).single()).isEqualTo(1);
 
+        // V718: the application number itself is the first password — however typed — until the student has chosen one; it is
+        // never the new password; and another number is not a password
+        Map<String, Object> byNumber = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2, "password", " " + app2.toLowerCase() + " ")));
+        assertThat(byNumber.get("mustChange")).isEqualTo(true);
+        assertThat(code(it.call(String.valueOf(byNumber.get("token")), HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", app2, "newPassword", app2.toLowerCase()))))
+                .isEqualTo("JUPEB_PASSWORD_IS_NUMBER");
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2, "password", app2 + "9")))).isEqualTo(422);
         // the student signs in on the old App No with the temporary password, and must choose their own first
         Map<String, Object> signed = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2.toLowerCase(), "password", temporary)));
         String token = String.valueOf(signed.get("token"));
@@ -623,6 +630,8 @@ class JupebIT {
         mine = ok(it.call(token, HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", temporary, "newPassword", "MyOwnPass2026")));
         assertThat(mine.get("must_change_password")).isEqualTo(false);
         assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2, "password", temporary)))).isEqualTo(422);
+        // V718: the number opens nothing once the student has chosen a password
+        assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2, "password", app2)))).isEqualTo(422);
         assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", mail, "password", "MyOwnPass2026")))).isEqualTo(200);
 
         // the same file again adds nothing twice; no fee reminder goes to a student from the old portal
