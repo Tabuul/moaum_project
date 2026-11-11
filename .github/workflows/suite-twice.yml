@@ -51,11 +51,19 @@ jobs:
 
       - name: Install the postgresql client
         run: |
+          # The image ships PostgreSQL 16 and its client (apt only ever added the
+          # postgresql-client meta-package), so apt is reached only when psql
+          # is missing. On 11 Nov 2026 the runner's Ubuntu mirror list, led by
+          # azure.archive.ubuntu.com, stopped resolving for every apt job on
+          # seven attempts in a row.
+          if command -v psql >/dev/null 2>&1; then psql --version; exit 0; fi
           # Drop the runner's Google Chrome apt source: it intermittently
           # serves a corrupt index (Hash Sum mismatch) that fails apt-get
-          # update. postgresql-client comes from Ubuntu's own repos.
+          # update. postgresql-client comes from Ubuntu's own repos — the
+          # Azure mirror taken off the mirror list, every fetch retried.
           sudo rm -f /etc/apt/sources.list.d/*google* /etc/apt/sources.list.d/*chrome*
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+          sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt 2>/dev/null || true
+          sudo apt-get -o Acquire::Retries=5 update && sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends postgresql-client
 
       # The API never migrates. The same runner Railway uses does, first — once.
       - name: Apply the migrations
