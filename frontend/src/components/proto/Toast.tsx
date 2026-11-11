@@ -66,7 +66,10 @@ export function notifyProblem(problem: Problem | null | undefined, fallbackTitle
   const detail = clean(problem?.detail);
   const remedy = problem?.remedy?.message ? clean(problem.remedy.message) : undefined;
   const line = [detail, remedy].filter(Boolean).join(" ");
-  if (status === 0 || status === 503 || status === 502 || status === 504) {
+  if (status === 503 && (problem?.code === "QUERY_TOO_LONG" || problem?.code === "QUERY_CANCELLED")) {
+    // 11 Nov 2026: the server answered — the database stopped a statement; its own words say what stopped it, not "could not reach"
+    emit("bad", title ?? "The database stopped this before it finished", line || undefined, { sticky: true });
+  } else if (status === 0 || status === 503 || status === 502 || status === 504) {
     emit("bad", "The portal could not reach the server", "Check your connection and try again; nothing was saved.", { sticky: true });
   } else if (status === 401) {
     emit("warn", "You are signed out", "Sign in again to continue.");

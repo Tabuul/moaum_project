@@ -33,6 +33,11 @@ public class AttributedTransactionManager extends JdbcTransactionManager {
     /** Oct 2026: how long a screen's read-only transaction may run (0: as long as it likes) */
     private final long requestReadTimeoutMs;
 
+    /** 11 Nov 2026: the kind of the request's latest transaction, READ or WRITE — so a statement the database stops is told apart */
+    public static final String TRANSACTION_ATTRIBUTE = AttributedTransactionManager.class.getName() + ".transaction";
+    /** 11 Nov 2026: the read limit placed on the request's latest transaction, in milliseconds; absent where none was placed */
+    public static final String READ_LIMIT_ATTRIBUTE = AttributedTransactionManager.class.getName() + ".readLimitMs";
+
     public AttributedTransactionManager(DataSource dataSource) {
         this(dataSource, 0);
     }
@@ -50,6 +55,20 @@ public class AttributedTransactionManager extends JdbcTransactionManager {
     @Override
     protected void doBegin(Object transaction, TransactionDefinition definition) {
         super.doBegin(transaction, definition);
+        // 11 Nov 2026: the request notes which transaction it began and whether the portal limited it, so a statement the database
+        // stops (SQLSTATE 57014) is told as the portal's read limit or as a limit set outside the portal (ProblemHandler)
+        org.springframework.web.context.request.RequestAttributes attributes =
+                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (attributes != null) {
+            boolean limited = requestReadTimeoutMs > 0 && definition.isReadOnly();
+            attributes.setAttribute(TRANSACTION_ATTRIBUTE, definition.isReadOnly() ? "READ" : "WRITE",
+                    org.springframework.web.context.request.RequestAttributes.SCOPE_REQUEST);
+            if (limited) {
+                attributes.setAttribute(READ_LIMIT_ATTRIBUTE, requestReadTimeoutMs, org.springframework.web.context.request.RequestAttributes.SCOPE_REQUEST);
+            } else {
+                attributes.removeAttribute(READ_LIMIT_ATTRIBUTE, org.springframework.web.context.request.RequestAttributes.SCOPE_REQUEST);
+            }
+        }
         // Oct 2026: a screen's read is cut short past the limit rather than holding one of the portal's few connections for
         // minutes while other requests (Interswitch's among them) wait for one; a scheduled job's reads are not limited
         if (requestReadTimeoutMs > 0 && definition.isReadOnly() && inRequest()) {

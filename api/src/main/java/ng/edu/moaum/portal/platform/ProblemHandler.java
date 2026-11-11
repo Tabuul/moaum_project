@@ -48,6 +48,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 class ProblemHandler {
 
     private static final String PROBLEM_BASE = "https://api.moaum.edu.ng/problems/";
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ProblemHandler.class);
+
+    /** 11 Nov 2026: each statement the database stops, kept for ICT's Slow statements page */
+    private final QueryCancellations cancellations;
+
+    ProblemHandler(QueryCancellations cancellations) {
+        this.cancellations = cancellations;
+    }
 
     @ExceptionHandler(DomainRuleViolation.class)
     ProblemDetail domainRule(DomainRuleViolation e, HttpServletRequest request) {
@@ -137,13 +145,7 @@ class ProblemHandler {
             return problem;
         }
         if ("57014".equals(state)) {
-            // Oct 2026: a screen's read cut short at the limit (AttributedTransactionManager), so it never holds a connection for minutes
-            ProblemDetail problem = problem(HttpStatus.SERVICE_UNAVAILABLE,
-                    "This took longer than the portal allows a screen to read, and was stopped so other work is not kept waiting.", request);
-            problem.setProperty("code", "QUERY_TOO_LONG");
-            problem.setProperty("remedy", Map.of("message", "Narrow the list (a session, a faculty, a department) and try again; if it recurs, tell the Directorate of ICT which screen.",
-                    "office", "Directorate of ICT"));
-            return problem;
+            return stopped(message, request);
         }
         if ("23505".equals(state) || "23503".equals(state)) {
             ProblemDetail problem = problem(HttpStatus.CONFLICT, message, request);
@@ -181,6 +183,79 @@ class ProblemHandler {
             }
         }
         return null;
+    }
+
+    /**
+     * SQLSTATE 57014: the database stopped a statement before it finished. Oct 2026 answered every one as the portal's read limit;
+     * since 11 November 2026 the answer names what stopped it — the portal's limit on a screen's read, a statement timeout set
+     * outside the portal (on the server, the database, the role or the connection), or a cancel request — from the database's own
+     * words and the request's transaction (AttributedTransactionManager), logs it once at WARN with how long the request had run,
+     * and keeps it for ICT (QueryCancellations). The code stays QUERY_TOO_LONG for a time limit; a cancel is QUERY_CANCELLED.
+     */
+    ProblemDetail stopped(String databaseSaid, HttpServletRequest request) {
+        String transaction = request.getAttribute(AttributedTransactionManager.TRANSACTION_ATTRIBUTE) instanceof String t ? t : null;
+        Long limit = request.getAttribute(AttributedTransactionManager.READ_LIMIT_ATTRIBUTE) instanceof Long l ? l : null;
+        QueryCancellations.Cause cause = QueryCancellations.cause(databaseSaid, transaction, limit);
+        Long ranFor = CorrelationIdFilter.ranForMs(request);
+        String route = request.getAttribute(org.springframework.web.servlet.HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) instanceof String p
+                ? p : "(no route)";
+        String office = request.getHeader(AuditContextFilter.ACTIVE_OFFICE_HEADER);
+        String reference = CorrelationIdFilter.of(request).toString();
+        String ran = ranFor == null ? "" : " after " + seconds(ranFor);
+        String detail;
+        String title;
+        String remedy;
+        switch (cause) {
+            case PORTAL_READ_LIMIT -> {
+                title = "This screen took too long to read";
+                detail = "This took longer than the portal allows a screen to read (" + seconds(limit) + "), and was stopped" + ran
+                        + " so other work is not kept waiting.";
+                remedy = "Narrow the list (a session, a faculty, a department) and try again; if it recurs, tell the Directorate of ICT which screen.";
+            }
+            case DATABASE_STATEMENT_TIMEOUT -> {
+                title = "The database stopped this: it ran too long";
+                detail = "The database stopped this" + ran + ": it ran longer than the database allows one statement to run. "
+                        + "The work it was doing when it was stopped was not saved.";
+                remedy = "Try again; if it recurs, tell the Directorate of ICT which screen and when — its Slow statements page shows the database's time limit and what it stopped.";
+            }
+            case CANCEL_REQUEST -> {
+                title = "This was stopped before it finished";
+                detail = "A cancel request stopped this" + ran + " before it finished. The work it was doing when it was stopped was not saved.";
+                remedy = "Try again; if it recurs, tell the Directorate of ICT which screen and when — its Slow statements page lists what was stopped.";
+            }
+            default -> {
+                title = "The database stopped this before it finished";
+                detail = "The database stopped this" + ran + " before it finished. The work it was doing when it was stopped was not saved.";
+                remedy = "Try again; if it recurs, tell the Directorate of ICT which screen and when.";
+            }
+        }
+        ProblemDetail problem = problem(HttpStatus.SERVICE_UNAVAILABLE, detail, request);
+        problem.setTitle(title);
+        problem.setProperty("code", cause == QueryCancellations.Cause.CANCEL_REQUEST || cause == QueryCancellations.Cause.OTHER
+                || cause == QueryCancellations.Cause.RECOVERY_CONFLICT ? "QUERY_CANCELLED" : "QUERY_TOO_LONG");
+        problem.setProperty("cause", cause.name());
+        problem.setProperty("remedy", Map.of("message", remedy, "office", "Directorate of ICT"));
+        log.warn("statement stopped: {} — the database said \"{}\"; {} transaction{}, {} ms into {} {}, office {}, reference {}",
+                cause, databaseSaid, transaction == null ? "no" : transaction, limit == null ? "" : " under the portal's " + limit + " ms read limit",
+                ranFor == null ? "?" : ranFor, request.getMethod(), route, office == null ? "-" : office, reference);
+        cancellations.record(new QueryCancellations.Cancellation(java.time.Instant.now(), cause, transaction, limit, ranFor,
+                request.getMethod(), route, office, reference, databaseSaid));
+        return problem;
+    }
+
+    /** milliseconds as a person reads them: 90 s, 1.5 s, 4 min 12 s — seconds below two minutes, as the portal words its 90 s */
+    static String seconds(Long ms) {
+        if (ms == null) {
+            return "";
+        }
+        if (ms >= 120_000) {
+            long s = Math.round(ms / 1000.0);
+            return (s / 60) + " min" + (s % 60 == 0 ? "" : " " + (s % 60) + " s");
+        }
+        if (ms >= 10_000 || ms % 1000 == 0) {
+            return Math.round(ms / 1000.0) + " s";
+        }
+        return String.format(java.util.Locale.ENGLISH, "%.1f s", ms / 1000.0);
     }
 
     private static ProblemDetail problem(HttpStatus status, String detail, HttpServletRequest request) {

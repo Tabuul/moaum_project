@@ -733,3 +733,28 @@ staff sign-ins), local PostgreSQL 18, cold then warm:
   does not run, 23503 → 409; a JAMB number already on the register with a history, 23514 → 422) refuses that tranche, which rolls
   back, while the tranches already committed stay; the page then re-reads the count and the notice says how many were brought on
   before the run stopped, and the next press continues from there.
+
+### What stopped it, named on the answer and kept for ICT (11 November 2026, after V722)
+
+- The answer to SQLSTATE 57014 used to say, for every stopped statement, "This took longer than the portal allows a screen to
+  read" — also for the intake, a write the portal never limits. `ProblemHandler` now reads the database's own words and the
+  request's transaction (`AttributedTransactionManager` notes on the request whether it began a READ or a WRITE, and the read
+  limit it placed) and answers with the cause: `PORTAL_READ_LIMIT` (a screen's read cut at `moaum.db.request-read-timeout-ms`),
+  `DATABASE_STATEMENT_TIMEOUT` (a statement timeout the portal did not set: the server's configuration, the database, the role
+  or the connection's options), `CANCEL_REQUEST` (`pg_cancel_backend` or a client's query timeout), `RECOVERY_CONFLICT`, or
+  `OTHER`. The code stays `QUERY_TOO_LONG` for a time limit and is `QUERY_CANCELLED` otherwise; the title and detail say which,
+  with how long the request had run (`CorrelationIdFilter` notes its arrival). The error toast no longer reads a 503 carrying
+  either code as "The portal could not reach the server … nothing was saved": the server answered, and its words are shown.
+- Each stopped statement is logged once at WARN (cause, the database's words, the transaction, the read limit, how long the
+  request had run, the method and route pattern, the acting office, the reference) and kept in memory, the last fifty since the
+  API started (`QueryCancellations`): the route pattern, never the address, which can carry a student's id.
+- `GET /api/v1/platform/database-limits` (ICT, admin, super) reads, on a connection outside any transaction so the portal's own
+  read limit is not mistaken for the database's: `statement_timeout`, `lock_timeout`, `idle_in_transaction_session_timeout`,
+  `transaction_timeout` and `idle_session_timeout` from `pg_settings` with their source; the defaults stated on the database
+  and the role (`pg_db_role_setting`, the time limits alone); the portal's own limits (the read limit, a transaction or query
+  timeout if one was configured, the connection's `options` alone, never the rest of the address); a sentence that says whether
+  the database stops the portal's statements, after how long and set where; and the stopped statements, newest first. ICT's
+  Slow statements page (`/platform/slow-statements`) shows it above the statements, as "Time limits and stopped statements".
+- Tested for real in `StatementStoppedIT` with a 1.5 s read limit: a screen's read waits on a table the test holds locked and is
+  cut at the limit; the intake waits on the session's intake lock (V722) the test holds and is stopped by `pg_cancel_backend`;
+  ICT reads both by their routes. `StatementStoppedTest` covers the wording, the fifty kept and the read-out's sentences.

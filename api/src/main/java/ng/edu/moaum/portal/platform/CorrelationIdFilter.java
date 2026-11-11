@@ -27,12 +27,21 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     public static final String HEADER = "X-Correlation-Id";
     public static final String ATTRIBUTE = CorrelationIdFilter.class.getName() + ".id";
     static final String MDC_KEY = "correlationId";
+    /** 11 Nov 2026: when the request arrived (System.nanoTime), so a statement the database stops is told with how long it had run */
+    public static final String STARTED_ATTRIBUTE = CorrelationIdFilter.class.getName() + ".startedNanos";
+
+    /** how long the request has run, in milliseconds; null where its arrival was not noted */
+    public static Long ranForMs(HttpServletRequest request) {
+        Object started = request.getAttribute(STARTED_ATTRIBUTE);
+        return started instanceof Long nanos ? (System.nanoTime() - nanos) / 1_000_000 : null;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         UUID id = parse(request.getHeader(HEADER));
         request.setAttribute(ATTRIBUTE, id);
+        request.setAttribute(STARTED_ATTRIBUTE, System.nanoTime());
         response.setHeader(HEADER, id.toString());
         MDC.put(MDC_KEY, id.toString());
         try {
