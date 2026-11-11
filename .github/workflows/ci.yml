@@ -65,11 +65,11 @@ jobs:
           # Chromium's system libraries ship with the image (it carries Google
           # Chrome); install-deps adds only fonts no harness compares. On 11 Nov
           # 2026 the runner's Ubuntu mirror list, led by azure.archive.ubuntu.com,
-          # stopped resolving: the Azure mirror is taken off the list, fetches
-          # are retried, and a failure here is a warning, not a red build.
+          # stopped resolving: the Azure mirror is taken off the list, and a
+          # failure here is a warning, not a red build.
           sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt 2>/dev/null || true
-          echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries >/dev/null
-          npx playwright install-deps chromium || echo "::warning::Playwright's system packages were not installed (the Ubuntu mirror did not answer); the image's own libraries are used"
+          # Capped at three minutes: on 11 Nov 2026 apt sat on the unreachable mirror until the job's own limit.
+          timeout 180 npx playwright install-deps chromium || echo "::warning::Playwright's system packages were not installed (the Ubuntu mirror did not answer); the image's own libraries are used"
 
       - name: Rebuild from the parts and run every harness
         run: node proto/runall.mjs
