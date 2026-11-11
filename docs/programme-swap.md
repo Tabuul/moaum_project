@@ -78,3 +78,23 @@ office's bound (`StudentReach`); a Head of Department or Dean elsewhere, and a s
 ## Tests
 
 `ProgrammeSwapIT`, `TransferBatchIT`; `lib/programme-swap.test.ts`; check.sql V578 and V587 (as V633 has them), V633.
+
+## V719 — a postgraduate student's programme changed by the School
+
+The School of Postgraduate Studies (offices `pgschool`, `pgsecretary`) changes a postgraduate student's programme on the
+student edit page (Placement), by the same swap: `people.programme_swap_office_prepares_for(office, student)` admits the School
+for a postgraduate student alone (`people.is_postgraduate`); for anyone else's record the swap refuses them (`PSW_OFFICE`), as
+it refuses a postgraduate record on an undergraduate programme (`PSW_CATEGORY`). The API's preparers and the structure the
+picker is filled from (`/api/v1/programme-swaps/structure`, which now carries each postgraduate programme's degree type,
+`award`) admit the School too.
+
+A completed swap of a postgraduate student carries the admission record with it: `admissions.pg_application.programme_code`
+is set to the new programme (a specialisation of the old programme is let go), the application number, state, decision,
+dates, payments and documents untouched, and a `PROGRAMME_CHANGED` event is written on the application's own history naming
+the swap, the programmes before and after and the reason. The postgraduate portal, the fee references and the School's desks
+read the application's programme, so they follow.
+
+On the page a postgraduate student is moved among the approved postgraduate programmes alone, each named with its degree type;
+the programme chosen is read out (faculty, department, degree type, code); the change is checked, a reason given, then
+confirmed in a dialog that sets the current placement against the proposed one before anything is written; the swap reference
+is notified on success, the refusal on failure. Tests: `PgProgrammeChangeIT`, check.sql V719, `lib/programme-swap.test.ts`.

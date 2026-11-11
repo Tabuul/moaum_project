@@ -62,9 +62,30 @@ export interface CheckResult {
   unchanged: string[];
 }
 
-export interface Programme { code: string; name: string; category: string; levels: number[] }
+/** a programme as /structure gives it; award (the degree type, V719) on a postgraduate programme */
+export interface Programme { code: string; name: string; category: string; levels: number[]; award?: string | null }
 export interface Department { code: string; name: string; programmes: Programme[] }
 export interface Faculty { code: string; name: string; departments: Department[] }
+
+/** V719: the structure cut to the approved postgraduate programmes — the departments and faculties that have one */
+export function postgraduateStructure(faculties: Faculty[]): Faculty[] {
+  return faculties
+    .map((f) => ({ ...f, departments: f.departments.map((d) => ({ ...d, programmes: d.programmes.filter((p) => p.category === "POST GRADUATE") })).filter((d) => d.programmes.length) }))
+    .filter((f) => f.departments.length);
+}
+
+/** V719: a programme as the picker names it — the degree type beside a postgraduate programme's name */
+export function programmeLabel(p: Pick<Programme, "name" | "award">): string {
+  return p.award && !p.name.toLowerCase().includes(p.award.toLowerCase()) ? `${p.name} · ${p.award}` : p.name;
+}
+
+/** V719: the programme chosen, in full — what the confirmation shows beside the current placement */
+export function programmeFacts(faculties: Faculty[], code: string): { code: string; name: string; award: string | null; department: string; faculty: string; levels: number[]; category: string } | null {
+  for (const f of faculties) for (const d of f.departments) for (const p of d.programmes) {
+    if (p.code === code) return { code: p.code, name: p.name, award: p.award ?? null, department: d.name, faculty: f.name, levels: p.levels, category: p.category };
+  }
+  return null;
+}
 
 /** the refusal's words: the code's text without the code */
 export function refusalWords(r: string): string {

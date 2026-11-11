@@ -50,7 +50,13 @@ class ProgrammeSwapController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records',"
             + "'OFFICE_super','OFFICE_admin','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_dvc')";
-    private static final String PREPARERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
+    /** V719: the School of Postgraduate Studies prepares a swap too — for a postgraduate student alone, which the database holds
+     *  (people.programme_swap_office_prepares_for: PSW_OFFICE for anyone else's record) */
+    private static final String PREPARERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super',"
+            + "'OFFICE_pgschool','OFFICE_pgsecretary')";
+    /** V719: the structure the picker is filled from — the readers, and the School (the student edit page's picker for a postgraduate) */
+    private static final String STRUCTURE_READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records',"
+            + "'OFFICE_super','OFFICE_admin','OFFICE_audit','OFFICE_deputyaudit','OFFICE_vc','OFFICE_dvc','OFFICE_pgschool','OFFICE_pgsecretary')";
     /** V633: who may make a swap decides one left pending — people.programme_swap_office_decides holds the rule */
     private static final String DECIDERS = "hasAnyAuthority('OFFICE_academic','OFFICE_ict','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     static final Set<String> EVIDENCE_TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
@@ -200,16 +206,18 @@ class ProgrammeSwapController {
 
     /** the structure to choose from: every faculty, its departments, their programmes on the register with their own levels */
     @GetMapping("/structure")
-    @PreAuthorize(READERS)
+    @PreAuthorize(STRUCTURE_READERS)
     @Transactional(readOnly = true)
     Map<String, Object> structure() {
+        // V719: a postgraduate programme carries its degree type (award), so the picker and the confirmation can show it
         return jsonOf(jdbc.sql("""
                 SELECT json_build_object('faculties', coalesce(json_agg(f ORDER BY f.name), '[]'::json))::text FROM (
                     SELECT f.code, f.name,
                            (SELECT coalesce(json_agg(d ORDER BY d.name), '[]'::json) FROM (
                                SELECT d.code, d.name,
                                       (SELECT coalesce(json_agg(p ORDER BY p.name), '[]'::json) FROM (
-                                          SELECT p.code, p.name, p.category, people.programme_levels(p.code) AS levels
+                                          SELECT p.code, p.name, p.category, people.programme_levels(p.code) AS levels,
+                                                 CASE WHEN p.category = 'POST GRADUATE' THEN admissions.pg_award_of(p.pg_award, p.name) END AS award
                                             FROM ref.programme p WHERE p.dept_code = d.code AND NOT p.archived) p) AS programmes
                                  FROM ref.department d WHERE d.faculty_code = f.code) d) AS departments
                       FROM ref.faculty f) f

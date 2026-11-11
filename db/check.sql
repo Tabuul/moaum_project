@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 546
+\set EXPECTED 547
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31170,6 +31170,78 @@ BEGIN
         coalesce(o_lower AND o_spaced AND NOT o_other AND NOT o_email AND NOT o_none AND NOT o_chosen AND NOT o_temp AND NOT o_portal, false),
         format('lower %s spaced %s | other %s email %s empty %s | chosen %s | desk temporary %s | portal applicant %s | created %s',
                o_lower, o_spaced, o_other, o_email, o_none, o_chosen, o_temp, o_portal, done->>'created'));
+END $$;
+
+-- ── V719: a postgraduate student's programme changed by the School of Postgraduate Studies through the programme swap. Two made-up
+--          postgraduate programmes in one department (a specialisation on the first), a postgraduate student admitted on the first with
+--          their application, an undergraduate: who may (the School for the postgraduate, never the undergraduate; the Bursary never;
+--          the Registry anyone); the School refused for the undergraduate (PSW_OFFICE) and for the postgraduate onto an undergraduate
+--          programme (PSW_CATEGORY), the Bursary refused; the School moves the postgraduate — the swap completed by the School with
+--          the reason, the student on the new programme at the new level, the admission record following with the old programme's
+--          specialisation let go and a PROGRAMME_CHANGED event, the application number and state untouched, one application and one
+--          record. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9719/9720'; who uuid := gen_random_uuid(); dept text; fac text; prog1 text := 'C97191'; prog2 text := 'C97192'; ug2 text;
+    spec uuid := gen_random_uuid(); st_pg uuid := gen_random_uuid(); st_ug uuid := gen_random_uuid(); app uuid; no0 text;
+    may1 boolean; may2 boolean; may3 boolean; may4 boolean; r_ug text; r_cat text; r_bursar text; sw uuid; swap record; stu record; ap record; n_ev int; ev text; n_app int;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'pgschool', true);
+    PERFORM set_config('moaum.reason', 'CHECK V719', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (who, 'CHK/V719/S', 'CHECKV719', 'School', NULL);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, '9719-10-01', '9720-08-31');
+    SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d WHERE d.faculty_code IS NOT NULL ORDER BY d.code LIMIT 1;
+    SELECT code INTO ug2 FROM ref.programme WHERE category <> 'POST GRADUATE' AND NOT archived AND code <> 'C00023' ORDER BY code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research) VALUES
+        (prog1, 'M.Sc. Swap Check One', dept, fac, 'POST GRADUATE', 0, 'MSC', false),
+        (prog2, 'Ph.D. Swap Check Two', dept, fac, 'POST GRADUATE', 0, 'PHD', true);
+    INSERT INTO catalogue.programme_specialisation (id, programme_code, code, name, active, created_by, created_office)
+    VALUES (spec, prog1, 'SC1', 'Swap Check Specialisation', true, who, 'pgschool');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (st_pg, 'MOAUM/ADM/19/719001', 'MOAUM/ZZS/19/7191', 'CHECKV719', 'Postgraduate', prog1, 'POSTGRADUATE', ses, 800, 800, 'ACTIVE', now()),
+        (st_ug, 'MOAUM/ADM/19/719002', 'MOAUM/ZZS/19/7192', 'CHECKV719', 'Undergraduate', 'C00023', 'UTME', ses, 100, 200, 'ACTIVE', now());
+    SELECT x.application_id INTO app FROM admissions.pg_apply(jsonb_build_object('session', ses, 'programme', prog1, 'surname', 'CHECKV719', 'otherNames', 'Postgraduate',
+           'dob', '1990-01-01', 'phone', '08030007191', 'email', 'check.v719@example.test', 'passwordHash', crypt('x', gen_salt('bf', 12)))) x;
+    UPDATE admissions.pg_application SET specialisation_id = spec, state = 'ADMITTED', student_id = st_pg, admitted_at = now() WHERE id = app;
+    SELECT application_no INTO no0 FROM admissions.pg_application WHERE id = app;
+    -- who may
+    may1 := people.programme_swap_office_prepares_for('pgschool', st_pg);
+    may2 := people.programme_swap_office_prepares_for('pgschool', st_ug);
+    may3 := people.programme_swap_office_prepares_for('bursar', st_pg);
+    may4 := people.programme_swap_office_prepares_for('registrar', st_ug);
+    -- refused: the School for the undergraduate, the School for the postgraduate onto an undergraduate programme, the Bursary
+    BEGIN PERFORM people.prepare_programme_swap(st_ug, ug2, 100, NULL, 'PROGRAMME_CORRECTION', 'the School may not move an undergraduate student'); r_ug := 'done';
+    EXCEPTION WHEN insufficient_privilege THEN r_ug := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.prepare_programme_swap(st_pg, 'C00023', 100, NULL, 'PROGRAMME_CORRECTION', 'a postgraduate onto an undergraduate programme'); r_cat := 'done';
+    EXCEPTION WHEN check_violation THEN r_cat := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM people.prepare_programme_swap(st_pg, prog2, 900, NULL, 'PROGRAMME_CORRECTION', 'the Bursary may not move anyone at all'); r_bursar := 'done';
+    EXCEPTION WHEN insufficient_privilege THEN r_bursar := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'pgschool', true);
+    -- the School moves the postgraduate
+    sw := people.prepare_programme_swap(st_pg, prog2, 900, NULL, 'PROGRAMME_CORRECTION', 'Admitted on the wrong programme: the School''s memo of 11 November');
+    SELECT * INTO swap FROM people.programme_swap WHERE id = sw;
+    SELECT programme_code, current_level INTO stu FROM people.student WHERE id = st_pg;
+    SELECT programme_code, specialisation_id, application_no, state, student_id INTO ap FROM admissions.pg_application WHERE id = app;
+    SELECT count(*), max(note) INTO n_ev, ev FROM admissions.pg_application_event WHERE application_id = app AND kind = 'PROGRAMME_CHANGED';
+    SELECT count(*) INTO n_app FROM admissions.pg_application WHERE student_id = st_pg;
+    msg := format('may %s/%s/%s/%s | refused %s %s %s | swap %s %s %s>%s by %s decided %s reason %s | student %s@%s | application %s spec %s number %s state %s student %s apps %s | events %s said %s',
+                  may1, may2, may3, may4, r_ug, r_cat, r_bursar, swap.status, swap.kind, swap.from_programme, swap.to_programme, swap.prepared_office, swap.decided_office,
+                  swap.reason = 'Admitted on the wrong programme: the School''s memo of 11 November', stu.programme_code, stu.current_level,
+                  ap.programme_code, coalesce(ap.specialisation_id::text, 'none'), ap.application_no = no0, ap.state, ap.student_id = st_pg, n_app, n_ev,
+                  ev LIKE 'Programme changed by programme swap PSW/%: C97191 → C97192 (the specialisation of the old programme let go) — Admitted on the wrong programme%');
+    RAISE EXCEPTION 'the V719 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V719 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V719: a postgraduate student''s programme is changed by the School of Postgraduate Studies through the programme swap — for a postgraduate alone, onto a postgraduate programme alone, with a reason; the admission record follows, the number and the record kept one',
+      coalesce(msg = 'may t/f/f/t | refused PSW_OFFICE PSW_CATEGORY PSW_OFFICE | swap COMPLETED PROGRAMME_CORRECTION C97191>C97192 by pgschool decided pgschool reason t | student C97192@900'
+                     || ' | application C97192 spec none number t state ADMITTED student t apps 1 | events 1 said t', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

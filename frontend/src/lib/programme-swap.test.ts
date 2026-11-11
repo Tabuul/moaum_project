@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CONFLICT_WORDS, KIND_WORDS, PLAIN_KINDS, changeWords, conflictWords, mismatchRows, refusalWords, reportRows, restoreWords, signalWords, swapsHref, type Mismatch, type RestoreCheck, type Swap } from "./programme-swap.ts";
+import { CONFLICT_WORDS, KIND_WORDS, PLAIN_KINDS, changeWords, conflictWords, mismatchRows, postgraduateStructure, programmeFacts, programmeLabel, refusalWords, reportRows, restoreWords, signalWords, swapsHref, type Faculty, type Mismatch, type RestoreCheck, type Swap } from "./programme-swap.ts";
 
 const swap = (o: Partial<Swap> = {}): Swap => ({
   id: "1", swap_ref: "PSW/2026/000001", student_id: "s", student: "Doe, John", matric_no: "MOAU/AD/BAM/24/1234", jamb_reg_no: "202410001AA",
@@ -80,4 +80,27 @@ test("V669: a placement conflict in a line", () => {
   assert.equal(conflictWords({ file_programme: "C1", file_programme_name: "B.Sc. Microbiology", file_level: 200, kept_programme: "C2", kept_programme_name: "B.Sc. Biochemistry",
     kept_level: 300, settled_by: "PSW/2026/000006" }), "The upload named B.Sc. Microbiology at 200 Level; the record kept B.Sc. Biochemistry at 300 Level, set by PSW/2026/000006");
   assert.equal(CONFLICT_WORDS.KEPT, "Recorded placement kept");
+});
+
+test("V719: a postgraduate student is moved among the postgraduate programmes alone, each named with its degree type, and the one chosen reads out in full", () => {
+  const faculties: Faculty[] = [
+    { code: "SC", name: "Science", departments: [
+      { code: "MCS", name: "Mathematics and Computer Science", programmes: [
+        { code: "C00023", name: "B.Sc. Computer Science", category: "UNDER GRADUATE", levels: [100, 200, 300, 400] },
+        { code: "C97191", name: "M.Sc. Computer Science", category: "POST GRADUATE", levels: [700, 800, 900], award: "Master of Science" },
+        { code: "C97192", name: "Ph.D. Computer Science (Ph.D.)", category: "POST GRADUATE", levels: [700, 800, 900], award: "Ph.D." },
+      ] },
+      { code: "PHY", name: "Physics", programmes: [{ code: "C00031", name: "B.Sc. Physics", category: "UNDER GRADUATE", levels: [100, 200, 300, 400] }] },
+    ] },
+    { code: "LAW", name: "Law", departments: [{ code: "PLW", name: "Public Law", programmes: [{ code: "C00040", name: "LL.B. Law", category: "UNDER GRADUATE", levels: [100, 200, 300, 400, 500] }] }] },
+  ];
+  const pg = postgraduateStructure(faculties);
+  assert.deepEqual(pg.map((f) => f.code), ["SC"], "a faculty with no postgraduate programme is left out");
+  assert.deepEqual(pg[0].departments.map((d) => d.code), ["MCS"], "so is a department");
+  assert.deepEqual(pg[0].departments[0].programmes.map((p) => p.code), ["C97191", "C97192"]);
+  assert.equal(programmeLabel({ name: "M.Sc. Computer Science", award: "Master of Science" }), "M.Sc. Computer Science · Master of Science");
+  assert.equal(programmeLabel({ name: "Ph.D. Computer Science (Ph.D.)", award: "Ph.D." }), "Ph.D. Computer Science (Ph.D.)", "the degree already in the name is not said twice");
+  assert.equal(programmeLabel({ name: "B.Sc. Physics" }), "B.Sc. Physics");
+  assert.deepEqual(programmeFacts(faculties, "C97191"), { code: "C97191", name: "M.Sc. Computer Science", award: "Master of Science", department: "Mathematics and Computer Science", faculty: "Science", levels: [700, 800, 900], category: "POST GRADUATE" });
+  assert.equal(programmeFacts(faculties, "C99999"), null);
 });

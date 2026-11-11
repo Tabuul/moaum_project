@@ -21,7 +21,7 @@ import { Biodata } from "../Biodata";
 import type { StudentRecord } from "@/lib/student";
 import type { RegistrationView } from "@/lib/student-portal";
 import { TargetPicker, type Target } from "@/app/programme-swap/TargetPicker";
-import { KIND_WORDS, PLAIN_KINDS, refusalWords, type CheckResult, type Faculty, type SwapKind } from "@/lib/programme-swap";
+import { KIND_WORDS, PLAIN_KINDS, postgraduateStructure, programmeFacts, refusalWords, type CheckResult, type Faculty, type SwapKind } from "@/lib/programme-swap";
 import { recBatchPath } from "@/lib/graduation-reconciliation";
 import {
   FIELD_WORD, SEVERITY, jambYear, reasonProblem, sessionYear, words,
@@ -332,7 +332,25 @@ function PlacementSection({ page, faculties, may, settle }: { page: EditPage; fa
   const [swapReason, setSwapReason] = useState("");
   const [check, setCheck] = useState<CheckResult | null>(null);
   const [swapBusy, setSwapBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);   // V719: current against proposed, before anything is written
   const canProgramme = may("EDIT_STUDENT_PROGRAMME");
+  /* V719: a postgraduate student is moved among the approved postgraduate programmes alone, each with its degree type (the swap refuses
+     an undergraduate programme for a postgraduate record anyway — PSW_CATEGORY) */
+  const postgraduate = !!page.postgraduate || s.programme_category === "POST GRADUATE" || s.entry_mode === "POSTGRADUATE";
+  const chosen = target.programme ? programmeFacts(postgraduate ? postgraduateStructure(faculties) : faculties, target.programme) : null;
+  const current = programmeFacts(faculties, s.programme_code);
+
+  async function makeSwap() {
+    setSwapBusy(true);
+    try {
+      const r = await call<{ swap_ref?: string; status?: string; failure?: string }>("POST", "/api/v1/programme-swaps", {
+        studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: swapSession || null, kind, reason: swapReason.trim(),
+      }, `Programme change made on the student edit page: ${s.programme_code} to ${target.programme}`);
+      if (r.ok && r.data.status === "FAILED") { notifyProblem({ status: 409, title: "The programme was not changed", detail: r.data.failure ?? "The record changed while you were looking at it; check the change again." }); setCheck(null); setConfirming(false); router.refresh(); return; }
+      if (r.ok) { notify(`Programme changed to ${chosen?.name ?? target.programme}${r.data.swap_ref ? ` · ${r.data.swap_ref}` : ""}`); setConfirming(false); setCheck(null); setSwapReason(""); setTarget({ faculty: "", dept: "", programme: "", level: "" }); router.refresh(); }
+      else { notifyProblem(r.problem); setConfirming(false); }
+    } finally { setSwapBusy(false); }
+  }
 
   async function runCheck() {
     setSwapBusy(true);
@@ -350,8 +368,8 @@ function PlacementSection({ page, faculties, may, settle }: { page: EditPage; fa
           <KvGrid pairs={[["Faculty", s.faculty ?? "—"], ["Department", s.department ?? "—"], ["Programme", `${s.programme ?? s.programme_code} (${s.programme_code})`], ["Level", s.current_level]]} />
           {!canProgramme ? <Note kind="info" title="Read only">Your office does not hold EDIT_STUDENT_PROGRAMME.</Note> : (
             <>
-              <div className="eyebrow mt-3">Move the student to</div>
-              <TargetPicker faculties={faculties} value={target} onChange={(t) => { setTarget(t); setCheck(null); }} idPrefix="pl" />
+              <div className="eyebrow mt-3">{postgraduate ? "Move the student to a postgraduate programme" : "Move the student to"}</div>
+              <TargetPicker faculties={faculties} value={target} onChange={(t) => { setTarget(t); setCheck(null); }} idPrefix="pl" postgraduate={postgraduate} facts />
               <div className="grid grid--2">
                 <Field id="pl-ses" label="Effective session" hint="Blank: the current session">
                   <select id="pl-ses" className="ctl" value={swapSession} onChange={(e) => { setSwapSession(e.target.value); setCheck(null); }}>
@@ -383,17 +401,33 @@ function PlacementSection({ page, faculties, may, settle }: { page: EditPage; fa
                       </Note>
                       <ReasonBox id="pl" reason={swapReason} setReason={setSwapReason} />
                       <div className="row mt-2">
-                        <Btn kind="primary" busy={swapBusy} busyLabel="Moving…" disabled={!!reasonProblem(swapReason)} onClick={async () => {
-                          setSwapBusy(true);
-                          try {
-                            const r = await call<{ swap_ref?: string; status?: string }>("POST", "/api/v1/programme-swaps", {
-                              studentId: s.id, toProgramme: target.programme, toLevel: Number(target.level), session: swapSession || null, kind, reason: swapReason.trim(),
-                            }, `Programme change made on the student edit page: ${s.programme_code} to ${target.programme}`);
-                            if (r.ok) { notify(`Programme changed${r.data.swap_ref ? ` · ${r.data.swap_ref}` : ""}`); setCheck(null); setSwapReason(""); setTarget({ faculty: "", dept: "", programme: "", level: "" }); router.refresh(); }
-                            else notifyProblem(r.problem);
-                          } finally { setSwapBusy(false); }
-                        }}>Confirm the programme change</Btn>
+                        <Btn kind="primary" disabled={!!reasonProblem(swapReason)} onClick={() => setConfirming(true)}>Review and confirm the change</Btn>
                       </div>
+                      {confirming ? (
+                        <Modal title="Confirm the programme change" sub={`${s.surname}, ${s.other_names ?? ""} · ${s.matric_no ?? s.admission_no ?? ""}`} onClose={() => setConfirming(false)}
+                          foot={<><Btn kind="ghost" disabled={swapBusy} onClick={() => setConfirming(false)}>Back</Btn>
+                            <Btn kind="primary" busy={swapBusy} busyLabel="Changing…" onClick={() => void makeSwap()}>Change the programme</Btn></>}>
+                          <div className="grid grid--2">
+                            <div>
+                              <div className="eyebrow">Current programme</div>
+                              <KvGrid cls="grid--1" pairs={[["Faculty", s.faculty ?? current?.faculty ?? "—"], ["Department", s.department ?? current?.department ?? "—"],
+                                ["Programme", `${s.programme ?? s.programme_code} (${s.programme_code})`], ["Degree type", current?.award ?? (postgraduate ? "—" : "Undergraduate")], ["Level", String(s.current_level)]]} />
+                            </div>
+                            <div>
+                              <div className="eyebrow">Proposed programme</div>
+                              <KvGrid cls="grid--1" pairs={[["Faculty", chosen?.faculty ?? check.to?.facultyName ?? "—"], ["Department", chosen?.department ?? check.to?.department ?? "—"],
+                                ["Programme", `${chosen?.name ?? check.to?.programmeName ?? target.programme} (${target.programme})`], ["Degree type", chosen?.award ?? (postgraduate ? "—" : "Undergraduate")], ["Level", target.level]]} />
+                            </div>
+                          </div>
+                          <KvGrid cls="grid--2" pairs={[["Effective session", check.session], ["Change type", KIND_WORDS[kind]]]} />
+                          <div className="mt-2"><div className="eyebrow">Reason</div><div>{swapReason.trim()}</div></div>
+                          <Note kind="info" title="What this does">
+                            The student&rsquo;s programme and level change by the programme swap; the application number, admission history, payments, documents and
+                            registrations are kept. {postgraduate ? "The postgraduate admission record follows, so the portal, the fee references and the School's desks read the new programme. " : ""}
+                            The change is written with your name, the time and this reason, and the student is told.
+                          </Note>
+                        </Modal>
+                      ) : null}
                     </>
                   )}
                 </div>
