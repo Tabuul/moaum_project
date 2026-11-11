@@ -227,7 +227,8 @@ class JupebSupportController {
         out.put("record", record);
         out.put("payments", a.has("VIEW_PAYMENTS") || a.has("INVESTIGATE_PAYMENT") ? references(id) : List.of());
         out.put("account", jdbc.sql("""
-                SELECT acc.email, acc.last_signed_in_at, acc.locked_until > now() AS locked, acc.must_change_password, acc.temp_expires_at IS NOT NULL AS temporary
+                SELECT acc.email, acc.last_signed_in_at, acc.locked_until > now() AS locked, acc.must_change_password, acc.temp_expires_at IS NOT NULL AS temporary,
+                       (acc.temp_expires_at IS NOT NULL AND (acc.temp_used_at IS NOT NULL OR acc.temp_expires_at <= now())) AS temporary_spent   -- V718: as the door reads it
                   FROM jupeb.account acc JOIN jupeb.application a ON a.account_id = acc.id WHERE a.id = :a
                 """).param("a", id).query().singleRow());
         out.put("tickets", jdbc.sql("""

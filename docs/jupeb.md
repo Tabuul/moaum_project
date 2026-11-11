@@ -19,7 +19,7 @@ copies of them.
 
 | Concern | Existing piece | How JUPEB uses it |
 |---|---|---|
-| Sign-in | `/api/auth/sign-in` (one door), `TokenIssuer`, `platform.session` | `JUPEB/APP/YYYY/NNNNNN`, or the email, signs in at `/api/v1/jupeb/sign-in`. The token's office is `applicant` and its subject is the candidate's JUPEB application. |
+| Sign-in | `/api/auth/sign-in` (one door), `TokenIssuer`, `platform.session` | `JUPEB/APP/YYYY/NNNNNN`, or the email — or, for a student uploaded from the old portal, its App No (`legacy_ref`), which is also their first password until they choose one (V718) — signs in at `/api/v1/jupeb/sign-in`. The token's office is `applicant` and its subject is the candidate's JUPEB application. |
 | Payments | `PaymentsService` / `PaymentsRepository`: gateways, checkout, verify, webhooks, reconciler | `jupebReference`/`confirmJupeb` join the reference chain beside the PG one. Kinds `JUPEB_APPLICATION`, `JUPEB_STATUS_CHECKING`, `JUPEB_ACCEPTANCE`, `JUPEB_SCHOOL_FIRST/SECOND/FULL`. An entitlement is the confirmed reference itself, never a flag the page sets. |
 | Windows | `policy.portal_window`, `window_state`, `window_act`, `ApplicationWindows` | Types `JUPEB_APPLICATION` and `JUPEB_ADMISSION_STATUS_CHECKING` (V342). Both are **closed until the Director first opens them**. |
 | Files | `FileObjects` (private object store, or bytes in the database) | Documents are private. No URL is stored. They are streamed only to their owner, the JUPEB Office, or (the passport only) an instructor of a subject the student takes; uncached and sandboxed. `?format=jpeg` converts a PNG passport for the PDFs. |
@@ -115,8 +115,11 @@ copies of them.
   the office once in a downloadable login sheet (never stored readable, never emailed), and must be changed at first sign-in;
   since V718 the **application number itself is the first password** of a student who has not yet chosen one (compared at the
   door — `jupeb.first_password_opens` — never hashed into the account; a temporary password from ICT Support's desk takes
-  precedence while it stands), and the one sign-in page tries the JUPEB door for an old-portal-shaped number such as
-  S007202609174486 after the staff and postgraduate doors;
+  precedence once issued: the number typed against an account that holds one is told so — `AUTH_TEMP_PASSWORD_ISSUED`, or
+  `AUTH_TEMP_PASSWORD_SPENT` once it has lapsed or been used — and is no failure counted; and the reset link, like the change of
+  password, refuses the number as the chosen one, `JUPEB_PASSWORD_IS_NUMBER`), and the one sign-in page tries the JUPEB door
+  for an old-portal-shaped number such as S007202609174486 after the staff and postgraduate doors — and, when no door opens,
+  answers with the refusal of the door that knows the account (locked, a temporary password) rather than the staff door's;
   each student can also be emailed a seven-day link to set their own password. Nothing else is announced while the records
   are written; no fee reminder reaches them (what they paid on the old portal is the Bursary's), and the Payments tab says
   so. Their programme is set by the combination they register.
@@ -195,7 +198,8 @@ copies of them.
   read the record (the documents and fees only with their capabilities); correct the contact details with a reason; reset the
   password — the JUPEB portal's own one-hour link, or, on the candidate's own ticket only, a random 12-character temporary
   password (bcrypt, never recorded, shown once) that works for one sign-in within 24 hours and is changed at it (a second sign-in
-  with it is refused `AUTH_TEMP_PASSWORD_SPENT`); ask the gateway again about a JUPEB payment through `PaymentsService.verify`
+  with it is refused `AUTH_TEMP_PASSWORD_SPENT`; the record says when a student uploaded from the old portal is still on the
+  application number as the first password, V718, which a temporary password from the desk replaces for good); ask the gateway again about a JUPEB payment through `PaymentsService.verify`
   (never a payment created or marked paid); re-apply the activation a confirmed school fee earns (`jupeb.activate_if_due`);
   raise a ticket for the candidate; escalate to the JUPEB Office, the Bursary or the Director of ICT. Every act is a row of
   `helpdesk.support_action` with `jupeb_application_id` (and no `student_id`), on the ticket's timeline when there is one; the
@@ -466,13 +470,17 @@ copies of them.
 - `JupebAttendanceIT` also covers V344: the policy's band and classes, the standing list (office and admin only), the warning
   sent once and not again the same day, and the student's own standing.
 - `JupebIT.oldPortalStudentsAreUploadedWithLogins` covers the old-portal upload (preview, bad email, the login once, sign-in
-  on the old App No, the forced password change, re-upload skipped, no fee reminder); `applicationToResult` the Board list.
+  on the old App No — with the application number as the first password however typed, refused as the new password and by the
+  reset link, opening nothing once a password is chosen (V718) — and with the temporary password, the forced password change,
+  re-upload skipped, no fee reminder); `applicationToResult` the Board list.
 - `JupebIT.supportOldPaymentsSelfServiceTimetablePracticeAndReports` covers V347: the student's contact details (and the phone
   kept), a correction asked and approved, the old portal's payments (Bursary refused, preview, a failed row, an ambiguous
   "school fees", posted once, not twice, then the second instalment charged as the balance it leaves), a slot and its clash, a practice test (opened only with questions, no key before
   submission, scored, attempts limited, no result written), the reports (Bursary refused), and ICT Support on the record (no
   reach → not found, the contact correction on the ledger, a capability not granted refused, the temporary password only on
-  the candidate's ticket, one sign-in, never recorded).
+  the candidate's ticket, one sign-in, never recorded; the application number typed against it told `AUTH_TEMP_PASSWORD_ISSUED`
+  while it stands and `AUTH_TEMP_PASSWORD_SPENT` after, no failure of the account's counted, the email with the number only
+  "do not match" — V718).
 - `JupebIT.announcementsPracticeImagesAndIdentityCard` covers V349: a notice refused to the Bursary, its reach told first and
   matched, a class notice not reaching another class, the unread count and its reading, a withdrawn notice gone; a typed
   question with a formula, a refused question and a refused fake PNG, the image seen by the office and by the student only in

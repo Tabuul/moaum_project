@@ -170,11 +170,11 @@ Many students reset in one operation, by the same service as the single reset. T
 | `POST /api/v1/helpdesk/tickets/{id}/password-reset` | the link sent from a ticket | it checks the same capability on the student and writes the same ledger row |
 | `PUT /api/v1/student-auth/accounts/{id}` | the Registry opens a student account with a first password it types, which must change at sign-in | it is the Registry's act, refuses the student's own number, and the change is now enforced by the gate |
 | `PUT /api/v1/iam/persons/{id}/credential` | the Registry sets a staff member's first password | staff, not students |
-| JUPEB desk and old-portal import | JUPEB's own temporary passwords, shown once | JUPEB's separate portal |
+| JUPEB desk and old-portal import | JUPEB's own temporary passwords, shown once; since V718 an uploaded student's App No is itself the first password until they choose one (`jupeb.first_password_opens`, compared at the door, never stored) | JUPEB's separate portal |
 
 No password was found in logs, browser storage or analytics, and no hard-coded default password exists. The only answers that
 carry a password are the temporary-password reset (V346) and JUPEB's old-portal import, which hands out one-time passwords
-once, by design.
+once, by design (its students may instead type the App No as the first password, V718 — compared at the door, never stored).
 
 ## Uploaded contacts and reset links (V575)
 

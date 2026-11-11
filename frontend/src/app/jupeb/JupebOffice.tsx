@@ -1747,7 +1747,7 @@ const PASS_STATUS: Record<string, [string, "ok" | "warn" | "bad" | "grey"]> = {
 const PASS_MAX = 5 * 1024 * 1024;   // the API's limit for a JUPEB document
 const PASS_CHUNK = 4;               // photographs a request carries
 
-/** /jupeb/import — the old portal's export uploaded: judged first, then each student given an account and a temporary password */
+/** /jupeb/import — the old portal's export uploaded: judged first, then each student given an account, a temporary password and (V718) the App No as the first password */
 /** V680: the JUPEB Office's, and the Director of ICT's and a Database Operator's (office: who is acting — the JUPEB applications link shown to that office alone) */
 export function JupebOldPortalImport({ office }: { office?: string | null } = {}) {
   const jupebDesk = !office || office === "jupeb" || office === "super";

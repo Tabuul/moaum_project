@@ -17,7 +17,8 @@ password should be, the University chose **either number**: the old portal's or 
 ## What changed
 
 - **The sign-in page.** A number of no known shape that the staff door refuses is tried at the postgraduate door. The hint under the
-  username says "A member of staff on the staff number, or a postgraduate applicant on the old portal's number", and names a
+  username says "A member of staff on the staff number, or a postgraduate or JUPEB student on the old portal's number" (the
+  JUPEB words since V718), and names a
   `PG/YY/NNNNNN` number as a postgraduate applicant's.
 - **Either number is the first password.** An applicant the migration creates is to choose their own password
   (`pg_applicant.must_change_password`, the flag V706's reset uses). While it holds, the postgraduate door opens the account on the

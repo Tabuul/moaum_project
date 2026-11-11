@@ -38,7 +38,7 @@ interface Action {
 }
 export interface JupebSupportData {
   record: Candidate; payments: Payment[]; capabilities: string[]; agent: string;
-  account: { email: string; last_signed_in_at: string | null; locked: boolean | null; must_change_password: boolean; temporary: boolean };
+  account: { email: string; last_signed_in_at: string | null; locked: boolean | null; must_change_password: boolean; temporary: boolean; temporary_spent?: boolean };
   tickets: { id: string; number: string; subject: string; status: string; priority: string; category: string; created_at: string; updated_at: string; agent: string | null; escalated_office: string | null }[];
   actions: Action[];
   ticket: { id: string; number: string; subject: string; status: string; category: string; category_code: string } | null;
@@ -193,9 +193,9 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
           <Panel title="Sign-in account"><PBody><KvGrid cls="grid--2" pairs={[
             ["Sign-in email", data.account.email], ["Last signed in", when(data.account.last_signed_in_at)],
             ["Locked", data.account.locked ? <Pil key="l" kind="bad">Locked after failed sign-ins</Pil> : "No"],
-            ["Password", data.account.temporary ? <Pil key="t" kind="warn">Temporary — to be changed at sign-in</Pil> : data.account.must_change_password ? <Pil key="t" kind="warn">To be changed at sign-in</Pil> : "Set by the candidate"],
+            ["Password", data.account.temporary_spent ? <Pil key="t" kind="bad">Temporary — used or lapsed: issue another or send the link{c.legacy_source ? "; the application number no longer opens the account" : ""}</Pil> : data.account.temporary ? <Pil key="t" kind="warn">Temporary — to be changed at sign-in</Pil> : data.account.must_change_password && c.legacy_source ? <Pil key="t" kind="warn">The application number, until the candidate chooses one (uploaded from the old portal)</Pil> : data.account.must_change_password ? <Pil key="t" kind="warn">To be changed at sign-in</Pil> : "Set by the candidate"],
           ]} />
-            <p className="sub2 mt-2">The password is never shown or recorded.</p>
+            <p className="sub2 mt-2">The password is never shown or recorded.{c.legacy_source && data.account.must_change_password && !data.account.temporary ? " Uploaded from the old portal, the candidate signs in with the application number as the password until they choose one; a temporary password issued here takes its place." : ""}</p>
           </PBody></Panel>
         </div>
       ) : tabNow === "payments" ? (
@@ -294,6 +294,8 @@ export function JupebSupport({ id, data, tab }: { id: string; data: JupebSupport
                   <label className="row row--inline row--tight"><input type="radio" name="jr-m" checked={reset.method === "TEMPORARY"} disabled={!ticket} onChange={() => setReset({ ...reset, method: "TEMPORARY" })} /> A temporary password at the desk — one sign-in within 24 hours{!ticket ? " (only on the candidate's ticket)" : ""}</label>
                 </div>
               </Field>
+              {c.legacy_source && data.account.must_change_password && !data.account.temporary ? <Note kind="info" title="This candidate is still on the application number as the first password">A temporary password issued here takes its place for good: the number then opens nothing, so if the temporary one lapses unused, issue another or send the link.</Note>
+                : data.account.temporary_spent ? <Note kind="info" title="The last temporary password was used or lapsed">{c.legacy_source ? "The application number no longer opens the account; a" : "A"} new temporary password or the link is the way in.</Note> : null}
               <Field id="jr-r" label="Reason" required hint="How the candidate's identity was confirmed"><textarea id="jr-r" className="ctl" rows={2} maxLength={2000} value={reset.reason} onChange={(e) => setReset({ ...reset, reason: e.target.value })} /></Field>
             </>
           )}

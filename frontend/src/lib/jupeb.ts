@@ -76,7 +76,7 @@ export interface Candidate {
   combinations?: Combination[];
   /** V343 */
   requests: ChangeRequest[]; papers?: Paper[]; withdrawn_at: string | null; deferred_from: string | null; deferred_to: string | null;
-  /** V345: uploaded from the old portal (its App No), and a temporary password still to be changed */
+  /** V345: uploaded from the old portal (its App No), and a first password — the temporary one, or since V718 the App No itself — still to be changed */
   legacy_source: string | null; legacy_ref: string | null; legacy_batch: string | null; must_change_password: boolean;
   /** V344: the attendance standing, subject by subject, once a student */
   attendanceStanding: AttendanceStanding[];

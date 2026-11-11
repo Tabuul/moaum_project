@@ -8,8 +8,9 @@ import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
  *   MOAUM/XXX/YY/NNNN                 a student, on the matriculation number
  *   12 digits + 2–3 letters, APP/…    an applicant, on the JAMB or application number
  *   anything else                     a member of staff, on the staff number or email —
- *                                     and, failing that, an applicant on an email address, or a
- *                                     postgraduate applicant on the old portal's number (V709)
+ *                                     and, failing that, an applicant on an email address, a
+ *                                     postgraduate applicant on the old portal's number (V709), or a JUPEB
+ *                                     student uploaded from the old portal on its number (V718)
  * The token goes into a cookie the browser cannot read; the office cookie says
  * which side of the portal opens.
  */
@@ -46,6 +47,18 @@ function problem(text: string, status: number, contentType: string | null) {
   return new NextResponse(text, { status, headers: { "content-type": contentType ?? "application/problem+json" } });
 }
 
+/* V718: whether a door that refused knows the account — locked, a temporary password spent or standing (any 422 but "do not
+   match"): that door's answer is the one for the person, in place of the staff door's. Reading a copy leaves the body for later. */
+async function knowsTheAccount(r: Response): Promise<boolean> {
+  if (r.status !== 422) return false;
+  try {
+    const code = (JSON.parse(await r.clone().text()) as { code?: unknown }).code;
+    return typeof code === "string" && code !== "AUTH_BAD_CREDENTIALS";
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const identifier = String(body?.identifier ?? body?.username ?? body?.matricNo ?? "").trim();
@@ -60,6 +73,8 @@ export async function POST(request: NextRequest) {
      and fall back to staff if it turns out to be a staff number of the same shape */
   const legacyMatric = kind === "staff" && !identifier.includes("@") && LEGACY_MATRIC.test(identifier);
   let r: Response | null;
+  /* V718: the doors that refused but know the account — the first of them answers when no door opens */
+  const known: Response[] = [];
   if (kind === "student") {
     r = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
   } else if (kind === "pgapplicant") {
@@ -103,17 +118,21 @@ export async function POST(request: NextRequest) {
         r = again;
         kind = "applicant";
       } else {
+        if (again && (await knowsTheAccount(again))) known.push(again);
         /* and, last, the postgraduate applicant's door — they sign in on the email they applied with */
         const pg = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
         if (pg && pg.ok) {
           r = pg;
           kind = "pgapplicant";
         } else {
+          if (pg && (await knowsTheAccount(pg))) known.push(pg);
           /* and the JUPEB candidate, on the email they applied with (V339) */
           const jupeb = await upstream("/api/v1/jupeb/sign-in", { identifier, password }, request);
           if (jupeb && jupeb.ok) {
             r = jupeb;
             kind = "jupeb";
+          } else if (jupeb && (await knowsTheAccount(jupeb))) {
+            known.push(jupeb);
           }
         }
       }
@@ -125,15 +144,22 @@ export async function POST(request: NextRequest) {
         r = pg;
         kind = "pgapplicant";
       } else {
+        if (pg && (await knowsTheAccount(pg))) known.push(pg);
         /* V718: or the old portal's JUPEB application number (S007202609174486 and the like), which the JUPEB door finds an
            uploaded student by */
         const jupeb = await upstream("/api/v1/jupeb/sign-in", { identifier, password }, request);
         if (jupeb && jupeb.ok) {
           r = jupeb;
           kind = "jupeb";
+        } else if (jupeb && (await knowsTheAccount(jupeb))) {
+          known.push(jupeb);
         }
       }
     }
+    /* V718: no door opened — the one that knows the account answers (locked, a temporary password spent or standing) in place of
+       the staff door's "do not match" or throttle, which is all a number of no shape the page knows was told before; the staff
+       door's own refusal of an account it knows (locked, a retired first password) stands */
+    if (r && !r.ok && known.length > 0 && !(await knowsTheAccount(r))) r = known[0];
   }
   if (!r) return NextResponse.json({ status: 503, title: "The portal API is not reachable" }, { status: 503 });
   const text = await r.text();

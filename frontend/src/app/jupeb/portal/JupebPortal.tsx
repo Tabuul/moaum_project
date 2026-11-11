@@ -142,7 +142,8 @@ export function JupebPortal({ tab: tabIn }: { tab?: string }) {
       ...(me.unreadAnnouncements ? { "jupeb/portal/announcements": String(me.unreadAnnouncements) } : {}),
     },
   };
-  /* V345: a temporary password handed out by the JUPEB Office is changed before anything else */
+  /* V345: a temporary password handed out by the JUPEB Office — or, since V718, the application number a student uploaded from the
+     old portal signed in with — is changed before anything else */
   if (me.must_change_password) {
     return (
       <Shell route="jupeb/portal/password" me={shellMe}>
@@ -970,7 +971,8 @@ function Admission({ me, reload }: { me: Candidate; reload: () => Promise<void> 
   );
 }
 
-/** the candidate's own password: forced after a temporary one from the JUPEB Office, otherwise when they wish */
+/** the candidate's own password: forced after a temporary one from the JUPEB Office or a sign-in on the application number (V718),
+    otherwise when they wish */
 function ChangePassword({ forced, onDone }: { forced?: boolean; onDone: (c: Candidate) => void }) {
   const [f, setF] = useState({ current: "", next: "", again: "" });
   const [busy, setBusy] = useState(false);

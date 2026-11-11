@@ -152,8 +152,15 @@ class JupebPublicController {
     }
 
     private static DomainRuleViolation badCredentials() {
+        return badCredentials(false);
+    }
+
+    /** V718: the remedy names the number as the first password — unless the account holds a temporary password from the desk, which then alone opens it */
+    private static DomainRuleViolation badCredentials(boolean temporary) {
         return new DomainRuleViolation("AUTH_BAD_CREDENTIALS", "That email or application number and password do not match a JUPEB application.",
-                new DomainRuleViolation.Remedy("Use the email you applied with (or your JUPEB application number) and the password you chose — a student uploaded from the old portal who has not yet chosen one signs in with the application number as the password; five failures lock the account for fifteen minutes.", "JUPEB Office"));
+                new DomainRuleViolation.Remedy("Use the email you applied with (or your JUPEB application number) and the password you chose — a student uploaded from the old portal who has not yet chosen one signs in with the application number as the password"
+                        + (temporary ? ", unless ICT Support gave them a temporary password, which then alone opens the account" : "")
+                        + "; five failures lock the account for fifteen minutes.", "JUPEB Office"));
     }
 
     /** the account behind an email or an application number, with its latest application */
@@ -194,12 +201,27 @@ class JupebPublicController {
         boolean opens = encoder.matches(body.password(), String.valueOf(a.get("password_hash")))
                 || Boolean.TRUE.equals(jdbc.sql("SELECT jupeb.first_password_opens(:a, :t)").param("a", account).param("t", body.password()).query(Boolean.class).single());
         if (!opens) {
+            /* V718: a temporary password from ICT Support's desk takes precedence over the number — standing, it alone opens the account;
+               spent or lapsed, the number does not come back (the desk issues another, or sends the link): the number typed as both the
+               username and the password of such an account is told that, not "do not match" — no failure of the account's is counted
+               (nothing secret was guessed), but the knock counts against the connection as every refusal here does, so that whether the
+               desk issued one cannot be asked without limit; an email with the number says nothing more than "do not match" */
+            if (Boolean.TRUE.equals(a.get("temporary")) && JupebPasswords.isOwnNumber(jdbc, account, body.password())
+                    && JupebPasswords.isOwnNumber(jdbc, account, body.identifier())) {
+                throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.JUPEB_SIGN_IN, source);
+                if (Boolean.TRUE.equals(a.get("temporary_spent"))) {
+                    throw new DomainRuleViolation("AUTH_TEMP_PASSWORD_SPENT", "ICT Support gave this account a temporary password, which has expired or was already used; the application number no longer opens it.",
+                            new DomainRuleViolation.Remedy("Reset your password from the sign-in page with the email you applied with, or ask ICT Support for a new temporary password.", "ICT Support"));
+                }
+                throw new DomainRuleViolation("AUTH_TEMP_PASSWORD_ISSUED", "ICT Support gave this account a temporary password; the application number does not open it.",
+                        new DomainRuleViolation.Remedy("Sign in with the temporary password within 24 hours of its issue (it works once), or ask ICT Support again.", "ICT Support"));
+            }
             int next = ((Number) a.get("failed_attempts")).intValue() + 1;
             OffsetDateTime lock = next >= LOCK_AFTER ? OffsetDateTime.now().plus(LOCK_FOR) : null;
             tx.execute(st -> jdbc.sql("UPDATE jupeb.account SET failed_attempts = :n, locked_until = :l WHERE id = :id")
                     .param("n", next).param("l", lock).param("id", account).update());
             throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.JUPEB_SIGN_IN, source);
-            throw badCredentials();
+            throw badCredentials(Boolean.TRUE.equals(a.get("temporary")));
         }
         if (Boolean.TRUE.equals(a.get("temporary_spent"))) {
             /* V347: a temporary password from ICT Support opens one session, until its time; spent or lapsed, it opens nothing */
@@ -300,8 +322,12 @@ class JupebPublicController {
             throw new DomainRuleViolation("AUTH_RESET_TOKEN", "This reset link has expired or was already used.",
                     new DomainRuleViolation.Remedy("Ask for a new one from the JUPEB sign-in page; it is good for an hour and used once.", "You"));
         }
-        String hash = encoder.encode(body.password());
         UUID account = (UUID) r.get("account_id");
+        /* V718: the link no more than the change of password lets the number be the chosen one; the refusal does not spend the link */
+        if (JupebPasswords.isOwnNumber(jdbc, account, body.password())) {
+            throw JupebPasswords.numberIsNoPassword();
+        }
+        String hash = encoder.encode(body.password());
         AuditContextHolder.with(new AuditContext(NOBODY, "applicant", "JUPEB password reset", null, null), () -> tx.execute(st -> {
             /* V356: the link is spent once — a second use racing the first finds it spent; the account's other links and every session end */
             if (jdbc.sql("UPDATE jupeb.password_reset SET used_at = now() WHERE id = :id AND used_at IS NULL").param("id", r.get("id")).update() == 0) {

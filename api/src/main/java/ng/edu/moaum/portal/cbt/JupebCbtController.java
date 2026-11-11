@@ -10,7 +10,6 @@ import ng.edu.moaum.portal.cbt.CbtCandidateDoor.AnswersIn;
 import ng.edu.moaum.portal.cbt.CbtCandidateDoor.CameraIn;
 import ng.edu.moaum.portal.cbt.CbtCandidateDoor.EventsIn;
 import ng.edu.moaum.portal.cbt.CbtCandidateDoor.Kind;
-import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -31,7 +30,8 @@ import org.springframework.web.bind.annotation.RestController;
  * V365: the JUPEB student's door to the same CBT engine — the examinations of the subjects they are registered for, the start, the paper,
  * the answers, the reports, the submission and the released result, through the one implementation every candidate shares. The JUPEB
  * portal's token carries the application as its subject; a token whose subject is not a JUPEB application is answered as not found, and a
- * temporary password opens the portal only to change it (V356), so nothing here is written until it is changed.
+ * first password — a temporary one, or the application number (V718) — opens the portal only to change it (V356), so nothing here is
+ * written until it is changed.
  */
 @RestController
 @RequestMapping("/api/v1/jupeb/me/cbt")
@@ -46,15 +46,14 @@ class JupebCbtController {
         this.jdbc = jdbc;
     }
 
-    /** the signed-in JUPEB candidate, held to the portal's own rule on a temporary password */
+    /** the signed-in JUPEB candidate, held to the portal's own rule on a first password — the application number (V718) or a temporary one */
     private UUID me(Authentication auth, HttpServletRequest request) {
         UUID id = UUID.fromString(auth.getName());
         Boolean mustChange = jdbc.sql("SELECT coalesce(acc.must_change_password, false) FROM jupeb.application a LEFT JOIN jupeb.account acc ON acc.id = a.account_id WHERE a.id = :id")
                 .param("id", id).query(Boolean.class).optional().orElse(null);
         if (mustChange == null) throw new NotFound("JUPEB application", id);
         if (mustChange && !"GET".equalsIgnoreCase(request.getMethod())) {
-            throw new DomainRuleViolation("JUPEB_PASSWORD_CHANGE_FIRST", "Choose your own password first: a temporary password only opens the portal to change it.",
-                    new DomainRuleViolation.Remedy("Change your password, then carry on.", "You"));
+            throw ng.edu.moaum.portal.jupeb.JupebPasswords.changeFirst();   // V718: the portal's own words — the application number or a temporary password
         }
         return id;
     }

@@ -618,6 +618,15 @@ class JupebIT {
         assertThat(byNumber.get("mustChange")).isEqualTo(true);
         assertThat(code(it.call(String.valueOf(byNumber.get("token")), HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", app2, "newPassword", app2.toLowerCase()))))
                 .isEqualTo("JUPEB_PASSWORD_IS_NUMBER");
+        // the number typed as both the current and the new password is told the same; the seven-day link refuses it too, and is not spent by that
+        assertThat(code(it.call(String.valueOf(byNumber.get("token")), HttpMethod.POST, "/api/v1/jupeb/me/password", Map.of("currentPassword", app2, "newPassword", app2))))
+                .isEqualTo("JUPEB_PASSWORD_IS_NUMBER");
+        String link = jdbc.sql("SELECT substring(body from '/jupeb/reset\\?token=([0-9a-f]+)') FROM platform.notice WHERE about_id = :a AND channel = 'EMAIL' AND body LIKE '%/jupeb/reset?token=%' LIMIT 1")
+                .param("a", created).query(String.class).single();
+        assertThat(link).hasSize(48);
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/reset", Map.of("token", link, "password", " " + app2.toLowerCase())))).isEqualTo("JUPEB_PASSWORD_IS_NUMBER");
+        assertThat(jdbc.sql("SELECT count(*) FROM jupeb.password_reset r JOIN jupeb.application x ON x.account_id = r.account_id WHERE x.id = :a AND r.used_at IS NULL")
+                .param("a", created).query(Integer.class).single()).isEqualTo(1);
         assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2, "password", app2 + "9")))).isEqualTo(422);
         // the student signs in on the old App No with the temporary password, and must choose their own first
         Map<String, Object> signed = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", app2.toLowerCase(), "password", temporary)));
@@ -870,9 +879,17 @@ class JupebIT {
         String tempPw = String.valueOf(reset.get("temporaryPassword"));
         assertThat(tempPw).hasSize(12);
         assertThat(status(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", "Practice2026!")))).isNotEqualTo(200);
+        // V718: the application number does not open an account that holds a temporary password — standing or spent, the number typed is told so, not counted
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", appNo.toLowerCase())))).isEqualTo("AUTH_TEMP_PASSWORD_ISSUED");
+        // ... the wrong password before it was counted (1), the number was not; and the email with the number is only "do not match"
+        assertThat(jdbc.sql("SELECT acc.failed_attempts FROM jupeb.account acc JOIN jupeb.application a ON a.account_id = acc.id WHERE a.id = :a").param("a", app).query(Integer.class).single()).isEqualTo(1);
+        String accountEmail = jdbc.sql("SELECT acc.email FROM jupeb.account acc JOIN jupeb.application a ON a.account_id = acc.id WHERE a.id = :a").param("a", app).query(String.class).single();
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", accountEmail, "password", appNo)))).isEqualTo("AUTH_BAD_CREDENTIALS");
         Map<String, Object> once = ok(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", tempPw)));
         assertThat(once).containsKey("token");
         assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", tempPw)))).isEqualTo("AUTH_TEMP_PASSWORD_SPENT");
+        assertThat(code(it.anon(HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", appNo, "password", appNo)))).isEqualTo("AUTH_TEMP_PASSWORD_SPENT");
+        assertThat(jdbc.sql("SELECT acc.failed_attempts FROM jupeb.account acc JOIN jupeb.application a ON a.account_id = acc.id WHERE a.id = :a").param("a", app).query(Integer.class).single()).isZero();
         assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.support_action WHERE jupeb_application_id = :a AND action = 'PASSWORD_RESET' AND method = 'TEMPORARY_PASSWORD' AND new_value IS NULL AND ticket_id = :t")
                 .param("a", app).param("t", UUID.fromString(ticket)).query(Integer.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("SELECT count(*) FROM helpdesk.ticket_event WHERE ticket_id = :t AND action = 'SUPPORT_PASSWORD_RESET'").param("t", UUID.fromString(ticket)).query(Integer.class).single()).isEqualTo(1);

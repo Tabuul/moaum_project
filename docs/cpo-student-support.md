@@ -257,7 +257,8 @@ the JUPEB package (`JupebSupportController`, `/api/v1/helpdesk/support/jupeb`) a
   (`ck_hd_sa_subject`). A JUPEB act on a ticket must be on that candidate's own ticket (`SUPPORT_TICKET`).
 - **The acts.** View (VIEW_STUDENT; documents with VIEW_DOCUMENTS; payments with VIEW_PAYMENTS or INVESTIGATE_PAYMENT),
   contact correction (EDIT_CONTACT), password reset (RESET_PASSWORD: the JUPEB portal's one-hour link, or a temporary
-  password on the ticket — one sign-in within 24 hours, changed at it), gateway verification (VERIFY_PAYMENT, through
+  password on the ticket — one sign-in within 24 hours, changed at it; the record says when a student uploaded from the old
+  portal is still on the application number as the first password, V718, which a temporary password replaces), gateway verification (VERIFY_PAYMENT, through
   `PaymentsService.verify`), activation refresh (SYNC_ENTITLEMENT, `jupeb.activate_if_due`), a ticket raised for the
   candidate (CREATE_TICKET), escalation to the JUPEB Office, the Bursary or the Director of ICT. Identity details stay the
   JUPEB Office's (the candidate's `CORRECT_DETAILS` request); no admission, grade, fee, refund or "mark as paid" exists here.

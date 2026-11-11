@@ -70,10 +70,9 @@ class JupebPortalController {
         Boolean mustChange = jdbc.sql("SELECT coalesce(acc.must_change_password, false) FROM jupeb.application a LEFT JOIN jupeb.account acc ON acc.id = a.account_id WHERE a.id = :id")
                 .param("id", id).query(Boolean.class).optional().orElse(null);
         if (mustChange == null) throw new NotFound("JUPEB application", id);
-        /* V356: a temporary password (from the JUPEB Office or ICT Support) opens the portal to read and to choose a password — on the server, not only on the page */
+        /* V356: a first password — a temporary one from the JUPEB Office or ICT Support, or the application number (V718) — opens the portal to read and to choose a password; on the server, not only on the page */
         if (mustChange && writing()) {
-            throw new DomainRuleViolation("JUPEB_PASSWORD_CHANGE_FIRST", "Choose your own password first: your application number or a temporary password only opens the portal to change it.",
-                    new DomainRuleViolation.Remedy("Change your password, then carry on.", "You"));
+            throw JupebPasswords.changeFirst();
         }
         return id;
     }
@@ -355,7 +354,7 @@ class JupebPortalController {
         return mine(auth);
     }
 
-    /* ── the candidate's own password (V345): a temporary one from the JUPEB Office is changed at first sign-in ── */
+    /* ── the candidate's own password (V345): a temporary one from the JUPEB Office, or the application number (V718), is changed at first sign-in ── */
 
     public record PasswordIn(@NotBlank @Size(max = 100) String currentPassword, @NotBlank @Size(min = 8, max = 100) String newPassword) {
     }
@@ -376,17 +375,14 @@ class JupebPortalController {
             throw new DomainRuleViolation("JUPEB_PASSWORD_CURRENT", "The current password is not right.",
                     new DomainRuleViolation.Remedy("Type the password you signed in with: your application number if you were uploaded from the old portal and have not chosen one, or the temporary one the JUPEB Office or ICT Support gave you.", "You"));
         }
+        /* V718: a person's own number is never their chosen password (V428's rule) — said before "the same", so that the number typed
+           twice is told why */
+        if (JupebPasswords.isOwnNumber(jdbc, account, body.newPassword())) {
+            throw JupebPasswords.numberIsNoPassword();
+        }
         if (body.newPassword().equals(body.currentPassword())) {
             throw new DomainRuleViolation("JUPEB_PASSWORD_SAME", "Choose a password different from the one you signed in with.",
-                    new DomainRuleViolation.Remedy("At least eight characters, different from the temporary one.", "You"));
-        }
-        /* V718: a person's own number is never their chosen password (V428's rule) */
-        if (Boolean.TRUE.equals(jdbc.sql("""
-                SELECT EXISTS (SELECT 1 FROM jupeb.application x WHERE x.account_id = :a
-                                  AND upper(regexp_replace(:p, '\\s+', '', 'g')) IN (upper(x.application_no), upper(coalesce(x.legacy_ref, ''))))
-                """).param("a", account).param("p", body.newPassword()).query(Boolean.class).single())) {
-            throw new DomainRuleViolation("JUPEB_PASSWORD_IS_NUMBER", "Your application number cannot be your password.",
-                    new DomainRuleViolation.Remedy("Choose a password that is not your application number.", "You"));
+                    new DomainRuleViolation.Remedy("At least eight characters, different from the temporary one you signed in with.", "You"));
         }
         jdbc.sql("UPDATE jupeb.account SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL WHERE id = :id")
                 .param("h", encoder.encode(body.newPassword())).param("id", acc.get("id")).update();
