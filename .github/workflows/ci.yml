@@ -369,8 +369,24 @@ jobs:
           done
           docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E '^mirror\.gcr\.io/library/' | sort
 
+      # On 11 Nov 2026 the GitHub runners' resolver stopped naming ubuntu.com (archive, security and the
+      # Azure mirror) while every other host resolved, and the images' apt-get failed inside their builds.
+      # When the runner cannot name Ubuntu's archive, it asks public resolvers instead and the image builds
+      # use its network (BUILD_NETWORK); otherwise nothing changes. The Dockerfiles are untouched.
+      - name: Name Ubuntu's archive through public resolvers when the runner's fails
+        run: |
+          if getent hosts archive.ubuntu.com >/dev/null && getent hosts security.ubuntu.com >/dev/null; then
+            echo "The runner names Ubuntu's archive."; exit 0
+          fi
+          echo "::warning title=DNS::The runner's resolver does not name Ubuntu's archive; asking 1.1.1.1 and 8.8.8.8 and building on the runner's network."
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/90-public.conf >/dev/null
+          sudo systemctl restart systemd-resolved
+          getent hosts archive.ubuntu.com || echo "::warning title=DNS::Ubuntu's archive is still not named; the image build will say so."
+          echo "BUILD_NETWORK=--network=host" >> "$GITHUB_ENV"
+
       - name: Build the image
-        run: docker build -t moaumpp:ci .
+        run: docker build ${BUILD_NETWORK:-} -t moaumpp:ci .
 
       - name: Run the migrations from inside the image
         run: |
@@ -400,7 +416,7 @@ jobs:
 
       # ── the API image: builds, migrates from inside, serves, answers ──
       - name: Build the API image
-        run: docker build -f api/Dockerfile -t moaum-api:ci .
+        run: docker build ${BUILD_NETWORK:-} -f api/Dockerfile -t moaum-api:ci .
 
       - name: The API image applies the migrations (a no-op now, and it must say so)
         run: |
@@ -432,7 +448,7 @@ jobs:
 
       # ── the frontend image: builds, serves, reaches the API ───────────
       - name: Build the frontend image
-        run: docker build -f frontend/Dockerfile -t moaum-portal:ci .
+        run: docker build ${BUILD_NETWORK:-} -f frontend/Dockerfile -t moaum-portal:ci .
 
       - name: Start the frontend, sign in, and load the status page against the API
         run: |

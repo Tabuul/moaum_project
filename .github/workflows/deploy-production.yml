@@ -85,6 +85,22 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
 
+      # On 11 Nov 2026 the GitHub runners' resolver stopped naming ubuntu.com (archive, security and the
+      # Azure mirror) while every other host resolved, and the images' apt-get failed inside their builds.
+      # When the runner cannot name Ubuntu's archive, it asks public resolvers instead and the image builds
+      # use its network (BUILD_NETWORK); otherwise nothing changes. The Dockerfiles are untouched.
+      - name: Name Ubuntu's archive through public resolvers when the runner's fails
+        run: |
+          if getent hosts archive.ubuntu.com >/dev/null && getent hosts security.ubuntu.com >/dev/null; then
+            echo "The runner names Ubuntu's archive."; exit 0
+          fi
+          echo "::warning title=DNS::The runner's resolver does not name Ubuntu's archive; asking 1.1.1.1 and 8.8.8.8 and building on the runner's network."
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nDomains=~.\n' | sudo tee /etc/systemd/resolved.conf.d/90-public.conf >/dev/null
+          sudo systemctl restart systemd-resolved
+          getent hosts archive.ubuntu.com || echo "::warning title=DNS::Ubuntu's archive is still not named; the image build will say so."
+          echo "BUILD_NETWORK=--network=host" >> "$GITHUB_ENV"
+
       - name: Images for this commit (built unless they already exist)
         id: images
         env:
@@ -98,7 +114,7 @@ jobs:
             if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
               echo "$name: $image is already in ECR (a rollback or a re-run); not rebuilt"
             else
-              docker build -f "$file" -t "$image" .
+              docker build ${BUILD_NETWORK:-} -f "$file" -t "$image" .
               docker push "$image"
             fi
             echo "$name=$image" >> "$GITHUB_OUTPUT"
