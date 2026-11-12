@@ -26,6 +26,11 @@ export interface StudySessionsView {
 
 const SETTERS = ["academic", "registrar", "dregistrar", "provost", "collegesecretary", "mbbscoordinator", "super"];
 
+/** how a change stood, as an office reads it (the student's dashboard says "Your own choice") */
+function how(a: string): string {
+  return a === "NOT_REQUIRED" ? "The student's choice" : approvalWords(a);
+}
+
 export function StudySessions({ view, search, actingOffice }: { view: StudySessionsView; search: string; actingOffice: string | null }) {
   const router = useRouter();
   const [q, setQ] = useState(search);
@@ -123,7 +128,7 @@ export function StudySessions({ view, search, actingOffice }: { view: StudySessi
               {found.history.length ? (
                 <DTable cols={["When|mid", "From", "To", "Level|mid", "How", "By"]} rows={found.history.map((h, i) => [
                   <span key={`a${i}`} className="tnum">{day(h.at)}</span>, h.from_session ?? "The University's", h.to_session ?? "The University's",
-                  h.level != null ? String(h.level) : "—", <span key={`h${i}`}>{approvalWords(h.approval)}{h.reason ? <div className="sub2">{h.reason}</div> : null}</span>, h.by_name ?? "—",
+                  h.level != null ? String(h.level) : "—", <span key={`h${i}`}>{how(h.approval)}{h.reason ? <div className="sub2">{h.reason}</div> : null}</span>, h.by_name ?? "—",
                 ])} />
               ) : null}
             </div>
@@ -139,7 +144,7 @@ export function StudySessions({ view, search, actingOffice }: { view: StudySessi
         {view.standing.length ? (
           <DTable cols={["Student", "Programme", "Level|mid", "Session", "Set|mid", "How"]} rows={view.standing.map((s) => [
             <span key={s.id}><b>{s.name}</b><div className="sub2">{s.matric_no ?? "—"}</div></span>, s.programme ?? "—", `${s.current_level}`, s.session,
-            <span key={`d${s.id}`} className="tnum">{day(s.set_at)}</span>, <span key={`w${s.id}`}>{approvalWords(s.approval)}{s.reason ? <div className="sub2">{s.reason}</div> : null}</span>,
+            <span key={`d${s.id}`} className="tnum">{day(s.set_at)}</span>, <span key={`w${s.id}`}>{how(s.approval)}{s.reason ? <div className="sub2">{s.reason}</div> : null}</span>,
           ])} />
         ) : <PBody><div className="sub2">No student stands in a session of their own{search ? " for that search" : ""}.</div></PBody>}
       </Panel>
@@ -149,7 +154,7 @@ export function StudySessions({ view, search, actingOffice }: { view: StudySessi
           <DTable cols={["When|mid", "Student", "Programme", "From", "To", "Level|mid", "How", "By"]} rows={view.changes.map((c, i) => [
             <span key={`a${i}`} className="tnum">{day(c.at)}</span>, <span key={`s${i}`}><b>{c.name}</b><div className="sub2">{c.matric_no ?? "—"}</div></span>,
             c.programme ?? "—", c.from_session ?? "The University's", c.to_session ?? "The University's", c.level != null ? String(c.level) : "—",
-            <span key={`h${i}`}>{approvalWords(c.approval)}{c.reason ? <div className="sub2">{c.reason}</div> : null}</span>, c.by_name ?? "—",
+            <span key={`h${i}`}>{how(c.approval)}{c.reason ? <div className="sub2">{c.reason}</div> : null}</span>, c.by_name ?? "—",
           ])} />
         ) : <PBody><div className="sub2">No change yet.</div></PBody>}
       </Panel>

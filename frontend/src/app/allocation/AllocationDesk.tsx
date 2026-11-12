@@ -22,7 +22,7 @@ import { ACTION_WORD, ROLE_WORD, SOURCE_WORD, CheckList, HistoryTable, whenText 
 import { courseLabel, shownCode } from "@/lib/course-code";
 
 export interface DeskOptions {
-  sessions: { name: string; state: string; semesters: number | null }[];
+  sessions: { name: string; state: string; semesters: number | null; summer?: boolean }[];
   currentSession: string; currentSemester: number;
   faculties: { code: string; name: string }[];
   departments: { code: string; name: string; faculty_code: string }[];
@@ -167,7 +167,9 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
   const progOpts: Opt[] = options.programmes.filter((p) => (dept ? p.dept_code === dept : !faculty || deptCodes.has(p.dept_code ?? ""))).map((p) => ({ value: p.code, label: `${p.name} (${p.code})` }));
   const sessOpts: Opt[] = options.sessions.map((s) => ({ value: s.name, label: `${s.name}${s.state === "CURRENT" ? " (current)" : s.state === "PLANNED" ? " (planned)" : ""}` }));
   const semCount = options.sessions.find((s) => s.name === session)?.semesters ?? 2;
-  const semOpts: Opt[] = Array.from({ length: Math.max(2, semCount) }, (_, i) => ({ value: String(i + 1), label: `${SEM(i + 1)} semester` }));
+  // V735: semester 3 of a session with a Summer Semester is the Summer
+  const summer = !!options.sessions.find((s) => s.name === session)?.summer;
+  const semOpts: Opt[] = Array.from({ length: Math.max(2, semCount) }, (_, i) => ({ value: String(i + 1), label: `${i + 1 === 3 && summer ? "Summer" : SEM(i + 1)} semester` }));
   const levelOpts: Opt[] = [100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => ({ value: String(l), label: `${l} level` }));
 
   const pick = (s: Status) => { setStatus(s); setPage(1); setTab("classes"); };

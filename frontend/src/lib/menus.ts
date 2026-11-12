@@ -138,7 +138,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -234,7 +235,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -646,7 +648,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
-          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" }
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -793,7 +796,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/readytograduate", "icon": "check", "label": "Ready to Graduate" },
           { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
-          { "id": "t/records", "icon": "chart", "label": "Records & Queries" }
+          { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -841,7 +845,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
-          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" }
+          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" },
+          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" }
         ]
       },
       {
@@ -890,7 +895,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" },
           { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
           { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
-          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" }
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
+          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" }
         ]
       },
       {
@@ -1301,7 +1307,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -1397,7 +1404,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -1468,7 +1476,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
-          { "id": "t/latereg", "icon": "check", "label": "Late Registration" }
+          { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" }
         ]
       },
       {
@@ -1602,7 +1612,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
-          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" }
+          { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -1744,7 +1755,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
-          { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" }
+          { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -2084,7 +2096,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/graduation", "icon": "cap", "label": "Graduation" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/projects", "icon": "flask", "label": "Research" },
-          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" }
+          { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
         ]
       },
       {
@@ -2136,6 +2149,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/deferment", "icon": "cal", "label": "Deferment" },
           { "id": "s/register", "icon": "book", "label": "Course Registration" },
           { "id": "s/addcarry", "icon": "plus", "label": "Add Carry-Over", "tone": "urgent" },
+          { "id": "s/summer", "icon": "cal", "label": "Summer Semester", "when": "summer" },
           { "id": "s/reghistory", "icon": "chart", "label": "Registration History" },
           { "id": "s/results", "icon": "cap", "label": "Results" },
           { "id": "s/broadsheet", "icon": "chart", "label": "Result Broadsheet" },

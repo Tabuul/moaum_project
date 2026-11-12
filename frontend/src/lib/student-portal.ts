@@ -205,6 +205,8 @@ export interface Me {
   entryLevel: number; level: number; status: string; curriculumVersion: string | null; session: string;
   /** V603: the dashboard the student lands on (COLLEGE or UNIVERSITY); V606: whether the College's own student area is theirs (MBBS) */
   dashboard?: string; collegeArea?: boolean;
+  /** V735: the Summer Semester page is in the menu (registration.summer_area) */
+  summerArea?: boolean;
   /** where the student stands (V331): the cohort that carries them, the expected completion, the spillover — the entry session stays history */
   jambYear?: number | null; effectiveCohort?: string | null; cohortSource?: "ENTRY" | "MERGED" | "OVERRIDE" | string | null; durationYears?: number | null;
   expectedCompletion?: string | null; spilloverState?: string | null; spilloverYears?: number | null; classification?: string | null;

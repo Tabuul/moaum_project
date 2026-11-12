@@ -714,6 +714,9 @@ class ResultsRepository {
     }
 
     List<ClassMember> unregistered(String prog, int level, String session, int sem, String stream) {
+        if (sem == 3) {
+            return List.of();   // V735: the Summer is taken by those who registered for it; no one else is missing from its broadsheet
+        }
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode
                   FROM people.student st

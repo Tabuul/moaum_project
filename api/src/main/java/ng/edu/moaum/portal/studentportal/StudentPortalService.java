@@ -272,6 +272,8 @@ public class StudentPortalService {
         v.put("dashboard", repo.dashboard(id));
         // V606: whether the College's own student area is the student's at all (an MBBS student at 100 Level too) — its menu link
         v.put("collegeArea", repo.collegeArea(id));
+        // V735: the Summer Semester page in the menu — a Summer set and not closed that the student may be eligible for, or one they took
+        v.put("summerArea", repo.summerArea(id));
         v.put("department", s.deptName());
         v.put("entryMode", s.entryMode());
         v.put("entrySession", s.entrySession());

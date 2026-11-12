@@ -11,6 +11,8 @@ import { BiodataCard, type BiodataStatus } from "./BiodataCard";
 import type { OutstandingFees } from "@/lib/outstanding-fees";
 import { showTransferCard, type TransferFeeView } from "@/lib/transfer-fee";
 import { StudySession } from "./StudySession";
+import { SummerCard } from "./SummerCard";
+import type { MySummer } from "@/lib/summer";
 
 /** s/dashboard — the student's own record, as the register holds it. A postgraduate gets their own
  *  home (V202), not a continuation of the undergraduate one. */
@@ -30,14 +32,16 @@ export default async function Page() {
   }
   // V314: the GST & EPS card — the fee, whether it is paid, and whether the GST/EPS courses are registered or locked
   // V727: the transfer card — the fee, what is paid here and on the old portal, the balance — only with an application or old-portal credit
-  const [gst, mine] = await Promise.all([
+  // V735: the Summer Semester card — read only where the menu carries the Summer page (registration.summer_area)
+  const [gst, mine, summer] = await Promise.all([
     api<GstView>(`/api/v1/me/gst?session=${encodeURIComponent(loaded.student.session)}`),
     api<TransferFeeView>("/api/v1/me/transfer"),
+    loaded.student.summerArea ? api<MySummer>("/api/v1/me/summer") : null,
   ]);
   // only what the card reads reaches the page (the programmes list the transfer page offers stays behind)
   const transfer: TransferFeeView | null = mine.ok && showTransferCard(mine.data, loaded.student.session)
     ? { applications: mine.data.applications.map((a) => ({ id: a.id, state: a.state, session: a.session ?? null })), fee: mine.data.fee ?? null,
         payment: mine.data.payment ?? null, credit: mine.data.credit ?? null }
     : null;
-  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><StudySession /><Dashboard s={loaded.student} gst={gst.ok ? gst.data : null} outstanding={owed} transfer={transfer} /></Shell>;
+  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><StudySession /><SummerCard d={summer && summer.ok ? summer.data : null} /><Dashboard s={loaded.student} gst={gst.ok ? gst.data : null} outstanding={owed} transfer={transfer} /></Shell>;
 }

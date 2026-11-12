@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 566
+\set EXPECTED 567
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -33142,6 +33142,174 @@ BEGIN
                      || ' ; APPROVED/FROM_DEPARTMENT/dean/CHS/Released by the College/the new departme'
                      || ' ; DECLINED/TO_DEPARTMENT/hod/-/No place this session/-'
                      || ' | list true/true/true/none | kept | after removal 0', false),
+      msg);
+END $$;
+
+-- ── V735: the Summer Semester. In 9752/9753 (its Summer), a programme of four-year length: A at 400 Level failed ZZS 401 and 403 (first
+--          semester) and ZZS 402 and 404 (second) in 9751/9752 — eligible, final year, four outstanding courses of both semesters; B at 400
+--          Level passed all — not eligible; C at 200 Level with a failure — not final or spillover; D at 200 Level authorised by the
+--          Academic Office for ZZS 401. A draft fee charges nothing; published (₦50,000 + ₦5,000 a course), A selects a first- and a
+--          second-semester course: ₦60,000 owed, nothing registered until paid; paid: a Summer registration (semester 3) of both, approved;
+--          a third course later: ₦5,000 only; a fourth selected then taken back closes its reference; the same course twice refused; the
+--          regular door shut for semester 3; the Summer result released by the Summer's payment; no standing pronounced on it; a Summer
+--          pass clears the carry-over; the desk's rows; a reference is paid only while it is exactly what is owed and the Summer open,
+--          an expired one is regenerated for what is owed now (or refused when nothing is), and none is drawn once the Summer closes.
+--          The block undoes its writes. ──
+DO $$
+DECLARE
+    SP text := '9751/9752'; S text := '9752/9753'; who uuid := gen_random_uuid(); dept text; prog text := 'C97351';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    fee uuid := gen_random_uuid(); eA record; eB record; eC record; eD record; courses text; draft text; acct jsonb; ref1 text; ref1_amt numeric;
+    reg_before int; reg_after text; acct2 jsonb; ref2 text; ref2_amt numeric; reg3 text; ref4 text; stale boolean; dup text; gate text;
+    released boolean; standing text; carry_after text; desk text; msg text; v_err text;
+    ref5 text; renew_none text; renewed text; pay text; closed text; card text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V735', true);
+    SELECT dept_code INTO dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), SP, DATE '9751-10-01', DATE '9752-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9752-10-01', DATE '9753-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9752/735' WHERE name = S;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    SELECT prog, 'B.Sc. Summer Check', dept, d2.faculty_code, 'UNDER GRADUATE', 0, 400, 4, 'ZSC' FROM ref.department d2 WHERE d2.code = dept;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZS 401', 'Summer check one', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZS 402', 'Summer check two', 2, 2, 400, dept, 'Core', 'LIVE'),
+        ('ZZS 403', 'Summer check three', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZS 404', 'Summer check four', 2, 2, 400, dept, 'Core', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/97/973501', 'MOAU/ZSC/97/7351', 'ZZSUMMER', 'Final A', prog, 'UTME', SP, 100, 400, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/97/973502', 'MOAU/ZSC/97/7352', 'ZZSUMMER', 'Passed B', prog, 'UTME', SP, 100, 400, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/97/973503', 'MOAU/ZSC/97/7353', 'ZZSUMMER', 'Early C', prog, 'UTME', SP, 100, 200, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/97/973504', 'MOAU/ZSC/97/7354', 'ZZSUMMER', 'Authorised D', prog, 'UTME', SP, 100, 200, 'ACTIVE', now());
+    -- the results of 9751/9752, published as the old portal's past results are loaded
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(SP, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7351', 'course', 'ZZS 401', 'total', '30', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7351', 'course', 'ZZS 403', 'total', '25', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7352', 'course', 'ZZS 401', 'total', '61', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7352', 'course', 'ZZS 403', 'total', '58', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7353', 'course', 'ZZS 401', 'total', '20', 'level', '200')), true);
+    PERFORM assessment.import_legacy_semester(SP, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7351', 'course', 'ZZS 402', 'total', '35', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7351', 'course', 'ZZS 404', 'outcome', 'ABSENT', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7352', 'course', 'ZZS 402', 'total', '66', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7352', 'course', 'ZZS 404', 'total', '70', 'level', '400')), true);
+
+    -- the Academic Office opens the Summer of 9752/9753 and authorises D for ZZS 401
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           NULL, NULL, NULL, 'check V735');
+    PERFORM registration.summer_authorise(S, d, ARRAY['ZZS 401'], 'Senate approval: a deficiency course before graduation', false);
+    SELECT * INTO eA FROM registration.summer_eligibility(a, S);
+    SELECT * INTO eB FROM registration.summer_eligibility(b, S);
+    SELECT * INTO eC FROM registration.summer_eligibility(c, S);
+    SELECT * INTO eD FROM registration.summer_eligibility(d, S);
+    SELECT string_agg(x.course_code || '/' || x.original_semester || '/' || x.original_session || '/' || CASE WHEN x.selectable THEN 'yes' ELSE x.reason END, ',' ORDER BY x.course_code)
+      INTO courses FROM registration.summer_courses(a, S) x;
+
+    -- the Bursary's fee: a draft charges nothing; published, it does
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office)
+    VALUES (fee, S, 50000, 5000, current_date - 1, 'DRAFT', who, 'bursar');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZS 401']); draft := 'selected';
+    EXCEPTION WHEN check_violation THEN draft := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    UPDATE finance.summer_fee SET state = 'PUBLISHED', published_by = who, published_office = 'bursar', published_at = now() WHERE id = fee;
+
+    -- A: a first- and a second-semester course; owed, not registered
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    acct := registration.summer_select(a, S, ARRAY['ZZS 401', 'ZZS 402']);
+    ref1 := registration.summer_reference(a, S);
+    SELECT amount INTO ref1_amt FROM finance.payment_reference WHERE reference = ref1;
+    SELECT count(*) INTO reg_before FROM registration.course_registration WHERE student_id = a AND session = S AND semester = 3;
+    -- paid (the bank's confirmation): the registration of both, approved
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(ref1, 'Bank transfer', 'check V735');
+    SELECT r.status || '/' || string_agg(o.course_code || ':' || o.semester || ':' || e.entry_type || ':' || e.status, ',' ORDER BY o.course_code) INTO reg_after
+      FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = a AND r.session = S AND r.semester = 3 GROUP BY r.status;
+    -- a third course later: the course fee alone
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    acct2 := registration.summer_select(a, S, ARRAY['ZZS 403']);
+    ref2 := registration.summer_reference(a, S);
+    SELECT amount INTO ref2_amt FROM finance.payment_reference WHERE reference = ref2;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(ref2, 'Bank transfer', 'check V735');
+    SELECT string_agg(o.course_code, ',' ORDER BY o.course_code) INTO reg3
+      FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = a AND r.session = S AND r.semester = 3;
+    -- a fourth selected, its reference drawn, then taken back: the reference closed
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM registration.summer_select(a, S, ARRAY['ZZS 404']);
+    ref4 := registration.summer_reference(a, S);
+    PERFORM registration.summer_unselect(a, S, 'ZZS 404');
+    SELECT expires_at <= now() INTO stale FROM finance.payment_reference WHERE reference = ref4;
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZS 401']); dup := 'selected';
+    EXCEPTION WHEN check_violation THEN dup := split_part(SQLERRM, ':', 1); END;
+    gate := registration.registration_gate(a, S, 3);
+    -- the Summer's examination card: issued by the Summer's payment, not the session's school fees
+    card := (registration.exam_card_state(a, S, 3) ->> 'available') || '/' || (SELECT count(*) FROM registration.exam_cards_withheld(S, 3) w WHERE w.student_id = a);
+
+    -- the Summer result: released by the Summer's payment; no standing on it alone; a pass clears the carry-over
+    released := finance.results_cleared(a, S, 3);
+    standing := coalesce(assessment.standing_of(400, 3, 0.80, 0.70, false), 'none');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM assessment.import_legacy_semester(S, 3, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSC/97/7351', 'course', 'ZZS 401', 'total', '62', 'level', '400')), true);
+    SELECT string_agg(course_code, ',' ORDER BY course_code) INTO carry_after FROM registration.carryovers(a);
+    SELECT x.courses_paid || '/' || x.programme_fee_paid || '/' || x.course_fees_paid || '/' || x.payment_state || '/' || x.registration_status
+           || '/' || x.results_passed INTO desk FROM registration.summer_students(S) x WHERE x.student_id = a;
+
+    -- the payable reference is exactly what is owed now; an expired one is regenerated for what is owed, refused when nothing is
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM finance.renew_reference(a, ref4); renew_none := 'renewed';
+    EXCEPTION WHEN check_violation THEN renew_none := split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.summer_select(a, S, ARRAY['ZZS 404']);
+    ref5 := registration.summer_reference(a, S);
+    SELECT x.outcome || '/' || (x.reference_out = ref5) INTO renewed FROM finance.renew_reference(a, ref4) x;
+    pay := registration.summer_reference_payable(ref5) || '/' || registration.summer_reference_payable(ref4) || '/' || registration.summer_reference_payable(ref1);
+    -- the Summer closed: nothing paid, nothing drawn
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_set_period(S, 'CLOSED', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           NULL, NULL, NULL, 'check V735 closed');
+    pay := pay || '/' || registration.summer_reference_payable(ref5);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM registration.summer_reference(a, S); closed := 'drawn';
+    EXCEPTION WHEN check_violation THEN closed := split_part(SQLERRM, ':', 1); END;
+
+    msg := 'A ' || eA.eligible || '/' || eA.category || '/' || eA.outstanding || ' B ' || eB.eligible || '/' || eB.reason
+        || ' C ' || eC.eligible || '/' || eC.reason || ' D ' || eD.eligible || '/' || eD.category
+        || ' | courses ' || courses || ' | draft ' || draft
+        || ' | owed ' || (acct ->> 'due') || ' ref ' || ref1_amt || ' registered before ' || reg_before || ' after ' || coalesce(reg_after, '-')
+        || ' | added ' || (acct2 ->> 'due') || ' ref ' || ref2_amt || ' now ' || coalesce(reg3, '-')
+        || ' | taken back, reference closed ' || stale || ' | again ' || dup || ' | gate ' || gate
+        || ' | released ' || released || ' standing ' || standing || ' | carry-overs after the Summer pass ' || coalesce(carry_after, '-')
+        || ' | desk ' || coalesce(desk, '-')
+        || ' | renew ' || renew_none || ' then ' || renewed || ' | payable ' || pay || ' | closed ' || closed || ' | card ' || card;
+    RAISE EXCEPTION 'the V735 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V735 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V735: the Summer Semester — eligibility, outstanding courses of both semesters, the published fees charged once and a course at a time, the registration made by the payment, the regular door shut, the result released by the Summer''s payment and clearing the carry-over, a reference paid only for what is owed while the Summer is open, the examination card issued by the Summer''s payment',
+      coalesce(msg = 'A true/FINAL_YEAR/4 B false/NO_OUTSTANDING_COURSE C false/NOT_FINAL_OR_SPILLOVER D true/AUTHORISED'
+                     || ' | courses ZZS 401/1/9751/9752/yes,ZZS 402/2/9751/9752/yes,ZZS 403/1/9751/9752/yes,ZZS 404/2/9751/9752/yes'
+                     || ' | draft SUMMER_FEE_NOT_PUBLISHED'
+                     || ' | owed 60000.00 ref 60000.00 registered before 0 after APPROVED/ZZS 401:3:CARRYOVER:APPROVED,ZZS 402:3:CARRYOVER:APPROVED'
+                     || ' | added 5000.00 ref 5000.00 now ZZS 401,ZZS 402,ZZS 403'
+                     || ' | taken back, reference closed true | again SUMMER_COURSE_REFUSED | gate The Summer Semester of 9752/9753 is registered on the Summer Semester page.'
+                     || ' | released true standing none | carry-overs after the Summer pass ZZS 402,ZZS 403,ZZS 404'
+                     || ' | desk 3/50000.00/15000.00/PAID/APPROVED/1'
+                     || ' | renew REFERENCE_NOTHING_OWED then NEW/true | payable true/false/false/false | closed SUMMER_CLOSED | card true/0', false),
       msg);
 END $$;
 

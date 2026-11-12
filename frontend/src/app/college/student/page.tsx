@@ -157,7 +157,7 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
             </PBody>
           </Panel>
           {level >= 200 ? (
-            <Panel title={`${level} Level · ${r.session}`} right={stageLabel}>
+            <Panel title={`${level} Level · ${yearSession}`} right={stageLabel}>
               <PBody>
                 <div className="stack">
                   {steps.map((x, i) => (

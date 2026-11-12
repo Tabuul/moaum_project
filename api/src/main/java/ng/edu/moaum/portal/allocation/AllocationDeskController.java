@@ -75,7 +75,13 @@ class AllocationDeskController {
         AllocationReach.Reach r = reach.require(AllocationReach.VIEW);
         String current = sessionOr(null);
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("sessions", jdbc.sql("SELECT name, state, semesters FROM policy.academic_session WHERE state <> 'CANCELLED' ORDER BY starts_on DESC").query().listOfRows());
+        // V735: a session with a Summer Semester allocates its semester 3, the Summer's classes
+        out.put("sessions", jdbc.sql("""
+                SELECT s.name, s.state, CASE WHEN sp.session IS NULL THEN s.semesters ELSE greatest(s.semesters, 3) END AS semesters,
+                       sp.session IS NOT NULL AS summer
+                  FROM policy.academic_session s LEFT JOIN registration.summer_period sp ON sp.session = s.name
+                 WHERE s.state <> 'CANCELLED' ORDER BY s.starts_on DESC
+                """).query().listOfRows());
         out.put("currentSession", current);
         out.put("currentSemester", semesterOr(null, current));
         String inReach = reach.where(r, "d.code", "d.faculty_code");
@@ -112,7 +118,8 @@ class AllocationDeskController {
                       LEFT JOIN catalogue.offering o ON o.course_code = c.code AND o.session = :s AND o.semester = :sem AND o.stream IN ('REGULAR', 'PG')
                       LEFT JOIN ref.department d ON d.code = c.dept_code
                       LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
-                     WHERE catalogue.runs_in(c.semester, c.both_semesters, :sem) AND c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %%'
+                     WHERE (catalogue.runs_in(c.semester, c.both_semesters, :sem) OR (:sem = 3 AND o.id IS NOT NULL))   -- V735: the Summer's classes
+                       AND c.state <> 'ENDED' AND c.code NOT LIKE 'DMO %%'
                        AND %s
                        AND (:fac = '' OR upper(d.faculty_code) = :fac) AND (:dept = '' OR upper(c.dept_code) = :dept)
                        AND (:prog = '' OR EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code AND upper(co.programme_code) = :prog))

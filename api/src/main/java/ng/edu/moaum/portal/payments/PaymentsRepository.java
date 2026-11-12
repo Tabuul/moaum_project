@@ -97,6 +97,18 @@ class PaymentsRepository {
                 """).param("r", reference).query(Boolean.class).single();
     }
 
+    /** V735: whether a reference is a student's Summer Semester fees reference */
+    boolean summerReference(String reference) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = upper(btrim(:r)) AND purpose LIKE 'Summer semester fees%')")
+                .param("r", reference).query(Boolean.class).single();
+    }
+
+    /** V735: whether a Summer reference may still be paid — unpaid and unexpired, the Summer of its session open for registration, and
+     *  exactly for what is owed now (registration.summer_reference_payable); one drawn for another figure is never paid */
+    boolean summerPayable(String reference) {
+        return jdbc.sql("SELECT registration.summer_reference_payable(:r)").param("r", reference).query(Boolean.class).single();
+    }
+
     String confirmStudent(String reference, String channel, String note) {
         return jdbc.sql("SELECT finance.confirm_payment(:r, :c, :n)")
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();

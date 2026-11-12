@@ -1029,6 +1029,11 @@ class StudentPortalRepository {
                 .query(Boolean.class).optional().orElse(false);
     }
 
+    /** V735: whether the Summer Semester page is in the student's menu (registration.summer_area) */
+    boolean summerArea(UUID student) {
+        return jdbc.sql("SELECT registration.summer_area(:s)").param("s", student).query(Boolean.class).optional().orElse(false);
+    }
+
     String classOf(BigDecimal cgpa) {
         if (cgpa == null) {
             return null;

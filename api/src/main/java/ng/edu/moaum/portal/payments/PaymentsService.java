@@ -291,6 +291,11 @@ public class PaymentsService {
         /* V727: a transfer fee reference is taken to a gateway only while it is for what the application owes now — linked to a live
            application and drawn for its balance; one left open for another figure (a payment linked since, a revised fee, the
            application ended) is not paid */
+        /* V735: a Summer reference is taken to a gateway only while the Summer is open and every charge it was drawn for is still owed */
+        if (summer(r) && !repo.summerPayable(r.reference())) {
+            throw new DomainRuleViolation("SUMMER_REFERENCE_STALE", "This reference is no longer for what you owe, or the Summer Semester's registration has closed.",
+                    new DomainRuleViolation.Remedy("The Summer Semester page draws the reference for what you owe now. A payment already made is never charged again.", "You"));
+        }
         if (transfer(r) && !repo.transferPayable(r.reference())) {
             throw new DomainRuleViolation("TRANSFER_REFERENCE_STALE", "This reference is no longer for what you owe. Pay the transfer fee from the transfer page.",
                     new DomainRuleViolation.Remedy("The transfer page draws the reference for the balance owed now. A payment already made is never charged again.", "You"));
@@ -448,9 +453,15 @@ public class PaymentsService {
         return "FEES".equals(r.kind()) && repo.transferReference(r.reference());
     }
 
+    /** V735: a student's Summer Semester fees reference: paid like any student reference, named the Summer Semester fees at the gateway
+     *  and returned to the Summer Semester page */
+    private boolean summer(PaymentsRepository.Reference r) {
+        return "FEES".equals(r.kind()) && repo.summerReference(r.reference());
+    }
+
     /** the fee as the gateway names it to the payer */
     private String nameOf(PaymentsRepository.Reference r) {
-        return gst(r) ? "GST fee" : transfer(r) ? "inter-departmental transfer fee" : feeName(r.kind());
+        return gst(r) ? "GST fee" : transfer(r) ? "inter-departmental transfer fee" : summer(r) ? "Summer Semester fees" : feeName(r.kind());
     }
 
     /** where the gateway returns the payer: the page that shows this fee paid, which verifies the reference on arrival — V724: a
@@ -461,6 +472,9 @@ public class PaymentsService {
         }
         if (gst(r)) {
             return portalUrl + "/student/gst?paid=" + r.reference();
+        }
+        if (summer(r)) {
+            return portalUrl + "/student/summer?paid=" + r.reference();
         }
         return transfer(r) ? portalUrl + "/student/transfer?paid=" + r.reference() : backUrl(r.kind(), r.reference());
     }
@@ -509,6 +523,10 @@ public class PaymentsService {
         // V295: as at the checkout, the admission checking fee is paid only while Admission Status Checking is open, and once
         if ("CHECKING".equals(r.kind()) && r.applicationId() != null && !repo.checkingPayable(r.applicationId())) {
             return notice("The admission checking fee cannot be paid now", "Admission Status Checking is closed, or the fee is already paid; Admission Status on the applicant portal says which. A fee already paid is never charged again.");
+        }
+        // V735: as at the checkout, a Summer reference is paid only while the Summer is open and it is for what is owed now
+        if (summer(r) && !repo.summerPayable(r.reference())) {
+            return notice("This reference is no longer for what you owe", "Pay from the Summer Semester page; it draws the reference for what you owe now, while registration is open. A payment already made is never charged again.");
         }
         // V727: as at the checkout, a transfer fee reference is paid only while it is for what the application owes now
         if (transfer(r) && !repo.transferPayable(r.reference())) {
@@ -813,7 +831,9 @@ public class PaymentsService {
         String reference = c.reference() == null ? asked : c.reference();
         // V727: a transfer fee reference is paid at the bank only while it is for what the application owes now
         boolean staleTransfer = c.valid() && !reference.isEmpty() && laneRepo.transferReference(reference) && !laneRepo.transferPayable(reference);
-        boolean valid = c.valid() && !staleTransfer;
+        // V735: a Summer reference is paid at the bank only while the Summer is open and every charge it was drawn for is still owed
+        boolean staleSummer = c.valid() && !reference.isEmpty() && laneRepo.summerReference(reference) && !laneRepo.summerPayable(reference);
+        boolean valid = c.valid() && !staleTransfer && !staleSummer;
         Map<String, Object> said = new LinkedHashMap<>();
         said.put("merchantReference", m.field("MerchantReference"));
         said.put("paymentItemCode", m.field("PaymentItemCode"));
@@ -821,6 +841,8 @@ public class PaymentsService {
         said.put("valid", valid);
         if (staleTransfer) {
             said.put("why", "TRANSFER_REFERENCE_STALE: the reference is no longer for what the transfer application owes");
+        } else if (staleSummer) {
+            said.put("why", "SUMMER_REFERENCE_STALE: the Summer Semester's registration is closed, or the reference is no longer for what is owed");
         } else if (c.why() != null) {
             said.put("why", c.why());
         }

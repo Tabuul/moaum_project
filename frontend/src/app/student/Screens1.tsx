@@ -23,6 +23,7 @@ import { gstPayState } from "@/lib/gst-payable";
 import { PasswordInput } from "@/components/PasswordInput";
 import type { OwedCourse } from "@/lib/carry-over";
 import { bandWords, creditWords, isLive, isTransferPurpose, overpaidWords, owedNow, payLabel, type TransferFeeView } from "@/lib/transfer-fee";
+import { isSummerPurpose } from "@/lib/summer";
 
 /** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
  *  (personal, origin, contact, family, next-of-kin) is read from /me/biodata; the JAMB registration
@@ -191,7 +192,7 @@ export function Dashboard({ s, gst = null, outstanding = null, transfer = null }
   // before matriculation (V282): the fees paid make the person a student awaiting their number; the JAMB number stays the sign-in
   const feesPaidStage = ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING"].includes(s.lifecycle ?? "");
   const preMatric = !s.matricNo && s.entryMode !== "POSTGRADUATE";
-  const lastPaid = [...f.references].filter((r) => r.confirmed_at && !r.archived && r.session === f.session && !isTransferPurpose(r.purpose)).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
+  const lastPaid = [...f.references].filter((r) => r.confirmed_at && !r.archived && r.session === f.session && !isTransferPurpose(r.purpose) && !isSummerPurpose(r.purpose)).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
   return (
     <>
       {preMatric ? (

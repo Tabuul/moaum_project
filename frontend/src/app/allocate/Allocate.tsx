@@ -37,12 +37,16 @@ const MAX_UNITS = 12;
 const LEVELS = [100, 200, 300, 400, 500, 600];
 const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 
-export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, events = [] }: {
+export function Allocate({ depts, sessions, dept, session, semester, level, offerings, lecturers, problem, imports = [], canImport = false, events = [], summer = [] }: {
   depts: Dept[]; sessions: string[]; dept: string; session: string; semester: number; level: number | null;
+  /** V735: the sessions with a Summer Semester — their semester 3 is the Summer, whose classes are its students' outstanding courses */
+  summer?: string[];
   offerings: Offering[]; lecturers: Lecturer[]; problem: Problem | null; imports?: ImportRecord[]; canImport?: boolean;
   /** V408: the department's allocation history for the session and semester */
   events?: AllocationEvent[];
 }) {
+  // V735: semester 3 of a session with a Summer Semester is the Summer
+  const semLabel = semester === 3 && summer.includes(session) ? "Summer" : semName(semester);
   const router = useRouter();
   const queryNav = useQueryNav();
   const [open, setOpen] = useState<Offering | null>(null);
@@ -244,6 +248,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
           <div className="scope__f"><label htmlFor="al-sem">Semester</label>
             <select id="al-sem" className="ws__select" value={semester} onChange={(e) => go({ sem: Number(e.target.value) })}>
               <option value={1}>First semester</option><option value={2}>Second semester</option>
+              {summer.includes(session) || semester === 3 ? <option value={3}>{summer.includes(session) ? "Summer" : "Third"} semester</option> : null}
             </select></div>
           <div className="scope__f"><label htmlFor="al-level">Level</label>
             <select id="al-level" className="ws__select" value={level ?? ""} onChange={(e) => go({ level: e.target.value ? Number(e.target.value) : null })}>
@@ -252,7 +257,7 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             </select></div>
         </div>
         <div className="scope__sum">
-          <span className="trail">{deptName}{level ? ` › ${level} Level` : ""} › {session} › {semester === 1 ? "First" : "Second"} semester</span>
+          <span className="trail">{deptName}{level ? ` › ${level} Level` : ""} › {session} › {semLabel} semester</span>
           <span className="count">Showing <b className="tnum">{offerings.length.toLocaleString()}</b> course{offerings.length === 1 ? "" : "s"}</span>
         </div>
       </div>
@@ -261,13 +266,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
       {problem ? <ProblemNotice problem={problem} /> : null}
 
       <Tiles items={[
-        ["Courses", String(offerings.length), null, `${session} · ${semName(semester).toLowerCase()} semester${level ? ` · ${level} level` : ""}`],
+        ["Courses", String(offerings.length), null, `${session} · ${semLabel.toLowerCase()} semester${level ? ` · ${level} level` : ""}`],
         ["Unassigned", String(unassigned), unassigned ? "var(--red-ink)" : "var(--green-ink)", unassigned ? "No lead lecturer yet" : "All have a lead"],
         ["No second examiner", String(noSecond), noSecond ? "var(--red-ink)" : null, "Blocks verification"],
         ["Lecturers", String(lecturers.length), null, "In this department"],
       ]} />
 
-      <Panel title="Teaching allocation" right={`${deptName} · ${session} · ${semName(semester).toLowerCase()} semester${level ? ` · ${level} level` : ""}`}>
+      <Panel title="Teaching allocation" right={`${deptName} · ${session} · ${semLabel.toLowerCase()} semester${level ? ` · ${level} level` : ""}`}>
         {offerings.length ? (
           <DTable cols={["Course", "Level|mid", "Units|mid", "Registered|mid", "Lecturers", "Second examiner", "Action|num"]} rows={offerings.map((o) => [
             <span key="c"><strong className="tnum">{o.course_code}</strong><div className="sub2">{o.title}</div></span>,
@@ -293,13 +298,13 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
             o.second_examiner ? <Pil kind="ok" key="s">{o.second_examiner}</Pil> : o.lecturer_id ? <Pil kind="bad" key="s">Not set</Pil> : <span className="sub2" key="s">&mdash;</span>,
             <Btn key="a" kind={o.lecturer_id ? "ghost" : "urgent"} onClick={() => openAssign(o)}>{o.lecturer_id ? "Manage" : "Assign"}</Btn>,
           ])} texts={offerings.map((o) => `${o.course_code} ${o.title} ${o.lecturer ?? ""} ${cos(o).map((c) => c.name).join(" ")}`)} />
-        ) : <PBody><div className="sub2">No course is offered for {deptName} in {session}, {semName(semester).toLowerCase()} semester{level ? `, ${level} level` : ""}.</div></PBody>}
+        ) : <PBody><div className="sub2">No course is offered for {deptName} in {session}, {semLabel.toLowerCase()} semester{level ? `, ${level} level` : ""}.</div></PBody>}
       </Panel>
 
       <div className="row mt-1">
         <Btn kind="ghost" onClick={() => void brandedXlsx("Teaching allocation", ["Course code", "Course", "Level", "Units", "Registered", "Lead lecturer", "Co-lecturers", "Second examiner"],
           offerings.map((o) => [o.course_code, o.title, o.level, o.units, o.registered, o.lecturer ?? "", cos(o).map((c) => c.name).join("; "), o.second_examiner ?? ""]),
-          { sheetName: "Allocation", sub: `${deptName} · ${session} · ${semName(semester)} semester${level ? ` · ${level} level` : ""}`, meta: [["Department", deptName], ["Session", session], ["Semester", `${semName(semester)} semester`]] })
+          { sheetName: "Allocation", sub: `${deptName} · ${session} · ${semLabel} semester${level ? ` · ${level} level` : ""}`, meta: [["Department", deptName], ["Session", session], ["Semester", `${semLabel} semester`]] })
           .then((b) => downloadBlob(b, `allocation-${dept}-${session.replace("/", "-")}-${semester}.xlsx`))}>Download Excel</Btn>
       </div>
 
@@ -308,9 +313,9 @@ export function Allocate({ depts, sessions, dept, session, semester, level, offe
       <Panel title="Allocation history" right={events.length ? (
         <Btn kind="ghost" onClick={() => void brandedXlsx("Allocation history", ["When", "Course code", "Action", "Role", "Lecturer", "Previous lecturer", "Reason", "By", "Ticket"],
           events.map((h) => [whenText(h.at), h.course_code, ACTION_WORD[h.action] ?? h.action, ROLE_WORD[h.role] ?? h.role, h.lecturer ?? "", h.previous_lecturer ?? "", h.reason ?? "", byText(h), h.ticket ?? ""]),
-          { sheetName: "History", sub: `${deptName} · ${session} · ${semName(semester)} semester`, meta: [["Department", deptName], ["Session", session], ["Semester", `${semName(semester)} semester`]] })
+          { sheetName: "History", sub: `${deptName} · ${session} · ${semLabel} semester`, meta: [["Department", deptName], ["Session", session], ["Semester", `${semLabel} semester`]] })
           .then((b) => downloadBlob(b, `allocation-history-${dept}-${session.replace("/", "-")}-${semester}.xlsx`))}>Download Excel</Btn>
-      ) : `${deptName} · ${session} · ${semName(semester).toLowerCase()} semester`}>
+      ) : `${deptName} · ${session} · ${semLabel.toLowerCase()} semester`}>
         <PBody><HistoryTable rows={events} showCourse pageSize={20} onOpen={(id) => { const o = offerings.find((x) => x.id === id); if (o) openAssign(o); }} /></PBody>
       </Panel>
 

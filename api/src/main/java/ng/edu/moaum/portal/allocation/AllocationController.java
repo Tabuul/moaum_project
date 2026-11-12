@@ -240,7 +240,8 @@ class AllocationController {
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE c.dept_code = :dept
-                   AND catalogue.runs_in(c.semester, c.both_semesters, :semester)   -- only courses taught in this semester (V386: or in both)
+                   AND (catalogue.runs_in(c.semester, c.both_semesters, :semester)  -- only courses taught in this semester (V386: or in both)
+                        OR (:semester = 3 AND o.id IS NOT NULL))                     -- V735: the Summer runs the classes its students paid for
                    AND c.state <> 'ENDED'                     -- an ended course is not allocated to a lecturer
                    AND c.code NOT LIKE 'DMO %'
                    AND (:level::int IS NULL OR c.level = :level)

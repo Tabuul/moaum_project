@@ -1462,7 +1462,8 @@ class CollegeController {
         List<Map<String, Object>> carry = jdbc.sql("SELECT code, from_session, note, cleared_on FROM college.carry_over WHERE student_id = :me ORDER BY code").param("me", me).query().listOfRows();
         // the current year is the open enrolment, whatever the University's session; a new year opens in the session the College dated for the level
         Map<String, Object> current = enrolments.stream().filter(x -> List.of("OPEN", "RESIT").contains(String.valueOf(x.get("state")))).reduce((a, b) -> b).orElse(null);
-        String nextSession = jdbc.sql("SELECT college.level_session(:l)").param("l", level).query(String.class).single();
+        // V733: a student standing in a session of their own (one behind the University's) opens the year in it
+        String nextSession = jdbc.sql("SELECT coalesce(people.own_session(:me), college.level_session(:l))").param("me", me).param("l", level).query(String.class).single();
         String feeSession = current != null ? String.valueOf(current.get("session")) : nextSession;
         Map<String, Object> fees = jdbc.sql("SELECT :s AS session, finance.semester_cleared(:me, :s, 1) AS first_cleared, finance.semester_cleared(:me, :s, 2) AS second_cleared")
                 .param("me", me).param("s", feeSession).query().singleRow();
@@ -1511,6 +1512,10 @@ class CollegeController {
         UUID me = collegeStudent(auth);
         // the session the year opens in is the College's (college.level_session) unless the student names one; a year already open registers its next semester
         String session = body != null && body.session() != null && !body.session().isBlank() ? body.session().trim() : null;
+        if (session == null) {
+            // V733: unnamed, the year opens in the student's own session where they stand in one
+            session = jdbc.sql("SELECT people.own_session(:me)").param("me", me).query(String.class).optional().orElse(null);
+        }
         String r = jdbc.sql("SELECT college.register_level(:me, :s)").param("me", me).param("s", session, Types.VARCHAR).query(String.class).single();
         return Map.of("result", r);
     }
