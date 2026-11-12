@@ -129,6 +129,17 @@ class PgMigrationIT {
         assertThat(((Number) done.get("skipped")).intValue()).isEqualTo(1);
         Map<String, Object> report = ok(it.get(school, M + "/batches/" + b1 + "/rows?status=PROBLEMS"));
         assertThat(String.valueOf(report.get("rows"))).contains("NOT_ADMITTED_IN_ADMITTED_FILE");
+        // every filter of the rows list answers, not the problems alone: all of them (the default), a verdict, a result, a search
+        Map<String, Object> all = ok(it.get(school, M + "/batches/" + b1 + "/rows"));
+        assertThat(((Number) all.get("total")).intValue()).isEqualTo(2);
+        assertThat((List<Map<String, Object>>) all.get("rows")).extracting(r -> r.get("legacy_no")).containsExactly(old1, old2);
+        assertThat((List<Map<String, Object>>) ok(it.get(school, M + "/batches/" + b1 + "/rows?status=ERROR")).get("rows"))
+                .extracting(r -> r.get("legacy_no")).containsExactly(old1);
+        assertThat((List<Map<String, Object>>) ok(it.get(school, M + "/batches/" + b1 + "/rows?status=CREATED")).get("rows"))
+                .extracting(r -> r.get("legacy_no")).containsExactly(old2);
+        Map<String, Object> searched = ok(it.get(school, M + "/batches/" + b1 + "/rows?status=ALL&q=" + old2));
+        assertThat(((Number) searched.get("total")).intValue()).isEqualTo(1);
+        assertThat((List<Map<String, Object>>) searched.get("rows")).extracting(r -> r.get("legacy_no")).containsExactly(old2);
 
         // the old number and this portal's both find the admitted applicant — V712: on the register at the import, the acceptance fee
         // still held for the Bursary

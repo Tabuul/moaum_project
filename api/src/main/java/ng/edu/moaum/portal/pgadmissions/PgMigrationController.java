@@ -277,6 +277,8 @@ class PgMigrationController {
         throw new DomainRuleViolation("PGMIG_FILTER", "No such filter: " + st + ".", new DomainRuleViolation.Remedy("Choose a filter from the list.", "You"));
     }
 
+    /* the filter is put inside a bracket: a text block drops the space before its closing quotes, so "... AND " + "true" read
+       "ANDtrue" and every filter but PROBLEMS (which opens with its own bracket) failed */
     private List<Map<String, Object>> listRows(UUID batch, String where, String st, String like, int limit, int offset) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.id, r.row_no, r.legacy_no, r.applicant, r.email, r.verdict, r.match, r.action, r.programme_code, r.session, r.target_state,
@@ -290,7 +292,8 @@ class PgMigrationController {
                        (SELECT d.name FROM ref.programme g JOIN ref.department d ON d.code = g.dept_code WHERE g.code = r.programme_code) AS department_name,
                        (SELECT f.name FROM ref.programme g JOIN ref.faculty f ON f.code = g.faculty_code WHERE g.code = r.programme_code) AS faculty_name
                   FROM admissions.pg_migration_row r
-                 WHERE r.batch_id = :b AND """ + where + """
+                 WHERE r.batch_id = :b AND (""" + where + """
+                   )
                    AND (:like::text IS NULL OR r.legacy_no ILIKE :like OR r.applicant ILIKE :like OR r.email ILIKE :like)
                  ORDER BY r.row_no LIMIT :lim OFFSET :off
                 """).param("b", batch).param("st", st).param("like", like, Types.VARCHAR).param("lim", limit).param("off", offset)
