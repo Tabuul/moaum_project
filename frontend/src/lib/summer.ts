@@ -23,6 +23,8 @@ export interface SummerCourse {
 export interface SummerAccount {
   session: string; programmeFee: Money; programmeFeeState: "DUE" | "PAID" | null; coursesSelected: number; coursesPaid: number;
   courseFeesDue: Money; programmeFeeDue: Money; due: Money; paid: Money; openReference: string | null;
+  /** V739: the open reference's own amount (an open reference is shown only when it may be paid) and the unapplied Summer credit */
+  openAmount?: Money; credit?: Money;
   registration: { id: string; status: string; approvedAt: string | null; courses: number } | null;
 }
 
@@ -133,12 +135,23 @@ export function selectionCost(picked: number, account: Pick<SummerAccount, "prog
 }
 
 /** the student's next step, in words */
-export function nextStep(d: MySummer): string {
+/** "1 December 2026" from a calendar date */
+export function dayWord(iso: string): string {
+  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+export function nextStep(d: MySummer, today: string = new Date().toISOString().slice(0, 10)): string {
   const a = d.account;
-  if (!d.period) return "No Summer Semester is set.";
+  const p = d.period;
+  if (!p) return "No Summer Semester is set.";
   if (!d.eligibility?.eligible && !(a && (num(a.due) > 0 || num(a.paid) > 0))) return notEligibleWord(d.eligibility?.reason);
-  if (a && num(a.due) > 0) return `Pay ${naira(a.due)} to register the courses you selected.`;
-  if (!d.period.open_now) return d.period.state === "PLANNED" ? "Registration has not opened yet." : "Registration is closed.";
+  // V739: after the close nothing more is taken — an unpaid selection is removed, never "paid"
+  if (a && num(a.due) > 0) return p.open_now ? `Pay ${naira(a.due)} to register the courses you selected.` : "Registration is closed: remove the course you selected and did not pay; nothing more is taken.";
+  if (!p.open_now) {
+    // V739: an open or planned Summer before its window says when it opens, not that it is closed
+    if (p.state !== "CLOSED" && p.registration_opens && today < p.registration_opens.slice(0, 10)) return `Registration opens on ${dayWord(p.registration_opens)}.`;
+    return p.state === "PLANNED" ? "Registration has not opened yet." : "Registration is closed.";
+  }
   if (!d.fee) return "The Bursary has not published the Summer Semester fees yet.";
   const left = (d.courses ?? []).filter((c) => c.selectable).length;
   if (a && a.coursesPaid > 0) return left ? "Registered. You may add more of your outstanding courses." : "Registered for every outstanding course you may take.";

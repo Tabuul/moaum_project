@@ -80,6 +80,7 @@ export function ScopeBar({
   ceiling = {},
   hide = [],
   onExport,
+  withSummer = false,
 }: {
   scope: Scope;
   structure: ScopeStructure;
@@ -94,6 +95,8 @@ export function ScopeBar({
   /** selectors to omit entirely — e.g. a lecturer or HOD is bound to their own courses/department */
   hide?: ("fac" | "dept" | "prog" | "level")[];
   onExport?: () => void;
+  /** V739: offer the Summer Semester (semester 3) beside the first and second */
+  withSummer?: boolean;
 }) {
   const queryNav = useQueryNav();
   const pathname = usePathname();
@@ -124,10 +127,10 @@ export function ScopeBar({
   if (p) trail.push(p.name);
   if (s.level) trail.push(`${s.level} Level`);
   if (s.course) trail.push(s.course);
-  if (s.sem) trail.push(s.sem === "1" ? "First semester" : s.sem === "2" ? "Second semester" : "Third semester");
+  if (s.sem) trail.push(s.sem === "1" ? "First semester" : s.sem === "2" ? "Second semester" : withSummer ? "Summer semester" : "Third semester");
 
   const courseOpts: [string, string][] = (courses ?? [])
-    .filter((c) => !s.sem || c.semester === Number(s.sem))
+    .filter((c) => !s.sem || s.sem === "3" || c.semester === Number(s.sem))   // V739: a Summer class is a course of either semester
     .map((c) => [c.code, `${c.code} ${c.title}`]);
   const locked = !!(ceiling.fac || ceiling.dept || ceiling.prog);
   const narrowed = SCOPE_KEYS.some((k) => k !== "session" && s[k] && s[k] !== EMPTY_SCOPE[k]);
@@ -143,7 +146,7 @@ export function ScopeBar({
           <Sel id="sc-course" label="Course" opts={courseOpts} value={s.course} disabled={!p} anyLabel={p ? "All courses" : "Choose a programme first"} onChange={(v) => set({ course: v })} />
         ) : null}
         <Sel id="sc-session" label="Session" opts={sessions.map((x) => [x, x])} value={s.session} anyLabel={s.session || "Session"} onChange={(v) => set({ session: v || s.session })} />
-        <Sel id="sc-sem" label="Semester" opts={[["1", "First semester"], ["2", "Second semester"]]} value={s.sem} anyLabel="Both semesters" onChange={(v) => set({ sem: v })} />
+        <Sel id="sc-sem" label="Semester" opts={withSummer ? [["1", "First semester"], ["2", "Second semester"], ["3", "Summer semester"]] : [["1", "First semester"], ["2", "Second semester"]]} value={s.sem} anyLabel="Both semesters" onChange={(v) => set({ sem: v })} />
       </div>
       <div className="scope__sum">
         <span className="trail">

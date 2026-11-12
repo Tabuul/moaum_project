@@ -5,7 +5,7 @@
  *  for what is owed (the programme fee once a Summer, a fee a course, as the Bursary published them) through the gateways every fee
  *  uses; and the payment's confirmation registers the courses. A course added later is charged its course fee alone. */
 import { useState } from "react";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, onDay, useAct, when } from "../common";
@@ -43,8 +43,8 @@ function Fees({ d }: { d: MySummer }) {
     setDrawn(null);
   }
   const due = num(a?.due);
-  // the open reference is for what is owed only while its amount is: the server closes one drawn for another figure
-  const open = drawn ?? (a?.openReference && due > 0 ? { reference: a.openReference, amount: due } : null);
+  // V739: the server names an open reference only when it may be paid now, with its own amount; otherwise a new one is drawn
+  const open = drawn ?? (a?.openReference && a.openAmount != null && due > 0 ? { reference: a.openReference, amount: num(a.openAmount) } : null);
   async function draw() {
     const r = await act("ref", "POST", "/me/summer/reference", { session: d.session }, "Summer Semester fees reference", "Reference ready — pay it below");
     if (r && typeof r.reference === "string" && r.amount != null) setDrawn({ reference: r.reference, amount: num(r.amount as number) });
@@ -62,7 +62,10 @@ function Fees({ d }: { d: MySummer }) {
             ["Outstanding", <b key="o" className="tnum" style={{ color: due > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(due)}</b>],
           ]} />
         )}
-        {due > 0 ? (
+        {num(a?.credit) > 0 ? (
+          <Note kind="info" title={`${naira(a?.credit)} received beyond your Summer charges`}>A payment arrived after what it was for had changed. The Bursary applies it to what you owe or refunds it; nothing is lost.</Note>
+        ) : null}
+        {due > 0 && d.period?.open_now ? (
           open ? (
             <div className="mt-2">
               <div className="sub2 mb-2">Reference <b className="tnum">{open.reference}</b> for {naira(open.amount)}. Pay it by card or USSD, or at a bank against the reference. Your courses are registered when the payment is confirmed.</div>
@@ -70,10 +73,12 @@ function Fees({ d }: { d: MySummer }) {
             </div>
           ) : (
             <div className="mt-2">
-              <Btn kind="primary" size="md" busy={busy === "ref"} busyLabel="Preparing the reference…" disabled={busy !== null || !d.period?.open_now} onClick={() => void draw()}>Pay {naira(due)}</Btn>
-              <div className="sub2 mt-1">{d.period?.open_now ? "One reference for everything owed now; then pay it by card or USSD." : "Registration is closed: no payment is taken."}</div>
+              <Btn kind="primary" size="md" busy={busy === "ref"} busyLabel="Preparing the reference…" disabled={busy !== null} onClick={() => void draw()}>Pay {naira(due)}</Btn>
+              <div className="sub2 mt-1">One reference for everything owed now; then pay it by card or USSD.</div>
             </div>
           )
+        ) : due > 0 ? (
+          <div className="sub2 mt-2">Registration is closed: no payment is taken. Remove the course you selected and did not pay.</div>
         ) : null}
         {problem ? <ProblemNotice problem={problem} /> : null}
       </PBody>
@@ -117,7 +122,8 @@ function Courses({ d }: { d: MySummer }) {
           : c.selectable ? <Pil key={`p${c.course_code}`} kind="info">OUTSTANDING</Pil>
           : <span key={`p${c.course_code}`} className="sub2">{courseReasonWord(c.reason)}</span>,
         <span key={`fee${c.course_code}`} className="tnum">{naira(c.course_fee)}</span>,
-        c.status === "SELECTED" && d.period?.open_now ? (
+        // V739: an unpaid selection is removed whether or not registration is open (after the close it can no longer be paid)
+        c.status === "SELECTED" ? (
           <Btn key={`x${c.course_code}`} kind="ghost" size="sm" disabled={busy !== null}
                onClick={() => void act(`x${c.course_code}`, "POST", "/me/summer/unselect", { session: d.session, course: c.course_code }, `Summer course ${c.course_code} taken back`, `${c.course_code} taken back`)}>Remove</Btn>
         ) : <span key={`x${c.course_code}`} />,
@@ -154,7 +160,8 @@ function Registered({ d, name, number }: { d: MySummer; name: string; number: st
         <span key={`s${r.course_code}`}>{semesterWord(r.course_semester)}</span>,
         <span key={`f${r.course_code}`} className="sub2">{r.original_session ? `${semesterWord(r.original_semester)} semester, ${r.original_session}` : "—"}</span>,
         <span key={`l${r.course_code}`}>{r.lecturer ?? "Not yet allocated"}</span>,
-        <span key={`p${r.course_code}`} className="tnum t-xs">{r.receipt_no ?? r.paid_reference ?? "—"}</span>,
+        r.paid_reference ? <LinkBtn key={`p${r.course_code}`} kind="ghost" href={`/student/receipt/${encodeURIComponent(r.paid_reference)}`}>{r.receipt_no ?? "Receipt"}</LinkBtn>
+          : <span key={`p${r.course_code}`} className="tnum t-xs">—</span>,
       ])} />
     </Panel>
   );
@@ -205,7 +212,8 @@ export function Summer({ d, paid = null, name, number }: { d: MySummer; paid?: s
             <span key={`f${p.reference}`} className="sub2">{p.purpose.replace(/^Summer semester fees, [^:]+: /, "")}</span>,
             <span key={`a${p.reference}`} className="tnum">{naira(p.amount)}</span>,
             <span key={`d${p.reference}`} className="sub2">{when(p.generated_at)}</span>,
-            p.confirmed_at ? <Pil key={`s${p.reference}`} kind="ok">PAID{p.receipt_no ? ` · ${p.receipt_no}` : ""}</Pil> : <Pil key={`s${p.reference}`} kind="warn">AWAITING PAYMENT</Pil>,
+            p.confirmed_at ? <span key={`s${p.reference}`} className="row" style={{ gap: "var(--s-1)" }}><Pil kind="ok">PAID</Pil><LinkBtn kind="ghost" href={`/student/receipt/${encodeURIComponent(p.reference)}`}>Receipt{p.receipt_no ? ` ${p.receipt_no}` : ""}</LinkBtn></span>
+              : <Pil key={`s${p.reference}`} kind="warn">AWAITING PAYMENT</Pil>,
           ])} />
         </Panel>
       ) : null}

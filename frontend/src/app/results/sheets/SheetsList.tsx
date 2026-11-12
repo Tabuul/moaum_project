@@ -35,7 +35,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
           </select>
         </div>
       </div></div>
-      <Panel title={all ? "Score sheets in the session" : "Score sheets assigned to you"} right={<>{session}{sem ? ` · ${sem === "1" ? "First" : "Second"} semester` : ""} · {open.length ? <b className="ink-red">{open.length} still open</b> : "all submitted"}</>}>
+      <Panel title={all ? "Score sheets in the session" : "Score sheets assigned to you"} right={<>{session}{sem ? ` · ${sem === "1" ? "First" : sem === "3" ? "Summer" : "Second"} semester` : ""} · {open.length ? <b className="ink-red">{open.length} still open</b> : "all submitted"}</>}>
         {sheets.length === 0 ? (
           <div className="card__body sub2">{all ? "No score sheet exists for this session yet. Sheets are generated when the Academic Office opens the examination session over the allocated offerings." : "No sheet is assigned to you in this session. A sheet appears here when the department allocates you a course and the examination session is opened."}</div>
         ) : (

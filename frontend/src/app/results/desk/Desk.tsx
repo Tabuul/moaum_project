@@ -40,7 +40,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
   if (!d) {
     return (
       <>
-        <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
+        <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
         <Note kind="info" title="This office holds no stage of the result chain">Lecturer → verification → Departmental Board → faculty scrutiny → compilation → Faculty Board → Exams and Records → Senate.</Note>
       </>
     );
@@ -81,7 +81,7 @@ export function Desk({ scope, structure, sessions, listing, actingOffice }: { sc
 
   return (
     <>
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
+      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
       <Note kind="info" title={`${d.title} — ${d.unit}`}>A set arrives from {d.back} and leaves for {d.next}. <b>What this desk may not do:</b> {d.cannot}</Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="ok" title={said}>You cannot act on the same set at the next desk.</Note> : null}

@@ -499,6 +499,13 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT entry_session FROM people.student WHERE id = :s").param("s", student).query(String.class).optional().orElse(null);
     }
 
+    /** V740: the session the student's first year of study is in (people.first_session: the session after admission for the admissions
+     *  the University's rule names, else the admission session) */
+    String firstSession(UUID student) {
+        return jdbc.sql("SELECT people.first_session(entry_session, entry_mode) FROM people.student WHERE id = :s").param("s", student)
+                .query(String.class).optional().orElse(null);
+    }
+
     Integer levelOf(UUID student) {
         return jdbc.sql("SELECT current_level FROM people.student WHERE id = :s").param("s", student).query(Integer.class).optional().orElse(null);
     }

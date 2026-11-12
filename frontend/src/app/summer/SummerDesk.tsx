@@ -16,6 +16,8 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { day } from "@/lib/format";
 import { toCsv, sessionSlug } from "@/lib/report";
+import { classListHref } from "@/lib/lecturer";
+import Link from "next/link";
 import {
   CATEGORIES, categoryWord, naira, notEligibleWord, paymentStateWords, periodWords, semesterWord, sessionPath, type Money, type SummerPeriod,
 } from "@/lib/summer";
@@ -31,6 +33,8 @@ export interface SummerStudentRow {
 type Group = { name: string; eligible: number; commenced: number; registered: number; courses: number };
 export interface SummerStudents {
   session: string; period: SummerPeriod | null; identifiedAt: string | null; rows: SummerStudentRow[];
+  /** V739: paid courses the registration could not take (a course ended since it was chosen, a gate on the registration) */
+  issues?: { id: string; student_id: string; number: string | null; name: string; course_code: string | null; error: string; raised_at: string; reference: string | null }[];
   summary: {
     eligible: number; commenced: number; completed: number; registeredCourses: number; owing: number; paid: number;
     programmeFeesPaid: Money; courseFeesPaid: Money; feesOutstanding: Money; resultsPublished: number; resultsPassed: number; resultsFailed: number;
@@ -200,9 +204,9 @@ function Acts({ session, period, onDone }: { session: string; period: SummerPeri
       <PBody>
         <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
           <Btn kind="primary" size="md" busy={busy === "identify"} busyLabel="Identifying…" disabled={busy !== null} onClick={() => void identify()}>Identify the eligible</Btn>
-          <Btn kind="ghost" size="md" disabled={busy !== null} onClick={() => void tell("OPEN")}>Tell the eligible it is open</Btn>
-          <Btn kind="ghost" size="md" disabled={busy !== null} onClick={() => void tell("CLOSING")}>Remind those not registered</Btn>
-          <Btn kind="ghost" size="md" disabled={busy !== null || !period.exams_from} onClick={() => void tell("TIMETABLE")}>Tell the registered the examination dates</Btn>
+          <Btn kind="ghost" size="md" disabled={busy !== null || period.state === "CLOSED" || !period.registration_opens || !period.registration_closes} onClick={() => void tell("OPEN")}>Tell the eligible it is open</Btn>
+          <Btn kind="ghost" size="md" disabled={busy !== null || period.state !== "OPEN" || !period.registration_closes} onClick={() => void tell("CLOSING")}>Remind those not registered</Btn>
+          <Btn kind="ghost" size="md" disabled={busy !== null || !period.exams_from || !period.exams_to} onClick={() => void tell("TIMETABLE")}>Tell the registered the examination dates</Btn>
           <Btn kind="ghost" size="md" disabled={busy !== null || !period.exam_session_id || period.exam_state !== "DRAFT"} onClick={() => void exams("open")}>Open the examinations</Btn>
           <Btn kind="ghost" size="md" disabled={busy !== null || period.exam_state !== "OPEN"} onClick={() => void exams("release-sheets")}>Release the score sheets</Btn>
         </div>
@@ -219,6 +223,36 @@ function Acts({ session, period, onDone }: { session: string; period: SummerPeri
         </div>
         {problem ? <ProblemNotice problem={problem} /> : null}
       </PBody>
+    </Panel>
+  );
+}
+
+/** V739: paid Summer courses the registration could not take, retried once what stopped it is put right */
+function Issues({ issues, maySet, onDone }: { issues: NonNullable<SummerStudents["issues"]>; maySet: boolean; onDone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  async function retry(id: string, name: string) {
+    setBusy(id);
+    try {
+      const r = await call("POST", `/summer/issues/${id}/retry`, {}, `Summer registration retried for ${name}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      const left = Number(r.data.stillRefused ?? 0);
+      notify(left ? `${left} course${left === 1 ? " is" : "s are"} still refused` : `${name} is registered`);
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Panel title="Paid, not yet registered" right={String(issues.length)}>
+      <PBody><div className="sub2">The payment stands; the registration could not take these courses. Put right what stopped it (for example a course ended since it was chosen), then retry.</div></PBody>
+      <DTable cols={["Number", "Name", "Course", "Why", "Reference", "|mid"]} rows={issues.map((i) => [
+        <span key="n" className="tnum">{i.number ?? "—"}</span>,
+        <Link key="nm" className="lnk" href={`/students/${i.student_id}`}>{i.name}</Link>,
+        <span key="c" className="tnum">{i.course_code ?? "—"}</span>,
+        <span key="w" className="sub2">{i.error}</span>,
+        <span key="r" className="tnum t-xs">{i.reference ?? "—"}</span>,
+        maySet ? <Btn key="x" kind="ghost" size="sm" busy={busy === i.id} disabled={busy !== null} onClick={() => void retry(i.id, i.name)}>Retry</Btn> : <span key="x" />,
+      ])} />
     </Panel>
   );
 }
@@ -305,6 +339,7 @@ export function SummerDesk({ periods, session, sessions, students, courses, acti
           ) : null}
           {maySet ? <PeriodForm key={`${session}-${period?.set_at ?? "new"}`} session={session} period={period} onDone={() => router.refresh()} /> : null}
           {maySet && period ? <Acts session={session} period={period} onDone={() => router.refresh()} /> : null}
+          {students?.issues?.length ? <Issues issues={students.issues} maySet={maySet} onDone={() => router.refresh()} /> : null}
 
           {s ? (
             <>
@@ -340,7 +375,7 @@ export function SummerDesk({ periods, session, sessions, students, courses, acti
                     const [pw, pt] = paymentStateWords(r.payment_state);
                     return [
                       <span key="n" className="tnum">{r.matric_no ?? "—"}</span>,
-                      <span key="nm">{r.name}</span>,
+                      <Link key="nm" className="lnk" href={`/students/${r.student_id}`}>{r.name}</Link>,
                       <span key="p" className="sub2">{r.programme ?? "—"}</span>,
                       <span key="l" className="tnum">{r.level ?? "—"}</span>,
                       r.eligible ? <Pil key="e" kind="ok">{categoryWord(r.category).toUpperCase()}</Pil> : <span key="e" className="sub2" title={notEligibleWord(r.reason)}>{r.reason ? r.reason.replaceAll("_", " ").toLowerCase() : "—"}</span>,
@@ -356,7 +391,7 @@ export function SummerDesk({ periods, session, sessions, students, courses, acti
               ) : view === "courses" ? (
                 <Panel title="The Summer's classes" right="Allocate lecturers on Teaching Allocation (semester: Summer)">
                   <DTable pageSize={50} cols={["Course", "Title", "Units|num", "Course's semester", "Department", "Lecturer", "Registered|num", "Failed in the first · second", "Score sheet"]} rows={courses.map((c) => [
-                    <b key="c" className="tnum">{c.course_code}</b>,
+                    <Link key="c" className="lnk tnum b700" href={classListHref(c.course_code, session, 3)} title="The students registered in this Summer class">{c.course_code}</Link>,
                     <span key="t">{c.title ?? "—"}</span>,
                     <span key="u" className="tnum">{c.units ?? "—"}</span>,
                     <span key="s">{semesterWord(c.course_semester)}</span>,

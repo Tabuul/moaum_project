@@ -24,7 +24,12 @@ export interface SummerCollection {
   session: string; programme_fees_paid: Money; programme_fees_paid_count: number; course_fees_paid: Money; course_fees_paid_count: number;
   programme_fees_due: Money; course_fees_due: Money;
 }
-export interface SummerFeesView { fees: SummerFeeRow[]; collections: SummerCollection[]; programmes: { code: string; name: string }[] }
+/** V739: Summer money received beyond the charges it could pay */
+export interface SummerCredit {
+  id: string; session: string; amount: Money; state: "OPEN" | "APPLIED" | "REFUNDED"; created_at: string; settled_at: string | null; settled_note: string | null;
+  reference: string; receipt_no: string | null; number: string | null; name: string;
+}
+export interface SummerFeesView { fees: SummerFeeRow[]; collections: SummerCollection[]; programmes: { code: string; name: string }[]; credits?: SummerCredit[] }
 
 const STATERS = ["bursar", "studentaccounts", "super"];
 const APPROVERS = ["bursar", "super"];
@@ -49,6 +54,8 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
   const [from, setFrom] = useState("");
   const [why, setWhy] = useState("");
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [settling, setSettling] = useState<{ id: string; state: "APPLIED" | "REFUNDED" } | null>(null);
+  const [snote, setSnote] = useState("");
   const [wreason, setWreason] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -138,6 +145,41 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
           </PBody>
         ) : null}
       </Panel>
+
+      {view.credits?.length ? (
+        <Panel title="Unapplied Summer payments" right={`${view.credits.filter((x) => x.state === "OPEN").length} open`}>
+          <PBody><div className="sub2">A payment confirmed after what it was for had changed — its courses taken back, or paid by another reference. The money is held here until the Bursar applies it to what the student owes or refunds it.</div></PBody>
+          <DTable cols={["Number", "Name", "Session", "Amount|num", "Reference", "Received", "State", "|mid"]} rows={view.credits.map((x) => [
+            <span key="n" className="tnum">{x.number ?? "—"}</span>,
+            <span key="nm">{x.name}</span>,
+            <span key="s" className="tnum">{x.session}</span>,
+            <span key="a" className="tnum">{naira(x.amount)}</span>,
+            <span key="r" className="tnum t-xs">{x.reference}{x.receipt_no ? ` · ${x.receipt_no}` : ""}</span>,
+            <span key="d" className="sub2">{day(x.created_at)}</span>,
+            x.state === "OPEN" ? <Pil key="st" kind="warn">OPEN</Pil> : <span key="st"><Pil kind="ok">{x.state}</Pil>{x.settled_note ? <span className="blk sub2">{x.settled_note}</span> : null}</span>,
+            x.state === "OPEN" && mayApprove ? (
+              <span key="x" className="row" style={{ gap: "var(--s-1)" }}>
+                <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "APPLIED" }); setSnote(""); }}>Applied</Btn>
+                <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "REFUNDED" }); setSnote(""); }}>Refunded</Btn>
+              </span>
+            ) : <span key="x" />,
+          ])} />
+          {settling ? (
+            <PBody>
+              <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end", gap: "var(--s-2)" }}>
+                <Field id="sf-sn" label={settling.state === "APPLIED" ? "How it was applied" : "How it was refunded"} hint="At least 10 characters: the voucher, the reference or the desk that moved the money.">
+                  <input id="sf-sn" className="ctl" value={snote} onChange={(e) => setSnote(e.target.value)} />
+                </Field>
+                <Btn kind="primary" size="md" disabled={busy !== null || snote.trim().length < 10}
+                     onClick={async () => { if (await run("settle", "POST", `/finance/summer-credits/${settling.id}/settle`, { state: settling.state, note: snote.trim() }, "Summer credit settled", "Settled")) setSettling(null); }}>
+                  Record it
+                </Btn>
+                <Btn kind="ghost" size="md" onClick={() => setSettling(null)}>Cancel</Btn>
+              </div>
+            </PBody>
+          ) : null}
+        </Panel>
+      ) : null}
 
       {c.length ? (
         <Panel title="Collections by session" right="Programme fees and course fees apart">

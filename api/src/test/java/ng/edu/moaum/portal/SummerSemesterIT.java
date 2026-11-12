@@ -206,6 +206,21 @@ class SummerSemesterIT {
             Map<String, Object> collected = ((List<Map<String, Object>>) fees.get("collections")).get(0);
             assertThat(new BigDecimal(String.valueOf(collected.get("programme_fees_paid")))).isGreaterThanOrEqualTo(new BigDecimal("50000"));
             assertThat(new BigDecimal(String.valueOf(collected.get("course_fees_paid")))).isGreaterThanOrEqualTo(new BigDecimal("10000"));
+
+            // ── V739: the desk is read in an office that reads it, whatever other offices the token carries ──
+            String hodLecturer = TestTokens.token(UUID.randomUUID(), List.of("hod", "lecturer"));
+            assertThat(it.callWith(hodLecturer, HttpMethod.GET, path + "/students", null, Map.of("X-Active-Office", "lecturer")).getStatusCode().value()).isEqualTo(403);
+            assertThat(it.callWith(hodLecturer, HttpMethod.GET, path + "/courses", null, Map.of("X-Active-Office", "lecturer")).getStatusCode().value()).isEqualTo(403);
+
+            // ── V739: the Summer closed — what is selected and unpaid is taken back, and the students are no longer told it is open ──
+            Map<String, Object> closedPeriod = new java.util.HashMap<>(period);
+            closedPeriod.put("state", "CLOSED");
+            assertThat(it.call(ItSupport.token("academic"), HttpMethod.PUT, path, closedPeriod).getStatusCode().value()).isEqualTo(200);
+            assertThat(jdbc.sql("SELECT count(*) FROM registration.summer_charge WHERE student_id = :s AND session = :ss AND state = 'DUE'")
+                    .param("s", a).param("ss", session).query(Integer.class).single()).isZero();
+            ResponseEntity<Map> told = it.call(ItSupport.token("academic"), HttpMethod.POST, path + "/tell", Map.of("kind", "OPEN"));
+            assertThat(told.getStatusCode().value()).isEqualTo(422);
+            assertThat(String.valueOf(told.getBody())).contains("SUMMER_NOT_TO_TELL");
         } finally {
             it.db(() -> {
                 jdbc.sql("UPDATE policy.academic_session SET state = :st WHERE name = :n").param("st", sessionState).param("n", session).update();

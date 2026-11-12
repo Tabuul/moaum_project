@@ -108,3 +108,12 @@ high after it. "Remember a session was merged … this outstanding should not af
   cohort and spillover, the session roll-over's promotion ceiling, `people.align_level_reached`, the College's minimum years and a
   cohort override. `people.counted_sessions` is unchanged, because some of its callers pass a registration's session or an override's
   cohort, never an admission.
+
+## The review of V738 (V740)
+
+- **Money on the admission session.** A school-fee payment, an approved assessment or a waiver recorded on the session a student was admitted in (now before their first year) is kept on the outstanding-fees account. The session stands as a period with nothing assessed, so the money stands as a credit. An approved assessment, an officer's own act, still stands. The migration counts them and closes the open references drawn for those sessions.
+- **The level before the first year.** A session admitted in and before the first year reads the entry level everywhere: the level in a session, receipts, the payments view and the set readers. A school-fee payment is not moved into it (`REALLOC_BEFORE_FIRST_YEAR`).
+- **Names not written as the calendar writes them.** `2021/22` is read as 2021/2022 by every reader and by the trigger that marks accounts stale. Accounts whose admission session is written otherwise are marked to be read again.
+- **The cohort engine** counts from the first year: its effective cohort is the first session, with cohort source `COHORT_START`, and the affected students' positions are recomputed. A 2021/2022 admit is in their final year in 2025/2026, not Spillover Year 1, and the current session is not billed spillover lines for them.
+- **The programme timeline** (the deferment page and letter) counts completion from the first year.
+- **The outstanding-fees card** decides "sessions before X are not yet assessed" from the first year.

@@ -30,7 +30,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
 
   return (
     <>
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} courses={courses} what="students" count={roll?.all ?? 0} of={roll?.all ?? 0} withCourse ceiling={ceiling} />
+      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} courses={courses} what="students" count={roll?.all ?? 0} of={roll?.all ?? 0} withCourse ceiling={ceiling} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!roll ? (
         <Note kind="info" title="Choose a course in the scope bar">

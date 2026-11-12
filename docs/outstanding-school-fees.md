@@ -156,7 +156,8 @@ The University, 12 November 2026, over a student admitted 2021/2022 who was bill
 after it: those admissions began their first year in the session after they were admitted (the merged session; the calendar caught up
 at 2022/2023). The engine now assesses nothing before the first year and counts a period's level from it (`people.first_session`,
 `policy.cohort_start`). A 2021/2022 admit's account starts at 2022/2023 at 100 Level, and 2023/2024 is 200 Level. A registration's or
-enrolment's own level still stands. See `docs/session-2019-2020-merged.md`.
+enrolment's own level still stands. See `docs/session-2019-2020-merged.md`. V740 keeps money recorded on the admission session as a credit
+on a period with nothing assessed, and reads the card's "not yet assessed" note from the first year.
 
 ## Not changed, on purpose
 

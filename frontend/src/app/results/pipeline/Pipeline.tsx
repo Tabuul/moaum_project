@@ -56,7 +56,7 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
   const at = RP_STAGES.findIndex(([code]) => code === stage);
   const go = (next: string) => { const q = new URLSearchParams(window.location.search); if (next) q.set("stage", next); else q.delete("stage"); queryNav(`/results/pipeline?${q.toString()}`); };
   const shown = stage ? view.sheets.filter((s) => s.stage === stage) : view.sheets;
-  const period = `${view.session}${view.semester ? ` · ${view.semester === 1 ? "First" : "Second"} semester` : " · both semesters"}`;
+  const period = `${view.session}${view.semester ? ` · ${view.semester === 1 ? "First" : view.semester === 3 ? "Summer" : "Second"} semester` : " · both semesters"}`;
   const flagsOf = (s: SheetProgress) => s.flags.filter((f) => f !== "EMPTY_ROLL" || s.candidates === 0);
   const openHref = (s: SheetProgress) => (s.stage === "ENTRY" && (office === "lecturer" || office === "exams" || office === "academic" || office === "gst" || office === "eps") ? `/results/sheets/${s.id}` : `/results/chain?sheet=${s.id}`);
 
@@ -97,7 +97,7 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
 
   return (
     <>
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={view.sheets.length} of={cv.withLecturer} hide={hide} ceiling={ceiling} onExport={() => void exportSheets()} />
+      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={view.sheets.length} of={cv.withLecturer} hide={hide} ceiling={ceiling} onExport={() => void exportSheets()} />
       {view.attention.length ? (
         <Note kind="bad" title={`${view.attention.length} set${view.attention.length === 1 ? "" : "s"} need${view.attention.length === 1 ? "s" : ""} your desk`} action={<LinkBtn kind="urgent" href="/results/desk">Open the desk</LinkBtn>}>
           {view.desk ? `${view.desk}: ` : ""}{view.attention.slice(0, 6).map((s) => s.courseCode).join(", ")}{view.attention.length > 6 ? ` and ${view.attention.length - 6} more` : ""}. Each is listed under Needs your desk below with what it waits for.

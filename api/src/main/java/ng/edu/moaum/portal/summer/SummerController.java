@@ -76,6 +76,27 @@ class SummerController {
         return AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
     }
 
+    /** the offices that read the Summer desk (the active office must be one of them: authority is checked against every office the
+     *  token carries, so the active office decides the unit a reader is held to) */
+    private static final java.util.Set<String> READER_OFFICES = java.util.Set.of("academic", "registrar", "dregistrar", "hod", "dean", "bursar",
+            "studentaccounts", "ict", "super", "vc", "dvc");
+
+    /** V739: the unit the active office is held to (a department office its department, a faculty office its faculty, a sentinel when it
+     *  resolves to nothing); refused when the active office does not read the Summer desk */
+    private OfficeScope.Bound readerBound() {
+        String o = office();
+        if (o == null || !READER_OFFICES.contains(o)) {
+            throw new org.springframework.security.access.AccessDeniedException("The Summer desk is read in an office that reads it.");
+        }
+        return scope.bound(null, null, null);
+    }
+
+    private static boolean within(OfficeScope.Bound b, Object fac, Object dept, Object prog) {
+        return (b.fac() == null || b.fac().equalsIgnoreCase(String.valueOf(fac)))
+                && (b.dept() == null || b.dept().equalsIgnoreCase(String.valueOf(dept)))
+                && (b.prog() == null || b.prog().equalsIgnoreCase(String.valueOf(prog)));
+    }
+
     /** the Summer a student is shown: the session asked, else the latest Summer OPEN, else the latest set */
     private String sessionOr(String asked) {
         if (asked != null && !asked.isBlank()) {
@@ -251,21 +272,24 @@ class SummerController {
     @Transactional(readOnly = true)
     Map<String, Object> students(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
-        List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM registration.summer_students(:s)").param("s", s).query().listOfRows();
-        String o = office();
-        if ("hod".equals(o)) {
-            String dept = scope.actingDept();
-            rows = new ArrayList<>(rows.stream().filter(r -> dept != null && dept.equalsIgnoreCase(String.valueOf(r.get("dept_code")))).toList());
-        } else if ("dean".equals(o)) {
-            String fac = scope.actingFaculty();
-            rows = new ArrayList<>(rows.stream().filter(r -> fac != null && fac.equalsIgnoreCase(String.valueOf(r.get("faculty_code")))).toList());
-        }
+        OfficeScope.Bound b = readerBound();
+        List<Map<String, Object>> rows = new ArrayList<>(jdbc.sql("SELECT * FROM registration.summer_students(:s)").param("s", s).query().listOfRows()
+                .stream().filter(r -> within(b, r.get("faculty_code"), r.get("dept_code"), r.get("programme_code"))).toList());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", s);
         out.put("period", period(s));
         out.put("summary", summary(rows));
         out.put("rows", rows);
         out.put("identifiedAt", jdbc.sql("SELECT max(evaluated_at) FROM registration.summer_candidate WHERE session = :s").param("s", s).query().singleRow().get("max"));
+        // V739: the paid courses the registration could not take, for the Academic Office to put right and retry
+        out.put("issues", jdbc.sql("""
+                SELECT i.id, i.student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname || ', ' || st.other_names AS name,
+                       i.course_code, i.error, i.raised_at, pr.reference, st.programme_code, d.code AS dept_code, d.faculty_code
+                  FROM registration.summer_issue i JOIN people.student st ON st.id = i.student_id
+                  LEFT JOIN ref.programme p ON p.code = st.programme_code LEFT JOIN ref.department d ON d.code = p.dept_code
+                  LEFT JOIN finance.payment_reference pr ON pr.id = i.reference_id
+                 WHERE i.session = :s AND i.resolved_at IS NULL ORDER BY i.raised_at
+                """).param("s", s).query().listOfRows().stream().filter(r -> within(b, r.get("faculty_code"), r.get("dept_code"), r.get("programme_code"))).toList());
         return out;
     }
 
@@ -321,9 +345,9 @@ class SummerController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> courses(@PathVariable String session, @PathVariable String year) {
         String s = session + "/" + year;
-        String o = office();
-        String dept = "hod".equals(o) ? scope.actingDept() : null;
-        String fac = "dean".equals(o) ? scope.actingFaculty() : null;
+        OfficeScope.Bound b = readerBound();   // V739: whatever office is active, a unit office is held to its unit (a sentinel when it resolves to nothing)
+        String dept = b.dept();
+        String fac = b.fac();
         return jdbc.sql("""
                 SELECT o.id AS offering_id, o.course_code, k.title, k.units, k.semester AS course_semester, k.dept_code, d.name AS department,
                        (SELECT trim(coalesce(p.given_names, '') || ' ' || p.surname) FROM iam.person p WHERE p.id = o.lecturer_id) AS lecturer,
@@ -372,17 +396,32 @@ class SummerController {
         if (p == null) {
             throw new DomainRuleViolation("NO_SUMMER", "The Summer Semester of " + s + " is not set.", new DomainRuleViolation.Remedy("Set the period first.", "Academic Office"));
         }
+        // V739: the window and the examination dates the notice names must be set, and the Summer not closed; the event names its dates,
+        // so a changed window or timetable is told again (the same one never twice)
+        boolean closed = "CLOSED".equals(p.get("state"));
+        if (("OPEN".equals(body.kind()) || "CLOSING".equals(body.kind())) && (closed || p.get("registration_opens") == null || p.get("registration_closes") == null)) {
+            throw new DomainRuleViolation("SUMMER_NOT_TO_TELL", closed ? "The Summer Semester of " + s + " is closed." : "The registration window is not dated.",
+                    new DomainRuleViolation.Remedy("Date the registration window (and keep the Summer open or planned) before telling the students.", "Academic Office"));
+        }
+        if ("CLOSING".equals(body.kind()) && !"OPEN".equals(p.get("state"))) {
+            throw new DomainRuleViolation("SUMMER_NOT_TO_TELL", "A reminder is sent while the Summer is open.",
+                    new DomainRuleViolation.Remedy("Open the Summer first.", "Academic Office"));
+        }
+        if ("TIMETABLE".equals(body.kind()) && (p.get("exams_from") == null || p.get("exams_to") == null)) {
+            throw new DomainRuleViolation("SUMMER_NOT_TO_TELL", "The examinations are not dated from and to.",
+                    new DomainRuleViolation.Remedy("Date the examinations on the period first.", "Academic Office"));
+        }
         String sql = switch (body.kind()) {
             case "OPEN" -> """
                     SELECT count(*) FILTER (WHERE platform.tell_student(c.student_id, 'SUMMER_OPEN', NULL,
                                jsonb_build_object('SESSION', :s, 'OPENS', to_char(p.registration_opens, 'DD Mon YYYY'), 'CLOSES', to_char(p.registration_closes, 'DD Mon YYYY'),
-                                                  'OUTSTANDING', c.outstanding), 'SUMMER_OPEN:' || :s) > 0)
+                                                  'OUTSTANDING', c.outstanding), 'SUMMER_OPEN:' || :s || ':' || p.registration_opens || ':' || p.registration_closes) > 0)
                       FROM registration.summer_candidate c JOIN registration.summer_period p ON p.session = c.session
                      WHERE c.session = :s AND c.eligible
                     """;
             case "CLOSING" -> """
                     SELECT count(*) FILTER (WHERE platform.tell_student(c.student_id, 'SUMMER_CLOSING', NULL,
-                               jsonb_build_object('SESSION', :s, 'CLOSES', to_char(p.registration_closes, 'DD Mon YYYY')), 'SUMMER_CLOSING:' || :s) > 0)
+                               jsonb_build_object('SESSION', :s, 'CLOSES', to_char(p.registration_closes, 'DD Mon YYYY')), 'SUMMER_CLOSING:' || :s || ':' || p.registration_closes) > 0)
                       FROM registration.summer_candidate c JOIN registration.summer_period p ON p.session = c.session
                      WHERE c.session = :s AND c.eligible
                        AND NOT EXISTS (SELECT 1 FROM registration.summer_charge ch WHERE ch.student_id = c.student_id AND ch.session = :s AND ch.state = 'PAID')
@@ -390,13 +429,21 @@ class SummerController {
             default -> """
                     SELECT count(*) FILTER (WHERE platform.tell_student(r.student_id, 'SUMMER_TIMETABLE', NULL,
                                jsonb_build_object('SESSION', :s, 'EXAMS_FROM', to_char(p.exams_from, 'DD Mon YYYY'), 'EXAMS_TO', to_char(p.exams_to, 'DD Mon YYYY')),
-                               'SUMMER_TIMETABLE:' || :s) > 0)
+                               'SUMMER_TIMETABLE:' || :s || ':' || p.exams_from || ':' || p.exams_to) > 0)
                       FROM registration.course_registration r JOIN registration.summer_period p ON p.session = r.session
                      WHERE r.session = :s AND r.semester = 3 AND r.status IN ('APPROVED', 'LOCKED') AND p.exams_from IS NOT NULL
                     """;
         };
         long told = jdbc.sql(sql).param("s", s).query(Long.class).single();
         return Map.of("kind", body.kind(), "told", told);
+    }
+
+    /** V739: a paid Summer course the registration could not take, retried once what stopped it is put right */
+    @PostMapping("/api/v1/summer/issues/{id}/retry")
+    @PreAuthorize(SETTERS)
+    @Transactional
+    Map<String, Object> retry(@PathVariable UUID id) {
+        return json(jdbc.sql("SELECT registration.summer_issue_retry(:id)::text").param("id", id).query(String.class).single());
     }
 
     /** the Summer's examination session opened, or its score sheets released to the lecturers (the existing examination engine) */
@@ -427,6 +474,24 @@ class SummerController {
     public record Why(@NotBlank @Size(min = 10, max = 600) String reason) {
     }
 
+    public record Settle(@NotBlank @Pattern(regexp = "^(APPLIED|REFUNDED)$") String state, @NotBlank @Size(min = 10, max = 600) String note) {
+    }
+
+    /** V739: Summer money received beyond the charges it could pay, settled by the Bursar — applied (to what the student owes) or refunded —
+     *  with a note; the money itself is moved on the desks that move money */
+    @PostMapping("/api/v1/finance/summer-credits/{id}/settle")
+    @PreAuthorize(FEE_APPROVERS)
+    @Transactional
+    Map<String, Object> settle(@PathVariable UUID id, @Valid @RequestBody Settle body) {
+        UUID who = AuditContextHolder.current().map(c -> c.actorId()).orElseThrow();
+        int n = jdbc.sql("UPDATE registration.summer_credit SET state = :st, settled_at = now(), settled_by = :w, settled_note = :n WHERE id = :id AND state = 'OPEN'")
+                .param("st", body.state()).param("w", who).param("n", body.note().trim()).param("id", id).update();
+        if (n == 0) {
+            throw new DomainRuleViolation("SUMMER_CREDIT_SETTLED", "That credit is already settled.", new DomainRuleViolation.Remedy("Read it again.", "Bursary"));
+        }
+        return Map.of("id", id, "state", body.state());
+    }
+
     @GetMapping("/api/v1/finance/summer-fees")
     @PreAuthorize(FEE_READERS)
     @Transactional(readOnly = true)
@@ -443,6 +508,15 @@ class SummerController {
         // the programmes a fee may be stated for alone: the undergraduate programmes on the register
         out.put("programmes", jdbc.sql("SELECT code, name FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) ORDER BY name")
                 .query().listOfRows());
+        // V739: unapplied Summer money (a reference confirmed after its charges were taken back or paid by another)
+        out.put("credits", jdbc.sql("""
+                SELECT c.id, c.session, c.amount, c.state, c.created_at, c.settled_at, c.settled_note, pr.reference, pr.receipt_no,
+                       coalesce(st.matric_no, st.admission_no) AS number, st.surname || ', ' || st.other_names AS name
+                  FROM registration.summer_credit c JOIN people.student st ON st.id = c.student_id
+                  JOIN finance.payment_reference pr ON pr.id = c.reference_id
+                 WHERE CAST(:s AS text) IS NULL OR c.session = :s
+                 ORDER BY (c.state = 'OPEN') DESC, c.created_at DESC
+                """).param("s", session == null || session.isBlank() ? null : session.trim(), Types.VARCHAR).query().listOfRows());
         out.put("collections", jdbc.sql("""
                 SELECT c.session,
                        coalesce(sum(c.amount) FILTER (WHERE c.kind = 'PROGRAMME' AND c.state = 'PAID'), 0) AS programme_fees_paid,

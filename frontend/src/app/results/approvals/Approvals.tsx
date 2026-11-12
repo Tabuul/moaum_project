@@ -65,7 +65,7 @@ export function Approvals({
 
   return (
     <>
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} courses={courses} what="result sets" count={listing.sheets.length} of={t.expected} withCourse />
+      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} courses={courses} what="result sets" count={listing.sheets.length} of={t.expected} withCourse />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="info" title="Nothing was sent">{said}</Note> : null}
       <Tiles items={[

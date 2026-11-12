@@ -67,7 +67,8 @@ Adding a course later charges only that course's fee. The programme fee is never
 - **Classes.** `catalogue.open_class` lets any course run in semester 3 of a session that has a Summer. The allocation desks (the department's Teaching Allocation and the University's Course Allocation) show the Summer's classes under semester 3, labelled "Summer". Lecturers are allocated there as for any class.
 - **Examinations.** Setting the examination dates on the period creates the examination session (session, 3, MAIN, REGULAR). The desk opens it and releases the score sheets. Score entry, approval and publication follow the existing chain.
 - **Examination card.** The semester 3 card is issued once the Summer is paid. `registration.exam_card_state` and `registration.exam_cards_withheld` read the Summer's own payment for semester 3, not the session's school fees, and name the period "Summer semester".
-- **Results.** Summer results are released by the Summer's payment (`finance.results_cleared` for semester 3 asks only that no Summer charge is DUE). The broadsheet lists only those who registered.
+- **Results.** A Summer result is released by the Summer itself: its courses are registered only once paid, so a course left selected and unpaid never withholds the paid ones. Where the Bursar's scheme lets a balance owed for an earlier session block everything, it blocks the Summer's results too (V739). The broadsheet lists only those who registered.
+- **Results chain.** Approvals, the desk, the chain, the pipeline, the Senate schedule, the broadsheet and the class list offer "Summer semester" (semester 3) in their scope bar, and name it so. The Summer desk links each class to its class list and each student to their record.
 - **CGPA.** CGPA reuses the existing rule, which counts every attempt.
 
 ## Desks
@@ -143,8 +144,30 @@ The notices use the notification engine's templates, one message per student per
 
 These questions are for the Academic Office to decide:
 
-- **Academic standing.** Standing is not pronounced on a Summer alone (`assessment.standing_of` answers nothing for semester 3).
+- **Academic standing.** A student's standing is read from their last regular semester; a Summer does not change it (V739: `assessment.student_standing` leaves the Summer out). Before V739 a Summer read GOOD and let a student on probation escape the probation unit limit.
 - **CGPA.** CGPA counts every attempt, as the portal's rule already does. No replacement rule was invented for a Summer pass.
 - **Approval of the registration.** A paid Summer registration is approved by the payment. The courses are the student's own outstanding ones, checked by the database. If the Academic Office wants a desk approval as well, it is one rule to add.
 - **The GST & EPS examination permit.** The permit was not adapted for semester 3.
-- **The "Third" semester wording.** Results and transcripts that print a semester name read semester 3 as "Third". The student's Summer page, the examination card and the allocation desks say "Summer".
+- **The "Third" semester wording.** Transcripts and results statements that print a semester name read semester 3 as "Third". The student's Summer page, the examination card, the allocation desks and the results chain say "Summer".
+- **Old-portal carry-overs.** A course registered before with no result on this portal (its result is on the old portal) is not an outstanding course for the Summer: most past results are on the old portal, and counting them would make nearly every final-year student eligible for courses they passed. The Academic Office authorises such a student for the courses it names.
+- **A fee withdrawn after a selection.** The charge keeps the figure it was made at (a charge keeps its figure); the student may take the course back and select it again at the published fee.
+
+## The review of V735 (V739)
+
+An adversarial review confirmed 31 defects; V739 and the same change answer them.
+
+- **Money.** A payment confirmed after its selection changed now pays, in order:
+  1. the charges it was drawn for that are still owed;
+  2. those taken back since, where nothing stands in their place and the course is still outstanding;
+  3. the student's other charges still owed, programme fee first and never a course before it.
+
+  Anything left is an unapplied Summer credit (`registration.summer_credit`), listed on Summer Semester Fees for the Bursar to record as applied or refunded. The programme fee is never paid twice, and the other open references of the Summer are closed. An open reference is shown only when it may be paid, at its own amount.
+- **A registration that fails never undoes a payment.** Courses are registered one by one. A course the registration cannot take (for example one ended since it was chosen) is recorded (`registration.summer_issue`) and listed on the desk as "Paid, not yet registered", with Retry. A Summer class already open is reused.
+- **Drawing a reference** takes back a course no longer outstanding or no longer taught. A reference that still holds an ended course is not taken to a gateway.
+- **A paid Summer payment** is neither moved by a payment correction nor archived while it pays registered courses (`REALLOC_LINKED`, `PAR_LINKED`).
+- **Closing a Summer** takes back what was selected and not paid and closes its open references. An unpaid course may be removed after the close. The student's page says registration has closed, or when it opens.
+- **School fees.** A Summer registration is no school-fees semester (`finance.reg_semesters`, `finance.registrations_without_fees`), so a spillover student who takes only the Summer owes no whole-session spillover line because of it.
+- **Eligibility.** Every category a student falls in is read, and the first the period admits is reported.
+- **Units.** Summer entries carry the programme's own units (`catalogue.units_for`).
+- **Identification.** Each run re-reads every student identified before. Authorising a student, or withdrawing it, re-reads them at once.
+- **The desk.** It is held to the active office's unit, whatever other offices the token carries, and refused in an office that does not read it. Notices are refused before their dates are set or after the Summer closes, and a changed window or timetable is told again.

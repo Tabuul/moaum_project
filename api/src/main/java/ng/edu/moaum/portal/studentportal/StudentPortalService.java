@@ -532,7 +532,11 @@ public class StudentPortalService {
         String entrySession = repo.entrySession(id);
         out.put("assessedFrom", assessedFrom);
         out.put("entrySession", entrySession);
-        out.put("unassessedBefore", assessedFrom != null && entrySession != null && entrySession.compareTo(assessedFrom) < 0);
+        // V740: sessions are owed from the first year of study, not the admission session (the University's rule for admissions of
+        // 2019/2020 to 2021/2022): nothing before the first year is "not yet assessed"
+        String firstSession = repo.firstSession(id);
+        out.put("firstSession", firstSession);
+        out.put("unassessedBefore", assessedFrom != null && firstSession != null && firstSession.compareTo(assessedFrom) < 0);
 
         List<Map<String, Object>> rows = new ArrayList<>();
         // the past: the historical account, each period in the session's order. A session whose structure is one whole-session line is

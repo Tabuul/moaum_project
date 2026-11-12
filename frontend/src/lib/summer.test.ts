@@ -37,8 +37,12 @@ test("the student's next step follows the server's account", () => {
   assert.equal(nextStep({ ...base, period: { ...PERIOD, open_now: false, state: "CLOSED" } }), "Registration is closed.");
   assert.equal(nextStep({ ...base, eligibility: { eligible: false, category: null, outstanding: 0, reason: "NOT_FINAL_OR_SPILLOVER" } }),
     notEligibleWord("NOT_FINAL_OR_SPILLOVER"));
-  // owed is said even after the Summer closes: what was selected is still to be paid or let go
-  assert.equal(nextStep({ ...base, period: { ...PERIOD, open_now: false }, account: { ...ACCOUNT, due: "5000" } }), "Pay ₦5,000 to register the courses you selected.");
+  // after the close nothing more is taken: an unpaid selection is removed (V739)
+  assert.equal(nextStep({ ...base, period: { ...PERIOD, open_now: false, state: "CLOSED" }, account: { ...ACCOUNT, due: "5000" } }),
+    "Registration is closed: remove the course you selected and did not pay; nothing more is taken.");
+  // an open Summer before its window says when it opens (V739)
+  assert.equal(nextStep({ ...base, period: { ...PERIOD, open_now: false, registration_opens: "2026-12-01" } }, "2026-11-12"), "Registration opens on 1 December 2026.");
+  assert.equal(nextStep({ ...base, period: { ...PERIOD, open_now: false, registration_closes: "2026-07-21" } }, "2026-11-12"), "Registration is closed.");
 });
 
 test("words for the desk", () => {

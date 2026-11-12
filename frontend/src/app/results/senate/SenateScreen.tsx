@@ -30,7 +30,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
   const [outcome, setOutcome] = useState<{ published: { id: string }[]; refused: { id: string; why: string }[]; minute: string } | null>(null);
   const may = actingOffice === "registrar" || actingOffice === "dregistrar";
   const latest = senate.minutes[0] ?? null;
-  const semester = senate.semester === 1 ? "First" : "Second";
+  const semester = senate.semester === 1 ? "First" : senate.semester === 3 ? "Summer" : "Second";   // V739
 
   async function record() {
     setBusy(true);
@@ -55,7 +55,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
     <>
       <RoleLine allowed={["registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
         action="Publishing result sets on a Senate minute" />
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
+      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
       <div className="row"><StreamTabs stream={stream} /></div>
       {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's result sets">A minute recorded here publishes the Centre&rsquo;s sets only.</Note> : null}
       {stream === "PG" ? <Note kind="info" title="The School of Postgraduate Studies' result sets">A minute recorded here publishes the School&rsquo;s sets only.</Note> : null}

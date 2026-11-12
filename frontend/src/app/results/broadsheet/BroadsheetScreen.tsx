@@ -22,7 +22,7 @@ const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;",
 
 export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "REGULAR", mayOmit = false }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null; stream?: Stream; mayOmit?: boolean }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
-  const semester = (scope.sem || "1") === "1" ? "First" : "Second";
+  const semester = (scope.sem || "1") === "1" ? "First" : scope.sem === "3" ? "Summer" : "Second";   // V739
   /** the downloaded file's name, the Excel's and the PDF's alike: "Result B.Sc. POLITICAL SCIENCE 200 Level First Semester 2024-2025" */
   const fileName = (degree: string, level: number | string, session: string) => `Result ${degree}${stream === "CCE" ? " CCE" : stream === "PG" ? " PG" : ""} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
   /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
@@ -271,7 +271,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
         A mark counts once its set has passed the Faculty Board; scores still in the chain are greyed. A candidate recorded absent is ABS, graded F, and the course is owed. Withheld, incomplete and malpractice (WIT, INC, MAL) are held for the Senate: never counted, never owed, named in the remark (HELD:) and nothing pronounced on the semester until the Senate decides; an exemption (EXE) is neither counted nor owed. No mark and no outcome is NR, no result: never an F, never counted and never owed; on a counted set it is a student not on the approved sheet, named in the remark (NR:) until the result is uploaded, and nothing is pronounced on that semester. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
       </Note>
       <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course." />
-      <ScopeBar scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}
+      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}
         onExport={sheet ? () => void exportExcel() : undefined} />
       <div className="row"><StreamTabs stream={stream} /></div>
       {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's students">On the Centre&rsquo;s evening classes in the session chosen above; never mixed with the full-time class.</Note> : null}
