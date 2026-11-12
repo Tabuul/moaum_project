@@ -70,7 +70,7 @@ class PgMigrationIT {
 
     @Test
     void oldApplicantsAreMigratedNotReappliedAndTheAdmittedComeInAdmitted() {
-        int y = it.freeYear(7600, 7790, 0, 0);
+        int y = it.freePgYear(7600, 7790, 0, 0);   // its application numbers must not clash with another session's (PG/yy/…)
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String code = it.db(() -> jdbc.sql("""
@@ -180,7 +180,7 @@ class PgMigrationIT {
     /** V709: the University's word of 30 October 2026, "pg admitted … cant login from the migrated lagacy data" */
     @Test
     void aMigratedApplicantSignsInOnEitherNumberFirstAndChoosesTheirOwn() {
-        int y = it.freeYear(7600, 7790, 0, 0);
+        int y = it.freePgYear(7600, 7790, 0, 0);   // its application numbers must not clash with another session's (PG/yy/…)
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String code = it.db(() -> jdbc.sql("""

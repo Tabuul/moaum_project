@@ -142,6 +142,27 @@ final class ItSupport {
         return freeYear(min, bound, 0, 0);
     }
 
+    /**
+     * 12 Nov 2026: a year for a test that numbers postgraduate applications in its own session. An application is numbered
+     * PG/yy/nnnnnn — yy the session's year's last two digits, nnnnnn counted from 1 in each session — so two sessions ending in the
+     * same two digits clash (7688/7689 and 3188/3189 both make PG/88/000001: PgProgrammeChangeIT failed on it in CI after
+     * PgRecordEditIT). The year is drawn as {@link #freeYear} draws it, ending in 40-69 (clear of the real calendar's and the fixed
+     * test sessions' 09, 23, 26 and 79) where it can, and never ending in two digits an application number already carries.
+     */
+    int freePgYear(int min, int bound, int before, int after) {
+        for (int pass = 0; pass < 2; pass++) {
+            for (int i = 0; i < 400; i++) {
+                int y = freeYear(min, bound, before, after);
+                int yy = y % 100;
+                if (pass == 0 && (yy < 40 || yy > 69)) continue;
+                boolean numbered = jdbc.sql("SELECT EXISTS (SELECT 1 FROM admissions.pg_application WHERE application_no LIKE :p)")
+                        .param("p", String.format("PG/%02d/%%", yy)).query(Boolean.class).single();
+                if (!numbered) return y;
+            }
+        }
+        throw new IllegalStateException("no year in [" + min + ", " + bound + ") ends in two digits no postgraduate application number carries");
+    }
+
     int freeYear(int min, int bound, int before, int after) {
         int size = bound - min;
         int start = min + java.util.concurrent.ThreadLocalRandom.current().nextInt(size);

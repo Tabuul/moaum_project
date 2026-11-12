@@ -51,7 +51,7 @@ class PgProgrammeChangeIT {
     @Test
     void theSchoolMovesAPostgraduateStudentAndTheAdmissionRecordFollows() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
-        int y = it.freeYear(3100, 3800);
+        int y = it.freePgYear(3100, 3800, 0, 0);   // its application number must not clash with another session's (PG/yy/…)
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String prog1 = freeCode();
@@ -112,7 +112,9 @@ class PgProgrammeChangeIT {
         String event = jdbc.sql("SELECT note FROM admissions.pg_application_event WHERE application_id = :a AND kind = 'PROGRAMME_CHANGED'").param("a", app).query(String.class).single();
         assertThat(event).contains(prog1 + " → " + prog2).contains("specialisation of the old programme let go").contains("the School's memo");
         assertThat(jdbc.sql("SELECT count(*) FROM admissions.pg_application WHERE student_id = :s").param("s", pg).query(Long.class).single()).as("no duplicate").isEqualTo(1L);
-        assertThat(jdbc.sql("SELECT count(*) FROM people.student WHERE surname = 'ZZPGCHANGE'").query(Long.class).single()).isEqualTo(1L);
+        // this run's student alone: the programmes are this run's own, so a database an earlier run used reads the same
+        assertThat(jdbc.sql("SELECT count(*) FROM people.student WHERE surname = 'ZZPGCHANGE' AND programme_code IN (:a, :b)")
+                .param("a", prog1).param("b", prog2).query(Long.class).single()).isEqualTo(1L);
 
         // refused: the School for an undergraduate, the School for a postgraduate onto an undergraduate programme, the Bursary at all
         ResponseEntity<Map> ugRefused = it.call(school, HttpMethod.POST, BASE, Map.of("studentId", undergraduate.toString(), "toProgramme", ug, "toLevel", 100,

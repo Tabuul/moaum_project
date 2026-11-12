@@ -63,7 +63,7 @@ class FollowUpsV721IT {
     @Test
     void theDeskUploadsADocumentAndTheSchoolReadsPostgraduateSwapsAlone() {
         ItSupport it = new ItSupport(port, jdbc, transactions);
-        int y = it.freeYear(3100, 3800);
+        int y = it.freePgYear(3100, 3800, 0, 0);   // its application number must not clash with another session's (PG/yy/…)
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String prog1 = freeCode();

@@ -61,7 +61,7 @@ class PgRecordEditIT {
 
     @Test
     void theSchoolAndTheDirectorOfIctCorrectPostgraduateRecordsFromOnePlace() {
-        int y = it.freeYear(7600, 7790, 0, 0);
+        int y = it.freePgYear(7600, 7790, 0, 0);   // its application numbers must not clash with another session's (PG/yy/…)
         String session = y + "/" + (y + 1);
         it.session(session, y);
         String msc = freeCode();
