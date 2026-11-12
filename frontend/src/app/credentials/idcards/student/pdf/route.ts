@@ -49,12 +49,12 @@ export async function GET(req: Request) {
   const matric = s.matric_no;
   const face: CardFace = {
     kind: "student", name: s.name, number: matric,
+    // the University's layout of 12 November 2026: no level, session or graduation year; the validity in the foot
     fields: [
-      ["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"],
-      ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"],
-      ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"], ["Graduates", "—"],
+      ["Faculty", s.faculty ?? "—"], ["Blood group", s.blood_group ?? "—"],
+      ["Programme", s.programme ?? "—"], ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"],
     ],
-    foot: [["Session", s.session ?? "—"], ["Valid until", day(s.valid_to)]],
+    foot: [["Valid until", day(s.valid_to)]],
     serial: s.card_no,
   };
 

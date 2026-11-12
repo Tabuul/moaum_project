@@ -271,9 +271,10 @@ function CardPreview({ s, card, photo }: { s: DeskStudent["student"]; card: Card
   const longDay = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   const face: CardFace = {
     kind: "student", name: s.name, number,
-    fields: [["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"], ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"],
-      ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"], ["Graduates", "—"]],
-    foot: [["Session", s.current_session ?? "—"], ["Valid until", card ? longDay(card.valid_to) : "4 years from print"]],
+    // the University's layout of 12 November 2026: no level, session or graduation year; the validity in the foot
+    fields: [["Faculty", s.faculty ?? "—"], ["Blood group", s.blood_group ?? "—"], ["Programme", s.programme ?? "—"],
+      ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"]],
+    foot: [["Valid until", card ? longDay(card.valid_to) : "4 years from print"]],
     serial: card ? card.card_no : "PREVIEW",
   };
   const back: CardBack = {

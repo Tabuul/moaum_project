@@ -1,7 +1,10 @@
 /**
  * What a staff identity card prints of its holder (V439, V622; V698 shared by the print of one card and the print of them all): the
- * name, the staff number, the rank, the category, the department or unit, the faculty, the date of appointment, the blood group, the
- * office and the card's validity. The desk prints from the card register, never from the HR record. Node-tested.
+ * name, the staff number, the rank, the category (Teaching or Non-teaching), the department, the date of appointment and the blood
+ * group. The University's layout of 12 November 2026 prints DEPARTMENT in place of the unit, the faculty and the office, and no
+ * validity: the department is the academic department or administrative office the API reads from the HR record
+ * (credentials.staff_card_department, V748), else the portal office the person holds. The desk prints from the card register, never
+ * from the HR record's other fields. Node-tested.
  */
 import type { CardFace } from "./idcard-design.ts";
 
@@ -28,15 +31,16 @@ export function staffCardFace(card: LiveStaffCard): CardFace | null {
   const live = card.offices ?? [];
   const office = live.find((o) => o.office_code !== "lecturer")?.office ?? live[0]?.office ?? "";
   const academic = s.category === "ACADEMIC" || (!s.category && live.some((o) => ["lecturer", "hod", "dean"].includes(o.office_code)));
+  // two to a row (the left column takes the first of each pair): the department and the date of appointment, the longest, in the
+  // wider left column; the category and the blood group, short, on the right
   return {
     kind: "staff", name: `${s.surname}, ${s.given_names}`, number: s.staff_number,
     fields: [
-      ["Rank", rankCase(s.rank) || office || "—"], ["Category", academic ? "Academic" : s.category ? "Non-teaching" : "Staff"],
-      [s.faculty ? "Department" : "Unit", s.department ?? office ?? "—"], ["Faculty", s.faculty ?? "—"],
-      ["Appointed", day(s.date_first_appointment ?? s.appointment_date)], ["Blood group", s.blood_group ?? "—"],
-      ["Office", office || "—"],
+      ["Rank", rankCase(s.rank) || office || "—"], ["Category", academic ? "Teaching" : s.category ? "Non-teaching" : "Staff"],
+      ["Department", s.department || office || "—"], ["Blood group", s.blood_group ?? "—"],
+      ["Appointed", day(s.date_first_appointment ?? s.appointment_date)],
     ],
-    foot: [["Valid until", day(card.valid_to)]],
+    foot: [],
     serial: card.card_no,
   };
 }

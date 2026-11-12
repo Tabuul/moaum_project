@@ -96,6 +96,9 @@ class StaffIdCardsIT {
         String surname = tag.toString();
         String unit = jdbc.sql("SELECT code FROM ref.unit WHERE ended_on IS NULL ORDER BY code LIMIT 1").query(String.class).single();
         String unitName = jdbc.sql("SELECT name FROM ref.unit WHERE code = :u").param("u", unit).query(String.class).single();
+        // V748: what a staff card prints for the unit — its card name, else its nearest parent's, else its name
+        String unitPrints = jdbc.sql("SELECT ref.unit_card_name(:u)").param("u", unit).query(String.class).single();
+        String cardNameBefore = jdbc.sql("SELECT card_name FROM ref.unit WHERE code = :u").param("u", unit).query(String.class).optional().orElse(null);
         UUID lecturer = UUID.randomUUID(), register = UUID.randomUUID(), neither = UUID.randomUUID();
         String n = String.valueOf(rnd.nextInt(100000, 999999));
         it.db(() -> {
@@ -144,10 +147,27 @@ class StaffIdCardsIT {
         assertThat(cards).hasSize(2);
         assertThat(cards).allSatisfy(c -> assertThat(String.valueOf(c.get("card_no"))).matches("MOAUM/SID/[0-9]{2}/[0-9]{5}"));
         Map<String, Object> face = (Map<String, Object>) cards.stream().filter(c -> register.toString().equals(String.valueOf(c.get("person_id")))).findFirst().orElseThrow().get("face");
-        assertThat(face).containsEntry("department", unitName).containsEntry("category", "NON_ACADEMIC").containsEntry("rank", "SENIOR EXECUTIVE OFFICER");
+        assertThat(face).containsEntry("department", unitPrints).containsEntry("category", "NON_ACADEMIC").containsEntry("rank", "SENIOR EXECUTIVE OFFICER");
         // narrowed to the unit, only the register's member of staff
         assertThat((List<?>) it.get(security, u -> u.path("/api/v1/credentials/identity-cards/staff/print").queryParam("q", surname).queryParam("unit", unit).build()).getBody().get("cards")).hasSize(1);
         // the single card prints the same face
-        assertThat((Map<String, Object>) it.get(security, "/api/v1/credentials/identity-cards/staff/" + register + "/card").getBody().get("face")).containsEntry("department", unitName);
+        assertThat((Map<String, Object>) it.get(security, "/api/v1/credentials/identity-cards/staff/" + register + "/card").getBody().get("face")).containsEntry("department", unitPrints);
+
+        // ── V748: ICT gives the unit a card name; the card then prints it as the department; HR may not set it ──
+        String path = "/api/v1/iam/units/" + unit + "/card-name";
+        try {
+            assertThat(it.call(hrm, HttpMethod.PUT, path, Map.of("cardName", "Short Unit", "reason", "the short name on staff cards")).getStatusCode().value()).isEqualTo(403);
+            ResponseEntity<Map> named = it.call(ItSupport.token("ict"), HttpMethod.PUT, path, Map.of("cardName", "Short Unit", "reason", "the short name on staff cards"));
+            assertThat(named.getStatusCode().value()).as(String.valueOf(named.getBody())).isEqualTo(200);
+            assertThat(named.getBody()).containsEntry("cardPrints", "Short Unit");
+            assertThat((Map<String, Object>) it.get(security, "/api/v1/credentials/identity-cards/staff/" + register + "/card").getBody().get("face"))
+                    .containsEntry("department", "Short Unit");
+            assertThat((List<Map<String, Object>>) (List<?>) it.getList(ItSupport.token("ict"), "/api/v1/iam/units").getBody())
+                    .filteredOn(u -> unit.equals(u.get("code"))).singleElement().satisfies(u -> assertThat(u).containsEntry("card_name", "Short Unit").containsEntry("card_prints", "Short Unit"));
+            ResponseEntity<Map> unreasoned = it.call(ItSupport.token("ict"), HttpMethod.PUT, path, Map.of("cardName", "Other", "reason", "short"));
+            assertThat(unreasoned.getStatusCode().value()).isEqualTo(400);
+        } finally {
+            it.db(() -> jdbc.sql("UPDATE ref.unit SET card_name = :n WHERE code = :u").param("n", cardNameBefore, java.sql.Types.VARCHAR).param("u", unit).update());
+        }
     }
 }

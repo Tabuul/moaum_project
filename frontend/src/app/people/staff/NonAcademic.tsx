@@ -7,6 +7,8 @@
  * Re-uploading never duplicates. Sent in chunks, so a slow batch never fails the whole file.
  * V656: one member of staff added by hand (the same import, one row); deleted or deactivated — the database deciding by what each
  * person is tied to — and restored from Removed staff.
+ * V748: the unit register shows what a staff identity card prints as each unit's department (its card name, else its nearest
+ * parent's, else its formal name); ICT sets a unit's card name, with a reason.
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -27,9 +29,13 @@ export interface NonAcademicRow {
   present_rank: string | null; sex: string | null; salary_scale: string | null; contiss_step: number | null; date_first_appointment: string | null;
   unit_as_given: string | null; placed_in: string | null; placed_kind: "UNIT" | "DEPARTMENT" | "FACULTY" | null; campus: string; parent_unit: string | null; has_signin: boolean;
 }
-export interface Unit { code: string; name: string; kind: string; parent_code: string | null; parent: string | null; college_code: string | null; ended_on: string | null; staff: number; spellings: number }
+export interface Unit { code: string; name: string; kind: string; parent_code: string | null; parent: string | null; college_code: string | null; ended_on: string | null; staff: number; spellings: number;
+  /** V748: the unit's own card name, and what a staff card prints for it (its own, its nearest parent's, else its name) */
+  card_name?: string | null; card_prints?: string | null }
 
 const MAY = ["registrar", "dregistrar", "hrm", "ict", "admin", "super"];
+/** V748: the offices that set a unit's card name (the API's PUT /iam/units/{code}/card-name) */
+const CARD_NAMERS = ["ict", "super"];
 const CHUNK = 100;
 interface Row { pno: string; full_names: string; sex: string; date_first_appointment: string; department: string; present_rank: string; phone: string; contiss: string }
 interface Tally { rows: number; created: number; existing: number; records: number; unplaced: number; skipped: number; failedRows: number; firstError: string | null; missing: string[]; dry: boolean }
@@ -53,6 +59,29 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
   const [done, setDone] = useState<string | null>(null);
   const [add, setAdd] = useState<AddForm | null>(null);
   const [addProblem, setAddProblem] = useState<Problem | null>(null);
+  const [naming, setNaming] = useState<{ unit: Unit; name: string; reason: string } | null>(null);
+  const [namingProblem, setNamingProblem] = useState<Problem | null>(null);
+  const mayName = CARD_NAMERS.includes(actingOffice ?? "");
+
+  /* V748: the short name a unit prints on staff identity cards (empty: its nearest parent's, else its own name) */
+  async function saveCardName() {
+    if (!naming) return;
+    if (naming.reason.trim().length < 10) {
+      const p = { status: 400, title: "Say why the card name changes, in ten characters or more." }; setNamingProblem(p); notifyProblem(p); return;
+    }
+    setBusy(true); setNamingProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/iam/units/${encodeURIComponent(naming.unit.code)}/card-name`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Card name of ${naming.unit.code}`) },
+        body: JSON.stringify({ cardName: naming.name.trim() || null, reason: naming.reason.trim() }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = j ?? { status: r.status, title: r.statusText }; setNamingProblem(p); notifyProblem(p); return; }
+      setNaming(null);
+      notify(`Staff cards of ${naming.unit.name} now print ${j?.cardPrints ?? "its name"}`);
+      router.refresh();
+    } finally { setBusy(false); }
+  }
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -253,14 +282,19 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
             {shown.length > 500 ? <PBody><div className="sub2">Showing the first 500 of {shown.length}. Narrow the search.</div></PBody> : null}
           </>
         ) : (
-          <DTable cols={["Unit", "Kind|mid", "Under", "Campus|mid", "Staff|mid", "Spellings known|mid"]} rows={unitRows.map((u) => [
+          <DTable cols={["Unit", "Kind|mid", "Under", "Campus|mid", "Staff|mid", "Spellings known|mid", "Staff card prints"]} rows={unitRows.map((u) => [
             <span key="n"><strong>{u.name}</strong> <span className="sub2 tnum">{u.code}</span></span>,
             <span key="k" className="sub2">{KIND[u.kind] ?? u.kind}</span>,
             <span key="p" className="sub2">{u.parent ?? "—"}</span>,
             <span key="c">{u.college_code ? <Pil kind="info">{u.college_code}</Pil> : <span className="sub2">Main</span>}</span>,
             <span key="s" className="tnum">{Number(u.staff)}</span>,
             <span key="a" className="tnum sub2">{Number(u.spellings)}</span>,
-          ])} texts={unitRows.map((u) => `${u.name} ${u.code} ${u.parent ?? ""} ${u.kind}`)} />
+            <span key="cp">
+              {u.card_prints ?? u.name}
+              <div className="sub2">{u.card_name ? "its card name" : u.card_prints && u.card_prints !== u.name ? "from the unit above it" : "its name"}</div>
+              {mayName ? <Btn kind="ghost" size="sm" onClick={() => { setNamingProblem(null); setNaming({ unit: u, name: u.card_name ?? "", reason: "" }); }}>Card name</Btn> : null}
+            </span>,
+          ])} texts={unitRows.map((u) => `${u.name} ${u.code} ${u.parent ?? ""} ${u.kind} ${u.card_prints ?? ""}`)} />
         )}
       </Panel>
 
@@ -269,6 +303,21 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
       {removing ? (
         <RemoveStaff people={removing} what="Non-academic staff" onClose={() => setRemoving(null)}
           onDone={(m) => { setRemoving(null); setSel(new Set()); setDone(m); router.refresh(); }} />
+      ) : null}
+
+      {naming ? (
+        <Modal title={`Card name of ${naming.unit.name}`} onClose={() => setNaming(null)}
+          foot={<><Btn kind="ghost" onClick={() => setNaming(null)}>Cancel</Btn><span className="grow" />
+            <Btn kind="primary" disabled={busy || naming.reason.trim().length < 10} onClick={() => void saveCardName()}>{busy ? "Saving…" : "Save"}</Btn></>}>
+          {namingProblem ? <ProblemNotice problem={namingProblem} /> : null}
+          <div className="sub2 mb-3">What a staff identity card prints as the department of everyone placed in this unit, and in the units under it that have no card name of their own. Leave it empty to print the unit above it&apos;s card name, or this unit&apos;s own name.</div>
+          <Field id="uc-name" label="Card name" hint="Sixty characters at most, e.g. Registry, Bursary, Stores">
+            <input id="uc-name" className="ctl" maxLength={60} value={naming.name} onChange={(e) => setNaming({ ...naming, name: e.target.value })} placeholder={naming.unit.name} />
+          </Field>
+          <Field id="uc-reason" label="Reason" hint="Ten characters or more; kept on the audit trail">
+            <input id="uc-reason" className="ctl" value={naming.reason} onChange={(e) => setNaming({ ...naming, reason: e.target.value })} placeholder="The short name the University uses on staff cards" />
+          </Field>
+        </Modal>
       ) : null}
 
       {add ? (

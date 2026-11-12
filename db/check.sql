@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 577
+\set EXPECTED 578
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34321,6 +34321,66 @@ BEGIN
   PERFORM pg_temp.assert('V746: a Summer authorisation follows its course''s corrected or merged code; a payment whose Summer credit the Bursar settled is neither moved nor archived',
       coalesce(msg = 'D authorised ZZQ 415 outstanding true payable true | PROGRAMME:PAID,ZZQ 415:PAID registered ZZQ 415'
                      || ' | E authorised ZZQ 406 | open credit archive allowed/move allowed | refunded archive refused/move refused', false),
+      msg);
+END $$;
+-- ── V748: the identity cards' new layouts — a staff card's department. Made-up units: ZZ748 (card name "Zed Office"), ZZ748_SUB under it
+--          (none of its own), ZZ748_SOLO (none, nothing above). A member of staff in ZZ748_SUB prints "Zed Office"; in ZZ748_SOLO its
+--          formal name; with an academic department as well, the department; with only the roll's spelling, that; with nothing, NULL.
+--          The registry, bursary, ICT and stores units print the brief's names where the register holds them. A card name is set by
+--          ICT alone, with a reason, and cleared back to the unit above. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); p_sub uuid := gen_random_uuid(); p_solo uuid := gen_random_uuid(); p_acad uuid := gen_random_uuid();
+    p_roll uuid := gen_random_uuid(); p_none uuid := gen_random_uuid(); dept text; dept_name text;
+    sub text; solo text; acad text; roll text; nothing text; seeds text; refused text; set_to text; cleared text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V748', true);
+    SELECT code, name INTO dept, dept_name FROM ref.department ORDER BY code LIMIT 1;
+    INSERT INTO ref.unit (code, name, kind, parent_code, card_name) VALUES
+        ('ZZ748', 'Directorate of the Zed Office', 'DIRECTORATE', NULL, 'Zed Office'),
+        ('ZZ748_SUB', 'Zed Accounts (Zed Office)', 'UNIT', 'ZZ748', NULL),
+        ('ZZ748_SOLO', 'Solo Unit of Things', 'UNIT', NULL, NULL);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (p_sub, 'ZZ7481', 'ZZCARD', 'Sub'), (p_solo, 'ZZ7482', 'ZZCARD', 'Solo'), (p_acad, 'ZZ7483', 'ZZCARD', 'Acad'),
+        (p_roll, 'ZZ7484', 'ZZCARD', 'Roll'), (p_none, 'ZZ7485', 'ZZCARD', 'None');
+    INSERT INTO hrm.staff_record (person_id, home_unit, home_department, unit_as_given) VALUES
+        (p_sub, 'ZZ748_SUB', NULL, NULL), (p_solo, 'ZZ748_SOLO', NULL, NULL), (p_acad, 'ZZ748_SUB', dept, NULL),
+        (p_roll, NULL, NULL, 'WORKS YARD'), (p_none, NULL, NULL, NULL);
+    sub := credentials.staff_card_department(p_sub);
+    solo := credentials.staff_card_department(p_solo);
+    acad := credentials.staff_card_department(p_acad);
+    roll := credentials.staff_card_department(p_roll);
+    nothing := coalesce(credentials.staff_card_department(p_none), 'none');
+    -- the brief's examples, where the register holds those units
+    SELECT coalesce(string_agg(ref.unit_card_name(code), ',' ORDER BY code COLLATE "C"), '-') INTO seeds
+      FROM ref.unit WHERE code IN ('BURSARY', 'ICT', 'REGISTRY', 'BUR_BAEC_CENTRAL_STORES');
+
+    -- set by ICT alone, with a reason; cleared, the unit above's
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    BEGIN
+        PERFORM ref.set_unit_card_name('ZZ748_SUB', 'Accounts', 'the short name on staff cards');
+        refused := 'allowed';
+    EXCEPTION WHEN OTHERS THEN refused := split_part(SQLERRM, ':', 1);
+    END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    set_to := ref.set_unit_card_name('ZZ748_SUB', '  Zed   Accounts ', 'the short name on staff cards');
+    cleared := ref.set_unit_card_name('ZZ748_SUB', '', 'back to the directorate''s name');
+
+    msg := 'sub ' || coalesce(sub, '-') || ' | solo ' || coalesce(solo, '-') || ' | academic ' || CASE WHEN acad = dept_name THEN 'its department' ELSE coalesce(acad, '-') END
+        || ' | roll ' || coalesce(roll, '-') || ' | nothing ' || nothing || ' | seeds ' || seeds
+        || ' | hrm ' || coalesce(refused, '-') || ' | set ' || coalesce(set_to, '-') || ' | cleared ' || coalesce(cleared, '-');
+    RAISE EXCEPTION 'the V748 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V748 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V748: a staff card''s department — the academic department, else the unit''s card name or its nearest parent''s, else its name, else the roll''s spelling; set by ICT alone',
+      coalesce(msg = 'sub Zed Office | solo Solo Unit of Things | academic its department | roll WORKS YARD | nothing none'
+                     || ' | seeds Bursary,Stores,Information and Communication Technology,Registry'
+                     || ' | hrm UNIT_CARD_NAME_OFFICE | set Zed Accounts | cleared Zed Office', false),
       msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────

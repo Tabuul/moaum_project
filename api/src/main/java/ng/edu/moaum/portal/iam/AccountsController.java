@@ -134,11 +134,30 @@ class AccountsController {
     List<Map<String, Object>> units() {
         return jdbc.sql("""
                 SELECT u.code, u.name, u.kind, u.parent_code, pu.name AS parent, u.college_code, u.ended_on,
+                       u.card_name, ref.unit_card_name(u.code) AS card_prints,   -- V748: what a staff identity card prints for the unit
                        (SELECT count(*) FROM hrm.staff_record sr JOIN iam.person p ON p.id = sr.person_id WHERE sr.home_unit = u.code AND p.ended_on IS NULL) AS staff,
                        (SELECT count(*) FROM ref.unit_alias a WHERE a.unit_code = u.code) AS spellings
                   FROM ref.unit u LEFT JOIN ref.unit pu ON pu.code = u.parent_code
                  ORDER BY coalesce(u.college_code, ''), coalesce(pu.name, u.name), (u.parent_code IS NOT NULL), u.name
                 """).query().listOfRows();
+    }
+
+    /** V748: the short name a unit prints on staff identity cards as the department, set (or cleared, with an empty name) by ICT */
+    public record UnitCardName(@jakarta.validation.constraints.Size(max = 60) String cardName,
+                               @NotBlank @jakarta.validation.constraints.Size(min = 10, max = 500) String reason) {
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/units/{code}/card-name")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_super')")
+    @Transactional
+    Map<String, Object> unitCardName(@org.springframework.web.bind.annotation.PathVariable String code, @Valid @RequestBody UnitCardName body) {
+        String prints = jdbc.sql("SELECT ref.set_unit_card_name(:c, :n, :r)").param("c", code)
+                .param("n", body.cardName(), java.sql.Types.VARCHAR).param("r", body.reason()).query(String.class).single();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("code", code.trim().toUpperCase());
+        out.put("cardName", body.cardName() == null || body.cardName().isBlank() ? null : body.cardName().trim());
+        out.put("cardPrints", prints);
+        return out;
     }
 
     /* ── V656: staff deleted or deactivated, the database deciding what each person is tied to ─────────────────────────────── */

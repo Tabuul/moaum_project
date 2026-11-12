@@ -21,10 +21,16 @@ const card = (face: Partial<LiveStaffCard["face"]>, offices: LiveStaffCard["offi
           date_first_appointment: null, appointment_date: null, has_photo: false, ...face },
 });
 
-test("V698: a non-teaching member of staff on the HR register prints their rank, unit and category", () => {
-  const f = staffCardFace(card({ rank: "SENIOR EXECUTIVE OFFICER [ADMIN]", department: "Security Unit", category: "NON_ACADEMIC" }))!;
-  assert.deepEqual(f.fields.slice(0, 4), [["Rank", "Senior Executive Officer [Admin]"], ["Category", "Non-teaching"], ["Unit", "Security Unit"], ["Faculty", "—"]]);
+test("V698, the layout of 12 November 2026: a member of staff prints rank, category, department, appointment and blood group", () => {
+  const f = staffCardFace(card({ rank: "SENIOR EXECUTIVE OFFICER [ADMIN]", department: "Registry", category: "NON_ACADEMIC", blood_group: "O+" }))!;
+  assert.deepEqual(f.fields, [["Rank", "Senior Executive Officer [Admin]"], ["Category", "Non-teaching"], ["Department", "Registry"], ["Blood group", "O+"], ["Appointed", "—"]]);
+  assert.deepEqual(f.foot, [], "no validity on the staff card");
+  // an academic: their department, never the faculty; Teaching
   const lecturer = staffCardFace(card({ department: "Mathematics", faculty: "Science", category: "ACADEMIC" }, [{ office_code: "lecturer", office: "Lecturer" }]))!;
-  assert.deepEqual(lecturer.fields.slice(1, 4), [["Category", "Academic"], ["Department", "Mathematics"], ["Faculty", "Science"]]);
+  assert.deepEqual(lecturer.fields.slice(1, 3), [["Category", "Teaching"], ["Department", "Mathematics"]]);
+  assert.ok(!lecturer.fields.some(([l]) => ["Unit", "Faculty", "Office"].includes(l)), "no unit, faculty or office");
+  // no department on the HR record: the office the person holds on the portal stands as the department
+  const officer = staffCardFace(card({ category: null }, [{ office_code: "bursar", office: "Bursar" }]))!;
+  assert.deepEqual(officer.fields[2], ["Department", "Bursar"]);
   assert.equal(staffCardFace(card({ staff_number: null })), null);
 });

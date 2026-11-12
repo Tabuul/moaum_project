@@ -26,7 +26,7 @@ export interface CardFace {
   number: string;
   /** label/value pairs, two to a row: the left column takes the first of each pair, the right the second */
   fields: [string, string][];
-  /** the foot's facts before the card number: [label, value] (the session, the validity) */
+  /** the foot's facts before the card number: [label, value] (the student card's validity; the staff card, none) */
   foot: [string, string][];
   /** the card's own number (ID NO.) */
   serial: string;
@@ -354,34 +354,65 @@ function pill(s: Surface, cx: number, y: number, h: number, t: string, size: num
   put(s, cx, y + h / 2 + size * 0.36, t, size, "sansBold", WHITE, { em, align: "center" });
   return w;
 }
-/** one column of particulars: an icon, a spaced label, the value under it (wrapped when long); laid from the top, the gaps evening
- *  out the room down to the bottom (never more than maxGap between) */
-function column(s: Surface, kind: CardKind, items: [string, string][], iconX: number, textX: number, maxW: number, top: number, bottom: number,
-  z0: { label: number; value: number; vGap: number; lead: number; icon: number; maxGap: number }) {
-  const pal = PAL[kind];
-  const z = z0;
-  const lay = (k: number) => items.map(([label, value]) => {
+type ColumnZ = { label: number; value: number; vGap: number; lead: number; icon: number; maxGap: number };
+/** a column's blocks at a size k: each an icon, a spaced label, the value under it (wrapped when long), with its height */
+function layColumn(items: [string, string][], maxW: number, z: ColumnZ, k: number) {
+  return items.map(([label, value]) => {
     const v = lines(clean(value) || "-", maxW, z.value * k, "sansBold");
     const L = clean(label).toUpperCase();
     return { L, ls: fit(L, maxW, z.label * k, z.label * k * 0.8, "sansBold", 0.1), v, h: z.label * k * 0.74 + z.vGap * k * (v.size / (z.value * k)) ** 0.5 + (v.lines.length - 1) * v.size * 1.1 + z.value * k * 0.24 };
   });
-  // the sizes step down (to four-fifths) when the values need more room than the column has, with the least gap kept between them
-  let k = 1, blocks = lay(k);
-  const need = () => blocks.reduce((a, b) => a + b.h, 0) + 6 * (blocks.length - 1);
-  while (need() > bottom - top && k > 0.8) { k -= 0.04; blocks = lay(k); }
+}
+type Col = { items: [string, string][]; iconX: number; textX: number; maxW: number };
+type Block = ReturnType<typeof layColumn>[number];
+/** the particulars in rows across two columns, one size and one spacing for both: row by row, each row as tall as its taller value,
+ *  so the two columns keep level when a value wraps. The size steps down (to four-fifths) when the rows need more room than there is,
+ *  and up (to six-fifths) when fields are few — never so far that a value is cut short that printed in full at the usual size — the
+ *  gaps then evening the room out (up to twice the usual gap) and what is left above and below shared, so no room is left where a
+ *  field was */
+function particulars(s: Surface, kind: CardKind, cols: Col[], top: number, bottom: number, z: ColumnZ) {
+  const room = bottom - top;
+  const at = (k: number) => {
+    const blocks = cols.map((c) => layColumn(c.items, c.maxW, z, k));
+    const rows = Math.max(...blocks.map((b) => b.length));
+    const heights = Array.from({ length: rows }, (_, i) => Math.max(...blocks.map((b) => b[i]?.h ?? 0)));
+    const cut = blocks.flat().filter((b) => b.v.lines.some((l) => l.endsWith("…"))).length;
+    return { k, blocks, heights, cut, sum: heights.reduce((a, h) => a + h, 0) };
+  };
+  const need = (r: ReturnType<typeof at>, gap: number) => r.sum + gap * (r.heights.length - 1);
+  let r = at(1);
+  while (need(r, 6) > room && r.k > 0.8) r = at(r.k - 0.04);
+  if (r.k === 1) {
+    for (let next = at(1.04); next.k <= 1.2 + 1e-9 && next.cut <= r.cut && need(next, z.maxGap * next.k) <= room; next = at(next.k + 0.04)) r = next;
+  }
+  const rows = r.heights.length;
+  const gap = rows > 1 ? Math.max(6, Math.min(z.maxGap * r.k * 2, (room - r.sum) / (rows - 1))) : 0;
+  const lead = Math.max(0, (room - r.sum - gap * (rows - 1)) / 2);
+  const tops: number[] = [];
+  let y = top + lead;
+  for (const h of r.heights) { tops.push(y); y += h + gap; }
+  cols.forEach((c, ci) => column(s, kind, c.items, r.blocks[ci], c.iconX, c.textX, tops, z, r.k));
+}
+/** one column of particulars at a size, each block at its row's top */
+function column(s: Surface, kind: CardKind, items: [string, string][], blocks: Block[], iconX: number, textX: number, tops: number[], z: ColumnZ, k: number) {
+  const pal = PAL[kind];
   const zk = { ...z, label: z.label * k, value: z.value * k, vGap: z.vGap * k, icon: z.icon * Math.max(k, 0.9) };
-  const content = blocks.reduce((a, b) => a + b.h, 0);
-  const gap = blocks.length > 1 ? Math.max(6, Math.min(zk.maxGap, (bottom - top - content) / (blocks.length - 1))) : 0;
-  let y = top;
   items.forEach(([label], i) => {
     const b = blocks[i];
-    const lb = y + zk.label * 0.74;
+    const lb = tops[i] + zk.label * 0.74;
     const name = FIELD_ICON[kind][clean(label).toLowerCase()];
     if (name) icon(s, name, iconX, lb + zk.vGap * 0.18, zk.icon, pal.icon);
     put(s, textX, lb, b.L, b.ls, "sansBold", pal.label, { em: 0.1 });
     b.v.lines.forEach((l, li) => s.text(textX, lb + zk.vGap * (b.v.size / zk.value) ** 0.5 + li * b.v.size * 1.1, l, b.v.size, "sansBold", pal.value));
-    y += b.h + gap;
   });
+}
+/** the left edge (as footFacts takes it) that centres a foot's only fact on the band — from its icon's left edge to its text's end
+ *  (the staff card: the card number alone) */
+function alone([label, value]: [string, string], W: number, iconDx: number, iconSize: number, textDx: number, labelSize: number, valueSize: number) {
+  const L = clean(label).toUpperCase(), v = clean(value) || "-";
+  const lead = iconDx - iconSize / 2;
+  const span = textDx - lead + Math.max(measure(L, labelSize, "sans", 0.1 * labelSize), measure(v, valueSize, "sansBold"));
+  return Math.max(0, (W - span) / 2 - lead);
 }
 /** the foot's facts in columns on the band: an outline icon, a spaced label, the value; white rules between the columns */
 function footFacts(s: Surface, kind: CardKind, facts: [string, string][], bounds: number[], W: number, iconDx: number, textDx: number, labelY: number, valueY: number,
@@ -448,8 +479,7 @@ export function drawStudentFront(s: Surface, f: CardFace) {
   const z = { label: 15, value: 21.5, vGap: 22.5, lead: 21.5, icon: 34, maxGap: 24 };
   const gTop = pillY + 31.5 + 17.5;
   s.stroke(path().M(585, gTop + 2).L(585, 416), pal.rule, 1.4);
-  column(s, f.kind, left, 304, 343, 585 - 343 - 12, gTop, 422, z);
-  column(s, f.kind, right, 643, 681, W - 681 - 16, gTop, 422, z);
+  particulars(s, f.kind, [{ items: left, iconX: 304, textX: 343, maxW: 585 - 343 - 12 }, { items: right, iconX: 643, textX: 681, maxW: W - 681 - 16 }], gTop, 422, z);
 
   // the foot: the gold swoosh over the navy band, the facts on it
   s.fill(path().M(0, 447).C(150, 439, 330, 462, 512, 462.5).C(640, 463, 760, 440, 856, 403).L(856, 540).L(0, 540).Z(), GOLD(W));
@@ -457,7 +487,7 @@ export function drawStudentFront(s: Surface, f: CardFace) {
     lin(0, 0, W, 0, [0, pal.band[0]], [0.55, pal.band[1]], [1, pal.band[2]]));
   s.fill(path().M(560, 540).C(700, 520, 790, 470, 856, 440).L(856, 540).Z(), hex("#FFFFFF"), { alpha: 0.05 });
   const facts: [string, string][] = [...f.foot, ["ID No.", f.serial]];
-  const bounds = facts.length === 3 ? [0, 248, 541] : facts.map((_, i) => (W * i) / facts.length);
+  const bounds = facts.length === 3 ? [0, 248, 541] : facts.length === 1 ? [alone(facts[0], W, 57, 36, 99, 16.5, 23)] : facts.map((_, i) => (W * i) / facts.length);
   footFacts(s, f.kind, facts, bounds, W, 57, 99, 485, 511, { label: 16.5, value: 23, icon: 36, ruleTop: 474, ruleBottom: 516 });
   s.restore();
   s.stroke(path().round(0.5, 0.5, W - 1, H - 1, 30.5), hex("#D3DAE2"), 1);
@@ -500,15 +530,14 @@ export function drawStaffFront(s: Surface, f: CardFace) {
   const left = f.fields.filter((_, i) => i % 2 === 0), right = f.fields.filter((_, i) => i % 2 === 1);
   const z = { label: 15, value: 21.8, vGap: 22.6, lead: 21, icon: 32, maxGap: 22 };
   s.stroke(path().M(286, 541).L(286, 740), pal.rule, 1.3);
-  column(s, f.kind, left, 45, 79, 286 - 79 - 10, 538, 744, z);
-  column(s, f.kind, right, 329, 365, W - 365 - 12, 538, 744, z);
+  particulars(s, f.kind, [{ items: left, iconX: 45, textX: 79, maxW: 286 - 79 - 10 }, { items: right, iconX: 329, textX: 365, maxW: W - 365 - 12 }], 538, 744, z);
 
   // the foot
   s.fill(path().M(0, 775).C(60, 764, 160, 764, 250, 773).C(360, 783, 470, 752, 540, 730).L(540, 856).L(0, 856).Z(), GOLD(W));
   s.fill(path().M(0, 792).C(50, 775, 150, 770, 250, 778).C(360, 785, 470, 765, 540, 753).L(540, 856).L(0, 856).Z(),
     lin(0, 0, W, 0, [0, pal.band[0]], [0.55, pal.band[1]], [1, pal.band[2]]));
   const facts: [string, string][] = [...f.foot, ["ID No.", f.serial]];
-  const bounds = facts.length === 2 ? [0, 263] : facts.map((_, i) => (W * i) / facts.length);
+  const bounds = facts.length === 2 ? [0, 263] : facts.length === 1 ? [alone(facts[0], W, 48, 31, 80, 15, 21)] : facts.map((_, i) => (W * i) / facts.length);
   footFacts(s, f.kind, facts, bounds, W, 48, 80, 808, 832, { label: 15, value: 21, icon: 31, ruleTop: 792, ruleBottom: 836 });
   s.restore();
   s.stroke(path().round(0.5, 0.5, W - 1, H - 1, 30.5), hex("#D3DAE2"), 1);

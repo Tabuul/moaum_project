@@ -20,13 +20,13 @@ class Recorder implements Surface {
 
 const student = (over: Partial<CardFace> = {}): CardFace => ({
   kind: "student", name: "Aaga, Doowuese Edith", number: "MOAU/SS/LIS/25/83810",
-  fields: [["Faculty", "Social Sciences"], ["Level", "100"], ["Programme", "B.Sc. LIBRARY AND INFORMATION SCIENCE"], ["Blood group", "—"], ["Admitted", "2025"], ["Graduates", "—"]],
-  foot: [["Session", "2025/2026"], ["Valid until", "12 November 2030"]], serial: "MOAUM/ID/26/00004", ...over,
+  fields: [["Faculty", "Social Sciences"], ["Blood group", "—"], ["Programme", "B.Sc. LIBRARY AND INFORMATION SCIENCE"], ["Admitted", "2025"]],
+  foot: [["Valid until", "12 November 2030"]], serial: "MOAUM/ID/26/00004", ...over,
 });
 const staff = (over: Partial<CardFace> = {}): CardFace => ({
   kind: "staff", name: "Okeme, Friday Achile", number: "P2369",
-  fields: [["Rank", "Senior Assistant Registrar"], ["Category", "Non-teaching"], ["Unit", "CEFTER"], ["Faculty", "—"], ["Appointed", "04 May 2016"], ["Blood group", "—"], ["Office", "Chief Security Officer"]],
-  foot: [["Valid until", "31 December 2029"]], serial: "MOAUM/SID/26/00001", ...over,
+  fields: [["Rank", "Senior Assistant Registrar"], ["Category", "Non-teaching"], ["Department", "Registry"], ["Blood group", "—"], ["Appointed", "04 May 2016"]],
+  foot: [], serial: "MOAUM/SID/26/00001", ...over,
 });
 const sBack: CardBack = { kind: "student", barcode: "MOAU/SS/LIS/25/83810", serial: "MOAUM/ID/26/00004", aside: ["In an emergency", "08031234567"], signatory: { title: "Chief Security Officer", name: "Gbehe, Simon Ingbian" } };
 const fBack: CardBack = { kind: "staff", barcode: "P2369", serial: "MOAUM/SID/26/00001", place: "Km 1 Gboko Road, Makurdi", signatory: { title: "Chief Security Officer", name: "Gbehe, Simon Ingbian" } };
@@ -42,15 +42,17 @@ function within(r: Recorder, W: number, H: number) {
 
 test("the four faces set every word inside the card, with ordinary and very long particulars", () => {
   const long = "Ter-Ayatse Mnenga-Iorhemba, Doowuese Edith Mwuese Terkimbi";
-  for (const f of [student(), student({ name: long, fields: [["Faculty", "Agriculture and Environmental Sciences"], ["Level", "500"], ["Programme", "B.Sc. (Ed.) Industrial Technical Education (Woodwork Technology)"], ["Blood group", "AB+"], ["Admitted", "2021"], ["Graduates", "—"]] })]) {
+  for (const f of [student(), student({ name: long, fields: [["Faculty", "Agriculture and Environmental Sciences"], ["Blood group", "AB+"], ["Programme", "B.Sc. (Ed.) Industrial Technical Education (Woodwork Technology)"], ["Admitted", "2021"]] })]) {
     const r = new Recorder(); drawStudentFront(r, f); within(r, LAND.w, LAND.h);
     assert.ok(r.texts.some((t) => t.s === "MOAU/SS/LIS/25/83810"), "the matriculation number is on the pill");
     assert.ok(r.texts.some((t) => t.s === "STUDENT") && r.texts.some((t) => t.s === "IDENTITY CARD"), "the tab names the card");
-    for (const label of ["FACULTY", "PROGRAMME", "ADMITTED", "LEVEL", "BLOOD GROUP", "GRADUATES", "SESSION", "VALID UNTIL", "ID NO."]) {
+    for (const label of ["FACULTY", "PROGRAMME", "ADMITTED", "BLOOD GROUP", "VALID UNTIL", "ID NO."]) {
       assert.ok(r.texts.some((t) => t.s === label), `${label} is printed`);
     }
+    // the University's layout of 12 November 2026: no level, session or graduation year on the student card
+    for (const label of ["LEVEL", "SESSION", "GRADUATES"]) assert.ok(!r.texts.some((t) => t.s === label), `${label} is not printed`);
   }
-  for (const f of [staff(), staff({ name: "Iorhemba-Mnenga, Friday Achile Terhemen Aondona", fields: [["Rank", "Principal Assistant Registrar (Academic Planning)"], ["Category", "Non-teaching"], ["Unit", "Centre for Entrepreneurship and Technology Development"], ["Faculty", "—"], ["Appointed", "04 May 2016"], ["Blood group", "O+"], ["Office", "Directorate of Information and Communication Technology"]] })]) {
+  for (const f of [staff(), staff({ name: "Iorhemba-Mnenga, Friday Achile Terhemen Aondona", fields: [["Rank", "Principal Assistant Registrar (Academic Planning)"], ["Category", "Non-teaching"], ["Department", "Centre for Entrepreneurship and Technology Development"], ["Blood group", "O+"], ["Appointed", "04 May 2016"]] })]) {
     const r = new Recorder(); drawStaffFront(r, f); within(r, PORT.w, PORT.h);
     assert.ok(r.texts.some((t) => t.s === "STAFF IDENTITY CARD"));
   }
@@ -149,4 +151,51 @@ test("a card drawn W points wide is W points wide: the scale is written whole", 
   const p = new Page();
   const s = new PdfSurface(p, 50, 700, 230 / PORT.w, {}).begin(); drawStaffFront(s, staff()); s.end();
   assert.ok(p.ops[0].startsWith("q 0.425926 0 0 -0.425926 "), p.ops[0]);
+});
+
+test("the University's layout of 12 November 2026: the staff card prints DEPARTMENT, and no unit, faculty, office or validity", () => {
+  const r = new Recorder(); drawStaffFront(r, staff()); within(r, PORT.w, PORT.h);
+  for (const label of ["RANK", "CATEGORY", "DEPARTMENT", "APPOINTED", "BLOOD GROUP", "ID NO."]) assert.ok(r.texts.some((t) => t.s === label), `${label} is printed`);
+  for (const label of ["UNIT", "FACULTY", "OFFICE", "VALID UNTIL"]) assert.ok(!r.texts.some((t) => t.s === label), `${label} is not printed`);
+  assert.ok(r.texts.some((t) => t.s === "Registry"), "the department's value is printed");
+  // the card number alone on the foot is centred on the band, from its icon's left edge (the icon, 31 wide, centred 48 in from the
+  // fact's edge; the text 80 in) to the end of its text
+  const no = r.texts.find((t) => t.s === "ID NO.")!, serial = r.texts.find((t) => t.s === "MOAUM/SID/26/00001")!;
+  const iconLeft = no.x - 80 + 48 - 31 / 2;
+  const mid = (iconLeft + Math.max(no.right, serial.right)) / 2;
+  assert.ok(Math.abs(mid - PORT.w / 2) < 1.5, `the card number's icon and text sit centred on the foot (${mid.toFixed(1)} of ${PORT.w})`);
+});
+
+test("fewer particulars fill the room the removed fields left, one size for both columns", () => {
+  // the student card: the particulars reach down towards the foot, the two columns set at one size
+  const r = new Recorder(); drawStudentFront(r, student());
+  const labels = r.texts.filter((t) => ["FACULTY", "PROGRAMME", "BLOOD GROUP", "ADMITTED"].includes(t.s));
+  assert.equal(new Set(labels.map((t) => t.size.toFixed(2))).size, 1, "one label size in both columns");
+  const values = r.texts.filter((t) => ["Social Sciences", "2025"].includes(t.s));
+  assert.ok(Math.max(...values.map((t) => t.y)) > 340, "the last row sits well down the card, not under the name");
+  // the staff card: the third row's date sits well down the card; the rows keep level although the rank wraps to two lines
+  const s = new Recorder(); drawStaffFront(s, staff());
+  const ys = ["RANK", "DEPARTMENT", "APPOINTED"].map((l) => s.texts.find((t) => t.s === l)!.y);
+  assert.ok(ys[0] < ys[1] && ys[1] < ys[2] && ys[2] > 660, `the left column reaches down the card (${ys.map((y) => y.toFixed(0)).join(", ")})`);
+  const right = ["CATEGORY", "BLOOD GROUP"].map((l) => s.texts.find((t) => t.s === l)!.y);
+  assert.ok(Math.abs(right[0] - ys[0]) < 0.01 && Math.abs(right[1] - ys[1]) < 0.01, `the right column's rows keep level with the left's (${right.map((y) => y.toFixed(1)).join(", ")} against ${ys.map((y) => y.toFixed(1)).join(", ")})`);
+  // the student card likewise, a two-line faculty beside the blood group
+  const t = new Recorder(); drawStudentFront(t, student({ fields: [["Faculty", "Agriculture and Environmental Sciences"], ["Blood group", "AB+"], ["Programme", "B.Sc. Economics"], ["Admitted", "2021"]] }));
+  const at = (l: string) => t.texts.find((x) => x.s === l)!.y;
+  assert.ok(Math.abs(at("PROGRAMME") - at("ADMITTED")) < 0.01, "the second row keeps level after a wrapped faculty");
+});
+
+test("growing the particulars never cuts short a value that prints in full at the usual size; a date stays on one line", () => {
+  // the review of V748: a one-line rank let the size grow until the 61-character CEID lost its end
+  for (const rank of ["Professor", "Lecturer I", "Deputy Director (Information and Communication Technology Services)"]) {
+    const r = new Recorder();
+    drawStaffFront(r, staff({ fields: [["Rank", rank], ["Category", "Non-teaching"], ["Department", "Centre for Entrepreneurship and Innovation Development (CEID)"],
+      ["Blood group", "O+"], ["Appointed", "28 September 2016"]] }));
+    assert.ok(!r.texts.some((t) => t.s.endsWith("…")), `nothing is cut short beside the rank ${rank}`);
+    assert.ok(r.texts.some((t) => t.s.includes("(CEID)")), "the department prints to its end");
+  }
+  for (const month of ["January", "February", "September", "October", "November", "December"]) {
+    const r = new Recorder(); drawStaffFront(r, staff({ fields: [["Rank", "Professor"], ["Category", "Teaching"], ["Department", "Accounting"], ["Blood group", "A+"], ["Appointed", `28 ${month} 2016`]] }));
+    assert.ok(r.texts.some((t) => t.s === `28 ${month} 2016`), `28 ${month} 2016 prints on one line`);
+  }
 });

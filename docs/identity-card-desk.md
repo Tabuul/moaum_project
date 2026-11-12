@@ -234,3 +234,49 @@ uploads (`iam.import_staff`, `iam.import_lecturers`) looked the number up as typ
 **Tests:** check.sql's two V744 properties (the merge, with a third record whose own sign-in cannot move; the refusal and both
 uploads); `StaffIdCardsIT.aStaffNumberIsOnePersonWhateverItsCase` (a card issued by the number in another case; the second person
 refused by Users & roles and by the database).
+
+## 11. The cards' new layouts: fields removed, DEPARTMENT on the staff card (V748, 12 November 2026)
+
+The University's brief "Update student and staff identity card layouts" changes only what the cards print. The level, the session, the faculty, the office, the unit and the validity all stay on record for the rest of the portal.
+
+**The student card** no longer prints LEVEL, SESSION or GRADUATES. It prints:
+
+- Faculty and Programme in the wider left column;
+- Blood group and Admitted on the right (Admitted kept: the brief changes only the fields it names);
+- Valid until and the card number in the foot.
+
+**The staff card** prints:
+
+- DEPARTMENT in place of UNIT;
+- no FACULTY, OFFICE or VALID UNTIL;
+- Rank, Category, Department, Appointed and Blood group, with the card number alone in the foot, centred;
+- Category as **Teaching** or **Non-teaching**, where it used to read "Academic" or "Non-teaching" (the University's decision of 12 November 2026).
+
+**Where the department comes from.** `credentials.staff_card_department(person)` reads the HR staff record, which is the authoritative organisational assignment:
+
+1. its academic department, when it names one (never replaced by the unit, the faculty or the office);
+2. else the unit's card name;
+3. else the unit as the nominal roll spelled it;
+4. else, on the card, the office the person holds on the portal.
+
+A posting recorded in `hrm.movement` does not change the record, so the record is what every reader uses.
+
+**The units' card names.** The unit register names units formally ("Office of the Registrar", "Directorate of ICT"). A unit now has a card name (`ref.unit.card_name`), the short name a staff card prints, following the University's decision of 12 November 2026.
+
+- **Seeded from the brief:** Registry (Office of the Registrar), Bursary (Bursary Department), Information and Communication Technology (Directorate of ICT) and Stores (the three stores units).
+- **A unit without a card name** prints its nearest parent's (Payroll (FAT) prints Bursary), else its formal name (`ref.unit_card_name`).
+- **Setting a card name:** ICT sets one, or clears it, with a reason on the staff page's unit register (*The Unit Register* tab, *Staff card prints* column; `PUT /api/v1/iam/units/{code}/card-name`, ICT or super).
+
+**What reads it.** The same faces serve every print:
+
+- `lib/staff-card-face` for the staff card's single print, the print of them all and a reprint;
+- the card desk's preview and `credentials/idcards/student/pdf` for the student card.
+
+The design (`lib/idcard-design`) now sets both columns of particulars at one size and spacing. With fewer fields, the particulars grow (up to six-fifths) and spread down the card, so no room is left where a field was.
+
+**Tests.**
+
+- `lib/idcard-design.test.ts`: no removed label is printed on either card; the staff card's number is centred on the foot; the particulars fill the room.
+- `lib/staff-cards.test.ts`: the staff face's fields and the Teaching category.
+- `StaffIdCardsIT`: the face's department is the unit's card-name reading; ICT's card name printed; HR refused; a reason required.
+- check.sql's V748 block: the seeds, the inheritance, the department's order and the office check.

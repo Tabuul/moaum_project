@@ -454,9 +454,9 @@ class IdentityCardController {
 
     private static final String STAFF_CARD_ROWS = """
             SELECT c.id, c.card_no, c.issued_at, c.valid_to, c.state, c.ended_at, c.ended_reason, c.issued_office,
-                   p.id AS person_id, p.staff_number, p.surname, p.given_names, d.name AS department, credentials.staff_blood_group(p.id) AS blood_group
+                   p.id AS person_id, p.staff_number, p.surname, p.given_names, credentials.staff_card_department(p.id) AS department,
+                   credentials.staff_blood_group(p.id) AS blood_group
               FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
-              LEFT JOIN hrm.staff_record r ON r.person_id = p.id LEFT JOIN ref.department d ON d.code = r.home_department
             """;
 
     @GetMapping("/staff")
@@ -496,16 +496,17 @@ class IdentityCardController {
     }
 
     /** what a staff card prints of the person — the department, or (V698) the unit and category the HR staff register gives the
-     *  non-teaching staff, who hold no office on the portal */
+     *  non-teaching staff, who hold no office on the portal; V748: the department as credentials.staff_card_department reads it (the
+     *  academic department, else the unit's card name, else the unit as the roll spelled it) */
     private static final String STAFF_FACE = """
             SELECT pe.id AS person_id, pe.staff_number, pe.surname, pe.given_names, sr.present_rank AS rank,
-                   coalesce(dp.name, u.name, sr.unit_as_given) AS department, f.name AS faculty, coalesce(e.category, sr.category) AS category,
+                   credentials.staff_card_department(pe.id) AS department, f.name AS faculty, coalesce(e.category, sr.category) AS category,
                    sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo,
                    credentials.staff_blood_group(pe.id) AS blood_group
               FROM iam.person pe LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
               LEFT JOIN LATERAL (SELECT x.category, x.appointment_date FROM hrm.employment x WHERE x.person_id = pe.id AND x.status <> 'ENDED'
                                   ORDER BY x.appointment_date DESC NULLS LAST LIMIT 1) e ON true
-              LEFT JOIN ref.department dp ON dp.code = sr.home_department LEFT JOIN ref.unit u ON u.code = sr.home_unit
+              LEFT JOIN ref.department dp ON dp.code = sr.home_department
               LEFT JOIN ref.faculty f ON f.code = coalesce(dp.faculty_code, sr.home_faculty)
             """;
 
