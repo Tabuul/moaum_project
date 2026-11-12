@@ -54,7 +54,7 @@ export async function GET(req: Request) {
       ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"],
       ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"], ["Graduates", "—"],
     ],
-    foot: [["Session ", false], [s.session ?? "—", true], [" · valid to ", false], [day(s.valid_to), true]],
+    foot: [["Session", s.session ?? "—"], ["Valid until", day(s.valid_to)]],
     serial: s.card_no,
   };
 
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
   p.textCenter(A4.w / 2, frontTop - H - 18, "FRONT", 7, true, C.foot);
   const backTop = frontTop - H - 44;
   drawBack(p, x0, backTop - H, W, H, {
-    kind: "student", barcode: matric.replace(/[^A-Za-z0-9]/g, ""), serial: s.card_no, qr: `${new URL(req.url).origin}${s.verify_path}`,
+    kind: "student", barcode: matric, serial: s.card_no, qr: `${new URL(req.url).origin}${s.verify_path}`,
     aside: ["In an emergency", s.reach_phone ? clean(s.reach_phone) : "—"], signatory,
   }, crest);
   p.textCenter(A4.w / 2, backTop - H - 18, "BACK", 7, true, C.foot);

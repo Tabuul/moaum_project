@@ -24,8 +24,8 @@ export function staffCardPage(card: LiveStaffCard, photo: Image | null, crest: I
   drawFrontPortrait(p, x1, top - H, W, face, photo, crest);
   p.textCenter(x1 + W / 2, top - H - 18, "FRONT", 7, true, C.foot);
   drawBack(p, x2, top - H, W, H, {
-    kind: "staff", barcode: staffNo.replace(/[^A-Za-z0-9]/g, ""), serial, qr: `${origin}${card.verify_path}`,
-    aside: ["If found, return to the Security post", "Km 1 Gboko Road, Makurdi"], signatory,
+    kind: "staff", barcode: staffNo, serial, qr: `${origin}${card.verify_path}`,
+    place: "Km 1 Gboko Road, Makurdi", signatory,
   }, crest);
   p.textCenter(x2 + W / 2, top - H - 18, "BACK", 7, true, C.foot);
   p.text(x1, 46, `${clean(face.name)} · ${staffNo} · generated ${day(new Date().toISOString())}`, 7, false, [0.5, 0.5, 0.5]);

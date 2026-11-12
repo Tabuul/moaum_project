@@ -6,7 +6,7 @@
  * reading with its reasons (finance's word on the fees; never the office clearance), preview the card, print it, hand it over,
  * replace it on a reason, end it, and read the whole history. Every act is the server's; the buttons say what is happening.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
@@ -14,10 +14,11 @@ import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/u
 import { DTable } from "@/components/proto/DTable";
 import { Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { cardSvg, type CardBack, type CardFace } from "@/lib/idcard-design";
+import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
 import { ACTION_WORDS, BLOOD_GROUPS, END_STATES, REPLACE_REASONS, actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord,
   type CardRow, type DeskStudent, type SearchRow } from "@/lib/idcard-desk";
 
-const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
 export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: string | null; initialStudent: string | null }) {
@@ -248,46 +249,52 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
   );
 }
 
-/** the card as it prints — the University's design on screen: the front with the photograph and the particulars, the back with the
- *  verification; a card not yet printed is marked a preview, its number assigned when printed */
+/** the card as it prints — the very drawing the print makes (lib/idcard-design), on screen: the front with the photograph and the
+ *  particulars, the back with the barcode, the conditions and the Chief Security Officer's signature; a card not yet printed is marked
+ *  a preview, its number assigned and its signed QR made when printed */
 function CardPreview({ s, card, photo }: { s: DeskStudent["student"]; card: CardRow | null; photo: boolean }) {
-  const number = s.matric_no ?? "—";
-  const fields: [string, string][] = [["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"], ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"], ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"]];
-  const face: React.CSSProperties = { width: 360, height: 227, borderRadius: 12, border: "1px solid var(--line)", boxShadow: "0 4px 14px rgba(0,0,0,.12)", background: "var(--paper, #fff)", padding: 14, position: "relative", overflow: "hidden" };
+  const [, setLoaded] = useState(0);
+  const [sig, setSig] = useState<{ title: string; name: string | null; url: string | null } | null>(null);
+  useEffect(() => {
+    let live = true;
+    // the University's name and logo as its profile holds them, and who signs the cards
+    void getInstitution().then(() => { if (live) setLoaded((n) => n + 1); });
+    void fetch("/api/bff/api/v1/credentials/identity-cards/signatory", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { title?: string; name?: string | null; signatureUrl?: string | null } | null) => {
+        if (live && j) setSig({ title: j.title || "Chief Security Officer", name: j.name ?? null, url: j.signatureUrl ? `/api/bff${j.signatureUrl}` : null });
+      })
+      .catch(() => { /* the line and the title alone */ });
+    return () => { live = false; };
+  }, []);
+  const number = s.matric_no ?? "";
+  const longDay = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  const face: CardFace = {
+    kind: "student", name: s.name, number,
+    fields: [["Faculty", s.faculty ?? "—"], ["Level", s.level ? String(s.level) : "—"], ["Programme", s.programme ?? "—"], ["Blood group", s.blood_group ?? "—"],
+      ["Admitted", (s.entry_session ?? "").slice(0, 4) || "—"], ["Graduates", "—"]],
+    foot: [["Session", s.current_session ?? "—"], ["Valid until", card ? longDay(card.valid_to) : "4 years from print"]],
+    serial: card ? card.card_no : "PREVIEW",
+  };
+  const back: CardBack = {
+    kind: "student", barcode: number, serial: card ? card.card_no : "Number when printed",
+    aside: ["In an emergency", s.reach_phone ?? "-"], signatory: { title: sig?.title ?? "Chief Security Officer", name: sig?.name ?? null },
+  };
+  const hrefs = {
+    photo: photo && s.matric_no ? `/api/bff/api/v1/credentials/identity-cards/students/${encodeURIComponent(s.student_id)}/photo?v=${encodeURIComponent(s.matric_no)}` : null,
+    crest: institutionLogoUrl(), signature: sig?.url ?? null,
+  };
+  const id = s.student_id.replace(/[^A-Za-z0-9]/g, "").slice(0, 12);
+  const side: React.CSSProperties = { width: 400, maxWidth: "100%", filter: "drop-shadow(0 4px 10px rgba(16, 38, 52, .18))" };
   return (
     <PBody>
       <div className="row row--top" style={{ gap: "var(--s-4)", flexWrap: "wrap" }}>
-        <div style={face} aria-label="Front of the card">
-          {/* V622: the University's name bold, the card's title under it, in the student card's blue */}
-          <div style={{ margin: "-14px -14px 0", padding: "8px 14px", background: "#0E3F55", color: "#fff" }}>
-            <div style={{ fontSize: 10.5, letterSpacing: 0.4, fontWeight: 800, fontFamily: "Georgia, serif" }}>REV. FR. MOSES ORSHIO ADASU UNIVERSITY</div>
-            <div style={{ fontSize: 8, letterSpacing: 1.6, fontWeight: 700, color: "#BFDCEB" }}>STUDENT IDENTITY CARD</div>
-          </div>
-          <div className="row row--top" style={{ gap: 12, marginTop: 8 }}>
-            <Passport w={78} h={97} radius={4} src={photo && s.matric_no ? `/api/bff/api/v1/credentials/identity-cards/students/${encodeURIComponent(s.student_id)}/photo?v=${encodeURIComponent(s.matric_no)}` : null} />
-            <div className="grow">
-              <div style={{ fontWeight: 800, fontSize: 12, textTransform: "uppercase" }}>{s.name}</div>
-              <div className="tnum" style={{ color: "var(--red-ink)", fontWeight: 700, fontSize: 11 }}>{number}</div>
-              <div className="grid grid--2" style={{ gap: "2px 10px", marginTop: 6 }}>
-                {fields.map(([k, v]) => <div key={k} style={{ fontSize: 8.5 }}><span className="sub2">{k}: </span><b>{v}</b></div>)}
-              </div>
-            </div>
-          </div>
-          <div style={{ position: "absolute", left: 14, right: 14, bottom: 10, fontSize: 8, display: "flex", justifyContent: "space-between" }}>
-            <span>Valid to <b>{card ? day(card.valid_to) : "4 years from print"}</b></span>
-            <span className="tnum">{card ? card.card_no : "PREVIEW — number assigned when printed"}</span>
-          </div>
-        </div>
-        <div style={face} aria-label="Back of the card">
-          <div style={{ margin: "-14px -14px 0", padding: "5px 14px", background: "#0E3F55", color: "#fff", fontSize: 8, fontWeight: 700, letterSpacing: 1, textAlign: "center" }}>PROPERTY OF THE UNIVERSITY · NOT TRANSFERABLE</div>
-          <div style={{ fontSize: 8.5, marginTop: 8, textAlign: "center" }}>This ID card must always be in the owner&rsquo;s possession for identification at the gates, examination or wherever identification is necessary.</div>
-          <div style={{ fontSize: 8.5, marginTop: 4, textAlign: "center" }}>Any alteration or erasure renders this card invalid. Loss must be reported immediately to the Chief Security Officer of the University.</div>
-          <div style={{ position: "absolute", right: 14, bottom: 10, width: 120, textAlign: "center", fontSize: 7.5, fontWeight: 700, letterSpacing: 0.5, borderTop: "1px solid #7D8B96", paddingTop: 2 }}>CHIEF SECURITY OFFICER</div>
-          <div style={{ position: "absolute", right: 14, bottom: 10, width: 64, height: 64, border: "1px dashed var(--line)", display: "grid", placeItems: "center", fontSize: 7, textAlign: "center" }}>{card ? "Signed QR on the print" : "QR when printed"}</div>
-          <div style={{ position: "absolute", left: 14, bottom: 10, fontSize: 8 }}><span className="sub2">In an emergency: </span><b>{s.reach_phone ?? "—"}</b></div>
-        </div>
+        <div style={side} data-testid="idcard-front" dangerouslySetInnerHTML={{ __html: cardSvg("front", { face, back }, hrefs, `f${id}`) }} />
+        <div style={side} data-testid="idcard-back" dangerouslySetInnerHTML={{ __html: cardSvg("back", { face, back }, hrefs, `b${id}`) }} />
       </div>
-      <div className="sub2" style={{ marginTop: "var(--s-2)" }}>The print (PDF) carries the same design with the University crest and the signed verification QR; this is the screen&rsquo;s reading of it.</div>
+      <div className="sub2" style={{ marginTop: "var(--s-2)" }}>
+        {card ? "The print (PDF) carries this design with the card's signed verification QR in the box on the back." : "A preview: the card's number and its signed verification QR are made when it is printed."}
+      </div>
     </PBody>
   );
 }

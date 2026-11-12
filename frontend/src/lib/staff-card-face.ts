@@ -3,7 +3,7 @@
  * name, the staff number, the rank, the category, the department or unit, the faculty, the date of appointment, the blood group, the
  * office and the card's validity. The desk prints from the card register, never from the HR record. Node-tested.
  */
-import type { CardFace } from "./idcard-pdf.ts";
+import type { CardFace } from "./idcard-design.ts";
 
 /** what the card shows of the person, as the API gives it */
 export interface StaffFace {
@@ -36,7 +36,7 @@ export function staffCardFace(card: LiveStaffCard): CardFace | null {
       ["Appointed", day(s.date_first_appointment ?? s.appointment_date)], ["Blood group", s.blood_group ?? "—"],
       ["Office", office || "—"],
     ],
-    foot: [["Valid to ", false], [day(card.valid_to), true]],
+    foot: [["Valid until", day(card.valid_to)]],
     serial: card.card_no,
   };
 }

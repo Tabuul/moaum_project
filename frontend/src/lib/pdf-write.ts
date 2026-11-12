@@ -17,6 +17,10 @@ export class Page {
   /** the page size in points; A4 portrait unless a page says otherwise (a wide table goes landscape) */
   size: { w: number; h: number } = A4;
   images: { name: string; img: Image }[] = [];
+  /** graphics states this page adds to the built-in ones (a name and its dictionary — an opacity the identity card's drawing asks for) */
+  gs = new Map<string, string>();
+  /** shadings (a name and its dictionary) — the identity card's colour gradients, painted with `sh` inside a clip */
+  shadings = new Map<string, string>();
 
   /** text at (x, y) from the bottom-left, in points; bold uses Helvetica-Bold */
   text(x: number, y: number, s: string, size = 10, bold = false, colour: [number, number, number] = [0, 0, 0]): this {
@@ -324,9 +328,12 @@ export function pdf(pages: Page[], title = "MOAUM Portal", options: PdfOptions =
   const built: { id: number; content: number; images: { id: number; name: string; img: Image; first: boolean }[]; page: Page }[] = [];
   // V698: an image drawn on many pages (the crest, a signature on a print of every staff card) is written once and shared
   const shared = new Map<Uint8Array, number>();
+  // the identity cards' gradients: each distinct shading one object, however many pages paint it (a print of every staff card)
+  const shadingIds = new Map<string, number>();
   for (const p of pages) {
     const id = next++;
     const content = next++;
+    for (const d of p.shadings.values()) if (!shadingIds.has(d)) shadingIds.set(d, next++);
     const images = p.images.map((im) => {
       const seen = shared.get(im.img.data);
       if (seen !== undefined) return { id: seen, name: im.name, img: im.img, first: false };
@@ -346,7 +353,9 @@ export function pdf(pages: Page[], title = "MOAUM Portal", options: PdfOptions =
   obj(7, "<< /Type /Font /Subtype /Type1 /BaseFont /Times-BoldItalic /Encoding /WinAnsiEncoding >>");
   for (const b of built) {
     const xobjects = b.images.map((im) => `/${im.name} ${im.id} 0 R`).join(" ");
-    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> /GSM << /BM /Multiply >> >> /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
+    const gs = [...b.page.gs].map(([n, d]) => ` /${n} ${d}`).join("");
+    const shadings = b.page.shadings.size ? ` /Shading << ${[...b.page.shadings].map(([n, d]) => `/${n} ${shadingIds.get(d)} 0 R`).join(" ")} >>` : "";
+    obj(b.id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${b.page.size.w} ${b.page.size.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R /F5 7 0 R >> /ExtGState << /GSW << /ca 0.06 /CA 0.06 >> /GS5 << /ca 0.05 /CA 0.05 >> /GSM << /BM /Multiply >>${gs} >>${shadings} /XObject << ${xobjects} >> >> /Contents ${b.content} 0 R >>`);
     const raw = enc.encode(b.page.ops.join("\n"));
     const stream = options.deflate ? options.deflate(raw) : raw;
     obj(b.content, [enc.encode(`<< /Length ${stream.length}${options.deflate ? " /Filter /FlateDecode" : ""} >>\nstream\n`), stream, enc.encode("\nendstream")]);
@@ -354,6 +363,7 @@ export function pdf(pages: Page[], title = "MOAUM Portal", options: PdfOptions =
       obj(im.id, [enc.encode(`<< /Type /XObject /Subtype /Image /Width ${im.img.width} /Height ${im.img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.img.data.length} >>\nstream\n`), im.img.data, enc.encode("\nendstream")]);
     }
   }
+  for (const [d, sid] of shadingIds) obj(sid, d);
   const infoId = next++;
   obj(infoId, `<< /Title (${escapePdf(title)}) /Producer (MOAUM Portal) >>`);
   const xref = length;

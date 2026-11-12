@@ -152,3 +152,59 @@ The University reviewed the printed cards (21 October 2026).
 - `blood_group` on the desk's student view, on both printable cards and on the staff cards' list.
 
 **Tests:** check.sql's V622 block; `CardSignatoryIT`; `lib/idcard-desk` tests.
+
+## 9. The cards redrawn to the University's new design (12 November 2026)
+
+The University sent the design of both cards, front and back, to be followed exactly: the student card in navy, the staff card
+in green, with gold and red swooshes across the header and the foot.
+
+**One drawing, two ends.** The design is drawn once (`lib/idcard-design.ts`) on a drawing surface (`lib/card-surface.ts`) that
+writes either the PDF the desk prints (`PdfSurface`, through `lib/idcard-pdf.ts`) or the SVG the desk shows on screen
+(`SvgSurface`). The desk's **VIEW ID CARD** is therefore the print itself, not a sketch of it: the same shapes, colours,
+sizes and wrapping. The units are tenths of a millimetre of an ID-1 card (856 × 540 landscape, 540 × 856 portrait).
+
+**The student card (landscape)**
+- Header: the crest on a white disc, the University's name in condensed serif capitals over MAKURDI between gold rules, and a
+  navy tab on the right with a gold cap, **STUDENT / IDENTITY CARD**; gold and red swooshes under the header.
+- Body: the photograph in a navy rounded frame; the name in navy capitals; the matriculation number on a red pill; the
+  particulars in two columns with icons — Faculty, Programme, Admitted on the left, Level, Blood group, Graduates on the right.
+- Foot: a navy band under a gold swoosh carrying **SESSION**, **VALID UNTIL** and **ID NO.** (the card's number), each with
+  its icon.
+- Back: the navy strip **PROPERTY OF THE UNIVERSITY - NOT TRANSFERABLE**; the barcode in a white panel with the matriculation
+  number under it; **CONDITIONS** on a navy pill and the three conditions with check marks; the verification QR with the
+  card's number and the emergency contact; the Chief Security Officer's signature, name and title; the gold, red and navy foot.
+
+**The staff card (portrait)** has the same parts in green: the header with **STAFF IDENTITY CARD** on a red pill, the
+photograph centred, the name and the staff number on a red pill between rules, Rank, Unit (or Department), Appointed and
+Office on the left and Category, Faculty and Blood group on the right, and **VALID UNTIL** and **ID NO.** on the foot. Its back
+carries the gold-lettered strip, the barcode with the staff number, the conditions with shield marks, the QR in a green frame,
+the card's number, **Km 1 Gboko Road, Makurdi** with a pin, and the signature.
+
+**What changed besides the look**
+- The barcode carries the number exactly as printed under it (`MOAU/SS/LIS/25/83810`, slashes and all); it used to carry the
+  number with its punctuation removed. Nothing in the portal reads the barcode; the QR remains the card's verification.
+- The conditions are three lines, as the design sets them ("Loss must be reported…" apart from "Any alteration…").
+- The staff card's back says where a found card goes with the pin and the address, without the words "If found, return to the
+  Security post".
+- A long name takes two lines (the staff card's photograph gives way a little to it) and every word of it is printed, measured
+  as it is drawn; only a name too long for two lines even at half the size ends in a visible "…". A long programme, faculty or
+  unit steps down in size and wraps before anything is cut; every word stays inside the card (`lib/idcard-design.test.ts`).
+- A name with accents keeps its letters without the marks (Ọlábísí → OLABISI) and a typographic apostrophe prints as one; the
+  print used to blank such letters out.
+- The desk's preview of a student without a matriculation number says NUMBER NOT YET ISSUED on the pill and prints no barcode.
+- The staff card's QR keeps four modules of white inside its green frame, as the QR standard asks.
+- The University's place under its name is the profile's city (MAKURDI), fitted between its gold rules.
+
+**What could not be copied exactly.** The PDF engine sets text in the PDF's standard faces: the University's name in Times
+Bold at 93 % of its width (the design's serif, measured), the rest in Helvetica (the design uses a rounder sans-serif). The crest is the University's own (its ribbon reads *Scientia Liberatio Populorum*), not the drawing in the design.
+The card keeps the ID-1 proportion (85.6 × 54 mm), a little taller than the design's picture.
+
+**PDF writer.** `Page` gains `gs` (graphics states, for the faint watermark and shadows) and `shadings` (the gradients, painted
+with `sh` inside a clip). `pdf()` writes each distinct shading once as an object that every page painting it refers to, and the
+graphics states into the page's resources; the QR's modules and the barcode's bars are written as rectangles (`re`). The print
+of every staff card stays about 9 KB a card before photographs, as before the redesign. The card's scale is written at full
+precision, so a card laid out W points wide prints W points wide.
+
+**Tests:** `lib/idcard-design.test.ts` (every word inside the card for ordinary and very long particulars, the two-line staff
+name clear of the photograph and the number, the barcode, the PDF's gradients and balanced states, the SVG escaped with ids of
+its own); `lib/staff-cards.test.ts`; `lib/pdf-write.test.ts`.
