@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 575
+\set EXPECTED 576
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -33997,6 +33997,8 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'bursar', true);
     INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
     VALUES (fee, S, 50000, 5000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+    -- V743: a spillover school-fee line for the programme's final level, owed by a spillover student registered in the session
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, spillover, kind) VALUES (S, 'Spillover school fees (check V742)', 70000, 400, prog, true, 'FEE');
 
     -- A, a spillover student, registers only in the Summer: no school-fee semester in the bulk readers, the charges read alike
     SELECT x.category INTO elig FROM registration.summer_eligibility(a, S) x;
@@ -34008,7 +34010,8 @@ BEGIN
     SELECT fp.is_spill::text || '/' || coalesce(fp.reg_sems::text, 'none') INTO spill FROM finance.fee_profiles(S) fp WHERE fp.student_id = a;
     SELECT coalesce(string_agg(DISTINCT r.semester::text, ','), '-') INTO reg FROM registration.course_registration r WHERE r.student_id = a AND r.session = S;
     SELECT coalesce((SELECT sc.fee FROM finance.session_charges(S) sc WHERE sc.student_id = a), 0)
-           = coalesce((SELECT sum(ch.amount) FROM finance.charges(a, S) ch), 0) INTO agree;
+           = coalesce((SELECT sum(ch.amount) FROM finance.charges(a, S) ch), 0)
+       AND coalesce((SELECT sc.fee FROM finance.session_charges(S) sc WHERE sc.student_id = a), 0) = 0 INTO agree;   -- V743: owed nothing, alike
 
     -- B and C choose and draw; passes for ZZW 401 are then published
     PERFORM set_config('moaum.actor_office', 'student', true);
@@ -34154,6 +34157,71 @@ BEGIN
   END;
   PERFORM pg_temp.assert('V744: a second person under a staff number in another case (or with spaces) is refused, and both staff uploads find the person whatever the case',
       msg = 'another case refused | spaces refused | staff upload 0/1 | lecturer upload 0/1 | people 1', msg);
+END $$;
+-- ── V743: the review of V742 applied. In 9802/9803's Summer, D at 200 Level is authorised by the Academic Office for ZZT 403, selects
+--          it and draws a reference (₦55,000); a pass for ZZT 403 is published and the course is then ended. The course is not
+--          outstanding (its pass read itself, though the pool names it ended) and the reference not payable; confirmed anyway, it pays
+--          nothing: ZZT 403 and the programme fee are taken back and the whole ₦55,000 stands as credit, nothing registered. The block
+--          undoes its writes ──
+DO $$
+DECLARE
+    SP text := '9801/9802'; S text := '9802/9803'; who uuid := gen_random_uuid(); dept text; prog text := 'C97431';
+    d uuid := gen_random_uuid(); fee uuid := gen_random_uuid(); r text; outstanding text; payable text; reason text; states text; credit numeric;
+    regs text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V743', true);
+    SELECT dept_code INTO dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), SP, DATE '9801-10-01', DATE '9802-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9802-10-01', DATE '9803-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9802/743' WHERE name = S;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    SELECT prog, 'B.Sc. Review of V742', dept, d2.faculty_code, 'UNDER GRADUATE', 0, 400, 4, 'ZRT' FROM ref.department d2 WHERE d2.code = dept;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZT 403', 'Review five', 3, 1, 400, dept, 'Core', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (d, 'MOAUM/ADM/98/974301', 'MOAU/ZRT/98/7431', 'ZZREVIEWED', 'Authorised D', prog, 'UTME', SP, 100, 200, 'ACTIVE', now());
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['FINAL_YEAR', 'SPILLOVER', 'AUTHORISED'], NULL, NULL, 'check V743');
+    PERFORM registration.summer_authorise(S, d, ARRAY['ZZT 403'], 'Senate approval: a deficiency course before graduation', false);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (fee, S, 50000, 5000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+
+    -- D selects and draws; the pass is published, then the course is ended
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', d::text, true);
+    PERFORM registration.summer_select(d, S, ARRAY['ZZT 403']);
+    r := registration.summer_reference(d, S);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM assessment.import_legacy_semester(S, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRT/98/7431', 'course', 'ZZT 403', 'total', '67', 'level', '400')), true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM catalogue.end_course('ZZT 403');
+    SELECT coalesce(sc.reason, '-') INTO reason FROM registration.summer_courses(d, S) sc WHERE sc.course_code = 'ZZT 403';
+    outstanding := registration.summer_course_outstanding(d, S, 'ZZT 403')::text;
+    payable := registration.summer_reference_payable(r)::text;
+
+    -- confirmed anyway (paid at a bank before the pass): nothing paid, the whole amount a credit
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r, 'Bank transfer', 'check V743');
+    SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) INTO states FROM registration.summer_charge WHERE student_id = d AND session = S;
+    SELECT coalesce(sum(x.amount), 0) INTO credit FROM registration.summer_credit x WHERE x.student_id = d AND x.session = S AND x.state = 'OPEN';
+    SELECT coalesce(string_agg(DISTINCT rg.id::text, ','), 'none') INTO regs FROM registration.course_registration rg WHERE rg.student_id = d AND rg.session = S AND rg.semester = 3;
+
+    msg := 'pool ' || coalesce(reason, '-') || ' outstanding ' || outstanding || ' payable ' || payable || ' | ' || coalesce(states, '-') || ' credit ' || credit || ' registered ' || regs;
+    RAISE EXCEPTION 'the V743 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V743 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V743: a course passed is never outstanding for the Summer, though since ended — its reference not payable, a payment confirmed anyway a credit',
+      coalesce(msg = 'pool COURSE_ENDED outstanding false payable false | PROGRAMME:CANCELLED,ZZT 403:CANCELLED credit 55000.00 registered none', false),
+      msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

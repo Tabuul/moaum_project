@@ -194,3 +194,9 @@ A review of those fixes confirmed four more; V742 and the same change answer the
   - Archived, the credit stays open and out of sight until the payment is restored.
   - The Bursar records applied or refunded only while the payment stands as the student's Summer payment.
 - **The check of the bulk readers** now uses a spillover student who registers only in the Summer, and fails if `finance.fee_profiles` counts the Summer again.
+
+## The review of V742 (V743)
+
+- **A passed course is not outstanding, however else the pool describes it.** The pool names an ended or unknown course before a passed one. So a course the Academic Office authorised, passed since and then ended, read as outstanding, and a payment confirmed anyway paid for it. `registration.summer_course_outstanding` now tests the pass itself, as the pool does. An ended course that is not passed stays outstanding: once paid, it is the desk's issue (V739).
+- **The payable test is quick.** Testing whether a course is still outstanding reads the student's pool and results. It is declared at that cost, and payable tests only the reference's own course charges, so checkout and the gateways' validation never test every Summer charge in the table. One payable test with 48 charges in the table took 1.9 s before this and takes 0.3 s now.
+- **The check of the bulk and per-student readers** states a spillover school-fee line for the student's programme, so a Summer counted again shows as a charge the bulk reader owes and the per-student reader does not.
