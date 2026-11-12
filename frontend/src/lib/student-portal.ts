@@ -208,7 +208,7 @@ export interface Me {
   /** V735: the Summer Semester page is in the menu (registration.summer_area) */
   summerArea?: boolean;
   /** where the student stands (V331): the cohort that carries them, the expected completion, the spillover — the entry session stays history */
-  jambYear?: number | null; effectiveCohort?: string | null; cohortSource?: "ENTRY" | "MERGED" | "OVERRIDE" | string | null; durationYears?: number | null;
+  jambYear?: number | null; effectiveCohort?: string | null; cohortSource?: "ENTRY" | "MERGED" | "OVERRIDE" | "COHORT_START" | string | null; durationYears?: number | null;
   expectedCompletion?: string | null; spilloverState?: string | null; spilloverYears?: number | null; classification?: string | null;
   /** the JAMB number an entrant signs in with until the matriculation number is issued, the sign-in they use now, and where they stand on the admission lifecycle (V282) */
   jambRegNo?: string | null; loginId?: string | null; lifecycle?: string | null;

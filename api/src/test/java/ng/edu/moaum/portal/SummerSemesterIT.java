@@ -212,6 +212,22 @@ class SummerSemesterIT {
             assertThat(it.callWith(hodLecturer, HttpMethod.GET, path + "/students", null, Map.of("X-Active-Office", "lecturer")).getStatusCode().value()).isEqualTo(403);
             assertThat(it.callWith(hodLecturer, HttpMethod.GET, path + "/courses", null, Map.of("X-Active-Office", "lecturer")).getStatusCode().value()).isEqualTo(403);
 
+            // ── V741: both unpaid courses passed since they were chosen — drawing takes them back, nothing is owed, and the take-back stands ──
+            it.db(() -> {
+                jdbc.sql("SELECT set_config('moaum.actor_office', 'ict', true)").query().listOfRows();
+                jdbc.sql("SELECT assessment.import_legacy_semester(:s, 1, CAST(:rows AS jsonb), true)").param("s", session)
+                        .param("rows", "[{\"matric\":\"" + matricA + "\",\"course\":\"" + c3 + "\",\"total\":\"61\",\"level\":\"400\"}]").query().listOfRows();
+                jdbc.sql("SELECT assessment.import_legacy_semester(:s, 2, CAST(:rows AS jsonb), true)").param("s", session)
+                        .param("rows", "[{\"matric\":\"" + matricA + "\",\"course\":\"" + c4 + "\",\"total\":\"62\",\"level\":\"400\"}]").query().listOfRows();
+                return null;
+            });
+            ResponseEntity<Map> nothing = it.call(student(a), HttpMethod.POST, "/api/v1/me/summer/reference", Map.of("session", session));
+            assertThat(nothing.getStatusCode().value()).as(String.valueOf(nothing.getBody())).isEqualTo(200);
+            assertThat(nothing.getBody().get("reference")).isNull();   // the API leaves a null out
+            assertThat(nothing.getBody()).containsEntry("takenBack", true);
+            assertThat(jdbc.sql("SELECT string_agg(state, ',' ORDER BY course_code) FROM registration.summer_charge WHERE student_id = :s AND session = :ss AND course_code IN (:c3, :c4)")
+                    .param("s", a).param("ss", session).param("c3", c3).param("c4", c4).query(String.class).single()).isEqualTo("CANCELLED,CANCELLED");
+
             // ── V739: the Summer closed — what is selected and unpaid is taken back, and the students are no longer told it is open ──
             Map<String, Object> closedPeriod = new java.util.HashMap<>(period);
             closedPeriod.put("state", "CLOSED");

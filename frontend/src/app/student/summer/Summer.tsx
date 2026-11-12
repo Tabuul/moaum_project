@@ -9,6 +9,7 @@ import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/componen
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, onDay, useAct, when } from "../common";
+import { notify } from "@/components/proto/Toast";
 import {
   categoryWord, courseReasonWord, failedInWord, naira, nextStep, notEligibleWord, num, periodWords, selectionCost, semesterWord,
   type MySummer, type SummerCourse,
@@ -46,8 +47,14 @@ function Fees({ d }: { d: MySummer }) {
   // V739: the server names an open reference only when it may be paid now, with its own amount; otherwise a new one is drawn
   const open = drawn ?? (a?.openReference && a.openAmount != null && due > 0 ? { reference: a.openReference, amount: num(a.openAmount) } : null);
   async function draw() {
-    const r = await act("ref", "POST", "/me/summer/reference", { session: d.session }, "Summer Semester fees reference", "Reference ready — pay it below");
-    if (r && typeof r.reference === "string" && r.amount != null) setDrawn({ reference: r.reference, amount: num(r.amount as number) });
+    const r = await act("ref", "POST", "/me/summer/reference", { session: d.session }, "Summer Semester fees reference", "");
+    if (r && typeof r.reference === "string" && r.amount != null) {
+      setDrawn({ reference: r.reference, amount: num(r.amount as number) });
+      notify("Reference ready — pay it below");
+    } else if (r && r.takenBack) {
+      // V741: what was chosen is no longer outstanding (passed since, or no longer taught): taken back, nothing owed
+      notify("A course you chose is no longer outstanding and was taken back; nothing more is owed.");
+    }
   }
   return (
     <Panel title="Summer Semester fees" right={d.fee ? `${naira(d.fee.programme_fee)} once · ${naira(d.fee.course_fee)} a course` : "Not published"}>

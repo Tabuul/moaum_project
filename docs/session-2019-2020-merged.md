@@ -117,3 +117,11 @@ high after it. "Remember a session was merged … this outstanding should not af
 - **The cohort engine** counts from the first year: its effective cohort is the first session, with cohort source `COHORT_START`, and the affected students' positions are recomputed. A 2021/2022 admit is in their final year in 2025/2026, not Spillover Year 1, and the current session is not billed spillover lines for them.
 - **The programme timeline** (the deferment page and letter) counts completion from the first year.
 - **The outstanding-fees card** decides "sessions before X are not yet assessed" from the first year.
+
+## The review of V740 (V741)
+
+- **The payments view and the set readers inline the level again.** V740's entry-level floor and name normalisation made each row call the level reader (about twenty times slower on Payments and Financial Analytics). The floor now sits inside the count, and an admission session is matched by its year, as `policy.session_normal` reads any name starting with a year.
+- **A postgraduate's own level** is no longer floored at the entry level on the payments view, overpaid, reconciliation and the legacy import; receipts and these read alike.
+- **Assessments at the old count.** Historical assessments made before V738 at a level the first-year count now reads otherwise, and those being made on a session before the first year, are counted in the migration's notice for the Bursary (`V741: … historical assessments at a level the first-year count now reads otherwise, … being made on a session before the first year`). The Bursary corrects the first by a new assessment and rejects the second.
+- **No assessment before the first year.** `finance.historical_assessment_save` and `finance.historical_assessment_decide` refuse a session before the first year (`HFA_BEFORE_FIRST_YEAR`), and the student's account no longer offers "Assess a different fee" on it.
+- **Cohort source.** A 2019/2020 admission reads MERGED again (the merge outranks the rule beside it); the cohort, lifecycle and student screens name `COHORT_START` ("first year the session after admission"), and the lifecycle recommendation and graduation readers treat it as the entry.

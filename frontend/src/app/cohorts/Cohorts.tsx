@@ -192,7 +192,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               <span key="n"><strong>{fullName(r)}</strong><div className="sub2 tnum">{r.jamb_reg_no ?? r.admission_no ?? ""}</div></span>,
               <span key="m" className="tnum">{r.matric_no ?? <span className="sub2">—</span>}</span>,
               <span key="j" className="tnum">{r.jamb_year ?? "—"}</span>,
-              <span key="c" className="tnum">{r.entry_session ?? "—"}{r.effective_cohort && r.effective_cohort !== r.entry_session ? <> → <b>{r.effective_cohort}</b><div className="sub2">{r.cohort_source === "MERGED" ? "session merged" : "cohort corrected"}</div></> : null}</span>,
+              <span key="c" className="tnum">{r.entry_session ?? "—"}{r.effective_cohort && r.effective_cohort !== r.entry_session ? <> → <b>{r.effective_cohort}</b><div className="sub2">{r.cohort_source === "MERGED" ? "session merged" : r.cohort_source === "COHORT_START" ? "first year the session after" : "cohort corrected"}</div></> : null}</span>,
               <span key="p">{r.programme}<div className="sub2">{r.faculty} · {r.duration_years ? `${r.duration_years} sessions` : "length not set"}</div></span>,
               <span key="l" className="tnum">{r.current_level ?? "—"}{r.computed_level != null && r.computed_level !== r.current_level ? <div className="sub2 ink-red">cohort says {r.computed_level}</div> : null}</span>,
               <span key="e" className="tnum">{r.expected_completion ?? "—"}</span>,
@@ -458,7 +458,7 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
             {issuesOf(d.issues).length ? <div className="mt-1">{issuesOf(d.issues).map((x) => ISSUE[x] ?? x).join(" · ")}</div> : null}
           </Note>
           <div className="grid grid--3">
-            {([["JAMB year", d.jamb_year], ["Entry session", d.entry_session], ["Effective cohort", `${d.effective_cohort ?? "—"}${d.cohort_source === "MERGED" ? " (session merged)" : d.cohort_source === "OVERRIDE" ? (reached ? " (the level reached)" : " (set by the Registry)") : ""}`],
+            {([["JAMB year", d.jamb_year], ["Entry session", d.entry_session], ["Effective cohort", `${d.effective_cohort ?? "—"}${d.cohort_source === "MERGED" ? " (session merged)" : d.cohort_source === "COHORT_START" ? " (first year the session after admission)" : d.cohort_source === "OVERRIDE" ? (reached ? " (the level reached)" : " (set by the Registry)") : ""}`],
               ["Matriculation", d.matric_no], ["Programme length", d.duration_years ? `${d.duration_years} sessions` : "not configured"], ["Current session", d.current_session],
               ["Level on record", d.current_level], ["Level the cohort implies", d.computed_level], ["Expected completion", `${d.expected_completion ?? "—"}${d.completionOverride ? " (pinned by the Registry)" : ""}`],
               ["Deferred sessions", d.deferred_sessions], ["Spillover", SPILL[d.spillover_state] ?? d.spillover_state], ["This session", d.registered_current ? "Registered" : d.enrolled_current ? "Enrolled" : "Not registered"],

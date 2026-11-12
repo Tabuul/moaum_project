@@ -182,6 +182,9 @@ export const semesterWords = (n: number) => (n === 1 ? "First semester" : n === 
 export const num = (v: Money | null | undefined) => (v == null || v === "" ? 0 : Number(v));
 export const naira = (v: Money | null | undefined) => `₦${num(v).toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 export const can = (desk: Pick<Desk, "permissions"> | null, p: string) => !!desk && desk.permissions.includes(p);
+/** V740/V741: a session the student was admitted in, before their first year of study — kept only to hold money, nothing due, and no
+ *  assessment may be made on it (the API refuses HFA_BEFORE_FIRST_YEAR) */
+export const beforeFirstYear = (p: Pick<Period, "source" | "source_ref">) => p.source === "STRUCTURE" && (p.source_ref ?? "").includes("before the first year of study");
 
 /** the periods by session, with the session's totals (only an official amount counts; a period for review counts nothing owed) */
 export function bySession(periods: Period[]): SessionGroup[] {

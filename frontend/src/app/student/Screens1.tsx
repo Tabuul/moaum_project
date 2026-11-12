@@ -86,7 +86,7 @@ function StudentDetails({ s }: { s: Me }) {
               <span className={`pill ${s.status === "ACTIVE" ? "pill--ok" : "pill--info"}`}><span className="dot" style={{ background: s.status === "ACTIVE" ? "var(--green)" : "var(--chrome)" }} />{s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
               <Pil kind="info">{s.level} Level</Pil>
               <Pil kind="grey">{s.entryMode} · {s.entrySession}</Pil>
-              {s.effectiveCohort && s.effectiveCohort !== s.entrySession ? <Pil kind="grey" title={s.cohortSource === "MERGED" ? `${s.entrySession} was merged into ${s.effectiveCohort}; your entry session stays ${s.entrySession}` : `Your record is read with the ${s.effectiveCohort} cohort; your entry session stays ${s.entrySession}`}>Cohort {s.effectiveCohort}</Pil> : null}
+              {s.effectiveCohort && s.effectiveCohort !== s.entrySession ? <Pil kind="grey" title={s.cohortSource === "MERGED" ? `${s.entrySession} was merged into ${s.effectiveCohort}; your entry session stays ${s.entrySession}` : s.cohortSource === "COHORT_START" ? `Your first year of study was ${s.effectiveCohort}, the session after admission; your entry session stays ${s.entrySession}` : `Your record is read with the ${s.effectiveCohort} cohort; your entry session stays ${s.entrySession}`}>Cohort {s.effectiveCohort}</Pil> : null}
               {s.spilloverState && s.spilloverState.startsWith("SPILLOVER") ? <Pil kind="warn">{s.spilloverState === "SPILLOVER_LIMIT_REACHED" ? "Spillover limit reached" : `Spillover year ${s.spilloverYears ?? ""}`}</Pil> : null}
             </div>
             <div className="mt-3" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "2px var(--s-4)" }}>

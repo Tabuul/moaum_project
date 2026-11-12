@@ -146,7 +146,7 @@ export function ScopeBar({
           <Sel id="sc-course" label="Course" opts={courseOpts} value={s.course} disabled={!p} anyLabel={p ? "All courses" : "Choose a programme first"} onChange={(v) => set({ course: v })} />
         ) : null}
         <Sel id="sc-session" label="Session" opts={sessions.map((x) => [x, x])} value={s.session} anyLabel={s.session || "Session"} onChange={(v) => set({ session: v || s.session })} />
-        <Sel id="sc-sem" label="Semester" opts={withSummer ? [["1", "First semester"], ["2", "Second semester"], ["3", "Summer semester"]] : [["1", "First semester"], ["2", "Second semester"]]} value={s.sem} anyLabel="Both semesters" onChange={(v) => set({ sem: v })} />
+        <Sel id="sc-sem" label="Semester" opts={withSummer || s.sem === "3" ? [["1", "First semester"], ["2", "Second semester"], ["3", withSummer ? "Summer semester" : "Third semester"]] : [["1", "First semester"], ["2", "Second semester"]]} value={s.sem} anyLabel="Both semesters" onChange={(v) => set({ sem: v })} />
       </div>
       <div className="scope__sum">
         <span className="trail">

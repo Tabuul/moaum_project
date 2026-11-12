@@ -202,7 +202,15 @@ class SummerController {
     @PreAuthorize("hasAuthority('OFFICE_student')")
     @Transactional
     Map<String, Object> reference(Authentication auth, @Valid @RequestBody ForSession body) {
-        String ref = jdbc.sql("SELECT registration.summer_reference(:st, :s)").param("st", me(auth)).param("s", body.session()).query(String.class).single();
+        // V741: drawing takes back a course no longer outstanding; when that leaves nothing owed, no reference is drawn
+        String ref = jdbc.sql("SELECT coalesce(registration.summer_reference(:st, :s), '')").param("st", me(auth)).param("s", body.session()).query(String.class).single();
+        if (ref.isEmpty()) {
+            Map<String, Object> none = new LinkedHashMap<>();
+            none.put("reference", null);
+            none.put("amount", BigDecimal.ZERO);
+            none.put("takenBack", true);
+            return none;
+        }
         BigDecimal amount = jdbc.sql("SELECT amount FROM finance.payment_reference WHERE reference = :r").param("r", ref).query(BigDecimal.class).single();
         return Map.of("reference", ref, "amount", amount);
     }
@@ -514,7 +522,8 @@ class SummerController {
                        coalesce(st.matric_no, st.admission_no) AS number, st.surname || ', ' || st.other_names AS name
                   FROM registration.summer_credit c JOIN people.student st ON st.id = c.student_id
                   JOIN finance.payment_reference pr ON pr.id = c.reference_id
-                 WHERE CAST(:s AS text) IS NULL OR c.session = :s
+                 WHERE (CAST(:s AS text) IS NULL OR c.session = :s)
+                   AND pr.archived_at IS NULL AND pr.purpose LIKE 'Summer semester fees%'   -- V741: while the payment stands as a Summer payment
                  ORDER BY (c.state = 'OPEN') DESC, c.created_at DESC
                 """).param("s", session == null || session.isBlank() ? null : session.trim(), Types.VARCHAR).query().listOfRows());
         out.put("collections", jdbc.sql("""

@@ -18,7 +18,7 @@ import { printDocument } from "@/lib/document/html";
 import { docSerial } from "@/lib/exportbrand";
 import { logExport } from "@/lib/export-log";
 import { HistoricalAccount, HistoricalTotals } from "@/components/finance/HistoricalAccount";
-import { can, EVIDENCE_WORDS, KIND_WORDS, naira, num, PAYMENT_STATE_WORDS, semesterWords, STATE_WORDS, STATEMENT_HEAD, statementRows, totals, WAIVER_WORDS, type Assessment, type Desk, type Period, type StudentAccount as Account } from "@/lib/historical-fees";
+import { beforeFirstYear, can, EVIDENCE_WORDS, KIND_WORDS, naira, num, PAYMENT_STATE_WORDS, semesterWords, STATE_WORDS, STATEMENT_HEAD, statementRows, totals, WAIVER_WORDS, type Assessment, type Desk, type Period, type StudentAccount as Account } from "@/lib/historical-fees";
 import { AssessmentForm } from "./AssessmentForm";
 import { AssessmentView } from "./AssessmentView";
 import { WaiverForm, WaiverView } from "./Waivers";
@@ -97,7 +97,7 @@ export function StudentAccount({ studentId, desk, onClose, onChanged }: { studen
         p.pending_id ? <Btn kind="ghost" onClick={() => setViewing(p.pending_id!)}>View pending</Btn>
           : p.source === "ASSESSMENT" && p.assessment_id ? <Btn kind="ghost" onClick={() => setViewing(p.assessment_id!)}>View</Btn>
           : p.source === "NONE" && mayCreate ? <Btn kind="primary" onClick={() => setMaking(p)}>Create historical assessment</Btn>
-          : p.source === "STRUCTURE" && mayCreate ? (
+          : p.source === "STRUCTURE" && mayCreate && !beforeFirstYear(p) ? (
             <span className="row row--tight">
               <Btn kind="ghost" onClick={() => setMaking(p)}>Assess a different fee</Btn>
               {num(p.outstanding) > 0 ? <Btn kind="ghost" onClick={() => setWaiving(p)}>Waive or adjust</Btn> : null}

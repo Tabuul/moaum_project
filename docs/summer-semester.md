@@ -144,7 +144,7 @@ The notices use the notification engine's templates, one message per student per
 
 These questions are for the Academic Office to decide:
 
-- **Academic standing.** A student's standing is read from their last regular semester; a Summer does not change it (V739: `assessment.student_standing` leaves the Summer out). Before V739 a Summer read GOOD and let a student on probation escape the probation unit limit.
+- **Academic standing.** A student's standing is read from their last regular semester; a Summer does not change it (V739: `assessment.student_standing` leaves the Summer out), and no standing is pronounced on a Summer alone: the Summer broadsheet prints none (V741). Before V739 a Summer read GOOD and let a student on probation escape the probation unit limit.
 - **CGPA.** CGPA counts every attempt, as the portal's rule already does. No replacement rule was invented for a Summer pass.
 - **Approval of the registration.** A paid Summer registration is approved by the payment. The courses are the student's own outstanding ones, checked by the database. If the Academic Office wants a desk approval as well, it is one rule to add.
 - **The GST & EPS examination permit.** The permit was not adapted for semester 3.
@@ -171,3 +171,15 @@ An adversarial review confirmed 31 defects; V739 and the same change answer them
 - **Units.** Summer entries carry the programme's own units (`catalogue.units_for`).
 - **Identification.** Each run re-reads every student identified before. Authorising a student, or withdrawing it, re-reads them at once.
 - **The desk.** It is held to the active office's unit, whatever other offices the token carries, and refused in an office that does not read it. Notices are refused before their dates are set or after the Summer closes, and a changed window or timetable is told again.
+
+## The review of V739 (V741)
+
+A review of those fixes confirmed 13 more; V741 and the same change answer them.
+
+- **School fees, in the bulk readers too.** `finance.fee_profiles`, which feeds the School Fees Report, the Spillover desk, Student Accounts and the College and HOD views, leaves a Summer registration out, as `finance.reg_semesters` does.
+- **No standing on a Summer.** V739 let `assessment.standing_of` speak for semester 3, so the Summer broadsheet printed probation or advice to withdraw on the Summer alone. It is silent again; the student's standing stays that of the last regular semester.
+- **A credit follows its payment.** A payment that an open Summer credit names is neither moved by a payment correction nor archived until the Bursar records the credit applied or refunded. A credit whose payment is archived, or no longer stands as a Summer payment, is not shown as the student's nor listed on Summer Semester Fees. "Applied" records where the money went (the voucher, the reference or the desk that moved it); it moves no money itself.
+- **Drawing a reference after a take-back.** When every chosen course is taken back (passed since, or no longer taught), the take-back stands and the student is told nothing more is owed. A course passed since it was chosen is taken back even when the Academic Office authorised it.
+- **A late payment** never revives a passed course, nor the programme fee alone with no course: the money stands as a Summer credit.
+- **The results chain's scope bar** shows a Summer chosen elsewhere as the Third semester on screens that do not offer the Summer, instead of "Both semesters".
+- **The desk's class-list links** are offered only to the offices that may open a class list; the Bursary offices see the course code.

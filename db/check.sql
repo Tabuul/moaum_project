@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 570
+\set EXPECTED 571
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -33151,7 +33151,7 @@ END $$;
 --          Academic Office for ZZS 401. A draft fee charges nothing; published (₦50,000 + ₦5,000 a course), A selects a first- and a
 --          second-semester course: ₦60,000 owed, nothing registered until paid; paid: a Summer registration (semester 3) of both, approved;
 --          a third course later: ₦5,000 only; a fourth selected then taken back closes its reference; the same course twice refused; the
---          regular door shut for semester 3; the Summer result released by the Summer's payment; standing_of no longer silent on a semester 3 (V739); a Summer
+--          regular door shut for semester 3; the Summer result released by the Summer's payment; no standing pronounced on it (V741); a Summer
 --          pass clears the carry-over; the desk's rows; a reference is paid only while it is exactly what is owed and the Summer open,
 --          an expired one is regenerated for what is owed now (or refused when nothing is), and none is drawn once the Summer closes.
 --          The block undoes its writes. ──
@@ -33255,7 +33255,7 @@ BEGIN
     -- the Summer's examination card: issued by the Summer's payment, not the session's school fees
     card := (registration.exam_card_state(a, S, 3) ->> 'available') || '/' || (SELECT count(*) FROM registration.exam_cards_withheld(S, 3) w WHERE w.student_id = a);
 
-    -- the Summer result: released by the Summer's payment; standing read as a second semester's (V739); a pass clears the carry-over
+    -- the Summer result: released by the Summer's payment; no standing on it (V741); a pass clears the carry-over
     released := finance.results_cleared(a, S, 3);
     standing := coalesce(assessment.standing_of(400, 3, 0.80, 0.70, false), 'none');
     PERFORM set_config('moaum.actor_office', 'ict', true);
@@ -33307,7 +33307,7 @@ BEGIN
                      || ' | owed 60000.00 ref 60000.00 registered before 0 after APPROVED/ZZS 401:3:CARRYOVER:APPROVED,ZZS 402:3:CARRYOVER:APPROVED'
                      || ' | added 5000.00 ref 5000.00 now ZZS 401,ZZS 402,ZZS 403'
                      || ' | taken back, reference closed true | again SUMMER_COURSE_REFUSED | gate The Summer Semester of 9752/9753 is registered on the Summer Semester page.'
-                     || ' | released true standing ADVISED_TO_WITHDRAW | carry-overs after the Summer pass ZZS 402,ZZS 403,ZZS 404'
+                     || ' | released true standing none | carry-overs after the Summer pass ZZS 402,ZZS 403,ZZS 404'
                      || ' | desk 3/50000.00/15000.00/PAID/APPROVED/1'
                      || ' | renew REFERENCE_NOTHING_OWED then NEW/true | payable true/false/false/false | closed SUMMER_CLOSED | card true/0', false),
       msg);
@@ -33398,7 +33398,7 @@ END $$;
 --          stands, ZZU 403 is recorded for the desk, and nothing rolls back; a reference holding an ended course is not payable.
 --          The paid payments are neither moved by a correction nor archived. ZZU 404 is picked and left unpaid; the Summer closes:
 --          it is taken back, and the Summer results are released. A Summer registration is no school-fees semester. standing_of
---          pronounces on a semester 3 as before; a final-level spillover student is admitted to a Summer of Final year and
+--          pronounces nothing on a semester 3 (V741); a final-level spillover student is admitted to a Summer of Final year and
 --          Spillover. D authorised and then withdrawn is read at once as no longer eligible. The block undoes its writes ──
 DO $$
 DECLARE
@@ -33520,7 +33520,7 @@ BEGIN
                      || ' | registered ZZU 401,ZZU 402 units 4'
                      || ' | ended: payable false confirmed true issue ZZU 403'
                      || ' | realloc refused archive refused'
-                     || ' | closed CANCELLED released true semesters {} standing ADVISED_TO_WITHDRAW'
+                     || ' | closed CANCELLED released true semesters {} standing none'
                      || ' | withdrawn false/NOT_FINAL_OR_SPILLOVER', false),
       msg);
 END $$;
@@ -33586,6 +33586,128 @@ BEGIN
   PERFORM pg_temp.assert('V740: money on the admission session kept as a credit, its level the entry level, the session read alike however written, the timeline and the cohort counted from the first year',
       coalesce(msg = 'stale 3 | admission 2501/2502:100:0:1000.00:CREDIT | level 100 DE receipt 200 DE 5-arg 200'
                      || ' | written short 200/1 | realloc refused | timeline 2505/2506 | cohort 2502/2503/COHORT_START', false),
+      msg);
+END $$;
+-- ── V741: the review of V739 and V740 applied. In 9772/9773's Summer (results of 9771/9772), A at 400 Level failed ZZY 401 and 402. A
+--          Summer registration is no school-fee semester for the bulk readers either. A chooses ZZY 401 and draws R1, takes it back; a
+--          pass is then published for ZZY 401: drawing a reference takes back what is no longer owed and commits; R1 confirmed late
+--          revives neither ZZY 401 (passed) nor the programme fee alone — the whole ₦55,000 stands as credit, and the payment an open
+--          credit names is neither moved nor archived. A merged admission reads MERGED, not COHORT_START. The payments view inlines its
+--          level; a postgraduate's own level is not floored; no standing is pronounced on a Summer; an assessment on a session before
+--          the first year is refused. The block undoes its writes ──
+DO $$
+DECLARE
+    SP text := '9771/9772'; S text := '9772/9773'; who uuid := gen_random_uuid(); dept text; prog text := 'C97411';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); m uuid := gen_random_uuid(); fee uuid := gen_random_uuid();
+    r1 text; r_after text; taken text; credit numeric; prog_state text; realloc text; archive text; inlined boolean; ln text; regs text;
+    pg_lvl int; standing text; merged text; hfa text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V741', true);
+    SELECT dept_code INTO dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), SP, DATE '9771-10-01', DATE '9772-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9772-10-01', DATE '9773-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9772/741' WHERE name = S;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    SELECT prog, 'B.Sc. Review of the Review', dept, d2.faculty_code, 'UNDER GRADUATE', 0, 400, 4, 'ZRV' FROM ref.department d2 WHERE d2.code = dept;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZY 401', 'Review one', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZY 402', 'Review two', 2, 2, 400, dept, 'Core', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/97/974101', 'MOAU/ZRV/97/7411', 'ZZREVIEWED', 'Final A', prog, 'UTME', SP, 100, 400, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/97/974103', 'MOAU/ZRV/97/7413', 'ZZREVIEWED', 'Final B', prog, 'UTME', SP, 100, 400, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(SP, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRV/97/7411', 'course', 'ZZY 401', 'total', '30', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZRV/97/7413', 'course', 'ZZY 401', 'total', '31', 'level', '400')), true);
+    PERFORM assessment.import_legacy_semester(SP, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRV/97/7411', 'course', 'ZZY 402', 'total', '20', 'level', '400')), true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           NULL, NULL, NULL, 'check V741');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (fee, S, 50000, 5000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+
+    -- a Summer registration of ZZY 402 alone: no school-fee semester for the bulk readers
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM registration.summer_select(a, S, ARRAY['ZZY 402']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(registration.summer_reference(a, S), 'Bank transfer', 'check V741');
+    SELECT coalesce(fp.reg_sems::text, 'none') INTO regs FROM finance.fee_profiles(S) fp WHERE fp.student_id = a;
+
+    -- A chooses ZZY 401; B chooses ZZY 401, draws R1 (the programme fee and the course) and takes it back; then passes are published
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM registration.summer_select(a, S, ARRAY['ZZY 401']);
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    PERFORM registration.summer_select(b, S, ARRAY['ZZY 401']);
+    r1 := registration.summer_reference(b, S);
+    PERFORM registration.summer_unselect(b, S, 'ZZY 401');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM assessment.import_legacy_semester(S, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRV/97/7411', 'course', 'ZZY 401', 'total', '64', 'level', '400'),
+        jsonb_build_object('matric', 'MOAU/ZRV/97/7413', 'course', 'ZZY 401', 'total', '66', 'level', '400')), true);
+    -- drawing a reference takes back what is no longer owed, and the take-back stands
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    r_after := coalesce(registration.summer_reference(a, S), 'none');
+    SELECT state INTO taken FROM registration.summer_charge WHERE student_id = a AND session = S AND course_code = 'ZZY 401';
+    -- B's R1 confirmed late: ZZY 401 is passed, so neither it nor the programme fee alone is revived — the whole ₦55,000 stands as credit
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r1, 'Bank transfer', 'check V741 late');
+    SELECT coalesce(sum(x.amount), 0) INTO credit FROM registration.summer_credit x WHERE x.student_id = b AND x.session = S AND x.state = 'OPEN';
+    SELECT string_agg(state, ',' ORDER BY created_at) INTO prog_state FROM registration.summer_charge WHERE student_id = b AND session = S AND kind = 'PROGRAMME';
+    SELECT CASE WHEN (finance.payment_reallocation_check(pr.id, 'SCHOOL_FEES', S, 1) -> 'refusals')::text LIKE '%unapplied Summer credit%' THEN 'refused' ELSE 'allowed' END,
+           CASE WHEN array_to_string(finance.payment_archive_refusals(pr.id), ' ') LIKE '%unapplied Summer credit%' THEN 'refused' ELSE 'allowed' END
+      INTO realloc, archive FROM finance.payment_reference pr WHERE pr.reference = r1;
+
+    -- the payments view inlines its level; a postgraduate's own level; no standing on a Summer
+    inlined := true;
+    FOR ln IN EXECUTE 'EXPLAIN (VERBOSE) SELECT level FROM reporting.payments' LOOP
+        IF position('level_in_session(' IN ln) > 0 THEN inlined := false; END IF;
+    END LOOP;
+    pg_lvl := reporting.level_in_session(900, '2023/2024', 800, 'POSTGRADUATE', '2024/2025');
+    standing := coalesce(assessment.standing_of(400, 3, 0.80, 0.70, false), 'none');
+
+    -- a merged admission reads MERGED, the rule beside it
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), '9768/9769', DATE '9768-10-01', DATE '9769-08-31', 'CLOSED'),
+        (gen_random_uuid(), '9769/9770', DATE '9769-10-01', DATE '9770-08-31', 'CLOSED'),
+        (gen_random_uuid(), '9770/9771', DATE '9770-10-01', DATE '9771-08-31', 'CLOSED') ON CONFLICT (name) DO NOTHING;
+    PERFORM policy.merge_session('9768/9769', '9769/9770', 'CHECK V741: merged', 'SEN/9769/01');
+    INSERT INTO policy.cohort_start (admission_session, first_session, reason) VALUES ('9768/9769', '9769/9770', 'CHECK V741: began the session after');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (m, 'MOAUM/ADM/97/974102', 'MOAU/ZRV/97/7412', 'ZZREVIEWED', 'Merged M', prog, 'UTME', '9768/9769', 100, 400, 'ACTIVE', now());
+    PERFORM people.refresh_academic_position(m);
+    SELECT cohort_source INTO merged FROM people.academic_position WHERE student_id = m;
+
+    -- an assessment on a session before the first year is refused
+    INSERT INTO policy.cohort_start (admission_session, first_session, reason) VALUES (SP, S, 'CHECK V741: A began the session after');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN
+        PERFORM finance.historical_assessment_save(NULL, a, SP, 1, 1000, '[]'::jsonb, 'HISTORICAL_FEE_STRUCTURE', 'check V741', 'CHECK V741: an assessment before the first year', NULL, NULL, false);
+        hfa := 'saved';
+    EXCEPTION WHEN OTHERS THEN hfa := split_part(SQLERRM, ':', 1);
+    END;
+
+    msg := 'bulk ' || coalesce(regs, '-') || ' | after taking back ' || r_after || '/' || coalesce(taken, '-') || ' | credit ' || credit || ' programme ' || coalesce(prog_state, '-')
+        || ' | realloc ' || realloc || ' archive ' || archive || ' | inlined ' || inlined || ' pg ' || pg_lvl || ' standing ' || standing
+        || ' | merged ' || coalesce(merged, '-') || ' | before first ' || hfa;
+    RAISE EXCEPTION 'the V741 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V741 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V741: the bulk readers leave a Summer out, a take-back stands, a late payment revives nothing passed nor the programme fee alone, its credit holds the payment, the levels inline, no Summer standing, MERGED kept, nothing assessed before the first year',
+      coalesce(msg = 'bulk none | after taking back none/CANCELLED | credit 55000.00 programme CANCELLED'
+                     || ' | realloc refused archive refused | inlined true pg 800 standing none | merged MERGED | before first HFA_BEFORE_FIRST_YEAR', false),
       msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────

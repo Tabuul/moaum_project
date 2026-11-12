@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bySession, clearanceRows, evidenceBody, evidencePeriods, evidenceProblem, PAYMENT_STATE_DESK, readComponents, reconRows, reportRows, reviewWords, statementRows, totals, waiverAmountProblem, type Evidence, type Period } from "./historical-fees.ts";
+import { beforeFirstYear, bySession, clearanceRows, evidenceBody, evidencePeriods, evidenceProblem, PAYMENT_STATE_DESK, readComponents, reconRows, reportRows, reviewWords, statementRows, totals, waiverAmountProblem, type Evidence, type Period } from "./historical-fees.ts";
 
 // V654: the historical account as the screens group it — by session with its totals — and as the reports write it
 const periods: Period[] = [
@@ -86,4 +86,11 @@ test("evidence is given for a period not settled with none of the graduate's ope
   assert.equal(evidenceProblem({ ...f, channel: "" }, "2026-10-28"), "Say how you paid.");
   assert.match(evidenceProblem({ ...f, reference: "abc" }, "2026-10-28") ?? "", /^Give the receipt/);
   assert.deepEqual(PAYMENT_STATE_DESK.NOT_SCHOOL_FEES, ["Payment reallocations", "/finance/payment-reallocations"]);
+});
+
+test("a session before the first year of study holds money only: no assessment is offered on it (V741)", () => {
+  assert.equal(beforeFirstYear({ source: "STRUCTURE", source_ref: "2021/2022 — before the first year of study, nothing due" }), true);
+  assert.equal(beforeFirstYear({ source: "STRUCTURE", source_ref: "2022/2023 fee structure" }), false);
+  assert.equal(beforeFirstYear({ source: "ASSESSMENT", source_ref: "HFA/2026/000001" }), false);
+  assert.equal(beforeFirstYear({ source: "NONE", source_ref: null }), false);
 });

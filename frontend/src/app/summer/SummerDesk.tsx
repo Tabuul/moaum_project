@@ -48,6 +48,8 @@ export interface SummerCourseRow {
 }
 
 const SETTERS = ["academic", "registrar", "dregistrar", "super"];
+/** V741: the offices that may open a class list (the API's /registration/class-list readers) */
+const CLASS_LIST = ["academic", "registrar", "dregistrar", "dvc", "vc", "records", "dean", "hod", "exams", "facultyexams", "facultyofficer", "lecturer", "ict", "admin", "super"];
 type View = "students" | "courses" | "groups";
 type Show = "all" | "eligible" | "commenced" | "owing" | "paid" | "notstarted";
 
@@ -391,7 +393,9 @@ export function SummerDesk({ periods, session, sessions, students, courses, acti
               ) : view === "courses" ? (
                 <Panel title="The Summer's classes" right="Allocate lecturers on Teaching Allocation (semester: Summer)">
                   <DTable pageSize={50} cols={["Course", "Title", "Units|num", "Course's semester", "Department", "Lecturer", "Registered|num", "Failed in the first · second", "Score sheet"]} rows={courses.map((c) => [
-                    <Link key="c" className="lnk tnum b700" href={classListHref(c.course_code, session, 3)} title="The students registered in this Summer class">{c.course_code}</Link>,
+                    CLASS_LIST.includes(actingOffice ?? "")
+                      ? <Link key="c" className="lnk tnum b700" href={classListHref(c.course_code, session, 3)} title="The students registered in this Summer class">{c.course_code}</Link>
+                      : <b key="c" className="tnum">{c.course_code}</b>,
                     <span key="t">{c.title ?? "—"}</span>,
                     <span key="u" className="tnum">{c.units ?? "—"}</span>,
                     <span key="s">{semesterWord(c.course_semester)}</span>,
