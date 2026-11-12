@@ -29,7 +29,11 @@ export default async function Page() {
   // V492: the GST & EPS permit of each semester shown here — the registration's, and any examination session's released
   const shown = d.ok ? [...new Set([current?.semester, ...d.data.examSessions.filter((x) => x.papers.length && x.session === d.data.session).map((x) => x.semester)]
     .filter((x): x is number => typeof x === "number"))].sort() : [];
-  const permits = (await Promise.all((shown.length ? shown : [undefined]).map((n) => api<PermitState>(`/api/v1/me/gst-eps-permit${n ? `?semester=${n}` : ""}`))))
+  // V728: the permit is asked for every semester of the session up to the open one too, where a carry-over may sit on an earlier
+  // semester's registration; each answers whether it is shown (the examination cards keep their own semesters)
+  const upTo = Array.from({ length: Math.max(1, Math.min(3, current?.openSemester ?? current?.semester ?? 1)) }, (_, i) => i + 1);
+  const permitSemesters = d.ok ? [...new Set([...upTo, ...shown])].sort() : [];
+  const permits = (await Promise.all((permitSemesters.length ? permitSemesters : [undefined]).map((n) => api<PermitState>(`/api/v1/me/gst-eps-permit${n ? `?semester=${n}` : ""}`))))
     .flatMap((r) => (r.ok ? [r.data] : []));
   // V501: the examination card of the same semesters, by its own rule — every registered course, beside the GST & EPS permit
   const cards = d.ok ? (await Promise.all((shown.length ? shown : [undefined]).map((n) =>

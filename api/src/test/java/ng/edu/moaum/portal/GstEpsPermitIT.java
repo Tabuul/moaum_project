@@ -376,4 +376,126 @@ class GstEpsPermitIT {
         assertThat(String.valueOf(notMine.getBody().get("code"))).startsWith("GST_EPS_PERMIT_");
         assertThat(it.call(th, HttpMethod.GET, "/api/v1/gst/GST/permits?session=" + session, null).getStatusCode().value()).isEqualTo(403);
     }
+
+    /** a registration of the given session, status and entries (course code, entry type, how it was added) */
+    private UUID registration(UUID student, String ses, int semester, String status, String[]... entries) {
+        return it.db(() -> {
+            UUID reg = jdbc.sql("""
+                    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+                    VALUES (gen_random_uuid(), :st, :s, :sem, 100, :status, CASE WHEN :status <> 'DRAFT' THEN now() END, CASE WHEN :status = 'APPROVED' THEN now() END)
+                    RETURNING id
+                    """).param("st", student).param("s", ses).param("sem", semester).param("status", status).query(UUID.class).single();
+            for (String[] e : entries) {
+                jdbc.sql("""
+                        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, added_as)
+                        SELECT :r, o.id, c.units, :t, CASE WHEN :status = 'APPROVED' THEN 'APPROVED' ELSE 'REGISTERED' END, :a
+                          FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
+                         WHERE o.course_code = :c AND o.session = :s AND o.semester = :sem AND o.stream = 'REGULAR'
+                        """).param("r", reg).param("c", e[0]).param("t", e[1]).param("a", e.length > 2 ? e[2] : null)
+                        .param("status", status).param("s", ses).param("sem", semester).update();
+            }
+            return reg;
+        });
+    }
+
+    private static List<String> classified(Map<String, Object> state) {
+        List<String> out = new ArrayList<>();
+        for (Object o : (List<?>) state.get("courses")) out.add(((Map<?, ?>) o).get("course_code") + "/" + ((Map<?, ?>) o).get("classification"));
+        return out;
+    }
+
+    /**
+     * V728 (the University's brief of 12 November 2026): a GST or EPS course registered as a carry-over is on the permit like any other —
+     * listed once, classified CARRY_OVER beside the first registrations — and the permit prints once the session's GST fee and the
+     * school fees are paid and the registration is submitted; the GST fee unpaid holds it and says why a carry-over asks this
+     * session's fee; a carry-over on the second semester is named from the first; the GST and EPS desks open a submitted
+     * registration (the permit's own terms since V589); the permit issued keeps the classification; the first attempt is untouched.
+     */
+    @Test
+    void aCarryOverGstOrEpsCourseIsOnThePermitClassifiedAndPrintsOnceTheFeesArePaid() {
+        int y = it.freeYear(3100, 3700, 1, 0);
+        String prev = (y - 1) + "/" + y;
+        session = y + "/" + (y + 1);
+        it.session(prev, y - 1);
+        it.session(session, y);
+        String yy = String.format("%02d", y % 100);
+        // drawn free of every student an earlier run left: a surname drawn again would hand back that run's student and history
+        int n = it.freeDraw(1000, 9000, k -> List.of("ZZPERMCV" + k, "ZZPERMDV" + k, "MOAUM/ADM/" + yy + "/61" + k, "MOAUM/ADM/" + yy + "/62" + k,
+                "MOAUM/ITS/" + yy + "/" + k, "MOAUM/ITT/" + yy + "/" + k));
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = 'C00061'").query(String.class).single();
+            jdbc.sql("""
+                    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+                        ('GST 486', 'Carry-over Use of English', 2, 1, 100, :d, 'GST', 'LIVE'), ('GST 485', 'Carry-over Peace Studies', 2, 1, 100, :d, 'GST', 'LIVE'),
+                        ('EPS 486', 'Carry-over Entrepreneurship', 2, 1, 100, :d, 'GST', 'LIVE')
+                    ON CONFLICT (code) DO NOTHING
+                    """).param("d", dept).update();
+            return jdbc.sql("""
+                    INSERT INTO catalogue.offering (id, course_code, session, semester)
+                    SELECT gen_random_uuid(), x.c, x.s, x.sem FROM (VALUES ('GST 486', :p, 1), ('GST 486', :s, 1), ('GST 485', :s, 1), ('EPS 486', :s, 2)) x(c, s, sem)
+                    ON CONFLICT (course_code, session, semester, stream) DO NOTHING
+                    """).param("p", prev).param("s", session).update();
+        });
+        UUID cv = it.student("ZZPERMCV" + n, "C00061", "MOAUM/ADM/" + yy + "/61" + n, "MOAUM/ITS/" + yy + "/" + n, 100);
+        UUID dv = it.student("ZZPERMDV" + n, "C00061", "MOAUM/ADM/" + yy + "/62" + n, "MOAUM/ITT/" + yy + "/" + n, 100);
+        // the first attempt, approved in the session before; the carry-over and a first registration, submitted (never approved)
+        registration(cv, prev, 1, "APPROVED", new String[] {"GST 486", "CURRENT"});
+        String firstAttempt = jdbc.sql("""
+                SELECT string_agg(r.status || '/' || e.entry_type || '/' || e.status, ',') FROM registration.course_registration r
+                  JOIN registration.entry e ON e.registration_id = r.id WHERE r.student_id = :st AND r.session = :p
+                """).param("st", cv).param("p", prev).query(String.class).single();
+        registration(cv, session, 1, "SUBMITTED", new String[] {"GST 486", "CARRYOVER"}, new String[] {"GST 485", "CURRENT"});
+        // a declared EPS carry-over on the second semester's registration
+        registration(dv, session, 2, "SUBMITTED", new String[] {"EPS 486", "CARRYOVER", "CARRY_OVER_DECLARED"});
+
+        // the GST fee stated and the school fees paid: the carry-over's permit waits for this session's GST fee, and says why
+        assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/sessions/" + session + "/schedule", Map.of("item", "School fees", "amount", 100000, "level", 100)).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/gst/setting", Map.of("requiredForGstEps", true, "requiredForAll", false, "coversEps", true)).getStatusCode().value()).isEqualTo(200);
+        assertThat(it.call(bursar, HttpMethod.PUT, "/api/v1/gst/fee", Map.of("session", session, "amount", 4000)).getStatusCode().value()).isEqualTo(200);
+        payInFull(signedIn(cv, "MOAUM/ITS/" + yy + "/" + n), session);
+        payInFull(signedIn(dv, "MOAUM/ITT/" + yy + "/" + n), session);
+        Map<String, Object> held = state(cv, 1);
+        assertThat(held).as(String.valueOf(held)).containsEntry("available", false).containsEntry("code", "GST_EPS_PERMIT_GST_PAYMENT");
+        assertThat(String.valueOf(held.get("reason"))).endsWith("A carry-over GST or EPS course is examined in " + session + ", so the GST fee of " + session
+                + " is asked; a GST fee paid in an earlier session does not cover it.");
+        assertThat(classified(held)).containsExactly("GST 485/FIRST_TIME", "GST 486/CARRY_OVER");   // listed while held
+
+        // the GST desk opens the submitted registration's student (it read approved registrations only)
+        ResponseEntity<Map> desk = it.get(gst, "/api/v1/gst/GST/permits/students/" + cv + "?session=" + session + "&semester=1");
+        assertThat(desk.getStatusCode().value()).as(String.valueOf(desk.getBody())).isEqualTo(200);
+        assertThat(desk.getBody()).containsEntry("code", "GST_EPS_PERMIT_GST_PAYMENT").containsEntry("carryOverCount", 1);
+        assertThat(it.get(eps, "/api/v1/gst/EPS/permits/students/" + dv + "?session=" + session + "&semester=2").getStatusCode().value()).isEqualTo(200);
+
+        // paid: the permit prints — GST first-time and carry-over together, one row each, and the classification kept on issue
+        it.db(() -> {
+            for (UUID s : List.of(cv, dv)) {
+                String r = jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 4000, 'GST fee ' || :ses)").param("s", s).param("ses", session).query(String.class).single();
+                jdbc.sql("SELECT finance.confirm_payment(:r, 'Bank transfer', 'integration test')").param("r", r).query(String.class).single();
+            }
+            return null;
+        });
+        Map<String, Object> ready = state(cv, 1);
+        assertThat(ready).as(String.valueOf(ready)).containsEntry("available", true).containsEntry("gstCount", 2).containsEntry("carryOverCount", 1).containsEntry("firstTimeCount", 1);
+        assertThat(classified(ready)).containsExactly("GST 485/FIRST_TIME", "GST 486/CARRY_OVER");
+        Map<String, Object> printed = issue(cv, 1, "PRINT");
+        assertThat(((Map) printed.get("permit")).get("reference")).asString().matches("GST-EPS/" + y + "/\\d{6,}");
+        assertThat(jdbc.sql("""
+                SELECT string_agg((x->>'code') || '/' || (x->>'classification'), ',' ORDER BY x->>'code')
+                  FROM registration.gst_eps_permit pm, jsonb_array_elements(pm.courses) x WHERE pm.student_id = :st AND pm.session = :s AND pm.semester = 1
+                """).param("st", cv).param("s", session).query(String.class).single()).isEqualTo("GST 485/FIRST_TIME,GST 486/CARRY_OVER");
+
+        // the declared EPS carry-over: the first semester names the second, which prints
+        Map<String, Object> first = state(dv, 1);
+        assertThat(first).containsEntry("available", false).containsEntry("shown", false).containsEntry("otherSemesters", List.of(2));
+        assertThat(String.valueOf(first.get("reason"))).contains("on your second semester registration: choose that semester.");
+        Map<String, Object> second = state(dv, 2);
+        assertThat(second).as(String.valueOf(second)).containsEntry("available", true).containsEntry("epsCount", 1);
+        assertThat(classified(second)).containsExactly("EPS 486/CARRY_OVER");
+
+        // the first attempt as it was
+        assertThat(jdbc.sql("""
+                SELECT string_agg(r.status || '/' || e.entry_type || '/' || e.status, ',') FROM registration.course_registration r
+                  JOIN registration.entry e ON e.registration_id = r.id WHERE r.student_id = :st AND r.session = :p
+                """).param("st", cv).param("p", prev).query(String.class).single()).isEqualTo(firstAttempt).isEqualTo("APPROVED/CURRENT/APPROVED");
+    }
 }

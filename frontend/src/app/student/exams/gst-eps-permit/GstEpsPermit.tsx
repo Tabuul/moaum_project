@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { semesterName } from "@/lib/student-portal";
-import { paymentRemedy, permitSections, permitStatusLabel, permitSummary, registrationRemedy, slotDate, slotTime, slotVenue, type PermitState } from "@/lib/gst-eps-permit";
+import { classificationWord, paymentRemedy, permitSections, permitStatusLabel, permitSummary, registrationRemedy, slotDate, slotTime, slotVenue, type PermitState } from "@/lib/gst-eps-permit";
 import { PermitActions } from "../CardActions";
 import { shownCode } from "@/lib/course-code";
 
@@ -28,7 +28,7 @@ function CourseTables({ v }: { v: PermitState }) {
             const pending = (t: string) => (t === "TO BE SCHEDULED" ? <span className="sub2 ink-faint">{t}</span> : <span className="tnum">{t}</span>);
             return [
               <span key="n" className="tnum">{n}</span>,
-              <Two key="c" a={shownCode(c.course_code)} b={c.title} />,
+              <span key="c"><Two a={shownCode(c.course_code)} b={c.title} />{classificationWord(c) ? <Pil kind="warn">{classificationWord(c)}</Pil> : null}</span>,
               <span key="u" className="tnum">{c.units}</span>,
               <Pil key="t" kind={c.course_type === "GST" ? "info" : "ok"}>{c.course_type}</Pil>,
               <span key="d">{pending(slotDate(c))}</span>,
@@ -51,7 +51,10 @@ export function GstEpsPermit({ v, semesters }: { v: PermitState; semesters: numb
   if (registrationRemedy(v.code)) remedies.push(<LinkBtn key="r" kind="primary" href="/student/register">BACK TO COURSE REGISTRATION</LinkBtn>);
   if (paymentRemedy(v.code) === "GST") remedies.push(<LinkBtn key="g" kind="primary" href="/student/gst">GST FEE</LinkBtn>);
   if (paymentRemedy(v.code) === "FEES") remedies.push(<LinkBtn key="f" kind="primary" href="/student/fees">FEES & PAYMENTS</LinkBtn>);
-  const approved = v.registration?.status === "APPROVED" || v.registration?.status === "LOCKED";
+  // V728: the semester whose registration holds the GST and EPS courses, one press away
+  for (const n of v.courses.length ? [] : v.otherSemesters ?? []) {
+    remedies.push(<LinkBtn key={`s${n}`} kind="primary" href={`/student/exams/gst-eps-permit?semester=${n}`}>{`${semesterName(n).toUpperCase()} SEMESTER PERMIT`}</LinkBtn>);
+  }
   return (
     <>
       {semesters.length > 1 ? (
@@ -85,7 +88,11 @@ export function GstEpsPermit({ v, semesters }: { v: PermitState; semesters: numb
             ["Level", `${v.registration?.level ?? st.level ?? "—"} Level`],
             ["Permit number", v.permit?.reference ?? (v.available ? "Given when you first view the permit" : "—")],
           ]} />
-          {approved && v.courses.length ? <CourseTables v={v} /> : null}
+          {/* V728: the courses of any submitted registration (V589 issues the permit on one), carry-overs classified */}
+          {v.courses.length ? <CourseTables v={v} /> : null}
+          {!v.courses.length && v.pending?.length ? (
+            <div className="sub2 mt-2">On your draft, not yet submitted: {v.pending.map((c) => `${shownCode(c.course_code)}${c.entry_type === "CARRYOVER" ? " (carry-over)" : ""}`).join(", ")}.</div>
+          ) : null}
           {v.available ? <div className="mt-2"><PermitActions session={v.session} semester={v.semester} /></div> : null}
           {v.permit && v.permit.status !== "REVOKED" ? (
             <div className="sub2 mt-2">Viewed {v.permit.viewed} · downloaded {v.permit.downloaded} · printed {v.permit.printed}. Viewing or printing it again gives the same permit, with the courses your registration carries now.</div>

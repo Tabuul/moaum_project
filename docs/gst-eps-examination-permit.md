@@ -1,4 +1,4 @@
-# The GST & EPS examination permit card (V492, V589)
+# The GST & EPS examination permit card (V492, V589, V728)
 
 ## What it is
 
@@ -81,6 +81,56 @@ registration's GST/EPS courses for the semester asked, first or second, and make
 
 No payment rule was added. Finance remains the payment authority, and the course registration remains the registration
 authority.
+
+## Carry-over courses (V728)
+
+The University's brief of 12 November 2026: students who registered GST or EPS courses as carry-overs could not print the
+permit. No rule of the permit refused a carry-over: `gst_eps_permit_courses` and `gst_eps_permit_state` never read the
+entry's type, and every carry-over case built through the registration functions (GST and EPS, results-stated and declared,
+first and second semester, 300 and 400 Level, spillover) printed once the registration was submitted, the session's GST
+fee paid and the school fees paid. What stopped students was around the permit:
+- the Examinations page asked only for the open semester's permit, and showed no panel and no reason when the permit
+  listed no course (a draft holding the carry-over, or a carry-over on the first semester's registration while the second
+  is open); the permit page drew its course table only for an approved registration;
+- the second semester's draft placed again a carry-over already registered on the first semester's registration;
+- a student whose only GST fee was paid in an earlier session read "not yet confirmed as paid", with no word that a
+  carry-over examined this session asks this session's fee (V690, the University's word of 28 October).
+
+V728 corrects the existing implementation; no permit module was added:
+- **One row a course, classified.** `gst_eps_permit_courses` returns each course once (a course on the registration twice,
+  by two offerings, is listed once, the approved entry first) with `classification`:
+  - `CARRY_OVER`: the entry is a carry-over or a repeat, was declared a carry-over (`CARRY_OVER_DECLARED`), or the student
+    registered the course in an earlier session (an old-portal carry-over typed `CURRENT`);
+  - `DEFERRED`: the entry is a deferred course;
+  - `FIRST_TIME`: any other.
+  A carry-over whose first attempt is not on this portal and is typed `CURRENT` reads `FIRST_TIME`.
+- **The state says more, decides nothing new.** `gst_eps_permit_state` keeps its rules, their order and their codes. It
+  adds `carryOverCount`, `firstTimeCount`, `pending` (a draft's GST and EPS courses), `otherSemesters` (the session's other
+  semesters whose submitted registration carries GST or EPS courses, named in the `NO_REGISTRATION` and `NO_COURSES`
+  reasons) and `shown` (courses listed, a draft holding some, or a permit made). The `GST_PAYMENT` reason adds, when a
+  carry-over is on the permit: "A carry-over GST or EPS course is examined in S, so the GST fee of S is asked; a GST fee
+  paid in an earlier session does not cover it."
+- **Issued with the classification.** The permit's stored courses and every event keep each course's classification.
+- **Placed once.** `registration.registered_elsewhere` says whether a course stands on another semester's registration of
+  the session; `student_draft` and `student_choose` skip such a carry-over (the picker's other-semester rule already
+  refused it). Courses already registered on two semesters are kept as they are; the migration counts them.
+- **The offices.** The GST and EPS desks open a student whose submitted registration carries their course, and count the
+  submitted registrations in the schedule's `registered` (approved or locked only before; the permit's terms since V589).
+- **The screens.** The Examinations page asks for the permit of every semester of the session up to the open one; a panel
+  shows whenever `shown`, with the reason and the draft's courses. When no semester is asked and the open
+  semester shows nothing (no course, no draft holding one, no permit), the permit page opens on the semester that holds
+  the courses; a draft holding GST or EPS courses stays in view with its reason. The page offers that semester when
+  another is chosen, draws the course table for any submitted
+  registration, and marks a carry-over or deferred course. The PDF prints CARRY-OVER (or DEFERRED) under the course title,
+  and the summary under the table counts the carry-overs.
+
+Unchanged: being in study, a submitted registration, the course registered and not dropped, the GST fee as
+`registration.gst_gate` asks it (per session, V690), the school fees as the examination card reads them, a withdrawn
+permit. The first attempt's registration and results are never touched.
+
+Put to the University: whether ENT 211, ENT 312 and ENT 415 (kind Core, no office) are EPS courses; whether a carry-over
+held for the GST fee may be added after add and drop closes once the fee is paid; whether a GST fee paid in the session
+the course was first taken covers its carry-over.
 
 ## The examination's date, time and venue
 
@@ -194,9 +244,18 @@ here.
   cards are neither offered on approval nor released, and is on the offices' roster; ICT Support's view reads the card's
   check code and the issued permit without counting, while the student's own card is counted.
 
+V728 (`aCarryOverGstOrEpsCourseIsOnThePermitClassifiedAndPrintsOnceTheFeesArePaid`): a results carry-over beside a
+first registration, held by the session's GST fee with the reason saying why, opened by the GST desk while submitted,
+printed once paid with both courses classified and the classification kept on the issued permit; a declared EPS
+carry-over on the second semester named from the first; the first attempt unchanged.
+
 It also covers the offices' reach and the verification states. `check.sql` asserts the course rule and the issue,
 logging, revocation and reset properties (the V492 block, restated for V589's codes) and, in the V589 block, the card's
-terms with the scheme refusing and the cards unreleased, the draft and the unpaid, and the roster.
+terms with the scheme refusing and the cards unreleased, the draft and the unpaid, and the roster. The V728 block asserts
+the carry-over cases (first-time, results, declared, the old portal's shape, GST and EPS together, a course on the
+registration twice listed once), the requirements kept (a GST fee of an earlier session only, the school fees unpaid, a
+draft, a dropped carry-over), the issue's classification, the draft and the save not placing a carry-over twice, the history
+unchanged, and a postgraduate student's carry-over (held by the school fees unpaid, printed once paid).
 
 ## Not built
 

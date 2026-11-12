@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { courseSchedule, paymentRemedy, permitSections, permitStatusLabel, permitSummary, permitVerifyPath, registrationRemedy, rosterStatusLabel, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitCourse, type PermitState } from "./gst-eps-permit.ts";
+import { classificationWord, courseSchedule, paymentRemedy, permitSections, permitShown, permitStatusLabel, permitSummary, permitVerifyPath, registrationRemedy, rosterStatusLabel, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitCourse, type PermitState } from "./gst-eps-permit.ts";
 
 const gst = (code: string, extra: Partial<PermitCourse> = {}): PermitCourse => ({ course_code: code, title: code, units: 2, course_type: "GST", ...extra });
 const eps = (code: string, extra: Partial<PermitCourse> = {}): PermitCourse => ({ course_code: code, title: code, units: 2, course_type: "EPS", ...extra });
@@ -61,4 +61,16 @@ test("the summary counts papers, units and each kind; the QR path carries the re
   assert.equal(rosterStatusLabel("REVOKED"), "Withdrawn");
   assert.equal(courseSchedule({ course_code: "GST 111", title: "x", units: 2, course_type: "GST", registered: 4 }), TO_BE_SCHEDULED);
   assert.equal(courseSchedule({ course_code: "GST 111", title: "x", units: 2, course_type: "GST", registered: 4, held_on: "2026-11-16", starts_at: "09:00:00", ends_at: "11:00:00", venue: "Main Hall" }), "Mon 16 Nov 2026 · 09:00–11:00 · Main Hall");
+});
+
+test("V728: a carry-over is listed and classified like any course, counted once in the summary, and the permit is shown", () => {
+  const courses = [gst("GST 111", { classification: "CARRY_OVER", entry_type: "CARRYOVER" }), gst("GST 311", { classification: "FIRST_TIME" }), eps("EPS 202", { classification: "CARRY_OVER" })];
+  assert.deepEqual(permitSections(courses).map((x) => [x.title, x.courses.map((c) => c.course_code)]), [["GST COURSES", ["GST 111", "GST 311"]], ["EPS COURSES", ["EPS 202"]]]);
+  assert.deepEqual(courses.map(classificationWord), ["Carry-over", "", "Carry-over"]);
+  assert.equal(classificationWord({ classification: "DEFERRED" }), "Deferred");
+  assert.equal(permitSummary({ courses, units: 6, gstCount: 2, epsCount: 1, carryOverCount: 2 }), "3 papers · 6 credit units · GST 2 · EPS 1 · 2 carry-overs");
+  assert.equal(permitSummary({ courses: [eps("EPS 202", { classification: "CARRY_OVER" })], units: 2, gstCount: 0, epsCount: 1 }), "1 paper · 2 credit units · EPS 1 · 1 carry-over");
+  assert.equal(permitShown({ shown: true, courses: [], permit: null }), true);        // a draft holding the carry-over: said, not hidden
+  assert.equal(permitShown({ shown: false, courses: [], permit: null }), false);
+  assert.equal(permitShown({ courses: [gst("GST 111")], permit: null }), true);       // an older answer, by its courses
 });

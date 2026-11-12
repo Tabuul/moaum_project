@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 558
+\set EXPECTED 562
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32305,6 +32305,225 @@ BEGIN
                      || ' | G TO_OK/2025-10-20/OLD-727-G current session true LINKED/OLD_PORTAL_EXPORT PART_PAID/10000/15000'
                      || ' | H LINKED/OLD_PORTAL_EXPORT/true TO_OK/true TRANSFER_LEGACY_KEPT | D AWAITING_APPLICATION', false),
       msg);
+END $$;
+
+-- ── V728. The GST & EPS examination permit for carry-over courses. A made-up calendar: 9727/9728, then 9728/9729 current with both
+--          semesters open; a GST fee of ₦4,000 stated for each; made-up GST 728 (100 Level), GST 738 (300 Level) and EPS 728 (200
+--          Level) and a departmental CHK 728; made-up 300 Level students. GST 728 failed in 9727/9728 (results published) is a
+--          carry-over in 9728/9729. With the session's GST fee and its school fees paid and the registration submitted, the permit
+--          prints for a first registration (FIRST_TIME), a results carry-over (CARRY_OVER), a declared EPS carry-over on the second
+--          semester, and first-time and carry-over GST and EPS together — one row a course (GST 728 on the registration twice, by this
+--          session's offering and 9727/9728's, listed once), a course typed CURRENT but registered in an earlier session (the old
+--          portal's shape) read CARRY_OVER, the departmental course never listed; the summary counts 2 GST, 1 EPS, 2 carry-overs.
+--          Every requirement stands: a GST fee paid for 9727/9728 only does not cover the carry-over (GST_PAYMENT, the reason says
+--          why), the school fees unpaid read NOT_PAID with the courses listed, a draft reads NOT_SUBMITTED with its courses pending and
+--          the permit shown, a dropped carry-over is not listed. The other semester is named where the courses are not. The permit
+--          issued keeps each course's classification, the first attempt's registration and results unchanged; the draft of the second
+--          semester does not place the carry-over already registered on the first, nor does saving it (both do for a student who has
+--          not). A postgraduate student's carry-over (M.Sc., 700 Level) is listed and classified alike, held by the school fees unpaid
+--          and printed once they are paid. Undone after ──
+DO $$
+DECLARE prev text := '9727/9728'; ses text := '9728/9729'; prog text := 'C00061'; dept text; who uuid := gen_random_uuid();
+        ft uuid := gen_random_uuid(); co uuid := gen_random_uuid(); dc uuid := gen_random_uuid(); mx uuid := gen_random_uuid();
+        up uuid := gen_random_uuid(); nf uuid := gen_random_uuid(); dr uuid := gen_random_uuid(); dp uuid := gen_random_uuid();
+        tw uuid := gen_random_uuid(); tw2 uuid := gen_random_uuid(); pg uuid := gen_random_uuid();
+        o_e_g uuid := gen_random_uuid(); o_e_e uuid := gen_random_uuid(); o_g uuid := gen_random_uuid();
+        o_g3 uuid := gen_random_uuid(); o_e uuid := gen_random_uuid(); o_c uuid := gen_random_uuid(); o_g2 uuid := gen_random_uuid();
+        o_e2 uuid := gen_random_uuid(); o_gp uuid := gen_random_uuid();
+        x uuid; rid uuid; r_e uuid; d_tw uuid; d_tw2 uuid; msg text;
+        st_ft jsonb; st_co jsonb; st_dc1 jsonb; st_dc2 jsonb; st_mx jsonb; st_up jsonb; st_nf jsonb; st_dr jsonb; st_dp jsonb;
+        card_up jsonb; card_nf jsonb; issued jsonb; stored text; events int; mx_rows text; mx_codes text;
+        hist_before text; hist_after text; scores_before text; scores_after text; owed text;
+        tw_s2 text; tw2_s2 text; tw_elsewhere boolean; tw2_elsewhere boolean; tw_s2c text; tw2_s2c text; st_pg0 jsonb; st_pg jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.reason', 'CHECK V728', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM assessment.ensure_session(prev);
+    PERFORM assessment.ensure_session(ses);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9728/01' WHERE name = ses;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), ses, 1, 'OPEN'), (gen_random_uuid(), ses, 2, 'OPEN')
+        ON CONFLICT (session, number) DO UPDATE SET state = 'OPEN';
+    SELECT dept_code INTO dept FROM ref.programme WHERE code = prog;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+        ('GST 728', 'Check Use of English', 2, 1, 100, dept, 'GST', 'LIVE', 'GST'),
+        ('GST 738', 'Check Peace Studies', 2, 1, 300, dept, 'GST', 'LIVE', 'GST'),
+        ('EPS 728', 'Check Entrepreneurship', 2, 1, 200, dept, 'GST', 'LIVE', 'EPS'),
+        ('CHK 728', 'Check Departmental Core', 3, 1, 300, dept, 'Core', 'LIVE', NULL);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('GST 728', prog, 100, 'GST'), ('GST 738', prog, 300, 'GST'), ('EPS 728', prog, 200, 'GST'), ('CHK 728', prog, 300, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES
+        (o_e_g, 'GST 728', prev, 1, 'REGULAR'), (o_e_e, 'EPS 728', prev, 1, 'REGULAR'),
+        (o_g, 'GST 728', ses, 1, 'REGULAR'), (o_g3, 'GST 738', ses, 1, 'REGULAR'), (o_e, 'EPS 728', ses, 1, 'REGULAR'),
+        (o_c, 'CHK 728', ses, 1, 'REGULAR'), (o_g2, 'GST 728', ses, 2, 'REGULAR'), (o_e2, 'EPS 728', ses, 2, 'REGULAR'),
+        (o_gp, 'GST 728', ses, 1, 'PG');   -- the School's class of it, for the postgraduate student
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    SELECT v.id, 'MOAUM/ADM/97/9728' || lpad(v.n::text, 2, '0'), 'MOAUM/CHK/97/728' || lpad(v.n::text, 2, '0'), 'CHECKV728', v.nm, prog, 'UTME', prev, 100, 300, 'ACTIVE', now()
+      FROM (VALUES (ft, 1, 'First Time'), (co, 2, 'Carry Over'), (dc, 3, 'Declared'), (mx, 4, 'Mixed'), (up, 5, 'Earlier Fee'),
+                   (nf, 6, 'Fees Unpaid'), (dr, 7, 'Draft'), (dp, 8, 'Dropped'), (tw, 9, 'Twice'), (tw2, 10, 'Once')) v(id, n, nm);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (pg, 'MOAUM/ADM/97/972811', 'MOAUM/CHK/97/72811', 'CHECKV728', 'Postgraduate', 'C90002', 'POSTGRADUATE', prev, 700, 700, 'ACTIVE', now());
+
+    -- 9727/9728: GST 728 (and EPS 728 for the mixed student) registered and approved; GST 728 failed and published
+    FOR x IN SELECT unnest(ARRAY[co, mx, up, tw, tw2]) LOOP
+        r_e := gen_random_uuid();
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at) VALUES (r_e, x, prev, 1, 200, 'APPROVED', now(), now());
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r_e, o_e_g, 2, 'CURRENT', 'APPROVED');
+        IF x = mx THEN INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (r_e, o_e_e, 2, 'CURRENT', 'APPROVED'); END IF;
+    END LOOP;
+    INSERT INTO assessment.score_sheet (id, offering_id) VALUES (gen_random_uuid(), o_e_g), (gen_random_uuid(), o_e_e);
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam)
+    SELECT sh.id, s.id, 10, 15 FROM assessment.score_sheet sh, unnest(ARRAY[co, mx, up, tw, tw2]) s(id) WHERE sh.offering_id = o_e_g;
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam) SELECT sh.id, mx, 10, 15 FROM assessment.score_sheet sh WHERE sh.offering_id = o_e_e;
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V728' WHERE offering_id IN (o_e_g, o_e_e);
+    PERFORM set_config('moaum.maintenance', '', true);
+    SELECT string_agg(r.session || '/' || r.status || '/' || o.course_code || '/' || e.entry_type || '/' || e.status, ',' ORDER BY r.student_id, o.course_code)
+      INTO hist_before FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE r.session = prev;
+    SELECT string_agg(sc.student_id || ':' || sc.ca || '+' || sc.exam, ',' ORDER BY sc.student_id, sc.sheet_id) INTO scores_before
+      FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id WHERE sh.offering_id IN (o_e_g, o_e_e);
+    owed := (SELECT string_agg(c.course_code, ',' ORDER BY c.course_code) FROM registration.carryovers(co) c);
+
+    -- the fees: a GST fee of ₦4,000 for each session; the school fees of 9728/9729
+    UPDATE finance.gst_setting SET required_for_gst_eps = true, covers_eps = true WHERE id = 1;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.state_gst_fee(prev, 4000, NULL, NULL, NULL, NULL, NULL, 'check', who, 'bursar');
+    PERFORM finance.state_gst_fee(ses, 4000, NULL, NULL, NULL, NULL, NULL, 'check', who, 'bursar');
+    INSERT INTO finance.fee_schedule (session, item, amount, level) SELECT ses, 'School fees', 100000, l FROM unnest(ARRAY[100, 200, 300, 400, 700]) l;
+    -- every student pays the session's GST fee but the one who paid 9727/9728's only; every one the school fees but the one who did not
+    FOR x IN SELECT unnest(ARRAY[ft, co, dc, mx, nf, dr, dp, tw, tw2]) LOOP
+        PERFORM finance.confirm_payment(finance.new_purpose_reference(x, ses, 4000, 'GST fee ' || ses), 'Bank transfer', 'CHECK V728');
+    END LOOP;
+    PERFORM finance.confirm_payment(finance.new_purpose_reference(up, prev, 4000, 'GST fee ' || prev), 'Bank transfer', 'CHECK V728');
+    FOR x IN SELECT unnest(ARRAY[ft, co, dc, mx, up, dr, dp, tw, tw2]) LOOP
+        PERFORM finance.confirm_payment(finance.new_reference(x, ses, 40000, NULL), 'Bank transfer', 'CHECK V728');
+    END LOOP;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- 9728/9729's registrations, submitted (never approved) but the draft's
+    FOR x IN SELECT unnest(ARRAY[ft, co, dc, mx, up, nf, dr, dp, tw]) LOOP
+        rid := gen_random_uuid();
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at)
+        VALUES (rid, x, ses, CASE WHEN x = dc THEN 2 ELSE 1 END, 300, CASE WHEN x = dr THEN 'DRAFT' ELSE 'SUBMITTED' END, CASE WHEN x = dr THEN NULL ELSE now() END);
+        INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status, added_as)
+        SELECT rid, v.o, 2, v.t, v.s, v.a FROM (VALUES
+            (ft, o_g3, 'CURRENT', 'REGISTERED', NULL),
+            (co, o_g, 'CARRYOVER', 'REGISTERED', NULL),
+            (dc, o_e2, 'CARRYOVER', 'REGISTERED', 'CARRY_OVER_DECLARED'),
+            -- first-time GST 738, carry-over GST 728 on this session's offering and on 9727/9728's, EPS 728 typed CURRENT though
+            -- registered in 9727/9728 (the old portal's shape), and the departmental CHK 728
+            (mx, o_g3, 'CURRENT', 'REGISTERED', NULL), (mx, o_g, 'CARRYOVER', 'APPROVED', NULL),
+            (mx, o_e_g, 'CARRYOVER', 'REGISTERED', NULL), (mx, o_e, 'CURRENT', 'REGISTERED', NULL), (mx, o_c, 'CURRENT', 'REGISTERED', NULL),
+            (up, o_g, 'CARRYOVER', 'REGISTERED', NULL),
+            (nf, o_g3, 'CURRENT', 'REGISTERED', NULL),
+            (dr, o_g, 'CARRYOVER', 'REGISTERED', NULL),
+            (dp, o_g, 'CARRYOVER', 'DROPPED', NULL), (dp, o_g3, 'CURRENT', 'REGISTERED', NULL),
+            (tw, o_g, 'CARRYOVER', 'REGISTERED', NULL)) v(st, o, t, s, a)
+         WHERE v.st = x;
+    END LOOP;
+
+    rid := gen_random_uuid();
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at) VALUES (rid, pg, ses, 1, 700, 'SUBMITTED', now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (rid, o_gp, 2, 'CARRYOVER', 'REGISTERED');
+    st_pg0 := registration.gst_eps_permit_state(pg, ses, 1);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(pg, ses, 40000, NULL), 'Bank transfer', 'CHECK V728');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    st_pg := registration.gst_eps_permit_state(pg, ses, 1);
+
+    st_ft := registration.gst_eps_permit_state(ft, ses, 1);
+    st_co := registration.gst_eps_permit_state(co, ses, 1);
+    st_dc1 := registration.gst_eps_permit_state(dc, ses, 1);
+    st_dc2 := registration.gst_eps_permit_state(dc, ses, 2);
+    st_mx := registration.gst_eps_permit_state(mx, ses, 1);
+    st_up := registration.gst_eps_permit_state(up, ses, 1);
+    st_nf := registration.gst_eps_permit_state(nf, ses, 1);
+    st_dr := registration.gst_eps_permit_state(dr, ses, 1);
+    st_dp := registration.gst_eps_permit_state(dp, ses, 1);
+    card_up := registration.exam_card_state(up, ses, 1);
+    card_nf := registration.exam_card_state(nf, ses, 1);
+    SELECT string_agg((c->>'course_code') || ':' || (c->>'course_type') || ':' || (c->>'classification'), ',' ORDER BY ord), count(*)::text
+      INTO mx_codes, mx_rows FROM jsonb_array_elements(st_mx->'courses') WITH ORDINALITY j(c, ord);
+
+    -- the permit issued, printed, by the student: its courses keep the classification
+    PERFORM set_config('moaum.actor_id', co::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    issued := registration.issue_gst_eps_permit(co, ses, 1, 'PRINT');
+    SELECT string_agg((c->>'code') || ':' || (c->>'classification'), ',') INTO stored
+      FROM registration.gst_eps_permit pm, jsonb_array_elements(pm.courses) c WHERE pm.student_id = co AND pm.session = ses AND pm.semester = 1;
+    SELECT count(*) INTO events FROM registration.gst_eps_permit_event ev JOIN registration.gst_eps_permit pm ON pm.id = ev.permit_id
+     WHERE pm.student_id = co AND ev.courses->0->>'classification' = 'CARRY_OVER';
+
+    -- the second semester's draft: the carry-over registered on the first is not placed again; a student who has not, has it placed
+    tw_elsewhere := registration.registered_elsewhere(tw, ses, 2, 'GST 728');
+    tw2_elsewhere := registration.registered_elsewhere(tw2, ses, 2, 'GST 728');
+    PERFORM set_config('moaum.actor_id', tw::text, true);
+    d_tw := registration.student_draft(tw, ses, 2);
+    PERFORM set_config('moaum.actor_id', tw2::text, true);
+    d_tw2 := registration.student_draft(tw2, ses, 2);
+    tw_s2 := coalesce((SELECT string_agg(o.course_code || '/' || e.entry_type, ',') FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = d_tw), '-');
+    tw2_s2 := coalesce((SELECT string_agg(o.course_code || '/' || e.entry_type, ',') FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = d_tw2), '-');
+    -- saved as they stand: the save places no carry-over registered on another semester either
+    PERFORM set_config('moaum.actor_id', tw::text, true);
+    PERFORM registration.student_choose(d_tw, '{}'::uuid[]);
+    PERFORM set_config('moaum.actor_id', tw2::text, true);
+    PERFORM registration.student_choose(d_tw2, '{}'::uuid[]);
+    tw_s2c := coalesce((SELECT string_agg(o.course_code || '/' || e.entry_type, ',') FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = d_tw), '-');
+    tw2_s2c := coalesce((SELECT string_agg(o.course_code || '/' || e.entry_type, ',') FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = d_tw2), '-');
+
+    -- the first attempt's registration and results as they were
+    SELECT string_agg(r.session || '/' || r.status || '/' || o.course_code || '/' || e.entry_type || '/' || e.status, ',' ORDER BY r.student_id, o.course_code)
+      INTO hist_after FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE r.session = prev;
+    SELECT string_agg(sc.student_id || ':' || sc.ca || '+' || sc.exam, ',' ORDER BY sc.student_id, sc.sheet_id) INTO scores_after
+      FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id WHERE sh.offering_id IN (o_e_g, o_e_e);
+    RAISE EXCEPTION 'CHECK_V728_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V728_UNDONE' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V728: the GST & EPS permit prints for carry-overs as for first registrations — each course listed once and classified FIRST_TIME or CARRY_OVER (a results carry-over, a declared one, one typed CURRENT but registered in an earlier session), GST and EPS together, a departmental course never; the other semester named where the courses are not',
+        coalesce(owed LIKE '%GST 728%'
+            AND (st_ft->>'available')::boolean AND st_ft->'courses'->0->>'course_code' = 'GST 738' AND st_ft->'courses'->0->>'classification' = 'FIRST_TIME'
+                AND (st_ft->>'firstTimeCount')::int = 1 AND (st_ft->>'carryOverCount')::int = 0
+            AND (st_co->>'available')::boolean AND jsonb_array_length(st_co->'courses') = 1 AND st_co->'courses'->0->>'classification' = 'CARRY_OVER'
+                AND st_co->'courses'->0->>'entry_type' = 'CARRYOVER' AND (st_co->>'shown')::boolean
+            AND (st_dc2->>'available')::boolean AND st_dc2->'courses'->0->>'course_code' = 'EPS 728' AND st_dc2->'courses'->0->>'classification' = 'CARRY_OVER'
+            AND NOT (st_dc1->>'available')::boolean AND NOT (st_dc1->>'shown')::boolean AND st_dc1->'otherSemesters' = '[2]'::jsonb
+                AND st_dc1->>'reason' LIKE '%Your GST and EPS courses of 9728/9729 are on your second semester registration: choose that semester.'
+            AND (st_mx->>'available')::boolean AND mx_rows = '3' AND mx_codes = 'GST 728:GST:CARRY_OVER,GST 738:GST:FIRST_TIME,EPS 728:EPS:CARRY_OVER'
+                AND (st_mx->>'gstCount')::int = 2 AND (st_mx->>'epsCount')::int = 1 AND (st_mx->>'carryOverCount')::int = 2 AND (st_mx->>'firstTimeCount')::int = 1
+                AND (st_mx->>'units')::int = 6, false),
+        format('owed %s | first %s %s %s | carry %s %s %s | declared s1 %s shown %s other %s "%s" s2 %s %s | mixed %s %s rows: %s (GST %s EPS %s carry %s first %s units %s)',
+               owed, st_ft->>'code', st_ft->'courses'->0->>'course_code', st_ft->'courses'->0->>'classification',
+               st_co->>'code', jsonb_array_length(st_co->'courses'), st_co->'courses'->0->>'classification',
+               st_dc1->>'code', st_dc1->>'shown', st_dc1->'otherSemesters', st_dc1->>'reason', st_dc2->>'code', st_dc2->'courses'->0->>'classification',
+               st_mx->>'code', mx_rows, mx_codes, st_mx->>'gstCount', st_mx->>'epsCount', st_mx->>'carryOverCount', st_mx->>'firstTimeCount', st_mx->>'units'));
+    PERFORM pg_temp.assert('V728: a carry-over passes no requirement — a GST fee paid for an earlier session only does not cover it (GST_PAYMENT, the reason says why), the school fees unpaid read NOT_PAID with the courses listed, a draft reads NOT_SUBMITTED with its courses pending and the permit shown, a dropped carry-over is not listed; the examination card answers by its own rule',
+        coalesce(st_up->>'code' = 'GST_EPS_PERMIT_GST_PAYMENT' AND NOT (st_up->>'available')::boolean
+                AND st_up->>'reason' LIKE '%A carry-over GST or EPS course is examined in 9728/9729, so the GST fee of 9728/9729 is asked; a GST fee paid in an earlier session does not cover it.'
+                AND (card_up->>'available')::boolean
+            AND st_nf->>'code' = 'GST_EPS_PERMIT_NOT_PAID' AND st_nf->'courses'->0->>'course_code' = 'GST 738' AND NOT (card_nf->>'available')::boolean
+            AND st_dr->>'code' = 'GST_EPS_PERMIT_NOT_SUBMITTED' AND jsonb_array_length(st_dr->'courses') = 0 AND (st_dr->>'shown')::boolean
+                AND st_dr->'pending'->0->>'course_code' = 'GST 728' AND st_dr->'pending'->0->>'entry_type' = 'CARRYOVER'
+            AND (st_dp->>'available')::boolean AND jsonb_array_length(st_dp->'courses') = 1 AND st_dp->'courses'->0->>'course_code' = 'GST 738', false),
+        format('earlier fee %s "%s" card %s | fees unpaid %s %s card %s | draft %s %s courses shown %s pending %s | dropped %s %s',
+               st_up->>'code', st_up->>'reason', card_up->>'code', st_nf->>'code', st_nf->'courses'->0->>'course_code', card_nf->>'code',
+               st_dr->>'code', jsonb_array_length(st_dr->'courses'), st_dr->>'shown', st_dr->'pending', st_dp->>'code', st_dp->'courses'));
+    PERFORM pg_temp.assert('V728: the permit issued for a carry-over keeps its classification (the permit and its event); the draft of another semester does not place a carry-over already registered in the session (it does for a student who has not); the first attempt''s registration and results are unchanged',
+        coalesce(issued->'permit'->>'reference' ~ '^GST-EPS/9728/[0-9]{6,}$' AND (issued->'permit'->>'printed')::int = 1 AND stored = 'GST 728:CARRY_OVER' AND events >= 1
+            AND tw_elsewhere AND NOT tw2_elsewhere AND tw_s2 = '-' AND tw2_s2 = 'GST 728/CARRYOVER' AND tw_s2c = '-' AND tw2_s2c = 'GST 728/CARRYOVER'
+            AND hist_after = hist_before AND scores_after = scores_before, false),
+        format('issued %s printed %s stored %s events %s | elsewhere %s/%s | draft s2 twice %s once %s | saved twice %s once %s | history same %s scores same %s',
+               issued->'permit'->>'reference', issued->'permit'->>'printed', stored, events, tw_elsewhere, tw2_elsewhere, tw_s2, tw2_s2, tw_s2c, tw2_s2c,
+               hist_after = hist_before, scores_after = scores_before));
+    PERFORM pg_temp.assert('V728: a postgraduate student''s GST or EPS carry-over is on the permit as an undergraduate''s — listed and classified CARRY_OVER, held while the school fees are unpaid (NOT_PAID, the course still listed), printed once they are paid',
+        coalesce(st_pg0->>'code' = 'GST_EPS_PERMIT_NOT_PAID' AND st_pg0->'courses'->0->>'course_code' = 'GST 728' AND st_pg0->'courses'->0->>'classification' = 'CARRY_OVER'
+            AND (st_pg->>'available')::boolean AND jsonb_array_length(st_pg->'courses') = 1 AND st_pg->'courses'->0->>'classification' = 'CARRY_OVER'
+            AND (st_pg->>'carryOverCount')::int = 1, false),
+        format('unpaid %s %s %s | paid %s %s %s carry %s', st_pg0->>'code', st_pg0->'courses'->0->>'course_code', st_pg0->'courses'->0->>'classification',
+               st_pg->>'available', st_pg->>'code', st_pg->'courses'->0->>'classification', st_pg->>'carryOverCount'));
 END $$;
 
 -- ── V729: a decision needs a released score only where there is one to release. In 9729/9730, a non-index programme (C00019) and an

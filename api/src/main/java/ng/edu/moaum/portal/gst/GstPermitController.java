@@ -172,7 +172,7 @@ class GstPermitController {
         return jdbc.sql("""
                 SELECT c.code AS course_code, coalesce(o.title, c.title) AS title, c.units, c.general_office AS course_type, o.stream,
                        (SELECT count(DISTINCT r.student_id) FROM registration.entry e
-                          JOIN registration.course_registration r ON r.id = e.registration_id AND r.session = :s AND r.semester = :sem AND r.status IN ('APPROVED', 'LOCKED')
+                          JOIN registration.course_registration r ON r.id = e.registration_id AND r.session = :s AND r.semester = :sem AND r.status <> 'DRAFT'   -- V728: V589's terms
                          WHERE e.offering_id = o.id AND e.status IN ('REGISTERED', 'APPROVED')) AS registered,
                        t.held_on, t.starts_at, t.ends_at, t.venue,
                        x.reference AS cbt_reference, x.state AS cbt_state, x.starts_at AS cbt_starts_at, x.ends_at AS cbt_ends_at, x.venue AS cbt_venue,
@@ -186,7 +186,8 @@ class GstPermitController {
                 """).param("s", session).param("sem", semester).param("o", office).query().listOfRows();
     }
 
-    /** the GST and EPS offices read a student only when an approved registration of the semester carries one of their courses */
+    /** the GST and EPS offices read a student only when a submitted registration of the semester carries one of their courses (V728:
+     *  the permit's own terms since V589 — approved or not — so the roster's students all open) */
     private void reach(String office, UUID student, String session, int semester) {
         String acting = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
         if (!("gst".equals(acting) || "eps".equals(acting))) return;
@@ -195,7 +196,7 @@ class GstPermitController {
                                  JOIN registration.entry e ON e.registration_id = r.id AND e.status IN ('REGISTERED', 'APPROVED')
                                  JOIN catalogue.offering o ON o.id = e.offering_id
                                  JOIN catalogue.course c ON c.code = o.course_code AND c.kind = 'GST' AND c.general_office = :o
-                                WHERE r.student_id = :id AND r.session = :s AND r.semester = :sem AND r.status IN ('APPROVED', 'LOCKED'))
+                                WHERE r.student_id = :id AND r.session = :s AND r.semester = :sem AND r.status <> 'DRAFT')   -- V728: V589's terms
                     OR EXISTS (SELECT 1 FROM registration.gst_eps_permit pm, jsonb_array_elements(pm.courses) x
                                 WHERE pm.student_id = :id AND pm.session = :s AND pm.semester = :sem AND x->>'type' = :o)
                 """).param("o", office).param("id", student).param("s", session).param("sem", semester).query(Boolean.class).single();

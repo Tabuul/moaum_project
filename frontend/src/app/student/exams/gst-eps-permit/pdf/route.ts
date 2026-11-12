@@ -10,7 +10,7 @@ import {
   CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardDay as day, cardFit, cardFooter, cardIdentity, cardPage, cardRules,
   cardTableEnd, cardTableHead, cardVerify, cardWrap,
 } from "@/lib/exam-card-pdf";
-import { permitSections, permitSummary, permitVerifyPath, scheduled, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitState } from "@/lib/gst-eps-permit";
+import { classificationWord, permitSections, permitSummary, permitVerifyPath, scheduled, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitState } from "@/lib/gst-eps-permit";
 import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
@@ -99,10 +99,13 @@ export async function GET(request: NextRequest) {
     for (const c of section.courses) {
       n += 1;
       const title = cardWrap(clean(c.title), W.title, 8.5);
+      // V728: a carry-over (or deferred) course is listed like any other, and marked under its title
+      const marked = classificationWord(c);
+      if (marked) title.push(marked.toUpperCase());
       const venue = scheduled(c) ? cardWrap(clean(slotVenue(c)), W.venue, 8) : [];
       p.text(X.sn, y, String(n), 9);
       p.text(X.code, y, clean(shownCode(c.course_code)), 9, true);
-      title.forEach((t, i) => p.text(X.title, y - i * 10, t, 8.5));
+      title.forEach((t, i) => (marked && i === title.length - 1 ? p.text(X.title, y - i * 10, t, 7, true, [0.45, 0.3, 0.05]) : p.text(X.title, y - i * 10, t, 8.5)));
       p.text(X.unit + 2, y, String(c.units), 9);
       p.text(X.type, y, c.course_type, 8.5, true);
       if (scheduled(c)) {

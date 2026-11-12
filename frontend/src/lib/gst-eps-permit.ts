@@ -12,6 +12,8 @@ export interface PermitCourse {
   units: number;
   course_type: "GST" | "EPS";
   entry_type?: string;
+  /** V728: a first registration of the course, a carry-over (or a repeat, or one registered in an earlier session), or a deferred course */
+  classification?: "FIRST_TIME" | "CARRY_OVER" | "DEFERRED";
   /** CBT or WRITTEN, once a slot is set */
   mode?: string | null;
   held_on?: string | null;
@@ -65,6 +67,25 @@ export interface PermitState {
   cleared?: boolean | null;
   permit?: PermitRecord | null;
   checkCode?: string;
+  /** V728: how many of the courses are carry-overs, and how many first registrations */
+  carryOverCount?: number;
+  firstTimeCount?: number;
+  /** V728: the GST and EPS courses on a draft not yet submitted */
+  pending?: { course_code: string; title: string; course_type: "GST" | "EPS"; entry_type?: string }[];
+  /** V728: the other semesters of the session whose submitted registration carries GST or EPS courses */
+  otherSemesters?: number[];
+  /** V728: whether the screens show the permit at all — courses listed, a draft holding some, or a permit made */
+  shown?: boolean;
+}
+
+/** V728: a course's classification in words, as the permit's table and the PDF print it ("" for a first registration) */
+export function classificationWord(c: Pick<PermitCourse, "classification">): string {
+  return c.classification === "CARRY_OVER" ? "Carry-over" : c.classification === "DEFERRED" ? "Deferred" : "";
+}
+
+/** V728: whether the screens show a semester's permit — the API's word; an older answer, by its courses or its permit */
+export function permitShown(s: Pick<PermitState, "shown" | "courses" | "permit">): boolean {
+  return s.shown ?? (s.courses.length > 0 || !!s.permit);
 }
 
 /** the permit's sections: GST COURSES then EPS COURSES, each only when the student registered one */
@@ -129,12 +150,15 @@ export function permitVerifyPath(reference: string, code: string): string {
   return `/verify/gst-eps-permit?r=${encodeURIComponent(reference)}&c=${encodeURIComponent(code)}`;
 }
 
-/** the summary under the table: "3 papers · 6 credit units · GST 2 · EPS 1" */
-export function permitSummary(s: Pick<PermitState, "courses" | "units" | "gstCount" | "epsCount">, dot = "·"): string {
+/** the summary under the table: "3 papers · 6 credit units · GST 2 · EPS 1 · 1 carry-over" */
+export function permitSummary(s: Pick<PermitState, "courses" | "units" | "gstCount" | "epsCount" | "carryOverCount">, dot = "·"): string {
   const n = s.courses.length;
   const parts = [`${n} paper${n === 1 ? "" : "s"}`, `${s.units} credit unit${s.units === 1 ? "" : "s"}`];
   if (s.gstCount) parts.push(`GST ${s.gstCount}`);
   if (s.epsCount) parts.push(`EPS ${s.epsCount}`);
+  // V728: the carry-overs among them, said once
+  const carry = s.carryOverCount ?? s.courses.filter((c) => c.classification === "CARRY_OVER").length;
+  if (carry) parts.push(`${carry} carry-over${carry === 1 ? "" : "s"}`);
   return parts.join(` ${dot} `);
 }
 

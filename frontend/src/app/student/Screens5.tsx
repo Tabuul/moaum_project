@@ -18,7 +18,7 @@ import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { CardActions, PermitActions } from "./exams/CardActions";
-import { permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
+import { permitShown, permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
 import { examCardStatusLabel, examCardSummary, type ExamCardState } from "@/lib/exam-card";
 import { shownCode } from "@/lib/course-code";
 import { RESULT_KIND, attemptWord, attemptsWords, historyByCourse, type CarryHistory, type OwedCourse } from "@/lib/carry-over";
@@ -158,10 +158,14 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
         </Panel>
       ))}
       {/* V492: the GST & EPS examination permit, a document of its own beside the card: only the GST and EPS courses registered */}
-      {permits.filter((permit) => permit.courses.length || permit.permit).map((permit) => (
+      {/* V728: shown whenever the API says so — the courses listed (carry-overs among them), a draft holding some, or a permit made */}
+      {permits.filter(permitShown).map((permit) => (
         <Panel key={permit.semester} title={`GST & EPS EXAMINATION PERMIT · ${permit.session} · ${semesterName(permit.semester)} semester`} right={permitStatusLabel(permit)}>
           <PBody>
-            <div className="sub2">{permit.available ? `${permitSummary(permit)}. The permit lists only the GST and EPS courses on your course registration.` : permit.reason}</div>
+            <div className="sub2">{permit.available ? `${permitSummary(permit)}. The permit lists only the GST and EPS courses on your course registration, carry-overs included.` : permit.reason}</div>
+            {!permit.available && permit.pending?.length ? (
+              <div className="sub2 mt-1">On your draft: {permit.pending.map((c) => `${c.course_code}${c.entry_type === "CARRYOVER" ? " (carry-over)" : ""}`).join(", ")}.</div>
+            ) : null}
             <div className="row row--inline mt-2" style={{ gap: 8, flexWrap: "wrap" }}>
               {permit.available ? <PermitActions session={permit.session} semester={permit.semester} /> : null}
               <LinkBtn kind="ghost" href={`/student/exams/gst-eps-permit?semester=${permit.semester}`}>VIEW GST & EPS PERMIT</LinkBtn>
