@@ -492,10 +492,17 @@ class SummerController {
     @Transactional
     Map<String, Object> settle(@PathVariable UUID id, @Valid @RequestBody Settle body) {
         UUID who = AuditContextHolder.current().map(c -> c.actorId()).orElseThrow();
-        int n = jdbc.sql("UPDATE registration.summer_credit SET state = :st, settled_at = now(), settled_by = :w, settled_note = :n WHERE id = :id AND state = 'OPEN'")
-                .param("st", body.state()).param("w", who).param("n", body.note().trim()).param("id", id).update();
+        // V742: only a credit whose payment still stands as the student's Summer payment (one archived is held until restored; one moved
+        // off the Summer is settled by the move itself)
+        int n = jdbc.sql("""
+                UPDATE registration.summer_credit x SET state = :st, settled_at = now(), settled_by = :w, settled_note = :n
+                 WHERE x.id = :id AND x.state = 'OPEN'
+                   AND EXISTS (SELECT 1 FROM finance.payment_reference pr WHERE pr.id = x.reference_id AND pr.archived_at IS NULL
+                                  AND pr.purpose LIKE 'Summer semester fees%' AND pr.student_id = x.student_id AND pr.session = x.session)
+                """).param("st", body.state()).param("w", who).param("n", body.note().trim()).param("id", id).update();
         if (n == 0) {
-            throw new DomainRuleViolation("SUMMER_CREDIT_SETTLED", "That credit is already settled.", new DomainRuleViolation.Remedy("Read it again.", "Bursary"));
+            throw new DomainRuleViolation("SUMMER_CREDIT_SETTLED", "That credit is already settled, or its payment is archived or no longer a Summer payment.",
+                    new DomainRuleViolation.Remedy("Read it again.", "Bursary"));
         }
         return Map.of("id", id, "state", body.state());
     }

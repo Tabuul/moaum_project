@@ -178,8 +178,19 @@ A review of those fixes confirmed 13 more; V741 and the same change answer them.
 
 - **School fees, in the bulk readers too.** `finance.fee_profiles`, which feeds the School Fees Report, the Spillover desk, Student Accounts and the College and HOD views, leaves a Summer registration out, as `finance.reg_semesters` does.
 - **No standing on a Summer.** V739 let `assessment.standing_of` speak for semester 3, so the Summer broadsheet printed probation or advice to withdraw on the Summer alone. It is silent again; the student's standing stays that of the last regular semester.
-- **A credit follows its payment.** A payment that an open Summer credit names is neither moved by a payment correction nor archived until the Bursar records the credit applied or refunded. A credit whose payment is archived, or no longer stands as a Summer payment, is not shown as the student's nor listed on Summer Semester Fees. "Applied" records where the money went (the voucher, the reference or the desk that moved it); it moves no money itself.
+- **A credit follows its payment.** A credit whose payment is archived, or no longer stands as a Summer payment, is not shown as the student's nor listed on Summer Semester Fees. (V741 also refused to move or archive such a payment until the credit was settled; V742 replaced that refusal, below.) "Applied" records where the money went (the voucher, the reference or the desk that moved it); it moves no money itself.
 - **Drawing a reference after a take-back.** When every chosen course is taken back (passed since, or no longer taught), the take-back stands and the student is told nothing more is owed. A course passed since it was chosen is taken back even when the Academic Office authorised it.
 - **A late payment** never revives a passed course, nor the programme fee alone with no course: the money stands as a Summer credit.
 - **The results chain's scope bar** shows a Summer chosen elsewhere as the Third semester on screens that do not offer the Summer, instead of "Both semesters".
 - **The desk's class-list links** are offered only to the offices that may open a class list; the Bursary offices see the course code.
+
+## The review of V741 (V742)
+
+A review of those fixes confirmed four more; V742 and the same change answer them.
+
+- **A passed course is never paid for.** A reference that holds a course no longer outstanding (passed since it was chosen, an authorised one too, or no longer in the student's pool) is not payable: the student's page drops it and Pay takes the course back. A payment confirmed anyway, made at a bank before the pass, pays no such course. The course is taken back first, along with the programme fee when no course stands beside it, and the money stands as a Summer credit (`registration.summer_course_outstanding`).
+- **The credit follows its payment instead of holding it.** A payment with an open Summer credit may be moved or archived like any other.
+  - Moved off the Summer (another purpose, session or student), the credit is settled as applied, with the move as its note. Moved back, it is open again.
+  - Archived, the credit stays open and out of sight until the payment is restored.
+  - The Bursar records applied or refunded only while the payment stands as the student's Summer payment.
+- **The check of the bulk readers** now uses a spillover student who registers only in the Summer, and fails if `finance.fee_profiles` counts the Summer again.

@@ -221,6 +221,8 @@ class SummerSemesterIT {
                         .param("rows", "[{\"matric\":\"" + matricA + "\",\"course\":\"" + c4 + "\",\"total\":\"62\",\"level\":\"400\"}]").query().listOfRows();
                 return null;
             });
+            // V742: the reference drawn for them is no longer payable, so the student's Pay draws again
+            assertThat(jdbc.sql("SELECT registration.summer_reference_payable(:r)").param("r", fresh).query(Boolean.class).single()).isFalse();
             ResponseEntity<Map> nothing = it.call(student(a), HttpMethod.POST, "/api/v1/me/summer/reference", Map.of("session", session));
             assertThat(nothing.getStatusCode().value()).as(String.valueOf(nothing.getBody())).isEqualTo(200);
             assertThat(nothing.getBody().get("reference")).isNull();   // the API leaves a null out

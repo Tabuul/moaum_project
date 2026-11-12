@@ -130,13 +130,17 @@ class AcceptanceBalanceIT {
         assertThat(it.call(a.token(), HttpMethod.POST, "/api/v1/applicant/me/fee-references", Map.of("kind", "ACCEPTANCE")).getBody().get("code")).isEqualTo("ACCEPTANCE_SETTLED");
 
         // the Bursary revises the acceptance fee to ₦35,000: the statement kept, with the figure before and the request's reason (X-Reason;
-        // the test client sends "integration test")
+        // the test client sends "integration test") — read as the one statement the revision added, never as the session's maximum: on a
+        // second run on the same database the set-up's own statement (reason "integration test set-up") is kept with a figure before too
+        int statedBefore = jdbc.sql("SELECT count(*) FROM admissions.applicant_fee_revision WHERE session = :s").param("s", session).query(Integer.class).single();
         ResponseEntity<Map> revised = it.call(bursar, HttpMethod.PUT, path + "/applicant-fees",
                 Map.of("applicationFee", 2000, "portalCharge", 0, "acceptanceFee", 35000, "checkingFee", 3000));
         assertThat(revised.getStatusCode().value()).as(String.valueOf(revised.getBody())).isEqualTo(200);
-        Map<String, Object> kept = jdbc.sql("SELECT count(*) AS n, max(previous_acceptance_fee) AS before, max(reason) FILTER (WHERE previous_acceptance_fee IS NOT NULL) AS why FROM admissions.applicant_fee_revision WHERE session = :s")
+        assertThat(jdbc.sql("SELECT count(*) FROM admissions.applicant_fee_revision WHERE session = :s").param("s", session).query(Integer.class).single())
+                .isEqualTo(statedBefore + 1);
+        Map<String, Object> kept = jdbc.sql("SELECT acceptance_fee AS now, previous_acceptance_fee AS before, reason AS why FROM admissions.applicant_fee_revision WHERE session = :s ORDER BY stated_at DESC, id DESC LIMIT 1")
                 .param("s", session).query().singleRow();
-        assertThat(((Number) kept.get("n")).intValue()).isEqualTo(2);
+        assertThat((BigDecimal) kept.get("now")).isEqualByComparingTo("35000");
         assertThat((BigDecimal) kept.get("before")).isEqualByComparingTo("25000");
         assertThat(kept.get("why")).isEqualTo("integration test");
 
