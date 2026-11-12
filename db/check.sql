@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 576
+\set EXPECTED 577
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34221,6 +34221,106 @@ BEGIN
   END;
   PERFORM pg_temp.assert('V743: a course passed is never outstanding for the Summer, though since ended — its reference not payable, a payment confirmed anyway a credit',
       coalesce(msg = 'pool COURSE_ENDED outstanding false payable false | PROGRAMME:CANCELLED,ZZT 403:CANCELLED credit 55000.00 registered none', false),
+      msg);
+END $$;
+-- ── V746: in 9812/9813's Summer, D and E at 200 Level are authorised by the Academic Office, D for ZZQ 405 and E for ZZQ 416 (one course
+--          with ZZQ 406, written twice). D selects ZZQ 405 and draws a reference; the course's code is then corrected to ZZQ 415: D's
+--          authorisation names ZZQ 415, the course is still outstanding and the reference payable, and the payment pays and registers it.
+--          ZZQ 416 is merged into ZZQ 406: E's authorisation names ZZQ 406. C at 400 Level failed ZZQ 401, draws a reference, passes, and
+--          the bank's late payment stands as an open credit: the payment may be moved or archived (V742); once the Bursar records the
+--          credit refunded it may be neither. The block undoes its writes ──
+DO $$
+DECLARE
+    SP text := '9811/9812'; S text := '9812/9813'; who uuid := gen_random_uuid(); dept text; prog text := 'C97461';
+    c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid(); fee uuid := gen_random_uuid();
+    r_d text; r_c text; id_c uuid; auth_d text; auth_e text; outst text; pay text; states text; regs text; open_refuse text; spent_refuse text;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V746', true);
+    SELECT dept_code INTO dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), SP, DATE '9811-10-01', DATE '9812-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9812-10-01', DATE '9813-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9812/746' WHERE name = S;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    SELECT prog, 'B.Sc. Review of V743', dept, d2.faculty_code, 'UNDER GRADUATE', 0, 400, 4, 'ZRS' FROM ref.department d2 WHERE d2.code = dept;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZQ 401', 'Review seven', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZQ 405', 'Review eight', 3, 1, 400, dept, 'Core', 'LIVE'),
+        ('ZZQ 406', 'Review nine', 2, 2, 400, dept, 'Core', 'LIVE'), ('ZZQ 416', 'Review nine', 2, 2, 400, dept, 'Core', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (c, 'MOAUM/ADM/98/974601', 'MOAU/ZRS/98/7461', 'ZZREVIEWED', 'Final C', prog, 'UTME', SP, 100, 400, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/98/974602', 'MOAU/ZRS/98/7462', 'ZZREVIEWED', 'Authorised D', prog, 'UTME', SP, 100, 200, 'ACTIVE', now()),
+        (e, 'MOAUM/ADM/98/974603', 'MOAU/ZRS/98/7463', 'ZZREVIEWED', 'Authorised E', prog, 'UTME', SP, 100, 200, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(SP, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRS/98/7461', 'course', 'ZZQ 401', 'total', '30', 'level', '400')), true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['FINAL_YEAR', 'SPILLOVER', 'AUTHORISED'], NULL, NULL, 'check V746');
+    PERFORM registration.summer_authorise(S, d, ARRAY['ZZQ 405'], 'Senate approval: a deficiency course before graduation', false);
+    PERFORM registration.summer_authorise(S, e, ARRAY['ZZQ 416'], 'Senate approval: a deficiency course before graduation', false);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (fee, S, 50000, 5000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+
+    -- D selects and draws; the code is corrected; the payment pays and registers it under its new code
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', d::text, true);
+    PERFORM registration.summer_select(d, S, ARRAY['ZZQ 405']);
+    r_d := registration.summer_reference(d, S);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM catalogue.rename_course('ZZQ 405', 'ZZQ 415');
+    SELECT array_to_string(courses, ',') INTO auth_d FROM registration.summer_authorisation WHERE student_id = d AND session = S AND revoked_at IS NULL;
+    outst := registration.summer_course_outstanding(d, S, 'ZZQ 415')::text;
+    pay := registration.summer_reference_payable(r_d)::text;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r_d, 'Bank transfer', 'check V746 D');
+    SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) INTO states FROM registration.summer_charge WHERE student_id = d AND session = S;
+    SELECT coalesce(string_agg(DISTINCT o.course_code, ','), 'none') INTO regs
+      FROM registration.course_registration rg JOIN registration.entry en ON en.registration_id = rg.id JOIN catalogue.offering o ON o.id = en.offering_id
+     WHERE rg.student_id = d AND rg.session = S AND rg.semester = 3;
+
+    -- ZZQ 416 merged into ZZQ 406: E's authorisation follows
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM catalogue.merge_course('ZZQ 406', 'ZZQ 416', 'the same course written twice (check V746)', false);
+    SELECT array_to_string(courses, ',') INTO auth_e FROM registration.summer_authorisation WHERE student_id = e AND session = S AND revoked_at IS NULL;
+
+    -- C's late payment after a pass: an open credit leaves the payment free; refunded, it holds it
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', c::text, true);
+    PERFORM registration.summer_select(c, S, ARRAY['ZZQ 401']);
+    r_c := registration.summer_reference(c, S);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM assessment.import_legacy_semester(S, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRS/98/7461', 'course', 'ZZQ 401', 'total', '64', 'level', '400')), true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r_c, 'Bank transfer', 'check V746 C');
+    SELECT id INTO id_c FROM finance.payment_reference WHERE reference = r_c;
+    SELECT CASE WHEN array_to_string(finance.payment_archive_refusals(id_c), ' ') LIKE '%money is spent%' THEN 'archive refused' ELSE 'archive allowed' END || '/'
+        || CASE WHEN (finance.payment_reallocation_check(id_c, 'SCHOOL_FEES', S, 1) -> 'refusals')::text LIKE '%money is spent%' THEN 'move refused' ELSE 'move allowed' END
+      INTO open_refuse;
+    UPDATE registration.summer_credit SET state = 'REFUNDED', settled_at = now(), settled_by = who, settled_note = 'Refunded by voucher PV/CHECK/746'
+     WHERE reference_id = id_c AND state = 'OPEN';
+    SELECT CASE WHEN array_to_string(finance.payment_archive_refusals(id_c), ' ') LIKE '%PAR_LINKED: the Bursar recorded a Summer credit%' THEN 'archive refused' ELSE 'archive allowed' END || '/'
+        || CASE WHEN (finance.payment_reallocation_check(id_c, 'SCHOOL_FEES', S, 1) -> 'refusals')::text LIKE '%REALLOC_LINKED: the Bursar recorded a Summer credit%' THEN 'move refused' ELSE 'move allowed' END
+      INTO spent_refuse;
+
+    msg := 'D authorised ' || coalesce(auth_d, '-') || ' outstanding ' || outst || ' payable ' || pay || ' | ' || coalesce(states, '-') || ' registered ' || regs
+        || ' | E authorised ' || coalesce(auth_e, '-') || ' | open credit ' || open_refuse || ' | refunded ' || spent_refuse;
+    RAISE EXCEPTION 'the V746 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V746 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V746: a Summer authorisation follows its course''s corrected or merged code; a payment whose Summer credit the Bursar settled is neither moved nor archived',
+      coalesce(msg = 'D authorised ZZQ 415 outstanding true payable true | PROGRAMME:PAID,ZZQ 415:PAID registered ZZQ 415'
+                     || ' | E authorised ZZQ 406 | open credit archive allowed/move allowed | refunded archive refused/move refused', false),
       msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
