@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 573
+\set EXPECTED 575
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34074,6 +34074,86 @@ BEGIN
                      || ' | C PROGRAMME:CANCELLED,ZZW 401:CANCELLED credit 55000.00 registered none'
                      || ' | archive allowed/move allowed | archived 0 OPEN restored 55000.00 | moved APPLIED noted back OPEN', false),
       msg);
+END $$;
+-- ── V744. A staff number is one person whatever its case: people who shared one up to case or spaces are made one — the one who
+--    signs in kept, the other's rows moved across and their HR record merged, the number in capitals, the other deleted, and one
+--    whose own sign-in cannot move closed with the number cleared; a second person under the number in another case is refused,
+--    and both staff uploads find the person whatever the case ──
+DO $$
+DECLARE
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    -- the state before V744, for this check alone (undone below): the same number three ways
+    DROP INDEX iam.person_staff_number_any_case;
+    ALTER TABLE iam.person DROP CONSTRAINT ck_person_staff_number_trimmed;
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (a, 'pzz744', 'Zzmerge', 'Kept', NULL), (b, 'PZZ744', 'ZZMERGE', 'KEPT HR', 'hr744@example.test'), (c, ' Pzz744 ', 'Zzmerge', 'Third', NULL);
+    INSERT INTO iam.credential (person_id, username, password_hash, set_by)
+    VALUES (a, 'zz744a', '$2a$12$checkv744notarealhash' || repeat('x', 31), a), (c, 'zz744c', '$2a$12$checkv744notarealhash' || repeat('y', 31), c);
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), b, 'ict', 'institution', 'V744 check', a, current_date);
+    INSERT INTO hrm.staff_record (person_id, category, present_rank, sex) VALUES (a, 'NON_ACADEMIC', NULL, NULL), (b, 'NON_ACADEMIC', 'SENIOR EXECUTIVE OFFICER', 'M');
+
+    PERFORM count(*) FROM iam.merge_staff_number_duplicates();
+
+    msg := concat_ws(' | ',
+        'kept ' || (SELECT string_agg(DISTINCT CASE WHEN kept_id = a THEN 'a' ELSE 'other' END, ',') FROM iam.person_merge WHERE staff_number = 'PZZ744'),
+        'number ' || (SELECT staff_number FROM iam.person WHERE id = a),
+        'email ' || coalesce((SELECT email FROM iam.person WHERE id = a), '-'),
+        'b ' || (SELECT outcome FROM iam.person_merge WHERE merged_id = b) || ' ' || (SELECT count(*) FROM iam.person WHERE id = b),
+        'office ' || (SELECT count(*) FROM iam.office_assignment WHERE person_id = a AND office_code = 'ict'),
+        'hr ' || (SELECT coalesce(present_rank, '-') || '/' || coalesce(sex, '-') FROM hrm.staff_record WHERE person_id = a)
+              || ' ' || (SELECT count(*) FROM hrm.staff_record WHERE person_id = b),
+        'c ' || (SELECT outcome || ' ' || (stayed ? 'iam.credential.person_id') FROM iam.person_merge WHERE merged_id = c),
+        'c now ' || (SELECT coalesce(staff_number, 'none') || ' ' || (ended_on IS NOT NULL) || ' ' || (ended_reason LIKE 'The same person as PZZ744%')
+                     FROM iam.person WHERE id = c),
+        'again ' || (SELECT count(*) FROM iam.merge_staff_number_duplicates()));
+    RAISE EXCEPTION 'the V744 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V744 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V744: people who shared a staff number up to case are made one: the one who signs in kept, the other''s rows and HR record moved, the number in capitals, the other deleted or closed',
+      coalesce(msg = 'kept a | number PZZ744 | email hr744@example.test | b DELETED 0 | office 1 | hr SENIOR EXECUTIVE OFFICER/M 0'
+                     || ' | c CLOSED true | c now none true true | again 0', false),
+      msg);
+END $$;
+
+DO $$
+DECLARE
+    p uuid := gen_random_uuid(); msg text := ''; v_err text; s record; l record;
+    v_unit text := (SELECT name FROM ref.unit WHERE ended_on IS NULL ORDER BY code LIMIT 1);
+    v_dept text := (SELECT name FROM ref.department ORDER BY name LIMIT 1);
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p, 'p99744', 'Zzcase', 'One');
+    BEGIN
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (gen_random_uuid(), 'P99744', 'Zzcase', 'Two');
+        msg := 'another case accepted';
+    EXCEPTION WHEN unique_violation THEN msg := 'another case refused';
+    END;
+    BEGIN
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (gen_random_uuid(), ' P99745', 'Zzcase', 'Three');
+        msg := msg || ' | spaces accepted';
+    EXCEPTION WHEN check_violation THEN msg := msg || ' | spaces refused';
+    END;
+    SELECT * INTO s FROM iam.import_staff(jsonb_build_array(jsonb_build_object('pno', '99744', 'full_names', 'One ZZCASE', 'unit', v_unit)), true);
+    SELECT * INTO l FROM iam.import_lecturers(jsonb_build_array(jsonb_build_object('pno', '99744', 'full_names', 'Dr One ZZCASE', 'department', v_dept)));
+    msg := msg || ' | staff upload ' || s.created || '/' || s.existing || ' | lecturer upload ' || l.created || '/' || l.existing
+               || ' | people ' || (SELECT count(*) FROM iam.person WHERE upper(staff_number) = 'P99744');
+    RAISE EXCEPTION 'the V744 lookup check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V744 lookup check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V744: a second person under a staff number in another case (or with spaces) is refused, and both staff uploads find the person whatever the case',
+      msg = 'another case refused | spaces refused | staff upload 0/1 | lecturer upload 0/1 | people 1', msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

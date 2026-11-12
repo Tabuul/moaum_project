@@ -53,6 +53,41 @@ class StaffIdCardsIT {
         return r.getBody();
     }
 
+    /** V744: a staff number is one person whatever its case. The desk issues a card by the number typed in another case (it used to
+     *  fail when the portal held P2016 and p2016 as two people), and the same number in another case is refused as a second person,
+     *  by Users and roles (409 ALREADY_EXISTS) and by the database itself */
+    @Test
+    void aStaffNumberIsOnePersonWhateverItsCase() {
+        String n = String.valueOf(java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 999999));
+        UUID person = UUID.randomUUID();
+        it.db(() -> {
+            jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (:p, :n, 'ZZCASE', 'One')").param("p", person).param("n", "zzc" + n).update();
+            return jdbc.sql("""
+                    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+                    VALUES (gen_random_uuid(), :p, 'lecturer', 'department', 'MTC', 'staff number case test', :p, current_date)
+                    """).param("p", person).update();
+        });
+
+        ResponseEntity<Map> issued = it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/staff/issue",
+                Map.of("staffNumber", "ZZC" + n, "reason", "staff number case test"));
+        assertThat(issued.getStatusCode().value()).as(String.valueOf(issued.getBody())).isEqualTo(200);
+        assertThat(issued.getBody().get("personId")).isEqualTo(person.toString());
+
+        ResponseEntity<Map> twice = it.call(ItSupport.token("ict"), HttpMethod.POST, "/api/v1/iam/persons",
+                Map.of("staffNumber", "ZZC" + n, "surname", "ZZCASE", "givenNames", "Two"));
+        assertThat(twice.getStatusCode().value()).as(String.valueOf(twice.getBody())).isEqualTo(409);
+        assertThat(twice.getBody().get("code")).isEqualTo("ALREADY_EXISTS");
+        boolean refused = false;
+        try {
+            it.db(() -> jdbc.sql("INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (gen_random_uuid(), :n, 'ZZCASE', 'Three')")
+                    .param("n", "Zzc" + n).update());
+        } catch (org.springframework.dao.DuplicateKeyException expected) {
+            refused = true;
+        }
+        assertThat(refused).as("the database refuses the number in another case").isTrue();
+        assertThat(jdbc.sql("SELECT count(*) FROM iam.person WHERE upper(staff_number) = :n").param("n", "ZZC" + n).query(Long.class).single()).isEqualTo(1L);
+    }
+
     @Test
     void theSecurityUnitIssuesAndPrintsEveryStaffCardTheRegisterAndTheOfficesHold() {
         java.util.concurrent.ThreadLocalRandom rnd = java.util.concurrent.ThreadLocalRandom.current();

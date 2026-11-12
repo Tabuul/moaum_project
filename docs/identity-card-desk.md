@@ -208,3 +208,29 @@ precision, so a card laid out W points wide prints W points wide.
 **Tests:** `lib/idcard-design.test.ts` (every word inside the card for ordinary and very long particulars, the two-line staff
 name clear of the photograph and the number, the barcode, the PDF's gradients and balanced states, the SVG escaped with ids of
 its own); `lib/staff-cards.test.ts`; `lib/pdf-write.test.ts`.
+
+## 10. A staff number is one person whatever its case (V744, 12 November 2026)
+
+The University's word: "fix the duplicate staff number issue". Issuing a staff card to **P2016** failed with a server error: the
+portal held two people under that number — `p2016`, the account the portal was opened with (its offices and sign-in), and `P2016`,
+the same officer made a second time when the HR register of non-teaching staff was uploaded. Every desk looks a staff number up
+without regard to case and expects one person; the database's own rule held the number unique only as typed, and the two staff
+uploads (`iam.import_staff`, `iam.import_lecturers`) looked the number up as typed, so the register's `P2016` never found `p2016`.
+
+**What V744 does**
+- `iam.merge_staff_number_duplicates()` makes one person of the people whose staff numbers differ only by case or spaces. The person
+  kept is the one who signs in (else the one holding offices, else the one on the HR register). Every row that points at the other
+  person moves across; where the kept person already has the one row a person may have (a sign-in, a photograph…), theirs stands;
+  the HR record is merged (the other's particulars fill what the kept one lacks). The number is written in capitals, as every other
+  staff number is. The other person is deleted, or — if something that could not move still points at them — closed (ended, with
+  the reason) and their number cleared. Each merge is recorded in `iam.person_merge`.
+- Run on deploy. On the copy of the live database of late October one number is shared, **P2016** (Okpali): his HR register record
+  moves to his account, which keeps his offices and sign-in and now reads P2016; the duplicate is deleted.
+- A unique index on `upper(staff_number)` and a rule that a number has no spaces around it and is not blank: the same number typed
+  in another case is refused (409 ALREADY_EXISTS on Users & roles) rather than becoming a second person, and every lookup by staff
+  number — the card desk, the University's sign-on, the library, attendance, appraisal, movement — finds one person.
+- Both staff uploads find an existing person by the number whatever its case.
+
+**Tests:** check.sql's two V744 properties (the merge, with a third record whose own sign-in cannot move; the refusal and both
+uploads); `StaffIdCardsIT.aStaffNumberIsOnePersonWhateverItsCase` (a card issued by the number in another case; the second person
+refused by Users & roles and by the database).
