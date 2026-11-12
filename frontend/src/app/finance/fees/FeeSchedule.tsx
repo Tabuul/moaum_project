@@ -79,6 +79,16 @@ export interface ApplicantFeeRevision {
   applicationFee?: number | string; portalCharge?: number | string; checkingFee?: number | string | null;
 }
 
+/** V727: a statement of the inter-departmental transfer fee (finance.transfer_fee_revision), newest first */
+export interface TransferFeeRevision { statedAt: string | null; fee: number | string | null; previousFee: number | string | null; by: string | null; reason: string | null }
+function transferFeeRevision(v: Record<string, unknown>): TransferFeeRevision {
+  const s = (a: unknown, b?: unknown) => (a ?? b ?? null) as string | null;
+  return {
+    statedAt: s(v.stated_at, v.statedAt), fee: (v.fee ?? null) as number | string | null, previousFee: (v.previous_fee ?? v.previousFee ?? null) as number | string | null,
+    by: [s(v.stated_by_name, v.statedByName), s(v.stated_office_name, v.stated_office ?? v.statedOffice)].filter(Boolean).join(" · ") || null, reason: s(v.reason),
+  };
+}
+
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 const whenStated = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null);
 
@@ -300,9 +310,14 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       notify("Deferment application fee stated");
     } finally { setBusy(null); }
   }
-  // the inter-departmental transfer processing fee (Bursary-set; defaults to ₦10,000 when unset)
+  // the inter-departmental transfer processing fee (Bursary-set; no default: no transfer proceeds until it is stated, and ₦0 is
+  // refused). V727: every statement is kept as a revision, with the reason; an open application owes the fee as stated now less
+  // what is paid
   const [tf, setTf] = useState("");
+  const [tfWhy, setTfWhy] = useState("");
   const [tfStated, setTfStated] = useState(false);
+  const [tfRevisions, setTfRevisions] = useState<TransferFeeRevision[] | null>(null);
+  const [tfRead, setTfRead] = useState(0);
   useEffect(() => {
     let alive = true;
     fetch("/api/bff/api/v1/finance/transfer-fee").then((r) => (r.ok ? r.json() : null)).then((j) => {
@@ -310,9 +325,20 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
     }).catch(() => { /* leave blank */ });
     return () => { alive = false; };
   }, []);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/bff/api/v1/finance/transfer-fee/revisions", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      const list: unknown = Array.isArray(j) ? j : j?.rows ?? j?.revisions;
+      if (alive) setTfRevisions(Array.isArray(list) ? (list as Record<string, unknown>[]).map(transferFeeRevision) : null);
+    }).catch(() => { if (alive) setTfRevisions(null); });
+    return () => { alive = false; };
+  }, [tfRead]);
+  const tfAmount = Number(tf);
+  const tfRefused = tf.trim() !== "" && !(tfAmount >= 1);
   async function saveTransferFee(): Promise<void> {
-    const ok = await send("tf", "PUT", "/transfer-fee", { amount: Number(tf) || 0 }, `Inter-departmental transfer fee set to ${tf}`);
-    if (ok) setTfStated(true);
+    if (!(tfAmount >= 1)) return;
+    const ok = await send("tf", "PUT", "/transfer-fee", { amount: tfAmount }, tfWhy.trim() || `Inter-departmental transfer fee set to ${tf}`);
+    if (ok) { setTfStated(true); setTfWhy(""); setTfRead((n) => n + 1); }
   }
   // V699: the student identity card replacement fee (Bursary-set; the first card is free, on the matriculation number)
   const [rf, setRf] = useState("");
@@ -945,13 +971,31 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <Panel title="Inter-departmental transfer · processing fee" right={tfStated ? "Set by the Bursary" : "Not set yet — required before any transfer"}>
         <PBody>
           <div className="sub2 mb-3">
-            The non-refundable inter-departmental transfer fee. There is no default: until it is set, no transfer can proceed.
+            The non-refundable inter-departmental transfer fee. There is no default: until it is set, no transfer can proceed. An open application
+            owes the fee as stated now less every verified payment — this portal&rsquo;s and the old portal&rsquo;s; a revision closes the payment
+            references drawn at another figure, and a completed transfer keeps the fee it was completed against.
           </div>
           <div className="row row--end">
-            <Field id="tf-amt" label="Transfer processing fee"><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="10000" disabled={!may} /></Field>
-            <Btn kind="primary" disabled={!may || busy !== null || !tf.trim()} onClick={() => void saveTransferFee()}>{busy === "tf" ? "Saving…" : "Set the transfer fee"}</Btn>
-            <span className="sub2">A student who transfers will pay {naira(Number(tf) || 0)}.</span>
+            <Field id="tf-amt" label="Transfer processing fee" error={tfRefused ? "The fee is at least ₦1: ₦0 is refused" : undefined}><input id="tf-amt" className="ctl tnum" inputMode="numeric" value={tf} onChange={(e) => setTf(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="Amount in naira" disabled={!may} aria-invalid={tfRefused || undefined} /></Field>
+            <Field id="tf-why" label="Reason" hint="Optional; kept with the revision"><input id="tf-why" className="ctl" maxLength={300} value={tfWhy} onChange={(e) => setTfWhy(e.target.value)} disabled={!may} /></Field>
+            <Btn kind="primary" disabled={!may || busy !== null || !(tfAmount >= 1)} onClick={() => void saveTransferFee()}>{busy === "tf" ? "Saving…" : "Set the transfer fee"}</Btn>
+            {tfAmount >= 1 ? <span className="sub2">A student who transfers will pay {naira(tfAmount)}, less what they have paid.</span> : null}
           </div>
+          {/* V727: every statement of the transfer fee, kept (finance.transfer_fee_revision), newest first */}
+          {tfRevisions ? (
+            <div className="mt-2" style={{ borderTop: "1px solid var(--line-2)", paddingTop: 10 }}>
+              <div className="eyebrow">Transfer fee revisions</div>
+              {tfRevisions.length ? (
+                <DTable noPrint pageSize={0} cols={["Stated", "Transfer fee|num", "Before|num", "By", "Reason"]} rows={tfRevisions.map((v, i) => [
+                  <span key="w" className="sub2 tnum">{whenStated(v.statedAt) ?? "—"}{i === 0 ? " · in force" : ""}</span>,
+                  <span key="f" className="tnum"><b>{v.fee !== null && v.fee !== undefined ? naira(v.fee) : "Not stated"}</b></span>,
+                  <span key="b" className="tnum sub2">{v.previousFee !== null && v.previousFee !== undefined ? naira(v.previousFee) : "—"}</span>,
+                  <span key="o" className="sub2">{v.by ?? "—"}</span>,
+                  <span key="r" className="sub2">{v.reason ?? "—"}</span>,
+                ])} />
+              ) : <div className="sub2">No statement of the transfer fee is recorded yet.</div>}
+            </div>
+          ) : null}
         </PBody>
       </Panel>
       <Panel title="Student identity card · replacement fee" right={rfStated ? "Set by the Bursary" : "Not set yet — required before any replacement card"}>

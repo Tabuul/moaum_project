@@ -93,6 +93,10 @@ class FinanceController {
     public record TransferFee(@NotNull @DecimalMin("0") BigDecimal amount) {
     }
 
+    /** V727: the inter-departmental transfer fee is an amount above nothing — ₦0 would settle every transfer without a payment */
+    public record StatedTransferFee(@NotNull @DecimalMin("1") BigDecimal amount) {
+    }
+
     public record FeeRows(@NotNull List<Map<String, Object>> rows) {
     }
 
@@ -966,9 +970,25 @@ class FinanceController {
     @PutMapping("/transfer-fee")
     @PreAuthorize(BURSARY)
     @Transactional
-    Map<String, Object> setTransferFee(@Valid @RequestBody TransferFee body) {
+    Map<String, Object> setTransferFee(@Valid @RequestBody StatedTransferFee body) {
+        // V727: the statement is kept (finance.transfer_fee_revision, by the trigger, with the request's reason); open transfer
+        // references drawn at another figure are closed
         jdbc.sql("UPDATE finance.fee_setting SET transfer_fee = :a WHERE id = 1").param("a", body.amount()).update();
         return Map.of("amount", body.amount(), "stated", true);
+    }
+
+    /** V727: every statement of the transfer fee, newest first — the figure, the one before, who stated it, from which office, why */
+    @GetMapping("/transfer-fee/revisions")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> transferFeeRevisions() {
+        return jdbc.sql("""
+                SELECT v.id, v.fee, v.previous_fee, v.stated_at, v.stated_by, helpdesk.person_name(v.stated_by) AS stated_by_name,
+                       v.stated_office, o.label AS stated_office_name, v.reason
+                  FROM finance.transfer_fee_revision v
+                  LEFT JOIN ref.office o ON o.code = v.stated_office
+                 ORDER BY v.stated_at DESC, v.id
+                """).query().listOfRows();
     }
 
     /* ── V699: the student identity card replacement fee (Bursary-set; the first card is issued on the matriculation number) ── */

@@ -288,6 +288,13 @@ public class PaymentsService {
             throw new DomainRuleViolation("ADMISSION_CHECKING_NOT_PAYABLE", "The admission checking fee cannot be paid now: Admission Status Checking is closed, or the fee is already paid.",
                     new DomainRuleViolation.Remedy("Admission Status on the applicant portal says which. A fee already paid is never charged again.", "You"));
         }
+        /* V727: a transfer fee reference is taken to a gateway only while it is for what the application owes now — linked to a live
+           application and drawn for its balance; one left open for another figure (a payment linked since, a revised fee, the
+           application ended) is not paid */
+        if (transfer(r) && !repo.transferPayable(r.reference())) {
+            throw new DomainRuleViolation("TRANSFER_REFERENCE_STALE", "This reference is no longer for what you owe. Pay the transfer fee from the transfer page.",
+                    new DomainRuleViolation.Remedy("The transfer page draws the reference for the balance owed now. A payment already made is never charged again.", "You"));
+        }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller"
                 : repo.quicktellerLink(r.reference()).isPresent() ? "paydirect" : "") : gateway.trim().toLowerCase();
         if ("paydirect".equals(g)) {
@@ -435,9 +442,15 @@ public class PaymentsService {
         return "FEES".equals(r.kind()) && repo.gstReference(r.reference());
     }
 
+    /** V727: a student's inter-departmental transfer fee reference: paid like any student reference, named the transfer fee at the
+     *  gateway and returned to the transfer page */
+    private boolean transfer(PaymentsRepository.Reference r) {
+        return "FEES".equals(r.kind()) && repo.transferReference(r.reference());
+    }
+
     /** the fee as the gateway names it to the payer */
     private String nameOf(PaymentsRepository.Reference r) {
-        return gst(r) ? "GST fee" : feeName(r.kind());
+        return gst(r) ? "GST fee" : transfer(r) ? "inter-departmental transfer fee" : feeName(r.kind());
     }
 
     /** where the gateway returns the payer: the page that shows this fee paid, which verifies the reference on arrival — V724: a
@@ -446,7 +459,10 @@ public class PaymentsService {
         if ("FEES".equals(r.kind()) && payer != null && r.applicantAccountId() != null && payer.equals(r.applicantAccountId()) && !payer.equals(r.accountId())) {
             return portalUrl + "/applicant/admission?paid=" + r.reference();
         }
-        return gst(r) ? portalUrl + "/student/gst?paid=" + r.reference() : backUrl(r.kind(), r.reference());
+        if (gst(r)) {
+            return portalUrl + "/student/gst?paid=" + r.reference();
+        }
+        return transfer(r) ? portalUrl + "/student/transfer?paid=" + r.reference() : backUrl(r.kind(), r.reference());
     }
 
     /** whose reference it is: the account it was drawn for — and, since V724, for a student's school-fee reference, the applicant account
@@ -493,6 +509,10 @@ public class PaymentsService {
         // V295: as at the checkout, the admission checking fee is paid only while Admission Status Checking is open, and once
         if ("CHECKING".equals(r.kind()) && r.applicationId() != null && !repo.checkingPayable(r.applicationId())) {
             return notice("The admission checking fee cannot be paid now", "Admission Status Checking is closed, or the fee is already paid; Admission Status on the applicant portal says which. A fee already paid is never charged again.");
+        }
+        // V727: as at the checkout, a transfer fee reference is paid only while it is for what the application owes now
+        if (transfer(r) && !repo.transferPayable(r.reference())) {
+            return notice("This reference is no longer for what you owe", "Pay the transfer fee from the transfer page; it draws the reference for the balance owed now. A payment already made is never charged again.");
         }
         WebpayMerchant m = merchantFor(q, r.reference());
         long kobo = r.amount().movePointRight(2).longValueExact();
@@ -791,26 +811,31 @@ public class PaymentsService {
         String asked = m.field("CustReference").toUpperCase();
         PaymentsRepository.Customer c = laneRepo.paydirectCustomer(asked);
         String reference = c.reference() == null ? asked : c.reference();
+        // V727: a transfer fee reference is paid at the bank only while it is for what the application owes now
+        boolean staleTransfer = c.valid() && !reference.isEmpty() && laneRepo.transferReference(reference) && !laneRepo.transferPayable(reference);
+        boolean valid = c.valid() && !staleTransfer;
         Map<String, Object> said = new LinkedHashMap<>();
         said.put("merchantReference", m.field("MerchantReference"));
         said.put("paymentItemCode", m.field("PaymentItemCode"));
         said.put("thirdPartyCode", m.field("ThirdPartyCode"));
-        said.put("valid", c.valid());
-        if (c.why() != null) {
+        said.put("valid", valid);
+        if (staleTransfer) {
+            said.put("why", "TRANSFER_REFERENCE_STALE: the reference is no longer for what the transfer application owes");
+        } else if (c.why() != null) {
             said.put("why", c.why());
         }
         if (c.scope() != null) {
             said.put("biller", c.scope() + " " + c.billerCode());
         }
         laneLog("paydirect", "VALIDATE", "validate", reference.isEmpty() ? null : reference, m.field("MerchantReference").isEmpty() ? null : m.field("MerchantReference"),
-                c.valid() ? c.amount() : null, c.valid() ? "0" : "1", true, c.valid() ? "VALID" : "INVALID", json(said));
+                valid ? c.amount() : null, valid ? "0" : "1", true, valid ? "VALID" : "INVALID", json(said));
         // the payer confirms the name on Quickteller's page: the surname and the first of the other names; Oct 2026: the first name
         // carries the payer's number at its end (a student's matriculation number, or admission number before one; an applicant's
         // application number) — Interswitch's collections report writes the surname, then the first name, in its Customer Name column
         // ("DAVID Terfa (MOAU/CS/BRO/24/72981)"), where the alternate reference is not shown
         String first = c.otherNames() == null ? "" : c.otherNames().trim().split("\\s+")[0];
         return new PayDirectMessages.Answer(m.json(), PayDirectMessages.wrap(m, PayDirectMessages.customerAnswer(m.json(), m.field("MerchantReference"), m.field("ThirdPartyCode"),
-                reference, c.valid(), withNumber(first, c.number()), c.surname(), c.number(), c.amount())));
+                reference, valid, withNumber(first, c.number()), c.surname(), c.number(), c.amount())));
     }
 
     /** "Terfa (MOAU/CS/BRO/24/72981)" — a name with the payer's number after it, plain ASCII for Interswitch's systems; the name alone without one */

@@ -147,6 +147,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/clearance", "icon": "check", "label": "Department Clearance" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
@@ -679,6 +680,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/campaigns", "icon": "bell", "label": "Campaigns & Announcements" },
           { "id": "r/classlist", "icon": "user", "label": "Registered Students" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/clearance", "icon": "check", "label": "Clearance", "badge": "54" },
           { "id": "t/clearancemanage", "icon": "shield", "label": "Clearance Management" },
           { "id": "t/documents", "icon": "doc", "label": "Documents Office" },
@@ -797,6 +800,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/collegepayments", "icon": "card", "label": "College Payment Report" },
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Schedule" },
           { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/hostel-finance", "icon": "bed", "label": "Hostel Fees & Revenue" },
@@ -819,6 +823,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/nellegacy", "icon": "upload", "label": "Old NELFUND Payments" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/legacyrecon", "icon": "swap", "label": "Legacy Financial Reconciliation" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/feehistoryrecon", "icon": "swap", "label": "School Fees History Reconciliation" },
           { "id": "f/jupebfees", "icon": "card", "label": "JUPEB Fees" },
           { "id": "jupeb/payments", "icon": "card", "label": "JUPEB Payments" },
@@ -882,6 +887,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" },
           { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
           { "id": "f/heldfees", "icon": "card", "label": "Held Students' Fees" }
         ]
@@ -896,6 +902,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/legacyfees", "icon": "swap", "label": "Old Fees History" },
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
           { "id": "t/legacyrecon", "icon": "swap", "label": "Legacy Financial Reconciliation" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/feehistoryrecon", "icon": "swap", "label": "School Fees History Reconciliation" }
         ]
       },
@@ -1313,6 +1320,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/iut", "icon": "swap", "label": "Inter-University Transfer" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
@@ -1500,6 +1509,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/iut", "icon": "swap", "label": "Inter-University Transfer" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/coursechanges", "icon": "clock", "label": "Course Code & Title Changes" },
@@ -1607,6 +1618,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/students", "icon": "cap", "label": "Student Records" },
           { "id": "t/studentedit", "icon": "user", "label": "Student Edit" },
           { "id": "t/cohorts", "icon": "cap", "label": "Student Cohorts" },
@@ -1746,6 +1759,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/graduationmanage", "icon": "cap", "label": "Graduation Management" },
           { "id": "t/programmeswap", "icon": "cap", "label": "Programme Swap" },
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/recordcheck", "icon": "shield", "label": "Records Check" },
           { "id": "t/matriccorrection", "icon": "doc", "label": "Matriculation Correction" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
@@ -1979,7 +1994,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation" },
-          { "id": "t/feesched", "icon": "card", "label": "Fee Schedules" }
+          { "id": "t/feesched", "icon": "card", "label": "Fee Schedules" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
+          { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" }
         ]
       },
       {

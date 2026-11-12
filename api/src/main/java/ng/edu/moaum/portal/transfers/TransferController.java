@@ -1,5 +1,6 @@
 package ng.edu.moaum.portal.transfers;
 
+import java.math.BigDecimal;
 import java.sql.Types;
 import java.util.List;
 import java.util.Map;
@@ -24,11 +25,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Inter-departmental transfer (V070): the student's application and the office's queue. */
+/** Inter-departmental transfer (V070): the student's application and the office's queue. V727: the fee is read against every
+ *  verified payment, this portal's and the old portal's (people.transfer_entitlement): any payment lets the desks act, the
+ *  Academic Office's final approval waits for the whole fee. */
 @RestController
 class TransferController {
 
-    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super')";
+    /** V727: the Bursary and the Students Account Officer read the queue (what is owed), never act on it */
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_bursar','OFFICE_studentaccounts')";
     private static final String SAIC = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_super')";
     private static final String SENATE = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_dvc','OFFICE_super')";
     private static final String OFFICERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
@@ -48,15 +52,19 @@ class TransferController {
         return AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
     }
 
-    /** the human-readable stage: which desk the application is sitting with (or its terminal state).
-     *  While it is APPLIED it is with the current department once paid, or awaiting the student's payment. */
-    private static String stageLabel(String state, boolean paid) {
+    /** the human-readable stage: which desk the application is sitting with (or its terminal state). V727: read from what is paid —
+     *  APPLIED is with the current department once anything is paid, else awaiting payment; at the Academic office (and once
+     *  approved by Senate) the balance still owed is named. A closed application (declined, not recommended, withdrawn: band CLOSED,
+     *  nothing owed) is named by its state alone, never by a payment. */
+    static String stageLabel(String state, BigDecimal paid, BigDecimal balance) {
+        boolean anyPaid = paid != null && paid.signum() > 0;
+        boolean owing = balance != null && balance.signum() > 0;
         return switch (state == null ? "" : state) {
-            case "APPLIED" -> paid ? "With current department" : "Awaiting payment";
+            case "APPLIED" -> anyPaid ? "With current department" : "Awaiting payment";
             case "FROM_OK" -> "With new department";
             case "TO_OK" -> "With Registrar";
-            case "REG_OK" -> "With Academic office";
-            case "APPROVED" -> "Approved — awaiting fee";
+            case "REG_OK" -> owing ? "With Academic office — " + naira(balance) + " outstanding" : "With Academic office";
+            case "APPROVED" -> owing ? "Approved — " + naira(balance) + " outstanding" : "Approved — awaiting effect";
             case "EFFECTED" -> "Completed";
             case "DECLINED" -> "Declined";
             case "WITHDRAWN" -> "Withdrawn";
@@ -66,8 +74,22 @@ class TransferController {
         };
     }
 
-    /** whether the acting office (and department, for an HOD) may approve an application at this stage.
-     *  The current department cannot approve until the fee is paid (pay-first). */
+    /** naira with comma thousands separators whatever the server's locale: ₦12,500, or ₦12,500.50 when there are kobo */
+    static String naira(BigDecimal amount) {
+        if (amount == null) {
+            return "₦0";
+        }
+        BigDecimal a = amount.stripTrailingZeros();
+        return a.scale() <= 0 ? String.format(java.util.Locale.ROOT, "₦%,d", a.toBigInteger()) : String.format(java.util.Locale.ROOT, "₦%,.2f", amount);
+    }
+
+    static BigDecimal money(Object o) {
+        return o == null ? null : o instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(o));
+    }
+
+    /** whether the acting office (and department, for an HOD) holds the application at this stage. V727: the current department acts
+     *  once any verified payment stands (the University's decision of 12 November 2026); the balance at the Academic office's desk is
+     *  the database's to refuse (TRANSFER_FEE_OUTSTANDING, TRANSFER_PAYMENT_PENDING), with the figures. */
     private static boolean mayApprove(String office, String myDept, String state, String fromDept, String toDept, boolean paid) {
         boolean isSuper = "super".equals(office);
         return switch (state == null ? "" : state) {
@@ -77,6 +99,14 @@ class TransferController {
             case "REG_OK" -> isSuper || "academic".equals(office);
             default -> false;
         };
+    }
+
+    /** V727: the final approval may be given — as people.transfer_fee_settled_or_refuse decides it: the fee stated
+     *  (TRANSFER_FEE_NOT_STATED) and nothing owed (TRANSFER_FEE_OUTSTANDING); a payment awaiting the bank refuses it only while a
+     *  balance is owed (TRANSFER_PAYMENT_PENDING), so once nothing is owed it no longer matters */
+    private static boolean settled(Object feeDue, Object balance) {
+        BigDecimal b = money(balance);
+        return feeDue != null && b != null && b.signum() <= 0;
     }
 
     /** V686: the applications the old portal approved, freed from the queue together */
@@ -137,13 +167,154 @@ class TransferController {
                 SELECT p.code, p.name, f.name AS faculty FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE NOT p.archived AND p.code <> (SELECT programme_code FROM people.student WHERE id = :s) ORDER BY f.name, p.name
                 """).param("s", student).query().listOfRows();
-        java.math.BigDecimal fee = jdbc.sql("SELECT people.transfer_fee()").query(java.math.BigDecimal.class).optional().orElse(null);
+        BigDecimal fee = jdbc.sql("SELECT people.transfer_fee()").query(BigDecimal.class).optional().orElse(null);
         java.util.Map<String, Object> out = new java.util.HashMap<>();
         out.put("student", me);
         out.put("applications", apps);
         out.put("programmes", programmes);
         out.put("fee", fee);   // null until the Bursary sets the transfer fee
+        // V727: the application the payment panel reads — the live one, else the newest effected or declined
+        UUID app = jdbc.sql("""
+                SELECT t.id FROM people.transfer_application t
+                 WHERE t.student_id = :s AND (t.state = ANY (people.transfer_live_states()) OR t.state IN ('EFFECTED', 'DECLINED'))
+                 ORDER BY (t.state = ANY (people.transfer_live_states())) DESC, t.applied_at DESC LIMIT 1
+                """).param("s", student).query(UUID.class).optional().orElse(null);
+        out.put("payment", app == null ? null : payment(app));
+        out.put("paymentsMade", app == null ? List.of() : paymentsMade(app));
+        out.put("credit", credit(student));
+        out.put("legacy", app == null ? null : legacy(app));
         return out;
+    }
+
+    /** V727: what the application owes and what is paid (people.transfer_entitlement), and the next thing the student does: pay
+     *  the whole fee, pay the balance, complete the payment awaiting the bank, or wait for the desks — nothing once the application
+     *  is no longer live (effected, or closed: band CLOSED, nothing owed) */
+    private Map<String, Object> payment(UUID app) {
+        Map<String, Object> e = jdbc.sql("""
+                SELECT t.id, t.state, t.state = ANY (people.transfer_live_states()) AS live, e.*
+                  FROM people.transfer_application t CROSS JOIN LATERAL people.transfer_entitlement(t.id) e WHERE t.id = :a
+                """).param("a", app).query().singleRow();
+        String state = str(e.get("state"));
+        BigDecimal paid = money(e.get("paid_total")), balance = money(e.get("balance"));
+        String next;
+        if (!Boolean.TRUE.equals(e.get("live")) || "CLOSED".equals(e.get("band"))) {
+            next = "NONE";
+        } else if (balance == null || balance.signum() <= 0) {
+            next = "AWAIT_APPROVAL";   // paid in full — or no fee stated to pay yet, which the band says
+        } else if (Boolean.TRUE.equals(e.get("pending"))) {
+            next = "COMPLETE_PAYMENT";
+        } else if (paid == null || paid.signum() <= 0) {
+            next = "PAY_NOW";
+        } else {
+            next = "PAY_BALANCE";
+        }
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("applicationId", e.get("id"));
+        m.put("state", state);
+        m.put("stageLabel", stageLabel(state, paid, balance));
+        m.put("feeDue", e.get("fee_due"));
+        m.put("portalPaid", e.get("portal_paid"));
+        m.put("oldPortalPaid", e.get("old_portal_paid"));
+        m.put("paidTotal", e.get("paid_total"));
+        m.put("balance", e.get("balance"));
+        m.put("excess", e.get("excess"));
+        m.put("payments", e.get("payments"));
+        m.put("settled", e.get("settled"));
+        m.put("pending", e.get("pending"));
+        m.put("openReference", e.get("open_reference"));
+        m.put("openAmount", e.get("open_amount"));
+        m.put("openExpiresAt", e.get("open_expires_at"));
+        m.put("band", e.get("band"));
+        m.put("nextAction", next);
+        return m;
+    }
+
+    /** V727: the payments counted toward the application — the old portal's (with their reconciliation status) and this portal's,
+     *  confirmed or awaiting the bank (an expired or archived reference is none) */
+    private List<Map<String, Object>> paymentsMade(UUID app) {
+        return jdbc.sql("""
+                SELECT tp.source, r.reference,
+                       CASE WHEN tp.source = 'OLD_PORTAL'
+                            THEN coalesce(l.payref, (SELECT lp.payref FROM finance.legacy_payref lp WHERE lp.reference = r.reference ORDER BY lp.recorded_at LIMIT 1)) END AS payref,
+                       CASE WHEN tp.source = 'OLD_PORTAL' THEN coalesce(l.item, r.purpose) ELSE r.purpose END AS item,
+                       r.amount,
+                       CASE WHEN tp.source = 'OLD_PORTAL' THEN coalesce(l.paid_on, (r.confirmed_at AT TIME ZONE 'Africa/Lagos')::date)
+                            ELSE (r.confirmed_at AT TIME ZONE 'Africa/Lagos')::date END AS paid_on,
+                       CASE WHEN tp.source = 'OLD_PORTAL' THEN coalesce(l.status, 'LINKED')
+                            WHEN r.confirmed_at IS NOT NULL THEN 'CONFIRMED' ELSE 'AWAITING_BANK' END AS status
+                  FROM people.transfer_payment tp
+                  JOIN finance.payment_reference r ON r.id = tp.payment_id
+                  LEFT JOIN people.legacy_transfer_payment l ON l.payment_id = tp.payment_id
+                 WHERE tp.application_id = :a AND r.archived_at IS NULL
+                   AND (r.confirmed_at IS NOT NULL OR (tp.source = 'PORTAL' AND r.expires_at > now()))
+                 ORDER BY coalesce(r.confirmed_at, r.generated_at)
+                """).param("a", app).query().listOfRows().stream().map(r -> {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("source", r.get("source"));
+                    m.put("reference", r.get("reference"));
+                    m.put("payref", r.get("payref"));
+                    m.put("item", r.get("item"));
+                    m.put("amount", r.get("amount"));
+                    m.put("paidOn", r.get("paid_on"));
+                    m.put("status", r.get("status"));
+                    return m;
+                }).toList();
+    }
+
+    /** V727: the student's old-portal transfer payments that await an application (they count once one is made), or null */
+    private Map<String, Object> credit(UUID student) {
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT l.payref, l.item, l.amount, l.paid_on
+                  FROM people.legacy_transfer_payment l JOIN finance.payment_reference r ON r.id = l.payment_id AND r.archived_at IS NULL
+                 WHERE l.student_id = :s AND l.status = 'AWAITING_APPLICATION'
+                 ORDER BY l.paid_on, l.payref
+                """).param("s", student).query().listOfRows();
+        if (rows.isEmpty()) {
+            return null;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        List<Map<String, Object>> payments = new java.util.ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            total = total.add(money(r.get("amount")));
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("payref", r.get("payref"));
+            m.put("item", r.get("item"));
+            m.put("amount", r.get("amount"));
+            m.put("paidOn", r.get("paid_on"));
+            payments.add(m);
+        }
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("total", total);
+        out.put("payments", payments);
+        return out;
+    }
+
+    /** V727: the old portal's record of the application, as its export gave it, or null */
+    private Map<String, Object> legacy(UUID app) {
+        return jdbc.sql("SELECT legacy_ref, applied_on, stage, approvals, documents, payrefs FROM people.transfer_legacy WHERE application_id = :a")
+                .param("a", app).query().listOfRows().stream().findFirst().map(r -> {
+                    Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("legacyRef", r.get("legacy_ref"));
+                    m.put("appliedOn", r.get("applied_on"));
+                    m.put("stage", r.get("stage"));
+                    m.put("approvals", r.get("approvals"));
+                    m.put("documents", r.get("documents"));
+                    m.put("payrefs", texts(r.get("payrefs")));
+                    return m;
+                }).orElse(null);
+    }
+
+    /** a text[] column as a list */
+    static List<String> texts(Object v) {
+        try {
+            if (v instanceof java.sql.Array a) {
+                Object[] items = (Object[]) a.getArray();
+                return java.util.Arrays.stream(items).map(x -> x == null ? null : String.valueOf(x)).toList();
+            }
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException("reading a text[] column", e);
+        }
+        return v instanceof String[] arr ? List.of(arr) : List.of();
     }
 
     @PostMapping("/api/v1/me/transfer")
@@ -165,8 +336,10 @@ class TransferController {
         if (!mine) {
             throw new NotFound("transfer application", id.toString());
         }
+        // V727: the reference for the balance (the whole fee before anything is paid) — the one still open for it again, never a second
         String ref = jdbc.sql("SELECT people.transfer_fee_reference(:id)").param("id", id).query(String.class).single();
-        return Map.of("reference", ref);
+        BigDecimal amount = jdbc.sql("SELECT amount FROM finance.payment_reference WHERE reference = :r").param("r", ref).query(BigDecimal.class).single();
+        return Map.of("reference", ref, "amount", amount);
     }
 
     /* ── the office's side ── */
@@ -195,10 +368,15 @@ class TransferController {
         }
         for (Map<String, Object> r : rows) {
             String st = String.valueOf(r.get("state"));
-            boolean paid = r.get("fee_confirmed_at") != null;
-            r.put("stageLabel", stageLabel(st, paid));
-            r.put("canApprove", mayApprove(office, myDept,
-                    st, str(r.get("from_dept")), str(r.get("to_dept")), paid));
+            // V727: paid is any verified payment (this portal's or the old portal's); the final approval needs the fee stated and nothing
+            // owed — as the database decides it (people.transfer_fee_settled_or_refuse)
+            BigDecimal paidTotal = money(r.get("paid_total"));
+            boolean paid = paidTotal != null && paidTotal.signum() > 0;
+            boolean holds = mayApprove(office, myDept, st, str(r.get("from_dept")), str(r.get("to_dept")), paid);
+            r.put("stageLabel", stageLabel(st, paidTotal, money(r.get("balance"))));
+            r.put("canApprove", holds && (!"REG_OK".equals(st) || settled(r.get("fee_due"), r.get("balance"))));
+            // the desk holding the application may decline it whatever is paid
+            r.put("canDecline", mayApprove(office, myDept, st, str(r.get("from_dept")), str(r.get("to_dept")), true));
             r.put("restoredRef", restored.get(String.valueOf(r.get("id"))));
         }
         return Map.of("rows", rows);
@@ -259,13 +437,14 @@ class TransferController {
      *  office may act: the current-department HOD, then the new-department HOD, then the Registrar, then
      *  the Academic office. */
     private Map<String, Object> stageOf(UUID id) {
+        // V727: what is paid read from every verified payment (people.transfer_entitlement), not from the first reference alone
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT t.state, fp.dept_code AS from_dept, tp.dept_code AS to_dept,
-                       CASE WHEN t.fee_reference IS NULL THEN false
-                            ELSE (SELECT fs.confirmed_at IS NOT NULL FROM finance.reference_state(t.fee_reference) fs) END AS paid
+                SELECT t.state, fp.dept_code AS from_dept, tp.dept_code AS to_dept, e.paid_total, e.balance, e.pending,
+                       coalesce(e.paid_total, 0) > 0 AS paid
                   FROM people.transfer_application t
                   LEFT JOIN ref.programme fp ON fp.code = t.from_programme_code
                   LEFT JOIN ref.programme tp ON tp.code = t.to_programme_code
+                  LEFT JOIN LATERAL people.transfer_entitlement(t.id) e ON true
                  WHERE t.id = :id
                 """).param("id", id).query().listOfRows();
         if (rows.isEmpty()) {
@@ -283,8 +462,9 @@ class TransferController {
         boolean paid = Boolean.TRUE.equals(row.get("paid"));
         if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")), paid)) {
             throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
-                    "This application is not ready at your desk. " + stageLabel(state, paid) + ".",
-                    new DomainRuleViolation.Remedy("The current department approves only after the student has paid; each later office approves in turn.", "Registry"));
+                    "This application is not ready at your desk. " + stageLabel(state, money(row.get("paid_total")), money(row.get("balance"))) + ".",
+                    new DomainRuleViolation.Remedy("The current department approves once the student has paid toward the transfer fee, here or on the old portal; "
+                            + "each later office approves in turn, and the Academic office's final approval waits until the fee is paid in full.", "Registry"));
         }
         String next = jdbc.sql("SELECT people.approve_transfer(:id)").param("id", id).query(String.class).single();
         tell(id, "Your transfer application moved forward", "Your application to transfer has been approved at the " + stageWord(state) + " and is now at: " + stageWord(next) + ". You will be told at each stage.");
@@ -298,10 +478,9 @@ class TransferController {
     Map<String, Object> decline(@PathVariable UUID id, @Valid @RequestBody Why body) {
         Map<String, Object> row = stageOf(id);
         String state = str(row.get("state"));
-        boolean paid = Boolean.TRUE.equals(row.get("paid"));
         if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")), true)) {
             throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
-                    "This application is not at your desk. " + stageLabel(state, paid) + ".",
+                    "This application is not at your desk. " + stageLabel(state, money(row.get("paid_total")), money(row.get("balance"))) + ".",
                     new DomainRuleViolation.Remedy("Only the office holding the application at this stage may decline it.", "Registry"));
         }
         jdbc.sql("SELECT people.decline_transfer(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();

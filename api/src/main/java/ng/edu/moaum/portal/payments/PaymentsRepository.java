@@ -75,6 +75,28 @@ class PaymentsRepository {
                 .param("r", reference).query(Boolean.class).single();
     }
 
+    /** V727: whether a student's reference is the inter-departmental transfer fee (purpose 'Inter-departmental transfer to …') — paid like
+     *  any student reference, named and returned to as the transfer fee */
+    boolean transferReference(String reference) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = upper(btrim(:r)) AND purpose LIKE 'Inter-departmental transfer%')")
+                .param("r", reference).query(Boolean.class).single();
+    }
+
+    /** V727: whether a transfer fee reference may still be paid — drawn on this portal for an application that is live
+     *  (people.transfer_payment, source PORTAL; people.transfer_live_states) and for what that application owes now (the balance,
+     *  people.transfer_entitlement). One left open for another figure — a payment linked since, a revised fee, nothing owed, the
+     *  application ended — is stale */
+    boolean transferPayable(String reference) {
+        return jdbc.sql("""
+                SELECT EXISTS (
+                    SELECT 1 FROM finance.payment_reference r
+                      JOIN people.transfer_payment tp ON tp.payment_id = r.id AND tp.source = 'PORTAL'
+                      JOIN people.transfer_application t ON t.id = tp.application_id AND t.state = ANY (people.transfer_live_states())
+                      CROSS JOIN LATERAL people.transfer_entitlement(t.id) e
+                     WHERE r.reference = upper(btrim(:r)) AND e.balance > 0 AND r.amount = e.balance)
+                """).param("r", reference).query(Boolean.class).single();
+    }
+
     String confirmStudent(String reference, String channel, String note) {
         return jdbc.sql("SELECT finance.confirm_payment(:r, :c, :n)")
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();

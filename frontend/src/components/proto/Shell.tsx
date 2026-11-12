@@ -38,6 +38,8 @@ export const ROUTES: Record<string, string> = {
   "t/cohorts": "/cohorts",
   "t/programmeswap": "/programme-swap",
   "t/transferbulk": "/transfers/bulk",
+  "t/transferfees": "/transfers/fees",   // V727
+  "t/oldtransfers": "/transfers/old-portal",   // V727
   "t/iut": "/transfers/inter-university",
   "t/student": "/students",
   "t/biochange": "/students/biodata-changes",
@@ -530,6 +532,8 @@ const OVERRIDES: Record<string, string> = {
   "t/graduationmanage": "Graduation management",
   "t/programmeswap": "Programme swap",
   "t/transferbulk": "Bulk inter-departmental transfer",
+  "t/transferfees": "Transfer fees",
+  "t/oldtransfers": "Old-portal transfers",
   "t/iut": "Inter-university transfer",
   "t/legacywallet": "Old e-wallet balances",
   "t/legacyrecon": "Legacy financial reconciliation",

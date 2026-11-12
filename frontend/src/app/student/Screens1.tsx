@@ -22,6 +22,7 @@ import { SpilloverCard } from "./SpilloverCard";
 import { gstPayState } from "@/lib/gst-payable";
 import { PasswordInput } from "@/components/PasswordInput";
 import type { OwedCourse } from "@/lib/carry-over";
+import { bandWords, creditWords, isLive, isTransferPurpose, overpaidWords, owedNow, payLabel, type TransferFeeView } from "@/lib/transfer-fee";
 
 /** the student's bio-data as a clean, read-only profile card on the dashboard. The full record
  *  (personal, origin, contact, family, next-of-kin) is read from /me/biodata; the JAMB registration
@@ -131,7 +132,52 @@ function Quick({ icon, title, sub, href }: { icon: string; title: string; sub: s
     : <button type="button" className="tile" style={{ textAlign: "left", alignItems: "flex-start" }} disabled>{inner}</button>;
 }
 
-export function Dashboard({ s, gst = null, outstanding = null }: { s: Me; gst?: GstView | null; outstanding?: OutstandingFees | null }) {
+/** V727: the inter-departmental transfer on the dashboard — the fee, what is paid here and on the old portal, what is outstanding, where
+ *  the application stands — or the old portal's payments awaiting an application. The page shows it only when there is one of these. */
+function TransferCard({ t }: { t: TransferFeeView }) {
+  const credit = t.credit && owedNum(t.credit.total) > 0 ? t.credit : null;
+  const p = t.payment && (isLive(t.payment.state) || !credit) ? t.payment : null;
+  if (!p) {
+    if (!credit) return null;
+    return (
+      <Panel title="Inter-departmental transfer" right={<Pil kind="info">AWAITING YOUR APPLICATION</Pil>}>
+        <PBody>
+          <KvGrid cls="grid--4" pairs={[
+            ["Transfer fee", t.fee != null ? naira(t.fee) : "Not yet stated"],
+            ["Paid on the old portal", <span key="o" className="tnum">{naira(owedNum(credit.total))}</span>],
+            ["Outstanding", "Nothing until you apply"],
+            ["Apply", <LinkBtn key="a" kind="primary" size="sm" href="/student/transfer">APPLY FOR TRANSFER</LinkBtn>],
+          ]} />
+          <div className="sub2 mt-1">{creditWords(credit, "page")}</div>
+        </PBody>
+      </Panel>
+    );
+  }
+  // a declined application owes nothing more: its standing is said, not the band of its payments
+  const closed = !isLive(p.state) && p.state !== "EFFECTED";
+  const [word, tone] = closed ? [p.stageLabel ?? p.state, "grey" as const] : bandWords(p.band);
+  const label = payLabel(p);
+  const owed = owedNow(p);
+  const old = owedNum(p.oldPortalPaid);
+  const over = overpaidWords(p);
+  return (
+    <Panel title="Inter-departmental transfer" right={<Pil kind={tone}>{word.toUpperCase()}</Pil>}>
+      <PBody>
+        <KvGrid cls="grid--4" pairs={[
+          ["Transfer fee", p.feeDue != null ? naira(owedNum(p.feeDue)) : "Not yet stated"],
+          ["Paid", <span key="p" className="tnum">{naira(owedNum(p.paidTotal))}{old > 0 ? <span className="sub2"> · {naira(old)} on the old portal</span> : null}</span>],
+          ["Outstanding", p.feeDue != null ? <b key="b" className="tnum" style={{ color: owed > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(owed)}</b> : "—"],
+          ["Status", p.stageLabel ?? "—"],
+          [label ? "Pay" : "More", <LinkBtn key="l" kind={label ? "primary" : "ghost"} size="sm" href="/student/transfer">{label ?? "VIEW TRANSFER"}</LinkBtn>],
+        ]} />
+        {over ? <div className="sub2 mt-1">{over}</div> : null}
+        {owed > 0 && owedNum(p.paidTotal) > 0 ? <div className="sub2 mt-1">The Academic Office gives its final approval once the whole fee is paid.</div> : null}
+      </PBody>
+    </Panel>
+  );
+}
+
+export function Dashboard({ s, gst = null, outstanding = null, transfer = null }: { s: Me; gst?: GstView | null; outstanding?: OutstandingFees | null; transfer?: TransferFeeView | null }) {
   // V720: what is owed across every session of the record, past and current
   const owedTotal = outstanding ? owedNum(outstanding.summary.outstanding) : 0;
   const f = s.fees;
@@ -145,7 +191,7 @@ export function Dashboard({ s, gst = null, outstanding = null }: { s: Me; gst?: 
   // before matriculation (V282): the fees paid make the person a student awaiting their number; the JAMB number stays the sign-in
   const feesPaidStage = ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING"].includes(s.lifecycle ?? "");
   const preMatric = !s.matricNo && s.entryMode !== "POSTGRADUATE";
-  const lastPaid = [...f.references].filter((r) => r.confirmed_at && !r.archived && r.session === f.session).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
+  const lastPaid = [...f.references].filter((r) => r.confirmed_at && !r.archived && r.session === f.session && !isTransferPurpose(r.purpose)).sort((a, b) => String(b.confirmed_at).localeCompare(String(a.confirmed_at)))[0] ?? null;
   return (
     <>
       {preMatric ? (
@@ -196,6 +242,8 @@ export function Dashboard({ s, gst = null, outstanding = null }: { s: Me; gst?: 
           </Panel>
         );
       })() : null}
+      {/* V727: the transfer fee, when the student has a transfer application or old-portal payments toward one (the page decides) */}
+      {transfer ? <TransferCard t={transfer} /> : null}
       {adv ? (
         <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
           CGPA <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester ({adv.pronounced_level} level), still under {Number(adv.threshold ?? 1).toFixed(2)} after probation. Senate decides on withdrawal; until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.

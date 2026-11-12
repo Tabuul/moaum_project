@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 554
+\set EXPECTED 555
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32062,6 +32062,249 @@ BEGIN
                AND chain_rcpt = 200 AND chain_off = 0 AND norm = '2484/2485 2484/2485 2484/2485 2484/2485 x' AND mal = 0 AND callers = 3, false),
       format('receipts %s | results %s | same %s | override %s | view %s 5-arg %s 7-arg %s array off %s | historical %s | timeline %s | lint %s | merges %s | undo stale %s->%s receipt %s pg stale %s | chain receipt %s off %s | names %s off %s | set readers %s',
              rcpt, lvl_in, reg_pg, ov_lvl, view_lvl, rep5, rep7, array_off, hist, tl, lint, merged_seen, stale_before, stale_after, undone, stale_pg, chain_rcpt, chain_off, norm, mal, callers));
+END $$;
+
+-- ── V727: inter-departmental transfers begun on the old portal, the fee read against every verified payment. Made-up students in 9727/9728:
+--          A — a ₦10,000 old-portal FORM (paid 15 Oct 2025, its number in legacy_payref): awaits an application (the monitor's credit row), is
+--              linked when A applies; the desks act on the part payment; the final approval is refused while ₦10,000 is owed and while
+--              the balance reference awaits the bank; the balance reference is one (asked twice); once paid, settled in parts and effected;
+--              the completed transfer keeps the payment when A's record changes, and the Bursary cannot reject it away.
+--          B — LETTER and TRANSFER, ₦20,000 each: both linked, OVERPAID by ₦20,000; the Bursary rejects one: PAID_IN_FULL, kept on a re-run;
+--              declined, the application is CLOSED and keeps the payment; B's next application owes the whole fee.
+--          C — CHANGE OF COURSE: NOT_COUNTED. D — a FORM paid in 2024: OUT_OF_SCOPE until the scope is widened. E — a payment naming
+--              another matric: UNMATCHED. F — this portal only: the HOD refused before a payment; the reference for the whole fee; a revised
+--              fee closes it and the next is for the new fee; expired, it is renewed for the balance; lapsed again and replaced, then
+--              confirmed late, it closes its replacement (never paid twice). G — a FORM paid in 2024, named by the
+--              old portal's export (its row labelled an earlier session): loaded at TO_OK in the current session, linked although out of scope.
+--              H — applied here, then the export's row joins that application and moves it on to the new HOD's desk (ATTACH).
+--          J — a reference for the whole fee, then an officer counts an old payment toward it: the reference is closed, renewal draws the
+--              balance. K — the old portal approved K's transfer in this exercise and it was restored here: the payment is USED, never a
+--              credit for another. L — a transfer restored from an earlier exercise leaves this exercise's payment as credit.
+--          The upload: a declined row beside the one that loads never blocks it; refused whole while rows cannot load, loaded in part; a
+--          second load adds nothing; the old record and the revisions kept. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9727/9728'; cur text; who uuid := gen_random_uuid(); prog text; prog2 text;
+    st uuid[] := ARRAY[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
+                       gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+    mat text[]; app_a uuid; app_b uuid; app_f uuid; app_g uuid; app_h uuid; ref_a1 text; ref_a2 text; ref_f1 text; ref_f2 text; rows jsonb;
+    s_before text; credit_a text; ent_a1 text; ent_a2 text; ent_b1 text; ent_b2 text; ent_f1 text; ent_f2 text; ent_g text;
+    e_unpaid text; e_owed text; e_pending text; e_settled text; e_refused text; e_kept text; e_rev text; e_office text;
+    desk_a text; state_a text; prog_a text; dec_b text; after_b text; checked text; loaded text; again text; g_state text; g_link text; h_link text;
+    f1_expired boolean; revisions int; d_after text; msg text; v_err text; i int;
+    app_j uuid; app_k uuid; app_b2 uuid; ref_j text; renew_f text; j_closed boolean; ent_j text; renew_j text; k_status text; ent_k text; a_after text;
+    b_closed text; b_link text; ent_b3 text; h_state text; g_session boolean; earlier text := '1999/2000';
+    e_effected text; ref_f3 text; f3_closed boolean; ent_f3 text; l_status text;
+BEGIN
+  BEGIN
+    SELECT code INTO prog FROM ref.programme WHERE NOT archived ORDER BY code LIMIT 1;
+    SELECT code INTO prog2 FROM ref.programme WHERE NOT archived AND code <> prog ORDER BY code LIMIT 1;
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V727', true);
+    UPDATE finance.fee_setting SET transfer_fee = 20000 WHERE id = 1;
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9727-10-01', date '9728-08-31') ON CONFLICT (name) DO NOTHING;
+    -- the export's rows are of the current session (an earlier one is out of scope); the calendar may have none
+    cur := coalesce(policy.university_current_session(), ses);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), earlier, date '1999-10-01', date '2000-08-31') ON CONFLICT (name) DO NOTHING;
+    FOR i IN 1..11 LOOP
+        mat[i] := 'MOAUM/ZZT/27/727' || i;
+        INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (st[i], 'MOAUM/ADM/27/727' || lpad(i::text, 3, '0'), mat[i], 'CHECKV727', 'Student ' || i, 'F', prog, 'UTME', ses, 100, 200, 'ACTIVE', now());
+    END LOOP;
+    -- the old portal's payments, as the import left them
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    SELECT st[x.s], ses, x.reference, x.purpose, x.amount, x.paid, x.paid, x.paid, who, 'Legacy', 'LEG-' || x.reference, x.note
+      FROM (VALUES
+        (1, 'MOAUM-LEG-MOAUMZZT277271-9727-9728-S1-IDF', 'INTER DEPARTMENTAL TRANFER FORM (legacy) · semester 1', 10000, timestamptz '2025-10-15 10:00+01', 'Imported from the old portal · E-Wallet · old ref PR727A1'),
+        (2, 'MOAUM-LEG-MOAUMZZT277272-9727-9728-S1-IDL', 'INTER DEPT. TRANSFER  PROVISIONAL LETTER (legacy) · semester 1', 20000, timestamptz '2026-01-10 10:00+01', 'Imported from the old portal · Interswitch · old ref PR727B1'),
+        (2, 'MOAUM-LEG-MOAUMZZT277272-9727-9728-S2-IDT', 'INTER DEPT. TRANSFER (legacy) · semester 2', 20000, timestamptz '2026-02-10 10:00+01', 'Imported from the old portal · Interswitch · old ref PR727B2'),
+        (3, 'MOAUM-LEG-MOAUMZZT277273-9727-9728-S1-COC', 'CHANGE OF COURSE (legacy) · semester 1', 20000, timestamptz '2026-01-05 10:00+01', 'Imported from the old portal · old ref PR727C1'),
+        (4, 'MOAUM-LEG-MOAUMZZT277274-9727-9728-S1-IDF', 'INTER DEPARTMENTAL TRANFER FORM (legacy) · semester 1', 10000, timestamptz '2024-03-01 10:00+01', 'Imported from the old portal · old ref PR727D1'),
+        (5, 'MOAUM-LEG-MOAUMZZT279999-9727-9728-S1-IDF', 'INTER DEPARTMENTAL TRANFER FORM (legacy) · semester 1', 20000, timestamptz '2026-03-01 10:00+01', 'Imported from the old portal · old ref PR727E1'),
+        (7, 'MOAUM-LEG-MOAUMZZT277277-9727-9728-S1-IDF', 'INTER DEPARTMENTAL TRANFER FORM (legacy) · semester 1', 10000, timestamptz '2024-06-01 10:00+01', 'Imported from the old portal · old ref PR727G1'),
+        (8, 'MOAUM-LEG-MOAUMZZT277278-9727-9728-S1-IDT', 'INTER DEPT. TRANSFER (legacy) · semester 1', 10000, timestamptz '2026-03-01 10:00+01', 'Imported from the old portal · old ref PR727H1'),
+        (9, 'MOAUM-LEG-MOAUMZZT277279-9727-9728-S1-IDF', 'INTER DEPARTMENTAL TRANFER FORM (legacy) · semester 1', 10000, timestamptz '2024-05-01 10:00+01', 'Imported from the old portal · old ref PR727J1'),
+        (10, 'MOAUM-LEG-MOAUMZZT2772710-9727-9728-S1-IDT', 'INTER DEPT. TRANSFER (legacy) · semester 1', 20000, timestamptz '2026-03-01 10:00+01', 'Imported from the old portal · old ref PR727K1'),
+        (11, 'MOAUM-LEG-MOAUMZZT2772711-9727-9728-S1-IDF', 'INTER DEPARTMENTAL TRANFER FORM (legacy) · semester 1', 20000, timestamptz '2026-01-15 10:00+01', 'Imported from the old portal · old ref PR727L1')
+      ) AS x(s, reference, purpose, amount, paid, note);
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PR727A1', 'MOAUM-LEG-MOAUMZZT277271-9727-9728-S1-IDF', 10000);
+    FOR i IN 1..11 LOOP PERFORM people.legacy_transfer_reconcile(st[i]); END LOOP;
+    s_before := (SELECT string_agg(array_position(st, l.student_id) || ':' || l.item_kind || '/' || l.status, ',' ORDER BY array_position(st, l.student_id), l.paid_on)
+                   FROM people.legacy_transfer_payment l WHERE l.student_id = ANY (st));
+    credit_a := (SELECT m.band || '/' || m.old_portal_paid::int || '/' || m.balance::int FROM people.transfer_fee_monitor(NULL) m WHERE m.student_id = st[1]);
+
+    -- A applies; the desks act on the part payment; the final approval waits for the balance
+    PERFORM set_config('moaum.actor_id', st[1]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_a := people.apply_transfer(st[1], prog2, 'CHECK V727 A', NULL);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    ent_a1 := (SELECT e.band || '/' || e.fee_due::int || '/' || e.old_portal_paid::int || '/' || e.balance::int FROM people.transfer_entitlement(app_a) e);
+    desk_a := people.approve_transfer(app_a) || ',' || people.approve_transfer(app_a) || ',' || people.approve_transfer(app_a);
+    BEGIN PERFORM people.approve_transfer(app_a); EXCEPTION WHEN others THEN e_owed := split_part(SQLERRM, ':', 1); END;
+    ref_a1 := people.transfer_fee_reference(app_a);
+    ref_a2 := people.transfer_fee_reference(app_a);
+    BEGIN PERFORM people.approve_transfer(app_a); EXCEPTION WHEN others THEN e_pending := split_part(SQLERRM, ':', 1); END;
+    UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = who, channel = 'Interswitch', receipt_no = 'RCPT-CHK727A' WHERE reference = ref_a1;
+    ent_a2 := (SELECT e.band || '/' || e.paid_total::int || '/' || e.balance::int || '/' || e.payments FROM people.transfer_entitlement(app_a) e);
+    BEGIN PERFORM people.transfer_fee_reference(app_a); EXCEPTION WHEN others THEN e_settled := split_part(SQLERRM, ':', 1); END;
+    state_a := people.approve_transfer(app_a);
+    prog_a := (SELECT CASE WHEN s.programme_code = prog2 THEN 'MOVED' ELSE 'NOT MOVED' END FROM people.student s WHERE s.id = st[1]);
+    -- a completed transfer keeps what paid for it, whatever becomes of the record
+    UPDATE people.student SET status = 'SUSPENDED' WHERE id = st[1];
+    PERFORM people.legacy_transfer_reconcile(st[1]);
+    a_after := (SELECT l.status FROM people.legacy_transfer_payment l WHERE l.student_id = st[1]) || '/'
+            || (SELECT e.band || '/' || e.balance::int FROM people.transfer_entitlement(app_a) e);
+    UPDATE people.student SET status = 'ACTIVE' WHERE id = st[1];
+    BEGIN
+        PERFORM people.decide_legacy_transfer_payment((SELECT p.id FROM finance.payment_reference p WHERE p.reference = 'MOAUM-LEG-MOAUMZZT277271-9727-9728-S1-IDF'),
+                                                      'REJECT', NULL, 'CHECK V727: rejected after the transfer', who, 'bursar');
+    EXCEPTION WHEN others THEN e_effected := split_part(SQLERRM, ':', 1); END;
+
+    -- B applies: both payments count, overpaid; the Bursary rejects one, and a re-run keeps the decision
+    PERFORM set_config('moaum.actor_id', st[2]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_b := people.apply_transfer(st[2], prog2, 'CHECK V727 B', NULL);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    ent_b1 := (SELECT e.band || '/' || e.old_portal_paid::int || '/' || e.excess::int FROM people.transfer_entitlement(app_b) e);
+    dec_b := people.decide_legacy_transfer_payment((SELECT p.id FROM finance.payment_reference p WHERE p.reference = 'MOAUM-LEG-MOAUMZZT277272-9727-9728-S2-IDT'),
+                                                   'REJECT', NULL, 'CHECK V727: paid twice for one transfer', who, 'bursar');
+    PERFORM people.legacy_transfer_reconcile(st[2]);
+    ent_b2 := (SELECT e.band || '/' || e.old_portal_paid::int || '/' || e.excess::int FROM people.transfer_entitlement(app_b) e);
+    after_b := (SELECT string_agg(l.status, ',' ORDER BY l.paid_on) FROM people.legacy_transfer_payment l WHERE l.student_id = st[2]);
+    -- declined: the payment stays with the declined application (as this portal's own fee does); the next application owes the fee
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM people.decline_transfer(app_b, 'CHECK V727: declined at the desk');
+    b_closed := (SELECT e.band || '/' || e.balance::int FROM people.transfer_entitlement(app_b) e);
+    PERFORM set_config('moaum.actor_id', st[2]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_b2 := people.apply_transfer(st[2], prog2, 'CHECK V727 B again', NULL);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    b_link := (SELECT CASE WHEN l.application_id = app_b THEN 'FIRST' WHEN l.application_id = app_b2 THEN 'SECOND' ELSE coalesce(l.application_id::text, '-') END
+                 FROM people.legacy_transfer_payment l WHERE l.student_id = st[2] AND l.status = 'LINKED');
+    ent_b3 := (SELECT e.band || '/' || e.balance::int FROM people.transfer_entitlement(app_b2) e);
+
+    -- F: nothing paid; the HOD waits; the reference is for the whole fee; a revised fee closes it
+    PERFORM set_config('moaum.actor_id', st[6]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_f := people.apply_transfer(st[6], prog2, 'CHECK V727 F', NULL);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM people.approve_transfer(app_f); EXCEPTION WHEN others THEN e_unpaid := split_part(SQLERRM, ':', 1); END;
+    ref_f1 := people.transfer_fee_reference(app_f);
+    ent_f1 := (SELECT e.band || '/' || e.open_amount::int FROM people.transfer_entitlement(app_f) e);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    UPDATE finance.fee_setting SET transfer_fee = 25000 WHERE id = 1;
+    revisions := (SELECT count(*) FROM finance.transfer_fee_revision r WHERE r.fee = 25000 AND r.previous_fee = 20000 AND r.stated_by = who);
+    f1_expired := (SELECT p.expires_at <= now() FROM finance.payment_reference p WHERE p.reference = ref_f1);
+    ref_f2 := people.transfer_fee_reference(app_f);
+    ent_f2 := (SELECT e.band || '/' || e.balance::int || '/' || (SELECT p.amount::int FROM finance.payment_reference p WHERE p.reference = ref_f2) FROM people.transfer_entitlement(app_f) e);
+    BEGIN UPDATE finance.transfer_fee_revision SET reason = 'x' WHERE fee = 25000; EXCEPTION WHEN others THEN e_rev := split_part(SQLERRM, ':', 1); END;
+    -- the expired balance reference renewed (V690's transfer branch, restated)
+    UPDATE finance.payment_reference SET expires_at = now() - interval '1 minute' WHERE reference = ref_f2;
+    renew_f := (SELECT x.outcome || '/' || x.amount_out::int || '/' || (x.reference_out = ref_f2) FROM finance.renew_reference(st[6], ref_f2) x);
+    UPDATE finance.payment_reference SET expires_at = now() - interval '1 minute' WHERE reference = ref_f2;
+    ref_f3 := people.transfer_fee_reference(app_f);
+    UPDATE finance.payment_reference SET confirmed_at = now(), confirmed_by = who, channel = 'Interswitch', receipt_no = 'RCPT-CHK727F' WHERE reference = ref_f2;
+    f3_closed := (SELECT p.expires_at <= now() FROM finance.payment_reference p WHERE p.reference = ref_f3);
+    ent_f3 := (SELECT e.band || '/' || e.balance::int || '/' || e.pending FROM people.transfer_entitlement(app_f) e);
+
+    -- J: a reference for the whole fee, then an officer counts an old payment toward it: the reference is closed, the renewal draws the balance
+    PERFORM set_config('moaum.actor_id', st[9]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_j := people.apply_transfer(st[9], prog2, 'CHECK V727 J', NULL);
+    ref_j := people.transfer_fee_reference(app_j);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM people.decide_legacy_transfer_payment((SELECT p.id FROM finance.payment_reference p WHERE p.reference = 'MOAUM-LEG-MOAUMZZT277279-9727-9728-S1-IDF'),
+                                                  'LINK', app_j, 'CHECK V727: paid toward this transfer', who, 'bursar');
+    j_closed := (SELECT p.expires_at <= now() FROM finance.payment_reference p WHERE p.reference = ref_j);
+    ent_j := (SELECT e.band || '/' || e.balance::int || '/' || e.pending FROM people.transfer_entitlement(app_j) e);
+    renew_j := (SELECT x.outcome || '/' || x.amount_out::int FROM finance.renew_reference(st[9], ref_j) x);
+
+    -- K: the old portal approved K's transfer and it was restored here: the payment paid for it, and is no credit for another
+    INSERT INTO people.prior_transfer (student_id, from_programme, to_programme, effective_session, approved_on, note, recorded_by, recorded_office)
+    VALUES (st[10], prog, prog2, ses, date '2026-04-01', 'CHECK V727: restored from the old portal', who, 'academic');
+    PERFORM people.legacy_transfer_reconcile(st[10]);
+    k_status := (SELECT l.status FROM people.legacy_transfer_payment l WHERE l.student_id = st[10]);
+    PERFORM set_config('moaum.actor_id', st[10]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_k := people.apply_transfer(st[10], (SELECT code FROM ref.programme WHERE NOT archived AND code NOT IN (prog, prog2) ORDER BY code LIMIT 1), 'CHECK V727 K', NULL);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    ent_k := (SELECT e.band || '/' || e.old_portal_paid::int FROM people.transfer_entitlement(app_k) e)
+          || '/' || (SELECT l.status FROM people.legacy_transfer_payment l WHERE l.student_id = st[10]);
+    INSERT INTO people.prior_transfer (student_id, from_programme, to_programme, effective_session, approved_on, note, recorded_by, recorded_office)
+    VALUES (st[11], prog, prog2, earlier, NULL, 'CHECK V727: restored from an earlier exercise', who, 'academic');
+    PERFORM people.legacy_transfer_reconcile(st[11]);
+    l_status := (SELECT l.status FROM people.legacy_transfer_payment l WHERE l.student_id = st[11]);
+
+    -- H applies here; then the old portal's export: G new at the new HOD's desk, H joins its application, three rows refused
+    PERFORM set_config('moaum.actor_id', st[8]::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    app_h := people.apply_transfer(st[8], prog2, 'CHECK V727 H', NULL);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    rows := jsonb_build_array(
+        jsonb_build_object('legacy_ref', 'OLD-727-G', 'matric_no', mat[7], 'to_programme', prog2, 'from_programme', prog, 'stage', 'New HOD', 'session', earlier,
+                           'applied_on', '20/10/2025', 'approvals', 'HOD 21/10/2025', 'payrefs', 'pr727g1'),
+        jsonb_build_object('legacy_ref', 'OLD-727-H', 'matric_no', lower(mat[8]), 'to_programme', lower(prog2), 'stage', 'New HOD', 'session', cur, 'payrefs', 'PR727H1'),
+        jsonb_build_object('legacy_ref', 'OLD-727-X', 'matric_no', 'MOAUM/ZZT/27/0000', 'to_programme', prog2, 'stage', 'Applied', 'session', cur),
+        jsonb_build_object('legacy_ref', 'OLD-727-A', 'matric_no', mat[1], 'to_programme', prog2, 'stage', 'Registry', 'session', cur),
+        jsonb_build_object('legacy_ref', 'OLD-727-C', 'matric_no', mat[3], 'to_programme', prog2, 'stage', 'Bursary', 'session', cur),
+        jsonb_build_object('legacy_ref', 'OLD-727-C2', 'matric_no', mat[3], 'to_programme', prog2, 'stage', 'Applied', 'session', cur));
+    checked := (SELECT string_agg(k.status, ',' ORDER BY k.row_no) FROM people.legacy_transfer_upload_check(rows) k);
+    BEGIN PERFORM people.legacy_transfer_upload_commit(rows, 'check.xlsx', false, who, 'academic'); EXCEPTION WHEN others THEN e_refused := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.legacy_transfer_upload_commit(rows, 'check.xlsx', true, who, 'bursar'); EXCEPTION WHEN others THEN e_office := split_part(SQLERRM, ':', 1); END;
+    loaded := (SELECT string_agg(c.status || '/' || c.linked_payments, ',' ORDER BY c.row_no) FROM people.legacy_transfer_upload_commit(rows, 'check.xlsx', true, who, 'academic') c);
+    again := (SELECT string_agg(c.status, ',' ORDER BY c.row_no) FROM people.legacy_transfer_upload_commit(rows, 'check.xlsx', true, who, 'academic') c);
+    app_g := (SELECT t.id FROM people.transfer_application t WHERE t.student_id = st[7]);
+    g_state := (SELECT t.state || '/' || to_char(t.applied_at AT TIME ZONE 'Africa/Lagos', 'YYYY-MM-DD') || '/' || lg.legacy_ref
+                  FROM people.transfer_application t JOIN people.transfer_legacy lg ON lg.application_id = t.id WHERE t.id = app_g);
+    g_link := (SELECT l.status || '/' || l.match_method FROM people.legacy_transfer_payment l WHERE l.student_id = st[7]);
+    ent_g := (SELECT e.band || '/' || e.old_portal_paid::int || '/' || e.balance::int FROM people.transfer_entitlement(app_g) e);
+    h_link := (SELECT l.status || '/' || l.match_method || '/' || (l.application_id = app_h) FROM people.legacy_transfer_payment l WHERE l.student_id = st[8]);
+    h_state := (SELECT t.state || '/' || (t.to_dept_at IS NOT NULL) FROM people.transfer_application t WHERE t.id = app_h);
+    g_session := (SELECT t.session = coalesce(policy.university_current_session(), earlier) FROM people.transfer_application t WHERE t.id = app_g);
+    BEGIN UPDATE people.transfer_legacy SET stage = 'x' WHERE legacy_ref = 'OLD-727-G'; EXCEPTION WHEN others THEN e_kept := split_part(SQLERRM, ':', 1); END;
+
+    -- the scope widened: D's 2024 payment awaits an application
+    PERFORM people.set_legacy_transfer_scope(date '2024-01-01', 'CHECK V727: the exercise read from 2024', who, 'academic');
+    d_after := (SELECT l.status FROM people.legacy_transfer_payment l WHERE l.student_id = st[4]);
+
+    msg := 'before ' || s_before || ' | credit ' || credit_a
+        || ' | A ' || ent_a1 || ' desks ' || desk_a || ' ' || coalesce(e_owed, '-') || ' one ref ' || (ref_a1 = ref_a2) || ' '
+        || (SELECT p.amount::int FROM finance.payment_reference p WHERE p.reference = ref_a1) || ' ' || coalesce(e_pending, '-') || ' paid ' || ent_a2
+        || ' ' || coalesce(e_settled, '-') || ' ' || state_a || ' ' || prog_a || ' kept ' || a_after || ' ' || coalesce(e_effected, '-')
+        || ' | B ' || ent_b1 || ' ' || dec_b || ' ' || ent_b2 || ' ' || after_b || ' declined ' || b_closed || ' stays ' || b_link || ' next ' || ent_b3
+        || ' | F ' || coalesce(e_unpaid, '-') || ' ' || ent_f1 || ' revised ' || revisions || ' closed ' || f1_expired || ' ' || ent_f2 || ' ' || coalesce(e_rev, '-') || ' renew ' || renew_f || ' late ' || f3_closed || ' ' || ent_f3
+        || ' | J closed ' || j_closed || ' ' || ent_j || ' renew ' || renew_j || ' | K ' || k_status || ' then ' || ent_k || ' | L ' || l_status
+        || ' | check ' || checked || ' ' || coalesce(e_refused, '-') || ' ' || coalesce(e_office, '-') || ' load ' || loaded || ' again ' || again
+        || ' | G ' || g_state || ' current session ' || g_session || ' ' || g_link || ' ' || ent_g || ' | H ' || h_link || ' ' || h_state || ' ' || coalesce(e_kept, '-')
+        || ' | D ' || d_after;
+    RAISE EXCEPTION 'the V727 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V727 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V727: old-portal transfer payments count toward the transfer fee as stated now — matched on the student''s own record, in scope, of an item that counts; the desks act on a part payment and the final approval waits for the whole fee; the balance drawn once; the Bursary''s decision kept; the old portal''s export loaded as applications, never a second one',
+      coalesce(msg = 'before 1:FORM/AWAITING_APPLICATION,2:LETTER/AWAITING_APPLICATION,2:TRANSFER/AWAITING_APPLICATION,3:CHANGE_OF_COURSE/NOT_COUNTED,'
+                     || '4:FORM/OUT_OF_SCOPE,5:FORM/UNMATCHED,7:FORM/OUT_OF_SCOPE,8:TRANSFER/AWAITING_APPLICATION,9:FORM/OUT_OF_SCOPE,10:TRANSFER/AWAITING_APPLICATION,'
+                     || '11:FORM/AWAITING_APPLICATION | credit AWAITING_APPLICATION/10000/10000'
+                     || ' | A PART_PAID/20000/10000/10000 desks FROM_OK,TO_OK,REG_OK TRANSFER_FEE_OUTSTANDING one ref true 10000 TRANSFER_PAYMENT_PENDING'
+                     || ' paid SETTLED_IN_PARTS/20000/0/2 TRANSFER_FEE_SETTLED EFFECTED MOVED kept LINKED/SETTLED_IN_PARTS/0 LEGACY_TRANSFER_EFFECTED'
+                     || ' | B OVERPAID/40000/20000 REJECTED PAID_IN_FULL/20000/0 LINKED,REJECTED declined CLOSED/0 stays FIRST next NOT_PAID/20000'
+                     || ' | F TRANSFER_FEE_UNPAID PENDING/20000 revised 1 closed true PENDING/25000/25000 TRANSFER_FEE_REVISION_KEPT renew REOPENED/25000/true'
+                     || ' late true PAID_IN_FULL/0/false'
+                     || ' | J closed true PART_PAID/15000/false renew NEW/15000 | K USED then NOT_PAID/0/USED | L AWAITING_APPLICATION'
+                     || ' | check NEW,ATTACH,NO_STUDENT,ALREADY_MOVED,INVALID,NEW LEGACY_TRANSFER_ROWS_REFUSED LEGACY_TRANSFER_OFFICE'
+                     || ' load NEW/1,ATTACH/1,NO_STUDENT/0,ALREADY_MOVED/0,INVALID/0,NEW/0 again EXISTS,EXISTS,NO_STUDENT,ALREADY_MOVED,INVALID,EXISTS'
+                     || ' | G TO_OK/2025-10-20/OLD-727-G current session true LINKED/OLD_PORTAL_EXPORT PART_PAID/10000/15000'
+                     || ' | H LINKED/OLD_PORTAL_EXPORT/true TO_OK/true TRANSFER_LEGACY_KEPT | D AWAITING_APPLICATION', false),
+      msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

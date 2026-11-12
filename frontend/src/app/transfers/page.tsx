@@ -5,7 +5,8 @@ import { Transfers, type TransferRow, type Programme } from "./Transfers";
 
 export const dynamic = "force-dynamic";
 
-/** t/transfers — the inter-departmental transfer queue: committee, Senate, register. */
+/** t/transfers — the inter-departmental transfer queue: committee, Senate, register. V727: each row carries the fee as stated now,
+ *  what is paid (this portal's and the old portal's) and the balance (people.transfer_list). */
 export default async function TransfersPage() {
   const [me, list, progs] = await Promise.all([
     api<Me>("/api/v1/iam/me"),

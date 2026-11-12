@@ -9,6 +9,7 @@ import type { GstView } from "@/lib/student-portal";
 import { PgDashboard, type PgSummary } from "./PgDashboard";
 import { BiodataCard, type BiodataStatus } from "./BiodataCard";
 import type { OutstandingFees } from "@/lib/outstanding-fees";
+import { showTransferCard, type TransferFeeView } from "@/lib/transfer-fee";
 
 /** s/dashboard — the student's own record, as the register holds it. A postgraduate gets their own
  *  home (V202), not a continuation of the undergraduate one. */
@@ -27,6 +28,15 @@ export default async function Page() {
     return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><PgDashboard s={loaded.student} pg={pg.ok ? pg.data : null} outstanding={owed} /></Shell>;
   }
   // V314: the GST & EPS card — the fee, whether it is paid, and whether the GST/EPS courses are registered or locked
-  const gst = await api<GstView>(`/api/v1/me/gst?session=${encodeURIComponent(loaded.student.session)}`);
-  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><Dashboard s={loaded.student} gst={gst.ok ? gst.data : null} outstanding={owed} /></Shell>;
+  // V727: the transfer card — the fee, what is paid here and on the old portal, the balance — only with an application or old-portal credit
+  const [gst, mine] = await Promise.all([
+    api<GstView>(`/api/v1/me/gst?session=${encodeURIComponent(loaded.student.session)}`),
+    api<TransferFeeView>("/api/v1/me/transfer"),
+  ]);
+  // only what the card reads reaches the page (the programmes list the transfer page offers stays behind)
+  const transfer: TransferFeeView | null = mine.ok && showTransferCard(mine.data, loaded.student.session)
+    ? { applications: mine.data.applications.map((a) => ({ id: a.id, state: a.state, session: a.session ?? null })), fee: mine.data.fee ?? null,
+        payment: mine.data.payment ?? null, credit: mine.data.credit ?? null }
+    : null;
+  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><Dashboard s={loaded.student} gst={gst.ok ? gst.data : null} outstanding={owed} transfer={transfer} /></Shell>;
 }

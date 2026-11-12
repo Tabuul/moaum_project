@@ -7,7 +7,11 @@
  *  and the registry effects the change. V669: a transfer the OLD portal approved is never recorded here again — it is restored on
  *  the programme swap (Restore a transfer approved on the old portal): no application, fee or approval, the number unchanged. V686: the
  *  applications the old portal approved and the queue still holds are chosen from In the queue and freed together — each student moved to
- *  the programme applied for, without the approvals. */
+ *  the programme applied for, without the approvals. V727: the fee is read against every verified payment, this portal's and the old
+ *  portal's: any payment lets the current HOD act, the Academic office's final approval waits for the whole fee; the tiles and the
+ *  Awaiting payment and Balance owed tabs read the balance the server gives each row (nothing paid, at whatever desk; a closed
+ *  application owes nothing). An application continued from the old portal shows the old portal's record — the date applied, the
+ *  stage reached there, its approvals and documents — so each desk reads them before acting. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -20,17 +24,27 @@ import { notify , notifyProblem } from "@/components/proto/Toast";
 
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { DEFAULT_REASON, freedSummary, inQueue, OUTCOME_WORDS, refusalWords, type Freed } from "@/lib/transfer-queue";
+import { bandKind, bandWord, deskStanding, naira } from "@/lib/transfer-fees";
+import { day } from "@/lib/format";
 export interface TransferRow {
   id: string; student_id: string; name: string; matric_no: string | null;
   from_programme: string; from_dept: string | null; from_level: number;
   to_programme: string; to_dept: string | null; mode_of_entry: string;
   utme_score: number | null; cgpa: number | null; reason: string; state: string;
   stageLabel?: string; canApprove?: boolean;
+  /** V727: the desk that holds the application may decline it even while the final approval waits for the balance */
+  canDecline?: boolean;
   recommended_level: number | null; committee_note: string | null; decline_note: string | null; withdrawn_why: string | null;
   applied_at: string; from_dept_at: string | null; to_dept_at: string | null; reg_at: string | null; acad_at: string | null; effected_at: string | null;
   fee_reference: string | null; fee_confirmed_at: string | null; session: string;
   /** V669, V686: a withdrawn application whose transfer the old portal approved, restored — the reference it was restored under */
   restoredRef?: string | null;
+  /** V727: the fee as stated now, what is paid (this portal's and the old portal's, verified), the balance, whether a payment awaits
+   *  the bank, the band, and the old portal's reference of an application continued from it (people.transfer_list) */
+  fee_due?: number | string | null; paid_total?: number | string | null; old_portal_paid?: number | string | null; balance?: number | string | null;
+  pending?: boolean | null; band?: string | null; legacy_ref?: string | null;
+  /** V727: the old portal's record of it, as its export gave it (people.transfer_legacy) */
+  legacy_applied_on?: string | null; legacy_stage?: string | null; legacy_approvals?: string | null; legacy_documents?: string | null;
 }
 export interface Programme { code: string; name: string; faculty: string }
 
@@ -43,6 +57,31 @@ const LABEL: Record<string, string> = {
   REG_OK: "With Academic office", APPROVED: "Approved — awaiting fee", EFFECTED: "Completed",
   DECLINED: "Declined", WITHDRAWN: "Withdrawn",
 };
+
+/** V727: the old portal's record of an application continued from it — the date applied, the stage reached there, the approvals and
+ *  the documents, kept as its export gave them — under the reference, for the desks to read before acting */
+function OldPortalRecord({ r }: { r: TransferRow }) {
+  const facts = ([
+    ["Applied on", r.legacy_applied_on ? day(r.legacy_applied_on) : null],
+    ["Stage reached there", r.legacy_stage],
+    ["Approvals", r.legacy_approvals],
+    ["Documents", r.legacy_documents],
+  ] as [string, string | null | undefined][]).filter((f): f is [string, string] => !!f[1] && !!f[1].trim());
+  return (
+    <details className="mt-1">
+      <summary className="sub2 tnum">Old portal record · {r.legacy_ref}</summary>
+      <div className="sub2" style={{ maxWidth: 320, overflowWrap: "anywhere" }}>
+        {facts.length ? facts.map(([k, v]) => (
+          <div key={k} className="mt-1"><b>{k}</b><div style={{ whiteSpace: "pre-wrap" }}>{v}</div></div>
+        )) : <div className="mt-1">The old portal&rsquo;s export gave no date, stage, approvals or documents.</div>}
+      </div>
+    </details>
+  );
+}
+
+/** V727: the offices that read the fee monitor and the old portal's transfer payments */
+const FEE_READERS = ["academic", "registrar", "dregistrar", "ict", "bursar", "studentaccounts", "hod", "dean", "dvc", "vc", "admin", "super"];
+const OLD_PORTAL_READERS = ["academic", "registrar", "dregistrar", "ict", "bursar", "studentaccounts", "admin", "super"];
 
 export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRow[]; programmes: Programme[]; actingOffice: string | null }) {
   const router = useRouter();
@@ -66,7 +105,17 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
   const count = (s: string) => rows.filter((r) => r.state === s).length;
   const queued = rows.filter((r) => inQueue(r.state));
   const restored = rows.filter((r) => r.state === "WITHDRAWN" && r.restoredRef);
-  const shown = tab === "ALL" ? rows : tab === "QUEUE" ? queued : tab === "RESTORED" ? restored : rows.filter((r) => r.state === tab);
+  // V727: where each live application stands on the fee (the server's balance)
+  const standing = (s: string) => rows.filter((r) => deskStanding(r) === s);
+  const awaitingPay = standing("AWAITING_PAYMENT");
+  const owed = standing("BALANCE_OWED");
+  const ready = standing("READY");
+  // at the current HOD (paid), the new HOD or the Registry: a part payment lets them act
+  const withDesks = rows.filter((r) => ["APPLIED", "FROM_OK", "TO_OK"].includes(r.state) && deskStanding(r) !== "AWAITING_PAYMENT");
+  const owedSum = owed.reduce((n, r) => n + Number(r.balance ?? 0), 0);
+  const fee = rows.find((r) => deskStanding(r) !== null && r.fee_due != null)?.fee_due ?? null;
+  const shown = tab === "ALL" ? rows : tab === "QUEUE" ? queued : tab === "RESTORED" ? restored : tab === "AWAITING_PAYMENT" ? awaitingPay : tab === "BALANCE" ? owed
+    : tab === "READY" ? ready : rows.filter((r) => r.state === tab);
   const pickedRows = queued.filter((r) => picked.has(r.id));
   const toggle = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
@@ -116,24 +165,35 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
         canAct={mayRecord || o === "hod"}
         action="Approving inter-departmental transfers" />
       <Note kind="info" title="One application, four approvals — each a single Approve">
-        <b>Current department</b> → <b>new department</b> → <b>Registrar</b> → <b>Academic office</b>. Then the student pays
-        the non-refundable processing fee and the change is effected; the matriculation number does not change.
+        <b>Current department</b> → <b>new department</b> → <b>Registrar</b> → <b>Academic office</b>. The student pays the non-refundable
+        processing fee{fee != null ? <> of <b>{naira(fee)}</b>, as the Bursary states it now,</> : " the Bursary states"} before the current HOD acts: any verified
+        payment, on this portal or on the old one, lets the desks act. The whole fee is paid, with nothing awaiting the bank, before the Academic office&rsquo;s final
+        approval, which effects the change; the matriculation number does not change.
+        {FEE_READERS.includes(o) || OLD_PORTAL_READERS.includes(o) ? (
+          <div className="row row--inline row--tight mt-1" style={{ flexWrap: "wrap", gap: 8 }}>
+            {FEE_READERS.includes(o) ? <LinkBtn kind="ghost" href="/transfers/fees">Transfer fees</LinkBtn> : null}
+            {OLD_PORTAL_READERS.includes(o) ? <LinkBtn kind="ghost" href="/transfers/old-portal">Old-portal transfers</LinkBtn> : null}
+          </div>
+        ) : null}
       </Note>
       {said ? <Note kind="ok" title={said}>On the record, in your name.</Note> : null}
       {err ? <ProblemNotice problem={err} /> : null}
 
-      <Tiles items={[
-        ["With current department", String(count("APPLIED")), count("APPLIED") ? "var(--chrome)" : null, "First approval"],
-        ["With new department", String(count("FROM_OK")), count("FROM_OK") ? "var(--chrome)" : null, "Accepting the student"],
-        ["With Registrar", String(count("TO_OK")), count("TO_OK") ? "var(--chrome)" : null, "Third approval"],
-        ["With Academic office", String(count("REG_OK")), count("REG_OK") ? "var(--chrome)" : null, "Final approval"],
+      <Tiles cls="grid--5" items={[
+        ["Awaiting payment", String(awaitingPay.length), awaitingPay.length ? "var(--red-ink)" : null, "Nothing paid yet, at whatever desk; the current HOD waits for a payment"],
+        ["Part paid — balance owed", String(owed.length), owed.length ? "var(--amber-ink)" : null, owed.length ? `${naira(owedSum)} owed; the final approval waits for it` : "The final approval waits for the balance"],
+        ["With the desks", String(withDesks.length), withDesks.length ? "var(--chrome)" : null, "Current HOD, new HOD, Registry — part paid included"],
+        ["Ready for final approval", String(ready.length), ready.length ? "var(--green-ink)" : null, "With the Academic office, paid in full"],
+        ["Completed", String(count("EFFECTED")), null, "The change effected"],
       ]} />
 
       <div className="card"><PBody>
         <Tabs look="segmented" value={tab} onChange={setTab}
-          items={[["QUEUE", "In the queue"], ["APPLIED", "Current dept"], ["FROM_OK", "New dept"], ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["EFFECTED", "Completed"],
+          items={[["QUEUE", "In the queue"], ["AWAITING_PAYMENT", "Awaiting payment"], ["BALANCE", "Balance owed"], ["APPLIED", "Current dept"], ["FROM_OK", "New dept"],
+            ["TO_OK", "Registrar"], ["REG_OK", "Academic"], ["READY", "Ready for final approval"], ["EFFECTED", "Completed"],
             ["RESTORED", "Approved on the old portal"], ["DECLINED", "Declined"], ["ALL", "All"]].map(([k, l]) => ({ id: k, label: l,
-            count: k === "QUEUE" ? (queued.length || undefined) : k === "RESTORED" ? (restored.length || undefined) : k !== "ALL" && count(k) ? count(k) : undefined }))} />
+            count: k === "QUEUE" ? (queued.length || undefined) : k === "RESTORED" ? (restored.length || undefined) : k === "AWAITING_PAYMENT" ? (awaitingPay.length || undefined)
+              : k === "BALANCE" ? (owed.length || undefined) : k === "READY" ? (ready.length || undefined) : k !== "ALL" && count(k) ? count(k) : undefined }))} />
       </PBody></div>
 
       {/* V686: the applications the old portal approved, freed from the queue together */}
@@ -182,7 +242,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
 
       <Panel title={tab === "QUEUE" ? "Transfer applications in the queue" : "Transfer applications"} right={`${shown.length} shown`}>
         {shown.length ? (
-          <DTable cols={[...(mayRestore ? ["Free|mid"] : []), "Student", "From → To", "Entry · UTME · CGPA|mid", "Reason", "Stage", "Action|num"]} rows={shown.map((r) => [
+          <DTable cols={[...(mayRestore ? ["Free|mid"] : []), "Student", "From → To", "Entry · UTME · CGPA|mid", "Reason", "Paid|num", "Balance|num", "Stage", "Action|num"]} rows={shown.map((r) => [
             ...(mayRestore ? [inQueue(r.state)
               ? <input key="pk" type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Free ${r.name}'s application from the queue`} style={{ width: 18, height: 18 }} />
               : <span key="pk" />] : []),
@@ -190,14 +250,21 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
             <span key="ft"><span className="sub2">{r.from_programme} · {r.from_level}L</span><div><b>→ {r.to_programme}</b></div></span>,
             <span className="sub2 tnum" key="e">{r.mode_of_entry}{r.utme_score != null ? ` · ${r.utme_score}` : ""}{r.cgpa != null ? ` · ${Number(r.cgpa).toFixed(2)}` : ""}</span>,
             <span className="sub2" key="r">{r.reason}{r.decline_note ? <div className="sub2">Declined: {r.decline_note}</div> : null}{r.withdrawn_why ? <div className="sub2">Withdrawn: {r.withdrawn_why}</div> : null}</span>,
+            <span key="pd" className="tnum">{r.paid_total != null ? naira(r.paid_total) : "—"}
+              {Number(r.old_portal_paid ?? 0) > 0 ? <div className="sub2">{naira(r.old_portal_paid)} on the old portal</div> : null}
+              {r.fee_due != null ? <div className="sub2">of {naira(r.fee_due)}</div> : null}</span>,
+            <span key="bl" className="tnum" style={Number(r.balance ?? 0) > 0 && deskStanding(r) !== null ? { color: "var(--red-ink)", fontWeight: 600 } : undefined}>
+              {r.balance != null ? naira(r.balance) : "—"}
+              {r.band ? <div><Pil kind={bandKind(r.band)}>{bandWord(r.band)}</Pil></div> : null}
+              {r.pending ? <div className="sub2">A payment awaits the bank</div> : null}</span>,
             <span key="st">{r.state === "WITHDRAWN" && r.restoredRef
               ? <><Pil kind="ok">Moved — approved on the old portal</Pil><div className="sub2 tnum">{r.restoredRef}</div></>
-              : <Pil kind={STATE[r.state] ?? "grey"}>{r.stageLabel ?? LABEL[r.state] ?? r.state}</Pil>}{r.fee_reference ? <div className="sub2 tnum">{r.fee_reference}{r.fee_confirmed_at ? " · paid" : " · unpaid"}</div> : null}</span>,
+              : <Pil kind={STATE[r.state] ?? "grey"}>{r.stageLabel ?? LABEL[r.state] ?? r.state}</Pil>}{r.legacy_ref ? <OldPortalRecord r={r} /> : null}</span>,
             <span key="ac" className="row row--inline row--tight row--right">
               {r.canApprove ? <Btn kind="go" disabled={busy} onClick={() => { if (window.confirm(`Approve ${r.name}'s transfer at this stage? It moves to the next office.`)) void send(`/${r.id}/approve`, {}, `Approve transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} approved — ${LABEL[String(j.state)] ?? "advanced"}`); }); }}>Approve</Btn> : null}
-              {r.canApprove ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Decline this application — why? The reason is recorded and shown to the student."); if (w && w.trim()) void send(`/${r.id}/decline`, { why: w.trim() }, `Decline transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} declined`); }); }}>Decline</Btn> : null}
+              {(r.canDecline ?? r.canApprove) ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Decline this application — why? The reason is recorded and shown to the student."); if (w && w.trim()) void send(`/${r.id}/decline`, { why: w.trim() }, `Decline transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} declined`); }); }}>Decline</Btn> : null}
             </span>,
-          ])} texts={shown.map((r) => `${r.name} ${r.matric_no ?? ""} ${r.from_programme} ${r.to_programme} ${r.state}`)} />
+          ])} texts={shown.map((r) => `${r.name} ${r.matric_no ?? ""} ${r.from_programme} ${r.to_programme} ${r.state} ${r.legacy_ref ?? ""} ${r.legacy_stage ?? ""} ${r.band ? bandWord(r.band) : ""}`)} />
         ) : <PBody><div className="sub2">No application in this stage.</div></PBody>}
       </Panel>
 
