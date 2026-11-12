@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 564
+\set EXPECTED 566
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32580,6 +32580,113 @@ BEGIN
             AND (st_pg->>'carryOverCount')::int = 1, false),
         format('unpaid %s %s %s | paid %s %s %s carry %s', st_pg0->>'code', st_pg0->'courses'->0->>'course_code', st_pg0->'courses'->0->>'classification',
                st_pg->>'available', st_pg->>'code', st_pg->'courses'->0->>'classification', st_pg->>'carryOverCount'));
+END $$;
+
+-- ── V736. The old e-wallet read in date order. Made-up students of one programme, the old-fees export's rows in their dates:
+--          one paid ₦102,720 from the old wallet and topped up ₦61,700 six months later (the University's case) — a balance of
+--          ₦61,700, computed, the ₦102,720 said to have been paid before the top-ups; one topped up ₦61,700 and then paid ₦102,720 from
+--          it — held for review, nothing left; one with a mixed history (a top-up and a payment on one day: the day's top-ups first) — ₦59,000;
+--          an ordinary one — ₦70,000 as before. The University's case is verified by one officer, posted by another as a LEGACY_WALLET
+--          credit of ₦61,700, and applied by the student to the session's fees through the wallet. A verified balance the date order
+--          reads otherwise (its payment's date corrected to after the top-up) goes back with CHANGED_AFTER_VERIFICATION; a posted one
+--          is kept and marked CHANGED_AFTER_POSTING with both amounts. The desk's rows and figures carry the amount paid before the
+--          top-ups. A top-up whose day is not known (stamped with the day it was recorded, as an undated import is) is counted before
+--          the wallet's payments and leaves nothing; the old portal's statement equal to the date-order balance is not "differs"; the
+--          posted credit's note says what was paid before the top-ups. The block undoes its writes ──
+DO $$
+DECLARE ses text := '2736/2737'; old text := '2735/2736'; prog text;
+        p1 uuid := '00000000-0000-0000-0000-00000000a736'; p2 uuid := '00000000-0000-0000-0000-00000000b736';
+        s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid(); s4 uuid := gen_random_uuid(); s5 uuid := gen_random_uuid(); s6 uuid := gen_random_uuid();
+        r1 record; r2 record; r3 record; r4 record; r5 record; v_ver int; posted record; entry record; applied text; pos record; bal numeric;
+        r4p record; r5v record; rowpb numeric; fig jsonb; v_channel text; r6 record; stated3 record; note1 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM set_config('moaum.reason', 'CHECK V736', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, DATE '2736-10-01', DATE '2737-08-31');
+    SELECT p.code INTO prog FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    SELECT v.id, 'MOAUM/ADM/73/97360' || v.n, 'MOAUM/CHK/LW/73/9736' || v.n, 'CHECKV736', v.nm, prog, 'UTME', ses, 100, 200, 'ACTIVE', now()
+      FROM (VALUES (s1, 1, 'Paid Before'), (s2, 2, 'Spent After'), (s3, 3, 'Mixed'), (s4, 4, 'Ordinary'), (s5, 5, 'Verified'), (s6, 6, 'Undated')) v(id, n, nm);
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (ses, 'School fees (check V736)', 80000, NULL, prog);
+    -- the old-fees export's rows, each on its own day: a top-up by its purpose, a fee paid from the wallet by the method on its note
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    SELECT v.st, old, 'MOAUM-LEG-CHK736-' || v.tag, CASE WHEN v.topup THEN 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 2' ELSE 'School fees (legacy) ' || chr(183) || ' semester 1' END,
+           v.amount, now(), date_trunc('day', now()) - make_interval(days => v.ago), p1, 'Legacy', 'LEG-CHK736-' || v.tag,
+           'Imported from the old portal ' || chr(183) || CASE WHEN v.topup THEN ' Interswitch ' ELSE ' E-Wallet ' END || chr(183) || ' old ref PR736' || v.tag
+      FROM (VALUES
+          (s1, 'A1', false, 102720, 200), (s1, 'A2', true, 61700, 10),                                 -- paid from it, then topped up
+          (s2, 'B1', true, 61700, 30), (s2, 'B2', false, 102720, 10),                                  -- topped up, then paid more from it
+          (s3, 'C1', false, 4000, 300), (s3, 'C2', true, 73800, 180), (s3, 'C3', false, 155400, 180),  -- C2 and C3 on one day
+          (s3, 'C4', false, 66600, 100), (s3, 'C5', true, 67000, 99), (s3, 'C6', false, 4000, 98), (s3, 'C7', false, 4000, 97),
+          (s4, 'D1', true, 100000, 40), (s4, 'D2', false, 30000, 20),                                  -- ordinary
+          (s5, 'E1', false, 80000, 200), (s5, 'E2', true, 50000, 10)) v(st, tag, topup, amount, ago);   -- as s1, to be verified
+    -- paid 50,000 from the wallet 100 days ago; a top-up of 50,000 with no day (stamped at its import, now)
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note) VALUES
+        (s6, old, 'MOAUM-LEG-CHK736-F1', 'School fees (legacy) ' || chr(183) || ' semester 1', 50000, now(), date_trunc('day', now()) - interval '100 days', p1, 'Legacy', 'LEG-CHK736-F1', 'Imported from the old portal ' || chr(183) || ' E-Wallet ' || chr(183) || ' old ref PR736F1'),
+        (s6, old, 'MOAUM-LEG-CHK736-F2', 'E-WALLET TOP-UP (legacy) ' || chr(183) || ' semester 2', 50000, now(), now(), p1, 'Legacy', 'LEG-CHK736-F2', 'Imported from the old portal ' || chr(183) || ' Interswitch ' || chr(183) || ' old ref PR736F2');
+    PERFORM finance.legacy_wallet_compute(NULL);
+    SELECT * INTO r6 FROM finance.legacy_wallet WHERE student_id = s6;
+    SELECT * INTO r1 FROM finance.legacy_wallet WHERE student_id = s1;
+    SELECT * INTO r2 FROM finance.legacy_wallet WHERE student_id = s2;
+    SELECT * INTO r3 FROM finance.legacy_wallet WHERE student_id = s3;
+    SELECT * INTO r4 FROM finance.legacy_wallet WHERE student_id = s4;
+    SELECT paid_before_topups INTO rowpb FROM finance.legacy_wallet_rows(NULL, 'MOAUM/CHK/LW/73/97361', NULL, NULL, 5);
+    fig := finance.legacy_wallet_figures();
+    -- verified by the Students Account Officer, posted by another Bursar officer; the student applies it to the session's fees
+    v_ver := finance.legacy_wallet_verify(ARRAY[r1.id, r4.id, (SELECT id FROM finance.legacy_wallet WHERE student_id = s5)], 'checked against the old portal');
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT * INTO posted FROM finance.legacy_wallet_post(ARRAY[r1.id, r4.id], 'check V736');
+    SELECT e.kind, e.source_code, e.amount INTO entry FROM finance.wallet_entry e WHERE e.student_id = s1 AND e.source_code = 'LEGACY_WALLET';
+    SELECT e.note INTO note1 FROM finance.wallet_entry e WHERE e.student_id = s1 AND e.source_code = 'LEGACY_WALLET' AND e.kind = 'CREDIT';
+    -- the old portal's statement for the mixed history, equal to the date-order balance
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM set_config('moaum.actor_id', p1::text, true);
+    SELECT * INTO stated3 FROM finance.legacy_wallet_state(s3, 140800, 234000, 0, 0, 59000, 'old portal wallet page', NULL);
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', s1::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    applied := finance.apply_wallet(s1, ses, NULL);
+    SELECT * INTO pos FROM finance.position(s1, ses);
+    bal := finance.wallet_balance(s1);
+    SELECT channel INTO v_channel FROM finance.payment_reference WHERE reference = applied;
+    -- the dates corrected: s5's payment was after its top-up (verified, not posted); s4's before its top-up (posted)
+    PERFORM set_config('moaum.actor_id', p2::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    UPDATE finance.payment_reference SET confirmed_at = date_trunc('day', now()) - interval '5 days' WHERE reference = 'MOAUM-LEG-CHK736-E1';
+    UPDATE finance.payment_reference SET confirmed_at = date_trunc('day', now()) - interval '60 days' WHERE reference = 'MOAUM-LEG-CHK736-D2';
+    PERFORM finance.legacy_wallet_compute(NULL);
+    SELECT * INTO r5v FROM finance.legacy_wallet WHERE student_id = s5;
+    SELECT * INTO r4p FROM finance.legacy_wallet WHERE student_id = s4;
+    RAISE EXCEPTION 'CHECK_V736_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V736_UNDONE' THEN RAISE; END IF;
+  END;
+
+    PERFORM pg_temp.assert('V736: the old e-wallet is read in date order — a top-up after the wallet paid beyond what was on file is the balance (computed, said as paid before), a top-up spent by a later larger payment leaves nothing and is held for review, a top-up and a payment on one day take the day''s top-ups first, an ordinary balance is as before; the desk''s rows and figures carry what was paid before',
+        coalesce(r1.status = 'COMPUTED' AND r1.available = 61700 AND r1.paid_before_topups = 102720 AND r1.reason_code = 'PAID_BEFORE_TOPUPS' AND r1.reason LIKE '102720.00 was paid from the old wallet beyond%'
+                 AND r2.status = 'REQUIRES_REVIEW' AND r2.available = 0 AND r2.paid_before_topups = 41020 AND r2.reason_code = 'USED_EXCEEDS_TOPUPS'
+                 AND r3.status = 'COMPUTED' AND r3.available = 59000 AND r3.paid_before_topups = 152200 AND r3.topups = 140800 AND r3.used = 234000
+                 AND r4.status = 'COMPUTED' AND r4.available = 70000 AND r4.paid_before_topups = 0 AND r4.reason_code IS NULL
+                 AND rowpb = 102720 AND (fig->>'paidBefore')::int >= 3 AND (fig->>'paidBeforeAmount')::numeric >= 61700 + 59000 + 50000
+                 AND r6.status = 'NO_BALANCE' AND r6.available = 0 AND r6.paid_before_topups = 0, false),
+        format('paid before %s %s %s pb %s %s | spent after %s %s pb %s %s | mixed %s %s pb %s | ordinary %s %s pb %s %s | row pb %s | figures %s %s',
+               r1.status, r1.available, r1.reason_code, r1.paid_before_topups, left(r1.reason, 50), r2.status, r2.available, r2.paid_before_topups, r2.reason_code,
+               r3.status, r3.available, r3.paid_before_topups, r4.status, r4.available, r4.paid_before_topups, r4.reason_code, rowpb, fig->>'paidBefore', fig->>'paidBeforeAmount')
+        || format(' | undated top-up %s %s pb %s', r6.status, r6.available, r6.paid_before_topups));
+    PERFORM pg_temp.assert('V736: the balance the date order gives is verified by one officer, posted once by another as the student''s LEGACY_WALLET credit and applied to the session''s fees through the wallet; a verified balance the corrected dates read otherwise goes back, a posted one is kept and marked with both amounts',
+        coalesce(v_ver = 3 AND posted.posted = 2 AND entry.kind = 'CREDIT' AND entry.amount = 61700 AND note1 LIKE '%NGN 102720.00 of it before these top-ups%'
+                 AND stated3.status = 'COMPUTED' AND stated3.available = 59000 AND stated3.reason_code IS DISTINCT FROM 'STATEMENT_DIFFERS'
+                 AND applied IS NOT NULL AND v_channel = 'NELFUND wallet' AND pos.paid = 61700 AND bal = 0
+                 AND r5v.status = 'REQUIRES_REVIEW' AND r5v.available = 0 AND r5v.reason_code = 'CHANGED_AFTER_VERIFICATION' AND r5v.reason LIKE 'read in date order the balance is 0.00, not the 50000.00 verified%'
+                 AND r4p.status = 'POSTED' AND r4p.available = 70000 AND r4p.paid_before_topups = 30000 AND r4p.reason_code = 'CHANGED_AFTER_POSTING'
+                 AND r4p.reason = 'read in date order the balance is 100000.00; 70000.00 was posted', false),
+        format('note "%s" | statement %s %s %s | verified %s posted %s credit %s %s | applied %s via %s paid %s wallet %s | re-dated verified %s %s %s "%s" | re-dated posted %s %s pb %s %s "%s"',
+               note1, stated3.status, stated3.available, stated3.reason_code, v_ver, posted.posted, entry.kind, entry.amount, applied, v_channel, pos.paid, bal, r5v.status, r5v.available, r5v.reason_code, r5v.reason,
+               r4p.status, r4p.available, r4p.paid_before_topups, r4p.reason_code, r4p.reason));
 END $$;
 
 -- ── V729: a decision needs a released score only where there is one to release. In 9729/9730, a non-index programme (C00019) and an

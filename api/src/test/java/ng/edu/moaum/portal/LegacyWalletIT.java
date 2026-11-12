@@ -56,12 +56,64 @@ class LegacyWalletIT {
 
     /** an old-portal payment as the old-fees export brings it: a top-up by its purpose, or a fee paid by the method on the note */
     private void legacy(UUID student, String purpose, String method, long amount, String ses) {
+        legacy(student, purpose, method, amount, ses, 30);
+    }
+
+    /** V736: the same, paid on the day given (days ago) — the old wallet is read in date order */
+    private void legacy(UUID student, String purpose, String method, long amount, String ses, int daysAgo) {
         String ref = "MOAUM-LEG-ITLW-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
         it.db(() -> jdbc.sql("""
                 INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
-                VALUES (:st, :s, :r, :p, :a, now(), now() - interval '30 days', gen_random_uuid(), 'Legacy', 'LEG-' || :r,
+                VALUES (:st, :s, :r, :p, :a, now(), now() - make_interval(days => :d), gen_random_uuid(), 'Legacy', 'LEG-' || :r,
                         'Imported from the old portal ' || chr(183) || ' ' || :m || ' ' || chr(183) || ' old ref PR' || substr(:r, 16))
-                """).param("st", student).param("s", ses).param("r", ref).param("p", purpose).param("a", amount).param("m", method).update());
+                """).param("st", student).param("s", ses).param("r", ref).param("p", purpose).param("a", amount).param("m", method).param("d", daysAgo).update());
+    }
+
+    /**
+     * V736 (the University's word of 12 November 2026, BSU/BM/RAD/23/3567): a student who paid 102,720 of school fees from the old
+     * wallet in April and topped it up with 61,700 in October has 61,700 — the April payment came from top-ups the export does not
+     * show and took nothing of the October one. The balance is computed, verified by one officer, posted by another, and the student
+     * applies it to the session's fees.
+     */
+    @Test
+    void aTopUpAfterTheWalletPaidBeyondWhatWasOnFileIsTheBalanceAndReachesTheStudentsWallet() {
+        int year = it.freeYear(3420, 3480);
+        session = year + "/" + (year + 1);
+        it.session(session, year);
+        it.db(() -> jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 100000, NULL, 'C00023')").param("s", session).update());
+        UUID student = it.student(it.freeSurname("ZZLWD"), "C00023", null, it.freeNumber("MOAUM/LWD/86/", 6), 300);
+        legacy(student, "School fees (legacy) · semester 1", "E-Wallet", 102720, "2025/2026", 206);
+        legacy(student, "E-WALLET TOP-UP (legacy) · semester 2", "Interswitch", 61700, "2025/2026", 36);
+        String sao = TestTokens.token(it.person("ZZ-LW-S2", "ZZLWS2"), List.of("studentaccounts"));
+        String bursar = TestTokens.token(it.person("ZZ-LW-B2", "ZZLWB2"), List.of("bursar"));
+
+        assertThat(it.call(sao, HttpMethod.POST, PATH + "/compute", Map.of()).getStatusCode().value()).isEqualTo(200);
+        Map<String, Object> row = rowOf(sao, student);
+        assertThat(row).as(String.valueOf(row)).containsEntry("status", "COMPUTED").containsEntry("reason_code", "PAID_BEFORE_TOPUPS");
+        assertThat(money(row.get("available"))).isEqualByComparingTo("61700");
+        assertThat(money(row.get("paid_before_topups"))).isEqualByComparingTo("102720");
+        assertThat(String.valueOf(row.get("reason"))).contains("took nothing of the later top-ups");
+        Map<String, Object> figures = it.get(sao, PATH + "/figures").getBody();
+        assertThat(((Number) figures.get("paidBefore")).intValue()).isGreaterThanOrEqualTo(1);
+
+        ResponseEntity<Map> verified = it.call(sao, HttpMethod.POST, PATH + "/verify", Map.of("ids", List.of(row.get("id")), "note", "the top-up came after the wallet payment"));
+        assertThat(verified.getBody()).as(String.valueOf(verified.getBody())).containsEntry("verified", 1);
+        ResponseEntity<Map> posted = it.call(bursar, HttpMethod.POST, PATH + "/post", Map.of("ids", List.of(row.get("id")), "note", "date-order balance"));
+        assertThat(posted.getBody()).as(String.valueOf(posted.getBody())).containsEntry("posted", 1);
+        assertThat(money(posted.getBody().get("amount"))).isEqualByComparingTo("61700");
+
+        // on the student's wallet, from the old portal, and applied to the session's fees
+        String me = TestTokens.token(student, List.of("student"));
+        ResponseEntity<Map> wallet = it.get(me, "/api/v1/me/wallet");
+        assertThat((List<Map<String, Object>>) wallet.getBody().get("balances")).anySatisfy(b -> {
+            assertThat(b.get("source_code")).isEqualTo("LEGACY_WALLET");
+            assertThat(money(b.get("available"))).isEqualByComparingTo("61700");
+        });
+        ResponseEntity<Map> applied = it.call(me, HttpMethod.POST, "/api/v1/me/wallet/apply", Map.of("session", session));
+        assertThat(applied.getStatusCode().value()).as(String.valueOf(applied.getBody())).isEqualTo(200);
+        Map<String, Object> pos = jdbc.sql("SELECT paid, balance FROM finance.position(:s, :ses)").param("s", student).param("ses", session).query().singleRow();
+        assertThat(money(pos.get("paid"))).isEqualByComparingTo("61700");
+        assertThat(money(pos.get("balance"))).isEqualByComparingTo("38300");
     }
 
     private static BigDecimal money(Object v) {

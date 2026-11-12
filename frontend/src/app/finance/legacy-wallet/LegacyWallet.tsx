@@ -19,7 +19,7 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { StudentOpen } from "@/components/StudentModal";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { REASON_WORDS, REPORT_HEADERS, STATUS_WORDS, balanceWords, legacyWalletHref, num, reportRows, type LegacyWalletFigures, type LegacyWalletRow, type LegacyWalletStatus } from "@/lib/legacy-wallet";
+import { INFO_REASONS, REASON_WORDS, REPORT_HEADERS, STATUS_WORDS, balanceWords, howWords, legacyWalletHref, num, reportRows, type LegacyWalletFigures, type LegacyWalletRow, type LegacyWalletStatus } from "@/lib/legacy-wallet";
 
 const BASE = "/api/bff/api/v1/finance/legacy-wallet";
 const naira = (v: unknown) => `₦${num(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -77,7 +77,7 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
       <Tiles items={[
         ["Students with old top-ups", n(figures.students), null, `${n(figures.topupCount)} top-ups · ${naira(figures.topups)}`, legacyWalletHref({ ...filters, status: "" })],
         ["Paid from the old wallet", naira(figures.used), null, `${n(figures.orphanStudents)} other students paid ${naira(figures.orphanAmount)} with no top-up on file`],
-        ["To verify", n(figures.computed), figures.computed ? "var(--amber-ink)" : null, `${naira(figures.computedAmount)} computed`, legacyWalletHref({ ...filters, status: "COMPUTED" })],
+        ["To verify", n(figures.computed), figures.computed ? "var(--amber-ink)" : null, `${naira(figures.computedAmount)} computed${figures.paidBefore ? ` · ${n(figures.paidBefore)} read in date order (${naira(figures.paidBeforeAmount ?? 0)})` : ""}`, legacyWalletHref({ ...filters, status: "COMPUTED" })],
         ["To post", n(figures.verified), figures.verified ? "var(--amber-ink)" : null, `${naira(figures.verifiedAmount)} verified`, legacyWalletHref({ ...filters, status: "VERIFIED" })],
         ["Posted to the wallet", n(figures.posted), "var(--green-ink)", `${naira(figures.postedAmount)} credited · ${naira(figures.applied)} applied to fees · ${naira(figures.remaining)} still on the wallet`, legacyWalletHref({ ...filters, status: "POSTED" })],
         ["Returned for correction", n(figures.returned ?? 0), figures.returned ? "var(--red-ink)" : null, `${naira(figures.returnedAmount ?? 0)} to correct and verify again`, legacyWalletHref({ ...filters, status: "RETURNED" })],
@@ -131,7 +131,7 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
               <span key="t" className="tnum">{naira(r.topups)}<div className="sub2">{r.topup_count} · last {day(r.last_topup_at)}</div></span>,
               <span key="u" className="tnum">{naira(r.used)}<div className="sub2">{r.used_count} payment{r.used_count === 1 ? "" : "s"}</div></span>,
               <span key="a" className={`tnum b600${num(r.available) > 0 ? "" : " sub2"}`}>{naira(r.available)}</span>,
-              <span key="h" className="sub2">{r.stated_balance != null ? `Old portal statement (${r.stated_source})` : "Top-ups − paid"}{r.reason_code ? <div className="ink-red">{REASON_WORDS[r.reason_code] ?? r.reason_code}</div> : null}</span>,
+              <span key="h" className="sub2">{howWords(r)}{r.reason_code ? <div className={INFO_REASONS.has(r.reason_code) ? undefined : "ink-red"}>{REASON_WORDS[r.reason_code] ?? r.reason_code}{num(r.paid_before_topups) > 0 && INFO_REASONS.has(r.reason_code) ? ` (${naira(r.paid_before_topups)} paid before)` : ""}</div> : null}</span>,
               <span key="st"><Pil kind={STATUS_WORDS[r.status][1]}>{STATUS_WORDS[r.status][0]}</Pil>
                 <div className="sub2">{r.status === "VERIFIED" ? `by ${r.verified_by ?? r.verified_office} · ${day(r.verified_at)}` : r.status === "POSTED" ? `${r.batch_ref} · ${day(r.posted_at)}` : r.decided_at ? `${r.decided_by ?? ""} · ${day(r.decided_at)}` : ""}</div></span>,
               <span key="w" className="tnum sub2">{r.status === "POSTED" ? `${naira(r.applied)} applied · ${naira(r.remaining)} left` : "—"}</span>,
@@ -141,9 +141,10 @@ export function LegacyWallet({ figures, rows, rowsProblem, structure, filters, a
         <PBody>
           <Note kind="info" title="How a balance is read">
             A top-up is a payment the old-fees export brought with the purpose <b>E-WALLET TOP-UP</b>; a fee paid from the old wallet is one whose method reads <b>E-Wallet</b>.
-            Top-ups less what was paid from the wallet is the balance — computed, never trusted: one officer verifies it, another Bursar officer posts it to the wallet as the
-            student&rsquo;s own money, once. Where a student paid from the old wallet more than the top-ups on file, the old wallet held money the export does not show, and nothing
-            is posted until the old portal&rsquo;s own statement for the student is entered. On the ledger the credit is drawn from Opening balance / suspense (3900), as every
+            Top-ups less what was paid from the wallet is the balance, read in date order — computed, never trusted: one officer verifies it, another Bursar officer posts it to
+            the wallet as the student&rsquo;s own money, once. A payment from the wallet beyond what had been topped up on file before it came from top-ups the export does not
+            show, so it takes nothing of the top-ups after it: those are the balance. Where the wallet paid more after the last top-up than was on file, the old wallet held money
+            the export does not show, and nothing is posted until the old portal&rsquo;s own statement for the student is entered. On the ledger the credit is drawn from Opening balance / suspense (3900), as every
             old-portal credit is; the Bursary settles it from Accounting &rarr; Wallet opening.
           </Note>
         </PBody>
@@ -207,7 +208,7 @@ function RowModal({ row, verifies, posts, onClose, onChanged }: { row: LegacyWal
       </>}>
       <div className="row" style={{ gap: "var(--s-3)", flexWrap: "wrap", marginBottom: "var(--s-3)" }}>
         <Pil kind={STATUS_WORDS[row.status][1]}>{STATUS_WORDS[row.status][0]}</Pil>
-        {row.reason_code ? <Pil kind="bad">{REASON_WORDS[row.reason_code] ?? row.reason_code}</Pil> : null}
+        {row.reason_code ? <Pil kind={INFO_REASONS.has(row.reason_code) ? "info" : "bad"}>{REASON_WORDS[row.reason_code] ?? row.reason_code}</Pil> : null}
         <span className="sub2">{balanceWords(row)}</span>
       </div>
       <KvGrid cls="grid--3" pairs={[["Top-ups on file", `${naira(row.topups)} (${row.topup_count})`], ["Paid from the old wallet", `${naira(row.used)} (${row.used_count})`], ["Balance", naira(row.available)],
@@ -259,7 +260,7 @@ function VerifyModal({ rows, busy, onClose, onConfirm }: { rows: LegacyWalletRow
         rows={rows.map((r) => [<span key="s"><b>{r.student}</b><div className="sub2 tnum">{r.matric_no ?? r.jamb_reg_no ?? ""}</div></span>,
           <span key="t" className="tnum">{naira(r.stated_balance != null ? r.stated_topups : r.topups)}</span>, <span key="u" className="tnum">{naira(r.stated_balance != null ? r.stated_used : r.used)}</span>,
           <span key="e" className="tnum">{naira(r.available)}</span>, <span key="a" className="tnum b600">{naira(r.available)}</span>,
-          <span key="h" className="sub2">{r.stated_balance != null ? `The old portal's statement (${r.stated_source})` : "Top-ups less what was paid from the old wallet"}</span>])} />
+          <span key="h" className="sub2">{r.stated_balance != null ? `The old portal's statement (${r.stated_source})` : num(r.paid_before_topups) > 0 ? `Top-ups less what was paid from the old wallet after them (${naira(r.paid_before_topups)} paid before them, from top-ups not on file)` : "Top-ups less what was paid from the old wallet"}</span>])} />
       <Field id="lv-note" label="Confirmation remarks" hint="What the balances were checked against; the Bursar reads it" full><input id="lv-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       <label className="row row--inline row--tight" style={{ alignItems: "flex-start", gap: 8 }}>
         <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />

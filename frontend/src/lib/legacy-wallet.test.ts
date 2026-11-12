@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { REPORT_HEADERS, balanceWords, legacyWalletHref, num, reportRows, type LegacyWalletRow } from "./legacy-wallet.ts";
+import { INFO_REASONS, REASON_WORDS, REPORT_HEADERS, balanceWords, howWords, legacyWalletHref, num, reportRows, type LegacyWalletRow } from "./legacy-wallet.ts";
 
 const row = (o: Partial<LegacyWalletRow> = {}): LegacyWalletRow => ({
   id: "1", student_id: "s", student: "Doe, John", matric_no: "MOAU/SC/MCB/24/75807", jamb_reg_no: "202410001AA", student_status: "ACTIVE", programme: "B.Sc. Microbiology",
@@ -35,4 +35,18 @@ test("the balance is explained from the figures, or from the old portal's statem
 test("the desk's address names only the filters chosen", () => {
   assert.equal(legacyWalletHref({ status: "", q: "" }), "/finance/legacy-wallet");
   assert.equal(legacyWalletHref({ status: "VERIFIED", fac: "SC" }), "/finance/legacy-wallet?status=VERIFIED&fac=SC");
+});
+
+test("V736: a top-up after the wallet paid beyond what was on file is the balance, said so in date order and not as a fault", () => {
+  // BSU/BM/RAD/23/3567: 102,720 paid from the old wallet on 20 April 2026, 61,700 topped up on 7 October 2026
+  const r = row({ topups: "61700.00", topup_count: 1, used: "102720.00", used_count: 1, paid_before_topups: "102720.00", available: "61700.00",
+    status: "COMPUTED", reason_code: "PAID_BEFORE_TOPUPS" });
+  assert.equal(balanceWords(r), "Topped up ₦61,700.00 (1) − paid from it ₦102,720.00 (1) + ₦102,720.00 it paid before these top-ups, read in date order");
+  assert.equal(howWords(r), "Top-ups − paid, in date order");
+  assert.equal(howWords(row()), "Top-ups − paid");
+  assert.equal(howWords(row({ stated_balance: "5", stated_source: "wallet page" })), "Old portal statement (wallet page)");
+  assert.ok(INFO_REASONS.has("PAID_BEFORE_TOPUPS") && !INFO_REASONS.has("USED_EXCEEDS_TOPUPS"));
+  assert.match(REASON_WORDS.PAID_BEFORE_TOPUPS, /top-ups since are the balance/);
+  // an older answer without the figure reads as before
+  assert.equal(balanceWords(row({ paid_before_topups: undefined })), "Topped up ₦150,000.00 (2) − paid from it ₦50,000.00 (1)");
 });

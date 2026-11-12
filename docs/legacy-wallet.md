@@ -1,4 +1,4 @@
-# The old portal's e-wallet reconciled (V583)
+# The old portal's e-wallet reconciled (V583, V736)
 
 *20 Oct 2026.* **Bursary → Finance → Old E-Wallet Balances** (`/finance/legacy-wallet`; the Students Account Officer has it too,
 Audit reads it). This is the final report the brief *Legacy financial migration, payment reallocation/swap & e-wallet
@@ -92,3 +92,48 @@ eligible balance and the amount to credit, with the explicit confirmation and th
 of balances verified and waiting (`LEGACY_WALLET_WAITING`), the verifier of a rejection, freeze or return (`LEGACY_WALLET_DECIDED`),
 the student of a rejection (`LEGACY_WALLET_REJECTED`). The Legacy Financial Reconciliation desk (`docs/legacy-financial-reconciliation.md`)
 reads this desk's figures beside the outstanding fees.
+
+## 7. Read in date order (V736)
+
+The University's word of 12 November 2026, with the Bursar's screenshot: BSU/BM/RAD/23/3567 topped up ₦61,700 on 7 October 2026
+and read "Requires review", balance nil — "this is real wallet topup". The student paid ₦102,720 of 2025/2026 first-semester
+school fees from the old wallet on 20 April 2026, six months before that top-up. V583 took all the top-ups on file less all that
+was paid from the wallet, so the April payment was taken out of the October top-up. A payment cannot draw on a later top-up.
+
+V736 reads each student's wallet in date order: top-ups in, wallet payments out, a day's top-ups before that day's payments
+(the old-fees export carries the payment day only, stamped at midnight: a top-up the same day may have funded the payment, so it
+is counted first).
+Whatever the wallet paid beyond what had been topped up on file before it came from top-ups the export does not show
+(`paid_before_topups`), so it takes nothing of the later top-ups:
+
+```
+balance = top-ups − paid from the wallet + paid_before_topups      (the running balance, floored at nil where the wallet paid more than it held on file)
+```
+
+The balance is never more than was provably topped up and not paid out after. For the reported student: ₦61,700, computed, with
+the finding *Paid from the old wallet before these top-ups: the top-ups since are the balance* (shown as information, not as a
+fault). A student whose wallet paid more after the last top-up than was on file keeps nothing and stays under review: their
+top-ups were spent, and the old portal's statement still governs.
+
+| Class | V736 |
+|---|---|
+| COMPUTED | the balance read in date order is above nil (`PAID_BEFORE_TOPUPS` where the wallet paid beyond the top-ups before them) |
+| REQUIRES_REVIEW | nothing is left and the wallet paid beyond what was on file (`USED_EXCEEDS_TOPUPS`) |
+| NO_BALANCE | nothing is left, nothing paid beyond what was on file |
+
+A verified balance the date order reads otherwise goes back to be verified again (`CHANGED_AFTER_VERIFICATION`); a posted one is
+kept and marked `CHANGED_AFTER_POSTING` with both amounts. A top-up whose day is not known (dated on or after the day it was recorded here:
+an undated row the import stamps with its own moment, or the retired upload's day that V502 kept) is counted before everything,
+so it is never taken for untouched money. The old portal's statement, when entered, is compared with the date-order balance, and
+the posted credit's note says what was paid before the top-ups, so its figures add up to the amount. The old portal's statement governs as before, and two Bursary officers
+still verify and post every balance; nothing is posted by V736. The migration runs the reconciliation again where it has been run.
+
+On a copy of live (late October): 178 of the 3,878 students under review have a balance (₦3,229,633), 2 of the 285 computed balances
+rise (₦8,000), 3,700 stay under review. The desk's To verify tile counts the balances read in date order; the table's *How* reads
+"Top-ups − paid, in date order" with what was paid before.
+
+Tests: check.sql V736 (the University's case ₦61,700; a top-up spent by a later larger payment held for review; a mixed history with
+a top-up and a payment on one day, ₦59,000; an ordinary balance as before; an undated top-up leaves nothing; a statement equal
+to the date-order balance is not "differs"; verified, posted (the note saying what was paid before) and applied to fees; a verified
+balance re-dated goes back; a posted one is marked). `LegacyWalletIT.aTopUpAfterTheWalletPaidBeyondWhatWasOnFileIsTheBalanceAndReachesTheStudentsWallet`
+through the desk and the student's wallet. `lib/legacy-wallet.test.ts`.

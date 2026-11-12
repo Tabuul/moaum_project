@@ -10,11 +10,14 @@ export const STATUS_WORDS: Record<LegacyWalletStatus, [string, "ok" | "bad" | "w
 };
 export const REASON_WORDS: Record<string, string> = {
   USED_EXCEEDS_TOPUPS: "Paid from the old wallet more than the top-ups on file",
+  PAID_BEFORE_TOPUPS: "Paid from the old wallet before these top-ups: the top-ups since are the balance",
   NO_TOPUP_ON_FILE: "No top-up on file; rests on the old portal's statement",
   STATEMENT_DIFFERS: "The old portal's statement differs from the imported payments",
-  CHANGED_AFTER_POSTING: "The imported payments changed after the posting",
-  CHANGED_AFTER_VERIFICATION: "The imported payments changed after the verification",
+  CHANGED_AFTER_POSTING: "The balance reads otherwise since the posting (the imported payments or their date order)",
+  CHANGED_AFTER_VERIFICATION: "The balance reads otherwise since the verification (the imported payments or their date order)",
 };
+/** V736: findings that explain a balance rather than hold it — not shown as faults */
+export const INFO_REASONS = new Set(["PAID_BEFORE_TOPUPS"]);
 
 export interface LegacyWalletRow {
   id: string; student_id: string; student: string; matric_no: string | null; jamb_reg_no: string | null; student_status: string; programme: string | null;
@@ -27,6 +30,8 @@ export interface LegacyWalletRow {
   posted_by: string | null; posted_office: string | null; posted_at: string | null; batch_ref: string | null;
   decided_by: string | null; decided_at: string | null; decision_note: string | null;
   wallet_reference: string | null; applied: number | string; refunded: number | string; remaining: number | string | null;
+  /** V736: what the old wallet paid beyond what had been topped up on file before it — from top-ups the export does not show */
+  paid_before_topups?: number | string;
 }
 
 export interface LegacyWalletFigures {
@@ -36,6 +41,8 @@ export interface LegacyWalletFigures {
   changed: number; orphanStudents: number; orphanAmount: number | string; lastComputed: string | null;
   /** V625: balances the Bursar returned for correction */
   returned?: number; returnedAmount?: number | string;
+  /** V736: balances owed to the date order — top-ups after the wallet paid beyond what was on file — to verify or post */
+  paidBefore?: number; paidBeforeAmount?: number | string;
   batches: { ref: string; posted_at: string; students: number; amount: number | string; skipped: number; posted_by: string | null; office: string | null }[];
 }
 
@@ -54,10 +61,19 @@ export function reportRows(rows: LegacyWalletRow[]): (string | number)[][] {
     r.batch_ref ?? ""]);
 }
 
-/** how the balance was arrived at, in words */
-export function balanceWords(r: Pick<LegacyWalletRow, "topups" | "topup_count" | "used" | "used_count" | "stated_balance" | "stated_source" | "available">): string {
-  if (r.stated_balance != null) return `As the old portal states it (${r.stated_source ?? "statement"}): ₦${num(r.stated_balance).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
-  return `Topped up ₦${num(r.topups).toLocaleString("en-GB", { minimumFractionDigits: 2 })} (${r.topup_count}) − paid from it ₦${num(r.used).toLocaleString("en-GB", { minimumFractionDigits: 2 })} (${r.used_count})`;
+const ngn = (v: unknown) => `₦${num(v).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
+
+/** how the balance was arrived at, in words; V736: with what the wallet paid before the top-ups on file, read in date order */
+export function balanceWords(r: Pick<LegacyWalletRow, "topups" | "topup_count" | "used" | "used_count" | "stated_balance" | "stated_source" | "available" | "paid_before_topups">): string {
+  if (r.stated_balance != null) return `As the old portal states it (${r.stated_source ?? "statement"}): ${ngn(r.stated_balance)}`;
+  const base = `Topped up ${ngn(r.topups)} (${r.topup_count}) − paid from it ${ngn(r.used)} (${r.used_count})`;
+  return num(r.paid_before_topups) > 0 ? `${base} + ${ngn(r.paid_before_topups)} it paid before these top-ups, read in date order` : base;
+}
+
+/** the table's "how" in a few words: the statement, the date order, or top-ups less what was paid (V736) */
+export function howWords(r: Pick<LegacyWalletRow, "stated_balance" | "stated_source" | "paid_before_topups">): string {
+  if (r.stated_balance != null) return `Old portal statement (${r.stated_source})`;
+  return num(r.paid_before_topups) > 0 ? "Top-ups − paid, in date order" : "Top-ups − paid";
 }
 
 /** the address of the desk for a filter set */
