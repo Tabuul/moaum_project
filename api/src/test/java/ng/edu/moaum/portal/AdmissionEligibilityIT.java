@@ -768,6 +768,17 @@ class AdmissionEligibilityIT {
             assertThat(String.valueOf(off.getBody())).contains("the screening score has not been released");
             assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM admissions.application WHERE id IN (:a) AND decision IS NOT NULL")
                     .param("a", List.of(unsubmitted.app(), offTheList.app())).query(Long.class).single())).isZero();
+            // V732: a decision the desk could record while V729 was live is corrected to NOT OFFERED, never to another decision
+            it.db(() -> jdbc.sql("UPDATE admissions.application SET decision = 'OFFERED', decision_basis = 'NM', decided_at = now() WHERE id = :a")
+                    .param("a", unsubmitted.app()).update());
+            ResponseEntity<Map> waiting = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + unsubmitted.app() + "/decision",
+                    Map.of("decision", "WAITING", "note", "IT V732"));
+            assertThat(waiting.getStatusCode().value()).as(String.valueOf(waiting.getBody())).isEqualTo(422);
+            ResponseEntity<Map> corrected = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + unsubmitted.app() + "/decision",
+                    Map.of("decision", "NOT_OFFERED", "note", "IT V732: never submitted"));
+            assertThat(corrected.getStatusCode().value()).as(String.valueOf(corrected.getBody())).isEqualTo(200);
+            assertThat(it.db(() -> jdbc.sql("SELECT decision FROM admissions.application WHERE id = :a").param("a", unsubmitted.app())
+                    .query(String.class).single())).isEqualTo("NOT_OFFERED");
 
             // "Compute non-sitters" leaves the decided application as it is: no score is entered under the Board's decision
             ResponseEntity<Map> computed = it.call(academic, HttpMethod.POST,
@@ -784,6 +795,7 @@ class AdmissionEligibilityIT {
                     SELECT count(*) FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                      WHERE a.session = :s AND c.programme = (SELECT name FROM ref.programme WHERE code = :p) AND a.submitted_at IS NOT NULL
                        AND a.score_released_at IS NULL AND a.decision_released_at IS NULL AND (a.screening_batch_id IS NOT NULL OR a.score_entered_at IS NOT NULL)
+                       AND admissions.on_current_utme_list(a.id)   -- V732: as the repository counts, so leftovers of earlier runs count alike
                     """).param("s", SESSION).param("p", index).query(Long.class).single());
             assertThat(((Number) idx.get("awaitingRelease")).longValue()).isEqualTo(releasable);
             assertThat(it.db(() -> jdbc.sql("SELECT decision FROM admissions.application WHERE id = :a").param("a", unscored.app())

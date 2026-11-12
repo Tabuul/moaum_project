@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 557
+\set EXPECTED 558
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32472,6 +32472,82 @@ BEGIN
       coalesce(msg = 'list A1 | on list A1=true,A2=true,R1=true,U1=true,W1=false | A1 OFFERED R1 WAITING'
                      || ' | A2 a compulsory O''Level credit is missing: Mathematics | U1 the application has not been submitted'
                      || ' | W1 the screening score has not been released', false),
+      msg);
+END $$;
+
+-- ── V732: the review of V731. In 9733/9734, C00019 not screened by the examination: K1 never submitted, OFFERED while V729 was live —
+--          corrected to NOT OFFERED, never to WAITING; K2 off JAMB's current list, OFFERED then — corrected to NOT OFFERED; K3 never
+--          submitted and undecided — NOT OFFERED refused (nothing to correct); K4 submitted, on the list, its programme a name no code
+--          carries (renamed after the intake) — needs a release, refused; K5 a computed aggregate as V729 meant — still decided. The
+--          block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9733/9734'; v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid(); p_code text := 'C00019';
+    r record; apps jsonb := '{}'::jsonb; needed text; d_k1 text; d_k2 text; d_k5 text; e_k1w text; e_k3 text; e_k4 text;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V732', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9733-10-01', date '9734-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+    VALUES (v_pol, ses, 10, 70, 30, 80, 20, 'CHECK CAC/9733/1', tstzrange(now(), NULL), 'IN_FORCE');
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (v_batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x732a'::bytea, 5, current_date, gen_random_uuid(), 'academic');
+    FOR r IN SELECT * FROM (VALUES
+        ('K1', '29733000001', (SELECT name FROM ref.programme WHERE code = 'C00019'), false, false, 'OFFERED'),
+        ('K2', '29733000002', (SELECT name FROM ref.programme WHERE code = 'C00019'), true,  true,  'OFFERED'),
+        ('K3', '29733000003', (SELECT name FROM ref.programme WHERE code = 'C00019'), false, false, NULL),
+        ('K4', '29733000004', 'B.SC. CHECK V732 RENAMED AFTER THE INTAKE',              true,  false, NULL),
+        ('K5', '29733000005', (SELECT name FROM ref.programme WHERE code = 'C00019'), true,  false, NULL)
+    ) AS t(tag, jamb, pname, submitted, withdrawn, held)
+    LOOP
+        DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga, withdrawn)
+            VALUES (cr, v_batch, ses, r.jamb, '{}'::jsonb, 'CHECKV732', r.tag, p_code, 280, 'UTME', 'F', 'Benue', 'Makurdi', r.withdrawn);
+            INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+            VALUES (cand, ses, r.jamb, 'CHECKV732', r.tag, r.pname, 'UTME', 100, 'PROPOSED');
+            INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+            VALUES (acct, ses, cand, r.jamb, lower(r.jamb) || '@example.com', '08030007320', crypt('x', gen_salt('bf', 12)));
+            -- a decision held as the desk could record it while V729 was live
+            INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at,
+                                                decision, decision_basis, decision_note, decided_at)
+            VALUES (app, acct, cand, ses, 'APP/33/' || right(r.jamb, 6), CASE WHEN r.submitted THEN now() END, CASE WHEN r.submitted THEN now() END,
+                    r.held, CASE WHEN r.held = 'OFFERED' THEN 'NM' END, CASE WHEN r.held IS NOT NULL THEN 'recorded under V729' END,
+                    CASE WHEN r.held IS NOT NULL THEN now() END);
+            apps := apps || jsonb_build_object(r.tag, app);
+        END;
+    END LOOP;
+
+    SELECT string_agg(k || '=' || admissions.score_release_needed((apps ->> k)::uuid), ',' ORDER BY k) INTO needed FROM jsonb_object_keys(apps) k;
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'K1')::uuid, 'WAITING', 'CHECK V732', NULL); e_k1w := 'decided';
+    EXCEPTION WHEN check_violation THEN e_k1w := SQLERRM;
+    END;
+    d_k1 := admissions.decide_application((apps ->> 'K1')::uuid, 'NOT_OFFERED', 'CHECK V732: never submitted', NULL);
+    d_k2 := admissions.decide_application((apps ->> 'K2')::uuid, 'NOT_OFFERED', 'CHECK V732: not on the current list', NULL);
+    d_k5 := admissions.decide_application((apps ->> 'K5')::uuid, 'WAITING', 'CHECK V732', NULL);
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'K3')::uuid, 'NOT_OFFERED', 'CHECK V732', NULL); e_k3 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_k3 := SQLERRM;
+    END;
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'K4')::uuid, 'WAITING', 'CHECK V732', NULL); e_k4 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_k4 := SQLERRM;
+    END;
+    msg := 'release needed ' || needed || ' | K1 waiting ' || e_k1w || ' | K1 ' || d_k1 || ' K2 ' || d_k2 || ' K5 ' || d_k5
+        || ' | K3 ' || e_k3 || ' | K4 ' || e_k4;
+    RAISE EXCEPTION 'the V732 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V732 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V732: a decision recorded and not released is always correctable to NOT OFFERED, never to another; a programme name no code carries needs a released score',
+      coalesce(msg = 'release needed K1=false,K2=false,K3=false,K4=true,K5=false | K1 waiting the application has not been submitted'
+                     || ' | K1 NOT_OFFERED K2 NOT_OFFERED K5 WAITING | K3 the application has not been submitted'
+                     || ' | K4 the screening score has not been released', false),
       msg);
 END $$;
 
