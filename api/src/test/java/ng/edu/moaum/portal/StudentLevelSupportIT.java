@@ -333,4 +333,53 @@ class StudentLevelSupportIT {
         assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + then + "?c=" + earlierReceipt.get("checkCode"), null).getBody())
                 .containsEntry("genuine", true).containsEntry("level", 200);
     }
+    private void undoMerger(ItSupport it, String merged) {
+        it.db(() -> {
+            jdbc.sql("SELECT policy.unmerge_session(a.name, 'V725 integration test: the merger undone') FROM policy.academic_session a WHERE a.name = :m AND a.state = 'CANCELLED'")
+                    .param("m", merged).query().listOfRows();
+            return jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :m AND state = 'CLOSED'").param("m", merged).update();
+        });
+    }
+
+    /**
+     * V725: the University's word of 11 November 2026 — the receipt of a student who entered 2019/2020 printed 400 Level for 2022/2023,
+     * and 2019/2020 was merged into 2020/2021: it is 300 Level. Far-future sessions y … y+5, y+1 merged into y+2 as 2019/2020 was: an
+     * entrant of y+1 with no registration or enrolment reads 300 Level for y+4 on the student's receipt, the public verify page and the
+     * Student 360°; the merger undone, the session counts again and the receipt reads 400.
+     */
+    @Test
+    void aReceiptOfAPastSessionCountsTheMergedSessionOnce() {
+        ItSupport it = new ItSupport(port, jdbc, transactions);
+        int y = it.freeYear(9500, 9800, 0, 5);
+        for (int i = 0; i <= 5; i++) { it.session((y + i) + "/" + (y + i + 1), y + i); }
+        String merged = (y + 1) + "/" + (y + 2), into = (y + 2) + "/" + (y + 3), paid = (y + 4) + "/" + (y + 5);
+        int n = it.freeDraw(1000, 9999, k -> List.of("MOAUM/ITM/19/" + k, "MOAUM/ADM/19/54" + k));
+        String programme = jdbc.sql("""
+                SELECT code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT coalesce(archived, false) AND finance.final_level(code) = 400 ORDER BY code LIMIT 1
+                """).query(String.class).single();
+        UUID student = it.student("ZZLVMERGE" + n, programme, "MOAUM/ADM/19/54" + n, "MOAUM/ITM/19/" + n, 100);
+        String ref = "MOAUM-LEG-ITM" + n + "-" + y + "-S1";
+        try {
+            it.db(() -> {
+                jdbc.sql("UPDATE people.student SET entry_session = :e WHERE id = :s").param("e", merged).param("s", student).update();
+                jdbc.sql("""
+                        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no)
+                        VALUES (:s, :ses, :r, 'School fees (legacy) · semester 1', 35100, now(), now(), gen_random_uuid(), 'Legacy', 'LEG-' || :r)
+                        """).param("s", student).param("ses", paid).param("r", ref).update();
+                return jdbc.sql("SELECT policy.merge_session(:m, :i, 'V725 integration test: the session merged, as 2019/2020 was', 'SEN/IT/V725')")
+                        .param("m", merged).param("i", into).query().listOfRows();
+            });
+            String tok = TestTokens.token(student, List.of("student"));
+            Map<String, Object> receipt = it.get(tok, "/api/v1/me/fees/receipts/" + ref).getBody();
+            assertThat(receipt).containsEntry("session", paid).containsEntry("level", 300);
+            assertThat(it.anon(HttpMethod.GET, "/api/v1/verify/receipt/" + ref + "?c=" + receipt.get("checkCode"), null).getBody())
+                    .containsEntry("genuine", true).containsEntry("level", 300);
+            assertThat(it.get(ItSupport.token("records"), "/api/v1/student/students/" + student + "/full/receipts/" + ref).getBody()).containsEntry("level", 300);
+            // the merger undone: the session counts again
+            undoMerger(it, merged);
+            assertThat(it.get(tok, "/api/v1/me/fees/receipts/" + ref).getBody()).containsEntry("level", 400);
+        } finally {
+            undoMerger(it, merged);
+        }
+    }
 }

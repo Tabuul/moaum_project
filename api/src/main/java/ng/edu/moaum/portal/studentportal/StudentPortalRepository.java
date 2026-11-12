@@ -682,9 +682,10 @@ class StudentPortalRepository {
             """;
 
     /** the level a receipt of the session prints (V672, people.receipt_level): the level the student was at in the session —
-     *  the session's course registration (V641), the enrolment, the arithmetic from the entry session (a postgraduate's level
-     *  their own, V455) — never below the level the record holds in the session the student is in now (a 300 Level student's
-     *  2025/2026 receipt read 200 from a registration the old-portal upload made at a carry-over's level) */
+     *  the session's course registration (V641), the enrolment, the sessions studied since entry as the cohort engine counts
+     *  them (V725: a merged session such as 2019/2020 once — a /19/ student is 300 Level in 2022/2023, not 400; a postgraduate's
+     *  level their own, V455) — never below the level the record holds in the session the student is in now (a 300 Level
+     *  student's 2025/2026 receipt read 200 from a registration the old-portal upload made at a carry-over's level) */
     Integer levelForSession(UUID student, String session) {
         return jdbc.sql("SELECT people.receipt_level(:s, :ses)").param("s", student).param("ses", session).query(Integer.class).single();
     }

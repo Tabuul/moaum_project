@@ -144,6 +144,12 @@ An adversarial review of V720 (four finders, two refuters a finding; fifteen fin
 - **Not changed from the review:** V720's `ALTER TABLE` and backfill ran in one transaction (the lock held through the backfill);
   the migration has run and is not rewritten — a later migration that adds a column and backfills should commit the DDL first.
 
+## V725: a past period's level counts the merged session once
+
+A past period with no registration or enrolment is charged at the level the cohort engine counts (`people.counted_sessions`): a /19/
+student's 2022/2023 is 300 Level's line, not 400 Level's, and their final year 2023/2024 is the final year, not a spillover year. See
+`docs/session-2019-2020-merged.md`.
+
 ## Not changed, on purpose
 
 - Sessions before the Bursar's assessment start (`finance.historical_start()`) stay unassessed and unlisted — the University's word of

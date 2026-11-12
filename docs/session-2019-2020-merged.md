@@ -41,3 +41,41 @@ Students in study, before and after:
 
 Student Cohorts → Policy → Academic sessions → **Undo merger** on 2019/2020 (`policy.unmerge_session`, with a reason). Positions are
 recomputed again.
+
+## Every level reader counts it the same way (V725)
+
+On 11 November 2026 the University reported the receipt of BSU/AR/REL/19/52222 (entered 2019/2020) for the first semester of
+2022/2023 printing **400 Level**; it is **300 Level**, and the University added that students admitted before the merge were affected
+too. V661 made the cohort engine count the merged session once, but four other readers of a session's level kept their own
+arithmetic, used whenever the session holds no registration or enrolment of the student (most old-portal students' past sessions):
+
+| Reader | Used by | Counted |
+|---|---|---|
+| `people.receipt_level` | every receipt: the student's, the Student 360°'s, ICT Support's, the public verify page | calendar years since entry |
+| `people.level_in` | results statements, the results verify page, payment reallocation | the calendar's rows (and nothing for an entry before the calendar's first session: the record's level, often a stale 100) |
+| `finance.historical_rows_read` | the past-session fee account (V720): its fee lines and spillover year | the calendar's index |
+| `reporting.level_in_session` | the payments view: the Payments screen, analytics, the query engine | calendar years since entry |
+
+V725 gives them one count, `people.counted_sessions(entry, session)` — `policy.sessions_elapsed` from the effective (merged-into) entry
+session to the effective session, a malformed session name such as `2022/2024` read as the session starting in its first year. A
+/19/ student is 100 Level in 2020/2021 and 300 in 2022/2023; a 2018/2019 entrant is 400 in 2022/2023 (500 before). The historical engine
+works the count out once a pair of entry session and session, and the payments view from the cancelled years read once a query
+(`policy.cancelled_years`), never once a row. The session roll-over's promotion ceiling, the College's minimum years and the
+programme's timeline count the same way.
+
+- **Stored levels were not wrong.** On a copy of live (late October), none of 2,614 old-portal registrations and enrolments of
+  pre-merge students is a level high; a receipt stores no level, so every receipt, printed or verified, reads right at once, and
+  printed check codes stay valid.
+- **Reach on that copy.** About 8,900 confirmed payments of about 4,000 students printed one level high (2023/2024 most: about
+  8,100); results statements and reallocation periods change for about 15,000 student-sessions of /19/ entrants, and about 19,800 of
+  earlier entrants who fell to the record's stale level.
+- **A merger now marks the historical summaries stale** (`finance.historical_bound`'s `MERGES` stream); V725 marks the students whose
+  count changed once. The migration says how many historical assessments or payment reallocations name a level other than the new
+  count; they are listed for the Bursary, not changed.
+- **The set readers never count once a row.** The payments view, the old-fees reconciliation and the overpaid list join the cancelled
+  years once a query (`CROSS JOIN policy.cancelled_years()`) and the old-fees import reads them once a call, so the 7-argument
+  `reporting.level_in_session` is inlined: 0.12 s over 54,575 students, against 8.5 s for the 5-argument form called once a row.
+- **A chain of mergers** (one session merged into another that is later merged in turn) is followed to its end by every reader, and a
+  session name not written as the calendar writes it (`2022/2024`, `2022/23`) is read as the session starting in its year by all.
+- **Unchanged, on purpose:** deferred sessions are not taken off these counts (the cohort engine's position does that), and a cohort
+  override is not applied to past sessions.

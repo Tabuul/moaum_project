@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 553
+\set EXPECTED 554
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -31941,6 +31941,127 @@ BEGIN
                      || ' | again NOTHING_TO_DELETE 0 groups 3 skipped 3'
                      || ' | guard 0/1', false),
       msg);
+END $$;
+
+-- ── V725: a session's level counts the merged session once. A made-up calendar 2480/2481 … 2487/2488 with 2481/2482 merged into
+--          2482/2483 (as 2019/2020 was into 2020/2021) and 2485/2486 current; a four-year programme. With no registration or
+--          enrolment in the session, the receipt and the results read the sessions studied as the cohort engine counts them: an
+--          entrant of the merged session is 300 Level in 2484/2485 (the University's case, 400 before), one of the session before
+--          it 400 (500 before), one before the calendar's first session 500 (600, and the record's level on the results, before),
+--          one after it unchanged at 300, a Direct Entry entrant of the merged session 400; a registration's level stands, a
+--          postgraduate's is their own, a cohort override still caps the current session. The payments view and its array form
+--          agree with the count for every pair of sessions; the historical fee engine charges 2484/2485 at the level counted (300
+--          Level's line, 400 Level's for the session before); the programme's timeline counts on from the merged-into session. No
+--          function V725 changed still counts calendar years or rows. Undoing the merger counts 2481/2482 again and marks the
+--          historical summaries stale, a postgraduate student's too. A chain of mergers is followed to its end by every reader, a
+--          session name not written as the calendar writes it is read alike by all, and the old-fees reconciliation, the overpaid
+--          list and the old-fees import take the cancelled years once. The block undoes its writes ──
+DO $$
+DECLARE
+    prog text; pgprog text := 'C90002';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); p uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+    de uuid := gen_random_uuid(); r uuid := gen_random_uuid(); pg uuid := gen_random_uuid(); ov uuid := gen_random_uuid();
+    rcpt text; lvl_in text; reg_pg text; ov_lvl int; view_lvl int; rep5 int; rep7 int; array_off int; hist text; tl text; lint int;
+    stale_before int; stale_after int; undone int; merged_seen text; stale_pg int; chain_rcpt int; chain_off int; norm text; mal int; callers int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V725', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), y || '/' || (y + 1), make_date(y, 10, 1), make_date(y + 1, 8, 31), CASE WHEN y < 2485 THEN 'CLOSED' ELSE 'PLANNED' END
+      FROM generate_series(2480, 2487) y;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2485/01' WHERE name = '2485/2486';
+    PERFORM policy.merge_session('2481/2482', '2482/2483', 'CHECK V725: the session merged, as 2019/2020 was', 'SEN/2482/01');
+    SELECT b2.last_session INTO merged_seen FROM finance.historical_bound b2 WHERE b2.stream = 'MERGES';
+    SELECT pr.code INTO prog FROM ref.programme pr JOIN ref.department d ON d.code = pr.dept_code
+     WHERE pr.category = 'UNDER GRADUATE' AND NOT pr.archived AND d.ended_on IS NULL AND finance.final_level(pr.code) = 400 ORDER BY pr.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a,  'MOAUM/ADM/24/972501', 'MOAUM/ZZV/24/7251', 'CHECKV725', 'Merged Entry', prog, 'UTME', '2481/2482', 100, 100, 'ACTIVE', now()),
+        (b,  'MOAUM/ADM/24/972502', 'MOAUM/ZZV/24/7252', 'CHECKV725', 'Before', prog, 'UTME', '2480/2481', 100, 100, 'ACTIVE', now()),
+        (p,  'MOAUM/ADM/24/972503', 'MOAUM/ZZV/24/7253', 'CHECKV725', 'Before Calendar', prog, 'UTME', '2479/2480', 100, 100, 'ACTIVE', now()),
+        (c,  'MOAUM/ADM/24/972504', 'MOAUM/ZZV/24/7254', 'CHECKV725', 'After', prog, 'UTME', '2482/2483', 100, 100, 'ACTIVE', now()),
+        (de, 'MOAUM/ADM/24/972505', 'MOAUM/ZZV/24/7255', 'CHECKV725', 'Direct Entry', prog, 'DIRECT_ENTRY', '2481/2482', 200, 200, 'ACTIVE', now()),
+        (r,  'MOAUM/ADM/24/972506', 'MOAUM/ZZV/24/7256', 'CHECKV725', 'Registered', prog, 'UTME', '2481/2482', 100, 100, 'ACTIVE', now()),
+        (pg, 'MOAUM/ADM/24/972507', 'MOAUM/ZZV/24/7257', 'CHECKV725', 'Postgraduate', pgprog, 'POSTGRADUATE', '2481/2482', 800, 800, 'ACTIVE', now()),
+        (ov, 'MOAUM/ADM/24/972508', 'MOAUM/ZZV/24/7258', 'CHECKV725', 'Override', prog, 'UTME', '2480/2481', 100, 600, 'ACTIVE', now());
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), r, '2484/2485', 1, 400, 'SUBMITTED');
+    INSERT INTO people.cohort_override (student_id, effective_cohort, reason) VALUES (ov, '2480/2481', 'CHECK V725: a cohort override');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (a, '2484/2485', 'MOAUM-FEE-ZZV-7251A', 'School fees 2484/2485', 30000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZV-7251A');
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES
+        ('2484/2485', 'Check V725 fees', 30000, 300, prog, NULL), ('2484/2485', 'Check V725 fees', 40000, 400, prog, NULL);
+
+    -- the receipt and the results, with no registration or enrolment in 2484/2485
+    SELECT string_agg(x.k || '=' || people.receipt_level(x.id, x.s), ' ' ORDER BY x.k) INTO rcpt
+      FROM (VALUES ('A82', a, '2482/2483'), ('A81', a, '2481/2482'), ('A84', a, '2484/2485'), ('B81', b, '2481/2482'), ('B84', b, '2484/2485'),
+                   ('C84', c, '2484/2485'), ('D84', de, '2484/2485'), ('P84', p, '2484/2485'), ('R84', r, '2484/2485'), ('X84', pg, '2484/2485')) x(k, id, s);
+    SELECT string_agg(x.k || '=' || people.level_in(x.id, '2484/2485', 1), ' ' ORDER BY x.k) INTO lvl_in
+      FROM (VALUES ('A', a), ('B', b), ('C', c), ('D', de), ('P', p)) x(k, id);
+    SELECT string_agg(x.k || '=' || (people.level_in(x.id, '2484/2485', 1) = people.receipt_level(x.id, '2484/2485')), ' ' ORDER BY x.k) INTO reg_pg
+      FROM (VALUES ('A', a), ('B', b), ('C', c), ('D', de), ('P', p)) x(k, id);
+    ov_lvl := people.receipt_level(ov, '2485/2486');
+    -- the payments view, the 5-argument and 7-argument forms, and the array form against the count for every pair of sessions
+    SELECT v.level INTO view_lvl FROM reporting.payments v WHERE v.reference = 'MOAUM-FEE-ZZV-7251A';
+    rep5 := reporting.level_in_session(100, '2481/2482', 100, 'UTME', '2484/2485');
+    SELECT reporting.level_in_session(100, '2481/2482', 100, 'UTME', '2484/2485', cy.years, cy.into_years) INTO rep7 FROM policy.cancelled_years() cy;
+    SELECT count(*) INTO array_off
+      FROM generate_series(2478, 2488) e CROSS JOIN generate_series(2478, 2488) s CROSS JOIN policy.cancelled_years() cy
+     WHERE reporting.level_in_session(100, e || '/' || (e + 1), 100, 'UTME', s || '/' || (s + 1), cy.years, cy.into_years)
+           IS DISTINCT FROM least(600, greatest(100, 100 + 100 * people.counted_sessions(e || '/' || (e + 1), s || '/' || (s + 1))));
+    -- the historical fee engine: 2484/2485 charged at the level counted
+    SELECT string_agg(x.k || '=' || h.level || '/' || h.assessed, ' ' ORDER BY x.k) INTO hist
+      FROM (VALUES ('A', a), ('B', b)) x(k, id)
+      JOIN LATERAL (SELECT y.level, y.assessed FROM finance.historical_rows(ARRAY[x.id]) y WHERE y.session = '2484/2485' AND y.semester = 1) h ON true;
+    -- the programme's timeline counts on from the merged-into session
+    SELECT t.original_completion_session INTO tl FROM people.programme_timeline(a) t;
+    -- no function V725 changed still counts calendar years or rows for a level
+    SELECT count(*) INTO lint FROM pg_proc pr2
+     WHERE pr2.oid IN ('people.receipt_level(uuid,text)'::regprocedure, 'people.level_in(uuid,text,integer)'::regprocedure, 'people.cohort_cap(uuid,text)'::regprocedure,
+                       'finance.historical_rows_read(uuid[])'::regprocedure, 'reporting.level_in_session(integer,text,integer,text,text)'::regprocedure,
+                       'people.roll_over_session(text,text,text)'::regprocedure, 'college.min_years_met(uuid,text)'::regprocedure, 'people.programme_timeline(uuid)'::regprocedure)
+       AND (pr2.prosrc ~ 'left\(p_session, 4\)::int - left\(' OR pr2.prosrc ~ 'row_number\(\) OVER \(ORDER BY a\.starts_on'
+            OR pr2.prosrc ~ 'session_plus\(s\.entry_session' OR pr2.prosrc ~ 'v_to - policy\.session_year' OR pr2.prosrc ~ 'starts_on > es\.starts_on');
+    -- undoing the merger counts 2481/2482 again, and marks the historical summary stale
+    PERFORM finance.historical_refresh_stale(100000);
+    SELECT count(*) INTO stale_before FROM finance.historical_stale WHERE student_id = a;
+    PERFORM policy.unmerge_session('2481/2482', 'CHECK V725: the merger undone');
+    SELECT count(*) INTO stale_after FROM finance.historical_stale WHERE student_id = a;
+    undone := people.receipt_level(a, '2484/2485');
+    SELECT count(*) INTO stale_pg FROM finance.historical_stale WHERE student_id = pg;
+    -- a chain of mergers (2481/2482 into 2482/2483, then 2482/2483 into 2483/2484): every reader follows it to its end
+    PERFORM policy.merge_session('2481/2482', '2482/2483', 'CHECK V725: merged again', 'SEN/2482/02');
+    PERFORM policy.merge_session('2482/2483', '2483/2484', 'CHECK V725: the merged-into session merged in turn', 'SEN/2483/01');
+    chain_rcpt := people.receipt_level(a, '2484/2485');
+    SELECT count(*) INTO chain_off
+      FROM generate_series(2478, 2488) e CROSS JOIN generate_series(2478, 2488) s CROSS JOIN policy.cancelled_years() cy
+     WHERE reporting.level_in_session(100, e || '/' || (e + 1), 100, 'UTME', s || '/' || (s + 1), cy.years, cy.into_years)
+           IS DISTINCT FROM least(600, greatest(100, 100 + 100 * people.counted_sessions(e || '/' || (e + 1), s || '/' || (s + 1))));
+    -- a session name not written as the calendar writes it is read as the session starting in its year, by every reader alike
+    norm := policy.session_normal('2484/85') || ' ' || policy.session_normal('2484/2486') || ' ' || policy.session_normal('2484') || ' '
+            || policy.session_normal('2484/2485') || ' ' || policy.session_normal('x');
+    SELECT count(*) INTO mal FROM unnest(ARRAY['2484/85', '2484/2486', '2484']) m(s) CROSS JOIN policy.cancelled_years() cy
+     WHERE reporting.level_in_session(100, '2480/2481', 100, 'UTME', m.s, cy.years, cy.into_years)
+           IS DISTINCT FROM least(600, greatest(100, 100 + 100 * people.counted_sessions('2480/2481', m.s)));
+    -- the set readers take the cancelled years once, never the 5-argument form once a row
+    SELECT count(*) INTO callers FROM pg_proc pr3
+     WHERE pr3.pronamespace = 'finance'::regnamespace AND pr3.proname IN ('old_fees_reconciliation', 'overpaid', 'import_legacy_payments')
+       AND pr3.prosrc ~ 'cancelled_years';
+    RAISE EXCEPTION 'CHECK_V725_UNDONE' USING ERRCODE = 'P0001';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'CHECK_V725_UNDONE' THEN RAISE; END IF;
+  END;
+
+  PERFORM pg_temp.assert('V725: a session''s level counts the merged session once — receipts, results, the payments view, the historical fees, the timeline',
+      coalesce(rcpt = 'A81=100 A82=100 A84=300 B81=200 B84=400 C84=300 D84=400 P84=500 R84=400 X84=800'
+               AND lvl_in = 'A=300 B=400 C=300 D=400 P=500' AND reg_pg = 'A=true B=true C=true D=true P=true'
+               AND ov_lvl = 500 AND view_lvl = 300 AND rep5 = 300 AND rep7 = 300 AND array_off = 0
+               AND hist = 'A=300/30000.00 B=400/40000.00' AND tl = '2485/2486' AND lint = 0
+               AND merged_seen ~ '2481/2482>2482/2483' AND stale_before = 0 AND stale_after = 1 AND undone = 400 AND stale_pg = 1
+               AND chain_rcpt = 200 AND chain_off = 0 AND norm = '2484/2485 2484/2485 2484/2485 2484/2485 x' AND mal = 0 AND callers = 3, false),
+      format('receipts %s | results %s | same %s | override %s | view %s 5-arg %s 7-arg %s array off %s | historical %s | timeline %s | lint %s | merges %s | undo stale %s->%s receipt %s pg stale %s | chain receipt %s off %s | names %s off %s | set readers %s',
+             rcpt, lvl_in, reg_pg, ov_lvl, view_lvl, rep5, rep7, array_off, hist, tl, lint, merged_seen, stale_before, stale_after, undone, stale_pg, chain_rcpt, chain_off, norm, mal, callers));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

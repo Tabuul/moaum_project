@@ -52,6 +52,8 @@ class PaymentReallocationIT {
         String matric = it.freeNumber("MOAU/SC/CSC/26/8", 5);
         UUID a = it.student(it.freeSurname("ZZREALLOCA"), "C00023", it.freeNumber("MOAUM/ADM/26/8", 5), matric, 100);
         UUID b = it.student(it.freeSurname("ZZREALLOCB"), "C00023", it.freeNumber("MOAUM/ADM/26/8", 5), it.freeNumber("MOAU/SC/CSC/26/8", 5), 100);
+        // V725: a level is counted from the entry session by its year — the students entered in the test's session, so they are 100 Level in it
+        it.db(() -> jdbc.sql("UPDATE people.student SET entry_session = :s WHERE id IN (:a, :b)").param("s", session).param("a", a).param("b", b).update());
         String purpose = "Inter-departmental transfer to B.Sc. IT V649 " + y;
         String[] refs = it.db(() -> {
             jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees (IT V649)', 180000, 100, 'C00023')")

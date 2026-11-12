@@ -714,4 +714,60 @@ class HistoricalFeesIT {
             });
         }
     }
+    private void undoMerger(ItSupport it, String merged) {
+        it.db(() -> {
+            jdbc.sql("SELECT policy.unmerge_session(a.name, 'V725 integration test: the merger undone') FROM policy.academic_session a WHERE a.name = :m AND a.state = 'CANCELLED'")
+                    .param("m", merged).query().listOfRows();
+            return jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :m AND state = 'CLOSED'").param("m", merged).update();
+        });
+    }
+
+    /**
+     * V725: a student who entered the merged session (as 2019/2020 was merged into 2020/2021) is charged a past session's fees at the
+     * level the cohort engine counts — y+4 at 300 Level's line, not 400 Level's — on their outstanding-fees card; their first session
+     * (the merged-into one) reads 100 Level. The merger undone, y+4 is 400 Level and 400 Level's line.
+     */
+    @Test
+    void aPastSessionIsChargedAtTheLevelTheMergedSessionCountsOnce() {
+        int y = it.freeYear(9150, 9450, 0, 5);
+        for (int i = 0; i <= 5; i++) { it.session((y + i) + "/" + (y + i + 1), y + i); sessions.add((y + i) + "/" + (y + i + 1)); }
+        String merged = (y + 1) + "/" + (y + 2), into = (y + 2) + "/" + (y + 3), owed = (y + 4) + "/" + (y + 5), cur = (y + 5) + "/" + (y + 6);
+        String wasCurrent = jdbc.sql("SELECT name FROM policy.academic_session WHERE state = 'CURRENT' ORDER BY name DESC LIMIT 1").query(String.class).optional().orElse(null);
+        UUID student = it.student(it.freeSurname("ZZMERGEFEES"), "C00023", it.freeNumber("MOAUM/ADM/19/", 6), it.freeNumber("MOAUM/MRG/19/", 6), 100);
+        try {
+            it.db(() -> {
+                jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT'").update();
+                jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = coalesce(senate_minute, 'SEN/TEST/V725') WHERE name = :c").param("c", cur).update();
+                jdbc.sql("UPDATE people.student SET entry_session = :e, entry_level = 100 WHERE id = :s").param("e", merged).param("s", student).update();
+                // the merged-into session states its 100 Level line too, so the account starts there (it starts at the first session with a line)
+                jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester) VALUES (:i, 'V725 IT fees', 10000, 100, 'C00023', NULL), (:o, 'V725 IT fees', 30000, 300, 'C00023', NULL), (:o, 'V725 IT fees', 40000, 400, 'C00023', NULL)")
+                        .param("i", into).param("o", owed).update();
+                return jdbc.sql("SELECT policy.merge_session(:m, :i, 'V725 integration test: the session merged, as 2019/2020 was', 'SEN/IT/V725')")
+                        .param("m", merged).param("i", into).query().listOfRows();
+            });
+            String tok = TestTokens.token(student, List.of("student"));
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) it.get(tok, "/api/v1/me/outstanding-fees").getBody().get("rows");
+            assertThat(rows.stream().filter(r -> merged.equals(r.get("session")))).isEmpty();
+            Map<String, Object> first = rows.stream().filter(r -> into.equals(r.get("session"))).findFirst().orElseThrow();
+            assertThat(first).containsEntry("level", 100);
+            assertThat(money(first.get("due"))).isEqualByComparingTo("10000");
+            Map<String, Object> row = rows.stream().filter(r -> owed.equals(r.get("session"))).findFirst().orElseThrow();
+            assertThat(row).containsEntry("level", 300).containsEntry("period", "Entire session");
+            assertThat(money(row.get("due"))).isEqualByComparingTo("30000");
+            // the merger undone: the session counts again
+            undoMerger(it, merged);
+            Map<String, Object> after = ((List<Map<String, Object>>) it.get(tok, "/api/v1/me/outstanding-fees").getBody().get("rows")).stream()
+                    .filter(r -> owed.equals(r.get("session"))).findFirst().orElseThrow();
+            assertThat(after).containsEntry("level", 400);
+            assertThat(money(after.get("due"))).isEqualByComparingTo("40000");
+        } finally {
+            undoMerger(it, merged);
+            it.db(() -> {
+                jdbc.sql("UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = :c AND name IS DISTINCT FROM :w AND state <> 'PLANNED'")
+                        .param("c", cur).param("w", wasCurrent, java.sql.Types.VARCHAR).update();
+                if (wasCurrent != null) jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT' WHERE name = :w AND state <> 'CURRENT'").param("w", wasCurrent).update();
+                return 0;
+            });
+        }
+    }
 }
