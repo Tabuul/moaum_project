@@ -8,7 +8,7 @@ import { finishPdf } from "@/lib/document/pdf";
 import { semesterName } from "@/lib/student-portal";
 import {
   CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardDay as day, cardFit, cardFooter, cardIdentity, cardPage, cardRules,
-  cardTableEnd, cardTableHead, cardVerify, cardWrap,
+  cardRulesFit, cardTableEnd, cardTableHead, cardVerify, cardVerifyDepth, cardWrap,
 } from "@/lib/exam-card-pdf";
 import { classificationWord, permitSections, permitSummary, permitVerifyPath, scheduled, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitState } from "@/lib/gst-eps-permit";
 import { shownCode } from "@/lib/course-code";
@@ -72,10 +72,11 @@ export async function GET(request: NextRequest) {
   } catch { /* blank box */ }
 
   const L = CARD_L;
-  const { p, y: top } = cardPage({
+  const head = {
     matric, institution: clean(nameUpper(inst)), office: "Office of the Registrar", title: "GST & EPS EXAMINATION PERMIT CARD",
     band: `${v.session} ACADEMIC SESSION · ${sem.toUpperCase()} SEMESTER`,
-  });
+  };
+  const { p, y: top } = cardPage(head);
   const details: [string, string][] = [["Name", name], ["Matriculation number", matric]];
   if (st.jambNo) details.push(["JAMB registration number", clean(st.jambNo)]);
   details.push(
@@ -126,17 +127,26 @@ export async function GET(request: NextRequest) {
     y -= 10;
   }
 
-  // ── instructions and examination regulations, as on the examination card ──
-  y = cardRules(p, y, INSTRUCTIONS, REGULATIONS);
-
-  // ── the verify QR: the permit's reference and its signed check code ──
+  // ── instructions and examination regulations, as on the examination card, then the verify QR: the permit's reference and its
+  // signed check code. The QR and the lines beside it stay clear of the permit's own line (58) and the document's footer under it:
+  // the rules are made smaller where the papers leave too little room, and go to a second page where even that is not enough — the
+  // QR staying on the first, under the papers — never printed over the QR or the footers ──
   const url = originOf(request) + permitVerifyPath(v.permit.reference, v.checkCode);
-  cardVerify(p, y, url, v.checkCode, [`Permit No. ${v.permit.reference}`]);
+  const verifyFloor = 68 + cardVerifyDepth(url, 1);
+  const pages = [p];
+  let vy = cardRulesFit(p, y, INSTRUCTIONS, REGULATIONS, verifyFloor + 14);
+  if (vy === null) {
+    const next = cardPage({ ...head, band: `${head.band} · CONTINUED` });
+    pages.push(next.p);
+    cardRules(next.p, next.y, INSTRUCTIONS, REGULATIONS);
+    vy = y;
+  }
+  cardVerify(p, vy, url, v.checkCode, [`Permit No. ${v.permit.reference}`], verifyFloor);
 
-  // above the document engine's own footer (the examination card's line sits at 40, on it)
-  cardFooter(p, `${name} · ${matric} · issued ${day(new Date().toISOString())} · valid for the GST and EPS examinations of ${v.session} ${sem} semester only`, 58);
+  // above the document engine's own footer (the examination card's line sits at 40, on it); on each page
+  for (const pg of pages) cardFooter(pg, `${name} · ${matric} · issued ${day(new Date().toISOString())} · valid for the GST and EPS examinations of ${v.session} ${sem} semester only`, 58);
 
-  const bytes = finishPdf([p], `GST & EPS permit ${matric}`, "FORM");
+  const bytes = finishPdf(pages, `GST & EPS permit ${matric}`, "FORM");
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="gst-eps-permit-${v.session.replace("/", "-")}-${v.semester}.pdf"`, "cache-control": "no-store" },

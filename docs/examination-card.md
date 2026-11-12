@@ -43,6 +43,14 @@ payments, and the Bursary imports the collections report or asks Interswitch to 
   registration, as the card does, and shows "School fees: Paid / Not paid" from `registration.exam_card_paid` (it used to show "Cleared"
   from the clearance scheme).
 
+## The printed card
+
+The card and the GST & EPS permit share one design (`lib/exam-card-pdf.ts`). Since 12 November 2026 nothing is printed over the
+QR or the footer. The instructions and regulations are set at 7pt where they fit above the QR, at 6.5pt or 6pt where many papers
+leave less room (eleven papers), and otherwise on a second page headed EXAMINATION CARD (CONTINUED), with the papers and the QR
+on the first page (seventeen papers). Before this, a card of eleven papers set its QR on the document's footer. An ordinary card
+prints exactly as before.
+
 ## Who cannot get one, and why
 
 Registration → **Exam cards** (`/registration/exam-cards`) lists every registration whose card is withheld, with the code, counted by

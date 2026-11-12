@@ -5,7 +5,7 @@ import type { Me, Docket } from "@/lib/student-portal";
 import type { ExamCardState } from "@/lib/exam-card";
 import { A4, jpegSize } from "@/lib/pdf-write";
 import { examVerifyPath, studentCheckCodeResult } from "@/lib/qr";
-import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardTableEnd, cardTableHead, cardVerify } from "@/lib/exam-card-pdf";
+import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardRulesFit, cardTableEnd, cardTableHead, cardVerify, cardVerifyDepth } from "@/lib/exam-card-pdf";
 import { semesterName } from "@/lib/student-portal";
 import { inUniversityOrder } from "@/lib/course-order";
 
@@ -59,7 +59,8 @@ export async function GET(request: NextRequest) {
 
   // ── the card's design (lib/exam-card-pdf, shared with the GST & EPS permit): header, photograph, particulars ──
   const L = CARD_L;
-  const { p, y: top } = cardPage({ matric, institution: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", office: "Office of the Registrar", title: "EXAMINATION CARD" });
+  const head = { matric, institution: "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI", office: "Office of the Registrar", title: "EXAMINATION CARD" };
+  const { p, y: top } = cardPage(head);
   let y = cardIdentity(p, top, {
     photo, name: clean(s.name) || matric,
     details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${card.registration?.level ?? s.level} Level`], ["Session", session], ["Semester", semesterName(semester)]],
@@ -82,18 +83,30 @@ export async function GET(request: NextRequest) {
   }
   y = cardTableEnd(p, y, `${card.count} paper(s) · ${card.units} credit units`);
 
-  // ── instructions and examination regulations, two compact columns ──
-  y = cardRules(p, y, EXAM_INSTRUCTIONS, EXAM_REGULATIONS);
-
   // ── a small verify QR, bottom-left, with the check code (no explanatory paragraph) ──
   // V589: the API's own refusal is shown as it is (the card's rule, or a read-only support view), never a bare "try again"
   const check = await studentCheckCodeResult("EXAM", session, semester);
   if (!check.ok) return NextResponse.json(check.problem, { status: check.problem.status || 503 });
   const url = originOf(request) + examVerifyPath(check.number, session, semester, check.code);
-  const beside = cardVerify(p, y, url, check.code);
 
-  cardFooter(p, `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`, beside.y, beside.x);   // beside the QR, above the document footer
+  // ── instructions and examination regulations, two compact columns, then the QR with the card's line beside it — clear of the
+  // document's footer (its rule at 46): the rules are made smaller where the papers leave too little room, and go to a second page
+  // where even that is not enough, the QR staying on the first, under the papers ──
+  const verifyFloor = 52 + cardVerifyDepth(url);
+  const pages = [p];
+  let vy = cardRulesFit(p, y, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, verifyFloor + 14);
+  if (vy === null) {
+    const next = cardPage({ ...head, title: "EXAMINATION CARD (CONTINUED)" });
+    pages.push(next.p);
+    cardRules(next.p, next.y, EXAM_INSTRUCTIONS, EXAM_REGULATIONS);
+    vy = y;
+  }
+  const beside = cardVerify(p, vy, url, check.code, [], verifyFloor);
 
-  const bytes = finishPdf([p], `Exam card ${matric}`, "FORM");
+  const line = `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`;
+  cardFooter(p, line, beside.y, beside.x);                       // beside the QR, above the document footer
+  for (const pg of pages.slice(1)) cardFooter(pg, line, 58);   // and on the rules' page, above its footer
+
+  const bytes = finishPdf(pages, `Exam card ${matric}`, "FORM");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="exam-card-${session.replace("/", "-")}-${semester}.pdf"` } });
 }

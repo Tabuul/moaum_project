@@ -114,8 +114,9 @@ export function cardTableEnd(p: Page, y: number, summary: string): number {
   return y - 22;
 }
 
-/** the instructions to the candidate and the examination regulations, two compact columns; returns where they end */
-export function cardRules(p: Page, y: number, instructions: string[], regulations: string[]): number {
+/** the instructions to the candidate and the examination regulations, two compact columns, at `size` (the card's 7pt by default);
+ *  returns where they end */
+export function cardRules(p: Page, y: number, instructions: string[], regulations: string[], size = 7): number {
   const L = CARD_L;
   const colW = (A4.w - 2 * L - 16) / 2;
   const colX2 = L + colW + 16;
@@ -124,8 +125,8 @@ export function cardRules(p: Page, y: number, instructions: string[], regulation
     p.text(x + 6, top, title, 7.5, true, [1, 1, 1]);
     let yy = top - 18;
     items.forEach((t, i) => {
-      p.text(x, yy, `${i + 1}.`, 7, true);
-      yy = p.paragraph(x + 14, yy, t, colW - 14, 7, 1.25) - 2;
+      p.text(x, yy, `${i + 1}.`, size, true);
+      yy = p.paragraph(x + 14, yy, t, colW - 14, size, 1.25) - 2;
     });
     return yy;
   };
@@ -135,12 +136,33 @@ export function cardRules(p: Page, y: number, instructions: string[], regulation
   return Math.min(endL, endR) - 14;
 }
 
+/**
+ * The instructions and regulations drawn so they end at or above `floor` (where the verify block must start, clear of the footers):
+ * at the card's own size where they fit, else a little smaller (6.5pt, then 6pt). Null when even 6pt does not fit — the caller then
+ * puts them, with the verify block, on a second page. Each size is tried on a page of its own first (a Page only collects its
+ * operations), so nothing is drawn twice. (12 Nov 2026: a permit of six GST and EPS papers with long titles — two of them marked
+ * CARRY-OVER — ran its regulations into the verify block and its QR onto the footers; an examination card of eleven papers set its
+ * QR on the document's footer.)
+ */
+export function cardRulesFit(p: Page, y: number, instructions: string[], regulations: string[], floor: number): number | null {
+  for (const size of [7, 6.5, 6]) {
+    if (cardRules(new Page(), y, instructions, regulations, size) >= floor) return cardRules(p, y, instructions, regulations, size);
+  }
+  return null;
+}
+
+/** how far the verify block reaches below its top: the QR, or the check code, its note and `more` lines beside it if they go lower */
+export function cardVerifyDepth(url: string, more = 0): number {
+  return Math.max(qrMatrix(url).size * 1.7, 52 + more * 12);
+}
+
 /** the small verify QR, bottom-left, with the check code beside it (and any further lines under the note); says where the text
- *  beside the QR ends, so a line can follow it there rather than under the QR */
-export function cardVerify(p: Page, y: number, url: string, code: string, more: string[] = []): { x: number; y: number } {
+ *  beside the QR ends, so a line can follow it there rather than under the QR. `floor` is the lowest its top may sit: the caller
+ *  sets it above its footers (cardVerifyDepth); 96 where none is given, as before */
+export function cardVerify(p: Page, y: number, url: string, code: string, more: string[] = [], floor = 96): { x: number; y: number } {
   const L = CARD_L;
   const { size, dark } = qrMatrix(url);
-  const cell = 1.7, qDim = size * cell, qy = Math.max(y, 96);
+  const cell = 1.7, qDim = size * cell, qy = Math.max(y, floor);
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(L + cc * cell, qy - (rr + 1) * cell, cell, cell, 0);
   p.text(L + qDim + 12, qy - 10, "SCAN TO VERIFY", 8, true, [0.4, 0.4, 0.4]);
   p.text(L + qDim + 12, qy - 24, `Check code  ${code}`, 8.5, true);

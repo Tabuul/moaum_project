@@ -11,6 +11,13 @@ The permit is drawn with the examination card's own design (`lib/exam-card-pdf.t
 - the dark table header, the instructions and regulations in two columns, the verification QR with its check code, and
   the footer.
 
+Nothing is printed over the QR or the footers (12 November 2026: a permit of six GST and EPS papers with long titles, two marked
+CARRY-OVER, ran its regulations into the QR and the QR onto the footers; an examination card of eleven papers set its QR on the
+document's footer). `cardRulesFit` sets the instructions and regulations at the card's 7pt where they fit above the verify block,
+at 6.5pt or 6pt where the papers leave less room, and otherwise on a second page headed CONTINUED, the QR staying on the first
+under the papers. `cardVerify` keeps the QR and the lines beside it above each document's footer (`cardVerifyDepth`): the
+permit's own line at 58 and the document footer's rule at 46. An ordinary permit or card prints exactly as before.
+
 The permit sets itself apart from the card in three ways:
 - its title, **GST & EPS EXAMINATION PERMIT CARD**, is set white on a dark band, with the session and semester under it;
 - it carries a **permit number** (`GST-EPS/<year>/<number>`);
