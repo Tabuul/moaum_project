@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 579
+\set EXPECTED 580
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34488,6 +34488,60 @@ BEGIN
                      || ' | applied by hand SUMMER_CREDIT_MOVE_IT | refunded REFUNDED held'
                      || ' | hrm SUMMER_CREDIT_OFFICE bursar OPEN | moved since archive free/reversal free'
                      || ' | renamed then merged ZZR 503 | reused ZZR 512', false),
+      msg);
+END $$;
+-- ── V753: the review of V751 applied. Made-up staff with no HR record: a Librarian bounded to a unit typed by its name, an
+--          Examinations Officer bounded to a programme, a lecturer bounded to a course — the unit's card name, the programme's
+--          department, the course's department. A course renamed ZZT 701 → ZZT 702 → ZZT 704, ZZT 702 then taken by a new course:
+--          ZZT 701 followed from before the first rename is ZZT 704 (the course itself), not the newcomer; a course merged away after
+--          a rename is followed to the course kept. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); dept text; dept_name text; prog text; prog_dept text; crs_dept text;
+    p_lib uuid := gen_random_uuid(); p_exam uuid := gen_random_uuid(); p_lec uuid := gen_random_uuid();
+    t0 timestamptz; lib text; exam text; lec text; renamed text; merged text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V753', true);
+    SELECT code, name INTO dept, dept_name FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+    SELECT p.code, d.name INTO prog, prog_dept FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code WHERE NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.unit (code, name, kind, parent_code, card_name) VALUES ('ZZ753', 'Zed Reading Room of the Health Campus', 'UNIT', NULL, 'Zed Reading Room');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZT 701', 'Followed by itself', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZT 711', 'Kept course', 3, 1, 400, dept, 'Core', 'LIVE'),
+        ('ZZT 712', 'Kept course', 3, 1, 400, dept, 'Core', 'LIVE');
+    SELECT d.name INTO crs_dept FROM catalogue.course k JOIN ref.department d ON d.code = k.dept_code WHERE k.code = 'ZZT 711';
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (p_lib, 'ZZ7531', 'ZZSCOPE', 'Librarian'), (p_exam, 'ZZ7532', 'ZZSCOPE', 'Exams'), (p_lec, 'ZZ7533', 'ZZSCOPE', 'Lecturer');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), p_lib, 'library', 'unit', 'Zed Reading Room of the Health Campus', 'check V753', who, current_date),
+        (gen_random_uuid(), p_exam, 'exams', 'programme', prog, 'check V753', who, current_date),
+        (gen_random_uuid(), p_lec, 'lecturer', 'course', 'ZZT 711', 'check V753', who, current_date);
+    lib := coalesce(credentials.staff_card_department(p_lib), 'none');
+    exam := CASE WHEN credentials.staff_card_department(p_exam) = prog_dept THEN 'its department' ELSE coalesce(credentials.staff_card_department(p_exam), 'none') END;
+    lec := CASE WHEN credentials.staff_card_department(p_lec) = crs_dept THEN 'its department' ELSE coalesce(credentials.staff_card_department(p_lec), 'none') END;
+
+    -- a course followed, not its code: renamed twice, the middle code then taken by a newcomer
+    t0 := now();
+    PERFORM catalogue.rename_course('ZZT 701', 'ZZT 702');
+    PERFORM catalogue.rename_course('ZZT 702', 'ZZT 704');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZT 702', 'A newcomer', 3, 1, 400, dept, 'Core', 'LIVE');
+    renamed := coalesce(registration.summer_code_after('ZZT 701', t0), 'none');
+    -- renamed then merged away: the course kept
+    PERFORM catalogue.rename_course('ZZT 711', 'ZZT 713');
+    PERFORM catalogue.merge_course('ZZT 712', 'ZZT 713', 'the same course written twice (check V753)', false);
+    UPDATE catalogue.course_alias SET merged_at = clock_timestamp() WHERE alias_code = 'ZZT 713';   -- as a later transaction would stamp it
+    merged := coalesce(registration.summer_code_after('ZZT 711', t0), 'none');
+
+    msg := 'librarian ' || lib || ' | exams ' || exam || ' | lecturer ' || lec || ' | renamed twice ' || renamed || ' | renamed then merged ' || merged;
+    RAISE EXCEPTION 'the V753 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V753 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V753: a staff card''s department from a unit typed by name, a programme or a course; a course followed by itself, not by a code another took',
+      coalesce(msg = 'librarian Zed Reading Room | exams its department | lecturer its department | renamed twice ZZT 704 | renamed then merged ZZT 712', false),
       msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────

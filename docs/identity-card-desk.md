@@ -257,7 +257,7 @@ The University's brief "Update student and staff identity card layouts" changes 
 1. its academic department, when it names one (never replaced by the unit, the faculty or the office);
 2. else the unit's card name;
 3. else the unit as the nominal roll spelled it;
-4. else (V751) the office the person holds on the portal, read by its scope: a department-scoped grant its department, a unit-scoped one the unit's card name, a faculty-scoped one the faculty, a college-scoped one the college, and an office the University holds centrally the unit it belongs to (`ref.office.unit_code`: the Registrar's and the Deputy Registrar's offices the Registry, the Bursar's and the Students Account Officer's the Bursary, the Director of ICT's ICT, the Chief Security Officer's the Security Unit, the Librarian's the Library);
+4. else (V751, V753) the office the person holds on the portal, read by its scope: a department-scoped grant its department (a programme- or course-scoped one, the programme's or the course's department), a unit-scoped one the unit's card name (the unit as Users & roles typed it, resolved as the nominal roll resolves it), a faculty-scoped one the faculty, a college-scoped one the college, and an office the University holds centrally the unit it belongs to (`ref.office.unit_code`: the Registrar's and the Deputy Registrar's offices the Registry, the Bursar's and the Students Account Officer's the Bursary, the Director of ICT's ICT, the Chief Security Officer's the Security Unit, the Librarian's the Library);
 5. else a dash. An office's title ("Head of Department", "Registrar") is never printed under DEPARTMENT.
 
 A posting recorded in `hrm.movement` does not change the record, so the record is what every reader uses.
@@ -296,3 +296,8 @@ The review (three readers, each finding put to a refuter) confirmed five points 
   - the verification page reads only the academic department;
   - the desk's lists show a unit's formal name;
   - an ended department or unit still prints.
+
+**The review of V751 (V753).** Two more scopes are read for someone the HR record places nowhere:
+
+- a programme- or course-scoped office (an Examinations Officer, a lecturer given one course) prints the programme's or the course's department;
+- a unit typed by name in Users & roles ("Medical Library") is resolved as the nominal roll resolves it, so it no longer falls back to the main Library or a dash.

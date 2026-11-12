@@ -213,3 +213,9 @@ A review of those fixes confirmed four more; V742 and the same change answer the
 - **A course code followed from the grant.** `registration.summer_code_after(code, since)` follows a code forward from the date an authorisation was granted, through renames and merges in the order they happened, and never to a later course that took the old code.
   - Authorisations still naming a dead code are put right with it, including a code renamed and then merged.
   - Those V746's one-off repair rewrote to another course than this gives are counted in the migration's notice for the Academic Office, and not changed.
+
+## The review of V751 (V753)
+
+- **The course is followed, not its code.** `registration.summer_code_after` follows the course an authorisation named, by its id, through its renames and through a merge to the course kept. A newcomer that took one of its old codes is never chosen (before, a course renamed twice whose middle code was then reused went to the newcomer).
+- **The repair re-runs, each authorisation once.** Authorisations still naming a dead code are put right again with it.
+- **The notice counts authorisations.** V746's and V751's choices are brought forward to today before they are compared with the trail from the grant. The migration's notice counts authorisations either rewrote otherwise, for the Academic Office (not changed).
