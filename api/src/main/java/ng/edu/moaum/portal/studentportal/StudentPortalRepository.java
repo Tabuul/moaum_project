@@ -1062,6 +1062,11 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT admissions.pg_current_session()").query(String.class).single();
     }
 
+    /** V733: the session an MBBS student stands in as their own (people.study_session), or null — the University's */
+    String ownSession(UUID student) {
+        return jdbc.sql("SELECT people.own_session(:s)").param("s", student).query(String.class).optional().orElse(null);
+    }
+
     /** V379: the current session of a route with a calendar of its own (CCE) */
     String routeSession(String route) {
         return jdbc.sql("SELECT policy.route_session(:r)").param("r", route).query(String.class).optional().orElse(null);

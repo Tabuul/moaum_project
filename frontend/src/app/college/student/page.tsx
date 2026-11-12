@@ -8,6 +8,7 @@ import { loadStudent } from "../../student/load";
 import { api } from "@/lib/api";
 import { BLOCKS, COMMON_RULES, MBBS, PHASES, PROGRESSION, phaseOf, SEMESTERS } from "@/lib/mbbs";
 import { RegisterButton } from "./RegisterButton";
+import { StudySession } from "../../student/StudySession";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +137,8 @@ export default async function CollegeStudentPage({ searchParams }: { searchParam
         {!active ? <> Your record stands <b>{word(status)}</b>; the College Secretary&rsquo;s office holds the decision.</> : null}
       </Note>
       {nav}
+      {/* V733: the session the MBBS student stands in — their own, one behind the University's — chosen and confirmed here */}
+      {view === "overview" ? <StudySession /> : null}
 
       {view === "overview" ? (
         <>

@@ -16,7 +16,7 @@ The University's decisions of 12 November 2026:
   application made here.
 - **Desks.** Any verified payment lets the current HOD, the new HOD and the Registry act; only the Academic Office's final
   approval waits for the whole fee, with nothing awaiting the bank.
-- Also: no Dean stage (the chain is unchanged); the balance is read against the fee as stated now (an effected transfer against
+- Also: no Dean stage (the chain is unchanged — since V734, below, the College Deans act at the department desks of their Colleges, no stage added); the balance is read against the fee as stated now (an effected transfer against
   the fee it was completed against); imported old-portal payments count as verified as imported; a student who paid more than
   the fee is shown OVERPAID for the Bursary (no automatic refund); nothing is owed until an application exists; a transfer the
   old portal finished is restored (V669/V686), never billed again, and the money that paid for it is no credit for another.
@@ -148,3 +148,40 @@ and the fee at ₦20,000:
 None of the old-portal payers has an application here yet, so nothing is linked until they apply or the export is loaded. The
 figures on the portal (Old-portal transfers → Reconciliation report) are read from the records as they stand and change as
 students apply, pay and the export is loaded.
+
+## College Deans at the department desks (V734)
+
+The University's master prompt of 12 November 2026, part B: "allow the appropriate College Deans, who serve as the Heads of Department
+or approving authorities for their respective Colleges, to view and approve transfer applications … do not assume that every transfer
+requires approval from both Colleges unless that is part of the existing institutional approval policy."
+
+- **No stage added.** The chain stays current department → new department → Registry → Academic Office. At a department of a College
+  (the department's faculty carries `ref.faculty.college_code`; today the College of Health Sciences, faculty BAMS), the **Dean of that
+  faculty** is the department's approving authority, beside an HOD where one is granted (none of the College's fifteen departments has
+  an HOD grant on the live copy). A transfer out of a College is released by its Dean; one into a College received by its Dean; one
+  between two Colleges passes each at its own desk; one between faculties in no College moves exactly as before.
+- **Unit of a side.** `people.transfer_unit(programme)`: the programme's department, that department's faculty (else the programme's,
+  as the fee monitor reads it) and the faculty's College. `people.transfer_desk(application)`: the desk holding it now, its unit, the
+  offices that may act and their words. `people.transfer_desk_people(application)`: the live holders of those offices over that unit.
+- **Who acts** stays the Java gate (`TransferController.mayApprove`): an HOD whose acting department is the side's department; a Dean
+  whose acting faculty is the side's faculty **and** that faculty is in a College; a Dean of a faculty in no College reads but never acts.
+- **What a Dean reads.** `GET /api/v1/transfers` and `GET /api/v1/transfers/{id}` for a Dean hold the applications from or into the
+  Dean's faculty, no other (404 otherwise). The list names each side's department, faculty and College and the desk now.
+- **Review page** `/transfers/{id}`: the student's academic profile, current and proposed department, faculty and College, the reason,
+  the old portal's documents and approvals (an application made here carries none), the fee and every payment counted, the approval
+  history, Approve (an optional comment, kept) and Decline (the reason, required, shown to the student), each confirmed in a dialog.
+  There is no return for correction: the workflow has none, as the brief allows.
+- **Double approval.** Approve and Decline hold the application's row before reading its state, and Approve names the state the
+  approver read (`expectedState`); an application that moved meanwhile — a second press, or another holder of the desk at the same
+  moment — is refused `TR_STATE_MOVED`, never approved at the next stage.
+- **Payment rules unchanged.** Nothing paid, no desk acts (the Dean included); the final approval waits for the whole fee.
+- **History.** `people.transfer_event`, written once by a trigger on every change of state (`trg_transfer_event`): the desk and its
+  unit, the office and person, the decision (APPLIED, RECORDED, APPROVED, DECLINED, WITHDRAWN, RECOMMENDED, NOT_RECOMMENDED,
+  EFFECTED), the comment or reason, the next desk. The applications made before V734 have their history backfilled from the desks'
+  stamps (`source = RECORD`, office unknown). A history row is never changed; it goes only with its application.
+- **Told.** The student, at each decision, naming the desk that acted and the desk it is with now; and, new, the holders of the desk
+  it reaches (`A transfer application awaits you`) — on the application itself (the current department) and at each approval after:
+  the HOD, the College's Dean, the Registry, the Academic Office. A College department's desk is named "the Head of Department or the
+  Dean, <faculty>, <College>".
+- **Menus.** The Dean: Students → Inter-Departmental Transfer Applications, Transfer Fees.
+- Tests: check.sql (V734 block); `TransferDeanIT`.

@@ -22,6 +22,8 @@ interface App {
   fee_reference: string | null; fee_confirmed_at: string | null; applied_at: string; session?: string | null;
   // V727: people.transfer_list's columns, as the server reads them
   fee_due?: Money | null; paid_total?: Money | null; old_portal_paid?: Money | null; balance?: Money | null; band?: string | null; legacy_ref?: string | null;
+  /** V734: the desk holding it now, in words — at a department of a College, its faculty's Dean */
+  desk_label?: string | null;
 }
 export interface MyTransfer {
   student: { name: string; matric_no: string | null; current_level: number; entry_mode: string; status: string; programme: string; programme_code: string };
@@ -40,8 +42,8 @@ export interface MyTransfer {
 const STAGES: [string, string][] = [
   ["Applied", "Your application is submitted"],
   ["Payment", "Pay the transfer fee; your current department acts once a payment is confirmed"],
-  ["Current department", "The Head of your department approves"],
-  ["New department", "The Head of the department you applied to accepts"],
+  ["Current department", "The Head of your department approves (in a College, the Dean of its faculty)"],
+  ["New department", "The Head of the department you applied to accepts (in a College, the Dean of its faculty)"],
   ["Registry", "The Registry approves"],
   ["Academic office", "The final approval, once the whole fee is paid"],
   ["Completed", "Moved on the register"],
@@ -209,6 +211,8 @@ export function Transfer({ d, paid = null }: { d: MyTransfer; paid?: string | nu
             </div>
           ) : null}
           <PBody>
+            {/* V734: who holds it now, named */}
+            {live.desk_label ? <div className="sub2">Now with {live.desk_label}.</div> : null}
             {legacy ? (
               <div className="sub2">
                 Begun on the old portal as <b className="tnum">{legacy.legacyRef}</b>{legacy.appliedOn ? ` on ${onDay(legacy.appliedOn)}` : ""}{legacy.stage ? `; it reached “${legacy.stage}” there` : ""}. It continues here, and your payments there count toward the fee.

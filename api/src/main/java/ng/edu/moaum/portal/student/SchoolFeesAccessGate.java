@@ -64,7 +64,9 @@ class SchoolFeesAccessGate implements HandlerInterceptor, WebMvcConfigurer {
      *  signed-in person, the manual */
     private static final List<String> OPEN_UNDER = List.of(
             "/api/v1/me/notices", "/api/v1/me/notifications", "/api/v1/me/admission-documents", "/api/v1/me/password",
-            "/api/v1/student-auth", "/api/v1/iam", "/api/v1/manual");
+            "/api/v1/student-auth", "/api/v1/iam", "/api/v1/manual",
+            // V733: an MBBS student states the session they stand in — the fees the gate reads are that session's
+            "/api/v1/me/study-session");
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;

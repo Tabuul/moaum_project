@@ -23,6 +23,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 
 import { SearchSelect } from "@/components/proto/SearchSelect";
+import Link from "next/link";
 import { DEFAULT_REASON, freedSummary, inQueue, OUTCOME_WORDS, refusalWords, type Freed } from "@/lib/transfer-queue";
 import { bandKind, bandWord, deskStanding, naira } from "@/lib/transfer-fees";
 import { day } from "@/lib/format";
@@ -45,6 +46,17 @@ export interface TransferRow {
   pending?: boolean | null; band?: string | null; legacy_ref?: string | null;
   /** V727: the old portal's record of it, as its export gave it (people.transfer_legacy) */
   legacy_applied_on?: string | null; legacy_stage?: string | null; legacy_approvals?: string | null; legacy_documents?: string | null;
+  /** V734: each side's department, faculty and College (people.transfer_unit), and the desk holding it now in words */
+  from_programme_code?: string | null; from_dept_name?: string | null; from_faculty?: string | null; from_faculty_name?: string | null;
+  from_college?: string | null; from_college_name?: string | null;
+  to_programme_code?: string | null; to_dept_name?: string | null; to_faculty?: string | null; to_faculty_name?: string | null;
+  to_college?: string | null; to_college_name?: string | null;
+  desk?: string | null; desk_label?: string | null;
+}
+
+/** V734: a side's unit in a line — department · faculty · College */
+export function unitLine(dept?: string | null, faculty?: string | null, college?: string | null): string {
+  return [dept, faculty, college].filter((x) => x && x.trim()).join(" · ");
 }
 export interface Programme { code: string; name: string; faculty: string }
 
@@ -161,11 +173,12 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
 
   return (
     <>
-      <RoleLine allowed={["hod", "registrar", "dregistrar", "academic"]} actingOffice={actingOffice}
-        canAct={mayRecord || o === "hod"}
+      <RoleLine allowed={["hod", "dean", "registrar", "dregistrar", "academic"]} actingOffice={actingOffice}
+        canAct={mayRecord || o === "hod" || o === "dean"}
         action="Approving inter-departmental transfers" />
       <Note kind="info" title="One application, four approvals — each a single Approve">
-        <b>Current department</b> → <b>new department</b> → <b>Registrar</b> → <b>Academic office</b>. The student pays the non-refundable
+        <b>Current department</b> → <b>new department</b> → <b>Registrar</b> → <b>Academic office</b>. At a department of a College (the College of Health
+        Sciences), the Dean of its faculty is the department&rsquo;s approving authority, beside a Head of Department where one is named. The student pays the non-refundable
         processing fee{fee != null ? <> of <b>{naira(fee)}</b>, as the Bursary states it now,</> : " the Bursary states"} before the current HOD acts: any verified
         payment, on this portal or on the old one, lets the desks act. The whole fee is paid, with nothing awaiting the bank, before the Academic office&rsquo;s final
         approval, which effects the change; the matriculation number does not change.
@@ -246,8 +259,11 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
             ...(mayRestore ? [inQueue(r.state)
               ? <input key="pk" type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Free ${r.name}'s application from the queue`} style={{ width: 18, height: 18 }} />
               : <span key="pk" />] : []),
-            <Two key="s" a={r.name} b={r.matric_no ?? ""} />,
-            <span key="ft"><span className="sub2">{r.from_programme} · {r.from_level}L</span><div><b>→ {r.to_programme}</b></div></span>,
+            <Two key="s" a={<Link href={`/transfers/${r.id}`}>{r.name}</Link>} b={r.matric_no ?? ""} />,
+            <span key="ft"><span className="sub2">{r.from_programme} · {r.from_level}L</span>
+              {unitLine(r.from_dept_name, r.from_faculty_name, r.from_college_name) ? <div className="sub2">{unitLine(r.from_dept_name, r.from_faculty_name, r.from_college_name)}</div> : null}
+              <div><b>→ {r.to_programme}</b></div>
+              {unitLine(r.to_dept_name, r.to_faculty_name, r.to_college_name) ? <div className="sub2">{unitLine(r.to_dept_name, r.to_faculty_name, r.to_college_name)}</div> : null}</span>,
             <span className="sub2 tnum" key="e">{r.mode_of_entry}{r.utme_score != null ? ` · ${r.utme_score}` : ""}{r.cgpa != null ? ` · ${Number(r.cgpa).toFixed(2)}` : ""}</span>,
             <span className="sub2" key="r">{r.reason}{r.decline_note ? <div className="sub2">Declined: {r.decline_note}</div> : null}{r.withdrawn_why ? <div className="sub2">Withdrawn: {r.withdrawn_why}</div> : null}</span>,
             <span key="pd" className="tnum">{r.paid_total != null ? naira(r.paid_total) : "—"}
@@ -261,7 +277,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
               ? <><Pil kind="ok">Moved — approved on the old portal</Pil><div className="sub2 tnum">{r.restoredRef}</div></>
               : <Pil kind={STATE[r.state] ?? "grey"}>{r.stageLabel ?? LABEL[r.state] ?? r.state}</Pil>}{r.legacy_ref ? <OldPortalRecord r={r} /> : null}</span>,
             <span key="ac" className="row row--inline row--tight row--right">
-              {r.canApprove ? <Btn kind="go" disabled={busy} onClick={() => { if (window.confirm(`Approve ${r.name}'s transfer at this stage? It moves to the next office.`)) void send(`/${r.id}/approve`, {}, `Approve transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} approved — ${LABEL[String(j.state)] ?? "advanced"}`); }); }}>Approve</Btn> : null}
+              {r.canApprove ? <Btn kind="go" disabled={busy} onClick={() => { if (window.confirm(`Approve ${r.name}'s transfer at this stage? It moves to the next office.`)) void send(`/${r.id}/approve`, { expectedState: r.state }, `Approve transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} approved — ${LABEL[String(j.state)] ?? "advanced"}`); }); }}>Approve</Btn> : null}
               {(r.canDecline ?? r.canApprove) ? <Btn kind="ghost" disabled={busy} onClick={() => { const w = window.prompt("Decline this application — why? The reason is recorded and shown to the student."); if (w && w.trim()) void send(`/${r.id}/decline`, { why: w.trim() }, `Decline transfer for ${r.name}`).then((j) => { if (j) setSaid(`${r.name} declined`); }); }}>Decline</Btn> : null}
             </span>,
           ])} texts={shown.map((r) => `${r.name} ${r.matric_no ?? ""} ${r.from_programme} ${r.to_programme} ${r.state} ${r.legacy_ref ?? ""} ${r.legacy_stage ?? ""} ${r.band ? bandWord(r.band) : ""}`)} />

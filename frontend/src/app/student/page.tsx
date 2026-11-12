@@ -10,6 +10,7 @@ import { PgDashboard, type PgSummary } from "./PgDashboard";
 import { BiodataCard, type BiodataStatus } from "./BiodataCard";
 import type { OutstandingFees } from "@/lib/outstanding-fees";
 import { showTransferCard, type TransferFeeView } from "@/lib/transfer-fee";
+import { StudySession } from "./StudySession";
 
 /** s/dashboard — the student's own record, as the register holds it. A postgraduate gets their own
  *  home (V202), not a continuation of the undergraduate one. */
@@ -38,5 +39,5 @@ export default async function Page() {
     ? { applications: mine.data.applications.map((a) => ({ id: a.id, state: a.state, session: a.session ?? null })), fee: mine.data.fee ?? null,
         payment: mine.data.payment ?? null, credit: mine.data.credit ?? null }
     : null;
-  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><Dashboard s={loaded.student} gst={gst.ok ? gst.data : null} outstanding={owed} transfer={transfer} /></Shell>;
+  return <Shell route="s/dashboard" me={loaded.me} sub={`${loaded.student.session} session`}><BiodataCard b={biodata.ok ? biodata.data : null} /><StudySession /><Dashboard s={loaded.student} gst={gst.ok ? gst.data : null} outstanding={owed} transfer={transfer} /></Shell>;
 }

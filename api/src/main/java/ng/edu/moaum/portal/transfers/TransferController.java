@@ -32,13 +32,15 @@ import org.springframework.web.bind.annotation.RestController;
 class TransferController {
 
     /** V727: the Bursary and the Students Account Officer read the queue (what is owed), never act on it */
-    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_bursar','OFFICE_studentaccounts')";
+    /** V734: a Dean reads the applications from or into the faculty (a College Dean acts on them; another Dean reads only) */
+    private static final String READERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_bursar','OFFICE_studentaccounts')";
     private static final String SAIC = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_super')";
     private static final String SENATE = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_vc','OFFICE_dvc','OFFICE_super')";
     private static final String OFFICERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
     private static final String EFFECT = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_ict','OFFICE_super')";
-    /** the offices in the approval chain: the department HODs, the Registrar and the Academic office */
-    private static final String APPROVERS = "hasAnyAuthority('OFFICE_hod','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
+    /** the offices in the approval chain: the department HODs (V734: and, at a department of a College, the Dean of its faculty), the
+     *  Registrar and the Academic office */
+    private static final String APPROVERS = "hasAnyAuthority('OFFICE_hod','OFFICE_dean','OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
 
     private final JdbcClient jdbc;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
@@ -90,15 +92,41 @@ class TransferController {
     /** whether the acting office (and department, for an HOD) holds the application at this stage. V727: the current department acts
      *  once any verified payment stands (the University's decision of 12 November 2026); the balance at the Academic office's desk is
      *  the database's to refuse (TRANSFER_FEE_OUTSTANDING, TRANSFER_PAYMENT_PENDING), with the figures. */
-    private static boolean mayApprove(String office, String myDept, String state, String fromDept, String toDept, boolean paid) {
+    private static boolean mayApprove(String office, String myDept, String myFaculty, String state, Sides s, boolean paid) {
         boolean isSuper = "super".equals(office);
         return switch (state == null ? "" : state) {
-            case "APPLIED" -> paid && (isSuper || ("hod".equals(office) && fromDept != null && fromDept.equalsIgnoreCase(myDept)));
-            case "FROM_OK" -> isSuper || ("hod".equals(office) && toDept != null && toDept.equalsIgnoreCase(myDept));
+            case "APPLIED" -> paid && (isSuper || department(office, myDept, myFaculty, s.fromDept(), s.fromFaculty(), s.fromCollege()));
+            case "FROM_OK" -> isSuper || department(office, myDept, myFaculty, s.toDept(), s.toFaculty(), s.toCollege());
             case "TO_OK" -> isSuper || "registrar".equals(office) || "dregistrar".equals(office);
             case "REG_OK" -> isSuper || "academic".equals(office);
             default -> false;
         };
+    }
+
+    /** V734: a department desk is the department's HOD's, and — for a department of a College — its faculty's Dean's too (the University's
+     *  master prompt of 12 November 2026: the College Deans serve as the approving authorities of their Colleges); a Dean of a faculty in
+     *  no College acts at no desk */
+    static boolean department(String office, String myDept, String myFaculty, String dept, String faculty, String college) {
+        if ("hod".equals(office)) {
+            return dept != null && dept.equalsIgnoreCase(myDept);
+        }
+        if ("dean".equals(office)) {
+            return college != null && faculty != null && faculty.equalsIgnoreCase(myFaculty);
+        }
+        return false;
+    }
+
+    /** V734: an application's two sides — each its department, its faculty and the College the faculty is in (people.transfer_unit) */
+    record Sides(String fromDept, String toDept, String fromFaculty, String toFaculty, String fromCollege, String toCollege) {
+        static Sides of(Map<String, Object> r) {
+            return new Sides(str(r.get("from_dept")), str(r.get("to_dept")), str(r.get("from_faculty")), str(r.get("to_faculty")),
+                    str(r.get("from_college")), str(r.get("to_college")));
+        }
+    }
+
+    /** V734: whether a Dean reads this application — from or into the Dean's faculty */
+    private static boolean inFaculty(Map<String, Object> r, String myFaculty) {
+        return myFaculty != null && (myFaculty.equalsIgnoreCase(str(r.get("from_faculty"))) || myFaculty.equalsIgnoreCase(str(r.get("to_faculty"))));
     }
 
     /** V727: the final approval may be given — as people.transfer_fee_settled_or_refuse decides it: the fee stated
@@ -127,6 +155,11 @@ class TransferController {
     }
 
     public record Why(@NotBlank @Size(max = 600) String why) {
+    }
+
+    /** V734: an approval may carry the approver's comment (kept in the history), and names the state the approver read, so a second press
+     *  — or a desk that moved meanwhile — never approves the next stage */
+    public record Approve(@Size(max = 600) String note, @Size(max = 20) String expectedState) {
     }
 
     private static UUID me(Authentication auth) {
@@ -324,6 +357,7 @@ class TransferController {
         UUID id = jdbc.sql("SELECT people.apply_transfer(:s, :p, :r, :u)")
                 .param("s", me(auth)).param("p", body.toProgramme()).param("r", body.reason()).param("u", body.utme(), Types.INTEGER)
                 .query(UUID.class).single();
+        tellDesk(id);   // V734: the current department (its HOD, or the College's Dean) told it awaits them
         return Map.of("id", id, "state", "APPLIED");
     }
 
@@ -354,6 +388,11 @@ class TransferController {
                 .query().listOfRows();
         String office = actingOffice();
         String myDept = scope.actingDept();
+        String myFaculty = "dean".equals(office) ? scope.actingFaculty() : null;
+        if ("dean".equals(office)) {
+            // V734: a Dean reads the applications from or into the faculty, no other
+            rows = new java.util.ArrayList<>(rows.stream().filter(r -> inFaculty(r, myFaculty)).toList());
+        }
         // V669, V686: a withdrawn application whose transfer the old portal approved, restored — named by the restoration
         Map<String, String> restored = new java.util.HashMap<>();
         for (Map<String, Object> x : jdbc.sql("""
@@ -372,11 +411,11 @@ class TransferController {
             // owed — as the database decides it (people.transfer_fee_settled_or_refuse)
             BigDecimal paidTotal = money(r.get("paid_total"));
             boolean paid = paidTotal != null && paidTotal.signum() > 0;
-            boolean holds = mayApprove(office, myDept, st, str(r.get("from_dept")), str(r.get("to_dept")), paid);
+            boolean holds = mayApprove(office, myDept, myFaculty, st, Sides.of(r), paid);
             r.put("stageLabel", stageLabel(st, paidTotal, money(r.get("balance"))));
             r.put("canApprove", holds && (!"REG_OK".equals(st) || settled(r.get("fee_due"), r.get("balance"))));
             // the desk holding the application may decline it whatever is paid
-            r.put("canDecline", mayApprove(office, myDept, st, str(r.get("from_dept")), str(r.get("to_dept")), true));
+            r.put("canDecline", mayApprove(office, myDept, myFaculty, st, Sides.of(r), true));
             r.put("restoredRef", restored.get(String.valueOf(r.get("id"))));
         }
         return Map.of("rows", rows);
@@ -384,6 +423,51 @@ class TransferController {
 
     private static String str(Object o) {
         return o == null ? null : String.valueOf(o);
+    }
+
+    /** V734: one application for its review — the student's academic profile, each side's department, faculty and College, the reason,
+     *  the old portal's documents and approvals where it came from there, what is paid and owed, every decision so far and the desk that
+     *  holds it now; Approve and Decline as the list offers them. A Dean reads only the applications from or into the faculty. */
+    @GetMapping("/api/v1/transfers/{id}")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> review(@PathVariable UUID id) {
+        Map<String, Object> r = jdbc.sql("SELECT * FROM people.transfer_list(NULL, NULL) WHERE id = :id").param("id", id)
+                .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("transfer application", id.toString()));
+        String office = actingOffice();
+        String myFaculty = "dean".equals(office) ? scope.actingFaculty() : null;
+        if ("dean".equals(office) && !inFaculty(r, myFaculty)) {
+            throw new NotFound("transfer application", id.toString());
+        }
+        String st = str(r.get("state"));
+        BigDecimal paidTotal = money(r.get("paid_total"));
+        boolean holds = mayApprove(office, scope.actingDept(), myFaculty, st, Sides.of(r), paidTotal != null && paidTotal.signum() > 0);
+        r.put("stageLabel", stageLabel(st, paidTotal, money(r.get("balance"))));
+        r.put("canApprove", holds && (!"REG_OK".equals(st) || settled(r.get("fee_due"), r.get("balance"))));
+        r.put("canDecline", mayApprove(office, scope.actingDept(), myFaculty, st, Sides.of(r), true));
+        Map<String, Object> student = jdbc.sql("""
+                SELECT s.matric_no, s.admission_no, s.surname || ', ' || s.other_names AS name, s.current_level, s.status, s.entry_mode,
+                       s.entry_session, s.entry_level, p.code AS programme_code, p.name AS programme
+                  FROM people.student s LEFT JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :s
+                """).param("s", r.get("student_id")).query().singleRow();
+        List<Map<String, Object>> history = jdbc.sql("""
+                SELECT e.at, e.from_state, e.to_state, e.decision, e.desk, e.office, e.note, e.next_desk, e.source,
+                       d.name AS dept_name, f.name AS faculty_name, c.name AS college_name,
+                       (SELECT trim(coalesce(pe.given_names, '') || ' ' || pe.surname) FROM iam.person pe WHERE pe.id = e.actor) AS actor_name
+                  FROM people.transfer_event e
+                  LEFT JOIN ref.department d ON d.code = e.dept_code
+                  LEFT JOIN ref.faculty f ON f.code = e.faculty_code
+                  LEFT JOIN ref.college c ON c.code = e.college_code
+                 WHERE e.application_id = :a
+                 ORDER BY e.at, array_position(ARRAY['APPLIED','FROM_OK','TO_OK','REG_OK','RECOMMENDED','NOT_RECOMMENDED','APPROVED','EFFECTED','DECLINED','WITHDRAWN'], e.to_state), e.id
+                """).param("a", id).query().listOfRows();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("application", r);
+        out.put("student", student);
+        out.put("history", history);
+        out.put("payments", paymentsMade(id));
+        out.put("legacy", legacy(id));
+        return out;
     }
 
     /** V686: the applications the old portal approved, freed from the queue together — each student restored onto the programme the
@@ -430,6 +514,7 @@ class TransferController {
         UUID id = jdbc.sql("SELECT people.apply_transfer(:s, :p, :r, :u)")
                 .param("s", student).param("p", body.toProgramme()).param("r", body.reason()).param("u", body.utme(), Types.INTEGER)
                 .query(UUID.class).single();
+        tellDesk(id);   // V734
         return Map.of("id", id, "state", "APPLIED");
     }
 
@@ -440,11 +525,14 @@ class TransferController {
         // V727: what is paid read from every verified payment (people.transfer_entitlement), not from the first reference alone
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT t.state, fp.dept_code AS from_dept, tp.dept_code AS to_dept, e.paid_total, e.balance, e.pending,
-                       coalesce(e.paid_total, 0) > 0 AS paid
+                       coalesce(e.paid_total, 0) > 0 AS paid,
+                       fu.faculty_code AS from_faculty, fu.college_code AS from_college, tu.faculty_code AS to_faculty, tu.college_code AS to_college
                   FROM people.transfer_application t
                   LEFT JOIN ref.programme fp ON fp.code = t.from_programme_code
                   LEFT JOIN ref.programme tp ON tp.code = t.to_programme_code
                   LEFT JOIN LATERAL people.transfer_entitlement(t.id) e ON true
+                  LEFT JOIN LATERAL people.transfer_unit(t.from_programme_code) fu ON true
+                  LEFT JOIN LATERAL people.transfer_unit(t.to_programme_code) tu ON true
                  WHERE t.id = :id
                 """).param("id", id).query().listOfRows();
         if (rows.isEmpty()) {
@@ -456,18 +544,35 @@ class TransferController {
     @PostMapping("/api/v1/transfers/{id}/approve")
     @PreAuthorize(APPROVERS)
     @Transactional
-    Map<String, Object> approve(@PathVariable UUID id) {
+    Map<String, Object> approve(@PathVariable UUID id, @Valid @RequestBody(required = false) Approve body) {
+        lock(id);
         Map<String, Object> row = stageOf(id);
         String state = str(row.get("state"));
         boolean paid = Boolean.TRUE.equals(row.get("paid"));
-        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")), paid)) {
+        if (body != null && body.expectedState() != null && !body.expectedState().isBlank() && !body.expectedState().equalsIgnoreCase(state)) {
+            // V734: approved meanwhile (a second press, or another holder of the desk): never the next stage by mistake
+            throw new DomainRuleViolation("TR_STATE_MOVED", "This application has moved on since you opened it: it is now " + stageLabel(state, money(row.get("paid_total")), money(row.get("balance"))) + ".",
+                    new DomainRuleViolation.Remedy("Open the application again to see where it stands.", "You"));
+        }
+        String office = actingOffice();
+        if (!mayApprove(office, scope.actingDept(), "dean".equals(office) ? scope.actingFaculty() : null, state, Sides.of(row), paid)) {
             throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
                     "This application is not ready at your desk. " + stageLabel(state, money(row.get("paid_total")), money(row.get("balance"))) + ".",
                     new DomainRuleViolation.Remedy("The current department approves once the student has paid toward the transfer fee, here or on the old portal; "
                             + "each later office approves in turn, and the Academic office's final approval waits until the fee is paid in full.", "Registry"));
         }
+        String passed = deskWords(id);
+        if (body != null && body.note() != null && !body.note().isBlank()) {
+            // V734: the approver's comment, kept in the history by the state change's own trigger (people.transfer_event)
+            jdbc.sql("SELECT set_config('moaum.transfer_note', :n, true)").param("n", body.note().trim()).query().singleRow();
+        }
         String next = jdbc.sql("SELECT people.approve_transfer(:id)").param("id", id).query(String.class).single();
-        tell(id, "Your transfer application moved forward", "Your application to transfer has been approved at the " + stageWord(state) + " and is now at: " + stageWord(next) + ". You will be told at each stage.");
+        jdbc.sql("SELECT set_config('moaum.transfer_note', '', true)").query().singleRow();
+        String now = deskWords(id);
+        tell(id, "Your transfer application moved forward", "Your application to transfer has been approved by " + passed
+                + (now == null ? (("EFFECTED".equals(next)) ? ". Your new programme now stands on your record." : ".") : " and is now with " + now + ".")
+                + " You will be told at each stage.");
+        tellDesk(id);
         return Map.of("id", id, "state", next);
     }
 
@@ -476,15 +581,18 @@ class TransferController {
     @PreAuthorize(APPROVERS)
     @Transactional
     Map<String, Object> decline(@PathVariable UUID id, @Valid @RequestBody Why body) {
+        lock(id);
         Map<String, Object> row = stageOf(id);
         String state = str(row.get("state"));
-        if (!mayApprove(actingOffice(), scope.actingDept(), state, str(row.get("from_dept")), str(row.get("to_dept")), true)) {
+        String office = actingOffice();
+        if (!mayApprove(office, scope.actingDept(), "dean".equals(office) ? scope.actingFaculty() : null, state, Sides.of(row), true)) {
             throw new DomainRuleViolation("TR_NOT_YOUR_STAGE",
                     "This application is not at your desk. " + stageLabel(state, money(row.get("paid_total")), money(row.get("balance"))) + ".",
                     new DomainRuleViolation.Remedy("Only the office holding the application at this stage may decline it.", "Registry"));
         }
+        String desk = deskWords(id);
         jdbc.sql("SELECT people.decline_transfer(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();
-        tell(id, "Your transfer application was declined", "Your application to transfer was declined at the " + stageWord(state) + ".\n\nReason: " + body.why() + "\n\nWrite to the Academic Office if you wish to take it further.");
+        tell(id, "Your transfer application was declined", "Your application to transfer was declined by " + (desk == null ? "the " + stageWord(state) : desk) + ".\n\nReason: " + body.why() + "\n\nWrite to the Academic Office if you wish to take it further.");
         return Map.of("id", id, "state", "DECLINED");
     }
 
@@ -536,6 +644,37 @@ class TransferController {
 
     private static String stageWord(String state) {
         return state == null ? "desk" : state.replace('_', ' ').toLowerCase();
+    }
+
+    /** V734: the application held for this request before its state is read — a second press, or another holder of the desk at the
+     *  same moment, waits and then reads the state the first left (TR_STATE_MOVED), never approving the next desk */
+    private void lock(UUID id) {
+        jdbc.sql("SELECT id FROM people.transfer_application WHERE id = :id FOR UPDATE").param("id", id).query().listOfRows();
+    }
+
+    /** V734: the words of the desk holding the application now (people.transfer_desk), or null when nothing is pending */
+    private String deskWords(UUID id) {
+        return jdbc.sql("SELECT label FROM people.transfer_desk(:id) WHERE desk IS NOT NULL").param("id", id).query(String.class).optional().orElse(null);
+    }
+
+    /** V734: the holders of the desk the application has reached told it awaits them (the University's master prompt of 12 November 2026:
+     *  "notify the relevant student and next approving officer") — an HOD of the department, the College's Dean, the Registry, the
+     *  Academic Office, as people.transfer_desk_people finds them */
+    private void tellDesk(UUID transfer) {
+        jdbc.sql("""
+                SELECT platform.queue_notice('EMAIL', p.email, 'A transfer application awaits you',
+                           'The inter-departmental transfer application of ' || s.surname || ', ' || s.other_names || coalesce(' (' || s.matric_no || ')', '')
+                           || ' from ' || coalesce(fp.name, t.from_programme_code) || ' to ' || coalesce(tp.name, t.to_programme_code)
+                           || ' is now with ' || d.label || E'.\n\nReview it on the portal: Inter-Departmental Transfer.\n\nOffice of the Registrar, ' || :uni,
+                           'transfer', t.id)
+                  FROM people.transfer_application t
+                  JOIN people.student s ON s.id = t.student_id
+                  LEFT JOIN ref.programme fp ON fp.code = t.from_programme_code
+                  LEFT JOIN ref.programme tp ON tp.code = t.to_programme_code
+                 CROSS JOIN LATERAL people.transfer_desk(t.id) d
+                 CROSS JOIN LATERAL people.transfer_desk_people(t.id) p
+                 WHERE t.id = :id AND d.desk IS NOT NULL AND p.email IS NOT NULL
+                """).param("id", transfer).param("uni", ng.edu.moaum.portal.platform.Branding.name()).query().listOfRows();
     }
 
     private void tell(UUID transfer, String subject, String body) {

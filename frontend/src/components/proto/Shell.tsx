@@ -329,6 +329,7 @@ export const ROUTES: Record<string, string> = {
   "t/staff": "/staff",
   "t/appoint": "/hr/appointments",   // V510
   "t/transfers": "/transfers",
+  "t/studysessions": "/college/study-sessions",
   "t/deferments": "/deferments",
   "s/deferment": "/student/deferment",
   "s/transfer": "/student/transfer",

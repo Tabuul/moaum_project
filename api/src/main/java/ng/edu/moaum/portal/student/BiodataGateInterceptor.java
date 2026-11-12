@@ -51,7 +51,9 @@ class BiodataGateInterceptor implements HandlerInterceptor, WebMvcConfigurer {
             "/api/v1/payments/gateways");
     /** … and everything under these */
     private static final List<String> OPEN_UNDER = List.of(
-            "/api/v1/me/biodata", "/api/v1/me/notices", "/api/v1/me/notifications", "/api/v1/me/requests", "/api/v1/student-auth", "/api/v1/manual");
+            "/api/v1/me/biodata", "/api/v1/me/notices", "/api/v1/me/notifications", "/api/v1/me/requests", "/api/v1/student-auth", "/api/v1/manual",
+            // V733: an MBBS student states the session they stand in whatever else holds them — the fees and forms it decides follow it
+            "/api/v1/me/study-session");
 
     private final BiodataCompliance compliance;
     private final ObjectMapper json;

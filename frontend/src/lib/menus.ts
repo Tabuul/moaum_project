@@ -241,6 +241,8 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer Applications" },
+          { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/clearance", "icon": "check", "label": "Faculty Clearance" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
@@ -651,6 +653,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/studysessions", "icon": "cal", "label": "MBBS Academic Sessions" },
           { "id": "t/matriculation", "icon": "cap", "label": "Matriculation", "badge": "!" },
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
           { "id": "t/matriculation-config", "icon": "doc", "label": "Matriculation Number Format" },
@@ -2766,6 +2769,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/studysessions", "icon": "cal", "label": "MBBS Academic Sessions" },
           { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/supervision", "icon": "check", "label": "Logbooks" }
         ]
@@ -2807,6 +2811,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Students",
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
+          { "id": "t/studysessions", "icon": "cal", "label": "MBBS Academic Sessions" },
           { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/supervision", "icon": "check", "label": "Logbooks" }
         ]
@@ -2843,6 +2848,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
+          { "id": "t/studysessions", "icon": "cal", "label": "MBBS Academic Sessions" },
           { "id": "t/postings", "icon": "calendar", "label": "Postings" },
           { "id": "t/supervision", "icon": "check", "label": "Logbooks" }
         ]

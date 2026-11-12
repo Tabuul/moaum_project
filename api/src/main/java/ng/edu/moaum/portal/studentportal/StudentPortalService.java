@@ -216,14 +216,20 @@ public class StudentPortalService {
             String pg = repo.pgSession();
             return s.entrySession() != null && (pg == null || s.entrySession().compareTo(pg) > 0) ? s.entrySession() : pg;
         }
+        // V733: an MBBS student who stands in a session of their own (people.study_session), one behind the University's
+        String own = repo.ownSession(s.id());
+        if (own != null) {
+            return own;
+        }
         String current = repo.currentSession().or(repo::latestRunSession).orElseGet(this::session);
         return s.entrySession() != null && s.entrySession().compareTo(current) > 0 ? s.entrySession() : current;
     }
 
-    /** V389: a student on a calendar of their own — the Centre's (CCE) or the School of Postgraduate Studies' */
+    /** V389: a student on a calendar of their own — the Centre's (CCE) or the School of Postgraduate Studies' — V733: or an MBBS student
+     *  standing in a session of their own: their examinations, permits and charges are that session's */
     private boolean ownCalendar(UUID id) {
         String mode = student(id).entryMode();
-        return "CCE".equals(mode) || "POSTGRADUATE".equals(mode);
+        return "CCE".equals(mode) || "POSTGRADUATE".equals(mode) || repo.ownSession(id) != null;
     }
 
     public String sessionFor(UUID id) {

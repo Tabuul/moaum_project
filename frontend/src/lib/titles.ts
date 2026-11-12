@@ -181,6 +181,7 @@ export const TITLES: Record<string, string> = {
   "t/matriculation": "Matriculation",
   "t/matriccorrection": "Matriculation correction",
   "t/transfers": "Inter-Departmental Transfer",
+  "t/studysessions": "MBBS Academic Sessions",
   "s/transfer": "Inter-Departmental Transfer",
   "t/matlist": "Students registered in this faculty",
   "t/collegesheets": "Score sheet by level",

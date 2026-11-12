@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 562
+\set EXPECTED 564
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32767,6 +32767,218 @@ BEGIN
       coalesce(msg = 'release needed K1=false,K2=false,K3=false,K4=true,K5=false | K1 waiting the application has not been submitted'
                      || ' | K1 NOT_OFFERED K2 NOT_OFFERED K5 WAITING | K3 the application has not been submitted'
                      || ' | K4 the screening score has not been released', false),
+      msg);
+END $$;
+
+-- ── V733: MBBS students stand in their own session. A made-up calendar 9739/9740 … 9743/9744 (CURRENT), 9744/9745 PLANNED; an MBBS
+--          student entered 9739/9740, now 300 Level: offered the University's 9743/9744 and 9742/9743 (one behind), not 9741/9742 (too
+--          far behind) nor 9744/9745 (planned); chooses 9742/9743 — their session everywhere it is read (the database's student session,
+--          the dashboard's context, the academic position, the past-fee account ending before it) and the change recorded once;
+--          registration in it shut by the University's closed semester until the College dates its own, then open; registered there at
+--          300 Level, the University's session refused for the level; another programme's student refused; an office sets it back to the
+--          University's with a reason; the roll-over moves a student in their own session one on from it, with the level. Undone after. ──
+DO $$
+DECLARE
+    st uuid := gen_random_uuid(); other uuid := gen_random_uuid(); fin uuid := gen_random_uuid(); v_mbbs text; v_other text; v_final int;
+    adddrop boolean; roll2 jsonb; finrow text; ended text;
+    opts text; chosen jsonb; stud_ses text; ctx text; pos text; past1 text; past0 text; gate0 text; gate1 text; opensem int; cal text;
+    ev text; e_other text; e_far text; e_plan text; e_level text; e_short text; office_set jsonb; after_office text; roll jsonb; rolled text;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V733', true);
+    SELECT programme_code INTO v_mbbs FROM college.programme_rule ORDER BY programme_code LIMIT 1;
+    SELECT p.code INTO v_other FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false)
+       AND NOT college.runs_programme(p.code) ORDER BY p.code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), '9739/9740', DATE '9739-10-01', DATE '9740-08-31', 'CLOSED'),
+        (gen_random_uuid(), '9740/9741', DATE '9740-10-01', DATE '9741-08-31', 'CLOSED'),
+        (gen_random_uuid(), '9741/9742', DATE '9741-10-01', DATE '9742-08-31', 'CLOSED'),
+        (gen_random_uuid(), '9742/9743', DATE '9742-10-01', DATE '9743-08-31', 'CLOSED'),
+        (gen_random_uuid(), '9743/9744', DATE '9743-10-01', DATE '9744-08-31', 'PLANNED'),
+        (gen_random_uuid(), '9744/9745', DATE '9744-10-01', DATE '9745-08-31', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9743/01' WHERE name = '9743/9744';
+    -- the past-fee account counts from a stated session (the suite's preamble leaves no fee schedule to count from)
+    INSERT INTO finance.historical_setting (id, assess_from) VALUES (1, '9739/9740') ON CONFLICT (id) DO UPDATE SET assess_from = EXCLUDED.assess_from;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), '9742/9743', 1, 'CLOSED') ON CONFLICT DO NOTHING;
+    UPDATE policy.semester SET state = 'CLOSED' WHERE session = '9742/9743' AND number = 1;
+    INSERT INTO people.student (id, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (st, 'CHECK/V733/0001', 'CHECKV733', 'Medical Student', 'F', v_mbbs, 'UTME', '9739/9740', 100, 300, 'ACTIVE', now()),
+        (other, 'CHECK/V733/0002', 'CHECKV733', 'Other Student', 'M', v_other, 'UTME', '9739/9740', 100, 300, 'ACTIVE', now());
+    v_final := coalesce(finance.final_level(v_mbbs), 600);
+    INSERT INTO people.student (id, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (fin, 'CHECK/V733/0003', 'CHECKV733', 'Final Year', 'M', v_mbbs, 'UTME', '9739/9740', 100, v_final, 'ACTIVE', now());
+
+    SELECT string_agg(o.session || '=' || CASE WHEN o.selectable THEN 'yes' ELSE o.why END || CASE WHEN o.is_university THEN '*' ELSE '' END, ',' ORDER BY o.session)
+      INTO opts FROM people.study_session_options(st) o WHERE o.session >= '9739/9740';
+    -- the student's own choice
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', st::text, true);
+    chosen := people.choose_study_session(st, '9742/9743');
+    stud_ses := people.student_current_session(st);
+    SELECT c.session || '/' || c.current_session INTO ctx FROM people.academic_context(st) c;
+    SELECT ap.current_session INTO pos FROM people.academic_position ap WHERE ap.student_id = st;
+    SELECT max(h.session) INTO past1 FROM finance.historical_rows_read(ARRAY[st]) h;
+    SELECT string_agg(coalesce(e.from_session, 'U') || '>' || coalesce(e.to_session, 'U') || '/' || e.level || '/' || e.approval || '/' || e.office, ';' ORDER BY e.at)
+      INTO ev FROM people.study_session_event e WHERE e.student_id = st;
+    BEGIN PERFORM people.choose_study_session(other, '9742/9743'); e_other := 'chosen';
+    EXCEPTION WHEN check_violation THEN e_other := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.choose_study_session(st, '9741/9742'); e_far := 'chosen';
+    EXCEPTION WHEN check_violation THEN e_far := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM people.choose_study_session(st, '9744/9745'); e_plan := 'chosen';
+    EXCEPTION WHEN check_violation THEN e_plan := split_part(SQLERRM, ':', 1); END;
+
+    -- registration in it: the University's closed semester, until the College dates its own
+    gate0 := registration.registration_gate(st, '9742/9743', 1);
+    INSERT INTO college.semester (session, level, ordinal, length_weeks, starts_on, ends_on) VALUES ('9742/9743', 300, 1, 15, current_date - 10, current_date + 30);
+    gate1 := coalesce(registration.registration_gate(st, '9742/9743', 1), 'OPEN');
+    opensem := registration.open_semester(st, '9742/9743');
+    adddrop := registration.add_drop_open(st, '9742/9743', 1);
+    SELECT c.calendar || ':' || c.state INTO cal FROM registration.calendar_semester(st, '9742/9743', 1) c;
+    -- registered at 300 Level there: the University's session would register the level twice
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), st, '9742/9743', 1, 300, 'SUBMITTED');
+    BEGIN PERFORM people.choose_study_session(st, '9743/9744'); e_level := 'chosen';
+    EXCEPTION WHEN check_violation THEN e_level := split_part(SQLERRM, ':', 1) || ':' || btrim(split_part(SQLERRM, ':', 2)); END;
+
+    -- an office sets it: a reason first, then the University's session
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    BEGIN PERFORM people.set_study_session(st, NULL, 'short'); e_short := 'set';
+    EXCEPTION WHEN check_violation THEN e_short := split_part(SQLERRM, ':', 1); END;
+    office_set := people.set_study_session(st, NULL, 'CHECK V733: the College confirms a repeated year in the University session');
+    after_office := coalesce(people.own_session(st), 'U') || '/' || people.student_current_session(st);
+    SELECT max(h.session) INTO past0 FROM finance.historical_rows_read(ARRAY[st]) h;
+
+    -- the roll-over: in a session of their own again (one behind), the student moves one on from it with the level
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', st::text, true);
+    DELETE FROM registration.course_registration WHERE student_id = st;
+    PERFORM people.choose_study_session(st, '9742/9743');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM people.set_study_session(fin, '9742/9743', 'CHECK V733: a final-year student one behind');
+    roll := people.roll_over_session('9744/9745', 'ROLLOVER', 'CHECK V733 roll-over');
+    roll2 := people.roll_over_session('9744/9745', 'ROLLOVER', 'CHECK V733 roll-over pressed again');
+    SELECT people.own_session(fin) || '/' || s.current_level INTO finrow FROM people.student s WHERE s.id = fin;
+    -- a change of programme off the College's calendar ends the session of one's own
+    UPDATE people.student SET programme_code = v_other WHERE id = fin;
+    ended := coalesce(people.own_session(fin), 'U') || '/' || (SELECT e.approval FROM people.study_session_event e WHERE e.student_id = fin ORDER BY e.at DESC, e.id LIMIT 1);
+    SELECT people.own_session(st) || '/' || s.current_level || '/' || coalesce((SELECT e.session FROM people.enrolment e WHERE e.student_id = st ORDER BY e.session DESC LIMIT 1), '-')
+           || '/' || (SELECT e.approval FROM people.study_session_event e WHERE e.student_id = st ORDER BY e.at DESC, e.id LIMIT 1)
+      INTO rolled FROM people.student s WHERE s.id = st;
+
+    msg := 'options ' || opts || ' | chosen ' || (chosen ->> 'previous') || '>' || (chosen ->> 'session') || ' L' || (chosen ->> 'level')
+        || ' | session ' || stud_ses || ' context ' || ctx || ' position ' || coalesce(pos, '-') || ' past ends ' || coalesce(past1, '-')
+        || ' | event ' || ev || ' | other ' || e_other || ' far ' || e_far || ' planned ' || e_plan
+        || ' | gate ' || gate0 || ' then ' || gate1 || ' sem ' || opensem || ' ' || cal || ' add/drop ' || adddrop || ' | level ' || e_level
+        || ' | short ' || e_short || ' office ' || after_office || ' past ends ' || coalesce(past0, '-')
+        || ' | roll ' || coalesce(roll ->> 'promoted_own_session', '-') || '/' || coalesce(roll ->> 'moved_own_session', '-') || ' ' || rolled
+        || ' again ' || coalesce(roll2 ->> 'moved_own_session', '-') || ' final ' || finrow || ' | ended ' || ended;
+    RAISE EXCEPTION 'the V733 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V733 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V733: an MBBS student stands in a session of their own — chosen within the rules, read everywhere a student''s session is read, recorded once, set by an office with a reason, carried on by the roll-over with the level',
+      coalesce(msg = 'options 9739/9740=TOO_FAR_BEHIND,9740/9741=TOO_FAR_BEHIND,9741/9742=TOO_FAR_BEHIND,9742/9743=yes,9743/9744=yes*'
+                     || ' | chosen 9743/9744>9742/9743 L300'
+                     || ' | session 9742/9743 context 9742/9743/9742/9743 position 9742/9743 past ends 9741/9742'
+                     || ' | event U>9742/9743/300/NOT_REQUIRED/student | other STUDY_SESSION_NOT_YOURS far STUDY_SESSION_REFUSED planned STUDY_SESSION_NOT_APPROVED'
+                     || ' | gate The first semester of 9742/9743 is closed for registration. then OPEN sem 1 COLLEGE:OPEN add/drop true'
+                     || ' | level STUDY_SESSION_REFUSED:your present level is registered in another session; a second session for the same level would register it twice'
+                     || ' | short STUDY_SESSION_REASON office U/9743/9744 past ends 9742/9743'
+                     || ' | roll 1/2 9743/9744/400/9743/9744/ROLL_OVER again 0 final 9743/9744/' || coalesce(finance.final_level((SELECT programme_code FROM college.programme_rule ORDER BY 1 LIMIT 1)), 600)
+                     || ' | ended U/SET_BY_OFFICE', false),
+      msg);
+END $$;
+
+-- ── V734: College Deans at the department desks of their College. A student of a College programme (MBBS: department MED, faculty in the
+--          College of Health Sciences) applies to a programme outside every College: at the current department's desk the HOD of MED and
+--          the Dean of its faculty may act (and are the people told), a Dean of another faculty is not; at the new department's desk only
+--          that department's HOD; the Registry and the Academic Office after. Every change of state is written once in the history with
+--          the desk, its unit, the office, the comment and the next desk; the list names each side's department, faculty and College. ──
+DO $$
+DECLARE
+    ses text := '9734/9735'; st uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+    p_dean uuid := gen_random_uuid(); p_other uuid := gen_random_uuid(); p_hod uuid := gen_random_uuid();
+    v_from text; v_to text; v_fac text; v_tofac text; v_todept text;
+    d1 record; d2 record; told text; told2 text; hist text; lst record; kept text; gone int; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V734', true);
+    SELECT p.code, coalesce(d.faculty_code, p.faculty_code) INTO v_from, v_fac
+      FROM ref.programme p LEFT JOIN ref.department d ON d.code = p.dept_code JOIN ref.faculty f ON f.code = coalesce(d.faculty_code, p.faculty_code)
+     WHERE f.college_code IS NOT NULL AND p.dept_code IS NOT NULL AND NOT coalesce(p.archived, false) ORDER BY (p.code = 'C00061') DESC, p.code LIMIT 1;
+    SELECT p.code, coalesce(d.faculty_code, p.faculty_code), p.dept_code INTO v_to, v_tofac, v_todept
+      FROM ref.programme p LEFT JOIN ref.department d ON d.code = p.dept_code JOIN ref.faculty f ON f.code = coalesce(d.faculty_code, p.faculty_code)
+     WHERE f.college_code IS NULL AND p.dept_code IS NOT NULL AND p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9734-10-01', date '9735-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO people.student (id, matric_no, surname, other_names, sex, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st, 'CHECK/V734/0001', 'CHECKV734', 'College Student', 'F', v_from, 'UTME', ses, 100, 300, 'ACTIVE', now());
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (p_dean, 'CHECK/V734/DEAN', 'CHECKV734', 'College Dean', 'dean.v734@example.com'),
+        (p_other, 'CHECK/V734/OTHER', 'CHECKV734', 'Other Dean', 'other.v734@example.com'),
+        (p_hod, 'CHECK/V734/HOD', 'CHECKV734', 'Receiving Head', 'hod.v734@example.com');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), p_dean, 'dean', 'faculty', v_fac, 'check V734', gen_random_uuid(), current_date),
+        (gen_random_uuid(), p_other, 'dean', 'faculty', v_tofac, 'check V734', gen_random_uuid(), current_date),
+        (gen_random_uuid(), p_hod, 'hod', 'department', v_todept, 'check V734', gen_random_uuid(), current_date);
+
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    INSERT INTO people.transfer_application (id, student_id, session, from_programme_code, from_level, to_programme_code, reason, mode_of_entry, state)
+    VALUES (app, st, ses, v_from, 300, v_to, 'CHECK V734: a change of course', 'UTME', 'APPLIED');
+    SELECT * INTO d1 FROM people.transfer_desk(app);
+    SELECT string_agg(p.office || ':' || p.name, ',' ORDER BY p.name) INTO told FROM people.transfer_desk_people(app) p WHERE p.name LIKE '%CHECKV734%';
+
+    -- the College's Dean approves at the current department's desk, with a comment
+    PERFORM set_config('moaum.actor_office', 'dean', true);
+    PERFORM set_config('moaum.actor_id', p_dean::text, true);
+    PERFORM set_config('moaum.transfer_note', 'Released by the College', true);
+    UPDATE people.transfer_application SET state = 'FROM_OK', from_dept_at = now(), from_dept_by = p_dean WHERE id = app;
+    PERFORM set_config('moaum.transfer_note', '', true);
+    SELECT * INTO d2 FROM people.transfer_desk(app);
+    SELECT string_agg(p.office || ':' || p.name, ',' ORDER BY p.name) INTO told2 FROM people.transfer_desk_people(app) p WHERE p.name LIKE '%CHECKV734%';
+    -- the new department's HOD declines it, with the reason
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    PERFORM set_config('moaum.actor_id', p_hod::text, true);
+    UPDATE people.transfer_application SET state = 'DECLINED', decline_note = 'No place this session' WHERE id = app;
+
+    SELECT string_agg(e.decision || '/' || coalesce(e.desk, '-') || '/' || coalesce(e.office, '-') || '/' || coalesce(e.college_code, '-')
+                      || '/' || coalesce(e.note, '-') || '/' || coalesce(left(e.next_desk, 16), '-'), ' ; ' ORDER BY e.at, e.decision)
+      INTO hist FROM people.transfer_event e WHERE e.application_id = app;
+    SELECT * INTO lst FROM people.transfer_list(ses, NULL) WHERE id = app;
+    BEGIN
+        UPDATE people.transfer_event SET note = 'changed' WHERE application_id = app;
+        kept := 'changed';
+    EXCEPTION WHEN check_violation THEN kept := 'kept';
+    END;
+    DELETE FROM people.transfer_application WHERE id = app;
+    SELECT count(*) INTO gone FROM people.transfer_event WHERE application_id = app;
+
+    msg := 'desk1 ' || d1.desk || ' ' || array_to_string(d1.offices, '+') || ' ' || coalesce(d1.college_code, '-')
+        || ' | told1 ' || coalesce(told, '-')
+        || ' | desk2 ' || d2.desk || ' ' || array_to_string(d2.offices, '+') || ' ' || coalesce(d2.college_code, '-')
+        || ' | told2 ' || coalesce(told2, '-')
+        || ' | history ' || hist
+        || ' | list ' || (lst.from_college IS NOT NULL) || '/' || (lst.to_college IS NULL) || '/' || (lst.from_faculty = v_fac) || '/' || coalesce(lst.desk, 'none')
+        || ' | ' || kept || ' | after removal ' || gone;
+    RAISE EXCEPTION 'the V734 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V734 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V734: at a department of a College its faculty''s Dean acts beside the HOD and is told; every change of state is written once in the history with its desk, unit, office, comment and next desk',
+      coalesce(msg = 'desk1 FROM_DEPARTMENT hod+dean CHS | told1 dean:College Dean CHECKV734'
+                     || ' | desk2 TO_DEPARTMENT hod - | told2 hod:Receiving Head CHECKV734'
+                     || ' | history APPLIED/STUDENT/student/CHS/CHECK V734: a change of course/the current depa'
+                     || ' ; APPROVED/FROM_DEPARTMENT/dean/CHS/Released by the College/the new departme'
+                     || ' ; DECLINED/TO_DEPARTMENT/hod/-/No place this session/-'
+                     || ' | list true/true/true/none | kept | after removal 0', false),
       msg);
 END $$;
 
