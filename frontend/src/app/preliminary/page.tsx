@@ -6,7 +6,9 @@ import { PrelimDesk, type DeskFilters, type PrelimSummary } from "./PrelimDesk";
 
 export const dynamic = "force-dynamic";
 
-const KEYS = ["route", "session", "view", "q", "target", "group", "sittings", "eligibility", "remediation", "state", "paid", "sex", "origin", "lga", "from", "to", "sort", "size"] as const;
+/* V737: and the application number, the name, the payment (paid, held, unpaid), the day applied, the admission, the old portal */
+const KEYS = ["route", "session", "view", "q", "target", "group", "sittings", "eligibility", "remediation", "state", "paid", "sex", "origin", "lga", "from", "to", "sort", "size",
+  "appNo", "name", "payment", "appliedFrom", "appliedTo", "admission", "migrated"] as const;
 
 /** prelim/dashboard — the preliminary and proficiency desk (V446; V701 every route: Preliminary Science, Preliminary Technology &
  *  Industrial Studies, the Adikpo Campus certificate courses, chosen with ?route=): the figures, each the filter of the list behind

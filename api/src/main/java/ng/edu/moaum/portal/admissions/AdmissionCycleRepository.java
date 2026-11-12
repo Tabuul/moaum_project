@@ -15,16 +15,22 @@ class AdmissionCycleRepository {
         this.jdbc = jdbc;
     }
 
+    /** V737: the preliminary and proficiency programmes are counted on their own panel — never among the session's offers, acceptances
+     *  or the admitted not yet on the register (they never go onto the register through the intake) */
     AdmissionCycle.Counts counts(String session) {
         return jdbc.sql("""
                 SELECT (SELECT count(*) FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
                          WHERE r.session = :s AND b.committed_at IS NOT NULL) AS applications,
                        (SELECT count(*) FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
                          WHERE r.session = :s AND b.committed_at IS NOT NULL AND r.aggregate IS NOT NULL) AS screened,
-                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.offer_state IN ('ADMITTED','ACCEPTED')) AS offers,
-                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.offer_state = 'ACCEPTED') AS accepted,
-                       (SELECT count(*) FROM people.student st WHERE st.entry_session = :s) AS on_the_register,
                        (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.offer_state IN ('ADMITTED','ACCEPTED')
+                           AND c.entry_mode NOT IN ('PRELIMINARY','PROFICIENCY')) AS offers,
+                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.offer_state = 'ACCEPTED'
+                           AND c.entry_mode NOT IN ('PRELIMINARY','PROFICIENCY')) AS accepted,
+                       (SELECT count(*) FROM people.student st WHERE st.entry_session = :s
+                           AND NOT EXISTS (SELECT 1 FROM admissions.candidate c WHERE c.id = st.candidate_id AND c.entry_mode IN ('PRELIMINARY','PROFICIENCY'))) AS on_the_register,
+                       (SELECT count(*) FROM admissions.candidate c WHERE c.session = :s AND c.offer_state IN ('ADMITTED','ACCEPTED')
+                           AND c.entry_mode NOT IN ('PRELIMINARY','PROFICIENCY')
                            AND NOT EXISTS (SELECT 1 FROM people.student st WHERE st.candidate_id = c.id)) AS not_yet_on_register
                 """).param("s", session).query(AdmissionCycle.Counts.class).single();
     }

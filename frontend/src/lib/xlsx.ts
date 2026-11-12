@@ -119,6 +119,21 @@ export function sheetRows(xml: string, shared: string[]): string[][] {
   return rows;
 }
 
+/** V737: as sheetRows, each row at its own place — a row written r="N" is at index N-1, and the rows the file leaves out (Excel
+ *  writes no empty row; a letterhead's blank lines are not written) read as empty — so a row's index + 1 is its row in the sheet,
+ *  for an error report that names the row the officer sees. A row without r, or one far past the last (a stray cell at the
+ *  sheet's foot), follows on instead. */
+export function sheetRowsAt(xml: string, shared: string[]): string[][] {
+  const rows: string[][] = [];
+  for (const rm of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    const n = Number(/\br="(\d+)"/.exec(rm[1])?.[1] ?? 0);
+    const at = n > rows.length && n - rows.length <= 100000 ? n - 1 : rows.length;
+    while (rows.length < at) rows.push([]);
+    rows.push(rm[2] === undefined ? [] : parseRow(rm[2], shared));
+  }
+  return rows;
+}
+
 /** As sheetRows, but yields to the event loop every few thousand rows so a large
  *  workbook does not freeze the tab; onRows reports progress as it goes. */
 export async function sheetRowsAsync(xml: string, shared: string[], onRows?: (n: number) => void): Promise<string[][]> {
@@ -135,8 +150,9 @@ export async function sheetRowsAsync(xml: string, shared: string[], onRows?: (n:
 export interface Sheet { name: string; rows: string[][] }
 
 /** Every worksheet of an .xlsx by its name, as rows of strings (V290): the workbook's sheet list and its relationships
- *  name the parts; a workbook without them falls back to the worksheets in file order. */
-export async function xlsxWorkbook(buf: ArrayBuffer): Promise<Sheet[]> {
+ *  name the parts; a workbook without them falls back to the worksheets in file order. With rowNumbers (V737) each row stands
+ *  at its own row of the sheet (sheetRowsAt), the rows the file leaves out read as empty. */
+export async function xlsxWorkbook(buf: ArrayBuffer, opts: { rowNumbers?: boolean } = {}): Promise<Sheet[]> {
   const z = zipEntries(buf);
   const shared = z["xl/sharedStrings.xml"] ? sharedStrings(await inflate(z["xl/sharedStrings.xml"])) : [];
   const parts: { name: string; path: string }[] = [];
@@ -163,7 +179,7 @@ export async function xlsxWorkbook(buf: ArrayBuffer): Promise<Sheet[]> {
   for (const part of parts) {
     const xml = await inflate(z[part.path]);
     if (!/<(?:\w+:)?sheetData\b/.test(xml)) continue;
-    out.push({ name: part.name, rows: sheetRows(xml, shared) });
+    out.push({ name: part.name, rows: opts.rowNumbers ? sheetRowsAt(xml, shared) : sheetRows(xml, shared) });
   }
   if (!out.length) throw new Error("the workbook has no readable worksheet in it");
   return out;

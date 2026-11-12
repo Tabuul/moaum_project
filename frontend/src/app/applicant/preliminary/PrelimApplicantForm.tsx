@@ -4,7 +4,8 @@
  * A preliminary or proficiency application (V446; V701 every route — Preliminary Science, Preliminary Technology & Industrial
  * Studies with its areas and specialisations, the Adikpo Campus certificate courses), as the applicant works through it: the
  * application fee first (the form opens once the payment is verified by the payment service — never on returning from the
- * gateway; a fee the Bursary has not set keeps it shut); the details; the O'Level in one sitting or two, each released (an
+ * gateway; a fee the Bursary has not set keeps it shut; V737: a fee paid on the old portal keeps it shut until the Bursary verifies
+ * it, and is never asked for again meanwhile); the details; the O'Level in one sitting or two, each released (an
  * awaiting result is not accepted), or the examination sat where the route asks only that; the eligibility the backend reads
  * from it; the target (an area's programme and its specialisation, an intended progression only) or the certificate course; the
  * documents; then the declaration and the submission, and the application form to print or download. Once submitted the
@@ -123,7 +124,7 @@ export function PrelimApplicantForm() {
         ["APPLICATION", v.applicationNo, null, `${info.name} · ${v.session}`],
         ["STATE", labelOf(STATE, state)[0], null, p.submittedAt ? `submitted ${when(p.submittedAt)}` : "not yet submitted"],
         ["ELIGIBILITY", eligWord, eligKind === "bad" ? "var(--red-ink)" : eligKind === "warn" ? "var(--amber-ink)" : null, elig.sittings ? (info.rules.kind === "ATTEMPTED_CERTIFICATE" ? `${elig.sittings} sitting${elig.sittings === 1 ? "" : "s"} given` : `${elig.totalCredits} credits${elig.coreCredits >= 0 ? ` · ${elig.coreCredits} in the subjects` : ""}`) : "no result given yet"],
-        ["STILL NEEDED", editable ? problems.length : 0, editable && problems.length ? "var(--amber-ink)" : null, editable ? (problems.length ? "before you can submit" : "ready to submit") : "with the Office"],
+        ["STILL NEEDED", editable ? problems.length : 0, editable && problems.length ? "var(--amber-ink)" : null, editable ? (problems.length ? (p.feeHeld ? "the old-portal payment is being verified" : "before you can submit") : "ready to submit") : "with the Office"],
       ]} />
       {asked ? <Note kind="bad" title={`${Office} asks for a correction`}>{p.requestNote} Make it below, then send the application back to the Office.</Note> : null}
       {state === "ADMITTED" ? (
@@ -146,10 +147,13 @@ export function PrelimApplicantForm() {
   const section = (n: number, title: string, step: string, body: ReactNode) => {
     const missing = byStep(step);
     return (
-      <Panel title={`${n} · ${title}`} right={missing.length ? <Pil kind="warn">{missing.length} to do</Pil> : <Pil kind="ok">Done</Pil>}>
+      <Panel title={`${n} · ${title}`} right={step === "PAYMENT" && p.feeHeld && missing.length ? <Pil kind="info">Being verified</Pil>
+        : missing.length ? <Pil kind="warn">{missing.length} to do</Pil> : <Pil kind="ok">Done</Pil>}>
         <PBody>
-          {editable && !settled && step !== "PAYMENT" ? <Note kind="info" title="Pay the application fee first">This part of the form opens once your payment is verified.</Note> : null}
-          {missing.length && editable && (settled || step === "PAYMENT") && !(step === "PAYMENT" && !v.fees.stated) ? <div className="sub2 mb-2">{missing.map((x) => x.message).join("; ")}.</div> : null}
+          {editable && !settled && step !== "PAYMENT" ? (p.feeHeld
+            ? <Note kind="info" title="Your old-portal payment is being verified">This part of the form opens once the Bursary verifies the payment you made on the old portal.</Note>
+            : <Note kind="info" title="Pay the application fee first">This part of the form opens once your payment is verified.</Note>) : null}
+          {missing.length && editable && (settled || step === "PAYMENT") && !(step === "PAYMENT" && (!v.fees.stated || p.feeHeld)) ?<div className="sub2 mb-2">{missing.map((x) => x.message).join("; ")}.</div> : null}
           {body}
         </PBody>
       </Panel>
@@ -168,6 +172,8 @@ export function PrelimApplicantForm() {
           <ReceiptCheck reference={paid.reference} source={`/api/bff/api/v1/applicant/me/receipts/${encodeURIComponent(paid.reference)}`}
             pdf={`/applicant/fee/receipt?reference=${encodeURIComponent(paid.reference)}`} />
         </>
+      ) : p.feeHeld ? (
+        <Note kind="info" title="Your old-portal payment is being verified">{p.feeHeld}</Note>
       ) : !v.fees.stated || fee == null ? (
         <Note kind="info" title="Application fee not yet configured">The Bursary has not yet set the {info.name} application fee for {v.session}. The rest of the form opens once it is set and paid; you are told when it is.</Note>
       ) : fee === 0 ? <div className="sub2">No application fee is charged.</div> : (

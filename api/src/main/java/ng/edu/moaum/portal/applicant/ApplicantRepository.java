@@ -34,25 +34,34 @@ class ApplicantRepository {
                 .query(UUID.class).single();
     }
 
-    /** V687: mustChangePassword and tempExpiresAt — a temporary password from the University stands until the applicant chooses their own */
+    /** V687: mustChangePassword and tempExpiresAt — a temporary password from the University stands until the applicant chooses their own;
+     *  V737: legacyNo — the old portal's application number of a preliminary applicant brought across (admissions.prelim_legacy_application) */
     record Account(UUID id, String session, UUID candidateId, String jambKey, String email, String phone, String passwordHash,
                    int failedAttempts, OffsetDateTime lockedUntil, UUID applicationId, String applicationNo, String surname, String otherNames,
-                   boolean mustChangePassword, OffsetDateTime tempExpiresAt) {
+                   boolean mustChangePassword, OffsetDateTime tempExpiresAt, String legacyNo) {
     }
 
     private static final String ACCOUNT = """
             SELECT a.id, a.session, a.candidate_id, a.jamb_key, a.email, a.phone, a.password_hash, a.failed_attempts, a.locked_until,
-                   p.id AS application_id, p.application_no, c.surname, c.other_names, a.must_change_password, a.temp_expires_at
+                   p.id AS application_id, p.application_no, c.surname, c.other_names, a.must_change_password, a.temp_expires_at,
+                   (SELECT l.legacy_application_no FROM admissions.prelim_legacy_application l WHERE l.application_id = p.id) AS legacy_no
               FROM admissions.applicant_account a
               JOIN admissions.application p ON p.account_id = a.id
               JOIN admissions.candidate c ON c.id = a.candidate_id
             """;
 
-    /** by application number, by email, or by JAMB number — whatever the applicant has to hand */
+    /** by application number, by email, or by JAMB number — whatever the applicant has to hand; V737: or, for a preliminary applicant
+     *  brought from the old portal, the old portal's application number, however its letters and spaces are typed. This portal's own
+     *  identifiers win: an old number that is also another account's number, JAMB number or email never opens the other account (the
+     *  coalesce, because a NULL would sort first) */
     Optional<Account> byIdentifier(String identifier) {
         String id = identifier == null ? "" : identifier.trim();
-        return jdbc.sql(ACCOUNT + " WHERE lower(a.email) = lower(:id) OR a.jamb_key = upper(:id) OR p.application_no = upper(:id) LIMIT 1")
-                .param("id", id).query(Account.class).optional();
+        return jdbc.sql(ACCOUNT + """
+                 WHERE lower(a.email) = lower(:id) OR a.jamb_key = upper(:id) OR p.application_no = upper(:id)
+                    OR p.id = (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE upper(btrim(l.legacy_application_no)) = upper(btrim(:id)))
+                 ORDER BY coalesce(lower(a.email) = lower(:id) OR a.jamb_key = upper(:id) OR p.application_no = upper(:id), false) DESC
+                 LIMIT 1
+                """).param("id", id).query(Account.class).optional();
     }
 
     Optional<Account> byId(UUID id) {

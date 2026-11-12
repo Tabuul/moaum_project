@@ -156,6 +156,7 @@ export const TITLES: Record<string, string> = {
   "prelim/dashboard": "Preliminary and proficiency programmes",
   "prelim/config": "Preliminary and proficiency settings",
   "prelim/reports": "Preliminary and proficiency reports",
+  "t/prelimmigration": "Preliminary applicant data migration",
   "t/courseupload": "Upload course structure",
   "t/facultyupload": "Faculties",
   "t/programmeupload": "Programmes",

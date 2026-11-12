@@ -46,7 +46,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admissions/preliminary")
 class PrelimDeskController {
 
-    private static final String CENTRAL = "'OFFICE_prelim','OFFICE_prelimtech','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin'";
+    /** V737: the Director of ICT reads the desk of every route (the programme corrections are theirs) — and never reviews, decides or
+     *  states a fee on it */
+    private static final String CENTRAL = "'OFFICE_prelim','OFFICE_prelimtech','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin','OFFICE_ict'";
+    /** V737: the General Admissions dashboard's panel of the preliminary programmes */
+    private static final String OVERVIEW_READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin','OFFICE_ict','OFFICE_prelim','OFFICE_prelimtech')";
+    /** V737: who changes an applicant's programme between the two preliminary routes (an ICT Support Agent only with the capability) */
+    private static final Set<String> CORRECTORS = Set.of("ict", "super", "helpdeskhead");
     private static final String READERS = "hasAnyAuthority(" + CENTRAL + ",'OFFICE_hod','OFFICE_dean')";
     private static final String CENTRAL_READERS = "hasAnyAuthority(" + CENTRAL + ")";
     private static final String REVIEWERS = "hasAnyAuthority('OFFICE_prelim','OFFICE_prelimtech','OFFICE_academic','OFFICE_super')";
@@ -58,7 +64,11 @@ class PrelimDeskController {
     private static final String CONFIG_READERS = "hasAnyAuthority(" + CENTRAL + ",'OFFICE_bursar','OFFICE_hod','OFFICE_dean')";
     private static final Set<String> SCOPED = Set.of("hod", "dean");
     private static final Set<String> VIEWS = Set.of("total", "paid", "submitted", "incomplete", "pendingReview", "underReview", "correction", "eligible",
-            "notEligible", "remediationRequired", "admitted", "notAdmitted", "withdrawn");
+            "notEligible", "remediationRequired", "admitted", "notAdmitted", "withdrawn",
+            // V737: new this week, accepted, outstanding requirements, a fee held for the Bursary, brought from the old portal
+            "new", "accepted", "outstanding", "feeHeld", "migrated");
+    private static final Set<String> PAYMENTS = Set.of("PAID", "HELD", "UNPAID");
+    private static final Set<String> ADMISSIONS = Set.of("ADMITTED", "ACCEPTED", "NOT_ADMITTED", "PENDING");
     private static final Map<String, String> SORTS = Map.of("name", "x.surname, x.other_names", "number", "x.application_no", "submitted", "x.submitted_at DESC NULLS LAST, x.application_no",
             "credits", "x.total_credits DESC NULLS LAST, x.core_credits DESC NULLS LAST, x.application_no", "target", "x.target_name NULLS LAST, x.surname");
 
@@ -187,7 +197,8 @@ class PrelimDeskController {
         String own = officeOf(ROUTE);
         out.put("may", Map.of("review", Set.of(own, "academic", "super").contains(office()), "decide", Set.of("academic", "super").contains(office()),
                 "recommend", Set.of(own, "super").contains(office()), "configure", Set.of("academic", "super").contains(office()),
-                "fees", Set.of("bursar", "super").contains(office())));
+                "fees", Set.of("bursar", "super").contains(office()),
+                "changeProgramme", mayChangeProgramme() && PrelimMigrationController.ROUTES.contains(ROUTE)));   // V737
         return out;
     }
 
@@ -198,7 +209,22 @@ class PrelimDeskController {
                    p.dept_code, p.faculty_code, r.target_id, t.kind AS target_kind, t.group_name AS target_group, sp.name AS specialisation_name,
                    r.total_credits, r.core_credits, r.sittings, r.eligibility_status, r.remediation_status, r.remediation_subjects, r.olevel_verification,
                    a.fee_confirmed_at IS NOT NULL AS paid, a.fee_confirmed_at, r.state, r.published_at, r.submitted_at, a.session, a.created_at,
-                   so.value AS state_of_origin, lg.value AS lga, acc.email, acc.phone
+                   so.value AS state_of_origin, lg.value AS lga, acc.email, acc.phone,
+                   -- V737: the old portal's number, the day of the application (Lagos), the payment as it stands, the offer, and whether
+                   -- anything is outstanding — set-based, as admissions.prelim_stats counts them
+                   lgy.legacy_application_no AS legacy_no, (a.created_at AT TIME ZONE 'Africa/Lagos')::date AS applied_on, c.offer_state,
+                   lgy.application_id IS NOT NULL AS migrated, held.application_id IS NOT NULL AS fee_held,
+                   CASE WHEN a.fee_confirmed_at IS NOT NULL THEN 'PAID' WHEN held.application_id IS NOT NULL THEN 'HELD' ELSE 'UNPAID' END AS payment,
+                   (r.state NOT IN ('WITHDRAWN', 'ADMITTED', 'NOT_ADMITTED', 'REJECTED')
+                    AND ((a.fee_confirmed_at IS NULL AND coalesce((SELECT f.application_fee + f.portal_charge FROM admissions.route_fee_rule(:s, :route) f), 1) <> 0)
+                         OR EXISTS (SELECT 1 FROM admissions.prelim_document d
+                                     WHERE d.route = r.route AND d.required AND (NOT d.second_sitting_only OR coalesce(r.sittings, 0) >= 2)
+                                       AND NOT EXISTS (SELECT 1 FROM admissions.application_document ad
+                                                        WHERE ad.application_id = a.id AND ad.kind = d.kind AND ad.superseded_at IS NULL
+                                                          AND ad.status <> 'REJECTED'))
+                         OR r.eligibility_status IN ('RESULT_REQUIRED', 'PENDING_REVIEW')
+                         OR r.target_id IS NULL
+                         OR r.state = 'CORRECTION_REQUIRED')) AS outstanding
               FROM admissions.prelim_review r JOIN admissions.application a ON a.id = r.application_id
               JOIN admissions.candidate c ON c.id = a.candidate_id JOIN admissions.applicant_account acc ON acc.id = a.account_id
               LEFT JOIN admissions.prelim_target t ON t.id = r.target_id
@@ -206,6 +232,8 @@ class PrelimDeskController {
               LEFT JOIN ref.programme p ON p.code = r.target_programme
               LEFT JOIN admissions.screening_answer so ON so.application_id = a.id AND so.field = 'state_of_origin'
               LEFT JOIN admissions.screening_answer lg ON lg.application_id = a.id AND lg.field = 'lga'
+              LEFT JOIN admissions.prelim_legacy_application lgy ON lgy.application_id = a.id
+              LEFT JOIN (SELECT DISTINCT lf.application_id FROM admissions.prelim_legacy_fee lf WHERE lf.state = 'REQUIRES_REVIEW') held ON held.application_id = a.id
              WHERE r.route = :route AND a.session = :s
                AND (:bd::text IS NULL OR p.dept_code = :bd) AND (:bf::text IS NULL OR p.faculty_code = :bf)
             """;
@@ -225,9 +253,27 @@ class PrelimDeskController {
                     OR (:view = 'remediationRequired' AND x.submitted_at IS NOT NULL AND x.state <> 'WITHDRAWN' AND x.remediation_status IN ('REQUIRED', 'IN_PROGRESS', 'NOT_COMPLETED', 'REQUIRES_REVIEW'))
                     OR (:view = 'admitted' AND x.state = 'ADMITTED')
                     OR (:view = 'notAdmitted' AND x.state IN ('NOT_ADMITTED', 'REJECTED') AND x.published_at IS NOT NULL)
-                    OR (:view = 'withdrawn' AND x.state = 'WITHDRAWN'))
+                    OR (:view = 'withdrawn' AND x.state = 'WITHDRAWN')
+                    -- V737: as admissions.prelim_stats counts new, accepted, outstanding, feeHeld and migrated
+                    OR (:view = 'new' AND x.applied_on > (now() AT TIME ZONE 'Africa/Lagos')::date - 7)
+                    OR (:view = 'accepted' AND x.offer_state = 'ACCEPTED')
+                    OR (:view = 'outstanding' AND x.outstanding)
+                    OR (:view = 'feeHeld' AND x.fee_held)
+                    OR (:view = 'migrated' AND x.migrated))
                AND (:q::text IS NULL OR lower(x.surname || ' ' || x.other_names) LIKE :q OR lower(x.other_names || ' ' || x.surname) LIKE :q
-                    OR lower(x.application_no) LIKE :q OR lower(x.email) LIKE :q OR x.phone LIKE :q)
+                    OR lower(x.application_no) LIKE :q OR lower(x.email) LIKE :q OR x.phone LIKE :q OR lower(x.legacy_no) LIKE :q)
+               -- V737: the application number (this portal's or the old portal's), the name, the payment, the day applied, the admission, the old portal
+               AND (:appno::text IS NULL OR lower(x.application_no) LIKE :appno OR lower(x.legacy_no) LIKE :appno)
+               AND (:name::text IS NULL OR lower(x.surname || ' ' || x.other_names) LIKE :name OR lower(x.other_names || ' ' || x.surname) LIKE :name)
+               AND (:payment::text IS NULL OR x.payment = :payment)
+               AND (:afrom::date IS NULL OR x.applied_on >= :afrom::date) AND (:ato::date IS NULL OR x.applied_on <= :ato::date)
+               AND (:admission::text IS NULL
+                    OR (:admission = 'ADMITTED' AND x.state = 'ADMITTED')
+                    OR (:admission = 'ACCEPTED' AND x.offer_state = 'ACCEPTED')
+                    OR (:admission = 'NOT_ADMITTED' AND x.state IN ('NOT_ADMITTED', 'REJECTED') AND x.published_at IS NOT NULL)
+                    OR (:admission = 'PENDING' AND x.state NOT IN ('ADMITTED', 'WITHDRAWN') AND x.offer_state <> 'ACCEPTED'
+                        AND NOT (x.state IN ('NOT_ADMITTED', 'REJECTED') AND x.published_at IS NOT NULL)))
+               AND (:migrated::boolean IS NULL OR x.migrated = :migrated)
                AND (:target::text IS NULL OR x.target_programme = :target OR x.target_id::text = lower(:target))
                AND (:grp::text IS NULL OR x.target_group = :grp)
                AND (:sittings::int IS NULL OR coalesce(x.sittings, 0) = :sittings)
@@ -240,6 +286,11 @@ class PrelimDeskController {
                AND (:lga::text IS NULL OR lower(x.lga) = lower(:lga))
                AND (:from::date IS NULL OR x.submitted_at >= :from::date) AND (:to::date IS NULL OR x.submitted_at < (:to::date + 1))
             """;
+
+    /** a search as a LIKE pattern on the lower-cased text, or null for none */
+    private static String like(String v) {
+        return v == null || v.isBlank() ? null : "%" + v.trim().toLowerCase().replace("%", "") + "%";
+    }
 
     private static String code(String v, String pattern) {
         return v == null || v.isBlank() || !v.trim().toUpperCase().matches(pattern) ? null : v.trim().toUpperCase();
@@ -265,7 +316,11 @@ class PrelimDeskController {
                                      @RequestParam(required = false) String from, @RequestParam(required = false) String to,
                                      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
                                      @RequestParam(defaultValue = "number") String sort, @RequestParam(required = false) String route,
-                                     @RequestParam(required = false) String group) {
+                                     @RequestParam(required = false) String group,
+                                     @RequestParam(required = false) String appNo, @RequestParam(required = false) String name,
+                                     @RequestParam(required = false) String payment, @RequestParam(required = false) String appliedFrom,
+                                     @RequestParam(required = false) String appliedTo, @RequestParam(required = false) String admission,
+                                     @RequestParam(required = false) Boolean migrated) {
         String ROUTE = route(route);
         String s = session(session, ROUTE);
         Bound b = bound();
@@ -273,7 +328,16 @@ class PrelimDeskController {
         int pg = Math.max(0, page);
         String order = SORTS.getOrDefault(sort, SORTS.get("number"));
         String v = view != null && VIEWS.contains(view) ? view : null;
-        String query = q == null || q.isBlank() ? null : "%" + q.trim().toLowerCase().replace("%", "") + "%";
+        String query = like(q);
+        String pay = payment == null || payment.isBlank() ? null : payment.trim().toUpperCase();
+        if (pay != null && !PAYMENTS.contains(pay)) {
+            throw new DomainRuleViolation("PRELIM_PAYMENT_FILTER", "The payment is paid, held for the Bursary or unpaid.", new DomainRuleViolation.Remedy("Choose PAID, HELD or UNPAID.", "You"));
+        }
+        String adm = admission == null || admission.isBlank() ? null : admission.trim().toUpperCase();
+        if (adm != null && !ADMISSIONS.contains(adm)) {
+            throw new DomainRuleViolation("PRELIM_ADMISSION_FILTER", "The admission is admitted, accepted, not admitted or pending.",
+                    new DomainRuleViolation.Remedy("Choose ADMITTED, ACCEPTED, NOT_ADMITTED or PENDING.", "You"));
+        }
         List<Map<String, Object>> rows = jdbc.sql("WITH x AS (" + ROWS + ") SELECT x.*, count(*) OVER () AS total_rows FROM x " + FILTERS
                         + " ORDER BY " + order + " LIMIT :n OFFSET :o")
                 .param("route", ROUTE).param("s", s).param("bd", b.dept(), Types.VARCHAR).param("bf", b.faculty(), Types.VARCHAR)
@@ -284,6 +348,9 @@ class PrelimDeskController {
                 .param("paid", paid, Types.BOOLEAN).param("sex", code(sex, "[MF]"), Types.VARCHAR)
                 .param("origin", origin == null || origin.isBlank() ? null : origin.trim(), Types.VARCHAR).param("lga", lga == null || lga.isBlank() ? null : lga.trim(), Types.VARCHAR)
                 .param("from", day(from), Types.DATE).param("to", day(to), Types.DATE)
+                .param("appno", like(appNo), Types.VARCHAR).param("name", like(name), Types.VARCHAR).param("payment", pay, Types.VARCHAR)
+                .param("afrom", day(appliedFrom), Types.DATE).param("ato", day(appliedTo), Types.DATE).param("admission", adm, Types.VARCHAR)
+                .param("migrated", migrated, Types.BOOLEAN)
                 .param("n", sz).param("o", pg * sz).query().listOfRows();
         long total = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total_rows")).longValue();
         List<Map<String, Object>> out = new ArrayList<>();
@@ -328,6 +395,49 @@ class PrelimDeskController {
                 SELECT i.number, i.version, i.issued_on, i.verification_code FROM credentials.issued i
                  WHERE i.application_id = :a AND i.kind = 'ADMISSION_LETTER' ORDER BY i.version DESC LIMIT 1
                 """).param("a", id).query().listOfRows().stream().findFirst().orElse(null));
+        // V737: where an application brought from the old portal came from, the fees paid there and the Bursary's word on each, the
+        // programme changes between the two routes, and whether the reader may change the programme (the Director of ICT's act)
+        out.put("legacy", prelim.legacy(id, true));
+        out.put("legacyFees", prelim.legacyFees(id));
+        out.put("routeChanges", prelim.routeChanges(id));
+        out.put("mayChangeProgramme", mayChangeProgramme() && PrelimMigrationController.ROUTES.contains(String.valueOf(
+                jdbc.sql("SELECT route FROM admissions.prelim_review WHERE application_id = :a").param("a", id).query(String.class).single())));
+        return out;
+    }
+
+    /** V737: the Director of ICT, super and the Head of the ICT Support Desk change a preliminary applicant's programme; an ICT Support
+     *  Agent only on a posting over the whole University that carries the capability (agents do not read this desk: said for completeness) */
+    private boolean mayChangeProgramme() {
+        String o = office();
+        if (CORRECTORS.contains(o)) return true;
+        if (!"ictagent".equals(o)) return false;
+        UUID me = AuditContextHolder.current().map(c -> c.actorId()).orElse(null);
+        return me != null && Boolean.TRUE.equals(jdbc.sql("SELECT global FROM helpdesk.agent_scope_for(:p, :c)").param("p", me)
+                .param("c", PrelimMigrationController.CHANGE).query(Boolean.class).optional().orElse(false));
+    }
+
+    /* ── V737: the preliminary programmes on the General Admissions dashboard ── */
+
+    /** each preliminary programme's figures for its own session, as its desk counts them (a programme's office: its own) */
+    @GetMapping("/overview")
+    @PreAuthorize(OVERVIEW_READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> overview() {
+        String o = office();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String route : PrelimMigrationController.ROUTES) {
+            Map<String, Object> p = jdbc.sql("SELECT route, name, office_code FROM admissions.prelim_programme WHERE route = :r").param("r", route)
+                    .query().listOfRows().stream().findFirst().orElse(null);
+            if (p == null || (ROUTE_OFFICES.contains(o) && !o.equals(p.get("office_code")))) continue;
+            String s = session(null, route);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("route", route);
+            m.put("name", p.get("name"));
+            m.put("session", s);
+            m.put("stats", PrelimApplicantService.json(jdbc.sql("SELECT admissions.prelim_stats(:route, :s, NULL, NULL)::text")
+                    .param("route", route).param("s", s).query(String.class).single()));
+            out.add(m);
+        }
         return out;
     }
 

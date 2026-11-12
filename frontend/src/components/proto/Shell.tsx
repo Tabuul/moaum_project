@@ -415,6 +415,8 @@ export const ROUTES: Record<string, string> = {
   "prelim/dashboard": "/preliminary",
   "prelim/config": "/preliminary/config",
   "prelim/reports": "/preliminary/reports",
+  /* V737: old-portal preliminary applicants migrated, their fees held for the Bursary, the programme corrected by ICT */
+  "t/prelimmigration": "/admissions/preliminary/migration",
   "cce/dashboard": "/cce",
   "cce/upload": "/cce/upload",
   "cce/imports": "/cce/imports",

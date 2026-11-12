@@ -7,6 +7,9 @@
  * for a correction, the O'Level verified (or found invalid), recommended by the Office, approved by someone else, not admitted
  * or rejected with the reason; the target (with its specialisation) or certificate course changed with a reason; the remediation recorded as it progresses. Every
  * step is the server's to allow: a refusal comes back with its reason.
+ * V737: what the application still needs; where an application came from the old portal (its old number, the day it was made,
+ * the upload), its old-portal fee and the Bursary's word on it; the programme changes between the two preliminary routes; and the
+ * Director of ICT's change of programme.
  */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
@@ -16,7 +19,9 @@ import { Btn, KvGrid, Note, Pil } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
-import { ACTION, ELIGIBILITY, REMEDIATION, STATE, TARGET_NOTE, VERIFICATION, labelOf, naira, pcall, remediationWords, when, type PrelimBlock } from "@/lib/preliminary";
+import { ACTION, ELIGIBILITY, REMEDIATION, STATE, TARGET_NOTE, VERIFICATION, labelOf, naira, pcall, remediationWords, when, type PrelimBlock, type PrelimLegacy } from "@/lib/preliminary";
+import { FEE_STATE, PAYMENT, legacyFeeOf, routeChangeOf, wordOf } from "@/lib/prelim-migration";
+import { PrelimProgrammeChange } from "@/components/preliminary/PrelimProgrammeChange";
 
 interface Detail {
   application: { id: string; application_no: string; session: string; surname: string; other_names: string; sex: string | null; email?: string; phone?: string;
@@ -25,6 +30,8 @@ interface Detail {
   documents: { id: string; kind: string; label: string; filename: string; content_type: string; bytes: number; uploaded_at: string; status: string; review_note: string | null }[];
   payments: { reference: string; kind: string; amount: number; generated_at: string; expires_at: string; confirmed_at: string | null; receipt_no: string | null; channel: string | null }[];
   letter: { number: string; version: number; issued_on: string } | null;
+  /* V737: where an application brought from the old portal came from, its old-portal fees, the programme changes, and whether the reader changes the programme */
+  legacy?: PrelimLegacy | null; legacyFees?: Record<string, unknown>[]; routeChanges?: Record<string, unknown>[]; mayChangeProgramme?: boolean;
 }
 
 export function PrelimDetail({ id, may, programme, onClose }: { id: string; may: { review: boolean; decide: boolean; recommend: boolean }; programme?: string; onClose: (changed: boolean) => void }) {
@@ -36,6 +43,8 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
   const [rem, setRem] = useState("");
   const [changed, setChanged] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [changing, setChanging] = useState(false);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     let live = true;
     void pcall<Detail>(`/api/v1/admissions/preliminary/applications/${id}`).then((r) => {
@@ -43,7 +52,7 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
       if (r.ok) { setD(r.data); setTarget(r.data.preliminary.targetId ?? ""); setSpec(r.data.preliminary.specialisationId ?? ""); setRem(r.data.preliminary.remediation.status ?? ""); } else setProblem(r.problem);
     });
     return () => { live = false; };
-  }, [id]);
+  }, [id, version]);
 
   async function post(key: string, path: string, body: unknown, reason: string) {
     setBusy(key);
@@ -74,14 +83,30 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
   const course = p.targetKind === "COURSE" || (info.targets.length > 0 && info.targets.every((t) => t.kind === "COURSE"));
   const chosen = info.targets.find((t) => t.id === target) ?? null;
   const area = info.targets.find((t) => t.id === p.targetId) ?? null;
+  const legacy = d.legacy ?? p.legacy ?? null;
+  const oldFees = (d.legacyFees ?? []).map(legacyFeeOf);
+  const changes = (d.routeChanges ?? []).map(routeChangeOf);
+  const decided = ["APPROVED", "ADMITTED", "NOT_ADMITTED", "REJECTED", "WITHDRAWN"].includes(st);
+  // the change of programme in place of the application (one dialog at a time), back to it when done
+  if (changing) {
+    return <PrelimProgrammeChange applicationId={id} fromRoute={p.route} applicant={{ name: `${a.surname}, ${a.other_names}`, applicationNo: a.application_no, legacyNo: legacy?.number ?? null }}
+      onClose={(done) => { setChanging(false); if (done) { setChanged(true); setVersion((v) => v + 1); } }} />;
+  }
 
   return (
-    <Modal wide title={`${a.surname}, ${a.other_names} · ${a.application_no}`} sub={`${programme ?? info.name} · ${a.session} · ${labelOf(STATE, st)[0]}${published ? " (published)" : ""}`}
+    <Modal wide title={`${a.surname}, ${a.other_names} · ${a.application_no}`} sub={`${info.name || programme} · ${a.session} · ${labelOf(STATE, st)[0]}${published ? " (published)" : ""}`}
       onClose={() => onClose(changed)}
       foot={<>
+        {d.mayChangeProgramme ? <Btn kind="secondary" disabled={busy !== null} onClick={() => setChanging(true)}>Change application programme</Btn> : null}
         <a className="btn btn--ghost btn--sm" href={`/applicant/preliminary/pdf/form?id=${id}`} target="_blank" rel="noopener">Print the application form</a>
         <Btn kind="secondary" onClick={() => onClose(changed)}>Close</Btn>
       </>}>
+      {p.problems.length && !decided ? (
+        <Note kind="info" title="What the application still needs">
+          <ul>{p.problems.map((x, i) => <li key={`${x.step}-${x.field}-${i}`}>{x.message}</li>)}</ul>
+        </Note>
+      ) : null}
+      {p.feeHeld ? <Note kind="info" title="Application fee held for the Bursary">{p.feeHeld}</Note> : null}
       <h3 className="h4">{attempted ? "Entry requirement" : "O’Level eligibility"}</h3>
       <div className="grid grid--2">
         <div className="card" style={{ padding: 10 }}>
@@ -116,6 +141,17 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
         ["Nationality", field("nationality")], ["Address", field("home_address")], ["Next of kin", a.next_of_kin ?? `${field("kin_name")} (${field("kin_relationship")})`],
         ...(a.email ? [["Email", a.email] as [string, string], ["Phone", a.phone ?? "—"] as [string, string]] : []), ["Started", when(a.created_at)], ["Submitted", p.submittedAt ? when(p.submittedAt) : "not yet"]]} />
 
+      {legacy ? (
+        <>
+          <h3 className="h4 mt-2">Old portal</h3>
+          <KvGrid cls="grid--3" pairs={[["Old application number", legacy.number], ["Applied on the old portal", legacy.appliedOn ?? "—"],
+            ["Upload", legacy.batchReference ? `${legacy.batchReference}${legacy.migratedAt ? ` · ${when(legacy.migratedAt)}` : ""}` : "—"],
+            ...(legacy.migratedBy ? [["Brought across by", `${legacy.migratedBy}${legacy.migratedOffice ? ` (${legacy.migratedOffice})` : ""}`] as [string, string]] : []),
+            ...(legacy.programmeAsWritten ? [["Programme as the old portal wrote it", legacy.programmeAsWritten] as [string, string]] : []),
+            ...(legacy.status || legacy.admission ? [["Old portal's status", [legacy.status, legacy.admission].filter(Boolean).join(" · ")] as [string, string]] : [])]} />
+        </>
+      ) : null}
+
       <h3 className="h4 mt-2">{course ? "Certificate course" : info.targetWord.charAt(0).toUpperCase() + info.targetWord.slice(1)}</h3>
       {course ? null : <div className="sub2 mb-1">{info.targetNote ?? TARGET_NOTE}</div>}
       <div className="row row--inline row--tight" style={{ flexWrap: "wrap" }}>
@@ -146,7 +182,14 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
       ])} />
 
       <h3 className="h4 mt-2">Payments</h3>
-      <DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Receipt", "Verified"]} rows={d.payments.map((x) => [x.kind === "APPLICATION" ? "Application fee" : x.kind, x.reference, naira(x.amount), x.receipt_no ?? "—", x.confirmed_at ? when(x.confirmed_at) : "not paid"])} />
+      <DTable noPrint pageSize={0} cols={["Fee", "Reference", "Amount|num", "Receipt", "Verified"]} rows={d.payments.map((x) => [x.kind === "APPLICATION" ? "Application fee" : x.kind, x.reference, naira(x.amount), x.receipt_no ?? "—", x.confirmed_at ? `${when(x.confirmed_at)}${x.channel ? ` · ${x.channel}` : ""}` : "not paid"])} />
+      {oldFees.length ? (
+        <DTable noPrint pageSize={0} cols={["Paid on the old portal", "Reference", "Amount|num", "Paid on", "Standing"]} rows={oldFees.map((x) => {
+          const w = wordOf(FEE_STATE, x.state);
+          return ["Application fee", x.reference || "none given", naira(x.amount), x.paidOn || "—",
+            <span key="s"><Pil kind={w[1]}>{w[0]}</Pil>{x.decidedAt ? <div className="sub2">{when(x.decidedAt)}{x.note ? ` · ${x.note}` : ""}</div> : null}</span>];
+        })} />
+      ) : null}
 
       {may.review && !published && st !== "WITHDRAWN" ? (
         <>
@@ -183,6 +226,14 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
 
       <h3 className="h4 mt-2">History</h3>
       <DTable noPrint pageSize={0} cols={["When", "What", "Office"]} rows={p.events.map((e) => [when(e.at), <span key="a">{ACTION[e.action] ?? e.action}{e.note ? <div className="sub2">{e.note}</div> : null}</span>, e.office ?? "—"])} />
+      {changes.length ? (
+        <DTable noPrint pageSize={0} cols={["Programme changed", "From", "To", "Reason", "Fee", "By"]} rows={changes.map((c) => {
+          const fee = wordOf(PAYMENT, c.feeStatus);
+          return [<span key="w">{when(c.at)}<div className="sub2">{c.reference}</div></span>, <span key="f">{c.fromName}{c.fromTarget ? <div className="sub2">{c.fromTarget}</div> : null}</span>, c.toName,
+            <span key="r" className="sub2">{c.result === "REFUSED" ? `Refused: ${c.refusal}. ` : ""}{c.reason}</span>, c.feeStatus ? <Pil key="p" kind={fee[1]}>{fee[0]}</Pil> : "—",
+            `${c.by || "—"}${c.office ? ` (${c.office})` : ""}`];
+        })} />
+      ) : null}
     </Modal>
   );
 }

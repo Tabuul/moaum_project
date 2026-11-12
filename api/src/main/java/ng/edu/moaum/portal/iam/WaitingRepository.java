@@ -31,8 +31,11 @@ class WaitingRepository {
                 WITH cur AS (SELECT name FROM policy.academic_session WHERE state = 'CURRENT')
                 SELECT
                   (SELECT count(*) FROM people.biodata_change WHERE state = 'PENDING') AS biochange,
+                  -- V737: the preliminary and proficiency programmes never go onto the register through the intake, so they
+                  -- are not waiting for it (as AdmissionCycleRepository.counts)
                   (SELECT count(*) FROM admissions.candidate c, cur
                      WHERE c.session = cur.name AND c.offer_state IN ('ADMITTED','ACCEPTED')
+                       AND c.entry_mode NOT IN ('PRELIMINARY','PROFICIENCY')
                        AND NOT EXISTS (SELECT 1 FROM people.student st WHERE st.candidate_id = c.id)) AS admissions,
                   -- admission settings belong to the intake session (the next planned one), not the
                   -- current session: students are admitted INTO the coming session while the current

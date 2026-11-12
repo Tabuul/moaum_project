@@ -17,15 +17,20 @@ import { SearchSelect } from "@/components/proto/SearchSelect";
 import { useQueryNav } from "@/lib/query-nav";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { ELIGIBILITY, REMEDIATION, STATE, VERIFICATION, labelOf, naira, pcall, prelimSerial, when, type PrelimDeskRoute, type PrelimRow } from "@/lib/preliminary";
+import { day } from "@/lib/jupeb";
 import { PrelimDetail } from "./PrelimDetail";
 
 export interface DeskFilters {
   route: string; group: string; session: string; view: string; q: string; target: string; sittings: string; eligibility: string; remediation: string; state: string; paid: string;
   sex: string; origin: string; lga: string; from: string; to: string; sort: string; size: string;
+  /* V737: the application number, the name, how the fee stands (paid, held for the Bursary, unpaid), the day applied, the admission, the old portal */
+  appNo: string; name: string; payment: string; appliedFrom: string; appliedTo: string; admission: string; migrated: string;
 }
 export interface PrelimStats {
   total: number; paid: number; submitted: number; incomplete: number; pendingReview: number; underReview: number; correction: number; eligible: number;
   notEligible: number; remediationRequired: number; admitted: number; notAdmitted: number; withdrawn: number;
+  /* V737: made this week, the offer accepted, something still outstanding, a fee held for the Bursary, brought from the old portal */
+  new?: number; accepted?: number; outstanding?: number; feeHeld?: number; migrated?: number;
   byTarget: { targetId: string; programmeCode: string | null; name: string; group: string; n: number }[]; bySittings: { sittings: number; n: number }[];
   byGroup?: { group: string; n: number }[]; bySpecialisation?: { name: string; n: number }[];
 }
@@ -41,7 +46,13 @@ const TILES: [keyof PrelimStats, string, string][] = [
   ["incomplete", "Incomplete", "started, not yet submitted"], ["pendingReview", "Pending review", "submitted, not yet taken up"], ["underReview", "Under review", "taken up, no outcome published"],
   ["eligible", "Eligible", "meets the entry requirement"], ["notEligible", "Not eligible", "below it, or no released result"], ["remediationRequired", "Remediation required", "to make up before completion"],
   ["admitted", "Admitted", "published"], ["notAdmitted", "Not admitted", "published"], ["withdrawn", "Withdrawn", "by the applicant"],
+  /* V737: shown where the server counts them */
+  ["new", "New this week", "applications made in the last 7 days"], ["accepted", "Accepted", "the admission accepted"],
+  ["outstanding", "Outstanding requirements", "fee, document, result, target or a correction"], ["feeHeld", "Fee held for the Bursary", "paid on the old portal, being verified"],
+  ["migrated", "From the old portal", "brought across with the old number"],
 ];
+const PAYMENTS: [string, string][] = [["PAID", "Paid"], ["HELD", "Held for the Bursary"], ["UNPAID", "Not paid"]];
+const ADMISSIONS: [string, string][] = [["ADMITTED", "Admitted"], ["ACCEPTED", "Accepted"], ["NOT_ADMITTED", "Not admitted"], ["PENDING", "Pending"]];
 /** the programme's reports: each the list under a filter, exported */
 const reportsOf = (name: string, course: boolean): [string, string, Partial<DeskFilters>][] => [
   [`${name} application report`, "Every application of the session", {}],
@@ -134,7 +145,7 @@ export function PrelimDesk({ summary, list, filters, page, generatedBy, routes }
         {summary.missingTargets ? <Pil kind="warn">{`${summary.missingTargets} target programme${summary.missingTargets === 1 ? "" : "s"} missing from the register`}</Pil> : null}
         {here?.office ? <span className="sub2">· {here.office}</span> : null}
       </div>
-      <Tiles items={TILES.map(([k, label, sub]) => [
+      <Tiles items={TILES.filter(([k]) => s[k] !== undefined).map(([k, label, sub]) => [
         <button key={k} type="button" className="lnk" aria-pressed={filters.view === k} style={{ font: "inherit", padding: 0, background: "none", border: 0, cursor: "pointer", color: "inherit", fontWeight: filters.view === k ? 800 : undefined }}
           onClick={() => go(href({ view: filters.view === k ? "" : k }))}>{label}{filters.view === k ? " ✓" : ""}</button>,
         String(s[k] ?? 0), null, sub] as [React.ReactNode, React.ReactNode, string | null, string])} />
@@ -159,13 +170,19 @@ export function PrelimDesk({ summary, list, filters, page, generatedBy, routes }
               options={Object.entries(REMEDIATION).map(([k, [l]]) => ({ value: k, label: l }))} /></Field>
             <Field id="pf-s" label="Status"><SearchSelect id="pf-s" value={f.state} allLabel="Any status" onChange={(v) => go(href({ state: v }))}
               options={Object.entries(STATE).map(([k, [l]]) => ({ value: k, label: l }))} /></Field>
-            <Field id="pf-p" label="Payment"><select id="pf-p" className="ctl" value={f.paid} onChange={(e) => go(href({ paid: e.target.value }))}><option value="">Paid or not</option><option value="true">Paid</option><option value="false">Not paid</option></select></Field>
+            <Field id="pf-no" label="Application number"><input id="pf-no" className="ctl" placeholder="This portal's or the old portal's" value={f.appNo} onChange={(e) => setF({ ...f, appNo: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") go(href({ appNo: f.appNo.trim() })); }} onBlur={() => f.appNo !== filters.appNo && go(href({ appNo: f.appNo.trim() }))} /></Field>
+            <Field id="pf-nm" label="Name"><input id="pf-nm" className="ctl" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") go(href({ name: f.name.trim() })); }} onBlur={() => f.name !== filters.name && go(href({ name: f.name.trim() }))} /></Field>
+            <Field id="pf-p" label="Payment"><select id="pf-p" className="ctl" value={filters.payment} onChange={(e) => go(href({ payment: e.target.value, paid: "" }))}><option value="">Any payment status</option>{PAYMENTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+            <Field id="pf-adm" label="Admission"><select id="pf-adm" className="ctl" value={filters.admission} onChange={(e) => go(href({ admission: e.target.value }))}><option value="">Any admission status</option>{ADMISSIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+            <Field id="pf-mig" label="Old portal"><select id="pf-mig" className="ctl" value={filters.migrated} onChange={(e) => go(href({ migrated: e.target.value }))}><option value="">Either</option><option value="true">From the old portal</option><option value="false">Applied on this portal</option></select></Field>
             <Field id="pf-x" label="Sex"><select id="pf-x" className="ctl" value={f.sex} onChange={(e) => go(href({ sex: e.target.value }))}><option value="">Both</option><option value="F">Female</option><option value="M">Male</option></select></Field>
             <Field id="pf-g" label="O'Level sittings"><select id="pf-g" className="ctl" value={f.sittings} onChange={(e) => go(href({ sittings: e.target.value }))}><option value="">Any</option><option value="1">One</option><option value="2">Two</option><option value="0">None given</option></select></Field>
             <Field id="pf-o" label="State of origin"><input id="pf-o" className="ctl" value={f.origin} onChange={(e) => setF({ ...f, origin: e.target.value })} onBlur={() => f.origin !== filters.origin && go(href({ origin: f.origin }))} /></Field>
             <Field id="pf-l" label="LGA"><input id="pf-l" className="ctl" value={f.lga} onChange={(e) => setF({ ...f, lga: e.target.value })} onBlur={() => f.lga !== filters.lga && go(href({ lga: f.lga }))} /></Field>
             <Field id="pf-from" label="Submitted from"><input id="pf-from" type="date" className="ctl" value={f.from} onChange={(e) => go(href({ from: e.target.value }))} /></Field>
             <Field id="pf-to" label="Submitted to"><input id="pf-to" type="date" className="ctl" value={f.to} onChange={(e) => go(href({ to: e.target.value }))} /></Field>
+            <Field id="pf-af" label="Applied from"><input id="pf-af" type="date" className="ctl" value={filters.appliedFrom} onChange={(e) => go(href({ appliedFrom: e.target.value }))} /></Field>
+            <Field id="pf-at" label="Applied to"><input id="pf-at" type="date" className="ctl" value={filters.appliedTo} onChange={(e) => go(href({ appliedTo: e.target.value }))} /></Field>
           </div>
           <div className="row row--inline row--tight mt-2" style={{ flexWrap: "wrap" }}>
             <Field id="pf-sess" label="Session"><select id="pf-sess" className="ctl" value={filters.session || summary.session} onChange={(e) => go(href({ session: e.target.value }))}>{summary.sessions.map((x) => <option key={x} value={x}>{x}</option>)}</select></Field>
@@ -175,17 +192,18 @@ export function PrelimDesk({ summary, list, filters, page, generatedBy, routes }
             <span className="sub2">{list.total} application{list.total === 1 ? "" : "s"}</span>
           </div>
           {list.rows.length === 0 ? <Note kind="info" title="No application answers these filters" /> : (
-            <DTable noPrint pageSize={0} cols={["S/N|num", "Application no", "Applicant", targetWord, "Credits|num", "Core|num", "Sittings|num", "Eligibility", "Remediation", "Payment", "Status", "Submitted", ""]}
+            <DTable noPrint pageSize={0} cols={["S/N|num", "Application no", "Applicant", targetWord, "Credits|num", "Core|num", "Sittings|num", "Eligibility", "Remediation", "Payment", "Status", "Applied", "Submitted", ""]}
               rows={list.rows.map((r, i) => [
-                (page - 1) * size + i + 1, <span key="n" className="tnum">{r.application_no}</span>,
+                (page - 1) * size + i + 1, <span key="n" className="tnum">{r.application_no}{r.legacy_no ? <div className="sub2">old portal: {r.legacy_no}</div> : null}</span>,
                 <span key="a"><b>{r.surname}</b>, {r.other_names}<div className="sub2">{r.sex === "F" ? "Female" : r.sex === "M" ? "Male" : ""}{r.state_of_origin ? ` · ${r.state_of_origin}` : ""}</div></span>,
                 r.target_name ? <span key="t">{r.target_name}{r.target_group && r.target_group !== r.target_name || r.specialisation_name ? <div className="sub2">{[r.target_group !== r.target_name ? r.target_group : null, r.specialisation_name].filter(Boolean).join(" · ")}</div> : null}</span>
                   : <span key="t" className="sub2">not chosen</span>,
                 r.total_credits ?? "—", r.core_credits ?? "—", r.sittings ?? 0,
                 <Pil key="e" kind={labelOf(ELIGIBILITY, r.eligibility_status)[1] as "ok"}>{labelOf(ELIGIBILITY, r.eligibility_status)[0]}</Pil>,
                 r.remediation_status ? <Pil key="r" kind={labelOf(REMEDIATION, r.remediation_status)[1] as "ok"}>{labelOf(REMEDIATION, r.remediation_status)[0]}</Pil> : "—",
-                r.paid ? <Pil key="p" kind="ok">Paid</Pil> : <Pil key="p" kind="grey">Not paid</Pil>,
-                <span key="s">{statusWord(r)}</span>,
+                r.payment === "HELD" ? <Pil key="p" kind="warn">Held for the Bursary</Pil> : (r.payment ? r.payment === "PAID" : r.paid) ? <Pil key="p" kind="ok">Paid</Pil> : <Pil key="p" kind="grey">Not paid</Pil>,
+                <span key="s">{statusWord(r)}{r.offer_state === "ACCEPTED" ? <div className="sub2">accepted</div> : null}</span>,
+                r.applied_on ? day(r.applied_on) : r.created_at ? day(r.created_at) : "—",
                 r.submitted_at ? when(r.submitted_at) : "—",
                 <span key="x" className="row row--inline row--tight"><Btn kind="secondary" size="sm" onClick={() => setOpen(r.id)}>Open</Btn>
                   <a className="btn btn--ghost btn--sm" href={`/applicant/preliminary/pdf/form?id=${r.id}`} target="_blank" rel="noopener">Print</a></span>,

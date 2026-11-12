@@ -6,6 +6,7 @@ import { Admissions } from "./Admissions";
 import { ApplicantsDesk, type Desk } from "./ApplicantsDesk";
 import { Reconsiderations } from "./Reconsiderations";
 import { CrossFacultyTold } from "./CrossFacultyTold";
+import { PrelimProgrammes, type PrelimOverview } from "./PrelimProgrammes";
 import { LinkBtn, Note, Panel, Tiles } from "@/components/proto/ui";
 import type { Pipeline } from "@/lib/screening";
 import { defaultSession } from "@/lib/sessions-server";
@@ -24,7 +25,11 @@ export default async function AdmissionsPage({ searchParams }: { searchParams: P
     api<Desk>(`/api/v1/admissions/sessions/${session}/applicants`),
   ]);
   const office = me.ok ? me.data.activeOffice : null;
-  const pipeline = await api<Pipeline>(`/api/v1/admissions/sessions/${session}/pipeline`);
+  // V737: the preliminary programmes' panel, shown only to the offices the overview answers
+  const [pipeline, prelim] = await Promise.all([
+    api<Pipeline>(`/api/v1/admissions/sessions/${session}/pipeline`),
+    api<PrelimOverview[]>("/api/v1/admissions/preliminary/overview"),
+  ]);
   return (
     <Shell route="t/admissions" me={me.ok ? me.data : null}>
       {cycle.ok ? <Admissions cycle={cycle.data} actingOffice={office} /> : <ProblemNotice problem={cycle.problem} />}
@@ -46,6 +51,7 @@ export default async function AdmissionsPage({ searchParams }: { searchParams: P
           ]} />
         </Panel>
       ) : null}
+      {prelim.ok && Array.isArray(prelim.data) ? <PrelimProgrammes rows={prelim.data} /> : null}
       <CrossFacultyTold session={session} actingOffice={office} />
       <Reconsiderations session={session} actingOffice={office} />
     </Shell>

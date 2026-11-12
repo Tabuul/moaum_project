@@ -135,7 +135,7 @@ public class ApplicantService {
                     new DomainRuleViolation.Remedy("Ask for a new one from the sign-in page; it is good for an hour and used once.", "You"));
         }
         ApplicantRepository.Account owner = repo.byId(r.accountId()).orElse(null);
-        if (owner != null && ownNumber(password, owner.jambKey(), owner.applicationNo())) {   // V428
+        if (owner != null && ownNumber(password, owner.jambKey(), owner.applicationNo(), owner.legacyNo())) {   // V428; V737: the old portal's number too
             throw numberIsNoPassword();
         }
         String hash = encoder.encode(password);
@@ -250,8 +250,11 @@ public class ApplicantService {
     /** V706: an account on its first password (the sentinel: migrated, or reset by the University) opens on the JAMB number, or on the
      *  application number for an applicant with none (the preliminary and proficiency routes) — never once a password is chosen */
     static boolean isDefaultNumber(ApplicantRepository.Account a, String password) {
+        String p = password == null ? "" : password.trim();
         String n = a.jambKey() != null && !a.jambKey().isBlank() ? a.jambKey() : a.applicationNo();
-        return n != null && !n.isBlank() && n.trim().equalsIgnoreCase(password == null ? "" : password.trim());
+        if (n != null && !n.isBlank() && n.trim().equalsIgnoreCase(p)) return true;
+        // V737: a preliminary applicant brought from the old portal opens on either number — this portal's or the old portal's (as V709 for PG)
+        return a.legacyNo() != null && !a.legacyNo().isBlank() && !p.isEmpty() && a.legacyNo().trim().equalsIgnoreCase(p);
     }
 
     private static DomainRuleViolation numberIsNoPassword() {
@@ -280,7 +283,7 @@ public class ApplicantService {
             // application number opens nothing (V428). V706: a reset by the University puts the account back on the sentinel, and an
             // applicant with no JAMB number signs in on the application number
             boolean sentinel = "SET_ON_FIRST_LOGIN".equals(a.passwordHash());
-            if (!sentinel && ownNumber(password, a.jambKey(), a.applicationNo())) {
+            if (!sentinel && ownNumber(password, a.jambKey(), a.applicationNo(), a.legacyNo())) {   // V737: the old portal's number too
                 repo.event(identifier, a.id(), "OWN_NUMBER_REFUSED", ip);
                 throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
                 return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your JAMB or application number is no longer your password.",
@@ -344,7 +347,7 @@ public class ApplicantService {
             throw new DomainRuleViolation("APP_PASSWORD_SHORT", "Eight characters at the very least.",
                     new DomainRuleViolation.Remedy("Choose a longer password.", "You"));
         }
-        if (ownNumber(next, a.jambKey(), a.applicationNo())) {
+        if (ownNumber(next, a.jambKey(), a.applicationNo(), a.legacyNo())) {
             throw numberIsNoPassword();
         }
         if (next.equals(current)) {

@@ -9,8 +9,9 @@ import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
  *   12 digits + 2–3 letters, APP/…    an applicant, on the JAMB or application number
  *   anything else                     a member of staff, on the staff number or email —
  *                                     and, failing that, an applicant on an email address, a
- *                                     postgraduate applicant on the old portal's number (V709), or a JUPEB
- *                                     student uploaded from the old portal on its number (V718)
+ *                                     postgraduate applicant on the old portal's number (V709), a JUPEB
+ *                                     student uploaded from the old portal on its number (V718), or a
+ *                                     preliminary applicant migrated from the old portal on its number (V737)
  * The token goes into a cookie the browser cannot read; the office cookie says
  * which side of the portal opens.
  */
@@ -29,7 +30,8 @@ const JUPEB_APPLICATION = /^JUPEB\/APP\/[0-9]{4}\/[0-9]{6}$/i;
 const JUPEB_COOKIE = "moaum_jupeb";
 /* a legacy old-portal matriculation number carried over from the old portal — BSU/…, MOAU/…, and the
    like: two-to-six letters, one to four more segments, then digits. It opens the student door too, so a
-   migrated student signs in; a rare staff number of the same shape falls back to the staff door. */
+   migrated student signs in; a rare staff number of the same shape falls back to the staff door, then the postgraduate and
+   applicant doors (an old-portal application number of the same shape, V709 and V737). */
 const LEGACY_MATRIC = /^[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7}$/i;
 
 type Kind = "staff" | "student" | "applicant" | "pgapplicant" | "jupeb";
@@ -104,8 +106,21 @@ export async function POST(request: NextRequest) {
         if (pg && pg.ok) {
           r = pg;
           kind = "pgapplicant";
+        } else {
+          if (pg && (await knowsTheAccount(pg))) known.push(pg);
+          /* V737: and so may an old-portal preliminary application number (OLD/PRE/2025/000101 and the like), which the applicant
+             door finds a migrated applicant by */
+          const prelim = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+          if (prelim && prelim.ok) {
+            r = prelim;
+            kind = "applicant";
+          } else if (prelim && (await knowsTheAccount(prelim))) {
+            known.push(prelim);
+          }
         }
       }
+      /* V718: no door opened — the one that knows the account answers, as below */
+      if (r && !r.ok && known.length > 0 && !(await knowsTheAccount(r))) r = known[0];
     }
   } else if (kind === "applicant") {
     /* the same JAMB/application number opens the student dashboard once the candidate is on the
@@ -168,8 +183,17 @@ export async function POST(request: NextRequest) {
         if (jupeb && jupeb.ok) {
           r = jupeb;
           kind = "jupeb";
-        } else if (jupeb && (await knowsTheAccount(jupeb))) {
-          known.push(jupeb);
+        } else {
+          if (jupeb && (await knowsTheAccount(jupeb))) known.push(jupeb);
+          /* V737: or the old portal's preliminary application number (OPT/632857108/1, S0022… and the like), which the applicant
+             door finds a migrated preliminary applicant by */
+          const prelim = await upstream("/api/v1/applicant/sign-in", { identifier, password }, request);
+          if (prelim && prelim.ok) {
+            r = prelim;
+            kind = "applicant";
+          } else if (prelim && (await knowsTheAccount(prelim))) {
+            known.push(prelim);
+          }
         }
       }
     }

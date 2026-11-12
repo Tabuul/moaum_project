@@ -83,11 +83,15 @@ public class PasswordResetService {
             Map<String, Object> s = student.get(0);
             return new Subject("STUDENT", (UUID) s.get("id"), (String) s.get("email"), (String) s.get("phone"), "student account");
         }
-        // applicant: by JAMB number, email or application number
+        // applicant: by JAMB number, email or application number; V737: or a migrated preliminary applicant's old-portal number, this
+        // portal's own numbers first (as the sign-in, ApplicantRepository.byIdentifier)
         var applicant = jdbc.sql("""
                 SELECT a.id, a.email, a.phone FROM admissions.applicant_account a
                   JOIN admissions.application ap ON ap.account_id = a.id
+                  LEFT JOIN admissions.prelim_legacy_application pl ON pl.application_id = ap.id
                  WHERE upper(a.jamb_key) = :k OR lower(a.email) = :e OR upper(ap.application_no) = :k
+                    OR upper(btrim(pl.legacy_application_no)) = :k   -- V737: the old portal's application number too
+                 ORDER BY coalesce(upper(a.jamb_key) = :k OR lower(a.email) = :e OR upper(ap.application_no) = :k, false) DESC
                  LIMIT 1
                 """).param("k", upper).param("e", lower).query().listOfRows();
         if (!applicant.isEmpty()) {

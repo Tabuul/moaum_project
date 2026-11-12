@@ -42,6 +42,16 @@ export interface PrelimBlock {
   eligibility: PrelimEligibility; remediation: PrelimRemediation; olevelVerification: string | null;
   fields: { field: string; required: boolean; label: string | null; value: string | null }[];
   olevel: PrelimOlevel[]; problems: { step: string; field: string; message: string }[]; events: PrelimEvent[]; programmeInfo: PrelimPublic;
+  /** V737: an application brought from the old portal (the old number, the day it was made there; for an office also where it came from) */
+  legacy?: PrelimLegacy | null;
+  /** V737: what the applicant reads while a fee paid on the old portal waits for the Bursary */
+  feeHeld?: string | null;
+}
+/** V737: the old portal's facts of an application brought across */
+export interface PrelimLegacy {
+  number: string; appliedOn: string | null; source?: string | null; batchReference?: string | null; migratedAt?: string | null; migratedBy?: string | null;
+  migratedOffice?: string | null; routeAtImport?: string | null; jambRegNo?: string | null; examNumber?: string | null; programmeAsWritten?: string | null;
+  targetAsWritten?: string | null; status?: string | null; admission?: string | null; toldAt?: string | null;
 }
 export interface PrelimView extends Application { preliminary: PrelimBlock }
 
@@ -53,6 +63,8 @@ export interface PrelimRow {
   eligibility_status: string; remediation_status: string | null; remediation_subjects: string[]; olevel_verification: string; paid: boolean;
   fee_confirmed_at: string | null; state: string; published_at: string | null; submitted_at: string | null; session: string; created_at: string;
   state_of_origin: string | null; lga: string | null; email?: string; phone?: string;
+  /** V737: the old portal's number of an application brought across, the day it was made, how its fee stands, the offer */
+  legacy_no?: string | null; applied_on?: string | null; payment?: "PAID" | "HELD" | "UNPAID" | string | null; offer_state?: string | null;
 }
 
 export const ELIGIBILITY: Record<string, [string, "ok" | "warn" | "bad" | "info" | "grey"]> = {
@@ -78,6 +90,9 @@ export const ACTION: Record<string, string> = {
   NOT_ADMIT: "Not admitted", REJECT: "Rejected", REOPEN: "Reopened", PUBLISHED: "Outcome published", WITHDRAWN: "Withdrawn",
   TARGET_SET: "Target chosen", TARGET_CHANGED: "Target changed", OLEVEL_VERIFIED: "O'Level verified", OLEVEL_INVALID: "O'Level found invalid",
   DOCUMENT_ACCEPTED: "Document accepted", DOCUMENT_REJECTED: "Document rejected",
+  MIGRATED: "Brought across from the old portal", MIGRATION_UPDATED: "Missing details filled in from the old portal", ROUTE_CHANGED: "Programme changed",
+  OLD_FEE_HELD: "Old-portal fee held for the Bursary", OLD_FEE_VERIFIED: "Old-portal fee verified by the Bursary", OLD_FEE_REJECTED: "Old-portal fee not verified", OLD_FEE_REVERSED: "Old-portal fee verification reversed by the Bursary",
+  OLD_PORTAL_STATE: "Moved forward to where the old portal had it", OLD_PORTAL_ACCEPTED: "Admission accepted on the old portal",
   REMEDIATION_NOT_REQUIRED: "Remediation: not required", REMEDIATION_REQUIRED: "Remediation: required", REMEDIATION_IN_PROGRESS: "Remediation: in progress",
   REMEDIATION_COMPLETED: "Remediation: completed", REMEDIATION_NOT_COMPLETED: "Remediation: not completed", REMEDIATION_REQUIRES_REVIEW: "Remediation: under review",
 };

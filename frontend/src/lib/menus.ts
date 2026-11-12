@@ -724,6 +724,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/admissions", "icon": "doc", "label": "Report on Admissions" },
           { "id": "t/admissionchecking", "icon": "check", "label": "Admission Status Checking" },
           { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary & Proficiency Programmes" },
+          { "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Migration" },
           { "id": "prelim/config", "icon": "book", "label": "Preliminary & Proficiency Settings" }
         ]
       },
@@ -815,6 +816,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/legacygst", "icon": "swap", "label": "Old GST Payments" },
           { "id": "t/gstunpaid", "icon": "alert", "label": "GST Fee Unpaid" },
           { "id": "t/pgmigration", "icon": "swap", "label": "Old PG Application Fees" },
+          { "id": "t/prelimmigration", "icon": "swap", "label": "Old Preliminary Application Fees" },
           { "id": "t/gateways", "icon": "card", "label": "Payment Gateways", "badge": "!" },
           { "id": "t/hanging", "icon": "alert", "label": "Hanging Payments", "badge": "7" },
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },
@@ -1007,6 +1009,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
+          { "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Migration" },
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
           { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" },
           { "id": "t/applicantpw", "icon": "shield", "label": "Applicant Password Reset" },
@@ -1533,6 +1536,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/compliance", "icon": "user", "label": "Biodata Compliance" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/migration", "icon": "box", "label": "Data Migration", "badge": "!" },
+          { "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Migration" },
           { "id": "t/dobfromfile", "icon": "calendar", "label": "Dates of Birth (Old Portal)" },
           { "id": "t/platform", "icon": "server", "label": "Platform" },
           { "id": "t/institution", "icon": "doc", "label": "Institution Profile" },
@@ -1797,7 +1801,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/putme", "icon": "doc", "label": "Post-UTME Scores" },
           { "id": "t/paidapplicants", "icon": "chart", "label": "Paid Post-UTME Applicants" },
           { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
-          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" }
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
+          { "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Migration" },
+          { "id": "prelim/dashboard", "icon": "cap", "label": "Preliminary Applicants" }
         ]
       },
       {
@@ -2341,7 +2347,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "prelim/dashboard", "icon": "home", "label": "Preliminary Science" },
           { "id": "prelim/reports", "icon": "chart", "label": "Preliminary Science Reports" },
           { "id": "t/finanalytics", "icon": "chart", "label": "Payments Report" },
-          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/prelimmigration", "icon": "box", "label": "Old-Portal Applicants" }
         ]
       },
       {
@@ -2368,7 +2375,8 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "prelim/dashboard", "icon": "home", "label": "Applications" },
           { "id": "prelim/reports", "icon": "chart", "label": "Reports" },
-          { "id": "t/studentquery", "icon": "user", "label": "Student Query" }
+          { "id": "t/studentquery", "icon": "user", "label": "Student Query" },
+          { "id": "t/prelimmigration", "icon": "box", "label": "Old-Portal Applicants" }
         ]
       },
       {
@@ -3120,6 +3128,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/allcourses", "icon": "book", "label": "Course Lookup" },
 { "id": "t/coursechanges", "icon": "clock", "label": "Course Code & Title Changes" },
 { "id": "t/programmecodechanges", "icon": "clock", "label": "Programme Code Changes" },
+{ "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Migration" },
 { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/helpdeskagents", "icon": "user", "label": "Support Agents & Queues" },
           { "id": "t/helpdeskreports", "icon": "chart", "label": "ICT Support Reports" },
@@ -3165,6 +3174,7 @@ export const MENUS: Record<string, Menu> = {
 { "id": "t/allcourses", "icon": "book", "label": "Course Lookup" },
 { "id": "t/coursechanges", "icon": "clock", "label": "Course Code & Title Changes" },
 { "id": "t/programmecodechanges", "icon": "clock", "label": "Programme Code Changes" },
+{ "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Migration" },
 { "id": "t/structurecheck", "icon": "check", "label": "Structure Checks" },
           { "id": "t/search", "icon": "user", "label": "Search" }
         ]

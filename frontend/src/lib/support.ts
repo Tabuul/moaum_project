@@ -33,6 +33,8 @@ export const CAPABILITIES: Record<string, [string, string]> = {
   EDIT_COURSE_CODE: ["Change a course's code", "Correct a course's code with a reason, the impact shown first — the same course, everything on it follows; within the posting's scope"],
   EDIT_COURSE_TITLE: ["Change a course's title", "Correct a course's title with a reason, the impact shown first — the same course; within the posting's scope"],
   EDIT_PROGRAMME_CODE: ["Change a programme's code", "Correct a programme's code with a reason, the impact shown first — the same programme under the new code, every student and record following, the old code kept as an alias; within the posting's scope"],
+  MIGRATE_PRELIM_APPLICANTS: ["Upload old-portal preliminary applicants", "Upload, check and import the old portal's Preliminary Technology & Industrial Studies and Preliminary Science applicants, each into its own programme — a posting over the whole University only; the fees stay the Bursary's to verify"],
+  CHANGE_PRELIM_PROGRAMME: ["Change a preliminary applicant's programme", "Move an applicant between the two preliminary programmes with a reason — the same application, number and fee, the history kept; refused once decided — a posting over the whole University only"],
 };
 export const CAPABILITY_CODES = Object.keys(CAPABILITIES);
 

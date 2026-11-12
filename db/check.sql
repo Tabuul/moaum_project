@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 571
+\set EXPECTED 572
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -33709,6 +33709,247 @@ BEGIN
       coalesce(msg = 'bulk none | after taking back none/CANCELLED | credit 55000.00 programme CANCELLED'
                      || ' | realloc refused archive refused | inlined true pg 800 standing none | merged MERGED | before first HFA_BEFORE_FIRST_YEAR', false),
       msg);
+END $$;
+
+-- ── V737: old-portal preliminary applicants migrated programme by programme, their fees held for the Bursary, the programme corrected by ICT ──
+-- Made-up applicants (CHECKVSEVEN…) in each route's own session. The Science file: one ready (its fee held), one with no email (a
+-- placeholder sign-in), one whose O'Level grade is not one (an error). The Technology file: one ready (its fee held), one missing its
+-- surname (an error), the first's old number again (a duplicate), one naming Preliminary Science (a conflict), one admitted on the old
+-- portal (published admitted, with no second review), the Science applicant again under another number (a possible same applicant,
+-- held for review). Each lands on its own route with this portal's APP number and the old number kept; the held fee blocks a new
+-- reference; ICT and the uploader are refused and another Bursary officer verifies (the old reference posted, the fee confirmed, one
+-- reference); the same file again changes nothing; ICT moves the Technology applicant to Science (the same application, number and
+-- fees; the route, the programme and the history changed); a published application is refused and the refusal recorded; an ICT
+-- Support agent without the capability is refused both; a batch is never deleted. And: a created applicant signs in first on a
+-- number and then chooses a password; the Bursary's reversal of the verified posting rejects the old fee again (unpaid); a fee the
+-- Bursary rejected (it came with no reference) is not held again when the file comes back filling in details, and the applicant may
+-- pay; an old number shaped like this portal's APP number is refused; the office's routes narrow a search. The block undoes its writes.
+DO $$
+DECLARE up uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); agent uuid := gen_random_uuid(); v_err text;
+        bs uuid; bt uuid; bt2 uuid; rows_t jsonb; v_fee text; s1 uuid; s2 uuid; t1 uuid; t5 uuid; t1_no text;
+        s_ver text; t_ver text; t_codes text; landed text; s2_mail text; refused text; office_refused text; same_officer text;
+        posted text; n_refs int; fee_conf boolean; adm text; seen text; again text; cnt_before int; cnt_after int;
+        fees_before int; fees_after int; moved text; hist int; pub_refused text; pub_recorded int; agent_refused text; agent_change text;
+        del_refused text; stats jsonb;
+        first_pw text; reversed text; bs3 uuid; bs4 uuid; rows_s jsonb; s4 uuid; portal_no text; rehold text; routed text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V737 check: preliminary migration', true);
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (up, 'CHK/V737/U', 'CHECKV737', 'Uploader'), (bur, 'CHK/V737/B', 'CHECKV737', 'Bursar'), (agent, 'CHK/V737/A', 'CHECKV737', 'Agent');
+        v_fee := coalesce((SELECT (f.application_fee + f.portal_charge)::text FROM admissions.route_fee_rule(policy.route_session('PRELIMINARY_SCIENCE'), 'PRELIMINARY_SCIENCE') f), '5000');
+
+        -- ── the Science file ──
+        bs := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'C:\fakepath\preliminary science.xlsx', repeat('7', 64), 3, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bs, 1, jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'CHK/PS/737/0001', 'surname', 'CHECKVSEVEN', 'firstName', 'Sciencia', 'gender', 'Female', 'dateOfBirth', '14/02/2005',
+                               'email', 'v737.s1@check.test', 'phone', '0809 737 0101', 'programme', 'Preliminary Science', 'target', 'B.Sc Computer Science',
+                               'olevel1Body', 'WAEC', 'olevel1Year', '2023', 'olevel1Number', '9737000101',
+                               'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Chemistry:C6; Biology:B2', 'applicationDate', '01/09/2026',
+                               'paymentReference', 'OLDPAY-737-S1', 'amountPaid', v_fee, 'paymentDate', '02/09/2026', 'paymentStatus', 'Paid', 'applicationStatus', 'Submitted'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/PS/737/0002', 'surname', 'CHECKVSEVEN', 'firstName', 'Nomail', 'gender', 'M', 'dateOfBirth', '2004-05-06',
+                               'phone', '08097370102', 'paymentStatus', 'Not paid', 'applicationStatus', 'Draft'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/PS/737/0003', 'surname', 'CHECKVSEVEN', 'firstName', 'Badgrade', 'gender', 'F', 'dateOfBirth', '2004-05-07',
+                               'email', 'v737.s3@check.test', 'phone', '08097370103', 'olevel1Body', 'NECO', 'olevel1Year', '2022', 'olevel1Number', '9737000103',
+                               'olevel1Results', 'Mathematics:Z9', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(bs, 1, 3);
+        SELECT string_agg(r.verdict, ',' ORDER BY r.row_no) INTO s_ver FROM admissions.prelim_migration_row r WHERE r.batch_id = bs;
+        PERFORM admissions.prelim_migration_import(bs, 1, 3);
+        PERFORM admissions.prelim_migration_finish(bs);
+
+        -- ── the Technology file ──
+        rows_t := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'CHK/PT/737/0001', 'surname', 'CHECKVSEVEN', 'firstName', 'Technica', 'gender', 'Female', 'dateOfBirth', '12/03/2004',
+                               'email', 'v737.t1@check.test', 'phone', '08097370001', 'programme', 'Preliminary Technology & Industrial Studies', 'target', 'Industrial Technology',
+                               'specialisation', 'Automobile Technology', 'olevel1Body', 'WAEC', 'olevel1Qualification', 'SSCE', 'olevel1Year', '2022', 'olevel1Number', '9737000001',
+                               'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Technical Drawing:C6; Chemistry:B2', 'applicationDate', '05/09/2026',
+                               'paymentReference', 'OLDPAY-737-T1', 'amountPaid', v_fee, 'paymentDate', '06/09/2026', 'paymentStatus', 'Paid', 'applicationStatus', 'Submitted'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/PT/737/0002', 'firstName', 'Nosurname', 'gender', 'M', 'dateOfBirth', '01/01/2004', 'email', 'v737.t2@check.test',
+                               'phone', '08097370002', 'applicationStatus', 'Submitted'),
+            jsonb_build_object('legacyApplicationNo', 'chk/pt/737/0001', 'surname', 'CHECKVSEVEN', 'firstName', 'Repeat', 'gender', 'F', 'dateOfBirth', '12/03/2004',
+                               'email', 'v737.t3@check.test', 'phone', '08097370003', 'applicationStatus', 'Submitted'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/PT/737/0004', 'surname', 'CHECKVSEVEN', 'firstName', 'Wrongprog', 'gender', 'M', 'dateOfBirth', '02/02/2004',
+                               'email', 'v737.t4@check.test', 'phone', '08097370004', 'programme', 'Preliminary Science', 'applicationStatus', 'Draft'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/PT/737/0005', 'surname', 'CHECKVSEVEN', 'firstName', 'Admitted', 'gender', 'M', 'dateOfBirth', '05/05/2004',
+                               'email', 'v737.t5@check.test', 'phone', '08097370005', 'target', 'C67773', 'specialisation', 'ACC-ED',
+                               'olevel1Body', 'NECO', 'olevel1Year', '2021', 'olevel1Number', '9737000005',
+                               'olevel1Results', 'English Language:B3; Mathematics:B3; Economics:C5; Commerce:C6; Marketing:B2',
+                               'paymentReference', 'OLDPAY-737-T5', 'amountPaid', v_fee, 'paymentStatus', 'Successful', 'applicationStatus', 'Completed', 'admissionStatus', 'Admitted'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/PT/737/0006', 'surname', 'Checkvseven', 'firstName', 'sciencia', 'gender', 'F', 'dateOfBirth', '2005-02-14',
+                               'email', 'v737.t6@check.test', 'phone', '08097370006', 'applicationStatus', 'Draft'));
+        bt := (admissions.prelim_migration_open('PRELIMINARY_TECHNOLOGY', 'preliminary technology.xlsx', repeat('8', 64), 6, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bt, 1, rows_t);
+        PERFORM admissions.prelim_migration_check(bt, 1, 6);
+        SELECT string_agg(r.verdict, ',' ORDER BY r.row_no),
+               string_agg(coalesce((SELECT e->>'code' FROM jsonb_array_elements(r.problems) e WHERE e->>'level' <> 'warning' LIMIT 1), '-'), ',' ORDER BY r.row_no)
+          INTO t_ver, t_codes FROM admissions.prelim_migration_row r WHERE r.batch_id = bt;
+        PERFORM admissions.prelim_migration_import(bt, 1, 6);
+        PERFORM admissions.prelim_migration_finish(bt);
+        s1 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/PS/737/0001');
+        s2 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/PS/737/0002');
+        t1 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/PT/737/0001');
+        t5 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/PT/737/0005');
+        t1_no := (SELECT a.application_no FROM admissions.application a WHERE a.id = t1);
+        SELECT string_agg(l.legacy_application_no || '>' || r.route || ':' || (a.application_no ~ '^APP/[0-9]{2}/[0-9]{6}$') || ':' || c.programme || ':'
+                          || coalesce(c.jamb_reg_no, '-') || ':' || c.entry_mode || ':' || r.state, ' ' ORDER BY l.legacy_application_no)
+          INTO landed
+          FROM admissions.prelim_legacy_application l JOIN admissions.application a ON a.id = l.application_id JOIN admissions.prelim_review r ON r.application_id = a.id
+          JOIN admissions.candidate c ON c.id = a.candidate_id WHERE l.application_id IN (s1, t1);
+        s2_mail := (SELECT acc.email FROM admissions.application a JOIN admissions.applicant_account acc ON acc.id = a.account_id WHERE a.id = s2);
+        first_pw := (SELECT acc.password_hash || ':' || acc.must_change_password FROM admissions.application a JOIN admissions.applicant_account acc ON acc.id = a.account_id WHERE a.id = s1);
+
+        -- ── the fee held: no new reference; ICT and the uploader refused; another Bursary officer verifies ──
+        BEGIN
+            PERFORM admissions.new_fee_reference(s1, 'APPLICATION');
+            refused := 'issued';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM admissions.prelim_legacy_fee_decide((SELECT f.id FROM admissions.prelim_legacy_fee f WHERE f.application_id = s1), true, 'V737 check: seen');
+            office_refused := 'decided';
+        EXCEPTION WHEN insufficient_privilege THEN office_refused := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        BEGIN
+            PERFORM admissions.prelim_legacy_fee_decide((SELECT f.id FROM admissions.prelim_legacy_fee f WHERE f.application_id = s1), true, 'V737 check: seen');
+            same_officer := 'decided';
+        EXCEPTION WHEN check_violation THEN same_officer := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM admissions.prelim_legacy_fee_decide((SELECT f.id FROM admissions.prelim_legacy_fee f WHERE f.application_id = s1), true, 'V737 check: seen on the statement');
+        posted := (SELECT string_agg(fr.reference || ':' || fr.channel || ':' || (fr.confirmed_at IS NOT NULL) || ':' || (fr.receipt_no IS NOT NULL), ',')
+                     FROM admissions.fee_reference fr WHERE fr.application_id = s1);
+        n_refs := (SELECT count(*) FROM admissions.fee_reference fr WHERE fr.application_id = s1);
+        fee_conf := (SELECT a.fee_confirmed_at IS NOT NULL FROM admissions.application a WHERE a.id = s1);
+        -- the Bursary reverses the posting (V420): the old fee is rejected again, and the application unpaid
+        PERFORM admissions.reverse_fee_confirmation('OLDPAY-737-S1', 'V737 check: verified against the wrong statement line');
+        reversed := (SELECT f.state || ':' || (f.fee_reference_id IS NULL) || ':' || f.decided_office || ':' || admissions.prelim_fee_status(f.application_id)
+                       FROM admissions.prelim_legacy_fee f WHERE f.application_id = s1);
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        adm := (SELECT r.state || ':' || (r.published_at IS NOT NULL) || ':' || a.decision || ':' || c.offer_state || ':' || admissions.prelim_fee_status(a.id)
+                  FROM admissions.application a JOIN admissions.prelim_review r ON r.application_id = a.id JOIN admissions.candidate c ON c.id = a.candidate_id WHERE a.id = t5);
+
+        -- ── the same Technology file again: nothing twice ──
+        cnt_before := (SELECT count(*) FROM admissions.application) + (SELECT count(*) FROM admissions.fee_reference) + (SELECT count(*) FROM admissions.prelim_legacy_fee)
+                      + (SELECT count(*) FROM admissions.prelim_legacy_application);
+        bt2 := (admissions.prelim_migration_open('PRELIMINARY_TECHNOLOGY', 'preliminary technology.xlsx', repeat('8', 64), 6, false, true) ->> 'id')::uuid;
+        seen := (SELECT string_agg(x.reference, ',') FROM admissions.prelim_migration_batch x WHERE x.file_sha256 = repeat('8', 64) AND x.state = 'COMPLETED');
+        seen := CASE WHEN seen = (SELECT b.reference FROM admissions.prelim_migration_batch b WHERE b.id = bt) THEN 'seen' ELSE coalesce(seen, '-') END;
+        PERFORM admissions.prelim_migration_stage(bt2, 1, rows_t);
+        PERFORM admissions.prelim_migration_check(bt2, 1, 6);
+        PERFORM admissions.prelim_migration_import(bt2, 1, 6);
+        SELECT string_agg(r.result, ',' ORDER BY r.row_no) INTO again FROM admissions.prelim_migration_row r WHERE r.batch_id = bt2;
+        cnt_after := (SELECT count(*) FROM admissions.application) + (SELECT count(*) FROM admissions.fee_reference) + (SELECT count(*) FROM admissions.prelim_legacy_fee)
+                     + (SELECT count(*) FROM admissions.prelim_legacy_application);
+
+        -- ── the programme corrected by ICT: Technology → Science ──
+        fees_before := (SELECT count(*) FROM admissions.prelim_legacy_fee f WHERE f.application_id = t1) + (SELECT count(*) FROM admissions.fee_reference fr WHERE fr.application_id = t1);
+        PERFORM admissions.prelim_change_route(t1, 'PRELIMINARY_SCIENCE', 'PRELIMINARY_TECHNOLOGY', 'V737 check: applied for the wrong programme on the old portal');
+        fees_after := (SELECT count(*) FROM admissions.prelim_legacy_fee f WHERE f.application_id = t1) + (SELECT count(*) FROM admissions.fee_reference fr WHERE fr.application_id = t1);
+        moved := (SELECT (a.application_no = t1_no) || ':' || r.route || ':' || c.programme || ':' || r.state || ':' || (r.target_id IS NULL) || ':' || admissions.prelim_fee_status(a.id)
+                    FROM admissions.application a JOIN admissions.prelim_review r ON r.application_id = a.id JOIN admissions.candidate c ON c.id = a.candidate_id WHERE a.id = t1);
+        hist := (SELECT count(*) FROM admissions.prelim_route_change ch WHERE ch.application_id = t1 AND ch.result = 'APPLIED' AND ch.from_route = 'PRELIMINARY_TECHNOLOGY'
+                    AND ch.to_route = 'PRELIMINARY_SCIENCE' AND ch.reference ~ '^PRELIM-CHG/[0-9]{4}/[0-9]{6}$')
+                + (SELECT count(*) FROM admissions.prelim_review_event e WHERE e.application_id = t1 AND e.action = 'ROUTE_CHANGED');
+        BEGIN
+            PERFORM admissions.prelim_change_route(t5, 'PRELIMINARY_SCIENCE', 'PRELIMINARY_TECHNOLOGY', 'V737 check: applied for the wrong programme on the old portal');
+            pub_refused := 'changed';
+        EXCEPTION WHEN check_violation THEN
+            pub_refused := split_part(SQLERRM, ':', 1);
+            PERFORM admissions.prelim_route_change_refused(t5, 'PRELIMINARY_SCIENCE', 'V737 check: applied for the wrong programme on the old portal', pub_refused, SQLERRM);
+        END;
+        pub_recorded := (SELECT count(*) FROM admissions.prelim_route_change ch WHERE ch.application_id = t5 AND ch.result = 'REFUSED' AND ch.refusal_code = 'PRELIM_CHANGE_PUBLISHED');
+
+        -- ── an ICT Support agent the Director has not authorised ──
+        PERFORM set_config('moaum.actor_id', agent::text, true);
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        BEGIN
+            PERFORM admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'agent.xlsx', repeat('9', 64), 1, false, true);
+            agent_refused := 'opened';
+        EXCEPTION WHEN insufficient_privilege THEN agent_refused := split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            PERFORM admissions.prelim_change_route(s1, 'PRELIMINARY_TECHNOLOGY', 'PRELIMINARY_SCIENCE', 'V737 check: an agent with no authority tries it');
+            agent_change := 'changed';
+        EXCEPTION WHEN insufficient_privilege THEN agent_change := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+
+        -- ── a fee rejected is not held again by the same file; an APP-shaped old number refused ──
+        rows_s := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'CHK/PS/737/0004', 'surname', 'CHECKVSEVEN', 'firstName', 'Noref', 'gender', 'F', 'dateOfBirth', '2004-06-06',
+                               'email', 'v737.s4@check.test', 'phone', '08097370104', 'amountPaid', v_fee, 'paymentStatus', 'Paid', 'applicationStatus', 'Submitted'),
+            jsonb_build_object('legacyApplicationNo', 'APP/26/000999', 'surname', 'CHECKVSEVEN', 'firstName', 'Portalno', 'gender', 'M', 'dateOfBirth', '2004-07-07',
+                               'email', 'v737.s5@check.test', 'phone', '08097370105', 'applicationStatus', 'Submitted'));
+        bs3 := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'science more.xlsx', repeat('6', 64), 2, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bs3, 1, rows_s);
+        PERFORM admissions.prelim_migration_check(bs3, 1, 2);
+        portal_no := (SELECT r.verdict || ':' || coalesce((SELECT e->>'code' FROM jsonb_array_elements(r.problems) e WHERE e->>'level' = 'error' LIMIT 1), '-')
+                        FROM admissions.prelim_migration_row r WHERE r.batch_id = bs3 AND r.row_no = 2);
+        PERFORM admissions.prelim_migration_import(bs3, 1, 2);
+        PERFORM admissions.prelim_migration_finish(bs3);
+        s4 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/PS/737/0004');
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.prelim_legacy_fee_decide((SELECT f.id FROM admissions.prelim_legacy_fee f WHERE f.application_id = s4), false, 'V737 check: not on the statement');
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        bs4 := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'science more.xlsx', repeat('6', 64), 2, true, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bs4, 1, rows_s);
+        PERFORM admissions.prelim_migration_check(bs4, 1, 2);
+        PERFORM admissions.prelim_migration_import(bs4, 1, 2);
+        rehold := (SELECT string_agg(f.state, ',' ORDER BY f.created_at) FROM admissions.prelim_legacy_fee f WHERE f.application_id = s4) || ':' || admissions.prelim_fee_status(s4);
+        PERFORM set_config('moaum.actor_office', 'applicant', true);
+        BEGIN
+            PERFORM admissions.new_fee_reference(s4, 'APPLICATION');
+            rehold := rehold || ':issued';
+        EXCEPTION WHEN check_violation THEN rehold := rehold || ':' || split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        -- the office's routes narrow a search before its page is cut
+        routed := (SELECT string_agg(DISTINCT x.route, ',') FROM admissions.prelim_legacy_find('CHECKVSEVEN', ARRAY['PRELIMINARY_TECHNOLOGY']) x)
+                  || '|' || ((SELECT count(*) FROM admissions.prelim_legacy_find('CHECKVSEVEN', ARRAY['PRELIMINARY_TECHNOLOGY']))
+                             + (SELECT count(*) FROM admissions.prelim_legacy_find('CHECKVSEVEN', ARRAY['PRELIMINARY_SCIENCE']))
+                             = (SELECT count(*) FROM admissions.prelim_legacy_find('CHECKVSEVEN')))
+                  || '|' || (SELECT count(*) FROM admissions.prelim_legacy_find('CHK/PT/737/0005', ARRAY['PRELIMINARY_SCIENCE']))
+                  || '|' || (SELECT count(*) FROM admissions.prelim_legacy_find('CHK/PT/737/0005'));
+        BEGIN
+            DELETE FROM admissions.prelim_migration_batch WHERE id = bt;
+            del_refused := 'deleted';
+        EXCEPTION WHEN check_violation THEN del_refused := split_part(SQLERRM, ':', 1);
+        END;
+        stats := admissions.prelim_stats('PRELIMINARY_SCIENCE', policy.route_session('PRELIMINARY_SCIENCE'));
+        RAISE EXCEPTION 'the V737 check undoes its writes';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'the V737 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V737: old-portal preliminary applicants come in programme by programme, checked before anything is written — this portal''s number, the old one kept; a row naming the other programme, a duplicate, a possible same person and missing data held back; an old-portal fee held until another Bursary officer verifies it (no new reference meanwhile, the old reference posted); the admitted published admitted; the same file again changes nothing; ICT moves an application between the two programmes keeping its number and fee, never a published one; an agent without the capability refused; a created applicant chooses a password at the first sign-in; a reversed posting rejects the old fee again; a rejected fee is not held again by the same file; an APP-shaped old number refused; a search narrowed to the office''s routes',
+        v_err IS NULL
+        AND s_ver = 'READY,WARNING,ERROR'
+        AND t_ver = 'READY,ERROR,DUPLICATE_IN_FILE,CONFLICT,READY,REQUIRES_REVIEW'
+        AND t_codes = '-,MISSING_SURNAME,DUPLICATE_IN_FILE,PROGRAMME_MISMATCH,-,POSSIBLE_SAME_APPLICANT'
+        AND landed = 'CHK/PS/737/0001>PRELIMINARY_SCIENCE:true:Preliminary Science:-:PRELIMINARY:SUBMITTED'
+                     || ' CHK/PT/737/0001>PRELIMINARY_TECHNOLOGY:true:Preliminary Technology & Industrial Studies:-:PRELIMINARY:SUBMITTED'
+        AND s2_mail LIKE 'prelim-chk-ps-737-0002%@migrate.moau.local'
+        AND refused = 'PRELIM_FEE_UNDER_REVIEW' AND office_refused = 'PRELIMMIG_FEE_OFFICE' AND same_officer = 'PRELIMMIG_SAME_OFFICER'
+        AND posted = 'OLDPAY-737-S1:Old portal:true:true' AND n_refs = 1 AND fee_conf
+        AND adm = 'ADMITTED:true:OFFERED:ADMITTED:HELD'
+        AND seen = 'seen' AND again = 'UNCHANGED,SKIPPED,SKIPPED,SKIPPED,UNCHANGED,SKIPPED' AND cnt_after = cnt_before
+        AND fees_before = fees_after AND fees_after = 1
+        AND moved = 'true:PRELIMINARY_SCIENCE:Preliminary Science:CORRECTION_REQUIRED:true:HELD' AND hist = 2
+        AND pub_refused = 'PRELIM_CHANGE_PUBLISHED' AND pub_recorded = 1
+        AND agent_refused = 'PRELIMMIG_OFFICE' AND agent_change = 'PRELIM_CHANGE_OFFICE'
+        AND del_refused = 'PRELIMMIG_KEPT' AND (stats->>'migrated')::int >= 3 AND stats ? 'feeHeld' AND stats ? 'outstanding'
+        AND first_pw = 'SET_ON_FIRST_LOGIN:true' AND reversed = 'REJECTED:true:bursar:UNPAID'
+        AND portal_no = 'ERROR:LEGACY_NO_IS_PORTAL_NUMBER' AND rehold = 'REJECTED:UNPAID:issued' AND routed = 'PRELIMINARY_TECHNOLOGY|true|0|1',
+        format('err=%s | science=%s | tech=%s codes=%s | landed=%s | s2=%s | refused=%s office=%s same=%s | posted=%s refs=%s conf=%s | admitted=%s | seen=%s again=%s %s/%s | fees %s/%s moved=%s hist=%s | published=%s/%s | agent=%s/%s | del=%s | stats=%s | first=%s reversed=%s portal=%s rehold=%s routed=%s',
+               v_err, s_ver, t_ver, t_codes, landed, s2_mail, refused, office_refused, same_officer, posted, n_refs, fee_conf, adm, seen, again, cnt_before, cnt_after,
+               fees_before, fees_after, moved, hist, pub_refused, pub_recorded, agent_refused, agent_change, del_refused, left(stats::text, 200),
+               first_pw, reversed, portal_no, rehold, routed));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
