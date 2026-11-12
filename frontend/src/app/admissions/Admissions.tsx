@@ -15,6 +15,9 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 /** V722: how many admitted candidates one call of the intake run brings onto the register (about 300 × 8 ms on the live-shaped copy) */
 const TRANCHE = 300;
 
+/** V729: a programme the merit recording refused, with the rule's words and what to do */
+interface Refusal { code: string; name: string; reason: string; remedy: string | null }
+
 export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; actingOffice: string | null }) {
   const router = useRouter();
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -23,26 +26,65 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
   const [brought, setBrought] = useState(0);
   const [recording, setRecording] = useState(false);
   const [recorded, setRecorded] = useState<string | null>(null);
+  const [refused, setRefused] = useState<Refusal[]>([]);
+  const [recordedCount, setRecordedCount] = useState<string | null>(null);
   const may = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
   const pct = (a: number, b: number) => (b ? `${Math.round((1000 * a) / b) / 10}%` : "—");
 
+  // V729: every programme recorded in its own request, counted off, so one programme's refusal never undoes the others (in one
+  // request the first refused decision undid every programme); each refusal is listed with its reason
   async function recordAll() {
     if (!window.confirm("Record the merit list for every programme with applicants this session? Offers, waiting and not-offered decisions are entered for all of them; released decisions are left untouched. Decisions are not released yet.")) return;
     setRecording(true);
     setProblem(null);
     setRecorded(null);
+    setRefused([]);
+    setRecordedCount(null);
+    let done = 0;
     try {
-      const r = await fetch("/api/bff/api/v1/admissions/merit/record-many", {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Merit list recorded across all programmes for ${cycle.session}`) },
-        body: JSON.stringify({ session: cycle.session }),
-      });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
-      setRecorded(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded — ${j.offered} offered, ${j.waited} waiting, ${j.notOffered} not offered${j.skipped ? `, ${j.skipped} left untouched (already released)` : ""}. Release the decisions from the Applicants desk when the Board is ready.`);
-      notify(`${j.programmes} programme${j.programmes === 1 ? "" : "s"} recorded`);
-      router.refresh();
+      const lr = await fetch(`/api/bff/api/v1/admissions/merit/programmes?session=${encodeURIComponent(cycle.session)}`, { cache: "no-store" });
+      const lj = await lr.json().catch(() => null);
+      if (!lr.ok) { const p: Problem = lj ?? { status: lr.status, title: lr.statusText }; setProblem(p); notifyProblem(p); return; }
+      const codes: string[] = lj?.programmes ?? [];
+      const names = new Map(cycle.programmes.map((x) => [x.code, x.name] as const));
+      const totals = { offered: 0, waited: 0, notOffered: 0, skipped: 0, awaiting: 0 };
+      const refusals: Refusal[] = [];
+      for (const [i, code] of codes.entries()) {
+        setRecordedCount(`${(i + 1).toLocaleString()} of ${codes.length.toLocaleString()}`);
+        let r: Response;
+        try {
+          r = await fetch("/api/bff/api/v1/admissions/merit/record", {
+            method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Merit list recorded for ${code}, ${cycle.session}`) },
+            body: JSON.stringify({ session: cycle.session, programme: code }),
+          });
+        } catch {
+          refusals.push({ code, name: names.get(code) ?? code, reason: "The portal could not be reached", remedy: "Record all programmes again: the programmes recorded are recorded again, the same way." });
+          continue;
+        }
+        const j = await r.json().catch(() => null);
+        if (!r.ok) {
+          const p: Problem | null = j;
+          refusals.push({ code, name: names.get(code) ?? code, reason: p?.detail ?? p?.title ?? r.statusText, remedy: p?.remedy?.message ?? null });
+          continue;
+        }
+        done += 1;
+        totals.offered += Number(j?.offered ?? 0);
+        totals.waited += Number(j?.waited ?? 0);
+        totals.notOffered += Number(j?.notOffered ?? 0);
+        totals.skipped += Number(j?.skipped ?? 0);
+        totals.awaiting += Number(j?.awaitingRelease ?? 0);
+      }
+      setRefused(refusals);
+      setRecorded(`${done.toLocaleString()} of ${codes.length.toLocaleString()} programme${codes.length === 1 ? "" : "s"} recorded — ${totals.offered.toLocaleString()} offered, ${totals.waited.toLocaleString()} waiting, ${totals.notOffered.toLocaleString()} not offered${totals.skipped ? `, ${totals.skipped.toLocaleString()} left untouched (already released)` : ""}.${totals.awaiting ? ` ${totals.awaiting.toLocaleString()} applicant${totals.awaiting === 1 ? " awaits" : "s await"} a released screening score and ${totals.awaiting === 1 ? "is" : "are"} not on the merit list yet: release the screening results, then record again.` : ""} Release the decisions from the Applicants desk when the Board is ready.`);
+      if (refusals.length) {
+        notify(`${done.toLocaleString()} programme${done === 1 ? "" : "s"} recorded; ${refusals.length.toLocaleString()} refused — see the list`, "bad");
+      } else {
+        notify(`${done.toLocaleString()} programme${done === 1 ? "" : "s"} recorded`);
+      }
     } finally {
       setRecording(false);
+      setRecordedCount(null);
+      if (done) router.refresh();
     }
   }
 
@@ -112,10 +154,18 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
         </Note>
       )}
       {recorded ? <Note kind="ok" title="Merit lists recorded">{recorded}</Note> : null}
+      {refused.length ? (
+        <Note kind="bad" title={`${refused.length.toLocaleString()} programme${refused.length === 1 ? " was" : "s were"} not recorded`}>
+          Each was refused by the rule named; the others were recorded.
+          <ul className="mt-1" style={{ paddingLeft: "1.2em", listStyle: "disc" }}>
+            {refused.map((x) => <li key={x.code}><b>{x.name}</b> ({x.code}): {x.reason}{x.remedy ? ` — ${x.remedy}` : ""}</li>)}
+          </ul>
+        </Note>
+      ) : null}
       <Panel title="Programmes — merit lists"
              right={may ? <span className="row row--inline">
                <span className="sub2">Quota is the NUC-approved carrying capacity</span>
-               <Btn kind="primary" disabled={recording} onClick={() => void recordAll()}>{recording ? "Recording…" : "Record all programmes"}</Btn>
+               <Btn kind="primary" disabled={recording} onClick={() => void recordAll()}>{recording ? (recordedCount ? `Recording… ${recordedCount}` : "Recording…") : "Record all programmes"}</Btn>
              </span> : "Quota is the NUC-approved carrying capacity"}>
         <DTable
           cols={["Programme", "Applied|mid", "Quota|mid", "Offered|mid", "Accepted|mid", "Cut-off|mid", "Stage|num"]}

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 555
+\set EXPECTED 556
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32304,6 +32304,86 @@ BEGIN
                      || ' load NEW/1,ATTACH/1,NO_STUDENT/0,ALREADY_MOVED/0,INVALID/0,NEW/0 again EXISTS,EXISTS,NO_STUDENT,ALREADY_MOVED,INVALID,EXISTS'
                      || ' | G TO_OK/2025-10-20/OLD-727-G current session true LINKED/OLD_PORTAL_EXPORT PART_PAID/10000/15000'
                      || ' | H LINKED/OLD_PORTAL_EXPORT/true TO_OK/true TRANSFER_LEGACY_KEPT | D AWAITING_APPLICATION', false),
+      msg);
+END $$;
+
+-- ── V729: a decision needs a released score only where there is one to release. In 9729/9730, a non-index programme (C00019) and an
+--          index programme (C00061, the Post-UTME examination): N1 computed (no score entered, never released) is ranked and decided;
+--          N2's entered score is not released — off the merit list, its decision refused; N3's entered score released — ranked; X1
+--          (index) not released — off the list, refused; X2 (index) released — ranked and decided. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9729/9730'; v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid();
+    p_non text := 'C00019'; p_idx text := 'C00061'; n_non text; n_idx text;
+    r record; apps jsonb := '{}'::jsonb; list_non text; list_idx text; needed text; d_n1 text; d_x2 text; e_n2 text; e_x1 text;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V729', true);
+    SELECT name INTO n_non FROM ref.programme WHERE code = p_non;
+    SELECT name INTO n_idx FROM ref.programme WHERE code = p_idx;
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9729-10-01', date '9730-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+    VALUES (v_pol, ses, 10, 70, 30, 80, 20, 'CHECK CAC/9729/1', tstzrange(now(), NULL), 'IN_FORCE');
+    INSERT INTO admissions.selection_criterion (policy_id, criterion, percent) VALUES
+        (v_pol, 'NATIONAL_MERIT', 50), (v_pol, 'STATE_MERIT', 30), (v_pol, 'ELG', 10), (v_pol, 'LOCALITY', 10);
+    INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
+    VALUES (v_pol, p_non, 5, 'check', 'check', 'check'), (v_pol, p_idx, 5, 'check', 'check', 'check');
+    INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES
+        (v_pol, p_non, 'English Language'), (v_pol, p_non, 'Mathematics'), (v_pol, p_idx, 'English Language'), (v_pol, p_idx, 'Mathematics');
+    INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (ses, p_idx);
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (v_batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x729a'::bytea, 5, current_date, gen_random_uuid(), 'academic');
+    FOR r IN SELECT * FROM (VALUES
+        ('N1', '29729000001', p_non, n_non, 280, NULL::numeric, false, false),
+        ('N2', '29729000002', p_non, n_non, 270, 60,            true,  false),
+        ('N3', '29729000003', p_non, n_non, 260, 55,            true,  true),
+        ('X1', '29729000004', p_idx, n_idx, 290, 70,            true,  false),
+        ('X2', '29729000005', p_idx, n_idx, 285, 65,            true,  true)
+    ) AS t(tag, jamb, code, pname, utme, score, entered, released)
+    LOOP
+        DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+            VALUES (cr, v_batch, ses, r.jamb, '{}'::jsonb, 'CHECKV729', r.tag, r.code, r.utme, 'UTME', 'F', 'Benue', 'Makurdi');
+            INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+            VALUES (cand, ses, r.jamb, 'CHECKV729', r.tag, r.pname, 'UTME', 100, 'ADMITTED', cr);
+            INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+            VALUES (acct, ses, cand, r.jamb, lower(r.jamb) || '@example.com', '08030007290', crypt('x', gen_salt('bf', 12)));
+            INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, screening_score, score_entered_at, score_released_at)
+            VALUES (app, acct, cand, ses, 'APP/29/' || right(r.jamb, 6), now(), r.score,
+                    CASE WHEN r.entered THEN now() END, CASE WHEN r.released THEN now() END);
+            apps := apps || jsonb_build_object(r.tag, app);
+        END;
+    END LOOP;
+
+    SELECT string_agg(other_names, ',' ORDER BY other_names) INTO list_non FROM admissions.merit_list(ses, p_non);
+    SELECT string_agg(other_names, ',' ORDER BY other_names) INTO list_idx FROM admissions.merit_list(ses, p_idx);
+    SELECT string_agg(k || '=' || admissions.score_release_needed((apps ->> k)::uuid), ',' ORDER BY k) INTO needed FROM jsonb_object_keys(apps) k;
+    d_n1 := admissions.decide_application((apps ->> 'N1')::uuid, 'NOT_OFFERED', 'CHECK V729', NULL);
+    d_x2 := admissions.decide_application((apps ->> 'X2')::uuid, 'WAITING', 'CHECK V729', NULL);
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'N2')::uuid, 'WAITING', 'CHECK V729', NULL);
+        e_n2 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_n2 := SQLERRM;
+    END;
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'X1')::uuid, 'WAITING', 'CHECK V729', NULL);
+        e_x1 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_x1 := SQLERRM;
+    END;
+    msg := 'non-index list ' || coalesce(list_non, '-') || ' | index list ' || coalesce(list_idx, '-') || ' | release needed ' || needed
+        || ' | N1 ' || d_n1 || ' X2 ' || d_x2 || ' | N2 ' || e_n2 || ' | X1 ' || e_x1;
+    RAISE EXCEPTION 'the V729 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V729 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V729: a decision needs a released score only where there is one — a computed aggregate is ranked and decided without a release; an entered or index score waits for its release, off the merit list',
+      coalesce(msg = 'non-index list N1,N3 | index list X2 | release needed N1=false,N2=true,N3=true,X1=true,X2=true | N1 NOT_OFFERED X2 WAITING'
+                     || ' | N2 the screening score has not been released | X1 the screening score has not been released', false),
       msg);
 END $$;
 

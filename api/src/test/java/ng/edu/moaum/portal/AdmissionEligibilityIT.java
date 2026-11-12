@@ -618,6 +618,100 @@ class AdmissionEligibilityIT {
         }
     }
 
+    /* ── 12 · V729: "Record all programmes" (the University, 12 November 2026) — a programme screened without the examination is
+     *    recorded on its computed aggregate, never released (V610), as the merit list ranks it; a score entered and not released, and
+     *    an index programme's unreleased score, wait off the merit list; each programme is its own request ── */
+    @Test
+    @Order(10)
+    @SuppressWarnings("unchecked")
+    void theMeritListIsRecordedWhereAScoreIsReleasedOnlyWhereThereIsOne() {
+        // two programmes of this test's own, with no rule of their own: one screened by the Post-UTME examination this session, one not
+        List<String> codes = it.db(() -> jdbc.sql("""
+                SELECT code FROM ref.programme WHERE NOT archived AND category = 'UNDER GRADUATE' AND code NOT IN (:x)
+                   AND name NOT IN (SELECT name FROM ref.programme GROUP BY name HAVING count(*) > 1) ORDER BY code DESC OFFSET 1 LIMIT 2
+                """).param("x", List.of(CS, ACC, ECO, MBBS, THE, TAX, BUS)).query(String.class).list());
+        String plain = codes.get(0), index = codes.get(1);
+        String plainName = it.db(() -> jdbc.sql("SELECT name FROM ref.programme WHERE code = :c").param("c", plain).query(String.class).single());
+        it.db(() -> jdbc.sql("INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (:s, :c) ON CONFLICT DO NOTHING")
+                .param("s", SESSION).param("c", index).update());
+        try {
+            Applicant computed = applicant(plain, 230, UTME_SCIENCE, SCIENCE);
+            Applicant enteredWaiting = applicant(plain, 228, UTME_SCIENCE, SCIENCE);
+            Applicant sat = applicant(index, 226, UTME_SCIENCE, SCIENCE);
+            Applicant satWaiting = applicant(index, 224, UTME_SCIENCE, SCIENCE);
+            it.db(() -> {
+                jdbc.sql("UPDATE admissions.application SET screening_score = 58, score_entered_at = now() WHERE id IN (:a)")
+                        .param("a", List.of(enteredWaiting.app(), satWaiting.app())).update();
+                jdbc.sql("UPDATE admissions.application SET screening_score = 61, score_entered_at = now(), score_released_at = now() WHERE id = :a")
+                        .param("a", sat.app()).update();
+                return null;
+            });
+
+            // both programmes are listed for "Record all programmes", released or not; an office without the door is refused
+            assertThat(it.get(ItSupport.token("bursar"), "/api/v1/admissions/merit/programmes?session=" + SESSION).getStatusCode().value()).isEqualTo(403);
+            ResponseEntity<Map> listed = it.get(academic, "/api/v1/admissions/merit/programmes?session=" + SESSION);
+            assertThat(listed.getStatusCode().value()).as(String.valueOf(listed.getBody())).isEqualTo(200);
+            assertThat((List<String>) listed.getBody().get("programmes")).contains(plain, index);
+
+            // the merit list ranks the computed aggregate and the released score, not the scores still to be released
+            java.util.function.Function<String, List<String>> ranked = code -> ((List<Map<String, Object>>) it.get(academic,
+                    u -> u.path("/api/v1/admissions/merit").queryParam("session", SESSION).queryParam("programme", code).build()).getBody().get("rows"))
+                    .stream().map(x -> String.valueOf(x.get("app_id"))).toList();
+            assertThat(ranked.apply(plain)).contains(computed.app().toString()).doesNotContain(enteredWaiting.app().toString());
+            assertThat(ranked.apply(index)).contains(sat.app().toString()).doesNotContain(satWaiting.app().toString());
+
+            // each programme recorded in its own request, as the dashboard now does: before V729 the computed applicant's decision was refused
+            java.util.function.Function<String, Map<String, Object>> record = code -> {
+                ResponseEntity<Map> r = it.call(academic, HttpMethod.POST, "/api/v1/admissions/merit/record", Map.of("session", SESSION, "programme", code));
+                assertThat(r.getStatusCode().value()).as(code + " " + r.getBody()).isEqualTo(200);
+                return r.getBody();
+            };
+            Map<String, Object> plainDone = record.apply(plain);
+            Map<String, Object> indexDone = record.apply(index);
+            assertThat(((Number) plainDone.get("awaitingRelease")).longValue()).isGreaterThanOrEqualTo(1);
+            assertThat(((Number) indexDone.get("awaitingRelease")).longValue()).isGreaterThanOrEqualTo(1);
+            java.util.function.Function<Applicant, Object> decision = a -> it.db(() -> jdbc.sql("SELECT decision FROM admissions.application WHERE id = :a")
+                    .param("a", a.app()).query().singleRow().get("decision"));
+            assertThat(decision.apply(computed)).isIn("OFFERED", "WAITING", "NOT_OFFERED");
+            assertThat(decision.apply(sat)).isIn("OFFERED", "WAITING", "NOT_OFFERED");
+            assertThat(decision.apply(enteredWaiting)).isNull();
+            assertThat(decision.apply(satWaiting)).isNull();
+
+            // the older one-request form records both too, and counts the waiting
+            ResponseEntity<Map> many = it.call(academic, HttpMethod.POST, "/api/v1/admissions/merit/record-many",
+                    Map.of("session", SESSION, "programmes", List.of(plain, index)));
+            assertThat(many.getStatusCode().value()).as(String.valueOf(many.getBody())).isEqualTo(200);
+            assertThat(((Number) many.getBody().get("programmes")).intValue()).isEqualTo(2);
+            assertThat(((Number) many.getBody().get("awaitingRelease")).longValue()).isGreaterThanOrEqualTo(2);
+
+            // the Board's own decision on a score still to be released is refused with the rule's words
+            String refused;
+            try {
+                jdbc.sql("SELECT admissions.decide_application(:a, 'WAITING', 'IT V729', NULL)").param("a", enteredWaiting.app()).query(String.class).single();
+                refused = "decided";
+            } catch (org.springframework.dao.DataAccessException e) {
+                refused = String.valueOf(e.getMostSpecificCause().getMessage());
+            }
+            assertThat(refused).contains("the screening score has not been released");
+
+            // the JAMB template says why the entered score is not ranked
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) it.get(academic, PATH + "/jamb-template?programme=" + plainName).getBody().get("rows");
+            Map<String, Object> waitingRow = rows.stream().filter(x -> enteredWaiting.jamb().equals(x.get("regNo"))).findFirst().orElseThrow();
+            assertThat(waitingRow.get("decisionNote")).isEqualTo("Screening score not released");
+
+            // released, the waiting scores are ranked and recorded
+            it.db(() -> jdbc.sql("UPDATE admissions.application SET score_released_at = now() WHERE id IN (:a)")
+                    .param("a", List.of(enteredWaiting.app(), satWaiting.app())).update());
+            record.apply(plain);
+            record.apply(index);
+            assertThat(decision.apply(enteredWaiting)).isIn("OFFERED", "WAITING", "NOT_OFFERED");
+            assertThat(decision.apply(satWaiting)).isIn("OFFERED", "WAITING", "NOT_OFFERED");
+        } finally {
+            it.db(() -> jdbc.sql("DELETE FROM admissions.screening_exam_programme WHERE session = :s AND programme_code = :c")
+                    .param("s", SESSION).param("c", index).update());
+        }
+    }
+
     /* ── 10 · the doors ── */
     @Test
     @Order(7)

@@ -952,7 +952,7 @@ class ApplicantsController {
                 SELECT a.id, a.application_no, c.jamb_reg_no, c.jamb_key, c.surname, c.other_names, c.programme, c.entry_mode,
                        r.sex, r.state_of_origin, r.lga, r.aggregate AS utme, r.raw::text AS raw_text,
                        a.decision, a.decision_note, a.decision_basis, a.decision_released_at, a.screening_score, a.submitted_at,
-                       a.score_released_at,
+                       a.score_released_at, a.score_entered_at,
                        (SELECT x.entry_mode FROM admissions.caps_row_live x WHERE x.session = a.session AND x.jamb_reg_no = c.jamb_reg_no
                          ORDER BY (x.entry_mode = 'UTME') DESC LIMIT 1) AS live_mode,
                        sr.utme_scaled, sr.screening, sr.screening_source, sr.weight_utme, sr.weight_putme, sr.aggregate AS total, sr.cutoff,
@@ -1554,8 +1554,9 @@ class ApplicantsController {
         if (byExam && row.get("screening_score") == null) {
             return "No Post-UTME screening score";
         }
-        if (byExam && row.get("score_released_at") == null) {
-            return "Post-UTME screening score not released";
+        // V729: the merit list's own test — an index programme's score, or a score entered outside one, waits for its release
+        if (row.get("score_released_at") == null && (byExam || row.get("score_entered_at") != null)) {
+            return byExam ? "Post-UTME screening score not released" : "Screening score not released";
         }
         return "Not ranked on the programme's merit list";
     }

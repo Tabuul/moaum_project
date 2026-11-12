@@ -106,6 +106,14 @@ class AdmissionsController {
     public record MeritRecordMany(@jakarta.validation.constraints.NotBlank String session, List<String> programmes) {
     }
 
+    /** V729: the programmes with a submitted application this session — "Record all programmes" records them one at a time, each in
+     *  its own request, so one programme's refusal never undoes the others */
+    @GetMapping("/merit/programmes")
+    @PreAuthorize(LOADERS)
+    Map<String, Object> meritProgrammes(@RequestParam String session) {
+        return Map.of("session", session, "programmes", intake.meritProgrammes(session));
+    }
+
     /** record the merit list for several programmes at once — all with a pool when none are named */
     @PostMapping("/merit/record-many")
     @PreAuthorize(LOADERS)

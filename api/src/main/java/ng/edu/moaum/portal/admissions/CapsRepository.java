@@ -310,15 +310,27 @@ class CapsRepository {
                 """).param("s", session).query().listOfRows();
     }
 
-    /** the programme codes with a merit pool this session: a submitted, score-released application behind them */
+    /** the programme codes with a submitted application this session (V729: released or not — a non-index programme's computed
+     *  aggregate is never released (V610) and the merit list ranks it all the same; a programme whose pool is empty records nothing) */
     java.util.List<String> programmesWithPool(String session) {
         return jdbc.sql("""
                 SELECT DISTINCT (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) AS code
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
-                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NOT NULL
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL
                    AND (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) IS NOT NULL
                  ORDER BY code
                 """).param("s", session).query(String.class).list();
+    }
+
+    /** V729: a programme's submitted applications still to be decided whose score must be released first (an index programme's, or an
+     *  entered score) and is not yet — they wait off the merit list until the screening results are released */
+    long awaitingRelease(String session, String programme) {
+        return jdbc.sql("""
+                SELECT count(*) FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.decision_released_at IS NULL AND a.score_released_at IS NULL
+                   AND (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) = :p
+                   AND admissions.score_release_needed(a.id)
+                """).param("s", session).param("p", programme).query(Long.class).single();
     }
 
     /** the merit list for a programme: admissions.merit_list ranks the eligible pool and proposes the offers */

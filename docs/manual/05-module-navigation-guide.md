@@ -3624,7 +3624,7 @@ Admissions → Report on Admissions / Admissions → /admissions
 | Action | What it does | Endpoint |
 |---|---|---|
 | Bring N candidates onto the register | `people.intake` — admission numbers | `POST /api/v1/student/intake/{session}` (`Admissions.tsx:49`) |
-| Record all programmes | Merit for every programme | `POST /merit/record-many` |
+| Record all programmes | Merit for every programme with a submitted application, one request a programme, counted off; a programme refused is listed with the rule's words and the others stand (V729) | `GET /merit/programmes`, then `POST /merit/record` for each |
 | New batch / Seat the submitted | Legacy screening | `POST …/screening-batches`, `assign_screening` |
 | Release scores / Release decisions | Stamps release, notifies | `…/screening-scores/release`, `…/decisions/release` |
 | Save CBT score / Save decision | Per application | `PUT …/screening-score`, `PUT …/decision` |
