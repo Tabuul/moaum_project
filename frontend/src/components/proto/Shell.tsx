@@ -166,9 +166,8 @@ export const ROUTES: Record<string, string> = {
   "t/resultexceptions": "/results/monitor/exceptions",
   "t/resultuploads": "/results/monitor/uploads",
   "t/resultcorrections": "/results/monitor/corrections",
-  // V702: duplicate results resolved; the held students' fees for the Bursary
+  // V702: duplicate results resolved (V730: the held students' fees went with the department-change hold)
   "t/resultduplicates": "/results/monitor/duplicates",
-  "f/heldfees": "/finance/department-change-fees",
   "t/classification": "/student-query/classification",
   "t/finanalytics": "/finance/analytics",
   "t/feereport": "/finance/fee-report",
@@ -581,7 +580,6 @@ const OVERRIDES: Record<string, string> = {
   "t/resultuploads": "Result upload history",
   "t/resultcorrections": "Result corrections",
   "t/resultduplicates": "Duplicate results",
-  "f/heldfees": "Held students' fees",
   "r/dbops": "Database Operations",
   "t/paidapplicants": "Paid Post-UTME applicants",
   "t/acceptancefees": "Acceptance fee monitor",

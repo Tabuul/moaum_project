@@ -55,7 +55,16 @@ test("the levels on the record run one per session, and each change is named by 
   assert.equal(ruleWord("LEVEL_ABOVE_FINAL"), "Brought to the final level");
   assert.equal(ruleWord("LEVEL_DEPARTMENT_CHANGE"), "Held a level behind (changed department)");   // V696
   assert.equal(ruleWord("COHORT_DEPARTMENT_CHANGE"), "Cohort a session later (changed department)");
+  assert.equal(ruleWord("LEVEL_HELD_DEPARTMENT_CHANGE"), "Raise held after a change of department (V696)");   // V702's guard
   assert.equal(ruleWord("PROMOTE"), "Registry decision");
+});
+
+test("V730: the hold's release and the level reached are named in the history, never as a Registry decision", () => {
+  assert.equal(ruleWord("LEVEL_DEPARTMENT_CHANGE_RELEASED"), "Hold released: level put back");
+  assert.equal(ruleWord("LEVEL_HELD_RELEASED"), "Hold released: the level asked for made");
+  assert.equal(ruleWord("COHORT_DEPARTMENT_CHANGE_RELEASED"), "Hold released");
+  assert.equal(ruleWord("COHORT_LEVEL_REACHED"), "Continues at the level reached");
+  assert.equal(ruleWord("COHORT_LEVEL_REACHED_LIFTED"), "Level reached cohort lifted");
 });
 
 test("a spillover student is read as SP1, SP2 or the limit, at the final level, and a record left below it is flagged", () => {

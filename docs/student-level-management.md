@@ -255,7 +255,10 @@ The University reported a 100 Level student (entered 2025/2026 by UTME) whose GS
 registration and her enrolment follow, and the permit, the examination card and the receipt then read 100 Level. If her record
 already reads 100, the put-right has set them.
 
-## A student who changed department is held a level behind (29 October 2026, V696)
+## A student who changed department is held a level behind (29 October 2026, V696; released by V730)
+
+**Released on 12 November 2026 (V730).** Nothing below holds a student any more; it is kept as the history of the decisions V696
+wrote. What stands now is in *A student who changed department continues from the level reached* below.
 
 The University's word: a student who changes department usually steps down one level behind their entry cohort, and should never
 read a level ahead of the level they stepped down to. The case reported: a student who entered Accounting in 2023/2024 (matric
@@ -305,7 +308,10 @@ not held: the session after their entry is not on the calendar, and none of them
 
 **To take a hold off** for one student, remove their cohort on the cohort desk, then correct the level here if it should be higher.
 
-### Never above the hold (29 October 2026, V702)
+### Never above the hold (29 October 2026, V702; released by V730)
+
+**Released on 12 November 2026 (V730).** The guard, the level desk's refusal, the roll-over's hold and the Bursary's Held Students'
+Fees page are gone. The rows the guard wrote (LEVEL_HELD_DEPARTMENT_CHANGE) stay on the history.
 
 V696 lowered the records once. V702 keeps them there, whatever writes a level afterwards:
 
@@ -327,6 +333,124 @@ Students' Fees (`/finance/department-change-fees`, `finance.department_change_fe
 
 The reading lifts the hold and undoes it, so nothing on a record changes.
 
+## A student who changed department continues from the level reached (12 November 2026, V730)
+
+The University's word of 12 November 2026: release the hold of V696. Most students who change department continue from the level
+they had reached in the other department. Those who step down are the ones whose results were not good enough to continue in the
+former department. Its decisions the same day:
+- every automatic hold is released, and what it lowered is put back;
+- a student who changed department reads the level their record shows: the level reached, as the old portal or an office recorded
+  it. No rule lowers it, and the count from entry never adds a year above it;
+- a step down for weak results is an office's decision, made with a reason, and every reader follows it.
+
+**What was released.**
+- The triggers `trg_student_department_change`, `trg_prior_transfer_department_change` and `trg_student_hold_level` are dropped,
+  with `people.hold_department_change(s)`, `people.hold_on_department_change`, `people.hold_on_prior_transfer` and
+  `people.hold_level_guard`. `people.department_hold_of` is kept but answers no hold for everyone: the roll-over and the MBBS
+  own-session roll-over (V733, which edits the roll-over in place) still ask it. A transfer, a swap, a bulk transfer or a restored
+  old-portal transfer leaves the student at the level the office gave.
+- `people.level_options` no longer returns `heldAt` or the LEVEL_HELD_DEPARTMENT_CHANGE refusal, and `people.support_set_level` no
+  longer refuses a level above a hold. The level desk offers every level of the programme again.
+- `people.roll_over_session` (not restated) promotes a student who changed department like any other: a level a session, never
+  past the level their entry reaches.
+- The Bursary's Held Students' Fees page (`/finance/department-change-fees`), its endpoint and
+  `finance.department_change_fee_effect` are removed. The session's fee follows the record, so a student once held is charged
+  their own level's fee again. On the copy of 21 October, 85 students were charged ₦3.01m more for 2025/2026 under the hold; 66 of
+  the 72 who paid had paid their own level's fee.
+- Free from the queue (`people.free_old_portal_transfers`, V686) moves a student at the level the Senate Admissions Committee
+  recommended, where it did, else at their level.
+
+**The release** (`people.release_department_holds(reason, batch)`). The migration runs it once, as batch
+V730-DEPARTMENT-CHANGE-RELEASED. The Academic Office, the Registry or super may run it again with a reason; a second run changes
+nothing. A level an office has set since the hold (a progression or correction on the level desk, a spillover year, a cohort the
+desk set) is not undone.
+- A record V696 lowered, and still at the lowered level, is put back to the level before it, with the session's registrations and
+  enrolment it lowered (V641's carry). Decision LEVEL_DEPARTMENT_CHANGE_RELEASED.
+- A raise the guard refused, where the record is still at the level it was held at, is made: the level asked for, read from the
+  guard's row. Decision LEVEL_HELD_RELEASED.
+- Every hold is then lifted where the record reaches the level the entry cohort reaches (COHORT_DEPARTMENT_CHANGE_RELEASED), or
+  turned into the level reached where the record is behind it (COHORT_LEVEL_REACHED, below).
+- The run is counted in `people.department_hold_release`. V696's and V702's decisions stay on the history.
+
+**The level reached** (`people.align_level_reached`). Some students who changed department have a record behind their entry cohort,
+because the old portal stepped them down. With no cohort set, the receipt and `people.level_in` count from entry in a session with
+no registration or enrolment (V672), and print a year above the record: the complaint of 29 October. So a student who changed
+department, whose record is below the level the entry cohort reaches this session, is given the effective cohort that reaches
+exactly the record (`people.cohort_override`, decision COHORT_LEVEL_REACHED, reason "Changed department: continues at the level
+reached, …"). The receipt, the level in a session, the academic position, spillover and the level desk then read the record. A
+record at or above that level needs none.
+- **At the final level** the record cannot tell a first final year from a spillover year (and many final-level records were set by
+  V676's count from entry). There the register says when the final level was reached: the first session with a registration or
+  enrolment at it, else a level a session on from the last session the register shows below it (never later than the record's
+  session). If that is behind the entry cohort, the cohort reaches the final level in that session (reason "Changed department:
+  reached the final level, …"), so spillover is counted from it, never from entry. With no register at all, the student is read as
+  every spillover student is.
+- **The session is kept.** The cohort caps the current session only; once a session closes it is read from its own rows. So where
+  the student has no enrolment for the current session, one is written at the record's level (as the calendar's enrol-all does).
+- **It follows the record.** The trigger `trg_student_level_reached` aligns the cohort again whenever the level, the programme,
+  the entry level or session, the matric or the status changes: a correction on the level desk, a transfer, a swap, the roll-over,
+  an edit of the entry. An old-portal transfer recorded for a student already on the programme (V669, V686) aligns too
+  (`trg_prior_transfer_level_reached`). The session the level is for is the one the roll-over rolls into or a progression is for
+  (V673: a progression is the next session's level), else the latest session the student is enrolled in after the current one,
+  else the current session. When the level reached meets its entry cohort's level the cohort is lifted (COHORT_LEVEL_REACHED_LIFTED).
+  The record itself is never changed by it.
+- **A cohort the desk set by hand is the desk's.** It is never aligned or lifted. `people.level_reached_cohort_of` tells the two
+  apart by the cohort and reason of the decision that set it.
+
+**How an office steps a student down.** A step down is an office's decision, with a reason:
+- the level desk (ICT Support, the Students Account Officer, the Academic Office, the Registry), or the Academic Office's student
+  edit page: **Change/correct level** to the lower level, with the reason and the ticket;
+- the transfer committee's recommended level (the Senate Admissions Committee's review), which the transfer's approval and its
+  effecting write on the record, and which Free from the queue now honours;
+- the level of a programme swap or a bulk transfer (a lower level there needs the row's reason, V587).
+
+For a student who changed department, the step down sets the level-reached cohort where the record falls behind the entry cohort,
+so the receipt and the results never print the year above. Nothing needs setting on the cohort desk as well.
+
+**On the screens.**
+- The level history and Level Change History name the release: "Hold released: level put back" and "Hold released: the level asked
+  for made". V702's guard rows read "Raise held after a change of department (V696)".
+- Student Cohorts → the student: the effective cohort reads "(the level reached)" for such a cohort. *Correct the cohort* says that
+  it follows the level on the record, that a cohort set there replaces it and stays as set, and that removing it counts the level
+  from the entry session again. Its hint says a step down after a change of department is made on the level desk. *Decisions taken*
+  names each rule ("Continues at the level reached: cohort …", "Hold released: the entry cohort, …", "Hold released: level put
+  back") where it read "Active → Active". A corrected cohort in the lists reads "cohort corrected", not "set by the Registry".
+- The student's dashboard: the cohort's note says the record is read with that cohort and the entry session stays.
+- Student 360°: **Correct level** announces the level the record reads afterwards, as the server returned it.
+
+### On the live copy
+
+From the migration's notice (`V730 department-change hold released on …`) and `people.department_hold_release`, on a copy of the
+University's data with payments to 21 October 2026, at main with V725–V729 (the migration ran in 72 seconds):
+
+| | Count |
+|---|---|
+| Holds standing | 566 |
+| Records put back | 87 (100→200 ×46, 200→300 ×8, 300→400 ×28, 500→600 ×5) |
+| Session rows put back (registrations and enrolments) | 80 |
+| Raises made | 0 (the guard had refused none on the copy; the live portal may have some) |
+| Holds lifted | 197 |
+| At the level reached | 369: 244 below the final level (their record), 125 at it (the register's first final year) |
+| Left as they were | 0 |
+| 2025/2026 enrolments written to keep the level reached | 152 |
+
+What follows for the 566, compared with the same data before V730:
+
+- **Receipts and the level in 2025/2026:** 279 change. 82 follow a record put back (100→200, 200→300, 300→400); 34 whose record
+  stands two or more levels behind their entry cohort read the record instead of one level behind the cohort (300→200 ×16,
+  400→300 ×7, 500→300 ×8, 500→200 ×3); 87 at the final level read it (500→400) because the register shows this as their first
+  final year; 69 at the final level with no register read the count from entry, as every spillover student does (500→600); 7
+  whose record stands above the programme's final level read the final level (600→400 ×6, 600→500 ×1).
+- **2025/2026 fees:** 107 change — 81 fall (₦2,856,053.72 less in all, mostly the records put back) and 26 rise to the normal
+  final-year fee (₦477,650 more in all: the register shows their first final year, where V696 had them in spillover); 25 of those
+  26 had already paid that fee (12 in full, 13 the 70% first instalment). Net, ₦2,378,403.72 less. A student who paid at the held level's fee shows as having
+  paid more, through the usual overpaid reading.
+- **Spillover:** 152 positions move: SP1→normal ×40 (a first final year by the register, or a record two levels behind), SP1→SP2
+  ×64 and SP2→limit reached ×46 (at the final level, the register showing no later final year: counted from entry, as before V696),
+  normal→SP1 ×2.
+- The Registry should look at the 34 records two or more levels behind their entry cohort (some may be stale), and the 46 now at
+  the spillover limit; a level or a spillover year is set on the level desk.
+
 ## Tests
 
 | Test | What it covers |
@@ -339,7 +463,10 @@ The reading lifts the hold and undoes it, so nothing on a record changes.
 | `StudentLevelSupportIT` (V641) | a student at 200, registered, enrolled and billed for the session: the receipt reads 200; the warning says a correction carries; corrected to 100, the registration and enrolment read 100 (`carried` 1/1, `registrationKept` false) and so does the receipt; a progression leaves the registration as it is |
 | `check.sql` V641 | the desk's correction carries (record, registration, enrolment and `people.level_in` at 100), a progression does not; the put-right sets a fresh student's rows left at 200 and finds none the second time; the rollover into the fresh students' entry session promotes the continuing student and holds the fresh one (EXPECTED 467) |
 | `level-management.test.ts` (V641) | the warning for a correction says the registration and enrolment follow; for a progression and a spillover year, that the registration stays |
-| `check.sql` V696 | made-up students who changed department: lowered with the session's registration and enrolment, the session before kept; already a level behind, held with the receipt no longer ahead; their own department's matric, a fresher and a correction back left as they are; a transfer held as it is made; nothing proposed above the hold; a hold taken off not put back; the Bursary refused |
-| `check.sql` V702 | a held student offered nothing above the hold and refused 300 on the desk; an upload's 300 held at 200 and written down; a cohort the desk set since for another reason not a hold; a student left above the hold by an old upload not promoted by the roll-over, the held student promoted to the next session's hold; the Bursary's list read and undone |
-| `ResultMonitorIT` (V702) | the held students' fees read by the Bursary (a lecturer refused), the hold still standing after |
+| `check.sql` V696 | replaced by V730's block below |
+| `check.sql` V702 | the hold's part restated for V730: a student once held offered and set the level by the desk, an upload's level standing, the roll-over taking them on |
+| `ResultMonitorIT` (V702) | the held students' fees part removed with the page (V730) |
 | `level-management.test.ts` (V696) | the two decisions in words |
+| `check.sql` V730 | made-up students left as V696 and V702 left them: a record the hold lowered put back with the session's registration and enrolment, a refused raise made, the hold lifted or turned into the level reached (the record, never a year above it), a cohort the desk set left, a second run the same, the Bursary refused; then an office's raise lifts the cohort, a transfer at the level reached sets nothing, a step down after a change of department sets it |
+| `level-management.test.ts` (V730) | V702's guard rows and the release's decisions in words, none read as a Registry decision |
+| `cohorts.test.ts` (V730) | the cohort desk's decisions in words (the hold, its release, the level reached); a cohort is the level reached's only while its cohort and reason are a level-reached decision's |

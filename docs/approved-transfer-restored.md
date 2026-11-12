@@ -110,7 +110,7 @@ The University's word of 28 October 2026: students whose transfer the old portal
   - give a reason (ten characters or more), and optionally the old portal's reference and the date it was approved;
   - press **Free … from the queue**.
 - **What happens to each.** `people.free_old_portal_transfers` restores each one with `people.restore_approved_transfer`:
-  - the student is moved to the programme the application names, at the level they are at;
+  - the student is moved to the programme the application names, at the level the transfer committee recommended where it did (V730), else at the level they are at;
   - the matriculation number does not change;
   - the old portal's transfer is recorded in the history, with the application's session;
   - the application leaves the queue (withdrawn, with the reason);

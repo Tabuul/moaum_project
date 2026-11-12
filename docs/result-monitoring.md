@@ -180,7 +180,7 @@ sheets, on the score sheets page and the results desk (GET `/api/v1/results/corr
 | POST `/api/v1/results/monitor/duplicates/resolve`, POST `…/duplicates/{id}/undo` | RESOLVERS, within their scope |
 | GET `/api/v1/results/correction-requests/mine` | the open requests on the sheets this desk of entry reaches |
 | POST `/api/v1/results/sheets/{id}/late-results` | the sheet's desk of entry |
-| GET `/api/v1/finance/department-change-fees?session` | the held students' fees, for the Bursary (see student-level-management.md) |
+| GET `/api/v1/finance/department-change-fees?session` | the held students' fees, for the Bursary; removed with the department-change hold by V730 (see student-level-management.md) |
 
 The exceptions and a result's details (GET `…/monitor/exceptions`, `…/monitor/records/{offering}/{student}`) are read by
 EXCEPTION_READERS: the MONITORS, the Database Operators, and the department and faculty desks.

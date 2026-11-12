@@ -1,4 +1,5 @@
 /** Student cohorts (V331): the shapes /api/v1/cohorts returns, and the words the screens use for them. */
+import { ruleWord } from "./level-management.ts";
 
 export interface CohortRow {
   id: string; surname: string; other_names: string; matric_no: string | null; admission_no: string | null; jamb_reg_no: string | null; sex: string | null;
@@ -75,3 +76,25 @@ export const classWord = (c: string) => CLASS[c]?.[0] ?? c.charAt(0) + c.slice(1
 export const statusWord = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 export const fullName = (r: { surname: string; other_names: string }) => `${r.surname.toUpperCase()}, ${r.other_names}`;
 export const issuesOf = (s: string | null | undefined) => (s ? s.split(",").filter(Boolean) : []);
+
+type Decision = CohortStudent["decisions"][number];
+
+/** V730: the effective cohort is the one set for the level reached after a change of department (people.level_reached_cohort_of: the
+ *  override's cohort and reason are a COHORT_LEVEL_REACHED decision's, or V696's) — it follows the record; one the desk set is the desk's */
+export function levelReachedCohort(d: Pick<CohortStudent, "override" | "decisions">): boolean {
+  const o = d.override;
+  return !!o && d.decisions.some((x) => (x.rule === "COHORT_LEVEL_REACHED" || x.rule === "COHORT_DEPARTMENT_CHANGE")
+    && x.effective_cohort === o.effective_cohort && x.reason === o.reason);
+}
+
+/** a decision taken, in words: a cohort from → to, the expected completion, how a level changed, or the standing from → to */
+export function decisionWord(x: Decision): string {
+  const rule = x.rule ?? "";
+  if (rule === "COHORT") return `Cohort ${x.previous_cohort ?? "—"} → ${x.effective_cohort ?? "—"}`;
+  if (rule === "COMPLETION") return "Expected completion";
+  // V696 and V730: the cohort the department-change hold set, and the level reached that replaced it
+  if (rule === "COHORT_DEPARTMENT_CHANGE" || rule === "COHORT_LEVEL_REACHED") return `${ruleWord(rule)}: cohort ${x.effective_cohort ?? "—"}`;
+  if (rule === "COHORT_DEPARTMENT_CHANGE_RELEASED" || rule === "COHORT_LEVEL_REACHED_LIFTED") return `${ruleWord(rule)}: the entry cohort, ${x.effective_cohort ?? "—"}`;
+  if (rule.startsWith("LEVEL_")) return ruleWord(rule);
+  return `${statusWord(x.previous_status)} → ${statusWord(x.final_status)}`;
+}

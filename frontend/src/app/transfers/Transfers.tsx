@@ -133,7 +133,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
 
   async function freeFromQueue() {
     const n = pickedRows.length;
-    if (!n || !window.confirm(`Free ${n} application${n === 1 ? "" : "s"} from the queue? Each student is moved to the programme they applied for, at the level they are at, `
+    if (!n || !window.confirm(`Free ${n} application${n === 1 ? "" : "s"} from the queue? Each student is moved to the programme they applied for, at the level the transfer committee recommended where it did, else at the level they are at, `
       + "without the approvals; the matriculation number does not change and the old portal's transfer is recorded in their history.")) return;
     const j = await send("/old-portal", { applications: pickedRows.map((r) => r.id), reason: freeing.reason.trim(), reference: freeing.reference.trim() || null,
       approvedOn: freeing.approvedOn || null }, `${n} transfer application${n === 1 ? "" : "s"} approved on the old portal freed from the queue`);
@@ -214,7 +214,7 @@ export function Transfers({ rows, programmes, actingOffice }: { rows: TransferRo
         <Panel title="Free transfers approved on the old portal" right={`${pickedRows.length} of ${queued.length} in the queue chosen`}>
           <PBody>
             <div className="sub2">Students whose transfer the old portal approved and who were put back in this queue. Tick them below (in the queue), or choose every
-              application in the queue; each student is moved to the programme they applied for, at the level they are at, with no approval, fee or new application.
+              application in the queue; each student is moved to the programme they applied for, at the level the transfer committee recommended where it did, else at the level they are at, with no approval, fee or new application.
               The application leaves the queue with the reason, the old portal&rsquo;s transfer is recorded in the student&rsquo;s history, and the matriculation number never changes.
               One the checks refuse is left in the queue with the reason.</div>
             <div className="row mt-2" style={{ flexWrap: "wrap", gap: 8 }}>

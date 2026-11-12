@@ -17,7 +17,7 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 import { STUDENT_LEVELS } from "@/lib/levels";
 import { LevelCorrections } from "./LevelCorrections";
 import { Lifecycle, type LifeParams } from "./Lifecycle";
-import { CLASS, CONF, ISSUE, RULE, SPILL, STATUSES, classWord, fullName, issuesOf, statusWord, type CohortList, type CohortRow, type CohortSettings, type CohortStudent, type CohortSummary } from "@/lib/cohorts";
+import { CLASS, CONF, ISSUE, RULE, SPILL, STATUSES, classWord, decisionWord, fullName, issuesOf, levelReachedCohort, statusWord, type CohortList, type CohortRow, type CohortSettings, type CohortStudent, type CohortSummary } from "@/lib/cohorts";
 
 export interface Filters { q: string; fac: string; dept: string; prog: string; cohort: string; entry: string; jamb: string; level: string; duration: string; status: string; grad: string; spill: string; conf: string; issue: string; sex: string; entryMode: string; sort: string; dir: string; size: string }
 type Tab = "overview" | "current" | "graduated" | "spillover" | "review" | "lifecycle" | "all" | "levels" | "quality" | "settings";
@@ -192,7 +192,7 @@ export function Cohorts({ tab, summary, list, listProblem, settings, structure, 
               <span key="n"><strong>{fullName(r)}</strong><div className="sub2 tnum">{r.jamb_reg_no ?? r.admission_no ?? ""}</div></span>,
               <span key="m" className="tnum">{r.matric_no ?? <span className="sub2">—</span>}</span>,
               <span key="j" className="tnum">{r.jamb_year ?? "—"}</span>,
-              <span key="c" className="tnum">{r.entry_session ?? "—"}{r.effective_cohort && r.effective_cohort !== r.entry_session ? <> → <b>{r.effective_cohort}</b><div className="sub2">{r.cohort_source === "MERGED" ? "session merged" : "set by the Registry"}</div></> : null}</span>,
+              <span key="c" className="tnum">{r.entry_session ?? "—"}{r.effective_cohort && r.effective_cohort !== r.entry_session ? <> → <b>{r.effective_cohort}</b><div className="sub2">{r.cohort_source === "MERGED" ? "session merged" : "cohort corrected"}</div></> : null}</span>,
               <span key="p">{r.programme}<div className="sub2">{r.faculty} · {r.duration_years ? `${r.duration_years} sessions` : "length not set"}</div></span>,
               <span key="l" className="tnum">{r.current_level ?? "—"}{r.computed_level != null && r.computed_level !== r.current_level ? <div className="sub2 ink-red">cohort says {r.computed_level}</div> : null}</span>,
               <span key="e" className="tnum">{r.expected_completion ?? "—"}</span>,
@@ -446,6 +446,8 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
     setS(null);
   }
   const d = s ?? null;
+  // V730: a cohort set for the level reached after a change of department follows the record; the desk's own stays as set
+  const reached = d ? levelReachedCohort(d) : false;
   return (
     <Modal title={d ? fullName(d) : "Loading…"} sub={d ? `${d.matric_no ?? d.admission_no ?? ""} · ${d.programme}` : ""} onClose={onClose} wide
       foot={<Btn kind="ghost" onClick={onClose}>Close</Btn>}>
@@ -456,7 +458,7 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
             {issuesOf(d.issues).length ? <div className="mt-1">{issuesOf(d.issues).map((x) => ISSUE[x] ?? x).join(" · ")}</div> : null}
           </Note>
           <div className="grid grid--3">
-            {([["JAMB year", d.jamb_year], ["Entry session", d.entry_session], ["Effective cohort", `${d.effective_cohort ?? "—"}${d.cohort_source === "MERGED" ? " (session merged)" : d.cohort_source === "OVERRIDE" ? " (set by the Registry)" : ""}`],
+            {([["JAMB year", d.jamb_year], ["Entry session", d.entry_session], ["Effective cohort", `${d.effective_cohort ?? "—"}${d.cohort_source === "MERGED" ? " (session merged)" : d.cohort_source === "OVERRIDE" ? (reached ? " (the level reached)" : " (set by the Registry)") : ""}`],
               ["Matriculation", d.matric_no], ["Programme length", d.duration_years ? `${d.duration_years} sessions` : "not configured"], ["Current session", d.current_session],
               ["Level on record", d.current_level], ["Level the cohort implies", d.computed_level], ["Expected completion", `${d.expected_completion ?? "—"}${d.completionOverride ? " (pinned by the Registry)" : ""}`],
               ["Deferred sessions", d.deferred_sessions], ["Spillover", SPILL[d.spillover_state] ?? d.spillover_state], ["This session", d.registered_current ? "Registered" : d.enrolled_current ? "Enrolled" : "Not registered"],
@@ -479,7 +481,7 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
               <div className="b600">Outstanding courses</div>
               {d.outstanding.length ? <DTable pageSize={0} noPrint cols={["Course", "Units|mid", "Failed in"]} rows={d.outstanding.map((o, i) => [<span key={"c" + i}><b>{o.course_code}</b> {o.title}</span>, <span key={"u" + i} className="tnum">{o.units}</span>, <span key={"f" + i} className="sub2">{o.failed_in}</span>])} /> : <div className="sub2">None on the published record.</div>}
               <div className="b600">Decisions taken</div>
-              {d.decisions.length ? <DTable pageSize={0} noPrint cols={["When|mid", "Decision", "By"]} rows={d.decisions.map((x, i) => [<span key={"w" + i} className="tnum sub2">{when(x.decided_at)}</span>, <span key={"d" + i}>{x.rule === "COHORT" ? `Cohort ${x.previous_cohort ?? "—"} → ${x.effective_cohort ?? "—"}` : x.rule === "COMPLETION" ? "Expected completion" : `${statusWord(x.previous_status)} → ${statusWord(x.final_status)}`}<div className="sub2">{x.reason}{x.batch_ref ? ` · ${x.batch_ref}` : ""}</div></span>, <span key={"b" + i} className="sub2">{x.officer ?? "—"}{x.actor_office ? ` · ${x.actor_office}` : ""}</span>])} /> : <div className="sub2">None yet.</div>}
+              {d.decisions.length ? <DTable pageSize={0} noPrint cols={["When|mid", "Decision", "By"]} rows={d.decisions.map((x, i) => [<span key={"w" + i} className="tnum sub2">{when(x.decided_at)}</span>, <span key={"d" + i}>{decisionWord(x)}<div className="sub2">{x.reason}{x.batch_ref ? ` · ${x.batch_ref}` : ""}</div></span>, <span key={"b" + i} className="sub2">{x.officer ?? "—"}{x.actor_office ? ` · ${x.actor_office}` : ""}</span>])} /> : <div className="sub2">None yet.</div>}
             </div>
           </div>
           {canDecide ? (
@@ -493,9 +495,14 @@ function CohortStudentModal({ id, canDecide, onClose, call, busy }: { id: string
                   <div><Btn kind="primary" disabled={busy || reason.trim().length < 5} onClick={async () => { const j = await call("POST", `/students/${id}/decision`, { finalStatus: status, reason: reason.trim() }, `${fullName(d)}: standing decided`); if (j) { setReason(""); setS(undefined); } }}>Record the Decision</Btn></div>
                 </div></PBody>
               </Panel>
-              <Panel title="Correct the cohort" right={d.override ? `Set by ${d.override.set_by ?? "the Registry"} on ${when(d.override.set_at)}` : "Only where the session rule does not fit"}>
+              <Panel title="Correct the cohort" right={d.override ? (reached ? `Follows the level on the record since ${when(d.override.set_at)}` : `Set by ${d.override.set_by ?? "the Registry"} on ${when(d.override.set_at)}`) : "Only where the session rule does not fit"}>
                 <PBody><div className="stack">
-                  <Field id="oc-cohort" label="Effective cohort" hint="A re-entry or a transfer in; the entry session stays as it is">
+                  {reached ? (
+                    <Note kind="info" title="Continues at the level reached">
+                      The student changed department and the record is behind the entry cohort, so this cohort reaches exactly the level on the record and follows it whenever an office changes the level. A cohort set here replaces it and stays as set; removing it counts the level from the entry session again.
+                    </Note>
+                  ) : null}
+                  <Field id="oc-cohort" label="Effective cohort" hint="A re-entry or a transfer in; the entry session stays as it is. A step down after a change of department is made on the level desk, and the cohort follows it">
                     <select id="oc-cohort" className="ctl" value={cohort} onChange={(e) => setCohort(e.target.value)}><option value="">Choose…</option>{d.sessions.filter((x) => x.state !== "CANCELLED").map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}</select>
                   </Field>
                   <Field id="oc-why" label="Reason" required><input id="oc-why" className="ctl" value={why} onChange={(e) => setWhy(e.target.value)} maxLength={2000} /></Field>

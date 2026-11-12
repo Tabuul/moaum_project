@@ -49,7 +49,9 @@ skipped, so a 2020/2021 cohort on a four-year programme with 2021/2022 cancelled
 
 **The cohort is derived.** `effective_cohort` = the entry session's effective session, unless the Registry has set a
 `people.cohort_override` for that student on evidence (a re-admission, a transfer in). The source is recorded as
-`ENTRY`, `MERGED` or `OVERRIDE`. The entry session itself is never changed.
+`ENTRY`, `MERGED` or `OVERRIDE`. The entry session itself is never changed. Since V730 a student who changed department, whose
+record is behind their entry cohort, is given one without the desk: the cohort that reaches the level on the record, which follows
+the record as it moves (COHORT_LEVEL_REACHED; see student-level-management.md). A cohort the desk sets replaces it and stays as set.
 
 **The expected completion may be pinned (V612).** Beside the cohort override, `people.completion_override` lets the Registry pin
 a student's expected completion session on a reason (a Senate directive, a case decided on paper, a history the register does

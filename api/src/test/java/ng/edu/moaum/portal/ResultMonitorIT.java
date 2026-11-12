@@ -213,11 +213,11 @@ class ResultMonitorIT {
     /**
      * V702: A's mark on the BSU- twin of the first course resolved by Exams & Records (not the Bursary) and put back by the Registry;
      * the second course published and A's late result raised from an upload by the Examinations Officer, B's mark passed over; the
-     * Officer's open requests found wherever its sheets are; the exceptions read by the Head of Department; C held after a change of
-     * department on the Bursary's list.
+     * Officer's open requests found wherever its sheets are; the exceptions read by the Head of Department. (V730: the Bursary's list of
+     * students held after a change of department went with the hold.)
      */
     @Test
-    void duplicatesAreResolvedLateResultsUploadedAndTheHeldStudentsListedForTheBursary() {
+    void duplicatesAreResolvedAndLateResultsUploaded() {
         UUID twin = it.db(() -> {
             jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max) VALUES ('BSU-' || :p || ' 101', 'Monitor Course One', 3, 1, 100, :d, 'Core', 'LIVE', 40)")
                     .param("p", p).param("d", dept).update();
@@ -294,21 +294,5 @@ class ResultMonitorIT {
         // ── the exceptions, read by the Head of Department within the department ──
         ResponseEntity<Map> hod = it.get(it.officer("hod", "department", dept), q("/api/v1/results/monitor/exceptions?dept=" + dept + "&prog=" + prog + "&kind=MISSING_SCORE"));
         assertThat(hod.getStatusCode().value()).as(String.valueOf(hod.getBody())).isEqualTo(200);
-
-        // ── C held after a change of department, on the Bursary's list; read and undone ──
-        it.db(() -> {
-            jdbc.sql("INSERT INTO people.cohort_override (student_id, effective_cohort, reason, set_by, actor_office) VALUES (:c, :s, 'IT V702: changed department', :c, 'academic')")
-                    .param("c", c).param("s", session).update();
-            return jdbc.sql("""
-                    INSERT INTO people.cohort_decision (student_id, previous_status, final_status, previous_cohort, effective_cohort, rule, reason, officer, actor_office, session)
-                    VALUES (:c, 'ACTIVE', 'ACTIVE', '2020/2021', :s, 'COHORT_DEPARTMENT_CHANGE', 'IT V702: changed department', :c, 'academic', :s)
-                    """).param("c", c).param("s", session).update();
-        });
-        assertThat(it.get(ItSupport.token("lecturer"), "/api/v1/finance/department-change-fees?session=" + session).getStatusCode().value()).isEqualTo(403);
-        ResponseEntity<Map> fees = it.get(ItSupport.token("bursar"), "/api/v1/finance/department-change-fees?session=" + session);
-        assertThat(fees.getStatusCode().value()).as(String.valueOf(fees.getBody())).isEqualTo(200);
-        assertThat((List<Map<String, Object>>) fees.getBody().get("rows")).filteredOn(x -> c.toString().equals(x.get("studentId")))
-                .extracting(x -> x.get("heldLevel") + ">" + x.get("unheldLevel")).containsExactly("100>100");
-        assertThat(jdbc.sql("SELECT count(*) FROM people.cohort_override WHERE student_id = :c").param("c", c).query(Integer.class).single()).isEqualTo(1);
     }
 }

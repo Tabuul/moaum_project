@@ -126,9 +126,16 @@ export function ruleWord(rule: string | null | undefined): string {
     case "LEVEL_ARITHMETIC": return "Correction by the sessions counted";
     case "LEVEL_ABOVE_FINAL": return "Brought to the final level";   // V601
     case "LEVEL_SPILLOVER_YEAR": return "Spillover year set (level desk)";   // V628
-    // V696: a student who changed department is held one level behind their entry cohort
+    // V696/V702: the department-change hold, kept as history (released by V730)
     case "LEVEL_DEPARTMENT_CHANGE": return "Held a level behind (changed department)";
     case "COHORT_DEPARTMENT_CHANGE": return "Cohort a session later (changed department)";
+    case "LEVEL_HELD_DEPARTMENT_CHANGE": return "Raise held after a change of department (V696)";
+    // V730: the hold released; a student who changed department continues at the level reached
+    case "LEVEL_DEPARTMENT_CHANGE_RELEASED": return "Hold released: level put back";
+    case "LEVEL_HELD_RELEASED": return "Hold released: the level asked for made";
+    case "COHORT_DEPARTMENT_CHANGE_RELEASED": return "Hold released";
+    case "COHORT_LEVEL_REACHED": return "Continues at the level reached";
+    case "COHORT_LEVEL_REACHED_LIFTED": return "Level reached cohort lifted";
     default: return rule ? "Registry decision" : "Level change";
   }
 }

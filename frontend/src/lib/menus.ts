@@ -841,8 +841,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/accounts", "icon": "chart", "label": "Accounting & Books" },
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
-          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" },
-          { "id": "f/heldfees", "icon": "card", "label": "Held Students' Fees" }
+          { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" }
         ]
       },
       {
@@ -891,8 +890,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/feesetup", "icon": "card", "label": "Fee Setup and Binding" },
           { "id": "t/acceptancefees", "icon": "card", "label": "Acceptance Fee Monitor" },
           { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
-          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" },
-          { "id": "f/heldfees", "icon": "card", "label": "Held Students' Fees" }
+          { "id": "t/intakefees", "icon": "chart", "label": "School Fees Readiness" }
         ]
       },
       {

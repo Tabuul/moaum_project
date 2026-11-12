@@ -164,7 +164,9 @@ export function Student360({
       if (response.ok) {
         setLevelling(false);
         setLevelReason("");
-        notify(`Level corrected to ${newLevel}`);
+        // the level the record now reads, as the server returned it, not the one asked for
+        const saved = ((await response.json().catch(() => null)) as StudentRecord | null)?.student?.currentLevel;
+        notify(saved == null || saved === Number(newLevel) ? `Level corrected to ${saved ?? newLevel}` : `The record reads ${saved} Level (${newLevel} was asked for)`);
         router.refresh();
         return;
       }
