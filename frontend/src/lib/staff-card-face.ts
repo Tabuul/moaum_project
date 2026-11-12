@@ -2,9 +2,10 @@
  * What a staff identity card prints of its holder (V439, V622; V698 shared by the print of one card and the print of them all): the
  * name, the staff number, the rank, the category (Teaching or Non-teaching), the department, the date of appointment and the blood
  * group. The University's layout of 12 November 2026 prints DEPARTMENT in place of the unit, the faculty and the office, and no
- * validity: the department is the academic department or administrative office the API reads from the HR record
- * (credentials.staff_card_department, V748), else the portal office the person holds. The desk prints from the card register, never
- * from the HR record's other fields. Node-tested.
+ * validity: the department is the academic department or administrative office the API reads (credentials.staff_card_department:
+ * V748 the HR record, V751 else the office the person holds — its scope, or the unit a central office belongs to), a dash when
+ * nothing resolves, never an office's title. The desk prints from the card register, never from the HR record's other fields.
+ * Node-tested.
  */
 import type { CardFace } from "./idcard-design.ts";
 
@@ -37,7 +38,9 @@ export function staffCardFace(card: LiveStaffCard): CardFace | null {
     kind: "staff", name: `${s.surname}, ${s.given_names}`, number: s.staff_number,
     fields: [
       ["Rank", rankCase(s.rank) || office || "—"], ["Category", academic ? "Teaching" : s.category ? "Non-teaching" : "Staff"],
-      ["Department", s.department || office || "—"], ["Blood group", s.blood_group ?? "—"],
+      // V751: the department the API reads (the HR record, else the office's scope or the unit a central office belongs to) — never an
+      // office's title: nothing resolving, a dash
+      ["Department", s.department || "—"], ["Blood group", s.blood_group ?? "—"],
       ["Appointed", day(s.date_first_appointment ?? s.appointment_date)],
     ],
     foot: [],

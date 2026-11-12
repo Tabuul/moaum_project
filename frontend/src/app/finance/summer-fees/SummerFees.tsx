@@ -54,7 +54,7 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
   const [from, setFrom] = useState("");
   const [why, setWhy] = useState("");
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
-  const [settling, setSettling] = useState<{ id: string; state: "APPLIED" | "REFUNDED" } | null>(null);
+  const [settling, setSettling] = useState<{ id: string; state: "APPLIED" | "REFUNDED" | "REOPEN" } | null>(null);
   const [snote, setSnote] = useState("");
   const [wreason, setWreason] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -148,7 +148,7 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
 
       {view.credits?.length ? (
         <Panel title="Unapplied Summer payments" right={`${view.credits.filter((x) => x.state === "OPEN").length} open`}>
-          <PBody><div className="sub2">A payment confirmed after what it was for had changed — its courses taken back, or paid by another reference. The money is held here until the Bursar applies it to what the student owes or refunds it.</div></PBody>
+          <PBody><div className="sub2">A payment confirmed after what it was for had changed — its courses taken back, or paid by another reference. The money is held here until the Bursar applies it to what the student owes or refunds it. A credit that is the whole of its payment is applied by moving the payment on the payment correction desk: the move records it here. A credit settled here in error can be reopened.</div></PBody>
           <DTable cols={["Number", "Name", "Session", "Amount|num", "Reference", "Received", "State", "|mid"]} rows={view.credits.map((x) => [
             <span key="n" className="tnum">{x.number ?? "—"}</span>,
             <span key="nm">{x.name}</span>,
@@ -162,17 +162,26 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
                 <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "APPLIED" }); setSnote(""); }}>Applied</Btn>
                 <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "REFUNDED" }); setSnote(""); }}>Refunded</Btn>
               </span>
+            ) : x.state !== "OPEN" && mayApprove && !(x.settled_note ?? "").startsWith("Moved by a payment correction: ") ? (
+              // V751: a credit settled by hand in error is reopened, with a reason
+              <Btn key="x" kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "REOPEN" }); setSnote(""); }}>Reopen</Btn>
             ) : <span key="x" />,
           ])} />
           {settling ? (
             <PBody>
               <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end", gap: "var(--s-2)" }}>
-                <Field id="sf-sn" label={settling.state === "APPLIED" ? "How it was applied" : "How it was refunded"} hint="At least 10 characters: the voucher, the reference or the desk that moved the money.">
+                <Field id="sf-sn" label={settling.state === "APPLIED" ? "How it was applied" : settling.state === "REOPEN" ? "Why it is reopened" : "How it was refunded"}
+                       hint={settling.state === "REOPEN" ? "At least 10 characters, kept on the audit trail." : "At least 10 characters: the voucher, the reference or the desk that moved the money."}>
                   <input id="sf-sn" className="ctl" value={snote} onChange={(e) => setSnote(e.target.value)} />
                 </Field>
                 <Btn kind="primary" size="md" disabled={busy !== null || snote.trim().length < 10}
-                     onClick={async () => { if (await run("settle", "POST", `/finance/summer-credits/${settling.id}/settle`, { state: settling.state, note: snote.trim() }, "Summer credit settled", "Settled")) setSettling(null); }}>
-                  Record it
+                     onClick={async () => {
+                       const ok = settling.state === "REOPEN"
+                         ? await run("settle", "POST", `/finance/summer-credits/${settling.id}/reopen`, { reason: snote.trim() }, "Summer credit reopened", "Reopened")
+                         : await run("settle", "POST", `/finance/summer-credits/${settling.id}/settle`, { state: settling.state, note: snote.trim() }, "Summer credit settled", "Settled");
+                       if (ok) setSettling(null);
+                     }}>
+                  {settling.state === "REOPEN" ? "Reopen it" : "Record it"}
                 </Btn>
                 <Btn kind="ghost" size="md" onClick={() => setSettling(null)}>Cancel</Btn>
               </div>

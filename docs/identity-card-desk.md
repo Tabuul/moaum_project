@@ -257,7 +257,8 @@ The University's brief "Update student and staff identity card layouts" changes 
 1. its academic department, when it names one (never replaced by the unit, the faculty or the office);
 2. else the unit's card name;
 3. else the unit as the nominal roll spelled it;
-4. else, on the card, the office the person holds on the portal.
+4. else (V751) the office the person holds on the portal, read by its scope: a department-scoped grant its department, a unit-scoped one the unit's card name, a faculty-scoped one the faculty, a college-scoped one the college, and an office the University holds centrally the unit it belongs to (`ref.office.unit_code`: the Registrar's and the Deputy Registrar's offices the Registry, the Bursar's and the Students Account Officer's the Bursary, the Director of ICT's ICT, the Chief Security Officer's the Security Unit, the Librarian's the Library);
+5. else a dash. An office's title ("Head of Department", "Registrar") is never printed under DEPARTMENT.
 
 A posting recorded in `hrm.movement` does not change the record, so the record is what every reader uses.
 
@@ -280,3 +281,18 @@ The design (`lib/idcard-design`) now sets both columns of particulars at one siz
 - `lib/staff-cards.test.ts`: the staff face's fields and the Teaching category.
 - `StaffIdCardsIT`: the face's department is the unit's card-name reading; ICT's card name printed; HR refused; a reason required.
 - check.sql's V748 block: the seeds, the inheritance, the department's order and the office check.
+
+## 12. The review of the new layouts (V748, V751)
+
+The review (three readers, each finding put to a refuter) confirmed five points on the cards.
+
+- **Fixed in V748, before it was pushed:**
+  - a long department could be cut short as the particulars grew;
+  - the staff card's number sat 1.7 mm right of centre;
+  - an appointment date in a long month broke over two lines;
+  - rows went out of level beside a wrapped value.
+- **Fixed in V751:** a member of staff the HR record places nowhere printed their office's title as the department. The card now reads the office's scope or the unit a central office belongs to, else a dash.
+- **Left as they were (refuted as older than the change):**
+  - the verification page reads only the academic department;
+  - the desk's lists show a unit's formal name;
+  - an ended department or unit still prints.

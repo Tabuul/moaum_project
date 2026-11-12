@@ -491,20 +491,26 @@ class SummerController {
     @PreAuthorize(FEE_APPROVERS)
     @Transactional
     Map<String, Object> settle(@PathVariable UUID id, @Valid @RequestBody Settle body) {
-        UUID who = AuditContextHolder.current().map(c -> c.actorId()).orElseThrow();
         // V742: only a credit whose payment still stands as the student's Summer payment (one archived is held until restored; one moved
-        // off the Summer is settled by the move itself)
-        int n = jdbc.sql("""
-                UPDATE registration.summer_credit x SET state = :st, settled_at = now(), settled_by = :w, settled_note = :n
-                 WHERE x.id = :id AND x.state = 'OPEN'
-                   AND EXISTS (SELECT 1 FROM finance.payment_reference pr WHERE pr.id = x.reference_id AND pr.archived_at IS NULL
-                                  AND pr.purpose LIKE 'Summer semester fees%' AND pr.student_id = x.student_id AND pr.session = x.session)
-                """).param("st", body.state()).param("w", who).param("n", body.note().trim()).param("id", id).update();
-        if (n == 0) {
-            throw new DomainRuleViolation("SUMMER_CREDIT_SETTLED", "That credit is already settled, or its payment is archived or no longer a Summer payment.",
-                    new DomainRuleViolation.Remedy("Read it again.", "Bursary"));
-        }
-        return Map.of("id", id, "state", body.state());
+        // off the Summer is settled by the move itself). V751: the database checks it all again, and refuses "Applied" by hand for a
+        // credit that is the whole of its payment (SUMMER_CREDIT_MOVE_IT: the payment is moved on the correction desk, which records it)
+        String state = jdbc.sql("SELECT registration.summer_credit_settle(:id, :st, :n)")
+                .param("id", id).param("st", body.state()).param("n", body.note().trim()).query(String.class).single();
+        return Map.of("id", id, "state", state);
+    }
+
+    public record Reopen(@NotBlank @Size(min = 10, max = 600) String reason) {
+    }
+
+    /** V751: a Summer credit the Bursar settled by hand in error is reopened, with a reason, while its payment stands as the Summer
+     *  payment — the payment may then be moved or archived */
+    @PostMapping("/api/v1/finance/summer-credits/{id}/reopen")
+    @PreAuthorize(FEE_APPROVERS)
+    @Transactional
+    Map<String, Object> reopen(@PathVariable UUID id, @Valid @RequestBody Reopen body) {
+        String state = jdbc.sql("SELECT registration.summer_credit_reopen(:id, :r)").param("id", id).param("r", body.reason().trim())
+                .query(String.class).single();
+        return Map.of("id", id, "state", state);
     }
 
     @GetMapping("/api/v1/finance/summer-fees")

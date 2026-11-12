@@ -29,8 +29,9 @@ test("V698, the layout of 12 November 2026: a member of staff prints rank, categ
   const lecturer = staffCardFace(card({ department: "Mathematics", faculty: "Science", category: "ACADEMIC" }, [{ office_code: "lecturer", office: "Lecturer" }]))!;
   assert.deepEqual(lecturer.fields.slice(1, 3), [["Category", "Teaching"], ["Department", "Mathematics"]]);
   assert.ok(!lecturer.fields.some(([l]) => ["Unit", "Faculty", "Office"].includes(l)), "no unit, faculty or office");
-  // no department on the HR record: the office the person holds on the portal stands as the department
+  // V751: no department from the API: a dash — never the office's title ("Bursar") under DEPARTMENT; the API reads the office's unit
   const officer = staffCardFace(card({ category: null }, [{ office_code: "bursar", office: "Bursar" }]))!;
-  assert.deepEqual(officer.fields[2], ["Department", "Bursar"]);
+  assert.deepEqual(officer.fields[2], ["Department", "—"]);
+  assert.deepEqual(staffCardFace(card({ category: null, department: "Bursary" }, [{ office_code: "bursar", office: "Bursar" }]))!.fields[2], ["Department", "Bursary"]);
   assert.equal(staffCardFace(card({ staff_number: null })), null);
 });

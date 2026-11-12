@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 578
+\set EXPECTED 579
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34381,6 +34381,113 @@ BEGIN
       coalesce(msg = 'sub Zed Office | solo Solo Unit of Things | academic its department | roll WORKS YARD | nothing none'
                      || ' | seeds Bursary,Stores,Information and Communication Technology,Registry'
                      || ' | hrm UNIT_CARD_NAME_OFFICE | set Zed Accounts | cleared Zed Office', false),
+      msg);
+END $$;
+-- ── V751: the reviews of V746 and V748 applied. Made-up staff with no HR record: an HOD (a department), the Registrar (central, the
+--          Registry), a Dean (a faculty), the Vice-Chancellor (central, no unit set) — a department, Registry, the faculty, nothing; one
+--          with an HR placement as well prints the placement. A Summer payment in 9832/9833 that is all credit: refunded by hand it
+--          holds the payment while the payment stands there; moved since (as before V746), it may be reversed and archived. A
+--          whole-payment credit is not applied by hand; one refunded in error is reopened by the Bursar (not by HR). A course code
+--          renamed and the renamed course merged is followed to the course kept; a code later reused by another course is followed
+--          to the course that held it when the authorisation was granted. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); S text := '9832/9833'; dept text; dept_name text; fac text; fac_name text;
+    p_hod uuid := gen_random_uuid(); p_reg uuid := gen_random_uuid(); p_dean uuid := gen_random_uuid(); p_vc uuid := gen_random_uuid(); p_hr uuid := gen_random_uuid();
+    st uuid := gen_random_uuid(); ref1 text; id1 uuid; cr uuid; ref2 text; id2 uuid; cr2 uuid;
+    deps text; held text; moved text; by_hand text; refunded text; hrm_reopen text; reopened text; chain text; reused text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V751', true);
+    SELECT code, name INTO dept, dept_name FROM ref.department WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+    SELECT code, name INTO fac, fac_name FROM ref.faculty ORDER BY code LIMIT 1;
+
+    -- a department read from the office held
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (p_hod, 'ZZ7511', 'ZZOFFICE', 'Hod'), (p_reg, 'ZZ7512', 'ZZOFFICE', 'Registrar'), (p_dean, 'ZZ7513', 'ZZOFFICE', 'Dean'),
+        (p_vc, 'ZZ7514', 'ZZOFFICE', 'Vc'), (p_hr, 'ZZ7515', 'ZZOFFICE', 'Placed');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), p_hod, 'hod', 'department', dept, 'check V751', who, current_date),
+        (gen_random_uuid(), p_reg, 'registrar', 'institution', NULL, 'check V751', who, current_date),
+        (gen_random_uuid(), p_dean, 'dean', 'faculty', fac, 'check V751', who, current_date),
+        (gen_random_uuid(), p_vc, 'vc', 'institution', NULL, 'check V751', who, current_date),
+        (gen_random_uuid(), p_hr, 'registrar', 'institution', NULL, 'check V751', who, current_date);
+    INSERT INTO hrm.staff_record (person_id, home_unit) VALUES (p_hr, 'ICT');
+    deps := CASE WHEN credentials.staff_card_department(p_hod) = dept_name THEN 'its department' ELSE coalesce(credentials.staff_card_department(p_hod), 'none') END
+        || '/' || coalesce(credentials.staff_card_department(p_reg), 'none')
+        || '/' || CASE WHEN credentials.staff_card_department(p_dean) IN ('Faculty of ' || fac_name, fac_name) THEN 'its faculty' ELSE coalesce(credentials.staff_card_department(p_dean), 'none') END
+        || '/' || coalesce(credentials.staff_card_department(p_vc), 'none')
+        || '/' || coalesce(credentials.staff_card_department(p_hr), 'none');
+
+    -- a Summer payment that is all credit (confirmed with nothing to pay)
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), S, DATE '9832-10-01', DATE '9833-08-31', 'PLANNED')
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    SELECT st, 'MOAUM/ADM/98/975101', 'MOAU/ZRV/98/7511', 'ZZCREDIT', 'Summer Payer', p.code, 'UTME', S, 100, 400, 'ACTIVE', now()
+      FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    ref1 := finance.new_purpose_reference(st, S, 55000, 'Summer semester fees, ' || S || ': programme fee and 1 course');
+    PERFORM finance.confirm_payment(ref1, 'Bank transfer', 'check V751');
+    SELECT id INTO id1 FROM finance.payment_reference WHERE reference = ref1;
+    SELECT id INTO cr FROM registration.summer_credit WHERE reference_id = id1;
+    -- applied by hand: refused (the whole payment is credit); refunded by hand: the payment is held while it stands on the Summer
+    BEGIN
+        PERFORM registration.summer_credit_settle(cr, 'APPLIED', 'to the school fees on the correction desk');
+        by_hand := 'applied';
+    EXCEPTION WHEN OTHERS THEN by_hand := split_part(SQLERRM, ':', 1);
+    END;
+    refunded := registration.summer_credit_settle(cr, 'REFUNDED', 'Refunded by voucher PV/CHECK/751');
+    held := CASE WHEN array_to_string(finance.payment_archive_refusals(id1), ' ') LIKE '%money is spent%' THEN 'held' ELSE 'free' END;
+    -- reopened in error: not by HR; by the Bursar, with a reason
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    BEGIN
+        PERFORM registration.summer_credit_reopen(cr, 'refunded in error, the voucher was never paid');
+        hrm_reopen := 'reopened';
+    EXCEPTION WHEN OTHERS THEN hrm_reopen := split_part(SQLERRM, ':', 1);
+    END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    reopened := registration.summer_credit_reopen(cr, 'refunded in error, the voucher was never paid');
+
+    -- a second payment refunded by hand and then moved (as before V746): its reversal and its archive are no longer refused
+    ref2 := finance.new_purpose_reference(st, S, 20000, 'Summer semester fees, ' || S || ': 4 courses');
+    PERFORM finance.confirm_payment(ref2, 'Bank transfer', 'check V751 two');
+    SELECT id INTO id2 FROM finance.payment_reference WHERE reference = ref2;
+    SELECT id INTO cr2 FROM registration.summer_credit WHERE reference_id = id2;
+    PERFORM registration.summer_credit_settle(cr2, 'REFUNDED', 'Refunded by voucher PV/CHECK/7512');
+    UPDATE finance.payment_reference SET purpose = 'School fees ' || S WHERE id = id2;
+    moved := CASE WHEN array_to_string(finance.payment_archive_refusals(id2), ' ') LIKE '%money is spent%' THEN 'archive held' ELSE 'archive free' END
+        || '/' || CASE WHEN (finance.payment_reallocation_check(id2, NULL, S, NULL, NULL, 'Summer semester fees, ' || S || ': 4 courses') -> 'refusals')::text LIKE '%money is spent%'
+                       THEN 'reversal held' ELSE 'reversal free' END;
+
+    -- a code followed forward from the grant: renamed then merged; and a code reused by another course
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZR 501', 'Followed course', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZR 503', 'Followed course', 3, 1, 400, dept, 'Core', 'LIVE'),
+        ('ZZR 511', 'First holder', 3, 1, 400, dept, 'Core', 'LIVE');
+    PERFORM catalogue.rename_course('ZZR 501', 'ZZR 502');
+    PERFORM catalogue.merge_course('ZZR 503', 'ZZR 502', 'the same course written twice (check V751)', false);
+    UPDATE catalogue.course_alias SET merged_at = clock_timestamp() WHERE alias_code = 'ZZR 502';   -- as a later transaction would stamp it
+    chain := coalesce(registration.summer_code_after('ZZR 501', now()), 'none');
+    PERFORM catalogue.rename_course('ZZR 511', 'ZZR 512');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES ('ZZR 511', 'Second holder', 3, 1, 400, dept, 'Core', 'LIVE');
+    PERFORM catalogue.rename_course('ZZR 511', 'ZZR 513');
+    reused := coalesce(registration.summer_code_after('ZZR 511', now()), 'none');
+
+    msg := 'departments ' || deps || ' | applied by hand ' || coalesce(by_hand, '-') || ' | refunded ' || coalesce(refunded, '-') || ' ' || held
+        || ' | hrm ' || coalesce(hrm_reopen, '-') || ' bursar ' || coalesce(reopened, '-') || ' | moved since ' || moved
+        || ' | renamed then merged ' || chain || ' | reused ' || reused;
+    RAISE EXCEPTION 'the V751 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V751 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V751: a staff card''s department from the office held, never its title; a settled Summer credit holds its payment only where it stands, a whole-payment credit is moved not applied by hand, a hand settlement reopened by the Bursar; a code followed from its grant',
+      coalesce(msg = 'departments its department/Registry/its faculty/none/Information and Communication Technology'
+                     || ' | applied by hand SUMMER_CREDIT_MOVE_IT | refunded REFUNDED held'
+                     || ' | hrm SUMMER_CREDIT_OFFICE bursar OPEN | moved since archive free/reversal free'
+                     || ' | renamed then merged ZZR 503 | reused ZZR 512', false),
       msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
