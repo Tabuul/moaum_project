@@ -420,7 +420,7 @@ public class CapsIntakeService {
         }
         return Map.of("programme", programme, "offered", offered, "waited", waited,
                 "notOffered", notOffered, "skipped", skipped, "pool", rows.size(),
-                "awaitingRelease", caps.awaitingRelease(session, programme));
+                "awaitingRelease", caps.awaitingRelease(session, programme), "awaitingScore", caps.awaitingScore(session, programme));
     }
 
     /** V729: the programmes with a submitted application this session, which "Record all programmes" records one at a time */
@@ -435,7 +435,7 @@ public class CapsIntakeService {
     public Map<String, Object> recordMeritMany(String session, List<String> programmes) {
         List<String> codes = (programmes == null || programmes.isEmpty()) ? caps.programmesWithPool(session) : programmes;
         int offered = 0, waited = 0, notOffered = 0, skipped = 0, done = 0;
-        long awaiting = 0;
+        long awaiting = 0, unscored = 0;
         List<Map<String, Object>> each = new ArrayList<>();
         for (String code : codes) {
             Map<String, Object> r = recordMerit(session, code);
@@ -444,11 +444,12 @@ public class CapsIntakeService {
             notOffered += ((Number) r.get("notOffered")).intValue();
             skipped += ((Number) r.get("skipped")).intValue();
             awaiting += ((Number) r.get("awaitingRelease")).longValue();
+            unscored += ((Number) r.get("awaitingScore")).longValue();
             done++;
             each.add(r);
         }
         return Map.of("programmes", done, "offered", offered, "waited", waited,
-                "notOffered", notOffered, "skipped", skipped, "awaitingRelease", awaiting, "each", each);
+                "notOffered", notOffered, "skipped", skipped, "awaitingRelease", awaiting, "awaitingScore", unscored, "each", each);
     }
 
     @Transactional(readOnly = true)

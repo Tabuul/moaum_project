@@ -31,7 +31,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
   const de = rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").length;
   const mayEnter = ["academic", "registrar", "dregistrar", "ict", "admin", "super"].includes(actingOffice ?? "");
   const [entering, setEntering] = useState(false);
-  const [entered, setEntered] = useState<{ entered: number; noOlevel: number } | null>(null);
+  const [entered, setEntered] = useState<{ entered: number; noOlevel: number; decided: number } | null>(null);
 
   // enter these computed O'Level figures as the Post-UTME (screening) score for the non-index applicants,
   // so they get a screening figure and enter the merit list (release the scores afterwards)
@@ -43,7 +43,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
         method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`O'Level entered as Post-UTME score for non-index programmes for ${session}`) }, body: "{}",
       });
       const j = await r.json().catch(() => null);
-      if (r.ok && j) { setEntered({ entered: Number(j.entered ?? 0), noOlevel: Number(j.noOlevel ?? 0) }); notify(`${Number(j.entered ?? 0)} O’Level scores entered`); router.refresh(); }
+      if (r.ok && j) { setEntered({ entered: Number(j.entered ?? 0), noOlevel: Number(j.noOlevel ?? 0), decided: Number(j.decided ?? 0) }); notify(`${Number(j.entered ?? 0)} O’Level scores entered`); router.refresh(); }
     } finally {
       setEntering(false);
     }
@@ -93,6 +93,7 @@ export function ComputedPostUtme({ rows, session, sessions, audit = [], actingOf
         <Note kind="ok" title={`${entered.entered.toLocaleString()} O'Level figure${entered.entered === 1 ? "" : "s"} entered as the Post-UTME score`}>
           <b>Release the scores</b> for them to enter the merit list.
           {entered.noOlevel ? <> {entered.noOlevel.toLocaleString()} have no O&rsquo;Level on record.</> : null}
+          {entered.decided ? <> {entered.decided.toLocaleString()} already carr{entered.decided === 1 ? "ies" : "y"} the Board&rsquo;s decision on the computed aggregate and {entered.decided === 1 ? "was" : "were"} left as {entered.decided === 1 ? "it is" : "they are"}.</> : null}
         </Note>
       ) : null}
       <Panel title="Computed Post-UTME" right={<span className="row row--inline">

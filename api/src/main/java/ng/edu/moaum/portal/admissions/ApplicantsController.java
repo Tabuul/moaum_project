@@ -740,6 +740,7 @@ class ApplicantsController {
                   JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
                   CROSS JOIN LATERAL admissions.screening_component(a.id) sc
                  WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NULL AND a.screening_score IS NULL
+                   AND a.decision IS NULL   -- V731: the Board decided on the computed aggregate; a score entered now would take it off the list
                    AND NOT admissions.screened_by_exam(:s, pr.code)
                    AND sc.screening IS NOT NULL
                    AND (:p::text IS NULL OR pr.code = :p)
@@ -751,7 +752,18 @@ class ApplicantsController {
                   JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
                   CROSS JOIN LATERAL admissions.screening_component(a.id) sc
                  WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NULL AND a.screening_score IS NULL
+                   AND a.decision IS NULL
                    AND NOT admissions.screened_by_exam(:s, pr.code) AND sc.screening IS NULL
+                   AND (:p::text IS NULL OR pr.code = :p)
+                """).param("s", s).param("p", programme, Types.VARCHAR).query(Integer.class).single();
+        // V731: the applications the Board has decided on their computed aggregate (V729), left as they are
+        int decided = jdbc.sql("""
+                SELECT count(*) FROM admissions.application a
+                  JOIN admissions.candidate c ON c.id = a.candidate_id
+                  JOIN ref.programme pr ON pr.code = (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1)
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.score_released_at IS NULL AND a.screening_score IS NULL
+                   AND a.decision IS NOT NULL
+                   AND NOT admissions.screened_by_exam(:s, pr.code)
                    AND (:p::text IS NULL OR pr.code = :p)
                 """).param("s", s).param("p", programme, Types.VARCHAR).query(Integer.class).single();
         for (Map<String, Object> t : targets) {
@@ -762,9 +774,9 @@ class ApplicantsController {
             }
             for (int attempt = 1; ; attempt++) {
                 try {
-                    tx.execute(st -> jdbc.sql("UPDATE admissions.application SET screening_score = :v, score_entered_at = now() WHERE id = :id AND screening_score IS NULL AND score_released_at IS NULL")
+                    int n = tx.execute(st -> jdbc.sql("UPDATE admissions.application SET screening_score = :v, score_entered_at = now() WHERE id = :id AND screening_score IS NULL AND score_released_at IS NULL AND decision IS NULL")
                             .param("v", sc).param("id", id).update());
-                    entered++;
+                    entered += n;
                     break;
                 } catch (org.springframework.dao.TransientDataAccessException e) {
                     if (attempt >= 4) throw e;
@@ -772,7 +784,7 @@ class ApplicantsController {
                 }
             }
         }
-        return Map.of("entered", entered, "noOlevel", noOlevel);
+        return Map.of("entered", entered, "noOlevel", noOlevel, "decided", decided);
     }
 
     public record ScoreRow(String key, java.math.BigDecimal score) {

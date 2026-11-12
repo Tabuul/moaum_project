@@ -322,14 +322,34 @@ class CapsRepository {
                 """).param("s", session).query(String.class).list();
     }
 
-    /** V729: a programme's submitted applications still to be decided whose score must be released first (an index programme's, or an
-     *  entered score) and is not yet — they wait off the merit list until the screening results are released */
+    /** V729: a programme's submitted applications whose score must be released before the Board decides (an index programme's, or an
+     *  entered score) and is not yet. V731: only those a release puts on the merit list — UTME candidates on JAMB's current list, with
+     *  something admissions.release_scores releases (seated, or a score entered); an examination programme's applicant neither seated
+     *  nor scored is counted by {@link #awaitingScore} */
     long awaitingRelease(String session, String programme) {
         return jdbc.sql("""
                 SELECT count(*) FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                  WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.decision_released_at IS NULL AND a.score_released_at IS NULL
                    AND (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) = :p
                    AND admissions.score_release_needed(a.id)
+                   AND (a.screening_batch_id IS NOT NULL OR a.score_entered_at IS NOT NULL)
+                   AND admissions.on_current_utme_list(a.id)
+                """).param("s", session).param("p", programme).query(Long.class).single();
+    }
+
+    /** V731: an examination (index) programme's submitted UTME applicants on JAMB's current list with no score to release — neither
+     *  seated nor scored: off the merit list until a score is uploaded (or the remainder scored as zero) and released */
+    long awaitingScore(String session, String programme) {
+        if (!Boolean.TRUE.equals(jdbc.sql("SELECT admissions.screened_by_exam(:s, :p)").param("s", session).param("p", programme)
+                .query(Boolean.class).single())) {
+            return 0;
+        }
+        return jdbc.sql("""
+                SELECT count(*) FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                 WHERE a.session = :s AND a.submitted_at IS NOT NULL AND a.decision_released_at IS NULL AND a.score_released_at IS NULL
+                   AND (SELECT p.code FROM ref.programme p WHERE p.name = c.programme ORDER BY p.archived, p.code LIMIT 1) = :p
+                   AND a.screening_batch_id IS NULL AND a.score_entered_at IS NULL
+                   AND admissions.on_current_utme_list(a.id)
                 """).param("s", session).param("p", programme).query(Long.class).single();
     }
 

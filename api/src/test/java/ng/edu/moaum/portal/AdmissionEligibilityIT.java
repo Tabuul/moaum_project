@@ -712,6 +712,91 @@ class AdmissionEligibilityIT {
         }
     }
 
+    /* ── 13 · V731: the review of V729 — without a released score the Board decides only what the merit list ranks (a submitted UTME
+     *    application on JAMB's current list); the O'Level allowance is read by programme code; "Compute non-sitters" leaves an
+     *    application the Board has decided on its computed aggregate; the counts say what a release, and what a score, would bring ── */
+    @Test
+    @Order(11)
+    @SuppressWarnings("unchecked")
+    void withoutAReleasedScoreOnlyWhatTheMeritListRanksIsDecided() {
+        // two programmes of this test's own, apart from the V729 test's: one screened without the examination, one by it
+        List<String> codes = it.db(() -> jdbc.sql("""
+                SELECT code FROM ref.programme WHERE NOT archived AND category = 'UNDER GRADUATE' AND code NOT IN (:x)
+                   AND name NOT IN (SELECT name FROM ref.programme GROUP BY name HAVING count(*) > 1) ORDER BY code DESC OFFSET 3 LIMIT 2
+                """).param("x", List.of(CS, ACC, ECO, MBBS, THE, TAX, BUS)).query(String.class).list());
+        String plain = codes.get(0), index = codes.get(1);
+        it.db(() -> {
+            jdbc.sql("INSERT INTO admissions.screening_exam_programme (session, programme_code) VALUES (:s, :c) ON CONFLICT DO NOTHING")
+                    .param("s", SESSION).param("c", index).update();
+            // the programme admits on a pass in Mathematics (V731: the decision reads this by code, as the merit list does)
+            jdbc.sql("INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES (:id, :c, 'Mathematics') ON CONFLICT DO NOTHING")
+                    .param("id", POLICY).param("c", plain).update();
+            return null;
+        });
+        try {
+            List<Map<String, String>> passInMaths = List.of(g("English Language", "C6"), g("Mathematics", "D7"), g("Physics", "C5"),
+                    g("Chemistry", "C6"), g("Biology", "C4"), g("Economics", "B3"));
+            Applicant allowed = applicant(plain, 290, UTME_SCIENCE, passInMaths);
+            Applicant unsubmitted = applicant(plain, 280, UTME_SCIENCE, SCIENCE);
+            Applicant offTheList = applicant(plain, 275, UTME_SCIENCE, SCIENCE);
+            Applicant unscored = applicant(index, 270, UTME_SCIENCE, SCIENCE);
+            it.db(() -> {
+                jdbc.sql("UPDATE admissions.application SET submitted_at = NULL WHERE id = :a").param("a", unsubmitted.app()).update();
+                jdbc.sql("UPDATE admissions.caps_row SET withdrawn = true WHERE session = :s AND jamb_reg_no = :j").param("s", SESSION).param("j", offTheList.jamb()).update();
+                return null;
+            });
+
+            // the merit list honours the allowance, and recording the programme offers on it — the offer was refused before V731
+            ResponseEntity<Map> recorded = it.call(academic, HttpMethod.POST, "/api/v1/admissions/merit/record", Map.of("session", SESSION, "programme", plain));
+            assertThat(recorded.getStatusCode().value()).as(String.valueOf(recorded.getBody())).isEqualTo(200);
+            Map<String, Object> allowedRow = it.db(() -> jdbc.sql("SELECT decision, screening_score FROM admissions.application WHERE id = :a")
+                    .param("a", allowed.app()).query().singleRow());
+            assertThat(allowedRow.get("decision")).isIn("OFFERED", "WAITING");
+            // and the Board's own offer on the allowance stands (the O'Level check runs on an offer)
+            ResponseEntity<Map> offer = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + allowed.app() + "/decision",
+                    Map.of("decision", "OFFERED", "basis", "NM", "note", "IT V731: Mathematics a pass, the programme admits on it"));
+            assertThat(offer.getStatusCode().value()).as(String.valueOf(offer.getBody())).isEqualTo(200);
+
+            // an application the merit list never ranks is not decided by hand without a released score
+            ResponseEntity<Map> never = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + unsubmitted.app() + "/decision",
+                    Map.of("decision", "OFFERED", "basis", "NM", "note", "IT V731"));
+            assertThat(never.getStatusCode().value()).as(String.valueOf(never.getBody())).isEqualTo(422);
+            assertThat(String.valueOf(never.getBody())).contains("the application has not been submitted");
+            ResponseEntity<Map> off = it.call(academic, HttpMethod.PUT, PATH + "/applications/" + offTheList.app() + "/decision",
+                    Map.of("decision", "WAITING", "note", "IT V731"));
+            assertThat(off.getStatusCode().value()).as(String.valueOf(off.getBody())).isEqualTo(422);
+            assertThat(String.valueOf(off.getBody())).contains("the screening score has not been released");
+            assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM admissions.application WHERE id IN (:a) AND decision IS NOT NULL")
+                    .param("a", List.of(unsubmitted.app(), offTheList.app())).query(Long.class).single())).isZero();
+
+            // "Compute non-sitters" leaves the decided application as it is: no score is entered under the Board's decision
+            ResponseEntity<Map> computed = it.call(academic, HttpMethod.POST,
+                    u -> u.path(PATH + "/screening-scores/from-olevel").queryParam("programme", plain).build(), Map.of());
+            assertThat(computed.getStatusCode().value()).as(String.valueOf(computed.getBody())).isEqualTo(200);
+            assertThat(((Number) computed.getBody().get("decided")).intValue()).isGreaterThanOrEqualTo(1);
+            assertThat(it.db(() -> jdbc.sql("SELECT screening_score FROM admissions.application WHERE id = :a").param("a", allowed.app())
+                    .query().singleRow()).get("screening_score")).isNull();
+
+            // the examination programme's applicant with no score is counted apart: a release would not bring them onto the list
+            Map<String, Object> idx = it.call(academic, HttpMethod.POST, "/api/v1/admissions/merit/record", Map.of("session", SESSION, "programme", index)).getBody();
+            assertThat(((Number) idx.get("awaitingScore")).longValue()).isGreaterThanOrEqualTo(1);
+            long releasable = it.db(() -> jdbc.sql("""
+                    SELECT count(*) FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
+                     WHERE a.session = :s AND c.programme = (SELECT name FROM ref.programme WHERE code = :p) AND a.submitted_at IS NOT NULL
+                       AND a.score_released_at IS NULL AND a.decision_released_at IS NULL AND (a.screening_batch_id IS NOT NULL OR a.score_entered_at IS NOT NULL)
+                    """).param("s", SESSION).param("p", index).query(Long.class).single());
+            assertThat(((Number) idx.get("awaitingRelease")).longValue()).isEqualTo(releasable);
+            assertThat(it.db(() -> jdbc.sql("SELECT decision FROM admissions.application WHERE id = :a").param("a", unscored.app())
+                    .query().singleRow()).get("decision")).isNull();
+        } finally {
+            it.db(() -> {
+                jdbc.sql("DELETE FROM admissions.screening_exam_programme WHERE session = :s AND programme_code = :c").param("s", SESSION).param("c", index).update();
+                jdbc.sql("DELETE FROM admissions.programme_olevel_allowance WHERE policy_id = :id AND programme_code = :c").param("id", POLICY).param("c", plain).update();
+                return null;
+            });
+        }
+    }
+
     /* ── 10 · the doors ── */
     @Test
     @Order(7)

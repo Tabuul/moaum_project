@@ -47,7 +47,7 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
       if (!lr.ok) { const p: Problem = lj ?? { status: lr.status, title: lr.statusText }; setProblem(p); notifyProblem(p); return; }
       const codes: string[] = lj?.programmes ?? [];
       const names = new Map(cycle.programmes.map((x) => [x.code, x.name] as const));
-      const totals = { offered: 0, waited: 0, notOffered: 0, skipped: 0, awaiting: 0 };
+      const totals = { offered: 0, waited: 0, notOffered: 0, skipped: 0, awaiting: 0, unscored: 0 };
       const refusals: Refusal[] = [];
       for (const [i, code] of codes.entries()) {
         setRecordedCount(`${(i + 1).toLocaleString()} of ${codes.length.toLocaleString()}`);
@@ -73,9 +73,10 @@ export function Admissions({ cycle, actingOffice }: { cycle: AdmissionCycle; act
         totals.notOffered += Number(j?.notOffered ?? 0);
         totals.skipped += Number(j?.skipped ?? 0);
         totals.awaiting += Number(j?.awaitingRelease ?? 0);
+        totals.unscored += Number(j?.awaitingScore ?? 0);
       }
       setRefused(refusals);
-      setRecorded(`${done.toLocaleString()} of ${codes.length.toLocaleString()} programme${codes.length === 1 ? "" : "s"} recorded — ${totals.offered.toLocaleString()} offered, ${totals.waited.toLocaleString()} waiting, ${totals.notOffered.toLocaleString()} not offered${totals.skipped ? `, ${totals.skipped.toLocaleString()} left untouched (already released)` : ""}.${totals.awaiting ? ` ${totals.awaiting.toLocaleString()} applicant${totals.awaiting === 1 ? " awaits" : "s await"} a released screening score and ${totals.awaiting === 1 ? "is" : "are"} not on the merit list yet: release the screening results, then record again.` : ""} Release the decisions from the Applicants desk when the Board is ready.`);
+      setRecorded(`${done.toLocaleString()} of ${codes.length.toLocaleString()} programme${codes.length === 1 ? "" : "s"} recorded — ${totals.offered.toLocaleString()} offered, ${totals.waited.toLocaleString()} waiting, ${totals.notOffered.toLocaleString()} not offered${totals.skipped ? `, ${totals.skipped.toLocaleString()} left untouched (already released)` : ""}.${totals.awaiting ? ` ${totals.awaiting.toLocaleString()} applicant${totals.awaiting === 1 ? " awaits" : "s await"} a released screening score and ${totals.awaiting === 1 ? "is" : "are"} not on the merit list yet: release the screening results, then record again.` : ""}${totals.unscored ? ` ${totals.unscored.toLocaleString()} applicant${totals.unscored === 1 ? "" : "s"} of programmes screened by the Post-UTME examination ${totals.unscored === 1 ? "has" : "have"} no screening score: upload ${totals.unscored === 1 ? "it" : "them"} or score the remainder as zero, release, then record again.` : ""} Release the decisions from the Applicants desk when the Board is ready.`);
       if (refusals.length) {
         notify(`${done.toLocaleString()} programme${done === 1 ? "" : "s"} recorded; ${refusals.length.toLocaleString()} refused — see the list`, "bad");
       } else {

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 556
+\set EXPECTED 557
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -32384,6 +32384,94 @@ BEGIN
   PERFORM pg_temp.assert('V729: a decision needs a released score only where there is one — a computed aggregate is ranked and decided without a release; an entered or index score waits for its release, off the merit list',
       coalesce(msg = 'non-index list N1,N3 | index list X2 | release needed N1=false,N2=true,N3=true,X1=true,X2=true | N1 NOT_OFFERED X2 WAITING'
                      || ' | N2 the screening score has not been released | X1 the screening score has not been released', false),
+      msg);
+END $$;
+
+-- ── V731: the review of V729 — without a released score the Board decides only what the merit list ranks, and the O'Level allowance is
+--          read by programme code. In 9731/9732, programmes C00019 (admits on a pass in Mathematics) and C00021 (no allowance), neither
+--          screened by the examination: A1 (C00019, Mathematics a pass) offered on its computed aggregate — refused before V731; A2
+--          (C00021, the same grades) refused the offer on the missing credit; U1 never submitted — refused; W1 off JAMB's current list
+--          (its CAPS row withdrawn) — refused; R1 never submitted but with a released score — decided as before V729; the merit list of
+--          C00019 ranks A1 alone of them. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9731/9732'; v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid();
+    p_allow text := 'C00019'; p_plain text := 'C00021';
+    r record; apps jsonb := '{}'::jsonb; list text; d_a1 text; d_r1 text; e_a2 text; e_u1 text; e_w1 text; on_list text;
+    msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V731', true);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9731-10-01', date '9732-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+    VALUES (v_pol, ses, 10, 70, 30, 80, 20, 'CHECK CAC/9731/1', tstzrange(now(), NULL), 'IN_FORCE');
+    INSERT INTO admissions.selection_criterion (policy_id, criterion, percent) VALUES
+        (v_pol, 'NATIONAL_MERIT', 50), (v_pol, 'STATE_MERIT', 30), (v_pol, 'ELG', 10), (v_pol, 'LOCALITY', 10);
+    INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text)
+    VALUES (v_pol, p_allow, 5, 'check', 'check', 'check'), (v_pol, p_plain, 5, 'check', 'check', 'check');
+    INSERT INTO admissions.programme_olevel_allowance (policy_id, programme_code, subject) VALUES (v_pol, p_allow, 'Mathematics');
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (v_batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x731a'::bytea, 5, current_date, gen_random_uuid(), 'academic');
+    FOR r IN SELECT * FROM (VALUES
+        ('A1', '29731000001', p_allow, true,  false, false),
+        ('A2', '29731000002', p_plain, true,  false, false),
+        ('U1', '29731000003', p_allow, false, false, false),
+        ('W1', '29731000004', p_allow, true,  true,  false),
+        ('R1', '29731000005', p_allow, false, false, true)
+    ) AS t(tag, jamb, code, submitted, withdrawn, released)
+    LOOP
+        DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+                att uuid := gen_random_uuid(); sit uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga, withdrawn)
+            VALUES (cr, v_batch, ses, r.jamb, '{}'::jsonb, 'CHECKV731', r.tag, r.code, 280, 'UTME', 'F', 'Benue', 'Makurdi', r.withdrawn);
+            INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+            VALUES (cand, ses, r.jamb, 'CHECKV731', r.tag, (SELECT name FROM ref.programme WHERE code = r.code), 'UTME', 100, 'PROPOSED');
+            INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+            VALUES (acct, ses, cand, r.jamb, lower(r.jamb) || '@example.com', '08030007310', crypt('x', gen_salt('bf', 12)));
+            INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at, score_released_at)
+            VALUES (app, acct, cand, ses, 'APP/31/' || right(r.jamb, 6), CASE WHEN r.submitted THEN now() END,
+                    CASE WHEN r.submitted THEN now() END, CASE WHEN r.released THEN now() END);
+            -- English a credit, Mathematics a pass
+            INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at)
+            VALUES (att, ses, 'OLEVEL', r.jamb || '-olevel.json', r.jamb, 'EXACT', cand, now());
+            INSERT INTO admissions.olevel_sitting (id, attachment_id, session, jamb_key, exam_body, exam_year, exam_number, ord)
+            VALUES (sit, att, ses, r.jamb, 'WAEC', '9730', 'WAEC/' || r.jamb, 1);
+            INSERT INTO admissions.olevel_grade (sitting_id, subject, grade) VALUES
+                (sit, 'English Language', 'B3'), (sit, 'Mathematics', 'D7'), (sit, 'Physics', 'C5'), (sit, 'Chemistry', 'C6'), (sit, 'Biology', 'C4');
+            apps := apps || jsonb_build_object(r.tag, app);
+        END;
+    END LOOP;
+
+    SELECT string_agg(other_names, ',' ORDER BY other_names) INTO list FROM admissions.merit_list(ses, p_allow);
+    SELECT string_agg(k || '=' || admissions.on_current_utme_list((apps ->> k)::uuid), ',' ORDER BY k) INTO on_list FROM jsonb_object_keys(apps) k;
+    d_a1 := admissions.decide_application((apps ->> 'A1')::uuid, 'OFFERED', 'CHECK V731', 'NM');
+    d_r1 := admissions.decide_application((apps ->> 'R1')::uuid, 'WAITING', 'CHECK V731', NULL);
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'A2')::uuid, 'OFFERED', 'CHECK V731', 'NM'); e_a2 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_a2 := SQLERRM;
+    END;
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'U1')::uuid, 'OFFERED', 'CHECK V731', 'NM'); e_u1 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_u1 := SQLERRM;
+    END;
+    BEGIN
+        PERFORM admissions.decide_application((apps ->> 'W1')::uuid, 'WAITING', 'CHECK V731', NULL); e_w1 := 'decided';
+    EXCEPTION WHEN check_violation THEN e_w1 := SQLERRM;
+    END;
+    msg := 'list ' || coalesce(list, '-') || ' | on list ' || on_list || ' | A1 ' || d_a1 || ' R1 ' || d_r1
+        || ' | A2 ' || e_a2 || ' | U1 ' || e_u1 || ' | W1 ' || e_w1;
+    RAISE EXCEPTION 'the V731 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V731 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V731: without a released score the Board decides only a submitted UTME application on JAMB''s current list, as the merit list ranks it; the O''Level allowance is read by programme code',
+      coalesce(msg = 'list A1 | on list A1=true,A2=true,R1=true,U1=true,W1=false | A1 OFFERED R1 WAITING'
+                     || ' | A2 a compulsory O''Level credit is missing: Mathematics | U1 the application has not been submitted'
+                     || ' | W1 the screening score has not been released', false),
       msg);
 END $$;
 
