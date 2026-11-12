@@ -150,6 +150,14 @@ A past period with no registration or enrolment is charged at the level the coho
 student's 2022/2023 is 300 Level's line, not 400 Level's, and their final year 2023/2024 is the final year, not a spillover year. See
 `docs/session-2019-2020-merged.md`.
 
+## V738: admissions of 2019/2020 to 2021/2022 are assessed from the session after admission
+
+The University, 12 November 2026, over a student admitted 2021/2022 who was billed 100 Level fees for 2021/2022 and one level high
+after it: those admissions began their first year in the session after they were admitted (the merged session; the calendar caught up
+at 2022/2023). The engine now assesses nothing before the first year and counts a period's level from it (`people.first_session`,
+`policy.cohort_start`). A 2021/2022 admit's account starts at 2022/2023 at 100 Level, and 2023/2024 is 200 Level. A registration's or
+enrolment's own level still stands. See `docs/session-2019-2020-merged.md`.
+
 ## Not changed, on purpose
 
 - Sessions before the Bursar's assessment start (`finance.historical_start()`) stay unassessed and unlisted — the University's word of

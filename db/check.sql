@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 567
+\set EXPECTED 568
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -33313,6 +33313,83 @@ BEGIN
       msg);
 END $$;
 
+-- ── V738: an admission whose first year began the session after (the University: admissions of 2019/2020 to 2021/2022). A made-up
+--          calendar 2490/2491 … 2496/2497, 2495/2496 current, the account assessed from 2490/2491, a four-year programme with a fee line
+--          a level a session. A, admitted 2491/2492, is assessed from 2491/2492 at 100 Level and 400 Level by 2494/2495 — until the rule
+--          says its first year was 2492/2493: then nothing is assessed for 2491/2492, and 2492/2493 is 100 Level, 2493/2494 200, 2494/2495
+--          300 — exactly as B, admitted 2492/2493; a Direct Entry admit of 2491/2492 likewise from 200; a postgraduate admit is untouched.
+--          The level in a session, the receipt, the 5-argument level and the payments view read 200 for 2493/2494; the rule marks the
+--          admits' accounts stale; the set readers read the rule once. The block undoes its writes ──
+DO $$
+DECLARE
+    prog text; pgprog text := 'C90002';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); de uuid := gen_random_uuid(); pg uuid := gen_random_uuid();
+    before_rule text; after_a text; after_b text; after_de text; lvl text; rcpt int; rep5 int; view_lvl int; pg_lvl text; stale int; callers int;
+    first_a text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'CHECK V738', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state)
+    SELECT gen_random_uuid(), y || '/' || (y + 1), make_date(y, 10, 1), make_date(y + 1, 8, 31), CASE WHEN y < 2495 THEN 'CLOSED' ELSE 'PLANNED' END
+      FROM generate_series(2490, 2496) y;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/2495/01' WHERE name = '2495/2496';
+    INSERT INTO finance.historical_setting (id, assess_from, set_by, set_office, reason) VALUES (1, '2490/2491', gen_random_uuid(), 'bursar', 'CHECK V738')
+    ON CONFLICT (id) DO UPDATE SET assess_from = EXCLUDED.assess_from;
+    SELECT pr.code INTO prog FROM ref.programme pr JOIN ref.department d ON d.code = pr.dept_code
+     WHERE pr.category = 'UNDER GRADUATE' AND NOT pr.archived AND d.ended_on IS NULL AND finance.final_level(pr.code) = 400 ORDER BY pr.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a,  'MOAUM/ADM/24/973801', 'MOAUM/ZZW/24/7381', 'CHECKV738', 'Admitted Before', prog, 'UTME', '2491/2492', 100, 400, 'ACTIVE', now()),
+        (b,  'MOAUM/ADM/24/973802', 'MOAUM/ZZW/24/7382', 'CHECKV738', 'Admitted After', prog, 'UTME', '2492/2493', 100, 400, 'ACTIVE', now()),
+        (de, 'MOAUM/ADM/24/973803', 'MOAUM/ZZW/24/7383', 'CHECKV738', 'Direct Entry', prog, 'DIRECT_ENTRY', '2491/2492', 200, 400, 'ACTIVE', now()),
+        (pg, 'MOAUM/ADM/24/973804', 'MOAUM/ZZW/24/7384', 'CHECKV738', 'Postgraduate', pgprog, 'POSTGRADUATE', '2491/2492', 800, 800, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester)
+    SELECT y || '/' || (y + 1), 'Check V738 fees', y * 100 + l / 100, l, prog, NULL
+      FROM generate_series(2491, 2494) y CROSS JOIN (VALUES (100), (200), (300), (400)) v(l);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no) VALUES
+        (a, '2493/2494', 'MOAUM-FEE-ZZW-7381A', 'School fees 2493/2494', 1000, now(), now(), gen_random_uuid(), 'Bank branch', 'RCPT-ZZW-7381A');
+
+    -- counted from admission, before the rule
+    SELECT string_agg(h.session || ':' || h.level || ':' || h.assessed, ' ' ORDER BY h.session) INTO before_rule
+      FROM finance.historical_rows(ARRAY[a]) h WHERE h.semester = 1;
+
+    -- the rule: the first year of 2491/2492's admission was 2492/2493
+    PERFORM finance.historical_refresh_stale(100000);
+    INSERT INTO policy.cohort_start (admission_session, first_session, reason) VALUES ('2491/2492', '2492/2493', 'CHECK V738: began the session after admission');
+    SELECT count(*) INTO stale FROM finance.historical_stale WHERE student_id IN (a, de, b);
+    first_a := people.first_session('2491/2492', 'UTME') || '/' || people.first_session('2491/2492', 'POSTGRADUATE');
+    SELECT string_agg(h.session || ':' || h.level || ':' || h.assessed, ' ' ORDER BY h.session) INTO after_a FROM finance.historical_rows(ARRAY[a]) h WHERE h.semester = 1;
+    SELECT string_agg(h.session || ':' || h.level || ':' || h.assessed, ' ' ORDER BY h.session) INTO after_b FROM finance.historical_rows(ARRAY[b]) h WHERE h.semester = 1;
+    SELECT string_agg(h.session || ':' || h.level, ' ' ORDER BY h.session) INTO after_de FROM finance.historical_rows(ARRAY[de]) h WHERE h.semester = 1;
+    SELECT string_agg(x.s || '=' || people.level_in(a, x.s, 1), ' ' ORDER BY x.s) INTO lvl FROM (VALUES ('2492/2493'), ('2493/2494'), ('2494/2495')) x(s);
+    rcpt := people.receipt_level(a, '2493/2494');
+    rep5 := reporting.level_in_session(100, '2491/2492', 100, 'UTME', '2493/2494');
+    SELECT v.level INTO view_lvl FROM reporting.payments v WHERE v.reference = 'MOAUM-FEE-ZZW-7381A';
+    pg_lvl := people.level_in(pg, '2493/2494', 1) || '/' || reporting.level_in_session(800, '2491/2492', 800, 'POSTGRADUATE', '2493/2494');
+    SELECT count(*) INTO callers FROM pg_proc pr3
+     WHERE pr3.pronamespace = 'finance'::regnamespace AND pr3.proname IN ('old_fees_reconciliation', 'overpaid', 'import_legacy_payments')
+       AND pr3.prosrc ~ 'cohort_starts';
+
+    msg := 'before ' || coalesce(before_rule, '-') || ' | first ' || first_a || ' | stale ' || stale
+        || ' | after A ' || coalesce(after_a, '-') || ' | B ' || coalesce(after_b, '-') || ' | DE ' || coalesce(after_de, '-')
+        || ' | level ' || lvl || ' receipt ' || rcpt || ' 5-arg ' || rep5 || ' view ' || coalesce(view_lvl::text, '-') || ' | pg ' || pg_lvl
+        || ' | set readers ' || callers;
+    RAISE EXCEPTION 'the V738 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V738 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V738: an admission whose first year began the session after is assessed from that first year and counted from it — the outstanding fees, the level in a session, the receipt, the payments view',
+      coalesce(msg = 'before 2491/2492:100:249101.00 2492/2493:200:249202.00 2493/2494:300:249303.00 2494/2495:400:249404.00'
+                     || ' | first 2492/2493/2491/2492 | stale 2'
+                     || ' | after A 2492/2493:100:249201.00 2493/2494:200:249302.00 2494/2495:300:249403.00'
+                     || ' | B 2492/2493:100:249201.00 2493/2494:200:249302.00 2494/2495:300:249403.00'
+                     || ' | DE 2492/2493:200 2493/2494:300 2494/2495:400'
+                     || ' | level 2492/2493=100 2493/2494=200 2494/2495=300 receipt 200 5-arg 200 view 200 | pg 800/800 | set readers 3', false),
+      msg);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -79,3 +79,32 @@ programme's timeline count the same way.
   session name not written as the calendar writes it (`2022/2024`, `2022/23`) is read as the session starting in its year by all.
 - **Unchanged, on purpose:** deferred sessions are not taken off these counts (the cohort engine's position does that), and a cohort
   override is not applied to past sessions.
+
+## The admissions after it begin a session late (V738)
+
+The University, 12 November 2026: a student admitted 2021/2022 was billed 100 Level fees for 2021/2022 (₦178,294.74) and one level
+high after it. "Remember a session was merged … this outstanding should not affect student for that merged session."
+
+- **What the record shows.** On the late-October copy of live (counts only), none of the 10,716 students admitted 2019/2020,
+  2020/2021 or 2021/2022 holds a registration or an enrolment in their admission session. 2021/2022 admits registered 100 Level in
+  2022/2023 and 300 Level in 2024/2025, the same as 2022/2023 admits. 2020/2021 admits registered 200 Level in 2022/2023 and 400 Level
+  in 2024/2025, and 2019/2020 admits 300 Level in 2022/2023. Each of the three admissions began its first year the session after it
+  was admitted in, and the calendar caught up at 2022/2023, which took two admissions at once. V661's merger was right for 2019/2020
+  admits but counted 2020/2021 and 2021/2022 admits from their admission session.
+- **The rule (the University's choice).** For admissions of 2019/2020, 2020/2021 and 2021/2022 the first year of study is the session
+  after the admission session: nothing is assessed before it, and levels are counted from it. It is recorded as data,
+  `policy.cohort_start` (admission session → first session, with its reason, audited), on a calendar that has run those sessions.
+  A fresh or CI calendar of planned sessions is left alone, as V661 was.
+- **Who reads it.** It is read through `people.first_session(admission, entry mode)` and
+  `people.counted_from_entry(admission, entry mode, session)`. The readers are the outstanding-fees engine
+  (`finance.historical_rows_read`: its first assessed session and its levels), `people.level_in`, `people.receipt_level`, the
+  5-argument `reporting.level_in_session`, the payments view, the old-fees reconciliation, the overpaid list and the old-fees import.
+  The set readers shift the admission session inline from `policy.cohort_starts()`, read once a query, so the 7-argument form stays
+  inlined.
+- **Exceptions.** A registration's or enrolment's own level stands. A postgraduate's and a CCE student's calendar is their own.
+- **Stale accounts.** A change to the rule (insert, update, delete) marks the outstanding-fees account of every student admitted in
+  that session stale.
+- **Unchanged, on purpose.** These follow registrations, not the count, and are another decision: the cohort engine's effective
+  cohort and spillover, the session roll-over's promotion ceiling, `people.align_level_reached`, the College's minimum years and a
+  cohort override. `people.counted_sessions` is unchanged, because some of its callers pass a registration's session or an override's
+  cohort, never an admission.
