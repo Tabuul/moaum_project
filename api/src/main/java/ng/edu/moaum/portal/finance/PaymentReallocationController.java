@@ -203,6 +203,15 @@ class PaymentReallocationController {
         return check(payment, purpose, session, semester, null);
     }
 
+    /** V754: the reallocations of students admitted 2019/2020 to 2021/2022 (their first year the session after, V738) recorded at a level
+     *  the count no longer gives — what V742 counted, listed for the Bursary; nothing is changed. A literal path, before GET /{id} */
+    @GetMapping("/level-check")
+    @PreAuthorize(READERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> levelCheck() {
+        return jdbc.sql("SELECT * FROM finance.reallocations_at_old_level()").query().listOfRows();
+    }
+
     /** initiated: the correction waits for another officer's decision */
     @PostMapping
     @PreAuthorize(INITIATORS)

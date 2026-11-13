@@ -10,7 +10,8 @@ interface CardVerify {
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 
 /** /verify/staffcard?no=…&c=… — the public verification of a staff identity card (V439): the guard scans the card's QR and sees the
- *  University's record of the card in force — the member of staff, the photograph, the staff number, the department and the validity.
+ *  University's record of the card in force — the member of staff, the photograph, the staff number and the department (V754: the
+ *  department as the card prints it; the card prints no validity).
  *  A card lost, replaced or out of date, or of someone who has left, says so and names no one; without the check code nothing is said. */
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
@@ -50,7 +51,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 <div className="grow"><div className="b700 t-lg" style={{ lineHeight: 1.25 }}>{v.staff_name}</div><div className="tnum mt-1">{v.staff_number}</div><div className="t-sm ink-muted mt-1">{v.department ?? "—"}</div></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "var(--s-2)" }}>
-                {([["Card", v.card_no ?? "—"], ["Issued", day(v.issued_at)], ["Valid to", day(v.valid_to)]] as [string, string][]).map(([k, val], i) => (
+                {/* V754: the staff card prints no validity, so a genuine card's tiles name none */}
+                {([["Card", v.card_no ?? "—"], ["Issued", day(v.issued_at)]] as [string, string][]).map(([k, val], i) => (
                   <div key={i} style={{ padding: "var(--s-2)", border: "1px solid var(--line)", borderRadius: "var(--r-sm)" }}><div className="eyebrow">{k}</div><div className="b600 tnum">{val}</div></div>
                 ))}
               </div>

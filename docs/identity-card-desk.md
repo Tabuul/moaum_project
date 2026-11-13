@@ -301,3 +301,9 @@ The review (three readers, each finding put to a refuter) confirmed five points 
 
 - a programme- or course-scoped office (an Examinations Officer, a lecturer given one course) prints the programme's or the course's department;
 - a unit typed by name in Users & roles ("Medical Library") is resolved as the nominal roll resolves it, so it no longer falls back to the main Library or a dash.
+
+## 13. Follow-ups (V754, 13 November 2026)
+
+- **The unit an office belongs to, set by ICT.** The staff page's *Offices* tab lists each office, the unit it belongs to and what a staff card prints for it. ICT sets or clears the unit with a reason (`PUT /api/v1/iam/offices/{code}/unit`, `ref.set_office_unit`); V751 seeded seven offices. A staff card prints it for someone the HR record places nowhere who holds the office.
+- **A course-scoped grant follows its course.** A code corrected or merged moves every grant in force bounded by it (`iam.course_grant_follow`, triggers on the course's code and on a merge's alias, beside V746's). A holder already bounded by the kept course keeps that grant, and the other ends with the code it had. Grants already naming a dead code are followed from the date they began.
+- **The check pages read what the cards print.** The staff card check reads the card's department (`credentials.staff_card_department`). It no longer shows a validity tile, since the card prints none (an expired card is still refused). The student card check no longer shows the level.

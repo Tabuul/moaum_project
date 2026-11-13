@@ -279,7 +279,9 @@ class VerifyController {
         // V503, V567: a genuine card is valid only while the card's own rule holds (registration.exam_card_state: a submitted
         // registration carrying a course, a school-fees payment for the session) — as the GST & EPS permit's QR. The courses are the
         // card's (any registration submitted, never a dropped course) and "cleared" is the card's paid test (V567), not the scheme
-        Map<String, Object> state = jdbc.sql("SELECT (st->>'available')::boolean AS available, st->>'code' AS code, st->>'reason' AS reason"
+        // V754: and whether a semester 3 was the session's Summer, so the page names it so
+        Map<String, Object> state = jdbc.sql("SELECT (st->>'available')::boolean AS available, st->>'code' AS code, st->>'reason' AS reason,"
+                + " coalesce((st->>'summer')::boolean, false) AS summer"
                 + " FROM (SELECT registration.exam_card_state(:s, :session, :sem) AS st) x")
                 .param("s", sid).param("session", session).param("sem", semester).query().singleRow();
         boolean valid = Boolean.TRUE.equals(state.get("available"));
@@ -296,6 +298,7 @@ class VerifyController {
         out.put("level", row.get("current_level"));
         out.put("session", session);
         out.put("semester", semester);
+        out.put("summer", Boolean.TRUE.equals(state.get("summer")));
         out.put("cleared", row.get("cleared"));
         out.put("photo", photo);
         out.put("courses", courses);
@@ -373,6 +376,7 @@ class VerifyController {
         out.put("level", student.get("level"));
         out.put("session", row.get("session"));
         out.put("semester", row.get("semester"));
+        out.put("summer", Boolean.TRUE.equals(state.get("summer")));   // V754: semester 3 of a session that had a Summer Semester
         if (revoked) out.put("revokedAt", row.get("revoked_at"));
         if (!valid && !revoked) out.put("reason", switch (String.valueOf(state.get("code"))) {
             // V589: the permit stands on the examination card's own terms (registered and paid) and the GST fee
@@ -485,7 +489,8 @@ class VerifyController {
         Map<String, Object> out = new LinkedHashMap<>();
         List<Map<String, Object>> stu = jdbc.sql("""
                 SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
-                       pg.name AS programme, people.level_in(s.id, :session, :sem) AS level
+                       pg.name AS programme, people.level_in(s.id, :session, :sem) AS level,
+                       registration.is_summer(:session, :sem) AS summer
                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
                  WHERE upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND upper(s.admission_no) = upper(:m)) LIMIT 1
                 """).param("m", matric).param("session", session).param("sem", semester).query().listOfRows();
@@ -529,6 +534,7 @@ class VerifyController {
         out.put("level", s.get("level"));
         out.put("session", session);
         out.put("semester", semester);
+        out.put("summer", Boolean.TRUE.equals(s.get("summer")));   // V754: the session's Summer semester, named so on the page
         out.put("gpa", gpa);
         out.put("cgpa", cgpa);
         out.put("standing", standing);
@@ -730,7 +736,7 @@ class VerifyController {
 
     /**
      * A student identity card, by its card number and the code signed over it — the address the card desk prints in the card's QR.
-     * Genuine only for the card in force: the student's name, number, programme, level and photograph, so a card with another
+     * Genuine only for the card in force: the student's name, number, programme and photograph, so a card with another
      * face or another name is exposed at the gate. A card reported lost, or replaced, says so and names no one; without the code,
      * or with another, nothing is said about the number.
      */
@@ -763,11 +769,11 @@ class VerifyController {
             out.put("genuine", false);
             return out;
         }
+        // V754: the department as the card prints it (the HR record, else the office held, else the office's unit)
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT c.card_no, c.state, c.issued_at, c.valid_to, c.ended_at, c.valid_to < current_date AS expired, p.id AS person_id,
-                       p.surname || ', ' || p.given_names AS staff_name, p.staff_number, d.name AS department, p.ended_on
+                       p.surname || ', ' || p.given_names AS staff_name, p.staff_number, credentials.staff_card_department(p.id) AS department, p.ended_on
                   FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
-                  LEFT JOIN hrm.staff_record r ON r.person_id = p.id LEFT JOIN ref.department d ON d.code = r.home_department
                  WHERE c.card_no = :n
                 """).param("n", no).query().listOfRows();
         if (rows.isEmpty()) {
@@ -811,7 +817,7 @@ class VerifyController {
         }
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT c.card_no, c.state, c.issued_at, c.valid_to, c.ended_at, c.ended_reason, c.valid_to < current_date AS expired, s.id AS student_id,
-                       s.surname || ', ' || s.other_names AS student_name, s.matric_no AS student_number, p.name AS programme, f.name AS faculty, s.current_level AS level
+                       s.surname || ', ' || s.other_names AS student_name, s.matric_no AS student_number, p.name AS programme, f.name AS faculty
                   FROM credentials.identity_card c JOIN people.student s ON s.id = c.student_id
                   LEFT JOIN ref.programme p ON p.code = s.programme_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE c.card_no = :n
@@ -830,7 +836,8 @@ class VerifyController {
             return out;
         }
         out.put("genuine", true);
-        for (String k : List.of("card_no", "state", "issued_at", "valid_to", "student_name", "student_number", "programme", "faculty", "level")) out.put(k, row.get(k));
+        // V754: the student card no longer prints the level, so the check does not answer it
+        for (String k : List.of("card_no", "state", "issued_at", "valid_to", "student_name", "student_number", "programme", "faculty")) out.put(k, row.get(k));
         String photo = null;
         List<Map<String, Object>> b = jdbc.sql("""
                 SELECT encode(bl.content, 'base64') AS b64 FROM admissions.application_document d JOIN admissions.application_document_blob bl ON bl.document_id = d.id

@@ -10,6 +10,8 @@ interface ResultVerify {
   genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; gpa?: number | null; cgpa?: number | null; standing?: string | null;
   approvedOn?: string | null; senateMinute?: string | null; rows?: Row[];
+  /** V754: semester 3 of a session that had a Summer Semester */
+  summer?: boolean;
 }
 
 /** /verify/results?m=&s=&sem=&c= — the public verification of a semester results statement.
@@ -50,7 +52,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             <>
               <div>
                 {[["Name", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
-                  ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"],
+                  ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"],
+                  ["Semester", v.semester ? (v.summer && v.semester === 3 ? "Summer semester" : semesterName(v.semester)) : "—"],
                   ["Semester GPA", v.gpa != null ? String(v.gpa) : "—"], ["Cumulative GPA", v.cgpa != null ? String(v.cgpa) : "—"],
                   ["Class of standing", v.standing ?? "—"], ["Approved by Senate on", v.senateMinute ? `${approved} · minute ${v.senateMinute}` : approved]].map(([k, val], i) => (
                   <div key={i} className="row row--between" style={{ padding: "var(--s-2) 0", borderBottom: "1px solid var(--line-2)" }}>

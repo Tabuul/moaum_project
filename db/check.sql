@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 582
+\set EXPECTED 583
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34861,6 +34861,116 @@ BEGIN
         || ' | T true CONFLICT:true:false,WARNING:false:true'
         || ' | pg LEGACY_NO_IS_PORTAL_NUMBER, jupeb LEGACY_NO_IS_PORTAL_NUMBER, number LEGACY_NO_IS_PORTAL_NUMBER',
         format('err=%s | %s', v_err, msg));
+END $$;
+-- ── V754: follow-ups of the Summer and card reviews. In 9842/9843's Summer (results of 9841/9842), A at 400 Level failed the GST
+--          course ZZG 751: before the Summer registration the permit says to select on the Summer page; selected and paid, the
+--          permit is available with no GST fee and no school fees, named the Summer, as the examination card is. D's authorisation
+--          names a course no longer on the catalogue: listed for the Academic Office. ICT gives the Vice-Chancellor's office a unit:
+--          a holder the HR record places nowhere prints it; HR may not set it, nor an unknown unit. A lecturer's course-scoped grant
+--          follows a rename; a lecturer bounded by both of two courses merged keeps the kept course's grant, the other ending, and
+--          the merge stands. The block undoes its writes ──
+DO $$
+DECLARE
+    SP text := '9841/9842'; S text := '9842/9843'; who uuid := gen_random_uuid(); dept text; prog text := 'C97541';
+    a uuid := gen_random_uuid(); d uuid := gen_random_uuid(); fee uuid := gen_random_uuid();
+    p_vc uuid := gen_random_uuid(); l1 uuid := gen_random_uuid(); l2 uuid := gen_random_uuid();
+    before_reg text; after_pay text; card text; summer text; listed text; unit_set text; hrm_set text; unknown_set text; vc_prints text;
+    renamed text; twin text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V754', true);
+    SELECT dept_code INTO dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), SP, DATE '9841-10-01', DATE '9842-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9842-10-01', DATE '9843-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9842/754' WHERE name = S;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    SELECT prog, 'B.Sc. Follow-ups', dept, d2.faculty_code, 'UNDER GRADUATE', 0, 400, 4, 'ZRF' FROM ref.department d2 WHERE d2.code = dept;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, general_office, state) VALUES
+        ('ZZG 751', 'General studies follow-up', 2, 1, 100, dept, 'GST', 'GST', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/98/975401', 'MOAU/ZRF/98/7541', 'ZZFOLLOW', 'Final A', prog, 'UTME', SP, 100, 400, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/98/975402', 'MOAU/ZRF/98/7542', 'ZZFOLLOW', 'Authorised D', prog, 'UTME', SP, 100, 200, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(SP, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZRF/98/7541', 'course', 'ZZG 751', 'total', '28', 'level', '400')), true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['FINAL_YEAR', 'SPILLOVER', 'AUTHORISED'], NULL, NULL, 'check V754');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (fee, S, 50000, 5000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+
+    -- the GST & EPS permit for a Summer GST course: on the Summer payment alone
+    before_reg := (registration.gst_eps_permit_state(a, S, 3) ->> 'code') || '/' || (registration.gst_eps_permit_state(a, S, 3) ->> 'summer');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM registration.summer_select(a, S, ARRAY['ZZG 751']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.confirm_payment(registration.summer_reference(a, S), 'Bank transfer', 'check V754');
+    after_pay := coalesce(registration.gst_eps_permit_state(a, S, 3) ->> 'available', '-') || '/' || coalesce(registration.gst_eps_permit_state(a, S, 3) ->> 'code', 'none')
+              || '/' || (registration.gst_eps_permit_state(a, S, 3) ->> 'gstCount');
+    card := coalesce(registration.exam_card_state(a, S, 3) ->> 'summer', '-');
+    summer := registration.is_summer(S, 3)::text || '/' || registration.is_summer(SP, 3)::text || '/' || registration.is_summer(S, 1)::text;
+
+    -- an authorisation naming a course no longer on the catalogue, listed for the Academic Office
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO registration.summer_authorisation (session, student_id, courses, reason, granted_by, granted_office)
+    VALUES (S, d, ARRAY['ZZG 799'], 'check V754: a course since removed', who, 'academic');
+    SELECT string_agg(x.kind || ':' || x.course_named, ',') INTO listed FROM registration.summer_authorisations_to_review(S) x;
+
+    -- the unit an office belongs to, set by ICT
+    INSERT INTO ref.unit (code, name, kind, parent_code, card_name) VALUES ('ZZ754', 'Zed Office of the Vice-Chancellor', 'OFFICE', NULL, 'Zed Vice Office');
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    BEGIN
+        PERFORM ref.set_office_unit('vc', 'ZZ754', 'the office the Vice-Chancellor sits in');
+        hrm_set := 'set';
+    EXCEPTION WHEN OTHERS THEN hrm_set := split_part(SQLERRM, ':', 1);
+    END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN
+        PERFORM ref.set_office_unit('vc', 'ZZNOWHERE', 'the office the Vice-Chancellor sits in');
+        unknown_set := 'set';
+    EXCEPTION WHEN OTHERS THEN unknown_set := split_part(SQLERRM, ':', 1);
+    END;
+    unit_set := ref.set_office_unit('vc', 'ZZ754', 'the office the Vice-Chancellor sits in');
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p_vc, 'ZZ7541', 'ZZOFFICE', 'Vice'), (l1, 'ZZ7542', 'ZZGRANT', 'One'), (l2, 'ZZ7543', 'ZZGRANT', 'Two');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), p_vc, 'vc', 'institution', NULL, 'check V754', who, current_date);
+    vc_prints := coalesce(credentials.staff_card_department(p_vc), 'none');
+
+    -- course-scoped grants follow their course: a rename; a merge whose two codes the same lecturer is bounded by
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZG 761', 'Followed by its grant', 3, 1, 400, dept, 'Core', 'LIVE'),
+        ('ZZG 771', 'Twin course', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZG 772', 'Twin course', 3, 1, 400, dept, 'Core', 'LIVE');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), l1, 'lecturer', 'course', 'ZZG 761', 'check V754', who, current_date),
+        (gen_random_uuid(), l2, 'lecturer', 'course', 'ZZG 771', 'check V754', who, current_date),
+        (gen_random_uuid(), l2, 'lecturer', 'course', 'ZZG 772', 'check V754', who, current_date);
+    PERFORM catalogue.rename_course('ZZG 761', 'ZZG 769');
+    SELECT string_agg(scope_id, ',') INTO renamed FROM iam.office_assignment WHERE person_id = l1;
+    PERFORM catalogue.merge_course('ZZG 772', 'ZZG 771', 'the same course written twice (check V754)', false);
+    SELECT string_agg(scope_id || CASE WHEN valid_to IS NULL THEN ' live' ELSE ' ended' END, ',' ORDER BY valid_to NULLS FIRST, scope_id) INTO twin
+      FROM iam.office_assignment WHERE person_id = l2;
+
+    msg := 'permit before ' || before_reg || ' | after the Summer payment ' || after_pay || ' | card summer ' || card || ' | is_summer ' || summer
+        || ' | listed ' || coalesce(listed, '-') || ' | office unit hrm ' || hrm_set || ' unknown ' || unknown_set || ' ict ' || coalesce(unit_set, '-')
+        || ' vc prints ' || vc_prints || ' | renamed ' || coalesce(renamed, '-') || ' | merged ' || coalesce(twin, '-');
+    RAISE EXCEPTION 'the V754 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V754 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V754: a Summer GST course''s permit on the Summer payment, the Summer named; the Academic Office''s list; ICT sets an office''s unit; course-scoped grants follow their course',
+      coalesce(msg = 'permit before GST_EPS_PERMIT_NO_REGISTRATION/true | after the Summer payment true/none/1 | card summer true | is_summer true/false/false'
+                     || ' | listed DEAD_CODE:ZZG 799 | office unit hrm OFFICE_UNIT_OFFICE unknown UNIT_UNKNOWN ict Zed Vice Office vc prints Zed Vice Office'
+                     || ' | renamed ZZG 769 | merged ZZG 772 live,ZZG 771 ended', false),
+      msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

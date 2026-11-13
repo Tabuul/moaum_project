@@ -141,6 +141,7 @@ class PortalAuditIT {
         Map<?, ?> card = it.get(any, u -> u.path("/api/v1/verify/idcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
         assertThat(card.get("genuine")).isEqualTo(true);
         assertThat(card.get("student_number")).isEqualTo("MOAUM/QRV/43/" + n);
+        assertThat(card.containsKey("level")).isFalse();   // V754: the student card prints no level, and the check names none
         String altered = (code.charAt(0) == 'A' ? "B" : "A") + code.substring(1);
         Map<?, ?> forged = it.get(any, u -> u.path("/api/v1/verify/idcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, altered)).getBody();
         assertThat(forged.get("genuine")).isEqualTo(false);
@@ -196,6 +197,9 @@ class PortalAuditIT {
         Map<?, ?> genuine = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
         assertThat(genuine.get("genuine")).isEqualTo(true);
         assertThat(genuine.get("staff_number")).isEqualTo(staffNo);
+        // V754: the department as the card prints it — with no HR record, the department of the office held (a lecturer in MTC)
+        String mtc = jdbc.sql("SELECT name FROM ref.department WHERE code = 'MTC'").query(String.class).single();
+        assertThat(genuine.get("department")).isEqualTo(mtc);
         String altered = (code.charAt(0) == 'A' ? "B" : "A") + code.substring(1);
         Map<?, ?> forged = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, altered)).getBody();
         assertThat(forged.get("genuine")).isEqualTo(false);

@@ -10,6 +10,8 @@ interface PermitVerify {
   genuine: boolean; status: "VALID" | "INVALID" | "REVOKED" | "NOT_FOUND"; reference?: string; name?: string; matricNo?: string | null;
   programme?: string | null; level?: number; session?: string; semester?: number; photo?: string | null; courses?: PermitCourse[];
   reason?: string; revokedAt?: string;
+  /** V754: semester 3 of a session that had a Summer Semester */
+  summer?: boolean;
 }
 
 const WORDS: Record<PermitVerify["status"], [string, string]> = {
@@ -62,7 +64,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 <div className="b700 t-lg" style={{ lineHeight: 1.25 }}>{v.name}</div>
                 <div className="tnum mt-1" style={{ overflowWrap: "anywhere" }}>{v.matricNo ?? "—"}</div>
                 <div className="t-sm ink-muted mt-1">{v.programme ?? "—"}{v.level ? ` · ${v.level} Level` : ""}</div>
-                <div className="t-sm ink-muted">{v.session} · {v.semester ? `${semesterName(v.semester)} semester` : ""}</div>
+                <div className="t-sm ink-muted">{v.session} · {v.semester ? `${v.summer && v.semester === 3 ? "Summer" : semesterName(v.semester)} semester` : ""}</div>
                 <div className="t-sm mt-1"><span className="ink-muted">Permit number </span><span className="tnum b600">{v.reference}</span> <Pil kind={ok ? "ok" : "bad"}>{v.status}</Pil></div>
               </div>
             </div>

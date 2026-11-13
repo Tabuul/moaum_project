@@ -362,9 +362,39 @@ class AccountsController {
         return Map.of("grant", grant, "endedOn", body.on() == null ? LocalDate.now() : body.on());
     }
 
+    /** the offices; V754: with the unit each belongs to, what a staff card prints for it and how many hold it now */
     @GetMapping("/offices")
     @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
     List<Map<String, Object>> offices() {
-        return jdbc.sql("SELECT code, label, scope_kind FROM ref.office ORDER BY label").query().listOfRows();
+        return jdbc.sql("""
+                SELECT o.code, o.label, o.scope_kind,
+                       o.unit_code, u.name AS unit, ref.unit_card_name(o.unit_code) AS card_prints,
+                       (SELECT count(*) FROM iam.office_assignment a
+                         WHERE a.office_code = o.code AND a.valid_from <= current_date
+                           AND (a.valid_to IS NULL OR a.valid_to >= current_date)) AS holders
+                  FROM ref.office o LEFT JOIN ref.unit u ON u.code = o.unit_code
+                 ORDER BY o.label
+                """).query().listOfRows();
+    }
+
+    /** V754: the unit an office belongs to, set (or cleared, with an empty unit) by ICT — a staff card prints it as the department
+     *  of someone the HR record places nowhere who holds the office (V751) */
+    public record OfficeUnit(@jakarta.validation.constraints.Size(max = 40) String unitCode,
+                             @NotBlank @jakarta.validation.constraints.Size(min = 10, max = 500) String reason) {
+    }
+
+    @PutMapping("/offices/{code}/unit")
+    @PreAuthorize("hasAnyAuthority('OFFICE_ict','OFFICE_super')")
+    @Transactional
+    Map<String, Object> officeUnit(@PathVariable String code, @Valid @RequestBody OfficeUnit body) {
+        // V754: read as a row, since a cleared unit prints nothing (null)
+        Object prints = jdbc.sql("SELECT ref.set_office_unit(:o, :u, :r) AS prints").param("o", code)
+                .param("u", body.unitCode(), java.sql.Types.VARCHAR).param("r", body.reason()).query().singleRow().get("prints");
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("code", code.trim().toLowerCase());
+        out.put("unitCode", body.unitCode() == null || body.unitCode().isBlank() ? null : body.unitCode().trim().toUpperCase());
+        out.put("cardPrints", prints);
+        return out;
     }
 }

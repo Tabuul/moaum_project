@@ -147,8 +147,8 @@ These questions are for the Academic Office to decide:
 - **Academic standing.** A student's standing is read from their last regular semester; a Summer does not change it (V739: `assessment.student_standing` leaves the Summer out), and no standing is pronounced on a Summer alone: the Summer broadsheet prints none (V741). Before V739 a Summer read GOOD and let a student on probation escape the probation unit limit.
 - **CGPA.** CGPA counts every attempt, as the portal's rule already does. No replacement rule was invented for a Summer pass.
 - **Approval of the registration.** A paid Summer registration is approved by the payment. The courses are the student's own outstanding ones, checked by the database. If the Academic Office wants a desk approval as well, it is one rule to add.
-- **The GST & EPS examination permit.** The permit was not adapted for semester 3.
-- **The "Third" semester wording.** Transcripts and results statements that print a semester name read semester 3 as "Third". The student's Summer page, the examination card, the allocation desks and the results chain say "Summer".
+- **The GST & EPS examination permit.** Decided by the University on 13 November 2026 (V754): a GST or EPS course registered in the Summer has its permit on the Summer payment alone, with no separate GST fee and no school fees for semester 3.
+- **The "Third" semester wording.** Decided by the University on 13 November 2026: semester 3 of a session that had a Summer Semester is named the Summer semester on transcripts and results statements; any other semester 3 keeps "Third". V754 gives the statement, the examination card and the permit a `summer` flag and the check pages use it; the transcripts, results statements and the student's screens follow in the next change.
 - **Old-portal carry-overs.** A course registered before with no result on this portal (its result is on the old portal) is not an outstanding course for the Summer: most past results are on the old portal, and counting them would make nearly every final-year student eligible for courses they passed. The Academic Office authorises such a student for the courses it names.
 - **A fee withdrawn after a selection.** The charge keeps the figure it was made at (a charge keeps its figure); the student may take the course back and select it again at the published fee.
 
@@ -219,3 +219,11 @@ A review of those fixes confirmed four more; V742 and the same change answer the
 - **The course is followed, not its code.** `registration.summer_code_after` follows the course an authorisation named, by its id, through its renames and through a merge to the course kept. A newcomer that took one of its old codes is never chosen (before, a course renamed twice whose middle code was then reused went to the newcomer).
 - **The repair re-runs, each authorisation once.** Authorisations still naming a dead code are put right again with it.
 - **The notice counts authorisations.** V746's and V751's choices are brought forward to today before they are compared with the trail from the grant. The migration's notice counts authorisations either rewrote otherwise, for the Academic Office (not changed).
+
+## Follow-ups (V754, 13 November 2026)
+
+- **The GST & EPS permit in the Summer.** `registration.gst_eps_permit_state` reads a Summer registration (`registration.is_summer`) on its own terms:
+  - the permit is available once the Summer is paid, with no GST fee and no school fees asked;
+  - before the Summer registration exists, it says to select on the Summer Semester page;
+  - its JSON, and the examination card's, carry `summer`. The check pages name it the Summer semester; the student's screens and PDFs follow in the next change.
+- **Authorisations to look at again** (the database's side): `registration.summer_authorisations_to_review(session)` lists the authorisations naming a course no longer on the catalogue and those a one-off repair (V746, V751, V753) rewrote otherwise than the trail from the grant gives. The Summer desk's list follows in the next change.

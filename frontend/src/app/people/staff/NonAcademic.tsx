@@ -9,6 +9,8 @@
  * person is tied to — and restored from Removed staff.
  * V748: the unit register shows what a staff identity card prints as each unit's department (its card name, else its nearest
  * parent's, else its formal name); ICT sets a unit's card name, with a reason.
+ * V754: the Offices tab — the unit each office belongs to, which a staff card prints as the department of someone the HR record
+ * places nowhere who holds the office (V751); ICT sets or clears it, with a reason.
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -19,7 +21,9 @@ import { xlsxRows, buildXlsx } from "@/lib/xlsx";
 import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
+import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { BOUND_WORD } from "@/lib/office-scope";
 import { RemoveStaff } from "@/components/staff/RemoveStaff";
 import { RemovedStaff } from "@/components/staff/RemovedStaff";
 import { ddmmyyyy, deactivatedHolder, type StaffChange, type StaffPick } from "@/lib/staff-removal";
@@ -32,6 +36,8 @@ export interface NonAcademicRow {
 export interface Unit { code: string; name: string; kind: string; parent_code: string | null; parent: string | null; college_code: string | null; ended_on: string | null; staff: number; spellings: number;
   /** V748: the unit's own card name, and what a staff card prints for it (its own, its nearest parent's, else its name) */
   card_name?: string | null; card_prints?: string | null }
+/** V754: an office (GET /iam/offices), the unit it belongs to, what a staff card prints for it and how many hold it today */
+export interface OfficeRow { code: string; label: string; scope_kind: string; unit_code?: string | null; unit?: string | null; card_prints?: string | null; holders?: number }
 
 const MAY = ["registrar", "dregistrar", "hrm", "ict", "admin", "super"];
 /** V748: the offices that set a unit's card name (the API's PUT /iam/units/{code}/card-name) */
@@ -43,7 +49,7 @@ interface AddForm { pno: string; surname: string; given: string; sex: string; un
 const EMPTY_ADD: AddForm = { pno: "", surname: "", given: "", sex: "", unit: "", rank: "", phone: "", contiss: "", appointed: "", email: "" };
 const KIND: Record<string, string> = { OFFICE: "Office", DIRECTORATE: "Directorate", DIVISION: "Division", UNIT: "Unit", CENTRE: "Centre", SCHOOL: "School", FACULTY_OFFICE: "Faculty office", DEPARTMENT: "Department" };
 
-export function NonAcademic({ actingOffice, staff, units, removed }: { actingOffice: string | null; staff: NonAcademicRow[]; units: Unit[]; removed: StaffChange[] }) {
+export function NonAcademic({ actingOffice, staff, units, removed, offices }: { actingOffice: string | null; staff: NonAcademicRow[]; units: Unit[]; removed: StaffChange[]; offices: OfficeRow[] }) {
   const router = useRouter();
   const may = MAY.includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
@@ -53,7 +59,7 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
   const [rows, setRows] = useState<Row[] | null>(null);
   const [fileName, setFileName] = useState("");
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"staff" | "units">("staff");
+  const [tab, setTab] = useState<"staff" | "units" | "offices">("staff");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState<StaffPick[] | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -62,6 +68,28 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
   const [naming, setNaming] = useState<{ unit: Unit; name: string; reason: string } | null>(null);
   const [namingProblem, setNamingProblem] = useState<Problem | null>(null);
   const mayName = CARD_NAMERS.includes(actingOffice ?? "");
+  const [placing, setPlacing] = useState<{ office: OfficeRow; unit: string; reason: string } | null>(null);
+  const [placingProblem, setPlacingProblem] = useState<Problem | null>(null);
+
+  /* V754: the unit an office belongs to (empty: none), read by a staff card for someone the HR record places nowhere */
+  async function saveOfficeUnit() {
+    if (!placing) return;
+    if (placing.reason.trim().length < 10) {
+      const p = { status: 400, title: "Say why the office's unit changes, in ten characters or more." }; setPlacingProblem(p); notifyProblem(p); return;
+    }
+    setBusy(true); setPlacingProblem(null);
+    try {
+      const r = await fetch(`/api/bff/api/v1/iam/offices/${encodeURIComponent(placing.office.code)}/unit`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Unit of the ${placing.office.label} office`) },
+        body: JSON.stringify({ unitCode: placing.unit || null, reason: placing.reason.trim() }),
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) { const p = j ?? { status: r.status, title: r.statusText }; setPlacingProblem(p); notifyProblem(p); return; }
+      setPlacing(null);
+      notify(j?.cardPrints ? `${placing.office.label}: a staff card now prints ${j.cardPrints}` : `${placing.office.label} now belongs to no unit: a staff card prints no department from it`);
+      router.refresh();
+    } finally { setBusy(false); }
+  }
 
   /* V748: the short name a unit prints on staff identity cards (empty: its nearest parent's, else its own name) */
   async function saveCardName() {
@@ -249,7 +277,7 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
         </>
       ) : null}
 
-      <Panel title="On record" right={<Tabs label="Staff or units" items={[{ id: "staff", label: "Non-Academic Staff", count: staff.length }, { id: "units", label: "The Unit Register", count: unitRows.length }]} value={tab} onChange={setTab} />}>
+      <Panel title="On record" right={<Tabs label="Staff, units or offices" items={[{ id: "staff", label: "Non-Academic Staff", count: staff.length }, { id: "units", label: "The Unit Register", count: unitRows.length }, { id: "offices", label: "Offices", count: offices.length }]} value={tab} onChange={setTab} />}>
         {tab === "staff" ? (
           <>
             <PBody>
@@ -280,6 +308,24 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
               </label></PBody>
             ) : null}
             {shown.length > 500 ? <PBody><div className="sub2">Showing the first 500 of {shown.length}. Narrow the search.</div></PBody> : null}
+          </>
+        ) : tab === "offices" ? (
+          <>
+            {/* V754: the unit each office belongs to, set by ICT */}
+            <PBody><div className="sub2">A staff card prints the unit an office belongs to as the department of someone the HR record places nowhere who holds the office.</div></PBody>
+            {offices.length ? (
+              <DTable cols={["Office", "Scope", "Belongs to", "Staff card prints", "Holders|mid", ...(mayName ? ["|num"] : [])]} rows={offices.map((o) => {
+                const bound = BOUND_WORD[o.scope_kind];
+                return [
+                  <span key="o"><strong>{o.label}</strong> <span className="sub2 tnum">{o.code}</span></span>,
+                  <span key="s" className="sub2">{bound ? bound.charAt(0).toUpperCase() + bound.slice(1) : o.scope_kind}</span>,
+                  <span key="u">{o.unit ?? o.unit_code ?? "—"}{o.unit_code ? <span className="sub2 tnum"> {o.unit_code}</span> : null}</span>,
+                  <span key="cp">{o.card_prints ?? <span className="sub2">—</span>}</span>,
+                  <span key="h" className="tnum">{Number(o.holders ?? 0)}</span>,
+                  ...(mayName ? [<Btn key="pu" kind="ghost" size="sm" aria-label={`Unit of ${o.label}`} onClick={() => { setPlacingProblem(null); setPlacing({ office: o, unit: o.unit_code ?? "", reason: "" }); }}>Unit</Btn>] : []),
+                ];
+              })} texts={offices.map((o) => `${o.label} ${o.code} ${o.unit ?? ""} ${o.unit_code ?? ""} ${o.card_prints ?? ""}`)} />
+            ) : <PBody><div className="sub2">The offices could not be read.</div></PBody>}
           </>
         ) : (
           <DTable cols={["Unit", "Kind|mid", "Under", "Campus|mid", "Staff|mid", "Spellings known|mid", "Staff card prints"]} rows={unitRows.map((u) => [
@@ -316,6 +362,23 @@ export function NonAcademic({ actingOffice, staff, units, removed }: { actingOff
           </Field>
           <Field id="uc-reason" label="Reason" hint="Ten characters or more; kept on the audit trail">
             <input id="uc-reason" className="ctl" value={naming.reason} onChange={(e) => setNaming({ ...naming, reason: e.target.value })} placeholder="The short name the University uses on staff cards" />
+          </Field>
+        </Modal>
+      ) : null}
+
+      {placing ? (
+        <Modal title={`Unit of ${placing.office.label}`} onClose={() => setPlacing(null)}
+          foot={<><Btn kind="ghost" onClick={() => setPlacing(null)}>Cancel</Btn><span className="grow" />
+            <Btn kind="primary" disabled={busy || placing.reason.trim().length < 10} onClick={() => void saveOfficeUnit()}>{busy ? "Saving…" : "Save"}</Btn></>}>
+          {placingProblem ? <ProblemNotice problem={placingProblem} /> : null}
+          <div className="sub2 mb-3">The unit this office belongs to. A staff card prints it as the department of someone who holds the office and whom the HR record places in no unit, department or faculty. Choose No unit to clear it.</div>
+          <Field id="ou-unit" label="Unit" hint="From the unit register">
+            <SearchSelect id="ou-unit" value={placing.unit} onChange={(v) => setPlacing({ ...placing, unit: v })} allLabel="No unit"
+              valueLabel={placing.office.unit ?? placing.office.unit_code ?? undefined} placeholder="Type to search the units"
+              options={unitRows.map((u) => ({ value: u.code, label: u.name, sub: [u.code, u.parent].filter(Boolean).join(" · ") }))} />
+          </Field>
+          <Field id="ou-reason" label="Reason" hint="Ten characters or more; kept on the audit trail">
+            <input id="ou-reason" className="ctl" value={placing.reason} onChange={(e) => setPlacing({ ...placing, reason: e.target.value })} placeholder="The unit the University places this office in" />
           </Field>
         </Modal>
       ) : null}

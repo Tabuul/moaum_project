@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 interface CardVerify {
   genuine: boolean; codeMissing?: boolean; card_no?: string; state?: string; issued_at?: string | null; valid_to?: string | null; ended_at?: string | null;
-  student_name?: string; student_number?: string; programme?: string; faculty?: string; level?: number; photo?: string | null;
+  student_name?: string; student_number?: string; programme?: string; faculty?: string; photo?: string | null;
 }
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 
@@ -51,7 +51,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                 <div className="grow"><div className="b700 t-lg" style={{ lineHeight: 1.25 }}>{v.student_name}</div><div className="tnum mt-1">{v.student_number}</div><div className="t-sm ink-muted mt-1">{v.programme ?? "—"}</div><div className="t-sm ink-muted">{v.faculty ?? ""}</div></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "var(--s-2)" }}>
-                {([["Card", v.card_no ?? "—"], ["Level", v.level ? `${v.level} Level` : "—"], ["Issued", day(v.issued_at)], ["Valid to", day(v.valid_to)]] as [string, string][]).map(([k, val], i) => (
+                {/* V754: the student card prints no level, so the check names none */}
+                {([["Card", v.card_no ?? "—"], ["Issued", day(v.issued_at)], ["Valid to", day(v.valid_to)]] as [string, string][]).map(([k, val], i) => (
                   <div key={i} style={{ padding: "var(--s-2)", border: "1px solid var(--line)", borderRadius: "var(--r-sm)" }}><div className="eyebrow">{k}</div><div className="b600 tnum">{val}</div></div>
                 ))}
               </div>

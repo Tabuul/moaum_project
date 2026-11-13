@@ -11,6 +11,8 @@ interface ExamVerify {
   session?: string; semester?: number; cleared?: boolean | null; photo?: string | null; courses?: Course[];
   /** V503: VALID while the card's own rule holds; NOT_VALID with the reason when the card may not be used now */
   status?: "VALID" | "NOT_VALID"; reason?: string | null;
+  /** V754: semester 3 of a session that had a Summer Semester */
+  summer?: boolean;
 }
 
 /** /verify/exam?m=&s=&sem=&c= — the public verification of a student's examination card.
@@ -65,7 +67,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
               </div>
               {/* short facts as compact cells — two or three to a row, never a stretched full-width line */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "var(--s-2)" }}>
-                {([["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"], ["School fees", v.cleared ? "Paid" : "Not paid"]] as [string, string][]).map(([k, val], i) => (
+                {([["Session", v.session ?? "—"], ["Semester", v.semester ? (v.summer && v.semester === 3 ? "Summer semester" : semesterName(v.semester)) : "—"],
+                  ["School fees", v.cleared ? "Paid" : "Not paid"]] as [string, string][]).map(([k, val], i) => (
                   <div key={i} className="kv" style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", padding: "var(--s-2) var(--s-3)", background: "var(--bg)" }}>
                     <span className="k">{k}</span>
                     <span className="v" style={{ color: k === "School fees" ? (v.cleared ? "var(--green-ink)" : "var(--red-deep)") : undefined }}>{val}</span>
