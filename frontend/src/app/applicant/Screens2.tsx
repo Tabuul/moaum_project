@@ -171,7 +171,7 @@ export function Status({ a }: { a: Application }) {
           Your place is held. Document clearance is the next step.
         </Note>
       ) : a.declinedAt ? (
-        <Note kind="bad" title={`You declined this offer on ${when(a.declinedAt)}`}>A declined offer is not reinstated.</Note>
+        <Note kind="bad" title={`You declined this offer on ${when(a.declinedAt)}`}>If you declined by mistake, write to the Academic Office quoting your application number: a decline is reversed only while your place has not been given to someone else.</Note>
       ) : (
         <Note kind="bad" title="Accept your offer" action={<LinkBtn kind="urgent" href="/applicant/accept">Accept the offer</LinkBtn>}>
           An offer that lapses cannot be reinstated, and the place goes to the next candidate on the waiting list.

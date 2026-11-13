@@ -21,6 +21,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,6 +43,8 @@ class OffersController {
     private static final String READERS =
             "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_dvc','OFFICE_vc','OFFICE_records','OFFICE_ict','OFFICE_admin','OFFICE_super')";
     private static final String DECIDERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar')";
+    /** V758: a decline is reversed by the Academic Office or the Registrar's office */
+    private static final String REVERSERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super')";
 
     private final JdbcClient jdbc;
 
@@ -62,6 +65,9 @@ class OffersController {
         out.put("pastDeadline", jdbc.sql("SELECT *, released_on::text AS released, deadline::text AS deadline_on FROM admissions.offers_past_deadline(:s)")
                 .param("s", session).query().listOfRows());
         out.put("vacancies", jdbc.sql("SELECT * FROM admissions.vacancies(:s)").param("s", session).query().listOfRows());
+        // V758: the declined offers whose place is still free — an accidental decline the Academic Office may reverse
+        out.put("reversible", jdbc.sql("SELECT application_id, application_no, name, programme, declined_at, deadline::text AS deadline_on, deadline_passed "
+                + "FROM admissions.declines_reversible(:s)").param("s", session).query().listOfRows());
         out.put("counts", jdbc.sql("""
                 SELECT count(*) FILTER (WHERE decision = 'OFFERED' AND decision_released_at IS NOT NULL) AS offered,
                        count(*) FILTER (WHERE accepted_at IS NOT NULL) AS accepted,
@@ -123,6 +129,24 @@ class OffersController {
         out.put("programme", programme);
         out.put("waiting", jdbc.sql("SELECT * FROM admissions.waiting_list(:s, :p)").param("s", session).param("p", programme).query().listOfRows());
         out.put("vacancies", jdbc.sql("SELECT * FROM admissions.vacancies(:s) WHERE programme = :p").param("s", session).param("p", programme).query().listOfRows());
+        return out;
+    }
+
+    public record ReverseIn(@NotBlank @Size(min = 20, max = 1000) String reason, LocalDate acceptBy) {
+    }
+
+    /** V758: an applicant's accidental decline reversed while the place is free (refused once it went to the waiting list); once the
+     *  acceptance deadline has passed the officer gives a new acceptance date for this offer; the applicant is told */
+    @PostMapping("/applications/{id}/reverse-decline")
+    @PreAuthorize(REVERSERS)
+    @Transactional
+    Map<String, Object> reverseDecline(@PathVariable UUID id, @Valid @RequestBody ReverseIn b) {
+        Map<String, Object> done = jdbc.sql("SELECT x ->> 'outcome' AS outcome, x ->> 'applicationNo' AS application_no, x ->> 'offerState' AS offer_state, "
+                        + "x ->> 'deadline' AS deadline FROM (SELECT admissions.reverse_decline(:a, :r, :d) AS x) q")
+                .param("a", id).param("r", b.reason().trim()).param("d", b.acceptBy(), Types.DATE).query().singleRow();
+        String session = jdbc.sql("SELECT session FROM admissions.application WHERE id = :a").param("a", id).query(String.class).single();
+        Map<String, Object> out = new LinkedHashMap<>(read(session));
+        out.put("reversed", done);
         return out;
     }
 

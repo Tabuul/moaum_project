@@ -7,6 +7,8 @@
  * declined — each filled from the programme's waiting list in merit order by the office's choice; the place's quota basis is
  * shown beside each candidate's state and LGA, for the office to keep the quota as the policy holds it. The server decides
  * and refuses what does not stand; the screen only asks.
+ * V758: a decline made by mistake is reversed by the Academic Office (or the Registrar's office) while its place is still free,
+ * with the reason, and a new acceptance date when the session's has passed; the applicant is told.
  */
 import { useEffect, useState } from "react";
 import { reasonHeader } from "@/lib/reason";
@@ -18,7 +20,10 @@ import { DTable } from "@/components/proto/DTable";
 interface Past { app_id: string; application_no: string; name: string; programme: string; programme_name: string; released: string; deadline_on: string; undertaking: boolean }
 interface Vacancy { vacated_id: string; application_no: string; name: string; programme: string; programme_name: string; basis: string | null; why: "LAPSED" | "DECLINED"; freed_at: string }
 interface Waiting { rank: number; app_id: string; application_no: string; jamb_reg_no: string; name: string; entry_mode: string; aggregate: number; state_of_origin: string | null; lga: string | null }
+/** V758: a declined offer whose place is still free — its decline may be reversed */
+interface Reversible { application_id: string; application_no: string; name: string; programme: string; declined_at: string; deadline_on: string | null; deadline_passed: boolean }
 interface View {
+  reversible?: Reversible[];
   session: string; deadline: { accept_by: string | null; days_after_release: number | null; note: string | null; set_at: string; set_by: string | null } | null;
   pastDeadline: Past[]; vacancies: Vacancy[]; counts: { offered: number; accepted: number; declined: number; lapsed: number; promoted: number; waiting: number };
 }
@@ -31,7 +36,7 @@ async function call<T>(path: string, method: string, body: unknown, reason: stri
   return (await r.json()) as T;
 }
 
-export function Offers({ session, sessions, canDecide }: { session: string; sessions: string[]; canDecide: boolean }) {
+export function Offers({ session, sessions, canDecide, canReverse = false }: { session: string; sessions: string[]; canDecide: boolean; canReverse?: boolean }) {
   const [s, setS] = useState(session);
   const [v, setV] = useState<View | null>(null);
   const [f, setF] = useState({ acceptBy: "", days: "", note: "" });
@@ -42,6 +47,8 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
   const [pick, setPick] = useState<Set<string>>(new Set());
   const [ask, setAsk] = useState(false);
   const [tick, setTick] = useState(0);
+  const [rev, setRev] = useState<Reversible | null>(null);
+  const [revForm, setRevForm] = useState({ reason: "", acceptBy: "" });
   useEffect(() => {
     let live = true;
     void fetch(`/api/bff/api/v1/admissions/offers?session=${encodeURIComponent(s)}`, { cache: "no-store" }).then(async (r) => {
@@ -87,6 +94,27 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
       if (d) { setAsk(false); notify(`${d.promoted} promoted from the waiting list; each is told.`); setTick((t) => t + 1); }
     } finally { setBusy(false); }
   }
+  const reversibleOf = new Map((v.reversible ?? []).map((x) => [x.application_id, x]));
+  // V758: the University's day (Africa/Lagos), as the database reads the dates; a new date from today to 120 days ahead
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
+  const latest = (() => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 120); return d.toISOString().slice(0, 10); })();
+  const revDateBad = !!rev?.deadline_passed && (!revForm.acceptBy || revForm.acceptBy < today || revForm.acceptBy > latest);
+  async function reverse() {
+    if (!rev) return;
+    setBusy(true);
+    try {
+      const d = await call<View>(`/applications/${rev.application_id}/reverse-decline`, "POST",
+        { reason: revForm.reason.trim(), acceptBy: revForm.acceptBy || null }, `Decline reversed (${rev.application_no})`);
+      const done = (d as (View & { reversed?: { offer_state?: string; programme_restored?: string } }) | null)?.reversed;
+      if (d) {
+        setV(d); setRev(null); setTick((t) => t + 1);
+        notify(`The decline of ${rev.application_no} is reversed: the offer stands again and the applicant is told.${done?.offer_state === "ACCEPTED" ? " The undertaking and the acceptance fee were already complete, so the offer is accepted." : ""}`);
+      } else {
+        // refused (the place given away meanwhile, or the deadline passed since the page was read): the list is read again
+        setRev(null); setTick((t) => t + 1);
+      }
+    } finally { setBusy(false); }
+  }
   const c = v.counts;
   return (
     <>
@@ -123,7 +151,12 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
             <>
               <DTable pageSize={25} cols={["Programme", "Place of", "Basis", "Freed", "|mid"]} rows={v.vacancies.map((x) => [x.programme_name, `${x.application_no} — ${x.name}`,
                 x.basis ? BASIS[x.basis] ?? x.basis : "—", `${x.why === "LAPSED" ? "Lapsed" : "Declined"} ${day(x.freed_at)}`,
-                <Btn key="w" kind={prog === x.programme ? "primary" : "ghost"} onClick={() => setProg(x.programme)}>Waiting list</Btn>])} />
+                <span key="w" className="row" style={{ gap: 6 }}>
+                  <Btn kind={prog === x.programme ? "primary" : "ghost"} onClick={() => setProg(x.programme)}>Waiting list</Btn>
+                  {canReverse && x.why === "DECLINED" && reversibleOf.has(x.vacated_id) ? (
+                    <Btn kind="secondary" onClick={() => { setRev(reversibleOf.get(x.vacated_id)!); setRevForm({ reason: "", acceptBy: "" }); }}>Reverse the decline</Btn>
+                  ) : null}
+                </span>])} />
               {programmes.length > 1 ? <p className="sub2 mt-1">{`Places freed in ${programmes.length} programmes.`}</p> : null}
             </>
           )}
@@ -143,6 +176,22 @@ export function Offers({ session, sessions, canDecide }: { session: string; sess
               {pick.size > w.vacancies.length ? <span className="sub2">{`Only ${w.vacancies.length} place${w.vacancies.length === 1 ? " is" : "s are"} freed.`}</span> : null}</div> : null}
           </PBody>
         </Panel>
+      ) : null}
+      {rev ? (
+        <Modal title={`Reverse the decline — ${rev.application_no}, ${rev.name}`} onClose={() => setRev(null)}
+          foot={<><Btn kind="ghost" onClick={() => setRev(null)}>Cancel</Btn><span className="grow" />
+            <Btn kind="primary" disabled={busy || revForm.reason.trim().length < 20 || revDateBad} onClick={() => void reverse()}>Reverse the decline</Btn></>}>
+          <p>{`Declined ${day(rev.declined_at)}. The offer of ${rev.programme} stands again and the applicant is told. A decline is reversed only while its place is free: once the place is given to someone from the waiting list it stands.`}</p>
+          <Field id="rv-why" label="Why" hint="The applicant's request and how it was received, at least 20 characters">
+            <textarea id="rv-why" className="ctl" rows={3} maxLength={1000} value={revForm.reason} onChange={(e) => setRevForm({ ...revForm, reason: e.target.value })} />
+          </Field>
+          {rev.deadline_passed ? (
+            <Field id="rv-by" label="New acceptance date" hint={`The acceptance deadline (${day(rev.deadline_on)}) has passed: the applicant accepts and pays by this date, today to 120 days ahead`}
+              error={revForm.acceptBy && (revForm.acceptBy < today || revForm.acceptBy > latest) ? "A date from today to 120 days ahead" : undefined}>
+              <input id="rv-by" className="ctl" type="date" min={today} max={latest} value={revForm.acceptBy} onChange={(e) => setRevForm({ ...revForm, acceptBy: e.target.value })} />
+            </Field>
+          ) : rev.deadline_on ? <p className="sub2">{`The applicant accepts and pays by ${day(rev.deadline_on)}.`}</p> : null}
+        </Modal>
       ) : null}
       {lapse ? (
         <Modal title={`Lapse ${v.pastDeadline.length} offer${v.pastDeadline.length === 1 ? "" : "s"}`} onClose={() => setLapse(false)}

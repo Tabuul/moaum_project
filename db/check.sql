@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 615
+\set EXPECTED 616
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -36742,6 +36742,78 @@ BEGIN
         format('students %s | level %s faculty %s department %s | blood %s | photo %s | any %s | matric %s | q %s | page %s | agree %s of %s | staff %s | academic %s unit %s | e-mail %s | all %s | q %s | pending %s | complete %s',
                to_jsonb(cs), cs_level, cs_faculty, cs_dept, l_blood, l_photo, l_any, l_matric, l_q, l_page, agree_bad, agree_n, to_jsonb(cf), cf_acad, cf_unit,
                f_email, f_any, f_q, f_pending, state_sa->>'complete'));
+END $$;
+-- ── V758: an applicant's accidental decline reversed by the Academic Office. In 9758/9759, whose acceptance date has passed, admitted
+--          applicant A declined by mistake: the Bursary may not reverse it, nor anyone without a reason; without a new acceptance date
+--          it is refused; with one the offer stands again (the candidate ADMITTED, the decline cleared, the new date the offer's
+--          deadline, no longer a freed place nor past its deadline, the reversal recorded). Applicant B's declined place was given to
+--          the waiting list: the reversal is refused, naming who holds it. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9758/9759'; who uuid := gen_random_uuid();
+    b1 uuid := gen_random_uuid(); ra uuid := gen_random_uuid(); rb uuid := gen_random_uuid(); rw uuid := gen_random_uuid();
+    ca uuid := gen_random_uuid(); cb uuid := gen_random_uuid(); cw uuid := gen_random_uuid();
+    acA uuid := gen_random_uuid(); acB uuid := gen_random_uuid(); acW uuid := gen_random_uuid();
+    appA uuid := gen_random_uuid(); appB uuid := gen_random_uuid(); appW uuid := gen_random_uuid();
+    pa text; na text; bursar text; short_reason text; no_date text; done jsonb; st text; dl date; vac int; past int; rec int; filled text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V758', true);
+    SELECT code, name INTO pa, na FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    INSERT INTO admissions.offer_deadline (session, accept_by, note, set_by) VALUES (S, current_date - 3, 'check V758', who);
+    INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b1, S, 'CAPS_DOWNLOAD', 'check-v758.xlsx', decode(repeat('d8', 32), 'hex'), 3, 'DIRECT_ENTRY', current_date, who, 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+        (ra, b1, S, '975800000011DE', '{}'::jsonb, 'CHECKV758', 'Applicant A', pa, NULL, 'DIRECT_ENTRY'),
+        (rb, b1, S, '975800000012DE', '{}'::jsonb, 'CHECKV758', 'Applicant B', pa, NULL, 'DIRECT_ENTRY'),
+        (rw, b1, S, '975800000013DE', '{}'::jsonb, 'CHECKV758', 'Waiting W', pa, NULL, 'DIRECT_ENTRY');
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from) VALUES
+        (ca, S, '975800000011DE', 'CHECKV758', 'Applicant A', na, 'DIRECT_ENTRY', 200, 'ADMITTED', ra),
+        (cb, S, '975800000012DE', 'CHECKV758', 'Applicant B', na, 'DIRECT_ENTRY', 200, 'ADMITTED', rb),
+        (cw, S, '975800000013DE', 'CHECKV758', 'Waiting W', na, 'DIRECT_ENTRY', 200, 'ADMITTED', rw);
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+        (acA, S, ca, '975800000011DE', 'v758a@example.test', '08030000758', crypt('x', gen_salt('bf', 12))),
+        (acB, S, cb, '975800000012DE', 'v758b@example.test', '08030000759', crypt('x', gen_salt('bf', 12))),
+        (acW, S, cw, '975800000013DE', 'v758w@example.test', '08030000760', crypt('x', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, decision, decided_at, decision_released_at) VALUES
+        (appA, acA, ca, S, 'APP/58/758001', now(), 'OFFERED', now() - interval '20 days', now() - interval '20 days'),
+        (appB, acB, cb, S, 'APP/58/758002', now(), 'OFFERED', now() - interval '20 days', now() - interval '20 days');
+    -- both decline (as decline_offer records it), B's place then given to W from the waiting list
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    UPDATE admissions.application SET declined_at = now() - interval '2 days' WHERE id IN (appA, appB);
+    UPDATE admissions.candidate SET offer_state = 'DECLINED' WHERE id IN (ca, cb);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, decision, decided_at, decision_released_at, promoted_for, promoted_at)
+    VALUES (appW, acW, cw, S, 'APP/58/758003', now(), 'OFFERED', now(), now(), appB, now());
+
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM admissions.reverse_decline(appA, 'The applicant wrote that the decline was pressed by mistake.', current_date + 7); bursar := 'reversed';
+    EXCEPTION WHEN check_violation THEN bursar := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM admissions.reverse_decline(appA, 'by mistake', current_date + 7); short_reason := 'reversed';
+    EXCEPTION WHEN check_violation THEN short_reason := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM admissions.reverse_decline(appA, 'The applicant wrote that the decline was pressed by mistake.'); no_date := 'reversed';
+    EXCEPTION WHEN check_violation THEN no_date := split_part(SQLERRM, ':', 1); END;
+    done := admissions.reverse_decline(appA, 'The applicant wrote that the decline was pressed by mistake.', current_date + 7);
+    SELECT c.offer_state || '/' || (a.declined_at IS NULL)::text INTO st FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id WHERE a.id = appA;
+    dl := admissions.offer_deadline_of(appA);
+    SELECT count(*) INTO vac FROM admissions.vacancies(S) v WHERE v.vacated_id = appA;
+    SELECT count(*) INTO past FROM admissions.offers_past_deadline(S) o WHERE o.app_id = appA;
+    SELECT count(*) INTO rec FROM admissions.decline_reversal WHERE application_id = appA AND offer_state_was = 'DECLINED' AND offer_state_now = 'ADMITTED';
+    BEGIN PERFORM admissions.reverse_decline(appB, 'The applicant wrote that the decline was pressed by mistake.', current_date + 7); filled := 'reversed';
+    EXCEPTION WHEN check_violation THEN filled := CASE WHEN SQLERRM LIKE 'DECLINE_REVERSAL_PLACE_FILLED: the place was given to APP/58/758003%' THEN 'refused, named' ELSE SQLERRM END;
+    END;
+    msg := format('bursar %s | short %s | no date %s | %s %s | state %s | deadline +%s | vacancy %s past %s recorded %s | B %s',
+                  bursar, short_reason, no_date, done ->> 'outcome', done ->> 'offerState', st, dl - current_date, vac, past, rec, filled);
+    RAISE EXCEPTION 'the V758 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V758 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V758: an accidental decline reversed by the Academic Office while the place is free, with a new date once the deadline passed; refused once the place went to the waiting list',
+      coalesce(msg = 'bursar DECLINE_REVERSAL_OFFICE | short DECLINE_REVERSAL_REASON | no date DECLINE_REVERSAL_DEADLINE | REVERSED ADMITTED | state ADMITTED/true'
+                     || ' | deadline +7 | vacancy 0 past 0 recorded 1 | B refused, named', false), msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

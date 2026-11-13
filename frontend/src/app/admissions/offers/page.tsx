@@ -14,7 +14,8 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
   const office = me.ok ? me.data.activeOffice : null;
   return (
     <Shell route="t/offers" me={me.ok ? me.data : null}>
-      <Offers session={session} sessions={list.map((x) => x.name)} canDecide={office === "academic" || office === "registrar"} />
+      <Offers session={session} sessions={list.map((x) => x.name)} canDecide={office === "academic" || office === "registrar"}
+        canReverse={office === "academic" || office === "registrar" || office === "dregistrar" || office === "super"} />
     </Shell>
   );
 }

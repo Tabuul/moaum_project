@@ -105,7 +105,7 @@ export function Accept({ a }: { a: Application }) {
     );
   }
   if (a.declinedAt) {
-    return <Note kind="bad" title={`You declined this offer on ${when(a.declinedAt)}`}>A declined offer is not reinstated.</Note>;
+    return <Note kind="bad" title={`You declined this offer on ${when(a.declinedAt)}`}>If you declined by mistake, write to the Academic Office quoting your application number: a decline is reversed only while your place has not been given to someone else.</Note>;
   }
   if (at(a, 6) && acc.partPaid) {
     /* V724: accepted on the fee as it stood, then the fee revised: the balance is paid here, once; the letter waits for it */
@@ -169,7 +169,7 @@ export function Accept({ a }: { a: Application }) {
           /* V724: the reference is for the balance — the whole fee before anything is confirmed; the server answers the open one again rather than a second */
           <Btn kind={openRef ? "ghost" : (a.undertakingAt || acc.partPaid ? "urgent" : "primary")} disabled={busy !== null} onClick={() => void act("ref", "POST", "/me/fee-references", { kind: "ACCEPTANCE" }, acc.partPaid ? "Acceptance fee balance reference generated for the applicant" : "Acceptance fee reference generated for the applicant")}>{busy === "ref" ? "Generating…" : openRef ? "Generate a new reference" : acc.partPaid ? "Pay outstanding balance" : `Generate a reference for ${money(acc.balance)}`}</Btn>
         ) : null}
-        <Btn kind="ghost" disabled={busy !== null} onClick={() => { if (window.confirm("Decline this offer? A declined offer is not reinstated.")) void act("decline", "POST", "/me/decline", {}, "Offer declined by the applicant"); }}>Decline this offer</Btn>
+        <Btn kind="ghost" disabled={busy !== null} onClick={() => { if (window.confirm("Decline this offer? Your place may then be given to someone else, and a decline is reversed only while it has not been.")) void act("decline", "POST", "/me/decline", {}, "Offer declined by the applicant"); }}>Decline this offer</Btn>
       </div>
       {openRef && owed ? (
         <Panel title="Your payment reference" right="Generated for you alone">
