@@ -18,7 +18,7 @@ import { Bar, Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, naira, onDay, useAct, when } from "./common";
 import { CardActions, PermitActions } from "./exams/CardActions";
-import { permitShown, permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
+import { paymentRemedy, permitSemesterName, permitShown, permitStatusLabel, permitSummary, type PermitState } from "@/lib/gst-eps-permit";
 import { examCardStatusLabel, examCardSummary, type ExamCardState } from "@/lib/exam-card";
 import { shownCode } from "@/lib/course-code";
 import { RESULT_KIND, attemptWord, attemptsWords, historyByCourse, type CarryHistory, type OwedCourse } from "@/lib/carry-over";
@@ -141,17 +141,26 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
   // else is asked (no approval, release or clearance scheme). Dates and venues come with the timetable, never invented
   const shownCards = cards.filter((c) => c.registration || c.available);
   const cardOf = (session: string, semester: number) => cards.find((c) => c.session === session && c.semester === semester);
-  const unpaid = shownCards.find((c) => c.code === "EXAM_CARD_NOT_PAID");
+  const unpaid = shownCards.find((c) => c.code === "EXAM_CARD_NOT_PAID" && !c.summer);
+  // V754: the Summer's examination card and GST & EPS permit wait on the Summer payment alone, made on the Summer Semester page
+  const summerCard = shownCards.find((c) => c.code === "EXAM_CARD_NOT_PAID" && c.summer);
+  const summerPermit = permits.filter(permitShown).find((p) => p.summer && paymentRemedy(p.code) === "FEES");
+  const summerOwed = summerCard ?? summerPermit;
+  const summerWhat = summerCard && summerPermit ? "examination card and GST & EPS permit are" : summerCard ? "examination card is" : "GST & EPS permit is";
+  // V754: a semester named as the card or the permit of that semester names it — the Summer where the API says so
+  const semOf = (session: string, semester: number) =>
+    permitSemesterName(semester, (cardOf(session, semester) ?? permits.find((p) => p.session === session && p.semester === semester))?.summer);
   return (
     <>
       {/* V567: withheld only while no school-fees payment for the session is on record */}
-      {unpaid ? <Note kind="bad" title="Your examination card is issued once your school fees are paid" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Your courses are registered. Once a school-fees payment for {unpaid.session} is on record the card is yours to print. A payment made at a bank or on Quickteller shows here once Interswitch reports it.</Note>
-        : <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note>}
+      {unpaid ? <Note kind="bad" title="Your examination card is issued once your school fees are paid" action={<LinkBtn kind="urgent" href="/student/fees">Fees & payments</LinkBtn>}>Your courses are registered. Once a school-fees payment for {unpaid.session} is on record the card is yours to print. A payment made at a bank or on Quickteller shows here once Interswitch reports it.</Note> : null}
+      {summerOwed ? <Note kind="bad" title={`Your Summer semester ${summerWhat} issued once your Summer Semester fees are paid`} action={<LinkBtn kind="urgent" href="/student/summer">Pay your Summer Semester fees</LinkBtn>}>Only the Summer Semester payment is asked, not school fees or a GST fee. Once your payment for the Summer of {summerOwed.session} is on record, {summerCard && summerPermit ? "both are" : "it is"} yours to print.</Note> : null}
+      {!unpaid && !summerOwed ? <Note kind="info" title="Bring your identity card">Your photograph is checked before the paper opens. Arrive 20 minutes early; late candidates are admitted at the invigilator&rsquo;s discretion and lose the time.</Note> : null}
       {shownCards.map((card) => (
-        <Panel key={`card-${card.session}-${card.semester}`} title={`EXAMINATION CARD · ${card.session} · ${semesterName(card.semester)} semester`} right={examCardStatusLabel(card)}>
+        <Panel key={`card-${card.session}-${card.semester}`} title={`EXAMINATION CARD · ${card.session} · ${permitSemesterName(card.semester, card.summer)} semester`} right={examCardStatusLabel(card)}>
           <PBody>
             <div className={`sub2${card.available ? "" : " ink-red"}`}>{card.available
-              ? `Courses registered and school fees paid · ${examCardSummary(card)}. The card carries every course you registered. Dates and venues appear when the examination timetable is released.`
+              ? `Courses registered and ${card.summer ? "Summer Semester" : "school"} fees paid · ${examCardSummary(card)}. The card carries every course you registered. Dates and venues appear when the examination timetable is released.`
               : card.reason}</div>
             {card.available ? <div className="mt-2"><CardActions session={card.session} semester={card.semester} /></div> : null}
           </PBody>
@@ -160,7 +169,7 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
       {/* V492: the GST & EPS examination permit, a document of its own beside the card: only the GST and EPS courses registered */}
       {/* V728: shown whenever the API says so — the courses listed (carry-overs among them), a draft holding some, or a permit made */}
       {permits.filter(permitShown).map((permit) => (
-        <Panel key={permit.semester} title={`GST & EPS EXAMINATION PERMIT · ${permit.session} · ${semesterName(permit.semester)} semester`} right={permitStatusLabel(permit)}>
+        <Panel key={permit.semester} title={`GST & EPS EXAMINATION PERMIT · ${permit.session} · ${permitSemesterName(permit.semester, permit.summer)} semester`} right={permitStatusLabel(permit)}>
           <PBody>
             <div className="sub2">{permit.available ? `${permitSummary(permit)}. The permit lists only the GST and EPS courses on your course registration, carry-overs included.` : permit.reason}</div>
             {!permit.available && permit.pending?.length ? (
@@ -176,7 +185,7 @@ export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; curre
       {!withPapers.length ? (
         shownCards.length ? null : <Note kind="info" title={`Examination cards for ${d.session} have not been released yet`}>Your papers and examination card appear here when released.</Note>
       ) : withPapers.map((x) => (
-        <Panel key={x.id} title={`${x.session} · ${semesterName(x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cardOf(x.session, x.semester)?.available ? " · examination card" : ""}`}>
+        <Panel key={x.id} title={`${x.session} · ${semOf(x.session, x.semester)} semester · ${x.kind === "MAIN" ? "main" : x.kind.toLowerCase()} examinations`} right={`${onDay(x.exams_from)} – ${onDay(x.exams_to)}${cardOf(x.session, x.semester)?.available ? " · examination card" : ""}`}>
           <DTable cols={["Course", "Date & time", "Venue|mid", "Status|num"]} rows={x.papers.map((p) => [
             <Two key="c" a={p.course_code} b={p.title} />,
             <span className="tnum" key="w">{p.held_on ? `${onDay(p.held_on)} · ${String(p.starts_at).slice(0, 5)}` : "Not yet timetabled"}</span>,

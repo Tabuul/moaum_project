@@ -20,6 +20,8 @@ export interface ExamCardState {
   reason?: string | null;
   session: string;
   semester: number;
+  /** V754, V756: semester 3 was this student's Summer Semester (registration.is_summer_for) — named the Summer semester */
+  summer?: boolean;
   openSemester?: number;
   registration?: { status: string; level: number; approvedAt?: string | null; approvalMode?: string | null } | null;
   courses: ExamCardCourse[];

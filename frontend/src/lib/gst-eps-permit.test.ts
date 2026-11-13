@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classificationWord, courseSchedule, paymentRemedy, permitSections, permitShown, permitStatusLabel, permitSummary, permitVerifyPath, registrationRemedy, rosterStatusLabel, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitCourse, type PermitState } from "./gst-eps-permit.ts";
+import { classificationWord, courseSchedule, paymentRemedy, permitSections, permitSemesterInSentence, permitSemesterName, permitShown, permitStatusLabel, permitSummary, permitVerifyPath, registrationRemedy, rosterStatusLabel, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitCourse, type PermitState } from "./gst-eps-permit.ts";
 
 const gst = (code: string, extra: Partial<PermitCourse> = {}): PermitCourse => ({ course_code: code, title: code, units: 2, course_type: "GST", ...extra });
 const eps = (code: string, extra: Partial<PermitCourse> = {}): PermitCourse => ({ course_code: code, title: code, units: 2, course_type: "EPS", ...extra });
@@ -73,4 +73,14 @@ test("V728: a carry-over is listed and classified like any course, counted once 
   assert.equal(permitShown({ shown: true, courses: [], permit: null }), true);        // a draft holding the carry-over: said, not hidden
   assert.equal(permitShown({ shown: false, courses: [], permit: null }), false);
   assert.equal(permitShown({ courses: [gst("GST 111")], permit: null }), true);       // an older answer, by its courses
+});
+
+test("V754: semester 3 of a session that had a Summer is named the Summer; any other semester keeps its word", () => {
+  assert.deepEqual([1, 2, 3].map((n) => permitSemesterName(n, true)), ["First", "Second", "Summer"]);
+  assert.deepEqual([1, 2, 3].map((n) => permitSemesterName(n, false)), ["First", "Second", "Third"]);
+  assert.equal(permitSemesterName(3), "Third");                  // an older answer, or a frozen one, without the flag
+  assert.equal(permitSemesterName(3, null), "Third");
+  assert.equal(permitSemesterInSentence(3, true), "Summer semester");
+  assert.equal(permitSemesterInSentence(3, false), "third semester");
+  assert.equal(permitSemesterInSentence(1, false), "first semester");
 });

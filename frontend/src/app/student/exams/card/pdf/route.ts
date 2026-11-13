@@ -6,7 +6,7 @@ import type { ExamCardState } from "@/lib/exam-card";
 import { A4, jpegSize } from "@/lib/pdf-write";
 import { examVerifyPath, studentCheckCodeResult } from "@/lib/qr";
 import { CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardCut as cut, cardDay as day, cardFooter, cardIdentity, cardPage, cardRules, cardRulesFit, cardTableEnd, cardTableHead, cardVerify, cardVerifyDepth } from "@/lib/exam-card-pdf";
-import { semesterName } from "@/lib/student-portal";
+import { permitSemesterName } from "@/lib/gst-eps-permit";
 import { inUniversityOrder } from "@/lib/course-order";
 
 import { loadInstitution } from "@/lib/document/institution-server";
@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
   ]);
   if (!v.ok) return NextResponse.json(v.problem, { status: v.problem.status });
   const card = v.data;
+  const sem = permitSemesterName(semester, card.summer);   // V754: "Summer" for the session's Summer Semester (exam_card_state's summer)
   if (!card.available) {
     return NextResponse.json({ status: 409, title: "Examination card not available", detail: card.reason ?? "The examination card cannot be issued yet." }, { status: 409 });
   }
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
   const { p, y: top } = cardPage(head);
   let y = cardIdentity(p, top, {
     photo, name: clean(s.name) || matric,
-    details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${card.registration?.level ?? s.level} Level`], ["Session", session], ["Semester", semesterName(semester)]],
+    details: [["Name", clean(s.name)], ["Matriculation number", matric], ["Programme", clean(s.programme)], ["Level", `${card.registration?.level ?? s.level} Level`], ["Session", session], ["Semester", sem]],
   });
 
   // V504: numbered, in the University's order — carry-over, GST, core, elective (lib/course-order, as registration.entry_rank)
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
   }
   const beside = cardVerify(p, vy, url, check.code, [], verifyFloor);
 
-  const line = `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${semesterName(semester)} semester only`;
+  const line = `${clean(s.name)} · ${matric} · issued ${day(new Date().toISOString())} · valid for ${session} ${sem} semester only`;
   cardFooter(p, line, beside.y, beside.x);                       // beside the QR, above the document footer
   for (const pg of pages.slice(1)) cardFooter(pg, line, 58);   // and on the rules' page, above its footer
 

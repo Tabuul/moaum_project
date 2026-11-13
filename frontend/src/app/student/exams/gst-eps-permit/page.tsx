@@ -1,8 +1,7 @@
 import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { api } from "@/lib/api";
-import { permitShown, type PermitState } from "@/lib/gst-eps-permit";
-import { semesterName } from "@/lib/student-portal";
+import { permitSemesterName, permitShown, type PermitState } from "@/lib/gst-eps-permit";
 import { loadStudent } from "../../load";
 import { GstEpsPermit } from "./GstEpsPermit";
 
@@ -26,9 +25,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   // the semesters of the session up to the open one: the student may print an earlier semester's permit of the same session
   const open = r.ok ? (r.data.openSemester ?? r.data.semester) : 1;
   const semesters = Array.from({ length: Math.max(1, Math.min(3, open)) }, (_, i) => i + 1);
+  // V754: the Summer is never the open semester (it is no policy.semester), so semester 3 is offered past it when its state is the
+  // session's Summer with GST or EPS courses to show — read here unless it is the one shown
+  const third = r.ok && open < 3 && r.data.semester !== 3 ? await api<PermitState>("/api/v1/me/gst-eps-permit?semester=3") : null;
+  const s3 = r.ok && r.data.semester === 3 ? r.data : third?.ok ? third.data : null;
+  if (s3?.summer && permitShown(s3) && !semesters.includes(3)) semesters.push(3);
   return (
-    <Shell route="s/gstpermit" me={loaded.me} sub={r.ok ? `${r.data.session} · ${semesterName(r.data.semester)} semester` : undefined}>
-      {r.ok ? <GstEpsPermit v={r.data} semesters={semesters} /> : <ProblemNotice problem={r.problem} />}
+    <Shell route="s/gstpermit" me={loaded.me} sub={r.ok ? `${r.data.session} · ${permitSemesterName(r.data.semester, r.data.summer)} semester` : undefined}>
+      {r.ok ? <GstEpsPermit v={r.data} semesters={semesters} summer={!!s3?.summer} /> : <ProblemNotice problem={r.problem} />}
     </Shell>
   );
 }

@@ -3,7 +3,7 @@ import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader, crestImage } from "@/lib/pdf-crest";
 import { currentInstitution } from "./document/institution-cache.ts";
 import { qrMatrix } from "@/lib/qr";
-import type { Statement, Template } from "@/lib/documents";
+import { semesterName, type Statement, type Template } from "@/lib/documents";
 
 /**
  * The official documents as PDFs (V262), rendered from the signed statement and the template version they were issued
@@ -120,7 +120,9 @@ export function transcriptPdf(s: Statement, t: Template | null, verifyUrl: strin
       if (s.specialisation) rows.push(["Specialisation", clean(s.specialisation)]);   // V488
       if (s.graduationSession) rows.push(["Graduation", `${clean(s.graduationSession)}${s.graduationMinute ? ` · Senate ${clean(s.graduationMinute)}` : ""}${s.graduationDate ? ` · ${day(s.graduationDate)}` : ""}`]);
       if (s.classOfDegree && s.classOfDegree !== "Awarded") rows.push(["Class of degree", clean(s.classOfDegree)]);
-      if (s.scope && s.scope !== "CUMULATIVE") rows.push(["Scope", `${clean(s.session ?? "")}${s.semester ? ` · semester ${s.semester}` : ""}`]);
+      // V754: a sessional statement of the Summer names it so
+      const scopeSummer = s.semester === 3 && (s.sessions ?? []).some((x) => x.session === s.session && (x.semesters ?? []).some((m) => m.semester === 3 && m.summer));
+      if (s.scope && s.scope !== "CUMULATIVE") rows.push(["Scope", `${clean(s.session ?? "")}${s.semester ? (scopeSummer ? " · Summer semester" : ` · semester ${s.semester}`) : ""}`]);
       const half = Math.ceil(rows.length / 2);
       for (let i = 0; i < rows.length; i++) {
         const col = i < half ? 0 : 1, yy = y - (i % half) * 15, x = L + col * ((R - L) / 2);
@@ -150,7 +152,8 @@ export function transcriptPdf(s: Statement, t: Template | null, verifyUrl: strin
     y -= 14;
     for (const sem of ses.semesters ?? []) {
       need(44);
-      p.text(L, y, sem.semester === 1 ? "First semester" : sem.semester === 2 ? "Second semester" : `Semester ${sem.semester}`, 8.5, true, INK);
+      // V754: a semester 3 is the Summer semester where the session had one; a statement frozen without the flag reads "Third"
+      p.text(L, y, semesterName(sem.semester, sem.summer), 8.5, true, INK);
       y -= 12;
       tableHead();
       for (const c of sem.courses ?? []) {

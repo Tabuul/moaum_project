@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  EMPTY_REALLOC_FILTERS, evidenceRefusal, periodSemesters, periodWords, readReallocFilters, reallocLine, reallocQuery, reasonOk, refusalParts, REALLOC_HEAD,
-  type ReallocRow,
+  EMPTY_REALLOC_FILTERS, evidenceRefusal, OLD_LEVEL_HEAD, oldLevelLine, oldLevelTo, periodSemesters, periodWords, readReallocFilters, reallocLine, reallocQuery,
+  reasonOk, refusalParts, REALLOC_HEAD, type ReallocAtOldLevel, type ReallocRow,
 } from "./payment-reallocations.ts";
 
 test("a refusal is read as its code and its words", () => {
@@ -44,6 +44,27 @@ test("a correction is one row of the report, its columns in the report's order",
   assert.equal(line[14], 80000);
   assert.equal(line[9], "First");
   assert.equal(line[15], "Completed");
+});
+
+test("V754: a reallocation at the old count says where the money went and is one row of its report", () => {
+  const r: ReallocAtOldLevel = {
+    id: "0f6c2d1e-0000-4000-8000-000000000001", realloc_ref: "REA/2026/000012", status: "COMPLETED", reference: "PAY/2022/000123", amount: 95000,
+    student_id: "0f6c2d1e-0000-4000-8000-000000000002", matric_no: "MOAU/20/CSC/0001", name: "DOE, Jane", entry_session: "2020/2021",
+    to_purpose: "School fees 2021/2022 · first semester", to_session: "2021/2022", to_semester: 1, level_recorded: 200, level_now: 100,
+    initiated_at: "2026-10-23T10:20:00Z", executed_at: null,
+  };
+  // V756: the purpose (which carries its session and semester) once, the period beneath it as the main list shows a destination
+  assert.deepEqual(oldLevelTo(r), { purpose: "School fees 2021/2022 · first semester", period: "2021/2022, first semester" });
+  assert.deepEqual(oldLevelTo({ ...r, to_purpose: "School fees 2021/2022", to_semester: null }), { purpose: "School fees 2021/2022", period: "2021/2022" });
+  const line = oldLevelLine(r, (iso) => (iso ? "23 Oct 2026" : ""));
+  assert.equal(line.length, OLD_LEVEL_HEAD.length);
+  assert.equal(line[6], "First");
+  assert.equal(line[7], 200);
+  assert.equal(line[8], 100);
+  assert.equal(line[9], 95000);
+  assert.equal(line[10], "Completed");
+  assert.equal(line[12], "23 Oct 2026");
+  assert.equal(line[13], "");
 });
 
 test("evidence is a PDF, JPEG or PNG of 5 MB at most", () => {

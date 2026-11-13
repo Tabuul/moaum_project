@@ -25,6 +25,7 @@ import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.shared.OfficeScope;
 
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
 
 import org.springframework.stereotype.Service;
@@ -83,11 +84,15 @@ public class ResultsService {
     private final ResultsRepository repo;
     private final TransactionTemplate eachInItsOwn;
     private final tools.jackson.databind.ObjectMapper json;
+    /** V754: the broadsheet's one read of whether its semester was the session's Summer */
+    private final JdbcClient jdbc;
 
-    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json, OfficeScope scope) {
+    ResultsService(ResultsRepository repo, PlatformTransactionManager transactions, tools.jackson.databind.ObjectMapper json, OfficeScope scope,
+                   JdbcClient jdbc) {
         this.repo = repo;
         this.scope = scope;
         this.json = json;
+        this.jdbc = jdbc;
         this.eachInItsOwn = new TransactionTemplate(transactions);
         this.eachInItsOwn.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -906,6 +911,10 @@ public class ResultsService {
     }
 
     public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem, String stream) {
+        // V754, V756: a semester 3 is the Summer only on a regular (undergraduate) sheet of a session that had a Summer Semester; a CCE
+        // or postgraduate sheet's semester 3 is their own third semester — read before the standing, which it decides
+        boolean summer = "REGULAR".equals(stream) && Boolean.TRUE.equals(jdbc.sql("SELECT registration.is_summer(:ses, :sem)")
+                .param("ses", session).param("sem", sem).query(Boolean.class).single());
         List<Sheets.BroadsheetCell> all = repo.broadsheet(prog, level, session, sem, stream);
         /* V624: the broadsheet is the programme's. A course the department took off it (a Linguistics and a Political Science load on
            the Environmental Management and Toxicology sheet: a registration made in error, or a student placed in the wrong programme)
@@ -1079,8 +1088,12 @@ public class ResultsService {
                second semester from 200 level still under 1.0 after that level's first semester was. A Direct Entry
                student's 200 level first semester has no standing to judge, so their second is probation, not withdrawal. */
             boolean deAt200 = "DIRECT_ENTRY".equals(first.entryMode()) && level == 200;
-            // V421, V422: nothing is pronounced on a semester with a result missing or held — the student's standing waits for it
-            String pronounced = cum.cgpa() == null || incomplete ? null : repo.standingOf(level, sem, cum.cgpa(), cum.prevCgpa(), deAt200);
+            // V421, V422: nothing is pronounced on a semester with a result missing or held — the student's standing waits for it.
+            // V756: the Summer has no standing of its own (assessment.standing_of says nothing for a semester 3); a third semester that is
+            // not the Summer (CCE, postgraduate, a session with no Summer) ends its year, read by the end-of-year (second-semester) rule
+            // as assessment.student_standing reads it
+            int standingSem = sem == 3 && !summer ? 2 : sem;
+            String pronounced = cum.cgpa() == null || incomplete ? null : repo.standingOf(level, standingSem, cum.cgpa(), cum.prevCgpa(), deAt200);
             if ("PROBATION".equals(pronounced)) parts.add("TO GO ON PROBATION");
             if ("ADVISED_TO_WITHDRAW".equals(pronounced)) parts.add("ADVISED TO WITHDRAW");
             String remarks = !parts.isEmpty() ? String.join(" · ", parts)
@@ -1125,7 +1138,8 @@ public class ResultsService {
                 courseCoverage.stream().filter(x -> "PUBLISHED".equals(x.stage())).count(), courseCoverage, missingCandidates);
         return new Sheets.Broadsheet(prog, level, session, sem, cs, rows, mean, passed, carrying, pendingSets,
                 repo.gradeBands("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), classes,
-                repo.gradingInstrument("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), coverage, outside);   // V389: the School's scale on its broadsheet
+                repo.gradingInstrument("PG".equals(stream) ? "POSTGRADUATE" : "UNIVERSITY"), coverage, outside,   // V389: the School's scale on its broadsheet
+                summer);
     }
 
     /* ── Senate: the schedule, and the minute that publishes (proto/part26 tSenate, tPublish) ── */

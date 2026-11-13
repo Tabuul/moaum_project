@@ -76,6 +76,21 @@ export interface PermitState {
   otherSemesters?: number[];
   /** V728: whether the screens show the permit at all — courses listed, a draft holding some, or a permit made */
   shown?: boolean;
+  /** V754: semester 3 of a session that had a Summer Semester (registration.is_summer): the permit stands on the Summer payment
+   *  alone and the semester is named the Summer; missing (an older answer) is not a Summer */
+  summer?: boolean;
+}
+
+/** V754: a semester as the permit and the examination card name it — "Summer" when the API says it was the session's Summer
+ *  Semester, otherwise First, Second or Third as before */
+export function permitSemesterName(n: number, summer?: boolean | null): string {
+  return n === 1 ? "First" : n === 2 ? "Second" : summer ? "Summer" : "Third";
+}
+
+/** V754: the semester inside a sentence — "first semester", but "Summer semester" (the Summer keeps its capital) */
+export function permitSemesterInSentence(n: number, summer?: boolean | null): string {
+  const w = permitSemesterName(n, summer);
+  return `${w === "Summer" ? w : w.toLowerCase()} semester`;
 }
 
 /** V728: a course's classification in words, as the permit's table and the PDF print it ("" for a first registration) */

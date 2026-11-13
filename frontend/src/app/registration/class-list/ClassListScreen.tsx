@@ -4,7 +4,7 @@
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { csv, download, type ClassList } from "@/lib/results";
-import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { ScopeBar, semesterInSentence, thirdSemester, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -21,6 +21,8 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
 }) {
   const notCleared = roll ? roll.rows.filter((r) => !r.cleared) : [];
   const head = roll ? `${roll.courseCode} — ${roll.courseTitle}` : "";
+  // V756: a class of semester 3 in a Summer session may hold the Summer's full-time students and the third semester's, as the bar says
+  const semWord = (n: number, session: string) => (n === 3 ? semesterInSentence(thirdSemester(session, "REGULAR", structure.summerSessions)) : semesterName(n).toLowerCase());
   const sheet = (what: string) => {
     if (!roll) return;
     const rows: (string | number)[][] = [["Matriculation number", "Name", "Programme", "Level", "Basis", what === "examroll" ? "Cleared to sit" : what === "attreg" ? "Week 1" : "Clearance"]];
@@ -30,7 +32,8 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
 
   return (
     <>
-      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} courses={courses} what="students" count={roll?.all ?? 0} of={roll?.all ?? 0} withCourse ceiling={ceiling} />
+      {/* V756: the class list reads the regular (full-time) class of a course, so semester 3 of a Summer session is the Summer */}
+      <ScopeBar withSummer stream="REGULAR" scope={scope} structure={structure} sessions={sessions} courses={courses} what="students" count={roll?.all ?? 0} of={roll?.all ?? 0} withCourse ceiling={ceiling} />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {!roll ? (
         <Note kind="info" title="Choose a course in the scope bar">
@@ -61,7 +64,7 @@ export function ClassListScreen({ scope, structure, sessions, courses, roll, pro
               ])}
               texts={roll.rows.map((r) => `${r.number} ${r.surname} ${r.otherNames} ${r.programmeName}`)}
             />
-            {!roll.rows.length ? <PBody><div className="sub2">Nobody has an approved registration for this course in {roll.session}, {semesterName(roll.semester).toLowerCase()} semester.</div></PBody> : null}
+            {!roll.rows.length ? <PBody><div className="sub2">Nobody has an approved registration for this course in {roll.session}, {semWord(roll.semester, roll.session)} semester.</div></PBody> : null}
           </Panel>
           {notCleared.length ? (
             <Note kind="bad" title={`${notCleared.length} registered student${notCleared.length === 1 ? " is" : "s are"} not cleared to sit the examination`}>

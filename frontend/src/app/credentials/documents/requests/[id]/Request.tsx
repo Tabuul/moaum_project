@@ -26,6 +26,8 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
   const [dl, setDl] = useState<{ id: string; state: string; courier: string; tracking: string; note: string } | null>(null);
   const validation = r.validation ? (JSON.parse(r.validation) as Validation) : null;
   const preview = parseStatement(r.document?.statement ?? r.preview);
+  // V754: the semester requested is the Summer semester where the statement says so
+  const requestedSummer = preview?.sessions?.find((x) => x.session === r.session)?.semesters?.find((m) => m.semester === r.semester)?.summer;
   const stageAt = ["AWAITING_PAYMENT", "READY", "PROCESSING", "GENERATED", "VERIFIED", "RELEASED", "DELIVERED", "COMPLETED"].indexOf(r.stage === "HELD_AT_CLEARANCE" ? "READY" : r.stage === "CORRECTION" ? "PROCESSING" : r.stage);
   const st = (i: number) => (r.stage === "REJECTED" || r.stage === "CANCELLED" ? (i < stageAt ? "done" : "todo") : i < stageAt ? "done" : i === stageAt ? "now" : "todo");
 
@@ -45,7 +47,7 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
   return (
     <>
       <div className="row row--tight sub2" style={{ gap: 6 }}><Link className="lnk" href="/credentials/documents">Documents office</Link><span>›</span><Link className="lnk" href="/credentials/documents/requests">Requests</Link><span>›</span><strong>{r.ref}</strong></div>
-      <PageHead title={<>{r.ref} <Pil kind={STAGE[r.stage]?.[1] ?? "grey"}>{STAGE[r.stage]?.[0] ?? r.stage}</Pil>{r.breaching ? <Pil kind="bad">Breaching SLA</Pil> : null}</>} description={`${r.kind_label}${r.session ? ` · ${r.session}` : ""}${r.semester ? ` · ${semesterName(r.semester)}` : ""} for ${r.student_name} (${r.student_number}) · ${r.programme ?? "—"} · ${r.department ?? "—"} · ${r.faculty ?? "—"}. Requested ${whenAt(r.requested_at)}${r.sla_due_on ? `, due ${dayOf(r.sla_due_on)}` : ""}.`}
+      <PageHead title={<>{r.ref} <Pil kind={STAGE[r.stage]?.[1] ?? "grey"}>{STAGE[r.stage]?.[0] ?? r.stage}</Pil>{r.breaching ? <Pil kind="bad">Breaching SLA</Pil> : null}</>} description={`${r.kind_label}${r.session ? ` · ${r.session}` : ""}${r.semester ? ` · ${semesterName(r.semester, requestedSummer)}` : ""} for ${r.student_name} (${r.student_number}) · ${r.programme ?? "—"} · ${r.department ?? "—"} · ${r.faculty ?? "—"}. Requested ${whenAt(r.requested_at)}${r.sla_due_on ? `, due ${dayOf(r.sla_due_on)}` : ""}.`}
         actions={<>
           {may && ["READY", "HELD_AT_CLEARANCE", "CORRECTION"].includes(r.stage) ? <Btn kind="secondary" onClick={() => void start()} disabled={busy || !r.paid_at}>Validate the record</Btn> : null}
           {may && ["READY", "PROCESSING", "CORRECTION", "HELD_AT_CLEARANCE"].includes(r.stage) ? <Btn kind="primary" onClick={() => void generate()} disabled={busy || !r.paid_at || (validation ? !validation.ok : false)}>Generate the document</Btn> : null}
@@ -90,7 +92,7 @@ export function RequestScreen({ r, office, actor }: { r: RequestFull; office: st
           </PBody>
           {(preview.sessions ?? []).map((ses) => ses.semesters.map((sem) => (
             <div key={`${ses.session}-${sem.semester}`}>
-              <PBody><strong>{ses.session}</strong> · {semesterName(sem.semester)} <span className="sub2">· units {sem.units ?? "—"} · GPA {sem.gpa ?? "—"}{sem.cgpa !== undefined && sem.cgpa !== null ? ` · CGPA ${sem.cgpa}` : ""}</span></PBody>
+              <PBody><strong>{ses.session}</strong> · {semesterName(sem.semester, sem.summer)} <span className="sub2">· units {sem.units ?? "—"} · GPA {sem.gpa ?? "—"}{sem.cgpa !== undefined && sem.cgpa !== null ? ` · CGPA ${sem.cgpa}` : ""}</span></PBody>
               <DTable cols={["Code|mid", "Title", "Units|num", "Grade|mid", "Points|num", "Quality|num"]} rows={sem.courses.map((c) => [<span key="c" className="tnum b600">{c.code}</span>, c.title, <span key="u" className="tnum">{c.units}</span>, <strong key="g">{c.grade ?? c.outcome ?? ""}</strong>, <span key="p" className="tnum">{c.points ?? ""}</span>, <span key="q" className="tnum">{c.quality ?? ""}</span>])} />
             </div>
           )))}

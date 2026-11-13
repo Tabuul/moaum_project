@@ -235,7 +235,9 @@ public final class Sheets {
     public record Broadsheet(String programme, int level, String session, int semester, List<BroadsheetCourse> courses,
                              List<BroadsheetRow> rows, BigDecimal meanGpa, long passed, long carrying, long pendingSets,
                              List<GradeBand> bands, List<ClassBand> classes, String gradingInstrument, BroadsheetCoverage coverage,
-                             List<BroadsheetOutside> outside) {
+                             List<BroadsheetOutside> outside,
+                             /* V754: semester 3 of a session that had a Summer Semester (registration.is_summer) — the sheet names it Summer */
+                             boolean summer) {
     }
 
     public record SenateFaculty(String facultyCode, String facultyName, long sets, long atSenate, long published,

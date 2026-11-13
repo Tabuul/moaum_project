@@ -8,16 +8,22 @@
  */
 import Link from "next/link";
 import type { Results, ResultRow } from "@/lib/student-portal";
-import { GRADE_COLOUR, STAGE_LABEL, semesterName } from "@/lib/student-portal";
+import { GRADE_COLOUR, STAGE_LABEL, isSummer, semesterName } from "@/lib/student-portal";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tick, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { onDay } from "./common";
 import { shownCode } from "@/lib/course-code";
-import { withheldLine, withheldNote, withheldOf } from "@/lib/results-withheld";
+import { withSummer, withheldLine, withheldNote, withheldOf } from "@/lib/results-withheld";
 
 /** V422: how an outcome other than a grade reads to the student */
 const OUTCOME_WORD: Record<string, string> = { ABSENT: "ABS", WITHHELD: "Withheld", INCOMPLETE: "Incomplete", MALPRACTICE: "Malpractice case", EXEMPTED: "Exempted" };
 const HELD_OUTCOMES = ["WITHHELD", "INCOMPLETE", "MALPRACTICE"];
+/** V754: a semester's name on the results — semester 3 of a session that had a Summer Semester is the Summer, kept capitalised in a sentence */
+const semWord = (r: Results, session: string, n: number) => semesterName(n, isSummer(r.summerSessions, session, n));
+const lower = (w: string) => (w === "Summer" ? w : w.toLowerCase());
+/** V756: the withheld semesters, each knowing whether it was the student's Summer (its own flag, else the answer's summerSessions) —
+ *  a Summer's results wait only on a balance from an earlier session, never on the school fees up to it */
+const heldOf = (r: Results) => withSummer(r.withheldSemesters, r.summerSessions);
 
 function group(rows: ResultRow[]): { session: string; semester: number; rows: ResultRow[] }[] {
   const out: { session: string; semester: number; rows: ResultRow[] }[] = [];
@@ -36,8 +42,9 @@ export function ResultsScreen({ r }: { r: Results }) {
   const waiting = latest ? latest.rows.filter((x) => !x.published) : [];
   const sem = latest ? r.semesters.find((s) => s.session === latest.session && s.semester === latest.semester) : undefined;
   // V667: results are withheld semester by semester — the semesters paid for show, a withheld one is named with what is outstanding
-  const held = withheldNote(r.withheldSemesters);
-  const latestHeld = latest ? withheldOf(r.withheldSemesters, latest.session, latest.semester) : null;
+  const withheld = heldOf(r);
+  const held = withheldNote(withheld);
+  const latestHeld = latest ? withheldOf(withheld, latest.session, latest.semester) : null;
   return (
     <>
       {held ? (
@@ -46,7 +53,7 @@ export function ResultsScreen({ r }: { r: Results }) {
       {latestHeld ? null : !latest ? (
         <Note kind="info" title="Nothing is registered against you yet">Results follow an approved course registration.</Note>
       ) : live.length === 0 ? (
-        <Note kind="info" title={`Your ${latest.session} ${semesterName(latest.semester).toLowerCase()}-semester results are not published yet`}>
+        <Note kind="info" title={`Your ${latest.session} ${lower(semWord(r, latest.session, latest.semester))}-semester results are not published yet`}>
           Each course below shows the desk holding it. Grades appear once Senate approves the set.
         </Note>
       ) : waiting.length ? (
@@ -66,7 +73,7 @@ export function ResultsScreen({ r }: { r: Results }) {
             ["Units this semester", latest ? String(latest.rows.reduce((n, x) => n + x.units, 0)) : "0", null, "Registered and approved"],
           ]} />
           {latest ? (
-            <Panel title={`${latest.session} · ${semesterName(latest.semester)} semester`} right={live.length ? `Published${live[0]?.senate_minute ? ` under ${live[0].senate_minute}` : ""}` : "In the approval chain"}>
+            <Panel title={`${latest.session} · ${semWord(r, latest.session, latest.semester)} semester`} right={live.length ? `Published${live[0]?.senate_minute ? ` under ${live[0].senate_minute}` : ""}` : "In the approval chain"}>
               <DTable cols={["Course", "Units|mid", "Score|mid", "Grade|mid", "Points|mid", "Where it is", "Taught by"]} rows={latest.rows.map((c) => {
                 const st = STAGE_LABEL[c.stage] ?? [c.stage, ""];
                 const taught = <span className="sub2" key="h">{c.lecturer || "—"}</span>;
@@ -85,7 +92,7 @@ export function ResultsScreen({ r }: { r: Results }) {
           ) : null}
           <Panel title="Academic summary" right="Senate-approved results only · CUR·CUE·WGP·GPA per semester, TCR·TCE·TWGP·CGPA cumulative">
             <DTable cols={["Session · Semester", "CUR|mid", "CUE|mid", "WGP|mid", "GPA|mid", "TCR|mid", "TCE|mid", "TWGP|mid", "LCGPA|mid", "CGPA|mid", "|num"]} rows={r.semesters.map((h) => [
-              <span key="s"><span className="tnum">{h.session}</span> · {semesterName(h.semester)}</span>,
+              <span key="s"><span className="tnum">{h.session}</span> · {semWord(r, h.session, h.semester)}</span>,
               <span className="tnum" key="cur">{h.cur}</span>, <span className="tnum" key="cue">{h.cue}</span>, <span className="tnum" key="wgp">{h.wgp}</span>,
               <b className="tnum" key="g">{h.gpa ?? "—"}</b>,
               <span className="tnum" key="tcr">{h.tcr}</span>, <span className="tnum" key="tce">{h.tce}</span>, <span className="tnum" key="twgp">{h.twgp}</span>,
@@ -110,7 +117,7 @@ export function ResultsScreen({ r }: { r: Results }) {
 export function Slip({ r, session, semester }: { r: Results; session: string; semester: number }) {
   const rows = r.rows.filter((x) => x.session === session && x.semester === semester && x.published);
   const sem = r.semesters.find((s) => s.session === session && s.semester === semester);
-  const held = withheldOf(r.withheldSemesters, session, semester);
+  const held = withheldOf(heldOf(r), session, semester);
   if (held) {
     return <Note kind="bad" title="This semester's results are withheld" action={<LinkBtn kind="urgent" href="/student/fees">Fees &amp; payments</LinkBtn>}>{withheldLine(held)}</Note>;
   }
@@ -153,7 +160,8 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
  *  summary line (CUR·CUE·WGP·GPA this semester; TCR·TCE·TWGP·LCGPA·CGPA cumulative). */
 export function Broadsheet({ r }: { r: Results }) {
   // V667: a withheld semester is named with what is outstanding; every semester paid for shows
-  const held = withheldNote(r.withheldSemesters);
+  const withheld = heldOf(r);
+  const held = withheldNote(withheld);
   const groups = group(r.rows.filter((x) => x.published));
   const semOf = (s: string, n: number) => r.semesters.find((x) => x.session === s && x.semester === n);
   return (
@@ -167,14 +175,14 @@ export function Broadsheet({ r }: { r: Results }) {
       ]} />
       {groups.length ? groups.map((g) => {
         const sm = semOf(g.session, g.semester);
-        const w = withheldOf(r.withheldSemesters, g.session, g.semester);
+        const w = withheldOf(withheld, g.session, g.semester);
         if (w) return (
-          <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`} right={<Pil kind="bad">Withheld · fees</Pil>}>
+          <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semWord(r, g.session, g.semester)} semester`} right={<Pil kind="bad">Withheld · fees</Pil>}>
             <PBody><div className="sub2">{g.rows.length} course{g.rows.length === 1 ? "" : "s"} published. {withheldLine(w)}</div></PBody>
           </Panel>
         );
         return (
-          <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semesterName(g.semester)} semester`}
+          <Panel key={`${g.session}-${g.semester}`} title={`${g.session} · ${semWord(r, g.session, g.semester)} semester`}
             right={sm ? `GPA ${sm.gpa ?? "—"} · CGPA ${sm.cgpa ?? "—"}` : undefined}>
             <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 520 }}>
               <thead><tr>

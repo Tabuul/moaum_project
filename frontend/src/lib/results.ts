@@ -320,6 +320,8 @@ export interface BroadsheetCoverage {
   setsPublished: number; courses: BroadsheetCourseCoverage[]; candidates: { studentId: string; number: string; name: string; courses: string[] }[];
 }
 export interface Broadsheet {
+  /** V754, V756: semester 3 of a regular sheet of a session that had a Summer Semester — the sheet names it Summer */
+  summer?: boolean;
   programme: string; level: number; session: string; semester: number; courses: { courseCode: string; title: string; units: number; kind: string; level: number; inProgramme?: boolean }[]; rows: BroadsheetRow[];
   meanGpa: number | null; passed: number; carrying: number; pendingSets: number; bands: GradeBand[]; classes: ClassBand[]; gradingInstrument: string | null;
   coverage?: BroadsheetCoverage;

@@ -280,8 +280,10 @@ class VerifyController {
         // registration carrying a course, a school-fees payment for the session) — as the GST & EPS permit's QR. The courses are the
         // card's (any registration submitted, never a dropped course) and "cleared" is the card's paid test (V567), not the scheme
         // V754: and whether a semester 3 was the session's Summer, so the page names it so
+        // V756: "cleared" is the card's own paid test (the state's "cleared": a Summer card's is the Summer payment), so a valid Summer card
+        // never reads as school fees not paid
         Map<String, Object> state = jdbc.sql("SELECT (st->>'available')::boolean AS available, st->>'code' AS code, st->>'reason' AS reason,"
-                + " coalesce((st->>'summer')::boolean, false) AS summer"
+                + " coalesce((st->>'summer')::boolean, false) AS summer, (st->>'cleared')::boolean AS cleared"
                 + " FROM (SELECT registration.exam_card_state(:s, :session, :sem) AS st) x")
                 .param("s", sid).param("session", session).param("sem", semester).query().singleRow();
         boolean valid = Boolean.TRUE.equals(state.get("available"));
@@ -299,7 +301,7 @@ class VerifyController {
         out.put("session", session);
         out.put("semester", semester);
         out.put("summer", Boolean.TRUE.equals(state.get("summer")));
-        out.put("cleared", row.get("cleared"));
+        out.put("cleared", state.get("cleared") != null ? state.get("cleared") : row.get("cleared"));   // V756: the card's own paid test
         out.put("photo", photo);
         out.put("courses", courses);
         return out;
@@ -430,7 +432,8 @@ class VerifyController {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
                        pg.name AS programme, r.level, r.status, r.approved_at, r.submitted_at, registration.units_of(r.id) AS units,
-                       coalesce(r.approved_at, r.submitted_at) < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover
+                       coalesce(r.approved_at, r.submitted_at) < (SELECT cut_over_at FROM platform.check_code_cutover) AS before_cutover,
+                       registration.is_summer_for(r.student_id, r.session, r.semester) AS summer
                   FROM registration.course_registration r
                   JOIN people.student s ON s.id = r.student_id
                   LEFT JOIN ref.programme pg ON pg.code = s.programme_code
@@ -464,6 +467,7 @@ class VerifyController {
         out.put("level", row.get("level"));
         out.put("session", session);
         out.put("semester", semester);
+        out.put("summer", Boolean.TRUE.equals(row.get("summer")));   // V756: the student's Summer semester (a CCE or postgraduate semester 3 is their third)
         out.put("status", row.get("status"));
         out.put("approvedOn", row.get("approved_at"));
         out.put("units", row.get("units"));
@@ -490,7 +494,7 @@ class VerifyController {
         List<Map<String, Object>> stu = jdbc.sql("""
                 SELECT s.id, trim(upper(s.surname) || ', ' || s.other_names) AS name, s.matric_no, coalesce(s.matric_no, s.admission_no) AS number,
                        pg.name AS programme, people.level_in(s.id, :session, :sem) AS level,
-                       registration.is_summer(:session, :sem) AS summer
+                       registration.is_summer_for(s.id, :session, :sem) AS summer
                   FROM people.student s LEFT JOIN ref.programme pg ON pg.code = s.programme_code
                  WHERE upper(s.matric_no) = upper(:m) OR (s.matric_no IS NULL AND upper(s.admission_no) = upper(:m)) LIMIT 1
                 """).param("m", matric).param("session", session).param("sem", semester).query().listOfRows();

@@ -1,7 +1,9 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { readReallocFilters, reallocQuery, type Destination, type ReallocDetail, type ReallocList } from "@/lib/payment-reallocations";
+import {
+  readReallocFilters, reallocQuery, type Destination, type ReallocAtOldLevel, type ReallocDetail, type ReallocList,
+} from "@/lib/payment-reallocations";
 import { Reallocations } from "./Reallocations";
 
 export const dynamic = "force-dynamic";
@@ -14,17 +16,19 @@ export default async function PaymentReallocationsPage({ searchParams }: { searc
   const filters = readReallocFilters(p);
   const page = typeof p.page === "string" && /^\d{1,5}$/.test(p.page) ? Number(p.page) : 0;
   const id = typeof p.id === "string" && /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : null;
-  const [me, list, destinations, detail] = await Promise.all([
+  const [me, list, destinations, detail, oldLevel] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<ReallocList>(`/api/v1/finance/payment-reallocations?${reallocQuery(filters, { page })}`),
     api<Destination[]>("/api/v1/finance/payment-reallocations/destinations"),
     id ? api<ReallocDetail>(`/api/v1/finance/payment-reallocations/${id}`) : Promise.resolve(null),
+    // V754: the reallocations recorded at a level the first-year count (V738) no longer gives
+    api<ReallocAtOldLevel[]>("/api/v1/finance/payment-reallocations/level-check"),
   ]);
   return (
     <Shell route="t/paymentrealloc" me={me.ok ? me.data : null}>
       {list.ok
         ? <Reallocations filters={filters} list={list.data} destinations={destinations.ok ? destinations.data : []} office={me.ok ? me.data.activeOffice ?? null : null}
-            initial={detail && detail.ok ? detail.data : null} />
+            initial={detail && detail.ok ? detail.data : null} oldLevel={oldLevel.ok ? oldLevel.data : []} />
         : <ProblemNotice problem={list.problem} />}
     </Shell>
   );

@@ -36,6 +36,8 @@ interface ClassRow {
   id: string | null; no_class?: boolean; course_code: string; title: string; units: number; level: number; dept_code: string; department: string | null; faculty_code: string | null; faculty: string | null;
   programmes: string | null; lecturer_id: string | null; lecturer: string | null; lecturer_staff_number: string | null; co_lecturers: string | null; second_examiner: string | null;
   registered: number; stage: string | null; allocated_on: string | null; updated_at: string | null;
+  /** V756: the class's stream (a course with no class yet: the one the desk would open), and whether it is the Summer's */
+  stream?: string | null; summer?: boolean;
 }
 interface Person { id: string; name: string; staff_number: string | null; email: string | null; ended_on: string | null; departments: string | null }
 interface ClassView {
@@ -43,11 +45,12 @@ interface ClassView {
   faculty_code: string | null; faculty: string | null; programmes: { code: string; name: string; level: number | null }[]; lecturer: Person | null; second_examiner: Person | null;
   co_lecturers: { id: string; name: string; staff_number: string | null; programme_code: string | null; programme: string | null; added_at: string }[];
   registered: number; stage: string | null; twin: string | null; conflicts: { kind: string; words: string }[]; history: HistoryRow[];
+  summer?: boolean;   // V756: a full-time class of a session's Summer
 }
 interface LecturerHit { id: string; name: string; staff_number: string | null; email: string | null; department: string | null; faculty: string | null; load: number }
 interface LecturerView extends Person {
   faculty: string | null; session: string; semester: number | null; load: number | null; maxUnits: number; outside: number;
-  classes: { id: string; course_code: string; title: string; units: number; level: number; session: string; semester: number; department: string | null; programmes: string | null; role: string; stage: string | null }[];
+  classes: { id: string; course_code: string; title: string; units: number; level: number; session: string; semester: number; department: string | null; programmes: string | null; role: string; stage: string | null; stream?: string; summer?: boolean }[];
 }
 interface Conflict { offering_id: string; course_code: string; title: string; dept_code: string; department: string | null; kind: string; words: string }
 
@@ -55,6 +58,10 @@ type Tab = "classes" | "lecturers" | "history" | "conflicts" | "bulk";
 type Status = "" | "UNALLOCATED" | "ALLOCATED" | "SEVERAL" | "CONFLICT";
 
 const SEM = (n: number | null | undefined) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
+/** V756: semester 3 of a session that had a Summer Semester holds the Summer's full-time classes and the postgraduate third semester's */
+const semWords = (n: number | null | undefined, summerSession: boolean) => (n === 3 && summerSession ? "Summer and third semester" : `${SEM(n)} semester`);
+/** a class's own semester: the Summer for a full-time class of a session's Summer; a postgraduate class's semester 3 is its third */
+const classSem = (n: number | null | undefined, summer?: boolean) => (n === 3 && summer ? "Summer" : SEM(n));
 const CONFLICT_WORD: Record<string, string> = {
   LECTURER_LEFT: "Lecturer has left", NO_TEACHING_OFFICE: "No lecturer office", COURSE_ENDED: "Course ended", LEAD_ALSO_CO_LECTURER: "Lead also co-lecturer",
   OVERLOAD: "Over 12 units", TIMETABLE_CLASH: "Timetable clash",
@@ -167,9 +174,11 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
   const progOpts: Opt[] = options.programmes.filter((p) => (dept ? p.dept_code === dept : !faculty || deptCodes.has(p.dept_code ?? ""))).map((p) => ({ value: p.code, label: `${p.name} (${p.code})` }));
   const sessOpts: Opt[] = options.sessions.map((s) => ({ value: s.name, label: `${s.name}${s.state === "CURRENT" ? " (current)" : s.state === "PLANNED" ? " (planned)" : ""}` }));
   const semCount = options.sessions.find((s) => s.name === session)?.semesters ?? 2;
-  // V735: semester 3 of a session with a Summer Semester is the Summer
+  // V735: semester 3 of a session with a Summer Semester is the Summer — V756: for its full-time classes; a postgraduate class of it is
+  // the third semester, and each class says which
   const summer = !!options.sessions.find((s) => s.name === session)?.summer;
-  const semOpts: Opt[] = Array.from({ length: Math.max(2, semCount) }, (_, i) => ({ value: String(i + 1), label: `${i + 1 === 3 && summer ? "Summer" : SEM(i + 1)} semester` }));
+  const currentSummer = !!options.sessions.find((s) => s.name === options.currentSession)?.summer;
+  const semOpts: Opt[] = Array.from({ length: Math.max(2, semCount) }, (_, i) => ({ value: String(i + 1), label: semWords(i + 1, summer) }));
   const levelOpts: Opt[] = [100, 200, 300, 400, 500, 600, 700, 800, 900].map((l) => ({ value: String(l), label: `${l} level` }));
 
   const pick = (s: Status) => { setStatus(s); setPage(1); setTab("classes"); };
@@ -193,7 +202,7 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
     downloadBlob(await brandedXlsx(title, ["Course Code", "Course Title", "Units", "Faculty", "Department", "Programmes", "Level", "Lecturer", "Staff Number", "Co-lecturers", "Second Examiner", "Registered", "Score Sheet", "Status", "Last Updated"],
       r.data.rows.map((c) => [c.course_code, c.title, c.units, c.faculty ?? "", c.department ?? c.dept_code, c.programmes ?? "", c.level, c.lecturer ?? "", c.lecturer_staff_number ?? "", c.co_lecturers ?? "",
         c.second_examiner ?? "", c.registered, stageWord(c.stage), c.lecturer_id ? "Allocated" : "Unallocated", day(c.updated_at)]),
-      { sheetName: title, serial: docSerial("ALLOC"), meta: [["Session", session], ["Semester", `${SEM(semester)} semester`], ["Scope", options.scope]] }),
+      { sheetName: title, serial: docSerial("ALLOC"), meta: [["Session", session], ["Semester", semWords(semester, summer)], ["Scope", options.scope]] }),
       `${title.toLowerCase().replace(/ /g, "-")}-${session.replace("/", "-")}-sem${semester}.xlsx`);
   }
 
@@ -205,7 +214,7 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
 
   return (
     <>
-      <PageHead description={`${options.scope} · ${session}, ${SEM(semester)} semester`}
+      <PageHead description={`${options.scope} · ${session}, ${semWords(semester, summer)}`}
         actions={<Btn kind="ghost" onClick={() => void exportClasses()}>Export (Excel)</Btn>} />
       {problem ? <Note kind="bad" title={problem.title ?? "The request was refused"}>{problem.detail}</Note> : null}
 
@@ -231,7 +240,7 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
         {figure("Allocations", overview?.allocations, "leads and co-lecturers", null)}
         {figure("Lecturers", overview?.lecturers, `${overview?.teaching ?? 0} teaching this semester`, null)}
         {figure("Conflicts", overview?.conflicts, "need a look", "CONFLICT", overview?.conflicts ? "var(--amber, #a15c00)" : undefined)}
-        {figure("Current session", options.currentSession, `${SEM(options.currentSemester)} semester`, null)}
+        {figure("Current session", options.currentSession, semWords(options.currentSemester, currentSummer), null)}
       </div>
 
       <div className="mt-2">
@@ -254,7 +263,9 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
             {!list ? <p className="sub2">Loading…</p> : rows.length === 0 ? <p className="sub2">No course matches these filters.</p> : (
               <>
                 <DTable pageSize={0} cols={["S/N|num", "Course Code", "Course Title", "Units|num", "Department", "Programmes", "Level|num", "Lecturer", "Co-lecturers", "Status|mid", "Last Updated", "|mid"]}
-                  rows={rows.map((c, i) => [from + i, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.units, c.department ?? c.dept_code, c.programmes ?? "—", c.level,
+                  rows={rows.map((c, i) => [from + i, <b key="c">{shownCode(c.course_code)}</b>,
+                    // V756: in a session with a Summer, semester 3 holds the Summer's classes and the postgraduate third semester's
+                    semester === 3 && summer ? <span key="t">{c.title}<span className="sub2"> · {c.summer ? "Summer" : "Third semester"}</span></span> : c.title, c.units, c.department ?? c.dept_code, c.programmes ?? "—", c.level,
                     c.lecturer ? <span key="l">{c.lecturer}{c.lecturer_staff_number ? <span className="sub2"> · {c.lecturer_staff_number}</span> : null}</span> : <span key="l" className="sub2">—</span>,
                     c.co_lecturers ?? "—",
                     <Pil key="s" kind={c.lecturer_id ? "ok" : "warn"}>{c.lecturer_id ? "Allocated" : "Unallocated"}</Pil>,
@@ -278,9 +289,9 @@ export function AllocationDesk({ options, imports, initial }: { options: DeskOpt
         </Panel>
       ) : null}
 
-      {tab === "lecturers" ? <LecturerLoad session={session} semester={semester} onOpen={setOpen} scope={options.scope} /> : null}
-      {tab === "history" ? <History session={session} semester={semester} dept={dept} initialTicket={initial.ticket} onOpen={setOpen} scope={options.scope} /> : null}
-      {tab === "conflicts" ? <Conflicts session={session} semester={semester} dept={dept} onOpen={setOpen} /> : null}
+      {tab === "lecturers" ? <LecturerLoad session={session} semester={semester} summer={summer} onOpen={setOpen} scope={options.scope} /> : null}
+      {tab === "history" ? <History session={session} semester={semester} summer={summer} dept={dept} initialTicket={initial.ticket} onOpen={setOpen} scope={options.scope} /> : null}
+      {tab === "conflicts" ? <Conflicts session={session} semester={semester} summer={summer} dept={dept} onOpen={setOpen} /> : null}
       {tab === "bulk" ? (
         <BulkUpload dept={dept} deptName={deptName || "All departments in reach"} session={session} semester={semester} imports={imports} canImport={caps.has("BULK_ALLOCATE")} ticketInitial={initial.ticket} />
       ) : null}
@@ -362,7 +373,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
 
 
   return (
-    <Modal wide title={courseLabel(view.course_code, view.title)} sub={`${view.session}, ${SEM(view.semester)} semester · ${view.units} units · ${view.level} level`} onClose={onClose}
+    <Modal wide title={courseLabel(view.course_code, view.title)} sub={`${view.session}, ${classSem(view.semester, view.summer)} semester · ${view.units} units · ${view.level} level`} onClose={onClose}
       foot={removing ? (
         <><Btn kind="ghost" onClick={() => setRemoving(null)}>Cancel</Btn><Btn kind="primary" disabled={busy || reason.trim().length < 5} onClick={() => void remove()}>Remove allocation</Btn></>
       ) : review ? (
@@ -423,7 +434,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
           <b>{verb}</b>
           <KvGrid cls="grid--2" pairs={[
               ["Course", courseLabel(view.course_code, view.title)], ["Faculty", view.faculty ?? "—"], ["Department", view.department ?? view.dept_code], ["Programme", programmes],
-              ["Session", view.session], ["Semester", `${SEM(view.semester)} semester`],
+              ["Session", view.session], ["Semester", `${classSem(view.semester, view.summer)} semester`],
               ...(reassign ? [["Current lecturer", view.lecturer?.name ?? "—"] as [ReactNode, ReactNode], ["New lecturer", person.name] as [ReactNode, ReactNode]]
                 : [[act === "SECOND_EXAMINER" ? "Second examiner" : act === "CO_LECTURER" ? "Co-lecturer" : "Lecturer", person.name] as [ReactNode, ReactNode]]),
               ...(reason.trim() ? [["Reason", reason.trim()] as [ReactNode, ReactNode]] : []),
@@ -442,7 +453,7 @@ function ClassDialog({ id, caps, initialTicket, onClose, onChanged }: {
 
 /* ── a lecturer and their load ── */
 
-function LecturerLoad({ session, semester, onOpen, scope }: { session: string; semester: number; onOpen: (id: string) => void; scope: string }) {
+function LecturerLoad({ session, semester, summer, onOpen, scope }: { session: string; semester: number; summer: boolean; onOpen: (id: string) => void; scope: string }) {
   const [hit, setHit] = useState<LecturerHit | null>(null);
   const [view, setView] = useState<LecturerView | null>(null);
   const [allSemesters, setAllSemesters] = useState(false);
@@ -456,7 +467,7 @@ function LecturerLoad({ session, semester, onOpen, scope }: { session: string; s
   async function exportLoad() {
     if (!view) return;
     downloadBlob(await brandedXlsx(`Lecturer course load — ${view.name}`, ["Course Code", "Course Title", "Units", "Department", "Programmes", "Level", "Session", "Semester", "Role", "Score Sheet"],
-      view.classes.map((c) => [c.course_code, c.title, c.units, c.department ?? "", c.programmes ?? "", c.level, c.session, `${SEM(c.semester)}`, ROLE_WORD[c.role] ?? c.role, stageWord(c.stage)]),
+      view.classes.map((c) => [c.course_code, c.title, c.units, c.department ?? "", c.programmes ?? "", c.level, c.session, classSem(c.semester, c.summer), ROLE_WORD[c.role] ?? c.role, stageWord(c.stage)]),
       { sheetName: "Course load", serial: docSerial("ALLOCLOAD"), meta: [["Lecturer", view.name], ["Staff number", view.staff_number ?? ""], ["Department", view.departments ?? ""], ["Session", session], ["Units led", String(units)]] }),
       `course-load-${(view.staff_number ?? view.name).replace(/[^A-Za-z0-9]+/g, "-")}-${session.replace("/", "-")}.xlsx`);
   }
@@ -474,9 +485,9 @@ function LecturerLoad({ session, semester, onOpen, scope }: { session: string; s
             {view.outside ? <Note kind="info" title={`${view.outside} more class${view.outside === 1 ? "" : "es"} outside your scope`}>Your allocation scope is {scope}.</Note> : null}
             {view.classes.length ? (
               <DTable pageSize={0} cols={["S/N|num", "Course Code", "Course Title", "Units|num", "Department", "Programmes", "Level|num", "Session", "Semester", "Role", "Score Sheet", "|mid"]}
-                rows={view.classes.map((c, i) => [i + 1, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.units, c.department ?? "—", c.programmes ?? "—", c.level, c.session, SEM(c.semester), ROLE_WORD[c.role] ?? c.role, stageWord(c.stage),
+                rows={view.classes.map((c, i) => [i + 1, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.units, c.department ?? "—", c.programmes ?? "—", c.level, c.session, classSem(c.semester, c.summer), ROLE_WORD[c.role] ?? c.role, stageWord(c.stage),
                   <Btn key="o" kind="ghost" onClick={() => onOpen(c.id)}>View</Btn>])} />
-            ) : <p className="sub2 mt-2">No class allocated to {view.name} in {session}{allSemesters ? "" : `, ${SEM(semester)} semester`}.</p>}
+            ) : <p className="sub2 mt-2">No class allocated to {view.name} in {session}{allSemesters ? "" : `, ${semWords(semester, summer)}`}.</p>}
           </>
         ) : <p className="sub2 mt-2">Find a lecturer by name, staff number, email or department.</p>}
       </PBody>
@@ -486,7 +497,7 @@ function LecturerLoad({ session, semester, onOpen, scope }: { session: string; s
 
 /* ── the history ── */
 
-function History({ session, semester, dept, initialTicket, onOpen, scope }: { session: string; semester: number; dept: string; initialTicket: string; onOpen: (id: string) => void; scope: string }) {
+function History({ session, semester, summer, dept, initialTicket, onOpen, scope }: { session: string; semester: number; summer: boolean; dept: string; initialTicket: string; onOpen: (id: string) => void; scope: string }) {
   const [ticket, setTicket] = useState(initialTicket);
   const [ticketLive, setTicketLive] = useState(initialTicket);
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
@@ -504,7 +515,7 @@ function History({ session, semester, dept, initialTicket, onOpen, scope }: { se
     downloadBlob(await brandedXlsx("Allocation history", ["When", "Course Code", "Department", "Action", "Role", "Lecturer", "Staff Number", "Previous Lecturer", "Reason", "Performed By", "Office", "Source", "Ticket"],
       rows.map((h) => [when(h.at), h.course_code, h.department ?? "", ACTION_WORD[h.action] ?? h.action, ROLE_WORD[h.role] ?? h.role, h.lecturer ?? "", h.lecturer_staff_number ?? "", h.previous_lecturer ?? "",
         h.reason ?? "", h.performed_by ?? "", h.actor_office ? roleLabel(h.actor_office) : "", SOURCE_WORD[h.source] ?? h.source, h.ticket ?? ""]),
-      { sheetName: "History", serial: docSerial("ALLOCHIST"), meta: [["Session", session], ["Semester", `${SEM(semester)} semester`], ["Scope", scope]] }), `allocation-history-${session.replace("/", "-")}-sem${semester}.xlsx`);
+      { sheetName: "History", serial: docSerial("ALLOCHIST"), meta: [["Session", session], ["Semester", semWords(semester, summer)], ["Scope", scope]] }), `allocation-history-${session.replace("/", "-")}-sem${semester}.xlsx`);
   }
   return (
     <Panel title="Allocation history" right={rows?.length ? <Btn kind="ghost" onClick={() => void exportHistory()}>Export (Excel)</Btn> : undefined}>
@@ -520,7 +531,7 @@ function History({ session, semester, dept, initialTicket, onOpen, scope }: { se
 
 /* ── what needs a look ── */
 
-function Conflicts({ session, semester, dept, onOpen }: { session: string; semester: number; dept: string; onOpen: (id: string) => void }) {
+function Conflicts({ session, semester, summer, dept, onOpen }: { session: string; semester: number; summer: boolean; dept: string; onOpen: (id: string) => void }) {
   const [rows, setRows] = useState<Conflict[] | null>(null);
   useEffect(() => {
     let live = true;
@@ -531,7 +542,7 @@ function Conflicts({ session, semester, dept, onOpen }: { session: string; semes
   return (
     <Panel title="Allocation conflicts" right={rows ? `${shown.length} to look at` : undefined}>
       <PBody>
-        {rows === null ? <p className="sub2">Loading…</p> : shown.length === 0 ? <p className="sub2">Nothing needs a look in {session}, {SEM(semester)} semester.</p> : (
+        {rows === null ? <p className="sub2">Loading…</p> : shown.length === 0 ? <p className="sub2">Nothing needs a look in {session}, {semWords(semester, summer)}.</p> : (
           <DTable pageSize={50} cols={["S/N|num", "Course Code", "Course Title", "Department", "Conflict", "What", "|mid"]} texts={shown.map((c) => `${c.course_code} ${c.title} ${c.department ?? ""} ${c.words}`)}
             rows={shown.map((c, i) => [i + 1, <b key="c">{shownCode(c.course_code)}</b>, c.title, c.department ?? c.dept_code, <Pil key="k" kind={c.kind === "OVERLOAD" || c.kind === "TIMETABLE_CLASH" ? "warn" : "bad"}>{CONFLICT_WORD[c.kind] ?? c.kind}</Pil>, c.words,
               <Btn key="o" kind="ghost" onClick={() => onOpen(c.offering_id)}>View</Btn>])} />

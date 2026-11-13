@@ -9,7 +9,7 @@ import type { Scope } from "@/lib/scope";
 import { FLAG_LABEL, STAGE_LABEL, type MissingStudent, type PipelineView, type SheetProgress } from "@/lib/results";
 import { roleLabel } from "@/lib/offices";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { ScopeBar, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { ScopeBar, thirdSemester, type Ceiling, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { PipelinePanel, broadsheetHref } from "@/components/results/PipelinePanel";
@@ -56,7 +56,10 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
   const at = RP_STAGES.findIndex(([code]) => code === stage);
   const go = (next: string) => { const q = new URLSearchParams(window.location.search); if (next) q.set("stage", next); else q.delete("stage"); queryNav(`/results/pipeline?${q.toString()}`); };
   const shown = stage ? view.sheets.filter((s) => s.stage === stage) : view.sheets;
-  const period = `${view.session}${view.semester ? ` · ${view.semester === 1 ? "First" : view.semester === 3 ? "Summer" : "Second"} semester` : " · both semesters"}`;
+  /* V756: the monitor lists the sets of every stream together (full-time, CCE and postgraduate), so semester 3 of a session that had
+     a Summer Semester (structure.summerSessions) holds the Summer's sets and the third semester's, and says both; else the third */
+  const semWord = (n: number) => (n === 1 ? "First" : n === 3 ? thirdSemester(view.session, "ALL", structure.summerSessions) : "Second");
+  const period = `${view.session}${view.semester ? ` · ${semWord(view.semester)} semester` : " · both semesters"}`;
   const flagsOf = (s: SheetProgress) => s.flags.filter((f) => f !== "EMPTY_ROLL" || s.candidates === 0);
   const openHref = (s: SheetProgress) => (s.stage === "ENTRY" && (office === "lecturer" || office === "exams" || office === "academic" || office === "gst" || office === "eps") ? `/results/sheets/${s.id}` : `/results/chain?sheet=${s.id}`);
 
@@ -97,7 +100,7 @@ export function Pipeline({ scope, structure, sessions, ceiling, view, stage, off
 
   return (
     <>
-      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={view.sheets.length} of={cv.withLecturer} hide={hide} ceiling={ceiling} onExport={() => void exportSheets()} />
+      <ScopeBar withSummer stream="ALL" scope={scope} structure={structure} sessions={sessions} what="result sets" count={view.sheets.length} of={cv.withLecturer} hide={hide} ceiling={ceiling} onExport={() => void exportSheets()} />
       {view.attention.length ? (
         <Note kind="bad" title={`${view.attention.length} set${view.attention.length === 1 ? "" : "s"} need${view.attention.length === 1 ? "s" : ""} your desk`} action={<LinkBtn kind="urgent" href="/results/desk">Open the desk</LinkBtn>}>
           {view.desk ? `${view.desk}: ` : ""}{view.attention.slice(0, 6).map((s) => s.courseCode).join(", ")}{view.attention.length > 6 ? ` and ${view.attention.length - 6} more` : ""}. Each is listed under Needs your desk below with what it waits for.

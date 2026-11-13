@@ -714,8 +714,12 @@ class ResultsRepository {
     }
 
     List<ClassMember> unregistered(String prog, int level, String session, int sem, String stream) {
-        if (sem == 3) {
-            return List.of();   // V735: the Summer is taken by those who registered for it; no one else is missing from its broadsheet
+        // V735: the Summer is taken by those who registered for it; no one else is missing from its broadsheet. V756: only the Summer's
+        // own sheet — semester 3 of a session that had a Summer Semester, on the regular stream; a CCE or postgraduate third semester (and
+        // a semester 3 of a session with no Summer) lists its class members who did not register
+        if (sem == 3 && "REGULAR".equals(stream) && Boolean.TRUE.equals(jdbc.sql("SELECT registration.is_summer(:session, 3)")
+                .param("session", session).query(Boolean.class).single())) {
+            return List.of();
         }
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode

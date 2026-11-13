@@ -69,7 +69,9 @@ export interface Entry { offeringId: string; courseCode: string; title: string; 
   category?: import("./course-order").CourseCategory; addedAs?: string | null; studentAdded?: boolean }
 export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null;
   /** V491: how it was approved — HOD, AUTO (by the rule), or null for an earlier approval */
-  approval_mode?: "HOD" | "AUTO" | null }
+  approval_mode?: "HOD" | "AUTO" | null;
+  /** V756: semester 3 was this student's Summer Semester (registration.is_summer_for); missing (an older answer) is not the Summer */
+  summer?: boolean }
 export interface MenuItem {
   offering_id: string; course_code: string; title: string; units: number; kind: string; basis: string; owner_dept: string;
   carryover: boolean; failed_in: string | null; lecturer: string | null;
@@ -152,6 +154,9 @@ export interface RegistrationView {
   outstanding?: OutstandingCourse[];
   /** V504: the rule on adding courses beside the recommended list */
   flex?: FlexRule;
+  /** V756: the semester was this student's Summer Semester (registration.is_summer_for) — only an undergraduate outside CCE has
+   *  one; a CCE or postgraduate semester 3 is their own third. Missing (an older answer) is not the Summer */
+  summer?: boolean;
 }
 /** V504: a carry-over (a published F or recorded absence not since passed — no result is never one) */
 export interface OutstandingCourse {
@@ -189,6 +194,8 @@ export interface Results {
   clearsResults: boolean | null;
   /** V667: each semester whose published results are withheld, with what is still to pay for it */
   withheldSemesters?: WithheldSemester[];
+  /** V754, V756: the sessions whose semester 3 was this student's Summer Semester (never a CCE or postgraduate third semester) */
+  summerSessions?: string[];
 }
 export interface Notice { id: string; channel: string; recipient: string; subject: string; body: string; created_at: string; state: string; sent_at: string | null }
 export interface AcademicContext {
@@ -319,12 +326,26 @@ export const STAGE_LABEL: Record<string, [string, string]> = {
 
 export const GRADE_COLOUR: Record<string, string> = { A: "var(--green)", B: "var(--chrome)", C: "var(--chrome)", D: "var(--muted)", E: "var(--muted)", F: "var(--red)" };
 
-export function semesterName(n: number): string {
-  return n === 1 ? "First" : n === 2 ? "Second" : "Third";
+/** V754: `summer` names semester 3 of a session that had a Summer Semester "Summer"; any other semester 3 keeps "Third" */
+export function semesterName(n: number, summer?: boolean | null): string {
+  return n === 1 ? "First" : n === 2 ? "Second" : summer && n === 3 ? "Summer" : "Third";
+}
+
+/** V754: whether a session's semester was its Summer Semester — semester 3 of a session among `summerSessions` (/me/results) */
+export function isSummer(summerSessions: readonly string[] | null | undefined, session: string, semester: number): boolean {
+  return Number(semester) === 3 && (summerSessions ?? []).includes(session);
+}
+
+/** V756: whether a registration answer (/me/registration, or an entry of /me/registration-history) is the student's Summer
+ *  Semester — the API's "summer" (registration.is_summer_for) on the answer or on its registration, and only ever semester 3;
+ *  missing (an answer from before V756) is not the Summer */
+export function registrationSummer(v: { semester?: number | null; summer?: boolean | null; registration?: { summer?: boolean | null } | null } | null | undefined): boolean {
+  if (!v || (v.semester != null && Number(v.semester) !== 3)) return false;
+  return v.summer === true || v.registration?.summer === true;
 }
 
 /** the portal-wide way to show a semester to a person: "Semester: First" / "Semester: Second" —
  *  never the bare number. Use this for labels, fields and subtitles. */
-export function semesterText(n: number): string {
-  return `Semester: ${semesterName(n)}`;
+export function semesterText(n: number, summer?: boolean | null): string {
+  return `Semester: ${semesterName(n, summer)}`;
 }

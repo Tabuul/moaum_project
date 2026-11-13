@@ -26,6 +26,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   const v = r.ok ? r.data : { genuine: false };
   const ok = v.genuine && !v.limited;
   const valid = ok && v.status !== "NOT_VALID";
+  // V756: a Summer card's paid test is the Summer Semester payment ("cleared"), never the session's school fees
+  const feesLabel = v.summer ? "Summer Semester fees" : "School fees";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "var(--s-5) var(--s-3)" }}>
@@ -68,10 +70,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
               {/* short facts as compact cells — two or three to a row, never a stretched full-width line */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "var(--s-2)" }}>
                 {([["Session", v.session ?? "—"], ["Semester", v.semester ? (v.summer && v.semester === 3 ? "Summer semester" : semesterName(v.semester)) : "—"],
-                  ["School fees", v.cleared ? "Paid" : "Not paid"]] as [string, string][]).map(([k, val], i) => (
+                  [feesLabel, v.cleared ? "Paid" : "Not paid"]] as [string, string][]).map(([k, val], i) => (
                   <div key={i} className="kv" style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-md)", padding: "var(--s-2) var(--s-3)", background: "var(--bg)" }}>
                     <span className="k">{k}</span>
-                    <span className="v" style={{ color: k === "School fees" ? (v.cleared ? "var(--green-ink)" : "var(--red-deep)") : undefined }}>{val}</span>
+                    <span className="v" style={{ color: k === feesLabel ? (v.cleared ? "var(--green-ink)" : "var(--red-deep)") : undefined }}>{val}</span>
                   </div>
                 ))}
               </div>

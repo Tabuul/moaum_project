@@ -10,8 +10,7 @@
 import type { ReactNode } from "react";
 import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
-import { semesterName } from "@/lib/student-portal";
-import { classificationWord, paymentRemedy, permitSections, permitStatusLabel, permitSummary, registrationRemedy, slotDate, slotTime, slotVenue, type PermitState } from "@/lib/gst-eps-permit";
+import { classificationWord, paymentRemedy, permitSections, permitSemesterInSentence, permitSemesterName, permitStatusLabel, permitSummary, registrationRemedy, slotDate, slotTime, slotVenue, type PermitState } from "@/lib/gst-eps-permit";
 import { PermitActions } from "../CardActions";
 import { shownCode } from "@/lib/course-code";
 
@@ -43,24 +42,31 @@ function CourseTables({ v }: { v: PermitState }) {
   );
 }
 
-export function GstEpsPermit({ v, semesters }: { v: PermitState; semesters: number[] }) {
-  const sem = semesterName(v.semester);
+export function GstEpsPermit({ v, semesters, summer }: { v: PermitState; semesters: number[]; summer?: boolean }) {
+  // V754: semester 3 named the Summer where the API says it was the session's Summer — this semester's state, or semester 3's (summer)
+  const nameOf = (n: number) => permitSemesterName(n, n === v.semester ? v.summer : n === 3 && summer);
+  const sem = nameOf(v.semester);
   const st = v.student;
   const status = permitStatusLabel(v);
   const remedies: ReactNode[] = [];
-  if (registrationRemedy(v.code)) remedies.push(<LinkBtn key="r" kind="primary" href="/student/register">BACK TO COURSE REGISTRATION</LinkBtn>);
+  // V754: a Summer registration is made, and paid for, on the Summer Semester page — not course registration or the school fees
+  if (registrationRemedy(v.code)) remedies.push(v.summer
+    ? <LinkBtn key="r" kind="primary" href="/student/summer">SUMMER SEMESTER</LinkBtn>
+    : <LinkBtn key="r" kind="primary" href="/student/register">BACK TO COURSE REGISTRATION</LinkBtn>);
   if (paymentRemedy(v.code) === "GST") remedies.push(<LinkBtn key="g" kind="primary" href="/student/gst">GST FEE</LinkBtn>);
-  if (paymentRemedy(v.code) === "FEES") remedies.push(<LinkBtn key="f" kind="primary" href="/student/fees">FEES & PAYMENTS</LinkBtn>);
+  if (paymentRemedy(v.code) === "FEES") remedies.push(v.summer
+    ? <LinkBtn key="f" kind="primary" href="/student/summer">PAY YOUR SUMMER SEMESTER FEES</LinkBtn>
+    : <LinkBtn key="f" kind="primary" href="/student/fees">FEES & PAYMENTS</LinkBtn>);
   // V728: the semester whose registration holds the GST and EPS courses, one press away
   for (const n of v.courses.length ? [] : v.otherSemesters ?? []) {
-    remedies.push(<LinkBtn key={`s${n}`} kind="primary" href={`/student/exams/gst-eps-permit?semester=${n}`}>{`${semesterName(n).toUpperCase()} SEMESTER PERMIT`}</LinkBtn>);
+    remedies.push(<LinkBtn key={`s${n}`} kind="primary" href={`/student/exams/gst-eps-permit?semester=${n}`}>{`${nameOf(n).toUpperCase()} SEMESTER PERMIT`}</LinkBtn>);
   }
   return (
     <>
       {semesters.length > 1 ? (
         <div className="row row--inline" style={{ gap: 8, flexWrap: "wrap" }}>
           {semesters.map((n) => (
-            <LinkBtn key={n} kind={n === v.semester ? "secondary" : "ghost"} href={`/student/exams/gst-eps-permit?semester=${n}`}>{`${semesterName(n).toUpperCase()} SEMESTER`}</LinkBtn>
+            <LinkBtn key={n} kind={n === v.semester ? "secondary" : "ghost"} href={`/student/exams/gst-eps-permit?semester=${n}`}>{`${nameOf(n).toUpperCase()} SEMESTER`}</LinkBtn>
           ))}
         </div>
       ) : null}
@@ -72,7 +78,7 @@ export function GstEpsPermit({ v, semesters }: { v: PermitState; semesters: numb
         </Note>
       ) : (
         <Note kind="ok" title="Your GST & EPS examination permit is ready">
-          It lists only the GST and EPS courses on your course registration for {v.session} {sem.toLowerCase()} semester. Bring it, with your student I.D. card, to every GST and EPS examination. Your examination card is separate.
+          It lists only the GST and EPS courses on your course registration for {v.session} {permitSemesterInSentence(v.semester, v.summer)}. Bring it, with your student I.D. card, to every GST and EPS examination. Your examination card is separate.
         </Note>
       )}
 

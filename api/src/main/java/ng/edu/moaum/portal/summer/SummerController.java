@@ -393,8 +393,19 @@ class SummerController {
         return Map.of("student", student, "eligibility", e);
     }
 
+    /** V754: the Summer authorisations to look at again — one naming a course no longer on the catalogue (DEAD_CODE), one a one-off
+     *  repair (V746, V751, V753) rewrote to another course than the trail from the grant gives (REWRITTEN); nothing is changed, the
+     *  Office re-authorises */
+    @GetMapping("/api/v1/summer/{session}/{year}/authorisations")
+    @PreAuthorize(SETTERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> authorisations(@PathVariable String session, @PathVariable String year) {
+        return jdbc.sql("SELECT * FROM registration.summer_authorisations_to_review(:s)").param("s", session + "/" + year).query().listOfRows();
+    }
+
     /** the students told, once an event: the Summer open (every eligible student), closing (the eligible who have not completed), the
-     *  examinations (every registered student) — through the notification engine's templates, one message a student and channel */
+     *  examinations (every student registered for the Summer — V756: never a CCE or postgraduate third semester) — through the
+     *  notification engine's templates, one message a student and channel */
     @PostMapping("/api/v1/summer/{session}/{year}/tell")
     @PreAuthorize(SETTERS)
     @Transactional
@@ -440,6 +451,8 @@ class SummerController {
                                'SUMMER_TIMETABLE:' || :s || ':' || p.exams_from || ':' || p.exams_to) > 0)
                       FROM registration.course_registration r JOIN registration.summer_period p ON p.session = r.session
                      WHERE r.session = :s AND r.semester = 3 AND r.status IN ('APPROVED', 'LOCKED') AND p.exams_from IS NOT NULL
+                       -- V756: the Summer's own students; a CCE or postgraduate third semester is not the Summer and is not told its timetable
+                       AND registration.is_summer_for(r.student_id, r.session, r.semester)
                     """;
         };
         long told = jdbc.sql(sql).param("s", s).query(Long.class).single();

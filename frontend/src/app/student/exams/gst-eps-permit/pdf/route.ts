@@ -5,12 +5,11 @@ import { A4, jpegSize, type Image } from "@/lib/pdf-write";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { nameUpper } from "@/lib/document/institution";
 import { finishPdf } from "@/lib/document/pdf";
-import { semesterName } from "@/lib/student-portal";
 import {
   CARD_L, EXAM_INSTRUCTIONS, EXAM_REGULATIONS, cardClean as clean, cardDay as day, cardFit, cardFooter, cardIdentity, cardPage, cardRules,
   cardRulesFit, cardTableEnd, cardTableHead, cardVerify, cardVerifyDepth, cardWrap,
 } from "@/lib/exam-card-pdf";
-import { classificationWord, permitSections, permitSummary, permitVerifyPath, scheduled, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitState } from "@/lib/gst-eps-permit";
+import { classificationWord, permitSections, permitSemesterName, permitSummary, permitVerifyPath, scheduled, slotDate, slotTime, slotVenue, TO_BE_SCHEDULED, type PermitState } from "@/lib/gst-eps-permit";
 import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +60,7 @@ export async function GET(request: NextRequest) {
   const st = v.student;
   const matric = clean(st.matricNo ?? st.number ?? "");
   const name = clean(st.name) || matric;
-  const sem = semesterName(v.semester);
+  const sem = permitSemesterName(v.semester, v.summer);   // V754: "Summer" for the session's Summer Semester
 
   // the passport — the same photograph the examination card prints, from /me/passport
   let photo: Image | null = null;

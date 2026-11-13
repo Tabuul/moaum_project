@@ -3,7 +3,10 @@ import { sessionRows } from "@/lib/sessions-server";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { sessionPath, type SummerPeriod } from "@/lib/summer";
-import { SummerDesk, type SummerCourseRow, type SummerStudents } from "./SummerDesk";
+import { SummerDesk, type SummerAuthorisationToReview, type SummerCourseRow, type SummerStudents } from "./SummerDesk";
+
+/** V754: the desk's SETTERS (SummerDesk, the API's): only they read the authorisations to look at again */
+const SETTERS = ["academic", "registrar", "dregistrar", "super"];
 
 export const dynamic = "force-dynamic";
 
@@ -22,18 +25,20 @@ export default async function SummerDeskPage({ searchParams }: { searchParams: P
     return <Shell route="t/summer" me={me.ok ? me.data : null}><ProblemNotice problem={periods.problem} /></Shell>;
   }
   const session = asked ?? periods.data[0]?.session ?? null;
-  const [students, courses] = session && periods.data.some((p) => p.session === session)
+  const maySet = SETTERS.includes(me.ok ? me.data.activeOffice ?? "" : "");
+  const [students, courses, toReview] = session && periods.data.some((p) => p.session === session)
     ? await Promise.all([
         api<SummerStudents>(`/api/v1/summer/${sessionPath(session)}/students`),
         api<SummerCourseRow[]>(`/api/v1/summer/${sessionPath(session)}/courses`),
+        maySet ? api<SummerAuthorisationToReview[]>(`/api/v1/summer/${sessionPath(session)}/authorisations`) : Promise.resolve(null),
       ])
-    : [null, null];
+    : [null, null, null];
   return (
     <Shell route="t/summer" me={me.ok ? me.data : null}>
       {students && !students.ok ? <ProblemNotice problem={students.problem} /> : null}
       <SummerDesk periods={periods.data} session={session} sessions={sessions.map((s) => s.name)}
                   students={students && students.ok ? students.data : null} courses={courses && courses.ok ? courses.data : []}
-                  actingOffice={me.ok ? me.data.activeOffice : null} />
+                  actingOffice={me.ok ? me.data.activeOffice : null} toReview={toReview && toReview.ok ? toReview.data : []} />
     </Shell>
   );
 }

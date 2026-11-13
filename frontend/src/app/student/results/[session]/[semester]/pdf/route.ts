@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Results } from "@/lib/student-portal";
-import { semesterName } from "@/lib/student-portal";
+import { isSummer, semesterName } from "@/lib/student-portal";
 import {A4, Page} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, resultVerifyPath, studentCheckCode } from "@/lib/qr";
@@ -9,7 +9,7 @@ import { qrMatrix, resultVerifyPath, studentCheckCode } from "@/lib/qr";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
 import { shownCode } from "@/lib/course-code";
-import { withheldLine, withheldOf } from "@/lib/results-withheld";
+import { withSummer, withheldLine, withheldOf } from "@/lib/results-withheld";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   const x = r.data;
   // V667: withheld semester by semester, until the fees up to the semester are paid
-  const held = withheldOf(x.withheldSemesters, session, semester);
+  const held = withheldOf(withSummer(x.withheldSemesters, x.summerSessions), session, semester);   // V756: a Summer named so
   if (held) return NextResponse.json({ status: 409, title: "Withheld", detail: withheldLine(held) }, { status: 409 });
   const rows = x.rows.filter((c) => c.session === session && c.semester === semester && c.published);
   if (!rows.length) return NextResponse.json({ status: 409, title: "Nothing published", detail: "No result is published for this semester." }, { status: 409 });
@@ -58,7 +58,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   // ── candidate block: two columns ──────────────────────────────────────────
   const meta: [string, string][][] = [
     [["Name", clean(x.name)], ["Programme", clean(`${x.programme} · ${level} Level`)]],
-    [["Matriculation number", x.matricNo ?? "—"], ["Session", `${session} · ${semesterName(semester)} semester`]],
+    // V754: semester 3 of a session that had a Summer Semester is the Summer semester
+    [["Matriculation number", x.matricNo ?? "—"], ["Session", `${session} · ${semesterName(semester, isSummer(x.summerSessions, session, semester))} semester`]],
   ];
   for (const line of meta) {
     let cx = L;

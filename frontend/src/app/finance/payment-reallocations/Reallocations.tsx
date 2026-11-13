@@ -19,8 +19,8 @@ import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/export
 import { formatDocDateTime } from "@/lib/document/institution";
 import type { Problem } from "@/lib/api";
 import {
-  REALLOC_HEAD, REALLOC_STATUSES, STATUS_WORDS, periodWords, reallocLine, reallocQuery,
-  type Destination, type ReallocDetail, type ReallocFilters, type ReallocList, type ReallocStatus,
+  OLD_LEVEL_HEAD, REALLOC_HEAD, REALLOC_STATUSES, REASON_WORDS, STATUS_WORDS, oldLevelLine, oldLevelTo, periodWords, reallocLine, reallocQuery,
+  type Destination, type ReallocAtOldLevel, type ReallocDetail, type ReallocFilters, type ReallocList, type ReallocStatus,
 } from "@/lib/payment-reallocations";
 import { NewReallocation } from "./NewReallocation";
 import { ReallocationView } from "./ReallocationView";
@@ -47,8 +47,10 @@ const DOOR_SUB: Record<ReallocStatus, string> = {
   REVERSED: "Taken back by a reversal",
 };
 
-export function Reallocations({ filters, list, destinations, office, initial }: {
+export function Reallocations({ filters, list, destinations, office, initial, oldLevel = [] }: {
   filters: ReallocFilters; list: ReallocList; destinations: Destination[]; office: string | null; initial: ReallocDetail | null;
+  /** V754: the reallocations recorded at a level the first-year count (V738) no longer gives */
+  oldLevel?: ReallocAtOldLevel[];
 }) {
   const router = useRouter();
   const queryNav = useQueryNav();
@@ -98,6 +100,18 @@ export function Reallocations({ filters, list, destinations, office, initial }: 
     } else {
       brandedPrint(title, "Verified payments moved from the purpose, session or semester they were applied to onto the one they were meant for", REALLOC_HEAD, rows, serial, { meta, orientation: "landscape" });
     }
+    notify(`${rows.length} correction${rows.length === 1 ? "" : "s"} exported`);
+  }
+
+  // V754: the list recorded at the old count, as the server gave it, in a branded workbook
+  async function downloadOldLevel() {
+    const when = (iso: string | null | undefined) => (iso ? formatDocDateTime(iso) : "");
+    const rows = oldLevel.map((x) => oldLevelLine(x, when));
+    const blob = await brandedXlsx("Reallocations recorded at a level the count no longer gives", OLD_LEVEL_HEAD, rows, {
+      sheetName: "Recorded at the old level", serial: docSerial("RLV"),
+      meta: [["Students admitted", "2019/2020 to 2021/2022 (first year the session after)"], ["Corrections", String(rows.length)]],
+    });
+    downloadBlob(blob, `payment-reallocations-level-check-${new Date().toISOString().slice(0, 10)}.xlsx`);
     notify(`${rows.length} correction${rows.length === 1 ? "" : "s"} exported`);
   }
 
@@ -170,6 +184,35 @@ export function Reallocations({ filters, list, destinations, office, initial }: 
           </PBody>
         ) : null}
       </Panel>
+
+      {oldLevel.length ? (
+        <Panel title="Recorded at a level the count no longer gives" right={oldLevel.length.toLocaleString("en-GB")}>
+          <PBody>
+            <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <span className="sub2" style={{ flex: "1 1 40ch" }}>
+                {/* V756: a payment already reallocated is refused a second reallocation (a further correction is a reversal of it): the
+                    remedy is the reversal on the opened reallocation, approved by another Bursar officer, then a new reallocation */}
+                These reallocations were decided before the first-year rule for students admitted 2019/2020 to 2021/2022; nothing is changed automatically.
+                A payment already reallocated is not reallocated again: the Bursar first reverses the listed reallocation (Open, then Reverse this correction; once another Bursar officer approves the reversal, the payment is back where it was).
+                Then, if the money belongs at the level the count now gives, a new reallocation for the reason &ldquo;{REASON_WORDS.WRONG_LEVEL}&rdquo; records it there.
+              </span>
+              <Btn kind="ghost" busyLabel="Preparing..." onClick={() => downloadOldLevel()}>Download Excel</Btn>
+            </div>
+          </PBody>
+          <DTable cols={["Correction ref", "Student", "To", "Level recorded|num", "Level now|num", "Status", "|num"]} rows={oldLevel.map((r) => {
+            const to = oldLevelTo(r);   // V756: the purpose once, the period beneath, as the list above shows a destination
+            return [
+              <span key="s" className="tnum">{r.realloc_ref}</span>,
+              <span key="p"><span className="tnum">{r.matric_no ?? "—"}</span><div className="sub2">{r.name}</div></span>,
+              <span key="t">{to.purpose}<div className="sub2">{to.period}</div></span>,
+              <span key="lr" className="tnum">{r.level_recorded ?? "—"}</span>,
+              <b key="ln" className="tnum">{r.level_now ?? "—"}</b>,
+              <Pil key="st" kind={STATUS_WORDS[r.status]?.[0] ?? "grey"}>{STATUS_WORDS[r.status]?.[1] ?? r.status}</Pil>,
+              <Btn key="o" kind="secondary" busyLabel="Opening..." onClick={() => show(r.id)}>Open</Btn>,
+            ];
+          })} texts={oldLevel.map((r) => `${r.realloc_ref} ${r.reference} ${r.matric_no ?? ""} ${r.name} ${r.to_purpose} ${r.to_session}`)} />
+        </Panel>
+      ) : null}
 
       {making ? <NewReallocation destinations={destinations} onClose={() => setMaking(false)}
         onDone={(d) => { setMaking(false); setOpen(d); notify(`${d.reallocation.realloc_ref} sent for approval`); router.refresh(); }} /> : null}

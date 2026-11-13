@@ -188,7 +188,9 @@ export function Dashboard({ s, gst = null, outstanding = null, transfer = null }
   const published = s.gpa.filter((g) => g.published_count > 0).length;
   const prob = s.probation && s.probation.standing === "PROBATION" ? s.probation : null;
   const adv = s.probation && s.probation.standing === "ADVISED_TO_WITHDRAW" ? s.probation : null;
-  const semWord = (n: number | null) => (n === 2 ? "second" : "first");
+  // V756: the semester a standing was pronounced on — a standing is never pronounced on the Summer (the database leaves it out), so a
+  // semester 3 here is a CCE or postgraduate third semester
+  const semWord = (n: number | null) => (n === 3 ? "third" : n === 2 ? "second" : "first");
   // before matriculation (V282): the fees paid make the person a student awaiting their number; the JAMB number stays the sign-in
   const feesPaidStage = ["COURSE_REGISTRATION_PENDING", "MATRICULATION_PENDING"].includes(s.lifecycle ?? "");
   const preMatric = !s.matricNo && s.entryMode !== "POSTGRADUATE";
@@ -247,7 +249,7 @@ export function Dashboard({ s, gst = null, outstanding = null, transfer = null }
       {transfer ? <TransferCard t={transfer} /> : null}
       {adv ? (
         <Note kind="bad" title="The result sheet advises your withdrawal" action={<LinkBtn kind="ghost" href="/student/results">Your results</LinkBtn>}>
-          CGPA <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} second semester ({adv.pronounced_level} level), still under {Number(adv.threshold ?? 1).toFixed(2)} after probation. Senate decides on withdrawal; until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
+          CGPA <strong className="tnum">{adv.cgpa != null ? Number(adv.cgpa).toFixed(2) : "—"}</strong> at the end of the {adv.pronounced_session} {semWord(adv.pronounced_semester ?? 2)} semester ({adv.pronounced_level} level), still under {Number(adv.threshold ?? 1).toFixed(2)} after probation. Senate decides on withdrawal; until then your registration is held as on probation{adv.probation_max_units != null ? <>, to <strong>{adv.probation_max_units} units</strong> at most</> : null}.
         </Note>
       ) : null}
       {s.probation?.result_status && s.probation.result_status !== "PUBLISHED" && s.probation.result_message ? (

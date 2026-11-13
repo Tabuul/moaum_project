@@ -113,6 +113,13 @@ class StudentFullRecordController {
         return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
+    /** V754, V756: the sessions whose semester 3 was this student's Summer Semester, named the Summer semester on the record (a CCE
+     *  or postgraduate student's semester 3 is their own third semester) */
+    private java.util.List<String> summerSessions(UUID student) {
+        return jdbc.sql("SELECT sp.session FROM registration.summer_period sp WHERE registration.is_summer_for(:s, sp.session, 3) ORDER BY sp.session")
+                .param("s", student).query(String.class).list();
+    }
+
     /* ── the overview: who the student is, and where they stand ── */
 
     @GetMapping("/overview")
@@ -175,6 +182,7 @@ class StudentFullRecordController {
         // a lecturer, the library, security, housing and HR read who the student is, not how to reach them
         if (LIMITED.containsKey(office())) out.remove("contact");
         out.put("sections", sections(office()));
+        out.put("summerSessions", summerSessions(id));   // V754, V756
         return out;
     }
 
@@ -231,7 +239,7 @@ class StudentFullRecordController {
     Map<String, Object> progression(@PathVariable UUID id) {
         need("progression");
         reach(id);
-        return read("""
+        Map<String, Object> out = read("""
                 SELECT json_build_object(
                     'held', (SELECT coalesce(json_agg(x ORDER BY x.session, x.semester NULLS FIRST), '[]'::json) FROM (
                         SELECT e.session, NULL::int AS semester, e.level, 'ENROLMENT' AS source, e.mode AS detail, e.enrolled_at AS at
@@ -265,6 +273,8 @@ class StudentFullRecordController {
                           FROM people.academic_position ap WHERE ap.student_id = :s) x)
                 )::text
                 """, id);
+        out.put("summerSessions", summerSessions(id));   // V756: a semester 3 held in one of them is the student's Summer, named so
+        return out;
     }
 
     /* ── course registration: every registration with its courses, and every reset ── */
@@ -275,7 +285,7 @@ class StudentFullRecordController {
     Map<String, Object> registrations(@PathVariable UUID id) {
         need("registrations");
         reach(id);
-        return read("""
+        Map<String, Object> out = read("""
                 SELECT json_build_object(
                     'registrations', (SELECT coalesce(json_agg(x ORDER BY x.session DESC, x.semester DESC), '[]'::json) FROM (
                         SELECT r.id, r.session, r.semester, r.level, r.status, r.submitted_at, r.approved_at, r.approval_mode, r.returned_comment,
@@ -293,6 +303,8 @@ class StudentFullRecordController {
                           FROM registration.registration_reset z WHERE z.student_id = :s) x)
                 )::text
                 """, id);
+        out.put("summerSessions", summerSessions(id));   // V754, V756
+        return out;
     }
 
     /* ── results: as published; a missing result is never a zero ── */
@@ -303,7 +315,7 @@ class StudentFullRecordController {
     Map<String, Object> results(@PathVariable UUID id) {
         need("results");
         reach(id);
-        return read("""
+        Map<String, Object> out = read("""
                 SELECT json_build_object(
                     'results', (SELECT coalesce(json_agg(x), '[]'::json) FROM assessment.student_results(:s) x),
                     'semesters', (SELECT coalesce(json_agg(x ORDER BY x.session, x.semester), '[]'::json) FROM assessment.student_gpa(:s) x),
@@ -312,6 +324,8 @@ class StudentFullRecordController {
                     'standing', (SELECT row_to_json(x) FROM assessment.student_standing(:s) x LIMIT 1)
                 )::text
                 """, id);
+        out.put("summerSessions", summerSessions(id));   // V754, V756
+        return out;
     }
 
     /* ── finance: every payment reference, each session's school fees, refunds, overpayments, withdrawals, NELFUND ── */

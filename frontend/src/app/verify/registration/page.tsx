@@ -9,6 +9,8 @@ interface Course { course_code: string; title: string; units: number; entry_type
 interface RegVerify {
   genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; status?: string; approvedOn?: string | null; units?: number; courses?: Course[];
+  /** V756: semester 3 was the student's Summer Semester (registration.is_summer_for); missing is not the Summer */
+  summer?: boolean;
 }
 
 /** the academic type shown: GST, Elective or Core (Core/Required → Core), Carryover flagged */
@@ -59,7 +61,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
             <>
               <div>
                 {[["Name", v.name], ["Matriculation number", v.matricNo ?? "—"], ["Programme", v.programme ?? "—"],
-                  ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester) : "—"],
+                  ["Level", v.level ? `${v.level} Level` : "—"], ["Session", v.session ?? "—"], ["Semester", v.semester ? semesterName(v.semester, v.summer) : "—"],
                   ["Total credit units", v.units != null ? String(v.units) : "—"], ["Approved on", approved]].map(([k, val], i) => (
                   <div key={i} className="row row--between" style={{ padding: "var(--s-2) 0", borderBottom: "1px solid var(--line-2)" }}>
                     <span className="eyebrow">{k}</span>

@@ -1,11 +1,13 @@
 /** Digital academic documents (V262): the shapes the screens read, the words for each state, and the small helpers. */
-import { reasonHeader } from "@/lib/reason";
+import { reasonHeader } from "./reason.ts";
 import type { Problem } from "@/lib/api";
 
 export type PilKind = "grey" | "info" | "ok" | "bad" | "warn";
 
 export interface Course { code: string; title: string; units: number; grade: string | null; points: number | null; quality: number | null; type: string | null; outcome: string | null }
-export interface SemesterBlock { semester: number; courses: Course[]; units: number | null; gpa: number | null; cgpa: number | null; tcr?: number | null; tce?: number | null; twgp?: number | null }
+export interface SemesterBlock { semester: number; courses: Course[]; units: number | null; gpa: number | null; cgpa: number | null; tcr?: number | null; tce?: number | null; twgp?: number | null;
+  /** V754, V756: semester 3 was the student's Summer Semester (registration.is_summer_for); missing on a statement frozen before it */
+  summer?: boolean }
 export interface SessionBlock { session: string; semesters: SemesterBlock[] }
 export interface Statement {
   holder: string; matricNo: string; admissionNo?: string; programme: string; programmeCode?: string; department?: string; faculty?: string; award?: string;
@@ -79,7 +81,9 @@ export const longDay = (iso: string | null | undefined) => (iso ? new Date(iso).
 export const whenAt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 export const naira = (n: number | string | null | undefined) => (n === null || n === undefined ? "—" : `₦${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 export const verifyPathFor = (key: string) => `/verify/document/${encodeURIComponent(key)}`;
-export const semesterName = (n: number | null | undefined) => (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : n ? `Semester ${n}` : "");
+/** V754: semester 3 of a session that had a Summer Semester is the Summer semester; any other semester 3 keeps "Third" */
+export const semesterName = (n: number | null | undefined, summer?: boolean | null) =>
+  (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? (summer ? "Summer semester" : "Third semester") : n ? `Semester ${n}` : "");
 
 export function parseStatement(s: string | null | undefined): Statement | null {
   if (!s) return null;

@@ -8,7 +8,7 @@ import { currentInstitution } from "@/lib/document/institution-cache";
 import { institutionLogoAbsoluteUrl, institutionLogoUrl } from "@/lib/document/institution-client";
 import { colName, xlsx, type Cell } from "@/lib/xlsx-write";
 import { docSerial } from "@/lib/exportbrand";
-import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { ScopeBar, semesterInSentence, thirdSemester, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { StreamTabs } from "@/components/results/StreamTabs";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -22,7 +22,11 @@ const escd = (s: string) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;",
 
 export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "REGULAR", mayOmit = false }: { scope: Scope; structure: ScopeStructure; sessions: string[]; sheet: Broadsheet | null; stream?: Stream; mayOmit?: boolean }) {
   const programme = structure.faculties.flatMap((f) => f.departments).flatMap((d) => d.programmes).find((p) => p.code === scope.prog);
-  const semester = (scope.sem || "1") === "1" ? "First" : scope.sem === "3" ? "Summer" : "Second";   // V739
+  /* V739; V754, V756: a semester 3 is the Summer only on a regular sheet of a session that had a Summer Semester (the sheet's
+     summer) — a CCE or postgraduate sheet's, and any other, is the third. Before a sheet is read, the bar's rule (the stream and
+     the structure's Summer sessions), which is the same rule */
+  const third = sheet ? (sheet.summer ? "Summer" : "Third") : thirdSemester(scope.session, stream, structure.summerSessions);
+  const semester = (scope.sem || "1") === "1" ? "First" : scope.sem === "3" ? third : "Second";
   /** the downloaded file's name, the Excel's and the PDF's alike: "Result B.Sc. POLITICAL SCIENCE 200 Level First Semester 2024-2025" */
   const fileName = (degree: string, level: number | string, session: string) => `Result ${degree}${stream === "CCE" ? " CCE" : stream === "PG" ? " PG" : ""} ${level} Level ${semester} Semester ${session.replace("/", "-")}`;
   /* the course columns in the Senate's order: carryover courses (a course from a lower level, re-written
@@ -271,7 +275,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
         A mark counts once its set has passed the Faculty Board; scores still in the chain are greyed. A candidate recorded absent is ABS, graded F, and the course is owed. Withheld, incomplete and malpractice (WIT, INC, MAL) are held for the Senate: never counted, never owed, named in the remark (HELD:) and nothing pronounced on the semester until the Senate decides; an exemption (EXE) is neither counted nor owed. No mark and no outcome is NR, no result: never an F, never counted and never owed; on a counted set it is a student not on the approved sheet, named in the remark (NR:) until the result is uploaded, and nothing is pronounced on that semester. The remark reads CO: for a core course owed, Fail: for an elective failed, TO GO ON PROBATION when the CGPA is under 1.0 at 100 level second semester or at a first semester from 200 level, ADVISED TO WITHDRAW at a second semester from 200 level still under 1.0 after the level&rsquo;s probation list, and DID NOT REGISTER FOR THIS SEMESTER for a student in the class with no approved registration for it.
       </Note>
       <Note kind="info" title="A broadsheet is by programme and level. A score sheet is by course." />
-      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}
+      <ScopeBar withSummer stream={stream} scope={scope} structure={structure} sessions={sessions} what="the broadsheet" count={sheet?.rows.length ?? 0} of={sheet?.rows.length ?? 0}
         onExport={sheet ? () => void exportExcel() : undefined} />
       <div className="row"><StreamTabs stream={stream} /></div>
       {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's students">On the Centre&rsquo;s evening classes in the session chosen above; never mixed with the full-time class.</Note> : null}
@@ -373,7 +377,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
           ) : null}
           <Panel title="" right={sheet.gradingInstrument ? `Grading scheme ${sheet.gradingInstrument} · score over grade` : "No grading scheme in force"}>
             {sheet.rows.length === 0 ? (
-              <div className="card__body sub2">No approved registration at this level in {sheet.session} {semester.toLowerCase()} semester for this programme.</div>
+              <div className="card__body sub2">No approved registration at this level in {sheet.session} {semesterInSentence(semester)} semester for this programme.</div>
             ) : sections.map((sec, si) => (
               <div key={si} className={si ? "tablewrap mt-4" : "tablewrap"}>
                 {sec.title ? <div className="ers__h row row--base" style={{ margin: "var(--s-2) 0 6px" }}>{sec.title}<span className="sub2" style={{ textTransform: "none", fontWeight: 400 }}>{sec.rows.length} candidate{sec.rows.length === 1 ? "" : "s"}</span></div> : null}

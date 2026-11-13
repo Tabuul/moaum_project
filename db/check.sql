@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 584
+\set EXPECTED 585
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -35079,6 +35079,76 @@ BEGIN
         || ' | native kept',
         format('err=%s | %s', v_err, msg));
 END $$;
+-- ── V756: the Summer for the students who take it. In 9862/9863, which had a Summer Semester, an undergraduate U, a CCE student C
+--          and a postgraduate P each hold a semester-3 registration: only U's is the Summer (registration.is_summer_for). C's
+--          examination card names the third semester and asks for school fees, not a Summer payment; C's course registration is
+--          not sent to the Summer page; C's menu has no Summer page; and no function but a class's opening still reads "semester 3
+--          of a session with a Summer" for every student. A lecturer bounded by a course in force and by a twin that begins in 30
+--          days keeps the course when the two are merged, until the day before the twin begins. The block undoes its writes ──
+DO $$
+DECLARE
+    S text := '9862/9863'; who uuid := gen_random_uuid(); dept text; prog text := 'C97561'; pgprog text;
+    u uuid := gen_random_uuid(); c uuid := gen_random_uuid(); p uuid := gen_random_uuid(); l uuid := gen_random_uuid(); twin text;
+    fors text; card_u text; card_c text; gate_u text; gate_c text; area text; readers text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V756', true);
+    SELECT dept_code INTO dept FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1;
+    SELECT code INTO pgprog FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S, DATE '9862-10-01', DATE '9863-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9862/756' WHERE name = S;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    SELECT prog, 'B.Sc. Third Semesters', dept, d2.faculty_code, 'UNDER GRADUATE', 0, 400, 4, 'ZRT' FROM ref.department d2 WHERE d2.code = dept;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode) VALUES
+        (u, 'MOAUM/ADM/98/975601', 'MOAU/ZRT/98/7561', 'ZZTHIRD', 'Undergraduate U', prog, 'UTME', S, 100, 400, 'ACTIVE', now(), 'FULL_TIME'),
+        (c, 'MOAUM/ADM/98/975602', 'MOAU/ZRT/98/7562', 'ZZTHIRD', 'Continuing C', prog, 'CCE', S, 100, 400, 'ACTIVE', now(), 'PART_TIME'),
+        (p, 'MOAUM/ADM/98/975603', 'MOAU/ZRT/98/7563', 'ZZTHIRD', 'Postgraduate P', pgprog, 'POSTGRADUATE', S, 700, 700, 'ACTIVE', now(), 'FULL_TIME');
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['FINAL_YEAR', 'SPILLOVER', 'AUTHORISED'], NULL, NULL, 'check V756');
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status)
+    VALUES (gen_random_uuid(), c, S, 3, 400, 'DRAFT'), (gen_random_uuid(), p, S, 3, 700, 'DRAFT');
+
+    fors := registration.is_summer_for(u, S, 3)::text || '/' || registration.is_summer_for(c, S, 3)::text || '/' || registration.is_summer_for(p, S, 3)::text
+         || '/' || registration.is_summer_for(u, S, 2)::text;
+    card_u := (registration.exam_card_state(u, S, 3) ->> 'summer') || ':' || (registration.exam_card_state(u, S, 3) ->> 'reason' LIKE '%Summer Semester page%')::text;
+    card_c := (registration.exam_card_state(c, S, 3) ->> 'summer') || ':' || (registration.exam_card_state(c, S, 3) ->> 'reason' LIKE '%third semester%')::text
+           || ':' || (registration.exam_card_state(c, S, 3) ->> 'reason' NOT LIKE '%Summer%')::text;
+    gate_u := (coalesce(registration.registration_gate(u, S, 3), '') LIKE '%Summer Semester page%')::text;
+    gate_c := (coalesce(registration.registration_gate(c, S, 3), '') LIKE '%Summer Semester page%')::text;
+    area := registration.summer_area(c)::text || '/' || registration.summer_area(p)::text;
+    SELECT coalesce(string_agg(x.oid::regprocedure::text, ',' ORDER BY x.oid::regprocedure::text), 'none') INTO readers
+      FROM pg_proc x WHERE x.prosrc LIKE '%summer_period sp WHERE sp.session%' AND x.oid NOT IN ('catalogue.open_class(text,text,integer,text)'::regprocedure, 'registration.is_summer(text,integer)'::regprocedure);
+
+    -- a grant in force on a course merged into one the lecturer holds from 30 days hence: kept until the day before
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZG 781', 'Twin course', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZG 782', 'Twin course', 3, 1, 400, dept, 'Core', 'LIVE');
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (l, 'ZZ7561', 'ZZTWIN', 'Lecturer');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), l, 'lecturer', 'course', 'ZZG 781', 'check V756', who, current_date),
+        (gen_random_uuid(), l, 'lecturer', 'course', 'ZZG 782', 'check V756', who, current_date + 30);
+    PERFORM catalogue.merge_course('ZZG 782', 'ZZG 781', 'the same course written twice (check V756)', false);
+    SELECT string_agg(scope_id || ' ' || CASE WHEN valid_to IS NULL THEN 'open' WHEN valid_to = current_date + 29 THEN 'to the day before'
+                                               ELSE valid_to::text END, ',' ORDER BY valid_from) INTO twin
+      FROM iam.office_assignment WHERE person_id = l;
+
+    msg := 'is_summer_for ' || fors || ' | card U ' || coalesce(card_u, '-') || ' C ' || coalesce(card_c, '-') || ' | Summer page gate U ' || gate_u
+        || ' C ' || gate_c || ' | Summer menu C/P ' || area || ' | readers for every student ' || readers || ' | twin ' || coalesce(twin, '-');
+    RAISE EXCEPTION 'the V756 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V756 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V756: semester 3 of a Summer session is the Summer only for an undergraduate outside CCE; a CCE or postgraduate third semester is their own',
+      coalesce(msg = 'is_summer_for true/false/false/false | card U true:true C false:true:true | Summer page gate U true C false'
+                     || ' | Summer menu C/P false/false | readers for every student none | twin ZZG 782 to the day before,ZZG 782 open', false),
+      msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -11,7 +11,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { semesterName } from "@/lib/student-portal";
 import {
-  ROSTER_STATUSES, courseSchedule, permitSections, permitStatusLabel, rosterStatusLabel, slotDate, slotTime, slotVenue,
+  ROSTER_STATUSES, courseSchedule, permitSections, permitSemesterName, permitStatusLabel, rosterStatusLabel, slotDate, slotTime, slotVenue,
   type PermitState, type RosterPage, type RosterRow,
 } from "@/lib/gst-eps-permit";
 
@@ -160,7 +160,7 @@ export function GstPermits({ data, base, filters }: { data: RosterPage; base: st
       </Panel>
 
       {open ? (
-        <Modal wide title={`GST & EPS permit · ${open.student.name}`} sub={`${open.student.matricNo ?? open.student.number ?? ""} · ${open.session} · ${semesterName(open.semester)} semester`} onClose={() => setOpen(null)}
+        <Modal wide title={`GST & EPS permit · ${open.student.name}`} sub={`${open.student.matricNo ?? open.student.number ?? ""} · ${open.session} · ${permitSemesterName(open.semester, open.summer)} semester`} onClose={() => setOpen(null)}
           foot={open.permitId ? (
             <div className="row row--inline" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end", width: "100%" }}>
               <Field id="pm-reason" label={open.permit?.status === "REVOKED" ? "Why it is restored" : "Why it is withdrawn"} hint="At least ten characters; the student is told the permit was withdrawn, not why.">
@@ -172,7 +172,10 @@ export function GstPermits({ data, base, filters }: { data: RosterPage; base: st
             </div>
           ) : undefined}>
           <Note kind={open.available ? "ok" : open.permit?.status === "REVOKED" ? "bad" : "info"} title={permitStatusLabel(open)}>
-            {open.available ? "The permit may be issued: a submitted registration with GST or EPS courses, the school fees paid and the GST fee in order." : open.reason}
+            {/* V754: a Summer registration's permit stands on the Summer payment alone (the University's decision of 13 November 2026) */}
+            {open.available ? (open.summer
+              ? "The permit may be issued: a Summer Semester registration with GST or EPS courses and the Summer Semester fees paid."
+              : "The permit may be issued: a submitted registration with GST or EPS courses, the school fees paid and the GST fee in order.") : open.reason}
           </Note>
           <KvGrid cls="grid--3" pairs={[
             ["Permit number", open.permit?.reference ?? "Not generated"],

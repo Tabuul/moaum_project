@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Results, ResultRow, Semester } from "@/lib/student-portal";
-import { semesterName } from "@/lib/student-portal";
+import { isSummer, semesterName } from "@/lib/student-portal";
 import {A4, Page} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 
@@ -56,7 +56,7 @@ export async function GET() {
   for (const g of groups) {
     const sm = semOf(g.session, g.semester);
     need(30 + g.rows.length * 15 + 28);
-    p.text(L, y, `${g.session} · ${semesterName(g.semester)} semester`, 11, true, [0.06, 0.15, 0.22]);
+    p.text(L, y, `${g.session} · ${semesterName(g.semester, isSummer(r.summerSessions, g.session, g.semester))} semester`, 11, true, [0.06, 0.15, 0.22]);   // V754
     y -= 16;
     p.fill(L, y - 5, R - L, 17, 0.16);
     p.text(L + 6, y, "COURSE", 7.5, true, [1, 1, 1]);

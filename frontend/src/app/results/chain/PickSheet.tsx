@@ -10,7 +10,8 @@ import { DTable } from "@/components/proto/DTable";
 export function PickSheet({ scope, structure, sessions, listing }: { scope: Scope; structure: ScopeStructure; sessions: string[]; listing: SheetListing }) {
   return (
     <>
-      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
+      {/* V756: the result sets of every stream are listed here, so semester 3 of a Summer session is "Summer and third semester" */}
+      <ScopeBar withSummer stream="ALL" scope={scope} structure={structure} sessions={sessions} what="result sets" count={listing.sheets.length} of={listing.tiles.expected} />
       <Note kind="info" title="Choose a sheet to see its chain" />
       <Panel title="Score sheets in this scope" right={`${listing.sheets.length}`}>
         <DTable

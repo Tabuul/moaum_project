@@ -75,7 +75,8 @@ class AllocationDeskController {
         AllocationReach.Reach r = reach.require(AllocationReach.VIEW);
         String current = sessionOr(null);
         Map<String, Object> out = new LinkedHashMap<>();
-        // V735: a session with a Summer Semester allocates its semester 3, the Summer's classes
+        // V735: a session with a Summer Semester allocates its semester 3, the Summer's classes. V756: the full-time classes of that
+        // semester 3 are the Summer's; a postgraduate class of it is the School's third semester (each class says which: "summer")
         out.put("sessions", jdbc.sql("""
                 SELECT s.name, s.state, CASE WHEN sp.session IS NULL THEN s.semesters ELSE greatest(s.semesters, 3) END AS semesters,
                        sp.session IS NOT NULL AS summer
@@ -198,6 +199,10 @@ class AllocationDeskController {
                 + " ORDER BY level, course_code LIMIT :n OFFSET :off)" + """
                 SELECT o.id, pick.course_code, c.title, c.units, c.level, c.dept_code, d.name AS department, d.faculty_code, f.name AS faculty,
                        o.id IS NULL AS no_class,
+                       -- V756: the class's stream (a course with no class yet: the one the desk would open, as catalogue.open_class chooses it),
+                       -- and whether it is the Summer's — semester 3 of a session that had a Summer Semester, a full-time class; a postgraduate
+                       -- class's semester 3 is its third semester
+                       x.stream, (:sem = 3 AND x.stream = 'REGULAR' AND registration.is_summer(:s, :sem)) AS summer,
                        (SELECT string_agg(DISTINCT pr.name, '; ') FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code WHERE co.course_code = pick.course_code) AS programmes,
                        o.lecturer_id, concat_ws(', ', nullif(btrim(lp.surname), ''), nullif(btrim(lp.given_names), '')) AS lecturer, lp.staff_number AS lecturer_staff_number,
                        (SELECT string_agg(concat_ws(', ', nullif(btrim(tp.surname), ''), nullif(btrim(tp.given_names), '')), '; ' ORDER BY tp.surname)
@@ -211,6 +216,11 @@ class AllocationDeskController {
                   FROM pick
                   JOIN catalogue.course c ON c.code = pick.course_code
                   LEFT JOIN catalogue.offering o ON o.id = pick.id
+                  CROSS JOIN LATERAL (SELECT coalesce(o.stream,
+                         CASE WHEN EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
+                               AND NOT EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                                WHERE co.course_code = c.code AND coalesce(p.category, '') <> 'POST GRADUATE')
+                              THEN 'PG' ELSE 'REGULAR' END) AS stream) x
                   LEFT JOIN ref.department d ON d.code = c.dept_code
                   LEFT JOIN ref.faculty f ON f.code = d.faculty_code
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
@@ -235,6 +245,9 @@ class AllocationDeskController {
     @Transactional(readOnly = true)
     Map<String, Object> one(@PathVariable UUID offering) {
         Map<String, Object> c = new LinkedHashMap<>(reach.onClass(offering, AllocationReach.VIEW));
+        // V756: a full-time class of semester 3 in a session that had a Summer Semester is the Summer's; a postgraduate class's is its third
+        c.put("summer", "REGULAR".equals(c.get("stream")) && Boolean.TRUE.equals(jdbc.sql("SELECT registration.is_summer(:s, :sem)")
+                .param("s", c.get("session")).param("sem", c.get("semester")).query(Boolean.class).single()));
         c.put("programmes", jdbc.sql("""
                 SELECT DISTINCT pr.code, pr.name, co.level FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code
                  WHERE co.course_code = :c ORDER BY pr.name
@@ -319,6 +332,8 @@ class AllocationDeskController {
         List<Map<String, Object>> classes = jdbc.sql("""
                 SELECT o.id, o.course_code, c.title, c.units, c.level, o.session, o.semester, c.dept_code, d.name AS department, d.faculty_code,
                        (SELECT string_agg(DISTINCT pr.name, '; ') FROM catalogue.course_offer co JOIN ref.programme pr ON pr.code = co.programme_code WHERE co.course_code = o.course_code) AS programmes,
+                       -- V756: a full-time class of a session's Summer is the Summer's; a postgraduate class's semester 3 is its third
+                       o.stream, (o.semester = 3 AND o.stream = 'REGULAR' AND registration.is_summer(o.session, o.semester)) AS summer,
                        CASE WHEN o.lecturer_id = :p THEN 'LECTURER' WHEN o.second_examiner_id = :p AND NOT EXISTS (SELECT 1 FROM catalogue.offering_teacher t WHERE t.offering_id = o.id AND t.lecturer_id = :p)
                             THEN 'SECOND_EXAMINER' ELSE 'CO_LECTURER' END AS role,
                        (SELECT sh.stage FROM assessment.score_sheet sh WHERE sh.offering_id = o.id ORDER BY (sh.stage = 'ENTRY') LIMIT 1) AS stage,

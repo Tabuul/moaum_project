@@ -231,12 +231,21 @@ class AllocationController {
                                   WHERE co.course_code = c.code), '[]'::jsonb) AS programmes,
                        EXISTS (SELECT 1 FROM assessment.score_sheet sh WHERE sh.offering_id = o.id) AS sheet,
                        o.id IS NULL AS no_class,
-                       NOT EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code) AS not_in_structure
+                       NOT EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code) AS not_in_structure,
+                       -- V756: the class's stream (a course with no class yet: the one its allocation would open, as catalogue.open_class
+                       -- chooses it), and whether it is the Summer's — semester 3 of a session that had a Summer Semester, a full-time class;
+                       -- a postgraduate class's semester 3 is its third semester
+                       x.stream, (:semester = 3 AND x.stream = 'REGULAR' AND registration.is_summer(:session, :semester)) AS summer
                   FROM catalogue.course c
                   -- V443: the department's COURSES for the semester, each with its class in the session if one exists — a course is never
                   -- tied to a session; a class is opened when the course is allocated (POST /open), not by the calendar alone
                   LEFT JOIN catalogue.offering o ON o.course_code = c.code AND o.session = :session AND o.semester = :semester
                                                  AND o.stream IN ('REGULAR', 'PG')          -- V380: the full-time classes; the Centre allocates its own (V389: and the School's)
+                  CROSS JOIN LATERAL (SELECT coalesce(o.stream,
+                         CASE WHEN EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code = c.code)
+                               AND NOT EXISTS (SELECT 1 FROM catalogue.course_offer co JOIN ref.programme p ON p.code = co.programme_code
+                                                WHERE co.course_code = c.code AND coalesce(p.category, '') <> 'POST GRADUATE')
+                              THEN 'PG' ELSE 'REGULAR' END) AS stream) x
                   LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                   LEFT JOIN iam.person sp ON sp.id = o.second_examiner_id
                  WHERE c.dept_code = :dept

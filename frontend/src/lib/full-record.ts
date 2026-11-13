@@ -33,7 +33,9 @@ export interface Decision { decided_at: string; rule: string | null; previous_st
   new_level: number | null; previous_cohort: string | null; effective_cohort: string | null; reason: string | null; batch_ref: string | null; actor_office: string | null;
   officer: string | null }
 export interface StatusChange { id: number; from_status: string | null; to_status: string; instrument: string | null; effective_on: string; expires_on: string | null; reason: string | null }
-export interface Progression { held: Held[]; changes: Change[]; decisions: Decision[]; statuses: StatusChange[]; deferments: Row[]; position: Row | null }
+export interface Progression { held: Held[]; changes: Change[]; decisions: Decision[]; statuses: StatusChange[]; deferments: Row[]; position: Row | null;
+  /** V756: the sessions whose semester 3 was this student's Summer Semester (as on the registrations and results answers) */
+  summerSessions?: string[] }
 
 /** the names the University writes in capitals stay so (UTME, not Utme) */
 const ACRONYMS = new Set(["UTME", "DE", "JUPEB", "IJMB", "CCE", "PG", "SIWES", "GST", "EPS", "HOD", "ICT", "NELFUND", "CAPS", "JAMB", "NCE", "ND", "HND", "OND", "CGPA", "GPA", "SP1", "SP2"]);
@@ -42,11 +44,16 @@ export const words = (v: unknown) => String(v ?? "").split("_").filter(Boolean)
   .map((w, i) => (ACRONYMS.has(w.toUpperCase()) ? w.toUpperCase() : i === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase())).join(" ");
 export const day = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "");
 export const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const semWord = (n: unknown) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : n == null ? "" : `Semester ${n}`);
+/** V754, V756: semester 3 of a session among the answer's summerSessions (the student's Summer) is the Summer semester */
+const semWord = (n: unknown, session?: unknown, summerSessions?: unknown) =>
+  (n === 1 ? "First" : n === 2 ? "Second"
+    : n === 3 ? (Array.isArray(summerSessions) && summerSessions.includes(String(session ?? "")) ? "Summer" : "Third")
+      : n == null ? "" : `Semester ${n}`);
 
 /** the level the student was at in each session the record holds — from the enrolment and the course registrations, as recorded;
- *  a session with neither is not on the list (no level is filled in), and one whose records disagree says so */
-export function levelHistory(p: Pick<Progression, "held">): { session: string; level: number | null; levels: number[]; semesters: string; source: string; conflict: boolean }[] {
+ *  a session with neither is not on the list (no level is filled in), and one whose records disagree says so. V756: a registration in
+ *  the student's Summer (semester 3 of a session among the answer's summerSessions) is named the Summer */
+export function levelHistory(p: Pick<Progression, "held" | "summerSessions">): { session: string; level: number | null; levels: number[]; semesters: string; source: string; conflict: boolean }[] {
   const by = new Map<string, Held[]>();
   for (const h of p.held) by.set(h.session, [...(by.get(h.session) ?? []), h]);
   return Array.from(by.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([session, hs]) => {
@@ -57,7 +64,7 @@ export function levelHistory(p: Pick<Progression, "held">): { session: string; l
       session,
       level: enrolment?.level ?? (levels.length === 1 ? levels[0] : null),
       levels,
-      semesters: regs.map((r) => `${semWord(r.semester)} (${words(r.detail)})`).join(", "),
+      semesters: regs.map((r) => `${semWord(r.semester, session, p.summerSessions)} (${words(r.detail)})`).join(", "),
       source: [enrolment ? "Enrolment" : "", regs.length ? "Course registration" : ""].filter(Boolean).join(" and "),
       conflict: levels.length > 1,
     };
@@ -140,6 +147,7 @@ const n = (rows: (string | number)[][]) => rows.map((r, i) => [i + 1, ...r]);
 export function sectionTables(section: Section, d: Record<string, unknown> | null | undefined): Table[] {
   if (!d) return [];
   const a = (k: string) => ((d[k] ?? []) as Row[]);
+  const ss = d.summerSessions;   // V754, V756: on the registrations and results answers
   switch (section) {
     case "progression": {
       const p = d as unknown as Progression;
@@ -153,26 +161,26 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
     case "registrations":
       return [
         { title: "Course registrations", headers: ["S/N", "Session", "Semester", "Level", "Status", "Units", "Courses", "Submitted", "Approved"],
-          rows: n(a("registrations").map((r) => [String(r.session), semWord(r.semester), Number(r.level ?? 0) || "", words(r.status), Number(r.units ?? 0),
+          rows: n(a("registrations").map((r) => [String(r.session), semWord(r.semester, r.session, ss), Number(r.level ?? 0) || "", words(r.status), Number(r.units ?? 0),
             ((r.courses ?? []) as Row[]).map((c) => `${c.course_code} (${c.units})`).join(", "), day(r.submitted_at), day(r.approved_at)])) },
         { title: "Registrations reset (each version kept)", headers: ["S/N", "Session", "Semester", "Level", "Was", "Courses", "Units", "Reset on", "By", "Reason"],
-          rows: n(a("resets").map((z) => [String(z.session), semWord(z.semester), Number(z.level ?? 0) || "", words(z.previous_status), Number(z.course_count ?? 0),
+          rows: n(a("resets").map((z) => [String(z.session), semWord(z.semester, z.session, ss), Number(z.level ?? 0) || "", words(z.previous_status), Number(z.course_count ?? 0),
             Number(z.units ?? 0), day(z.reset_at), String(z.reset_by ?? z.reset_office ?? ""), String(z.reason ?? "")])) },
       ];
     case "results":
       return [
         { title: "Results", headers: ["S/N", "Session", "Semester", "Course", "Title", "Units", "CA", "Exam", "Total", "Grade or state"],
-          rows: n((a("results") as unknown as ResultRow[]).map((r) => [r.session, semWord(r.semester), r.course_code, r.title, r.units,
+          rows: n((a("results") as unknown as ResultRow[]).map((r) => [r.session, semWord(r.semester, r.session, ss), r.course_code, r.title, r.units,
             r.published && r.ca != null ? r.ca : "", r.published && r.exam != null ? r.exam : "", r.published && r.total != null ? r.total : "", resultWord(r)])) },
         { title: "Grade point averages", headers: ["S/N", "Session", "Semester", "Units", "GPA", "CGPA", "Published", "Registered"],
-          rows: n(a("semesters").map((g) => [String(g.session), semWord(g.semester), Number(g.units ?? 0), g.gpa == null ? "" : Number(g.gpa).toFixed(2),
+          rows: n(a("semesters").map((g) => [String(g.session), semWord(g.semester, g.session, ss), Number(g.units ?? 0), g.gpa == null ? "" : Number(g.gpa).toFixed(2),
             g.cgpa == null ? "" : Number(g.cgpa).toFixed(2), Number(g.published_count ?? 0), Number(g.registered_count ?? 0)])) },
         // V666: each course once, with the failed attempts behind it; every attempt in the history
         { title: "Courses still owed", headers: ["S/N", "Course", "Title", "Units", "Failed in", "Attempts", "First failed in"],
           rows: n(a("owed").map((c) => [String(c.course_code), String(c.title ?? ""), Number(c.units ?? 0), String(c.failed_in ?? ""),
             Number(c.attempts ?? 1), String(c.first_failed_in ?? c.failed_in ?? "")])) },
         { title: "Carry-over history", headers: ["S/N", "Course", "Title", "Session", "Semester", "Grade", "Result", "Now"],
-          rows: n((a("carryHistory") as unknown as HistoryRow[]).map((h) => [h.course_code, h.title, h.session, semWord(h.semester), h.grade ?? "",
+          rows: n((a("carryHistory") as unknown as HistoryRow[]).map((h) => [h.course_code, h.title, h.session, semWord(h.semester, h.session, ss), h.grade ?? "",
             RESULT_WORD[h.result] ?? h.result, h.owed ? "Carry-over" : "Cleared"])) },
       ];
     case "finance":

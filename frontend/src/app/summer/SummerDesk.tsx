@@ -16,6 +16,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { day } from "@/lib/format";
 import { toCsv, sessionSlug } from "@/lib/report";
+import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { classListHref } from "@/lib/lecturer";
 import Link from "next/link";
 import {
@@ -45,6 +46,11 @@ export interface SummerCourseRow {
   offering_id: string; course_code: string; title: string | null; units: number | null; course_semester: number | null; dept_code: string | null;
   department: string | null; lecturer: string | null; registered: number; failed_in_first: number; failed_in_second: number; sheets: number;
   sheet_stage: string | null;
+}
+/** V754: a Summer authorisation to look at again (registration.summer_authorisations_to_review) */
+export interface SummerAuthorisationToReview {
+  kind: "DEAD_CODE" | "REWRITTEN"; session: string; student_id: string; number: string | null; name: string; course_named: string | null;
+  courses_now: string[] | null; trail_gives: string | null; rewritten_by: string | null; at: string | null;
 }
 
 const SETTERS = ["academic", "registrar", "dregistrar", "super"];
@@ -259,6 +265,45 @@ function Issues({ issues, maySet, onDone }: { issues: NonNullable<SummerStudents
   );
 }
 
+/** V754: why an authorisation is to be looked at again */
+function reviewWhy(a: SummerAuthorisationToReview): string {
+  return a.kind === "DEAD_CODE" ? "names a course no longer on the catalogue" : `rewritten by ${a.rewritten_by ?? "a one-off repair"}`;
+}
+
+/** V754: the Summer authorisations naming a course no longer on the catalogue, or rewritten by a one-off repair to another course
+ *  than the trail from the grant gives; nothing is changed (the Office re-authorises) */
+function ToReview({ session, items }: { session: string; items: SummerAuthorisationToReview[] }) {
+  // V756: one row per course to look at; a student's authorisation is counted once
+  const students = new Set(items.map((a) => `${a.session} ${a.student_id}`)).size;
+  async function exportReview() {
+    const head = ["Number", "Name", "Course named", "Now names", "The trail from the grant gives", "Why", "Granted or rewritten"];
+    const rows = items.map((a) => [a.number ?? "", a.name, a.course_named ?? "", (a.courses_now ?? []).join(", "), a.trail_gives ?? "", reviewWhy(a), a.at ? day(a.at) : ""]);
+    const blob = await brandedXlsx(`Summer authorisations to look at again, ${session}`, head, rows, {
+      sheetName: "Authorisations", serial: docSerial("SAR"), meta: [["Session", session], ["Authorisations", String(students)], ["Courses to look at", String(rows.length)]],
+    });
+    downloadBlob(blob, `summer-semester-${sessionSlug(session)}-authorisations.xlsx`);
+    notify(`${students} authorisation${students === 1 ? "" : "s"} exported`);
+  }
+  return (
+    <Panel title="Authorisations to look at again" right={`${students} authorisation${students === 1 ? "" : "s"}`}>
+      <PBody>
+        <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "center" }}>
+          <span className="sub2" style={{ flex: "1 1 40ch" }}>Re-authorise the student with the right course using the Authorise form on this page; nothing is changed automatically.</span>
+          <Btn kind="ghost" size="sm" busyLabel="Preparing…" onClick={() => exportReview()}>Download Excel</Btn>
+        </div>
+      </PBody>
+      <DTable cols={["Number", "Name", "Course named", "Now names", "The trail from the grant gives", "Why"]} rows={items.map((a) => [
+        <span key="n" className="tnum">{a.number ?? "—"}</span>,
+        <Link key="nm" className="lnk" href={`/students/${a.student_id}`}>{a.name}</Link>,
+        <span key="c" className="tnum">{a.course_named ?? "—"}</span>,
+        <span key="w" className="tnum">{a.courses_now?.length ? a.courses_now.join(", ") : "—"}</span>,
+        <span key="t" className="tnum">{a.trail_gives ?? "—"}</span>,
+        <span key="y" className="sub2">{reviewWhy(a)}</span>,
+      ])} texts={items.map((a) => `${a.number ?? ""} ${a.name} ${a.course_named ?? ""} ${(a.courses_now ?? []).join(" ")} ${a.trail_gives ?? ""}`)} />
+    </Panel>
+  );
+}
+
 function download(name: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
   const a = document.createElement("a");
@@ -268,8 +313,10 @@ function download(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function SummerDesk({ periods, session, sessions, students, courses, actingOffice }: {
+export function SummerDesk({ periods, session, sessions, students, courses, actingOffice, toReview = [] }: {
   periods: SummerPeriod[]; session: string | null; sessions: string[]; students: SummerStudents | null; courses: SummerCourseRow[]; actingOffice: string | null;
+  /** V754: the authorisations to look at again (read only where the office may set) */
+  toReview?: SummerAuthorisationToReview[];
 }) {
   const router = useRouter();
   const maySet = SETTERS.includes(actingOffice ?? "");
@@ -341,6 +388,7 @@ export function SummerDesk({ periods, session, sessions, students, courses, acti
           ) : null}
           {maySet ? <PeriodForm key={`${session}-${period?.set_at ?? "new"}`} session={session} period={period} onDone={() => router.refresh()} /> : null}
           {maySet && period ? <Acts session={session} period={period} onDone={() => router.refresh()} /> : null}
+          {maySet && toReview.length ? <ToReview session={session} items={toReview} /> : null}
           {students?.issues?.length ? <Issues issues={students.issues} maySet={maySet} onDone={() => router.refresh()} /> : null}
 
           {s ? (

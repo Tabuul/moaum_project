@@ -842,6 +842,10 @@ public class StudentPortalService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
         out.put("semester", semester);
+        // V756: the semester in view is the student's Summer (the registration object, once made, says the same); a CCE or postgraduate
+        // student's semester 3 is their own third semester
+        out.put("summer", semester == 3 && Boolean.TRUE.equals(jdbc.sql("SELECT registration.is_summer_for(:s, :ses, :sem)")
+                .param("s", id).param("ses", session).param("sem", semester).query(Boolean.class).single()));
         out.put("level", s.currentLevel());
         // V602: a graduated record registers nothing — no menu, no carry-over to add, the registration of the semester (if any) read as history;
         // V665: nor, for a session after the graduation session, does one whose award is approved and whose final clearance is under way
@@ -1358,6 +1362,10 @@ public class StudentPortalService {
             int m = sem == null ? 1 : ((Number) sem).intValue();
             return !scheme || clearedBySemester.computeIfAbsent(ses + "|" + m, k -> repo.resultsCleared(id, ses, m));
         };
+        // V754, V756: the sessions whose semester 3 was this student's Summer Semester, named the Summer semester on the statements
+        // (a CCE or postgraduate student's semester 3 is their own third semester)
+        List<String> summerSessions = jdbc.sql("SELECT sp.session FROM registration.summer_period sp WHERE registration.is_summer_for(:s, sp.session, 3) ORDER BY sp.session")
+                .param("s", id).query(String.class).list();
         List<String> withheld = new java.util.ArrayList<>();
         List<Map<String, Object>> withheldSemesters = new java.util.ArrayList<>();
         for (Map<String, Object> row : rows) {
@@ -1376,6 +1384,7 @@ public class StudentPortalService {
                     Map<String, Object> w = new LinkedHashMap<>();
                     w.put("session", ses);
                     w.put("semester", m);
+                    w.put("summer", m == 3 && summerSessions.contains(ses));   // V756: the student's Summer, named so
                     w.put("outstanding", repo.semesterOutstanding(id, ses, m));
                     withheldSemesters.add(w);
                 }
@@ -1417,6 +1426,7 @@ public class StudentPortalService {
         out.put("clearsResults", scheme ? withheldSemesters.isEmpty() : null);
         out.put("withheldSessions", withheld);
         out.put("withheldSemesters", withheldSemesters);
+        out.put("summerSessions", summerSessions);   // V754, V756
         return out;
     }
 

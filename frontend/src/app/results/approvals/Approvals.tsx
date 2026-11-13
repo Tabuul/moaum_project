@@ -65,7 +65,8 @@ export function Approvals({
 
   return (
     <>
-      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} courses={courses} what="result sets" count={listing.sheets.length} of={t.expected} withCourse />
+      {/* V756: the result sets of every stream are listed here, so semester 3 of a Summer session is "Summer and third semester" */}
+      <ScopeBar withSummer stream="ALL" scope={scope} structure={structure} sessions={sessions} courses={courses} what="result sets" count={listing.sheets.length} of={t.expected} withCourse />
       {problem ? <ProblemNotice problem={problem} /> : null}
       {said ? <Note kind="info" title="Nothing was sent">{said}</Note> : null}
       <Tiles items={[

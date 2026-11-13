@@ -35,11 +35,19 @@ type Data = Record<string, unknown>;
 export interface Overview extends Data { sections: string[]; identity: Row; contact: Row | null; position: Row | null; lifecycle: Row | null; graduand: Row | null;
   /** V638: graduated by status reconciliation, outside the maximum academic period */
   reconciliation?: Row | null;
-  standing: Row | null; fees?: Row | null; session: string | null; semester: number | null; registrations: number; hostel: Row | null }
+  standing: Row | null; fees?: Row | null; session: string | null; semester: number | null; registrations: number; hostel: Row | null;
+  /** V754: the sessions that had a Summer Semester (also on the registrations and results answers) */
+  summerSessions?: string[] }
 
 const s = (v: unknown) => (v == null ? "" : String(v));
 const dash = (v: unknown) => (v == null || v === "" ? "—" : String(v));
-const semWord = (n: unknown) => (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? "Third semester" : "");
+/** V754: semester 3 of a session that had a Summer Semester (the answer's summerSessions) is the Summer semester; any other keeps "Third" */
+const semWord = (n: unknown, session?: unknown, d?: Data) =>
+  (n === 1 ? "First semester" : n === 2 ? "Second semester" : n === 3 ? (summerIn(d, session) ? "Summer semester" : "Third semester") : "");
+const summerIn = (d: Data | undefined, session: unknown) => {
+  const list = d?.summerSessions;
+  return session != null && Array.isArray(list) && list.includes(String(session));
+};
 const pillOf = (v: unknown): "ok" | "bad" | "warn" | "grey" | "info" => {
   const x = s(v).toUpperCase();
   if (/^(PAID|FULLY_PAID|APPROVED|LOCKED|CLEARED|COMPLETED|PUBLISHED|ISSUED|ACTIVE|RESOLVED|CLOSED|CONFIRMED|SETTLED)$/.test(x)) return "ok";
@@ -189,7 +197,7 @@ function OverviewTab({ o, body }: { o: Overview; body: ReactNode }) {
             ["Faculty", dash(id.faculty)], ["Entry", `${words(id.entry_mode)} · ${dash(id.entry_session)} · ${dash(id.entry_level)} Level`],
             ["Study mode", words(id.study_mode) || "—"], ["Matriculated", day(id.matriculated_at) || "—"],
             ...(o.contact ? [["E-mail", dash(o.contact.email)], ["Phone", dash(o.contact.phone)]] as [string, string][] : []),
-            ["Current session", `${dash(o.session)}${o.semester ? ` · ${semWord(o.semester)}` : ""}`],
+            ["Current session", `${dash(o.session)}${o.semester ? ` · ${semWord(o.semester, o.session, o)}` : ""}`],
             ["Hostel", o.hostel ? `${dash(o.hostel.session)} · ${words(o.hostel.state)}` : "None on record"],
           ]} />
         </PBody>
@@ -334,7 +342,7 @@ export function RegistrationsTab({ d, name, file }: { d: Data; name: string; fil
           return (
             <PBody key={s(r.id)}>
               <div className="row row--between" style={{ flexWrap: "wrap", gap: "var(--s-3)" }}>
-                <b className="tnum">{s(r.session)} · {semWord(r.semester)} · {s(r.level)} Level</b>
+                <b className="tnum">{s(r.session)} · {semWord(r.semester, r.session, d)} · {s(r.level)} Level</b>
                 <span className="row" style={{ gap: "var(--s-3)" }}>
                   <span className="sub2 tnum">{s(r.units)} units{r.submitted_at ? ` · submitted ${day(r.submitted_at)}` : ""}{r.approved_at ? ` · approved ${day(r.approved_at)}${r.approved_by ? ` by ${r.approved_by}` : ""}` : ""}</span>
                   <Pil kind={pillOf(r.status)}>{words(r.status)}</Pil>
@@ -350,7 +358,7 @@ export function RegistrationsTab({ d, name, file }: { d: Data; name: string; fil
       </Panel>
       <Panel title="Registrations reset" right={<ExcelBtn table={t[1]} name={name} file={file} />}>
         {resets.length ? <DTable pageSize={0} cols={["Session", "Semester", "Level|mid", "Was", "Courses|num", "Units|num", "Reset on", "By", "Reason"]}
-          rows={resets.map((z) => [s(z.session), semWord(z.semester), s(z.level), words(z.previous_status), s(z.course_count), s(z.units), day(z.reset_at),
+          rows={resets.map((z) => [s(z.session), semWord(z.semester, z.session, d), s(z.level), words(z.previous_status), s(z.course_count), s(z.units), day(z.reset_at),
             s(z.reset_by ?? z.reset_office), s(z.reason)])} />
           : <Empty>No registration has been reset. Each reset keeps the version it replaced.</Empty>}
       </Panel>
@@ -374,7 +382,7 @@ function ResultsTab({ d, name, file }: { d: Data; name: string; file: string }) 
           const g = gpas.find((x) => s(x.session) === ses && s(x.semester) === sem);
           return (
             <PBody key={k}>
-              <div className="row row--between"><b className="tnum">{ses} · {semWord(Number(sem))}</b>
+              <div className="row row--between"><b className="tnum">{ses} · {semWord(Number(sem), ses, d)}</b>
                 <span className="sub2 tnum">{g ? `GPA ${g.gpa == null ? "—" : Number(g.gpa).toFixed(2)} · CGPA ${g.cgpa == null ? "—" : Number(g.cgpa).toFixed(2)} · ${s(g.published_count)} of ${s(g.registered_count)} published` : "Not yet published"}</span></div>
               <DTable pageSize={0} cols={["Course", "Title", "Units|num", "CA|num", "Exam|num", "Total|num", "Grade or state"]}
                 rows={rows.map((r) => [<span key="c" className="tnum">{r.course_code}</span>, r.title, String(r.units), r.published && r.ca != null ? String(r.ca) : "—",

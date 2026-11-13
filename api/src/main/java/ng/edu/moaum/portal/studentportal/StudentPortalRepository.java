@@ -887,6 +887,8 @@ class StudentPortalRepository {
     Optional<Map<String, Object>> registration(UUID student, String session, int semester) {
         return jdbc.sql("""
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, r.approval_mode, registration.units_of(r.id) AS units,
+                       -- V756: the student's Summer semester (a CCE or postgraduate semester 3 is their own third semester)
+                       (r.semester = 3 AND registration.is_summer_for(r.student_id, r.session, r.semester)) AS summer,
                        (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE e.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
@@ -908,6 +910,8 @@ class StudentPortalRepository {
     List<Map<String, Object>> registrationHistory(UUID student) {
         return jdbc.sql("""
                 SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
+                       -- V756: the student's Summer semester (a CCE or postgraduate semester 3 is their own third semester)
+                       (r.semester = 3 AND registration.is_summer_for(r.student_id, r.session, r.semester)) AS summer,
                        (SELECT json_agg(json_build_object('courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE e.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,

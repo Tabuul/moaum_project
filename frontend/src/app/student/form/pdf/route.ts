@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import type { Me, RegistrationView, Entry } from "@/lib/student-portal";
-import { semesterName } from "@/lib/student-portal";
+import { registrationSummer, semesterName } from "@/lib/student-portal";
 import { categoryWords, inUniversityOrder } from "@/lib/course-order";
 import {A4, Page, jpegSize} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
@@ -71,7 +71,8 @@ export async function GET(request: NextRequest) {
   else { p.rule(px, ptop, px + pw, ptop, 0.6, 0.7); p.rule(px, ptop - ph, px + pw, ptop - ph, 0.6, 0.7); p.rule(px, ptop, px, ptop - ph, 0.6, 0.7); p.rule(px + pw, ptop, px + pw, ptop - ph, 0.6, 0.7); p.text(px + 12, ptop - ph / 2, "PHOTO", 7.5, false, [0.6, 0.6, 0.6]); }
 
   const regDate = day(reg.submitted_at ?? reg.approved_at);
-  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester)], ["Date of registration", regDate]]) {
+  // V756: a Summer registration's semester printed "Summer" (the API's "summer"); a CCE or postgraduate semester 3 stays "Third"
+  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester, registrationSummer(v.data))], ["Date of registration", regDate]]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 150, y, val, 10.5);
     y -= 17;

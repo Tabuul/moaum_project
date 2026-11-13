@@ -148,7 +148,7 @@ These questions are for the Academic Office to decide:
 - **CGPA.** CGPA counts every attempt, as the portal's rule already does. No replacement rule was invented for a Summer pass.
 - **Approval of the registration.** A paid Summer registration is approved by the payment. The courses are the student's own outstanding ones, checked by the database. If the Academic Office wants a desk approval as well, it is one rule to add.
 - **The GST & EPS examination permit.** Decided by the University on 13 November 2026 (V754): a GST or EPS course registered in the Summer has its permit on the Summer payment alone, with no separate GST fee and no school fees for semester 3.
-- **The "Third" semester wording.** Decided by the University on 13 November 2026: semester 3 of a session that had a Summer Semester is named the Summer semester on transcripts and results statements; any other semester 3 keeps "Third". V754 gives the statement, the examination card and the permit a `summer` flag and the check pages use it; the transcripts, results statements and the student's screens follow in the next change.
+- **The "Third" semester wording.** Decided by the University on 13 November 2026 (V754): semester 3 of a session that had a Summer Semester is named the Summer semester on transcripts, results statements, the student's results and broadsheet, the office broadsheet, the full record and the check pages; any other semester 3 keeps "Third". From V756 this is the Summer only for the students it admits: a CCE or postgraduate student's semester 3 keeps "Third".
 - **Old-portal carry-overs.** A course registered before with no result on this portal (its result is on the old portal) is not an outstanding course for the Summer: most past results are on the old portal, and counting them would make nearly every final-year student eligible for courses they passed. The Academic Office authorises such a student for the courses it names.
 - **A fee withdrawn after a selection.** The charge keeps the figure it was made at (a charge keeps its figure); the student may take the course back and select it again at the published fee.
 
@@ -181,7 +181,7 @@ A review of those fixes confirmed 13 more; V741 and the same change answer them.
 - **A credit follows its payment.** A credit whose payment is archived, or no longer stands as a Summer payment, is not shown as the student's nor listed on Summer Semester Fees. (V741 also refused to move or archive such a payment until the credit was settled; V742 replaced that refusal, below.) "Applied" records where the money went (the voucher, the reference or the desk that moved it); it moves no money itself.
 - **Drawing a reference after a take-back.** When every chosen course is taken back (passed since, or no longer taught), the take-back stands and the student is told nothing more is owed. A course passed since it was chosen is taken back even when the Academic Office authorised it.
 - **A late payment** never revives a passed course, nor the programme fee alone with no course: the money stands as a Summer credit.
-- **The results chain's scope bar** shows a Summer chosen elsewhere as the Third semester on screens that do not offer the Summer, instead of "Both semesters".
+- **The results chain's scope bar** shows a Summer chosen elsewhere as the Third semester on screens that do not offer the Summer, instead of "Both semesters". (Superseded by V756, below: the bar names semester 3 by session and stream on every page.)
 - **The desk's class-list links** are offered only to the offices that may open a class list; the Bursary offices see the course code.
 
 ## The review of V741 (V742)
@@ -225,5 +225,29 @@ A review of those fixes confirmed four more; V742 and the same change answer the
 - **The GST & EPS permit in the Summer.** `registration.gst_eps_permit_state` reads a Summer registration (`registration.is_summer`) on its own terms:
   - the permit is available once the Summer is paid, with no GST fee and no school fees asked;
   - before the Summer registration exists, it says to select on the Summer Semester page;
-  - its JSON, and the examination card's, carry `summer`. The check pages name it the Summer semester; the student's screens and PDFs follow in the next change.
-- **Authorisations to look at again** (the database's side): `registration.summer_authorisations_to_review(session)` lists the authorisations naming a course no longer on the catalogue and those a one-off repair (V746, V751, V753) rewrote otherwise than the trail from the grant gives. The Summer desk's list follows in the next change.
+  - its JSON, and the examination card's, carry `summer`, so the screens, the PDFs and the check pages name it the Summer semester.
+- **"Summer semester" on results documents.** Transcripts (`credentials.build_statement`'s semester blocks carry `summer`; an issued document's frozen statement without it keeps "Third"), the statement of results, the student broadsheet, the Results screen, the office broadsheet and the full record name semester 3 of a Summer session the Summer semester — for an undergraduate outside CCE (V756).
+- **Authorisations to look at again.** The Summer desk lists, for the Academic Office (`registration.summer_authorisations_to_review`, `GET /api/v1/summer/{session}/{year}/authorisations`), authorisations naming a course no longer on the catalogue and those a one-off repair (V746, V751, V753) rewrote otherwise than the trail from the grant gives. Nothing is changed: the Office re-authorises with the Authorise form. The list exports to Excel.
+
+## The Summer for the students who take it (V756, 13 November 2026)
+
+The Summer Semester is semester 3 of its session for an undergraduate outside CCE: the students `registration.summer_eligibility` admits. CCE and postgraduate students have a third semester of their own, and in a session that also had a Summer it stays their third semester. `registration.is_summer_for(student, session, semester)` answers this for a student. These read it:
+
+- the examination card and its withheld list (`registration.exam_card_state`, `registration.exam_cards_withheld`). A CCE or postgraduate student's semester-3 card asks for their own fees, not a Summer payment;
+- the release of results (`finance.results_cleared`) and the academic standing (`assessment.student_standing`);
+- the semesters registered for school fees and the registrations-without-fees list (`finance.reg_semesters`, `finance.fee_profiles`, `finance.registrations_without_fees`);
+- the course registration gate, the student's Summer menu entry (`registration.summer_area`), the GST & EPS permit, and the transcript's and statement's `summer` flag;
+- in the API, `summerSessions` on the student's results and the full record (now per student), the results check page, and the office broadsheet (`summer` only on a regular sheet).
+
+A class opened for semester 3 still runs any course (`catalogue.open_class`), because a class is not a student. The GST and EPS offices' permit roster still says "Third" for semester 3: one roster can mix Summer students with CCE or postgraduate students.
+
+From the review of V754 and V756:
+
+- **Standing.** A CCE or postgraduate third semester now counts towards the standing, read by the end-of-session rule (the rule of a second semester). `assessment.standing_of` gives nothing for a semester 3, which now only the Summer is. On the broadsheet, a CCE or postgraduate sheet's semester 3 gets the same rule.
+- **Session-wide reports.** These test `semester = 3` first, so only semester-3 rows ask `registration.is_summer_for`.
+- **The student's result status.** The Summer is in progress until its results are due (the end of its examinations where no date is set), and the status names it the Summer semester. A withdrawn or restored Summer permit's message names it too.
+- **The Summer's examination notice.** It goes only to the Summer's own students. A broadsheet leaves out its DID NOT REGISTER rows only on the Summer's own sheet (regular stream, a session with a Summer).
+- **Authorisations to look at again** read a rewritten authorisation as it stands now. It leaves the list once revoked, once re-authorised after the repair, or once it names the course the trail gives. A course a repair took is listed once, and the desk counts each student's authorisation once.
+- **The scope bar** names semester 3 by session and stream on every page. On a page of one stream (the broadsheet, Senate, the class list, which reads a course's regular class) it reads "Summer semester" for the regular stream of a session with a Summer, and "Third semester" otherwise. Any other page lists every stream, or names none: there it reads "Summer and third semester" in a session with a Summer (the pipeline, approvals, the desk, choosing a sheet, the reports). With no session chosen it reads "Summer or third semester". The Course Allocation and Teaching Allocation desks title a Summer session's semester 3 "Summer and third semester" and mark each class Summer or third semester. The lecturers' score-sheet list says "Summer or third".
+- **Names on screens.** The Summer is named on the results-chain screens, the course form and its check, the registration history, the examinations page and the full record's level table, wherever the regular stream of a session with a Summer is meant. The examination card check reads the card's own payment (the Summer payment for a Summer card).
+

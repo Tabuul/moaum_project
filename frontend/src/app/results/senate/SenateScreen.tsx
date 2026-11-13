@@ -8,7 +8,7 @@ import type { Scope } from "@/lib/scope";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import type { Senate } from "@/lib/results";
-import { ScopeBar, type ScopeStructure } from "@/components/proto/ScopeBar";
+import { ScopeBar, semesterInSentence, thirdSemester, type ScopeStructure } from "@/components/proto/ScopeBar";
 import { StreamTabs } from "@/components/results/StreamTabs";
 import type { Stream } from "@/lib/results";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
@@ -30,7 +30,8 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
   const [outcome, setOutcome] = useState<{ published: { id: string }[]; refused: { id: string; why: string }[]; minute: string } | null>(null);
   const may = actingOffice === "registrar" || actingOffice === "dregistrar";
   const latest = senate.minutes[0] ?? null;
-  const semester = senate.semester === 1 ? "First" : senate.semester === 3 ? "Summer" : "Second";   // V739
+  // V739, V756: semester 3 is the Summer only on the regular stream of a session that had one; a CCE or postgraduate stream's is the third
+  const semester = senate.semester === 1 ? "First" : senate.semester === 3 ? thirdSemester(senate.session, stream, structure.summerSessions) : "Second";
 
   async function record() {
     setBusy(true);
@@ -55,7 +56,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
     <>
       <RoleLine allowed={["registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may}
         action="Publishing result sets on a Senate minute" />
-      <ScopeBar withSummer scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
+      <ScopeBar withSummer stream={stream} scope={scope} structure={structure} sessions={sessions} what="result sets" count={senate.sets} of={senate.sets} />
       <div className="row"><StreamTabs stream={stream} /></div>
       {stream === "CCE" ? <Note kind="info" title="The Centre for Continuing Education's result sets">A minute recorded here publishes the Centre&rsquo;s sets only.</Note> : null}
       {stream === "PG" ? <Note kind="info" title="The School of Postgraduate Studies' result sets">A minute recorded here publishes the School&rsquo;s sets only.</Note> : null}
@@ -91,7 +92,7 @@ export function SenateScreen({ scope, structure, sessions, senate, actingOffice,
         ["Minute", latest ? latest.minute : "Not yet", latest ? "var(--green-ink)" : "var(--chrome)", latest ? when(latest.firstPublishedAt) : "When Senate has risen"],
       ]} />
       <Panel title={`Senate schedule — ${senate.session} ${semester} semester`} right="Prepared from the sheets, by faculty">
-        {senate.faculties.length === 0 ? <div className="card__body sub2">No score sheet exists for {senate.session} {semester.toLowerCase()} semester.</div> : (
+        {senate.faculties.length === 0 ? <div className="card__body sub2">No score sheet exists for {senate.session} {semesterInSentence(semester)} semester.</div> : (
           <DTable cols={["Faculty", "Sets|mid", "Candidates|mid", "At Senate|mid", "Published|mid", "Outstanding|mid", "Recommendation|num"]}
             rows={senate.faculties.map((f) => [
               <strong key="f">{f.facultyName}</strong>,

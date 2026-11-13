@@ -5,7 +5,7 @@ import { loadStudent } from "../load";
 
 export const dynamic = "force-dynamic";
 import type { Docket, RegistrationView } from "@/lib/student-portal";
-import type { PermitState } from "@/lib/gst-eps-permit";
+import { permitShown, type PermitState } from "@/lib/gst-eps-permit";
 import type { ExamCardState } from "@/lib/exam-card";
 import { semesterName } from "@/lib/student-portal";
 import { Exams } from "../Screens5";
@@ -33,19 +33,37 @@ export default async function Page() {
   // semester's registration; each answers whether it is shown (the examination cards keep their own semesters)
   const upTo = Array.from({ length: Math.max(1, Math.min(3, current?.openSemester ?? current?.semester ?? 1)) }, (_, i) => i + 1);
   const permitSemesters = d.ok ? [...new Set([...upTo, ...shown])].sort() : [];
+  // V756: the Summer is never the open semester (it is no policy.semester), so its examination card and GST & EPS permit (semester 3)
+  // are asked here too when neither a released sitting nor the open semester asked for them — read beside the others, a read that
+  // fails taken as none. Each is kept only as this student's Summer (a CCE or postgraduate third semester is not) with something to show
+  const summerReads = d.ok ? Promise.all([
+    shown.includes(3) ? null : api<ExamCardState>(`/api/v1/me/exam-card?session=${encodeURIComponent(d.data.session)}&semester=3`).catch(() => null),
+    // the permit is the examination session's (the docket's session); its endpoint takes the semester alone, as s/gstpermit asks it
+    permitSemesters.includes(3) ? null : api<PermitState>("/api/v1/me/gst-eps-permit?semester=3").catch(() => null),
+  ]) : null;
   const permits = (await Promise.all((permitSemesters.length ? permitSemesters : [undefined]).map((n) => api<PermitState>(`/api/v1/me/gst-eps-permit${n ? `?semester=${n}` : ""}`))))
     .flatMap((r) => (r.ok ? [r.data] : []));
   // V501: the examination card of the same semesters, by its own rule — every registered course, beside the GST & EPS permit
   const cards = d.ok ? (await Promise.all((shown.length ? shown : [undefined]).map((n) =>
       api<ExamCardState>(`/api/v1/me/exam-card?session=${encodeURIComponent(d.data.session)}${n ? `&semester=${n}` : ""}`))))
     .flatMap((r) => (r.ok ? [r.data] : [])) : [];
+  const [summerCardRead, summerPermitRead] = (await summerReads) ?? [null, null];
+  const summerCard = summerCardRead?.ok ? summerCardRead.data : null;
+  const summerPermit = summerPermitRead?.ok ? summerPermitRead.data : null;
+  // V756: a Summer registration still a DRAFT (courses the Academic Office is entering after a payment) shows no card: its card would
+  // say to submit the courses and pay the school fees, which is not the student's to do
+  if (summerCard?.summer && summerCard.registration && summerCard.registration.status !== "DRAFT" && !cards.some((c) => c.session === summerCard.session && c.semester === summerCard.semester)) cards.push(summerCard);
+  if (summerPermit?.summer && permitShown(summerPermit) && !permits.some((p) => p.session === summerPermit.session && p.semester === summerPermit.semester)) permits.push(summerPermit);
+  // V756: whether a session's semester is this student's Summer, as its examination card or GST & EPS permit answers (absent: not)
+  const summerOf = (session: string, semester: number) =>
+    [...cards, ...permits, summerCard, summerPermit].some((x) => !!x?.summer && x.session === session && x.semester === semester);
   // a live subtitle for the header — the exam sitting the examination card actually shows, not a fixed month
   let sub: string | undefined;
   if (d.ok) {
     const sits = d.data.examSessions;
     const shown = sits.find((x) => x.papers.length) ?? sits[0];
     sub = shown
-      ? `${shown.session} · ${semesterName(shown.semester)} semester · ${shown.kind === "MAIN" ? "main" : shown.kind.toLowerCase()} examinations`
+      ? `${shown.session} · ${semesterName(shown.semester, summerOf(shown.session, shown.semester))} semester · ${shown.kind === "MAIN" ? "main" : shown.kind.toLowerCase()} examinations`
       : `${d.data.session} · no open sitting`;
   }
   return (

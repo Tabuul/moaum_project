@@ -9,6 +9,12 @@ import { semesterText } from "@/lib/student-portal";
 
 export { stageOf };
 
+/* V756: semester 3 is the Summer only for a regular (full-time) class of a session that had a Summer Semester, and the third for a
+   CCE or postgraduate class. This list carries neither the stream of a sheet nor the sessions that had a Summer, and mixes the
+   streams, so its semester 3 is named in words that are never wrong */
+const SEM3 = "Summer or third";
+const semWord = (n: number) => (n === 3 ? `Semester: ${SEM3}` : semesterText(n));
+
 export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: MySheet[]; session: string; sessions: string[]; sem: string; all: boolean }) {
   const queryNav = useQueryNav();
   const open = sheets.filter((s) => s.stage === "ENTRY");
@@ -32,10 +38,11 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
           <label htmlFor="sh-sem">Semester</label>
           <select id="sh-sem" className="ctl" value={sem} onChange={(e) => go({ sem: e.target.value })}>
             <option value="">Both</option><option value="1">First</option><option value="2">Second</option>
+            {sem === "3" ? <option value="3">{SEM3}</option> : null}
           </select>
         </div>
       </div></div>
-      <Panel title={all ? "Score sheets in the session" : "Score sheets assigned to you"} right={<>{session}{sem ? ` · ${sem === "1" ? "First" : sem === "3" ? "Summer" : "Second"} semester` : ""} · {open.length ? <b className="ink-red">{open.length} still open</b> : "all submitted"}</>}>
+      <Panel title={all ? "Score sheets in the session" : "Score sheets assigned to you"} right={<>{session}{sem ? ` · ${sem === "1" ? "First" : sem === "3" ? SEM3 : "Second"} semester` : ""} · {open.length ? <b className="ink-red">{open.length} still open</b> : "all submitted"}</>}>
         {sheets.length === 0 ? (
           <div className="card__body sub2">{all ? "No score sheet exists for this session yet. Sheets are generated when the Academic Office opens the examination session over the allocated offerings." : "No sheet is assigned to you in this session. A sheet appears here when the department allocates you a course and the examination session is opened."}</div>
         ) : (
@@ -45,7 +52,7 @@ export function SheetsList({ sheets, session, sessions, sem, all }: { sheets: My
               const st = stageOf(s);
               const short = s.entered < s.candidates;
               return [
-                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · {semesterText(s.semester)}</div></span>,
+                <span key="c"><strong className="tnum">{s.courseCode}</strong><div className="sub2">{s.courseTitle} · {s.units} units{s.session !== session ? ` · ${s.session}` : ""} · {semWord(s.semester)}</div></span>,
                 <span className="tnum" key="n">{s.candidates}</span>,
                 <span key="e"><span className={`tnum${short ? " ink-red b600" : ""}`}>{s.entered}</span><span className="sub2 tnum"> of {s.candidates}</span>{s.heldScripts ? <div className="sub2 ink-chrome">{s.heldScripts} script{s.heldScripts === 1 ? "" : "s"} held</div> : null}</span>,
                 <span key="s"><Pil kind={st.pill}>{st.text}</Pil>{s.daysLate ? <div className="sub2 ink-red">{s.daysLate} days overdue</div> : null}{s.stage === "ENTRY" && chaseWords(s.chase) ? <div className="sub2 ink-red">{chaseWords(s.chase)}</div> : null}{s.returnedTimes ? <div className="sub2">Returned {s.returnedTimes === 1 ? "once" : `${s.returnedTimes} times`}</div> : null}</span>,

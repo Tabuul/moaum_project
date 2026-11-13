@@ -201,6 +201,33 @@ export function reallocLine(r: ReallocRow, when: (iso: string | null | undefined
   ];
 }
 
+/** V754: a reallocation of a student whose first year began the session after admission (V738: admitted 2019/2020 to 2021/2022),
+ *  recorded at a level the count no longer gives (finance.reallocations_at_old_level); nothing is changed */
+export interface ReallocAtOldLevel {
+  id: string; realloc_ref: string; status: ReallocStatus; reference: string; amount: number; student_id: string; matric_no?: string | null; name: string;
+  entry_session?: string | null; to_purpose: string; to_session: string; to_semester?: number | null; level_recorded?: number | null;
+  level_now?: number | null; initiated_at: string; executed_at?: string | null;
+}
+
+/** V754: where the money went. V756: as the main list shows a destination — the purpose once (it already carries its session and
+ *  semester: "School fees 2021/2022 · first semester"), with the period beneath (periodWords); the level has columns of its own */
+export function oldLevelTo(r: Pick<ReallocAtOldLevel, "to_purpose" | "to_session" | "to_semester">): { purpose: string; period: string } {
+  return { purpose: r.to_purpose, period: periodWords(r.to_session, r.to_semester) };
+}
+
+/** V754: the columns of the list recorded at the old count — S/N is put first by the export itself */
+export const OLD_LEVEL_HEAD = ["Correction ref", "Matric no", "Student", "Entry session", "To purpose", "To session", "To semester", "Level recorded",
+  "Level now", "Amount (₦)", "Status", "Payment ref", "Initiated", "Executed"];
+
+/** V754: a reallocation recorded at the old count as a row of its report */
+export function oldLevelLine(r: ReallocAtOldLevel, when: (iso: string | null | undefined) => string): (string | number)[] {
+  const sem = (n?: number | null) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "");
+  return [
+    r.realloc_ref, r.matric_no ?? "", r.name, r.entry_session ?? "", r.to_purpose, r.to_session, sem(r.to_semester), r.level_recorded ?? "",
+    r.level_now ?? "", Number(r.amount), STATUS_WORDS[r.status]?.[1] ?? r.status, r.reference, when(r.initiated_at), when(r.executed_at),
+  ];
+}
+
 /** the evidence file a browser may send: PDF, JPEG or PNG, up to 5 MB */
 export function evidenceRefusal(file: { type: string; size: number }): string | null {
   if (!["application/pdf", "image/jpeg", "image/png"].includes(file.type)) return "Evidence is a PDF, JPEG or PNG file.";

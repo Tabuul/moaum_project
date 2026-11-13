@@ -6,12 +6,14 @@
 import { useMemo, useState } from "react";
 import { Btn, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
+import { registrationSummer, semesterName } from "@/lib/student-portal";
 
 interface Entry { courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
-interface Reg { id: string; session: string; semester: number; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[] }
+interface Reg { id: string; session: string; semester: number; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[];
+  /** V756: semester 3 was this student's Summer Semester (registration.is_summer_for); missing is not the Summer */
+  summer?: boolean }
 export interface RegHistory { matricNo: string | null; admissionNo: string | null; name: string; programme: string; history: Reg[] }
 
-const SEM = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third");
 const REG_PILL: Record<string, "ok" | "info" | "warn" | "grey" | "bad"> = { APPROVED: "ok", LOCKED: "ok", SUBMITTED: "info", DRAFT: "warn", RETURNED: "bad" };
 const day = (s: string | null) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
@@ -55,7 +57,7 @@ function RegPanel({ r }: { r: Reg }) {
   const pdfUrl = `/student/form/pdf?session=${encodeURIComponent(r.session)}&semester=${r.semester}`;
   return (
     <Panel
-      title={`${r.session} · ${SEM(r.semester)} semester`}
+      title={`${r.session} · ${semesterName(r.semester, registrationSummer(r))} semester`}
       right={<span className="row row--inline">
         <span className="sub2">{r.level} Level · {r.units} units</span>
         <Pil kind={REG_PILL[r.status] ?? "grey"}>{r.status}</Pil>
