@@ -1,4 +1,4 @@
-# Old-portal preliminary applicants migrated, their fees held for the Bursary, and the programme corrected by ICT (V737, V745)
+# Old-portal preliminary applicants migrated, their fees held for the Bursary, and the programme corrected by ICT (V737, V745, V755)
 
 The University's master prompt of 12 November 2026 covers the two preliminary programmes: **Preliminary Technology & Industrial
 Studies** (route `PRELIMINARY_TECHNOLOGY`) and **Preliminary Science** (route `PRELIMINARY_SCIENCE`). It asks for three things:
@@ -121,8 +121,9 @@ starting `=`, `+`, `-` or `@` is never a formula.
 - **Formats.**
   - Dates are read day first (DD/MM/YYYY), as ISO, or as an Excel serial.
   - The email and the phone (`0XXXXXXXXXX`) are checked, and so is the gender (Male/Female).
-  - A JAMB number in the wrong shape is a warning. Since V745 it is never compared with another row or applicant, so "N/A" or
-    "NIL" never links two people.
+  - A JAMB number in the wrong shape is a warning. It is never compared with another row or applicant, so a placeholder never
+    links two people. That covers "N/A" or "NIL" (V745), and since V755 also one digit repeated ("0000000000") and a phone
+    number written in the JAMB column (`admissions.prelim_mig_jamb_key`, the one test every JAMB check reads).
   - A status word not in `admissions.prelim_legacy_status` is an error. The words are seeded; there is no screen to add one.
 - **O'Level.**
   - Each subject must be on the list the preliminary form offers (`admissions.prelim_olevel_subjects()`); Maths, Agric and CRK are
@@ -144,12 +145,13 @@ starting `=`, `+`, `-` or `@` is never a formula.
     REQUIRES_REVIEW until an officer confirms them as new with a reason (`prelim_migration_row_new`).
   - A JAMB number on another applicant is a warning, never a merge. A new applicant whose JAMB number an earlier migration
     brought is held for review.
-  - An old number shaped like this portal's APP number is an error, and one an account here already signs in with (a JAMB key)
-    is a conflict (`LEGACY_NO_IS_PORTAL_NUMBER`): one identifier never opens two accounts. Since V745 this also covers a
-    postgraduate applicant's old number and a JUPEB application's number or old reference, in both directions. A postgraduate
-    import never brings in a number a migrated preliminary applicant signs in with (that row is FAILED), and a JUPEB upload
-    containing one is refused, naming the number. Should a later account take an old number as its JAMB key, the portal's own
-    identifiers win at sign-in and at "Forgot password".
+  - An old number shaped like this portal's own APP number, or (since V755) its postgraduate (`PG/yy/nnnnnn`) or JUPEB
+    (`JUPEB/APP/yyyy/nnnnnn`) numbers, is an error: it would one day be a new applicant's number, and that door is tried first
+    at sign-in. One an account here already signs in with (a JAMB key) is a conflict (`LEGACY_NO_IS_PORTAL_NUMBER`): one
+    identifier never opens two accounts. Since V745 this also covers a postgraduate applicant's old number and a JUPEB
+    application's number or old reference, in both directions. Since V755 the postgraduate dry run shows such a row as a
+    conflict, and the JUPEB old-portal preview marks it INVALID; the rest of the JUPEB file still imports. Should a later
+    account take an old number as its JAMB key, the portal's own identifiers win at sign-in and at "Forgot password".
 - **States.** Applications only move forward:
   - A new applicant comes in at the old portal's application status: not submitted, submitted or under review.
   - An old-portal admission comes in published: admitted, accepted or not admitted (decision 2).
@@ -318,6 +320,9 @@ These go through the central templates, on the account's real channels only, and
   - the day of the application, including when a later upload gives it;
   - the Head and a faculty's operator refused;
   - placeholder JAMB values, and a target of the other programme.
+- V755 in `check.sql`: one property. It covers a JAMB cell of zeros or a phone number, old numbers shaped like this portal's PG
+  and JUPEB numbers, the PG dry run and the JUPEB preview and upload naming a preliminary applicant's old number, and an
+  application made here whose number is a preliminary old number (not refused).
 - `PrelimMigrationFollowUpIT`:
   - the import a few rows at a time;
   - the document kept through a correction;

@@ -110,6 +110,8 @@ copies of them.
   into 1 September). The session is chosen from every session of the University's calendar up to JUPEB's current one
   (none cancelled or merged), with any session already holding JUPEB records: a past session such as 2025/2026 is offered
   though nothing is in it yet (25 Oct 2026; the list had held only the sessions with records and the current one).
+  An App No that a preliminary applicant brought from the old portal signs in with is INVALID (V755), in the preview and at
+  the upload: one number never opens two accounts. The rest of the file imports.
   Each student becomes an active JUPEB student of the session chosen, with the old App No as the
   application number and username, marked as from the old portal; a **temporary password** is generated for each, shown to
   the office once in a downloadable login sheet (never stored readable, never emailed), and must be changed at first sign-in;

@@ -14,9 +14,10 @@ import { brandedXlsx, docSerial, downloadBlob, SCHOOL } from "@/lib/exportbrand"
 import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
 import { useQueryNav } from "@/lib/query-nav";
 import { STATE, labelOf, naira, pcall, when } from "@/lib/preliminary";
+import { day } from "@/lib/jupeb";
 import {
   ACTION, BATCH_STATE, FEE_STATE, HISTORY_HEAD, IMPORT_REPORT_HEAD, MATCH, MAX_BYTES, MAX_ROWS, MIGRATION_API, MIGRATION_HOME, PAYMENT, PRELIM_ROUTES, REPORT_HEAD, RESULT,
-  VERDICT, feeAmountWords, figuresOf, fileNameOf, firstProblem, historyLine, historyLines, importReportLines, legacyFeeOf, mayConfirmNew, num, pick, progressWords,
+  VERDICT, appliedOnWords, feeAmountWords, figuresOf, fileNameOf, firstProblem, historyLine, historyLines, importReportLines, legacyFeeOf, mayConfirmNew, num, pick, progressWords,
   ranges, readFile, reportLines, routeChangeOf, rowLink, rowsOf, sha256Hex, stillToDo, str, templateOf, templateSheets, wordOf, words, type LegacyFee, type MigrationRow,
   type Programme, type RowLinkAccess,
 } from "@/lib/prelim-migration";
@@ -835,7 +836,8 @@ function CorrectionsPanel({ routes, mayChange, app }: { routes: AccessRoute[]; m
                   ["Payment", <span key="p"><Pil kind={pay[1]}>{pay[0]}</Pil>{refs.length ? ` ${refs.join(", ")}` : ""}</span>],
                   ["Old-portal fee", oldFees.length ? oldFees.map((x) => `${x.reference || "no reference"} · ${feeAmountWords(x, naira)} · ${wordOf(FEE_STATE, x.state)[0].toLowerCase()}`).join("; ") : "—"],
                   ["Documents uploaded", String(num(rec, "documents", "documentsCount", "documents_count"))],
-                  ["Applied on", str(legacy, "appliedOn", "applied_on") || (str(rec, "appliedAt", "createdAt", "created_at") ? when(str(rec, "appliedAt", "createdAt", "created_at")) : "—")],
+                  // V755: the day the desk and the dashboard read (prelim_applied_on); one brought across with no Application Date has none
+                  ["Applied on", appliedOnWords(rec, legacy, day)],
                   ["Brought across", legacy ? `${str(legacy, "batchReference", "batch_reference") || "—"}${str(legacy, "migratedAt", "migrated_at") ? ` · ${when(str(legacy, "migratedAt", "migrated_at"))}` : ""}` : "Applied on this portal"],
                 ]} />
                 {!mayChange || !recMay ? <div className="sub2 mt-1">{str(pick(rec, "refusal"), "message") || (mayChange ? "The programme of this application cannot be changed now." : "The Director of ICT, or an ICT Support agent the Director has authorised, changes the programme.")}</div> : null}

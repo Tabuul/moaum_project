@@ -807,6 +807,16 @@ export interface LegacyFee {
   amountGiven: boolean;
 }
 /** V745: an old-portal fee's amount in words — the amount, or that the Bursary confirms it */
+/** V755: a programme-corrections record's day of application — the API's appliedOn (admissions.prelim_applied_on, the desk's and the
+ *  dashboard's day); one brought across with no Application Date has none ("not given (old portal)", never the day of the import); an
+ *  older API's created_at otherwise */
+export function appliedOnWords(rec: unknown, legacy: unknown, day: (v: string) => string): string {
+  const on = str(rec, "appliedOn", "applied_on") || str(legacy, "appliedOn", "applied_on");
+  if (on) return day(on);
+  if (legacy) return "not given (old portal)";
+  const at = str(rec, "appliedAt", "createdAt", "created_at");
+  return at ? day(at) : "—";
+}
 export const feeAmountWords = (f: Pick<LegacyFee, "amount" | "amountGiven">, naira: (n: number) => string): string =>
   (f.amountGiven ? naira(f.amount) : "amount to confirm");
 export function legacyFeeOf(raw: unknown): LegacyFee {

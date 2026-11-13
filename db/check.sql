@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 583
+\set EXPECTED 584
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34836,14 +34836,14 @@ BEGIN
         END;
         INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check2.v745@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc_j;
         BEGIN
-            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state, legacy_ref)
-            VALUES (acc_j, ts, 'JUPEB/APP/9745/900002', 'CHECKVFGJUPEB', 'Candidate', 'zz.check2.v745@example.com', 'Benue', 'DRAFT', 'Chk/V745/E3');
+            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state, legacy_ref, legacy_source)
+            VALUES (acc_j, ts, 'JUPEB/APP/9745/900002', 'CHECKVFGJUPEB', 'Candidate', 'zz.check2.v745@example.com', 'Benue', 'DRAFT', 'Chk/V745/E3', 'OLD_PORTAL');
             ju_r := 'jupeb brought';
         EXCEPTION WHEN unique_violation THEN ju_r := 'jupeb ' || split_part(SQLERRM, ':', 1);
         END;
         BEGIN
-            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state)
-            VALUES (acc_j, ts, 'chk/v745/e1', 'CHECKVFGJUPEB', 'Candidate', 'zz.check2.v745@example.com', 'Benue', 'DRAFT');
+            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state, legacy_source)
+            VALUES (acc_j, ts, 'chk/v745/e1', 'CHECKVFGJUPEB', 'Candidate', 'zz.check2.v745@example.com', 'Benue', 'DRAFT', 'OLD_PORTAL');   -- V755: the trigger looks at rows from the old portal
             ju_r2 := 'number brought';
         EXCEPTION WHEN unique_violation THEN ju_r2 := 'number ' || split_part(SQLERRM, ':', 1);
         END;
@@ -34971,6 +34971,113 @@ BEGIN
                      || ' | listed DEAD_CODE:ZZG 799 | office unit hrm OFFICE_UNIT_OFFICE unknown UNIT_UNKNOWN ict Zed Vice Office vc prints Zed Vice Office'
                      || ' | renamed ZZG 769 | merged ZZG 772 live,ZZG 771 ended', false),
       msg);
+END $$;
+
+-- ── V755: the third review of V745 applied ──
+-- Made-up applicants (CHECKVFH…). File Z (Science): two strangers whose JAMB cell is "0000000000" and a third with a phone number in
+-- it — each a JAMB_INVALID warning, none held for review, all imported; Z1 again with "fill in missing details": its zeros are on
+-- nobody's record (no JAMB_ON_PORTAL). File S (Technology): old numbers shaped like this portal's PG and JUPEB numbers refused. The PG
+-- dry run names Z2's old number as a preliminary applicant's (a conflict before the import). The JUPEB old-portal preview and upload
+-- refuse the row bringing Z3's old number and import the other. An application made here whose number is a preliminary old number
+-- is not refused by the trigger (rows from the old portal only). The block undoes its writes.
+DO $$
+DECLARE up uuid := gen_random_uuid(); v_err text; msg text; ts text := policy.route_session('PRELIMINARY_TECHNOLOGY');
+        ol jsonb := jsonb_build_object('olevel1Body', 'WAEC', 'olevel1Year', '2022', 'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Chemistry:C6; Biology:B2');
+        olt jsonb := jsonb_build_object('olevel1Body', 'NECO', 'olevel1Year', '2022', 'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Technical Drawing:C6; Chemistry:B2');
+        bz uuid; bh uuid; bs uuid; pgb uuid; z_chk text; h_chk text; s_chk text; pg_chk text; ju jsonb; ju_prev text; ju_up text; acc_j uuid; nat text; jprefix text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V755 check: the third review of V745', true);
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (up, 'CHK/V755/U', 'CHECKVFH', 'Uploader');
+
+        -- ── Z: zeros and a phone number in the JAMB cell ──
+        bz := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v755 z.xlsx', repeat('a', 64), 3, false, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bz, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V755/Z1', 'surname', 'Checkvfhzero', 'firstName', 'Adaora', 'gender', 'F', 'dateOfBirth', '01/04/2006', 'jambRegNo', '0000000000',
+                                     'email', 'v755.z1@check.test', 'phone', '08074500001', 'olevel1Number', 'V755Z1', 'applicationStatus', 'Submitted'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V755/Z2', 'surname', 'Checkvfhnought', 'firstName', 'Bayo', 'gender', 'M', 'dateOfBirth', '02/04/2006', 'jambRegNo', '0000000000',
+                                     'email', 'v755.z2@check.test', 'phone', '08074500002', 'olevel1Number', 'V755Z2', 'applicationStatus', 'Submitted'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V755/Z3', 'surname', 'Checkvfhphone', 'firstName', 'Chika', 'gender', 'F', 'dateOfBirth', '03/04/2006', 'jambRegNo', '0803 123 4567',
+                                     'email', 'v755.z3@check.test', 'phone', '08074500003', 'olevel1Number', 'V755Z3', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(bz, 1, 3);
+        z_chk := (SELECT string_agg(r.verdict, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = bz)
+                 || ' invalid ' || (SELECT count(*) FROM admissions.prelim_migration_row r WHERE r.batch_id = bz AND r.problems @> '[{"code":"JAMB_INVALID"}]')
+                 || ' same ' || (SELECT count(*) FROM admissions.prelim_migration_row r WHERE r.batch_id = bz AND r.problems @> '[{"code":"POSSIBLE_SAME_APPLICANT"}]');
+        PERFORM admissions.prelim_migration_import(bz, 1, 3);
+        PERFORM admissions.prelim_migration_finish(bz);
+        z_chk := z_chk || ' / ' || (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = bz);
+
+        -- ── H: Z1 again, filling in missing details ──
+        bh := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v755 h.xlsx', repeat('b', 64), 1, true, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bh, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'chk/v755/z1', 'surname', 'Checkvfhzero', 'firstName', 'Adaora', 'gender', 'F', 'dateOfBirth', '01/04/2006', 'jambRegNo', '0000000000',
+                                     'email', 'v755.z1@check.test', 'phone', '08074500001', 'olevel1Number', 'V755Z1', 'applicationStatus', 'Submitted', 'applicationDate', '12/01/2024')));
+        PERFORM admissions.prelim_migration_check(bh, 1, 1);
+        h_chk := (SELECT 'on portal ' || (r.problems @> '[{"code":"JAMB_ON_PORTAL"}]') || ' same ' || (r.problems @> '[{"code":"POSSIBLE_SAME_APPLICANT"}]')
+                    FROM admissions.prelim_migration_row r WHERE r.batch_id = bh);
+
+        -- ── S: old numbers shaped like this portal's own PG and JUPEB numbers ──
+        jprefix := coalesce((SELECT s.application_prefix FROM jupeb.setting s ORDER BY s.session LIMIT 1), 'JUPEB/APP');
+        bs := (admissions.prelim_migration_open('PRELIMINARY_TECHNOLOGY', 'v755 s.xlsx', repeat('c', 64), 2, false, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bs, 1, jsonb_build_array(
+            olt || jsonb_build_object('legacyApplicationNo', 'pg/26/000123', 'surname', 'Checkvfhshape', 'firstName', 'Dayo', 'gender', 'M', 'dateOfBirth', '04/04/2006',
+                                      'email', 'v755.s1@check.test', 'phone', '08074500004', 'olevel1Number', 'V755S1', 'applicationStatus', 'Submitted'),
+            olt || jsonb_build_object('legacyApplicationNo', jprefix || '/2026/000001', 'surname', 'Checkvfhshape', 'firstName', 'Efua', 'gender', 'F', 'dateOfBirth', '05/04/2006',
+                                      'email', 'v755.s2@check.test', 'phone', '08074500005', 'olevel1Number', 'V755S2', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(bs, 1, 2);
+        s_chk := (SELECT string_agg(r.verdict || ':' || (r.problems @> '[{"code":"LEGACY_NO_IS_PORTAL_NUMBER","level":"error"}]'), ',' ORDER BY r.row_no)
+                    FROM admissions.prelim_migration_row r WHERE r.batch_id = bs);
+
+        -- ── the PG dry run: Z2's old number ──
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        pgb := (admissions.pg_migration_open('APPLICANTS', 'v755 pg.xlsx', repeat('d', 64), 1, false) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(pgb, 1, jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', ' chk/v755/z2', 'lastName', 'CHECKVFHPG', 'firstName', 'Applicant', 'email', 'v755.pg@example.test')));
+        PERFORM admissions.pg_migration_check(pgb, 1, 1);
+        pg_chk := (SELECT (r.problems @> '[{"code":"LEGACY_NO_IS_PORTAL_NUMBER","level":"conflict"}]')::text FROM admissions.pg_migration_row r WHERE r.batch_id = pgb);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+
+        -- ── the JUPEB old-portal preview and upload: Z3's old number, and another ──
+        ju := jupeb.import_old_portal_students(jsonb_build_array(
+                  jsonb_build_object('row', 1, 'appNo', 'chk/v755/z3', 'surname', 'Checkvfhjupeb', 'firstName', 'One', 'email', 'zz.v755.j1@example.com'),
+                  jsonb_build_object('row', 2, 'appNo', 'JOLD/V755/0002', 'surname', 'Checkvfhjupeb', 'firstName', 'Two', 'email', 'zz.v755.j2@example.com',
+                                     'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345')),
+                  ts, true, false, 'v755 jupeb.xlsx', up);
+        ju_prev := (SELECT string_agg(x->>'status', ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(ju->'rows') x)
+                   || CASE WHEN (SELECT x->>'message' FROM jsonb_array_elements(ju->'rows') x WHERE x->>'row' = '1') LIKE '%preliminary applicant%' THEN ' said' ELSE ' unsaid' END;
+        ju := jupeb.import_old_portal_students(jsonb_build_array(
+                  jsonb_build_object('row', 1, 'appNo', 'chk/v755/z3', 'surname', 'Checkvfhjupeb', 'firstName', 'One', 'email', 'zz.v755.j1@example.com'),
+                  jsonb_build_object('row', 2, 'appNo', 'JOLD/V755/0002', 'surname', 'Checkvfhjupeb', 'firstName', 'Two', 'email', 'zz.v755.j2@example.com',
+                                     'passwordHash', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345')),
+                  ts, true, true, 'v755 jupeb.xlsx', up);
+        ju_up := (SELECT string_agg(x->>'status', ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(ju->'rows') x) || ' applied ' || (ju->>'applied');
+
+        -- ── an application made here: not looked at by the trigger ──
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.v755.native@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc_j;
+        BEGIN
+            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state)
+            VALUES (acc_j, ts, 'CHK/V755/Z1', 'CHECKVFHNATIVE', 'Candidate', 'zz.v755.native@example.com', 'Benue', 'DRAFT');
+            nat := 'native kept';
+        EXCEPTION WHEN unique_violation THEN nat := 'native refused';
+        END;
+
+        msg := 'Z ' || coalesce(z_chk, '-') || ' | H ' || coalesce(h_chk, '-') || ' | S ' || coalesce(s_chk, '-') || ' | pg ' || coalesce(pg_chk, '-')
+            || ' | jupeb ' || coalesce(ju_prev, '-') || ' / ' || coalesce(ju_up, '-') || ' | ' || coalesce(nat, '-');
+        RAISE EXCEPTION 'the V755 check undoes its writes';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'the V755 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V755: a JAMB cell of zeros or a phone number makes no two applicants one and is on nobody''s record; an old number shaped like this portal''s PG or JUPEB numbers refused; the PG dry run and the JUPEB preview name a preliminary applicant''s old number, the rest of a JUPEB file imported; an application made here not refused',
+        v_err IS NULL AND msg =
+           'Z WARNING,WARNING,WARNING invalid 3 same 0 / CREATED,CREATED,CREATED'
+        || ' | H on portal false same false'
+        || ' | S ERROR:true,ERROR:true'
+        || ' | pg true'
+        || ' | jupeb INVALID,VALID said / INVALID,VALID applied 1'
+        || ' | native kept',
+        format('err=%s | %s', v_err, msg));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

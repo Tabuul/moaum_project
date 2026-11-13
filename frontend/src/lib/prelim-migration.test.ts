@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  IMPORT_REPORT_HEAD, SHEET, changeFactsOf, feeAmountWords, feeStatusOf, figuresOf, fileNameOf, firstProblem, historyLines, importReportLines, legacyFeeOf, legacyNoOf, mayConfirmNew,
+  IMPORT_REPORT_HEAD, SHEET, appliedOnWords, changeFactsOf, feeAmountWords, feeStatusOf, figuresOf, fileNameOf, firstProblem, historyLines, importReportLines, legacyFeeOf, legacyNoOf, mayConfirmNew,
   otherRoute, progressWords, ranges, readFile, readSheets, reasonOk, reportLines, resultsText, routeChangeOf, routeNamed, rowLink, rowsOf, safeCell, stillToDo,
   targetWords, templateOf, templateSheets, words, type Column, type MigrationRow, type TemplateData,
 } from "./prelim-migration.ts";
@@ -483,4 +483,15 @@ test("V745 (29): the desk's rows read the fee as paid, held for the Bursary or n
   assert.equal(legacyNoOf({ legacyApplicationNo: "OLD/1", legacy_no: "X" }), "OLD/1");
   assert.equal(legacyNoOf({ legacy_no: "OLD/2" }), "OLD/2");
   assert.equal(legacyNoOf({}), "");
+});
+
+test("V755: a corrections record's day of application is the desk's, never the day of the import", () => {
+  const day = (v: string) => `day(${v.slice(0, 10)})`;
+  assert.equal(appliedOnWords({ appliedOn: "2024-01-10", appliedAt: "2026-11-12T09:00:00Z" }, { number: "OLD/1" }, day), "day(2024-01-10)", "the old portal's date");
+  assert.equal(appliedOnWords({ appliedOn: null, appliedAt: "2026-11-12T09:00:00Z" }, { number: "OLD/1", appliedOn: null }, day), "not given (old portal)",
+    "brought across with no Application Date: not the import day");
+  assert.equal(appliedOnWords({ appliedOn: "2025-03-02", appliedAt: "2025-03-02T10:00:00Z" }, { number: "OLD/2" }, day), "day(2025-03-02)",
+    "made here and later given its old number: its own day");
+  assert.equal(appliedOnWords({ appliedAt: "2025-03-02T10:00:00Z" }, null, day), "day(2025-03-02)", "an older API, made here");
+  assert.equal(appliedOnWords({}, null, day), "—");
 });

@@ -49,6 +49,8 @@ A batch and its rows are never deleted (a trigger refuses it). A row's values ar
   - a matriculation number;
   - an old number a student already carries.
 
+  An old number a preliminary applicant brought from the old portal signs in with is a CONFLICT too
+  (`LEGACY_NO_IS_PORTAL_NUMBER`, V755): one number never opens two accounts, and the postgraduate door is tried first at sign-in.
   If these keys point to different applications or students, the row is a CONFLICT. So is a name, programme, decision or old number that differs from the record. A possible same person under another email (the same surname with the same phone or birth date, or a PG student of the same name) is REQUIRES_REVIEW. It is imported once the file gives the number, or once the School confirms a new applicant with a reason (`admissions.pg_migration_row_new`). A repeat in the file (the same old number, or the same email for another number) is DUPLICATE_IN_FILE.
 - **Programmes.** A programme is read, in this order:
   1. the School's mapping (`admissions.pg_legacy_programme`, with a reason; withdrawn, never deleted);

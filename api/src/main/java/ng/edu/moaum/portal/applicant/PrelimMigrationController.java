@@ -813,7 +813,8 @@ class PrelimMigrationController {
                        (SELECT x.value FROM admissions.screening_answer x WHERE x.application_id = a.id AND x.field = 'date_of_birth') AS date_of_birth,
                        (SELECT count(*) FROM admissions.application_document d WHERE d.application_id = a.id AND d.superseded_at IS NULL) AS documents,
                        (SELECT f.application_fee + f.portal_charge FROM admissions.route_fee_rule(a.session, r.route) f) AS route_fee,
-                       EXISTS (SELECT 1 FROM admissions.prelim_legacy_fee lf WHERE lf.application_id = a.id AND lf.state = 'REQUIRES_REVIEW') AS fee_held
+                       EXISTS (SELECT 1 FROM admissions.prelim_legacy_fee lf WHERE lf.application_id = a.id AND lf.state = 'REQUIRES_REVIEW') AS fee_held,
+                       admissions.prelim_applied_on(a.id) AS applied_on
                   FROM admissions.application a JOIN admissions.candidate c ON c.id = a.candidate_id
                   JOIN admissions.prelim_review r ON r.application_id = a.id JOIN admissions.prelim_programme pp ON pp.route = r.route
                   LEFT JOIN admissions.prelim_target t ON t.id = r.target_id LEFT JOIN ref.programme g ON g.code = t.programme_code
@@ -840,6 +841,9 @@ class PrelimMigrationController {
         out.put("decidedAt", a.get("decided_at"));
         out.put("publishedAt", a.get("published_at"));
         out.put("appliedAt", a.get("created_at"));
+        // V755: the day of the application as the desk and the dashboard read it (admissions.prelim_applied_on): for an application a
+        // migration created, the old portal's date, none when no file gave one — never the day of the import
+        out.put("appliedOn", a.get("applied_on"));
         Map<String, Object> target = new LinkedHashMap<>();
         target.put("id", a.get("target_id"));
         target.put("code", a.get("target_programme"));
