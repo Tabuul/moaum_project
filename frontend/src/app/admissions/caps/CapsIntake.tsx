@@ -126,12 +126,20 @@ function esc(s: string | null | undefined): string {
   return s ?? "";
 }
 
+/** V757: an admitted candidate whose course JAMB changed after the offer — left as offered, corrected on Programme Changes */
+export interface AdmittedToCorrect {
+  jamb_reg_no: string; name: string; offered: string; caps: string; caps_code: string;
+  /** an admission correction is recommended and awaits the Registrar's office */
+  correction_pending: boolean;
+}
+
 export function CapsIntake({
   session,
   programmes,
   batches,
   batchesProblem,
   reconciliation,
+  admittedToCorrect = [],
   policy,
   policyProblem,
   actingOffice,
@@ -148,6 +156,8 @@ export function CapsIntake({
   batches: CapsBatch[];
   batchesProblem: Problem | null;
   reconciliation: Finding[];
+  /** V757: the admitted candidates left to correct on Programme Changes (they do not hold the commit) */
+  admittedToCorrect?: AdmittedToCorrect[];
   policy: AdmissionPolicy | null;
   policyProblem: Problem | null;
   actingOffice: string | null;
@@ -369,6 +379,10 @@ export function CapsIntake({
     }
   }
   const undecided = reconciliation.find((x) => x.finding.endsWith("not yet decided"));
+  /** V757: the reconciliation findings the commit does not stop on — candidates not yet registered and admitted candidates to correct
+   *  (recorded on the batch, still named here), and candidates JAMB moved with no offer standing (Commit has them follow first) */
+  const NOT_HOLDING = new Set(["On the CAPS list, no candidate record", "Matched, programme differs from CAPS — admitted",
+    "Matched, programme differs from CAPS — not yet decided"]);
 
   async function commit(id: string, fromScreen: boolean) {
     setCommitting(id);
@@ -377,10 +391,14 @@ export function CapsIntake({
       const r = await post(`/api/v1/admissions/caps-batches/${id}/commit`, "CAPS list committed through the portal");
       if (r.ok) {
         const outcome = String((r.body as { outcome?: string })?.outcome ?? "committed");
-        const moved = Number((r.body as { followed?: number })?.followed ?? 0);
+        const body = r.body as { followed?: number; admittedLeft?: number; named?: { jambRegNo: string; name: string; from: string; to: string; admitted: boolean }[] };
+        const moved = Number(body?.followed ?? 0);
+        const left = Number(body?.admittedLeft ?? 0);
         setCommitted({ ...committed, [id]: outcome });
         if (fromScreen && done) setLoaded({ ...loaded, [kind]: { ...done, outcome } });
-        notify(`CAPS list ${outcome}${moved ? ` · ${moved.toLocaleString()} candidate${moved === 1 ? "" : "s"} followed JAMB's course first` : ""}`);
+        // V757: admitted candidates JAMB moved do not hold the commit; they are named below for an admission correction
+        setFollowed(body?.named?.length ? { followed: moved, admittedLeft: left, named: body.named } : null);
+        notify(`CAPS list ${outcome}${moved ? ` · ${moved.toLocaleString()} candidate${moved === 1 ? "" : "s"} followed JAMB's course first` : ""}${left ? ` · ${left.toLocaleString()} admitted candidate${left === 1 ? "" : "s"} to correct on Programme Changes` : ""}`);
         router.refresh();
       } else {
         setProblem(asProblem(r.status, r.body)); notifyProblem(asProblem(r.status, r.body));
@@ -593,7 +611,7 @@ export function CapsIntake({
             >
               {done.outcome
                 ? "It is on the register. The reconciliation below is what the database found before it let that happen."
-                : "Every row reads, and every course resolves to a University programme. The database will commit the list only when every reconciliation finding below reads zero; if it refuses, it says why, by name."}
+                : "Every row reads, and every course resolves to a University programme. The database commits the list when the reconciliation findings below read zero, save candidates not yet registered and admitted candidates whose course JAMB changed (corrected on Programme Changes); if it refuses, it says why, by name."}
             </Note>
           ) : (
             <Note
@@ -827,10 +845,25 @@ export function CapsIntake({
             x.admitted ? <Pil key="s" kind="warn">admitted — correct on Programme Changes</Pil> : <Pil key="s" kind="ok">followed</Pil>,
           ])} texts={followed.named.map((x) => `${x.jambRegNo} ${x.name} ${x.from} ${x.to}`)} />
         ) : null}
+        {admittedToCorrect.length ? (
+          <>
+            <Note kind="info" title={`${admittedToCorrect.length.toLocaleString()} admitted candidate${admittedToCorrect.length === 1 ? "" : "s"} whose course JAMB changed after the offer`}
+              action={<LinkBtn kind="secondary" href={`/admissions/programme-changes?session=${encodeURIComponent(session)}`}>Programme Changes</LinkBtn>}>
+              They keep the programme offered until the admission is corrected: the Academic Office recommends the correction on Programme Changes and the
+              Registrar&rsquo;s office approves it. They do not hold the list&rsquo;s commit.
+            </Note>
+            <DTable pageSize={10} cols={["JAMB number|mid", "Candidate", "Offered", "CAPS says", "|mid"]} rows={admittedToCorrect.map((x) => [
+              <span key="n" className="tnum">{x.jamb_reg_no}</span>, <strong key="c">{x.name}</strong>, <span key="o" className="sub2">{x.offered}</span>,
+              <span key="j">{x.caps} <span className="sub2 tnum">{x.caps_code}</span></span>,
+              x.correction_pending ? <Pil key="s" kind="info">correction awaiting approval</Pil> : <Pil key="s" kind="warn">to correct</Pil>,
+            ])} texts={admittedToCorrect.map((x) => `${x.jamb_reg_no} ${x.name} ${x.offered} ${x.caps} ${x.caps_code}`)} />
+          </>
+        ) : null}
         <DTable
           cols={["Rows|num", "Finding", "What it means", "Owner"]}
           rows={reconciliation.map((x) => [
-            <b className="tnum" style={{ color: x.n > 0 ? "var(--red-ink)" : "var(--green-ink)" }} key="n">{x.n}</b>,
+            // V757: the findings that do not hold the commit read amber, the ones that refuse it red
+            <b className="tnum" style={{ color: x.n === 0 ? "var(--green-ink)" : NOT_HOLDING.has(x.finding) ? "var(--amber-ink)" : "var(--red-ink)" }} key="n">{x.n}</b>,
             <strong key="f">{x.finding}</strong>,
             <span className="sub2" key="m">{x.whatItMeans}</span>,
             <span className="sub2" key="o">{x.owner}</span>,

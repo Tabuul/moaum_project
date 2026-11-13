@@ -447,6 +447,23 @@ class CapsRepository {
                 .list();
     }
 
+    /** V757: the admitted candidates whose programme differs from their CAPS row (an offer released before JAMB changed the course),
+     *  left as offered for an admission correction on Programme Changes — named on the list screen whoever reads it */
+    List<Map<String, Object>> admittedToCorrect(String session) {
+        return jdbc.sql("""
+                SELECT c.jamb_reg_no, c.surname || ', ' || c.other_names AS name, c.programme AS offered, j.name AS caps, r.jamb_code AS caps_code,
+                       EXISTS (SELECT 1 FROM admissions.programme_change_request q
+                                WHERE q.application_id = a.id AND q.kind = 'CORRECTION' AND q.state = 'REQUESTED') AS correction_pending
+                  FROM admissions.candidate c
+                  JOIN admissions.caps_row_live r ON r.session = c.session AND r.jamb_reg_no = c.jamb_reg_no
+                  JOIN ref.programme j ON j.code = r.jamb_code
+                  LEFT JOIN admissions.application a ON a.candidate_id = c.id
+                 WHERE c.session = :session AND c.programme <> j.name AND admissions.offer_stands(a.id)
+                 ORDER BY c.surname, c.other_names
+                 LIMIT 500
+                """).param("session", session).query().listOfRows();
+    }
+
     List<Finding> attachmentState(String session) {
         return jdbc.sql("SELECT finding, n, owner, what_it_means FROM admissions.attachment_state(:session)")
                 .param("session", session)

@@ -3,7 +3,7 @@ import type { Programme } from "@/lib/caps";
 import { Shell, type Me } from "@/components/proto/Shell";
 import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { ProblemNotice } from "@/components/ProblemNotice";
-import { CapsIntake, type AdmissionPolicy, type CapsBatch, type Finding } from "./CapsIntake";
+import { CapsIntake, type AdmissionPolicy, type AdmittedToCorrect, type CapsBatch, type Finding } from "./CapsIntake";
 import { defaultSession } from "@/lib/sessions-server";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,8 @@ export default async function CapsIntakePage({
     api<AdmissionPolicy>(`/api/v1/admissions/sessions/${session}/policy`),
   ]);
   const loadCutoff = await api<{ cutoff: number | null }>(`/api/v1/admissions/sessions/${session}/load-cutoff`);
+  // V757: the admitted candidates whose course JAMB changed, left as offered for an admission correction (they do not hold the commit)
+  const toCorrect = await api<AdmittedToCorrect[]>(`/api/v1/admissions/sessions/${session}/reconciliation/admitted-to-correct`);
 
   return (
     <Shell route="t/capsintake" me={me.ok ? me.data : null}>
@@ -40,6 +42,7 @@ export default async function CapsIntakePage({
           batches={batches.ok ? batches.data : []}
           batchesProblem={batches.ok ? null : batches.problem}
           reconciliation={reconciliation.ok ? reconciliation.data : []}
+          admittedToCorrect={toCorrect.ok ? toCorrect.data : []}
           policy={policy.ok ? policy.data : null}
           policyProblem={policy.ok ? null : policy.problem}
           actingOffice={me.ok ? me.data.activeOffice : null}

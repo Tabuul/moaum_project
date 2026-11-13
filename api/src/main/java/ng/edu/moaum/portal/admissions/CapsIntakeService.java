@@ -457,6 +457,12 @@ public class CapsIntakeService {
         return caps.reconcile(session);
     }
 
+    /** V757: the admitted candidates left to correct on Programme Changes (they no longer hold the list's commit) */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> admittedToCorrect(String session) {
+        return caps.admittedToCorrect(session);
+    }
+
     @Transactional(readOnly = true)
     public List<Finding> attachmentState(String session) {
         return caps.attachmentState(session);

@@ -31,8 +31,13 @@ Each candidate in a chunk is read against the session's live list first (`CapsIn
   offers **Apply JAMB's course changes** for candidates changed before V636. **Commit** does the same first, in a transaction of
   its own, so a list loaded before V636 commits without the button and those followed stay followed even when the commit is then
   refused for another finding. A candidate with a released offer is left as offered
-  and counted apart ("Matched, programme differs from CAPS — admitted"): the admission is corrected on Programme Changes, or the
-  row withdrawn. Only that finding still blocks the commit.
+  and counted apart ("Matched, programme differs from CAPS — admitted"): the admission is corrected on Programme Changes (the
+  Academic Office recommends the correction, the Registrar's office approves it). From V757 (13 November 2026) that finding no
+  longer holds the commit: the list commits, the batch records how many admitted candidates were left to correct
+  (`caps_batch.committed_admitted_left`), the screen names them after the commit, and the finding stays on the reconciliation
+  until each is corrected. Committing changes no candidate's programme. The other findings (an admission JAMB did not approve, a
+  candidate JAMB moved who has not followed yet, a course code the University does not run, a Direct Entry candidate at the
+  wrong level) still refuse the commit.
 - **Batch counts.** Each batch keeps `rows_updated` and `rows_unchanged`; `rows_added` is the rows it put on the list. The upload
   history shows "N new · N updated · N unchanged".
 - **The badge.** "N candidates loaded" now adds up the candidates on the list, not each file's rows.

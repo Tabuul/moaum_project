@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 607
+\set EXPECTED 608
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -35948,6 +35948,58 @@ BEGIN
       coalesce(m_forms = '2:ERROR:the given names are a query (?): correct them,3:ERROR:the surname holds no name,4:CREATED:- | 5:CREATED:GIVEN_TO_ANOTHER_ROW>JP997614 | 6:CREATED:GIVEN_TO_ANOTHER_ROW>P997620', false), m_forms);
 END $$;
 
+-- ── V757: the JAMB list commits with admitted candidates left to correct. On a made-up Direct Entry list of 9757/9758 JAMB moved an
+--          admitted candidate (offer released) to another programme: the list commits, the batch records one admitted candidate left
+--          to correct, the candidate keeps the programme offered and the finding stays on the reconciliation. In 9758/9759 an
+--          admission JAMB never listed still refuses the commit. The block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9757/9758'; S2 constant text := '9758/9759';
+    b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); r2 uuid := gen_random_uuid();
+    c1 uuid := gen_random_uuid(); c2 uuid := gen_random_uuid(); acct1 uuid := gen_random_uuid(); app1 uuid := gen_random_uuid();
+    pa text; pb text; na text; nb text; outcome text; left_n int; kept text; still bigint; ghost text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V757', true);
+    SELECT code, name INTO pa, na FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT code, name INTO pb, nb FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived AND code <> pa ORDER BY code LIMIT 1;
+    -- the list: one admitted candidate whose course JAMB changed to B after the offer on A was released
+    INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b1, S, 'CAPS_DOWNLOAD', 'check-v757.xlsx', decode(repeat('cd', 32), 'hex'), 1, 'DIRECT_ENTRY', current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+        (r1, b1, S, '975700000001DE', '{}'::jsonb, 'CHECKV757', 'Offered', pb, NULL, 'DIRECT_ENTRY');
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from) VALUES
+        (c1, S, '975700000001DE', 'CHECKV757', 'Offered', na, 'DIRECT_ENTRY', 200, 'ADMITTED', r1);
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+        (acct1, S, c1, '975700000001DE', 'v757a@example.test', '08030000757', crypt('x', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, decision, decided_at, decision_released_at)
+    VALUES (app1, acct1, c1, S, 'APP/57/757001', now(), 'OFFERED', now(), now());
+    outcome := admissions.commit_batch(b1);
+    SELECT committed_admitted_left INTO left_n FROM admissions.caps_batch WHERE id = b1;
+    SELECT programme INTO kept FROM admissions.candidate WHERE id = c1;
+    SELECT coalesce(sum(x.n), 0) INTO still FROM admissions.reconcile(S) x WHERE x.finding = 'Matched, programme differs from CAPS — admitted';
+    -- another session: an admission JAMB never listed still refuses the commit
+    INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b2, S2, 'CAPS_DOWNLOAD', 'check-v757b.xlsx', decode(repeat('ce', 32), 'hex'), 1, 'DIRECT_ENTRY', current_date, gen_random_uuid(), 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+        (r2, b2, S2, '975800000001DE', '{}'::jsonb, 'CHECKV757', 'Listed', pa, NULL, 'DIRECT_ENTRY');
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from) VALUES
+        (c2, S2, '975800000002DE', 'CHECKV757', 'Never listed', na, 'DIRECT_ENTRY', 200, 'ADMITTED', r2);   -- admitted from another's row
+    BEGIN
+        PERFORM admissions.commit_batch(b2);
+        ghost := 'committed';
+    EXCEPTION WHEN check_violation THEN ghost := CASE WHEN SQLERRM LIKE '%Admitted here, not on the CAPS list%' THEN 'refused' ELSE SQLERRM END;
+    END;
+    msg := format('commit %s | admitted left %s | programme kept %s | finding still %s | ghost %s', outcome, left_n, (kept = na)::text, still, ghost);
+    RAISE EXCEPTION 'the V757 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V757 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V757: an admitted candidate JAMB moved does not hold the list''s commit — left as offered, counted on the batch and still named; a ghost admission still refuses it',
+      coalesce(msg = 'commit committed | admitted left 1 | programme kept true | finding still 1 | ghost refused', false), msg);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

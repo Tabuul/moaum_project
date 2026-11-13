@@ -1684,7 +1684,7 @@ Every column whose CHECK constraint enumerates its values, compiled from `constr
 
 **`admissions.candidate_photo`**: id `uuid` NOT NULL, candidate_id `uuid` NOT NULL, attachment_id `uuid` NOT NULL, purpose `text` NOT NULL, in_force `tstzrange` NOT NULL
 
-**`admissions.caps_batch`**: id `uuid` NOT NULL, session `text` NOT NULL, source `text` NOT NULL, filename `text`, file_sha256 `bytea` NOT NULL, rows_read `integer` NOT NULL, list_kind `text` NOT NULL, downloaded_on `date` NOT NULL, uploaded_at `timestamp with time zone` NOT NULL, uploaded_by `uuid` NOT NULL, uploaded_office `text` NOT NULL, committed_at `timestamp with time zone`, withdrawn_at `timestamp with time zone`, withdrawn_by `uuid`, withdrawn_reason `text`, committed_pending `integer`
+**`admissions.caps_batch`**: id `uuid` NOT NULL, session `text` NOT NULL, source `text` NOT NULL, filename `text`, file_sha256 `bytea` NOT NULL, rows_read `integer` NOT NULL, list_kind `text` NOT NULL, downloaded_on `date` NOT NULL, uploaded_at `timestamp with time zone` NOT NULL, uploaded_by `uuid` NOT NULL, uploaded_office `text` NOT NULL, committed_at `timestamp with time zone`, withdrawn_at `timestamp with time zone`, withdrawn_by `uuid`, withdrawn_reason `text`, committed_pending `integer`, committed_admitted_left `integer` (V757)
 
 **`admissions.caps_row`**: id `uuid` NOT NULL, batch_id `uuid` NOT NULL, session `text` NOT NULL, jamb_reg_no `text` NOT NULL, raw `jsonb` NOT NULL, surname `text` NOT NULL, other_names `text` NOT NULL, jamb_code `text` NOT NULL, aggregate `integer`, sex `text`, state_of_origin `text`, lga `text`, entry_mode `text` NOT NULL, jamb_key `text`, withdrawn `boolean` NOT NULL
 

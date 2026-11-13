@@ -194,6 +194,8 @@ class AdmissionsController {
         out.put("outcome", outcome);
         out.put("followed", followed.get("followed"));
         out.put("admittedLeft", followed.get("admittedLeft"));
+        // V757: the admitted candidates JAMB moved no longer hold the commit; they are named for an admission correction
+        out.put("named", followed.get("named"));
         return out;
     }
 
@@ -219,6 +221,14 @@ class AdmissionsController {
     @PreAuthorize(READERS)
     List<Finding> reconciliation(@PathVariable String session, @PathVariable String year) {
         return intake.reconcile(session + "/" + year);
+    }
+
+    /** V757: the admitted candidates whose programme differs from CAPS, left as offered for an admission correction — the finding no
+     *  longer holds the commit, so the screen names them for the Academic Office and the Registrar's office alike */
+    @GetMapping("/sessions/{session}/{year}/reconciliation/admitted-to-correct")
+    @PreAuthorize(READERS)
+    List<Map<String, Object>> admittedToCorrect(@PathVariable String session, @PathVariable String year) {
+        return intake.admittedToCorrect(session + "/" + year);
     }
 
     @GetMapping("/sessions/{session}/{year}/attachments")
