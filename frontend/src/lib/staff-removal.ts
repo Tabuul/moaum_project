@@ -114,11 +114,13 @@ export function tiesText(ties: Tie[]): string {
   return ties.map((t) => (t.kind === "ACTED" || t.kind === "SIGNED_IN" || t.n <= 1 ? t.label : `${t.label} (${t.n >= 1000 ? "1,000+" : t.n})`)).join(" · ");
 }
 
-/** a staff id typed into an add form that belongs to someone deactivated: they are restored, not added again */
+/** a staff id typed into an add form that belongs to someone deactivated: they are restored, not added again. V750: a junior's
+ *  JP number is a series of its own — JP858 is not P858's holder */
 export function deactivatedHolder(pno: string, changes: StaffChange[]): StaffChange | null {
   const digits = pno.replace(/\D/g, "");
   if (!digits) return null;
-  return changes.find((c) => c.restorable && (c.staff_number ?? "").replace(/\D/g, "") === digits) ?? null;
+  const jp = /^\s*JP/i.test(pno);
+  return changes.find((c) => c.restorable && (c.staff_number ?? "").replace(/\D/g, "") === digits && /^\s*JP/i.test(c.staff_number ?? "") === jp) ?? null;
 }
 
 /** dd/mm/yyyy, as the staff upload reads a date, from the yyyy-mm-dd a date field gives */

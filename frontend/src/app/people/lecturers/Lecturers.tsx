@@ -11,20 +11,26 @@
  * request would time out. A chunk that fails to send does not stop the rest —
  * the import is idempotent, so uploading again fills any gap. A department not
  * on the register is reported so it can be created first.
+ * V750: the upload follows the nominal roll (17 columns: first, middle and last name, PNO, sex, date of birth, e-mail, phone, LGA,
+ * state, first appointment, confirmation, last promotion, present rank, department, faculty), from the Excel template or the Word
+ * roll as issued; checked first (a dry run), then uploaded; someone on record is updated from the roll, the e-mail and phone only
+ * filled — the shared components/staff/RollUpload. A department the roll changes moves the lecturer office with it; a number on
+ * record as non-teaching staff is refused (an ERROR row), on the upload as on Add.
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
-import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { RemoveStaff } from "@/components/staff/RemoveStaff";
 import { RemovedStaff } from "@/components/staff/RemovedStaff";
+import { RollUpload } from "@/components/staff/RollUpload";
 import { deactivatedHolder, type StaffChange, type StaffPick } from "@/lib/staff-removal";
+import { addCheck, addOutcome } from "@/lib/staff-roll";
 
 export interface StaffRow {
   id: string; staff_number: string | null; name: string; surname: string | null; given_names: string | null;
@@ -40,24 +46,20 @@ const EMPTY_FORM: StaffForm = { id: null, pno: "", surname: "", given: "", sex: 
 const MAY = ["ict", "super", "admin", "registrar", "dregistrar"];
 const CHUNK = 25; // bcrypt-12 is ~¼s per row; keep each request short so it never times out
 
-interface Row { pno: string; full_names: string; sex: string; date_first_appointment: string; department: string; present_rank: string; phone: string; conuass: string }
-interface Tally { rows: number; created: number; existing: number; credentialed: number; granted: number; records: number; no_department: number; skipped: number; failedRows: number; firstError: string | null; missing: string[] }
-
 export function Lecturers({ actingOffice, staff, removed }: { actingOffice: string | null; staff: StaffRow[]; removed: StaffChange[] }) {
   const router = useRouter();
   const may = MAY.includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [tally, setTally] = useState<Tally | null>(null);
   const [search, setSearch] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [delMsg, setDelMsg] = useState<string | null>(null);
   const [removing, setRemoving] = useState<StaffPick[] | null>(null);   // the delete dialog, for one person or the ticked ones
   const [form, setForm] = useState<StaffForm | null>(null);   // null = closed; form.id null = add, set = edit
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [renameOk, setRenameOk] = useState<string | null>(null);   // V750: an Add that renames someone on record, confirmed by a second press
 
-  function openAdd() { setProblem(null); setForm({ ...EMPTY_FORM }); }
+  function openAdd() { setProblem(null); setRenameOk(null); setForm({ ...EMPTY_FORM }); }
   function openEdit(s: StaffRow) {
     setProblem(null);
     setForm({ id: s.id, pno: s.staff_number ?? "", surname: s.surname ?? "", given: s.given_names ?? "",
@@ -77,6 +79,20 @@ export function Lecturers({ actingOffice, staff, removed }: { actingOffice: stri
       setProblem(p); notifyProblem(p);
       return;
     }
+    // V750: a junior's JP number is loaded on the non-academic staff desk (never read here as the P number of its digits)
+    if (!edit && /^\s*JP/i.test(form.pno)) {
+      const p = { status: 400, title: `${form.pno.trim().toUpperCase()} is a junior staff number (JP-NO).`, detail: "Junior staff are loaded on the non-academic staff desk." };
+      setProblem(p); notifyProblem(p);
+      return;
+    }
+    // V750: the upload updates someone already on record — adding by hand is for someone new; Edit corrects the rest
+    const digits = form.pno.replace(/\D/g, "");
+    const onList = edit ? null : staff.find((s) => (s.staff_number ?? "").toUpperCase() === `P${digits}`);
+    if (onList) {
+      const p = { status: 409, title: `Staff id ${onList.staff_number} is already on record: ${onList.name}.`, detail: "Edit them in the list below instead." };
+      setProblem(p); notifyProblem(p);
+      return;
+    }
     setBusy(true); setProblem(null);
     try {
       const headers = { "Content-Type": "application/json", "X-Reason": reasonHeader(edit ? `Staff ${form.pno} edited` : `Staff ${form.pno} added`) };
@@ -86,20 +102,49 @@ export function Lecturers({ actingOffice, staff, removed }: { actingOffice: stri
           surname: form.surname.trim(), givenNames: form.given.trim(), email: form.email.trim() || null, phone: form.phone.trim() || null,
           sex: form.sex || null, rank: form.rank.trim() || null, conuass: form.conuass ? Number(form.conuass) : null, department: form.department.trim() }) });
       } else {
-        r = await fetch(`/api/bff/api/v1/iam/lecturers/import`, { method: "POST", headers, body: JSON.stringify({ rows: [{
-          pno: form.pno.trim(), full_names: `${form.given.trim()} ${form.surname.trim()}`, sex: form.sex,
-          department: form.department.trim(), present_rank: form.rank.trim(), phone: form.phone.trim(), conuass: form.conuass, email: form.email.trim() }] }) });
+        // V750: one row of the roll (the names in their own cells, so a surname of two words stays whole), checked first as a dry run
+        const row = { pno: form.pno.trim(), given_names: form.given.trim(), last_name: form.surname.trim(), sex: form.sex,
+          department: form.department.trim(), present_rank: form.rank.trim(), phone: form.phone.trim(), conuass: form.conuass, email: form.email.trim() };
+        const send = (dryRun: boolean) => fetch(`/api/bff/api/v1/iam/lecturers/import`, { method: "POST", headers, body: JSON.stringify({ rows: [row], dryRun }) });
+        r = await send(true);
+        const c = await r.clone().json().catch(() => null);
+        if (r.ok && c) {
+          if (Number(c.no_department) > 0) {
+            const p = { status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Ask ICT to add the department (Department upload), or check the name." }; setProblem(p); notifyProblem(p);
+            return;
+          }
+          const v = addCheck(c);
+          if (!v.ok) { const p = { status: 409, title: v.title, detail: v.detail }; setProblem(p); notifyProblem(p); return; }
+          // someone on record under this number: adding renames them — said first, done on a second press
+          const key = v.renames ? `P${digits}|${v.renames.to}` : null;
+          if (v.renames && renameOk !== key) {
+            const p = { status: 409, title: `P${digits} is on record as ${v.renames.from}: adding renames them ${v.renames.to}.`,
+              detail: "Press Add staff again to rename and update them, or check the staff number." };
+            setRenameOk(key); setProblem(p); notifyProblem(p); return;
+          }
+          r = await send(false);
+        }
       }
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
       if (!edit && j && Number(j.no_department) > 0) {
-        setProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Create the department first (Department upload), or check the name." }); notifyProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Create the department first (Department upload), or check the name." });
+        setProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Ask ICT to add the department (Department upload), or check the name." }); notifyProblem({ status: 400, title: `No department matching "${form.department.trim()}".`, detail: "Ask ICT to add the department (Department upload), or check the name." });
+        return;
+      }
+      if (!edit && j && (Number(j.skipped) > 0 || Number(j.errors) > 0)) {
+        const p = { status: 400, title: "That member of staff could not be added.", detail: String(j.first_error ?? "") }; setProblem(p); notifyProblem(p);
         return;
       }
       setForm(null);
       setDelMsg(null);
-      setSaveMsg(edit ? "Staff member updated." : "Staff member added.");
-      notify(edit ? "Staff member updated" : "Staff member added");
+      // V750: a number on record but not on this list is updated by the upload, not added — and the upload never gives someone on
+      // record a sign-in or an office
+      const out = edit ? null : addOutcome(j, `P${digits}`);
+      setRenameOk(null);
+      setSaveMsg(!out ? "Staff member updated." : out.existing
+        ? `${out.text} No sign-in or lecturer office is given this way: check them on Users & roles.`
+        : out.text);
+      notify(!out ? "Staff member updated" : out.action === "UPDATED" ? "Staff record updated" : out.existing ? "Staff record checked" : "Staff member added");
       router.refresh();
     } finally { setBusy(false); }
   }
@@ -127,130 +172,22 @@ export function Lecturers({ actingOffice, staff, removed }: { actingOffice: stri
     return list.map((s) => ({ id: s.id, name: s.name, staffNumber: s.staff_number }));
   }
 
-  function downloadTemplate() {
-    const blob = buildXlsx(
-      ["PNO", "Full Names", "Sex", "Date of 1st Appt", "Department", "Present Rank", "Phone No", "CONUASS"],
-      [["29", "PROF. PAUL AONDONA ANGAHAR (example — delete this row)", "M", "01/12/1992", "ACCOUNTING", "PROFESSOR", "07068010515", "7"]],
-      "Teaching staff",
-    );
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "Teaching staff template.xlsx";
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }
-
-  async function upload(file: File) {
-    setProblem(null); setTally(null); setProgress(null);
-    let rows: Row[];
-    try {
-      const grid = await xlsxRows(await file.arrayBuffer());
-      const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
-      const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
-      const ci = {
-        pno: at(["pno", "staff"]), name: at(["full name", "name"]), sex: at(["sex", "gender"]),
-        appt: at(["appt", "appoint", "1st"]), dept: at(["department", "dept"]), rank: at(["rank"]),
-        phone: at(["phone", "mobile", "gsm"]), conuass: at(["conuas", "connuas", "conuass"]),
-      };
-      if (ci.pno < 0 || ci.name < 0 || ci.dept < 0) {
-        setProblem({ status: 400, title: "That file needs PNO, Full Names and Department columns.", detail: "Download the template — it matches the List of teaching staff." }); notifyProblem({ status: 400, title: "That file needs PNO, Full Names and Department columns.", detail: "Download the template — it matches the List of teaching staff." });
-        return;
-      }
-      const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
-      rows = grid.slice(1)
-        .filter((r) => g(r, ci.pno).replace(/\D/g, "") && !/^pno$/i.test(g(r, ci.pno)))
-        .map((r) => ({
-          pno: g(r, ci.pno), full_names: g(r, ci.name), sex: g(r, ci.sex),
-          date_first_appointment: g(r, ci.appt), department: g(r, ci.dept),
-          present_rank: g(r, ci.rank), phone: g(r, ci.phone), conuass: g(r, ci.conuass),
-        }));
-    } catch {
-      setProblem({ status: 400, title: "That file could not be read as a spreadsheet." }); notifyProblem({ status: 400, title: "That file could not be read as a spreadsheet." });
-      return;
-    }
-    if (!rows.length) { setProblem({ status: 400, title: "No teaching staff found in the file." }); notifyProblem({ status: 400, title: "No teaching staff found in the file." }); return; }
-
-    setBusy(true);
-    const sum: Tally = { rows: 0, created: 0, existing: 0, credentialed: 0, granted: 0, records: 0, no_department: 0, skipped: 0, failedRows: 0, firstError: null, missing: [] };
-    try {
-      const chunks: Row[][] = [];
-      for (let i = 0; i < rows.length; i += CHUNK) chunks.push(rows.slice(i, i + CHUNK));
-      setProgress({ done: 0, total: rows.length });
-      for (const chunk of chunks) {
-        try {
-          const r = await fetch("/api/bff/api/v1/iam/lecturers/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`${rows.length} teaching staff uploaded`) },
-            body: JSON.stringify({ rows: chunk }),
-          });
-          const j = await r.json().catch(() => null);
-          if (!r.ok || !j) { sum.failedRows += chunk.length; if (!sum.firstError && j?.title) sum.firstError = String(j.title); }
-          else {
-            sum.rows += Number(j.rows ?? 0); sum.created += Number(j.created ?? 0); sum.existing += Number(j.existing ?? 0);
-            sum.credentialed += Number(j.credentialed ?? 0); sum.granted += Number(j.granted ?? 0); sum.records += Number(j.records ?? 0);
-            sum.no_department += Number(j.no_department ?? 0); sum.skipped += Number(j.skipped ?? 0);
-            if (!sum.firstError && j.first_error) sum.firstError = String(j.first_error);
-            if (j.missing_departments) for (const d of String(j.missing_departments).split(", ")) if (d && !sum.missing.includes(d)) sum.missing.push(d);
-          }
-        } catch { sum.failedRows += chunk.length; }   // a chunk that never lands: keep going, the import is idempotent
-        setProgress((p) => (p ? { done: Math.min(p.done + chunk.length, p.total), total: p.total } : p));
-        setTally({ ...sum, missing: [...sum.missing] });
-      }
-      notify(`${sum.created} staff added · ${sum.existing} already on record`);
-    } finally {
-      setBusy(false);
-      setProgress(null);
-      router.refresh();   // reload the staff list below
-    }
-  }
-
   return (
     <>
       <RoleLine allowed={["ict", "registrar", "dregistrar"]} actingOffice={actingOffice} canAct={may} action="Onboarding teaching staff" />
-      <Note kind="info" title="Upload the list of teaching staff, and see who is on record">
-        From the <b>List of teaching staff</b>. Each row gets a sign-in whose <b>username is the staff id</b>, and the <b>lecturer
+      <Note kind="info" title="Upload the nominal roll of teaching staff, and see who is on record">
+        From the <b>nominal roll</b> (the Word roll as issued, or the Excel template). A new lecturer gets a sign-in whose <b>username is the staff id</b>, and the <b>lecturer
         office at the home department</b>. The lecturer signs in with the <b>staff id as the first password</b> and chooses a password at once; after that
-        the staff id opens nothing (<b>Forgot password</b> sends a link to the email or phone on record, or the Registry gives a new one on Users &amp; roles). Re-uploading never
-        duplicates or resets a password. The department must exist first.
+        the staff id opens nothing (<b>Forgot password</b> sends a link to the email or phone on record, or the Registry gives a new one on Users &amp; roles).
+        Someone already on record is <b>updated from the roll</b> (names, dates, rank, department and faculty; a new department moves the lecturer office with it); the e-mail and phone are only filled where none is on record.
+        Re-uploading never duplicates or resets a password. The department must exist first.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Registry">Your office may not onboard teaching staff.</Note> : null}
       {problem ? <ProblemNotice problem={problem} /> : null}
 
-      {tally ? (
-        <>
-          <Tiles cls="grid--4" items={[
-            ["New staff", String(tally.created), null, "Added to the register"],
-            ["Sign-ins issued", String(tally.credentialed), null, "Username = P<PNO>; the password set through the link"],
-            ["Department grants", String(tally.granted), null, "Lecturer office at the home department"],
-            ["Records kept", String(tally.records), null, "Sex · appointment · rank · CONUASS"],
-          ]} />
-          <Note kind={tally.no_department || tally.skipped || tally.failedRows ? "bad" : "ok"} title={tally.no_department || tally.skipped || tally.failedRows ? "Loaded, with some rows to follow up" : "Teaching staff loaded"}>
-            {tally.rows} row(s) read · {tally.created} new · {tally.existing} already on record · {tally.granted} department grant(s)
-            {tally.no_department ? ` · ${tally.no_department} with no matching department` : ""}{tally.skipped ? ` · ${tally.skipped} skipped` : ""}.
-            {tally.failedRows ? <><br /><b>{tally.failedRows} row(s) did not send</b>. Upload the same file again to fill the gap.</> : null}
-            {tally.missing.length ? <><br /><b>Create these departments first, then re-upload:</b> {tally.missing.join(", ")}.</> : null}
-            {tally.firstError ? <><br />First problem: {tally.firstError}</> : null}
-          </Note>
-        </>
-      ) : null}
-
       {may ? (
-        <Panel title="Upload teaching staff" right="Person · sign-in · department · establishment">
-          <PBody>
-            <div className="sub2">
-              The file needs <b>PNO</b>, <b>Full Names</b> and <b>Department</b> at least; Sex, Date of 1st Appt, Present Rank,
-              Phone and CONUASS are carried when present. The PNO becomes the staff id <b>P&lt;number&gt;</b>.
-            </div>
-            <div className="row mt-2">
-              <Btn kind="ghost" onClick={downloadTemplate}>Download template</Btn>
-              <label className={`btn btn--primary btn--sm m-0${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
-                {busy ? "Uploading…" : "Upload teaching staff (.xlsx)"}
-                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
-              </label>
-              {progress ? <span className="sub2 tnum">Onboarding {progress.done} of {progress.total}…</span> : null}
-            </div>
-          </PBody>
-        </Panel>
+        <RollUpload kind="ACADEMIC" templates={["ACADEMIC"]} endpoint="/api/bff/api/v1/iam/lecturers/import" chunk={CHUNK} what="teaching staff"
+          onDone={() => router.refresh()} />
       ) : null}
 
       <Panel title="Teaching staff on record" right={`${staff.length} lecturer${staff.length === 1 ? "" : "s"}`}>
@@ -305,7 +242,7 @@ export function Lecturers({ actingOffice, staff, removed }: { actingOffice: stri
           </div>
           <div className="grid grid--2">
             <Field id="lf-pno" label="Staff number (PNO)" hint={form.id ? "Cannot change here" : "Digits only — becomes P<number>"}>
-              <input id="lf-pno" className="ctl tnum" value={form.pno} disabled={!!form.id} onChange={(e) => setForm({ ...form, pno: e.target.value })} placeholder="29" />
+              <input id="lf-pno" className="ctl tnum" value={form.pno} disabled={!!form.id} onChange={(e) => setForm({ ...form, pno: e.target.value })} placeholder="99029" />
             </Field>
             <Field id="lf-dept" label="Department" hint="Code or name">
               <input id="lf-dept" className="ctl" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} placeholder="ACCOUNTING" />

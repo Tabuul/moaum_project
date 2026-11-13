@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 585
+\set EXPECTED 607
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -35147,6 +35147,805 @@ BEGIN
       coalesce(msg = 'is_summer_for true/false/false/false | card U true:true C false:true:true | Summer page gate U true C false'
                      || ' | Summer menu C/P false/false | readers for every student none | twin ZZG 782 to the day before,ZZG 782 open', false),
       msg);
+END $$;
+
+-- ── V750. The nominal roll: both staff uploads read the roll's columns (and still the old sheet's). In a dry run nothing is written.
+--    The non-teaching upload makes a senior P997501 and a junior JP997501 — the same digits, two people, never one; reads the dates
+--    day first; keeps a confirmation note in place of a date; and places the old sheet's row. It updates P997502 on record: the given
+--    names follow the roll, the rank follows it, the phone is filled, the e-mail on record is kept (the roll's reported), 'NA' erases
+--    nothing, and a posting that does not resolve leaves the unit as it was. The teaching-staff upload makes P997507 with a sign-in
+--    and the lecturer office, renames P997503 on record without giving a sign-in or an office, refuses a JP number, and makes a one-digit P number (one on nobody's record) and
+--    its office without a sign-in (a username is three characters at least) — which the dry run, writing each row and rolling it
+--    back, already says. The same files again change nothing. hrm.roll_absent lists the staff in service of each kind not on the
+--    roll, within the roll's series. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid();
+    pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid(); pc uuid := gen_random_uuid(); pd uuid := gen_random_uuid();
+    dept text; dept_name text; fac text; fac_name text;
+    staff_rows jsonb; lect_rows jsonb;
+    sd record; s1 record; s2 record; ld record; l1 record; l2 record;
+    before_dry text; after_dry text;
+    m_dry text; m_staff text; m_junior text; m_update text; m_lect text; m_again text; m_absent text; v_err text;
+    sn text := coalesce((SELECT 'P' || n FROM generate_series(1, 9) n
+                          WHERE NOT EXISTS (SELECT 1 FROM iam.person p WHERE upper(p.staff_number) = 'P' || n) ORDER BY n LIMIT 1), 'P8');
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750', true);
+    SELECT p.dept_code, d.name, d.faculty_code, f.name INTO dept, dept_name, fac, fac_name
+      FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = d.faculty_code
+     WHERE p.code = 'C00061';
+
+    -- on record before the roll: a senior (P997502), an academic (P997503), an academic in office not on the roll (P997504) and a
+    -- non-teaching member of staff not on the roll (P997505)
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email, phone) VALUES
+        (pa, 'P997502', 'Zzroll', 'Old Given', 'zz750.onrecord@example.test', NULL),
+        (pb, 'P997503', 'ZZBEFORE', 'Bem', NULL, '08030007503'),
+        (pc, 'P997504', 'ZZABSENT', 'Academic', NULL, NULL),
+        (pd, 'P997505', 'ZZABSENT', 'Nonteaching', NULL, NULL);
+    INSERT INTO hrm.staff_record (person_id, pno, category, present_rank, date_of_confirmation, home_unit, unit_as_given) VALUES
+        (pa, '997502', 'NON_ACADEMIC', 'CLERK', DATE '2001-01-01', 'BUR_FAT_CASH_OFFICE', 'BUR-DIRECTORATE OF FAT-[CASH OFFICE]'),
+        (pb, '997503', 'ACADEMIC', 'LECTURER II', NULL, NULL, NULL),
+        (pd, '997505', 'NON_ACADEMIC', 'DRIVER', NULL, NULL, NULL);
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), pc, 'lecturer', 'department', dept, 'V750 check', pa, current_date);
+
+    staff_rows := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997501', 'first_name', 'Ada', 'middle_name', 'Ene', 'last_name', 'ZZROLLNEW', 'sex', 'F',
+            'date_of_birth', '04/01/1980', 'email', 'ZZ750.New@Example.test', 'phone', '0803 000 7501', 'lga', 'Makurdi', 'state', 'Benue',
+            'date_first_appointment', '01/02/2005', 'date_of_confirmation', '(Transfer of Service) Another University',
+            'date_of_last_promotion', 'NA', 'present_rank', 'Executive Officer', 'posting', 'BUR-DIRECTORATE OF FAT-[CASH OFFICE]'),
+        jsonb_build_object('sheet_row', 3, 'jp_no', '997501', 'first_name', 'Tor', 'middle_name', '', 'last_name', 'ZZJUNIOR', 'sex', 'M',
+            'date_of_birth', '13/12/1990', 'phone', '8030007511', 'date_first_appointment', '2/3/2012', 'date_of_confirmation', 'Nil',
+            'present_rank', 'Driver', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'pno', 'p997502', 'first_name', 'Grace', 'middle_name', 'Mnena', 'last_name', 'ZZROLL', 'sex', 'F',
+            'email', 'zz750.roll@example.test', 'phone', '08030007502', 'date_of_confirmation', 'NA', 'date_of_last_promotion', '12/05/2015-UPG',
+            'present_rank', 'Senior Clerk', 'posting', 'UNIT THAT DOES NOT EXIST'),
+        jsonb_build_object('sheet_row', 5, 'pno', '997506', 'full_names', 'Mr Old Template ZZOLDSHEET', 'sex', 'M', 'date_first_appointment', '29/04/1993',
+            'unit', 'CHS-DEPT. OF ANATOMY', 'present_rank', 'CLERK', 'contiss', '7'),
+        jsonb_build_object('sheet_row', 6, 'pno', '', 'first_name', '', 'middle_name', '', 'last_name', ''),
+        jsonb_build_object('sheet_row', 7, 'jp_no', '997510', 'first_name', 'Nowhere', 'last_name', 'ZZUNPLACED', 'posting', 'UNIT THAT DOES NOT EXIST'),
+        jsonb_build_object('sheet_row', 8, 'pno', 'NA', 'first_name', 'Numberless', 'last_name', 'ZZNONUMBER', 'posting', 'CHS-DEPT. OF ANATOMY'));
+    lect_rows := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997507', 'first_name', 'Ngozi', 'middle_name', '', 'last_name', 'ZZLECTURER', 'sex', 'F',
+            'date_of_birth', '01/10/1975', 'date_first_appointment', '15/09/2010', 'present_rank', 'Lecturer I',
+            'department', dept_name, 'faculty', fac_name),
+        jsonb_build_object('sheet_row', 3, 'pno', '997503', 'first_name', 'Bem', 'middle_name', '', 'last_name', 'ZZRENAMED', 'phone', '08039999999',
+            'present_rank', 'Lecturer II', 'department', dept, 'faculty', 'FACULTY OF NOWHERE'),
+        jsonb_build_object('sheet_row', 4, 'jp_no', '997508', 'first_name', 'Wrong', 'last_name', 'ZZJUNIORLECT', 'department', dept),
+        jsonb_build_object('sheet_row', 5, 'pno', '997509', 'full_names', 'Dr Old Lecturer ZZOLDLECT', 'department', dept, 'sex', 'M'),
+        jsonb_build_object('sheet_row', 6, 'pno', substr(sn, 2), 'first_name', 'Short', 'last_name', 'ZZSHORTNUMBER', 'department', dept));
+
+    -- a dry run of each writes nothing
+    SELECT string_agg(concat_ws('/', p.staff_number, p.surname, p.given_names, p.email, p.phone, r.present_rank, r.date_of_last_promotion,
+                                (SELECT count(*) FROM iam.credential c WHERE c.person_id = p.id)), ';' ORDER BY p.staff_number)
+      INTO before_dry FROM iam.person p LEFT JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number ~ ('^(J?P9975|' || sn || '$)');
+    SELECT * INTO sd FROM iam.import_staff(staff_rows, true);
+    SELECT * INTO ld FROM iam.import_lecturers(lect_rows, true);
+    SELECT string_agg(concat_ws('/', p.staff_number, p.surname, p.given_names, p.email, p.phone, r.present_rank, r.date_of_last_promotion,
+                                (SELECT count(*) FROM iam.credential c WHERE c.person_id = p.id)), ';' ORDER BY p.staff_number)
+      INTO after_dry FROM iam.person p LEFT JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number ~ ('^(J?P9975|' || sn || '$)');
+    m_dry := concat_ws(' | ',
+        'unchanged ' || (before_dry = after_dry),
+        'staff ' || concat_ws('/', sd.rows, sd.created, sd.existing, sd.updated, sd.unchanged, sd.skipped, sd.errors, sd.unplaced),
+        (SELECT string_agg(coalesce(x->>'staffNumber', '-') || ':' || (x->>'row') || ':' || (x->>'action'), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(sd.results) x),
+        'lecturers ' || concat_ws('/', ld.rows, ld.created, ld.existing, ld.credentialed, ld.granted, ld.updated, ld.unchanged, ld.errors),
+        (SELECT string_agg(coalesce(x->>'staffNumber', '-') || ':' || (x->>'action'), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(ld.results) x),
+        (SELECT string_agg(concat_ws(':', c->>'field', c->>'onRoll', c->>'reason'), ',')
+           FROM jsonb_array_elements(ld.results) x, jsonb_array_elements(x->'kept') c WHERE x->>'staffNumber' = sn));
+    m_dry := regexp_replace(regexp_replace(m_dry, '\m' || sn || '\M', 'Pn', 'g'), '\m' || lower(sn) || '\M', 'pn', 'g');
+
+    -- the uploads
+    SELECT * INTO s1 FROM iam.import_staff(staff_rows, false);
+    SELECT * INTO l1 FROM iam.import_lecturers(lect_rows);
+
+    -- the senior made, the junior beside it under JP, the old sheet's row placed
+    SELECT concat_ws(' | ',
+        'staff ' || concat_ws('/', s1.rows, s1.created, s1.existing, s1.updated, s1.unchanged, s1.skipped, s1.errors, s1.unplaced),
+        (SELECT string_agg(x->>'row' || ':' || (x->>'action') || coalesce(':' || (x->>'error'), ''), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(s1.results) x WHERE x->>'action' IN ('SKIPPED', 'ERROR')),
+        (SELECT concat_ws('/', p.surname, p.given_names, p.email, p.phone, r.pno, r.sex, r.date_of_birth, r.lga, r.state_of_origin,
+                          r.date_first_appointment, coalesce(r.date_of_confirmation::text, '-'), r.confirmation_note,
+                          coalesce(r.date_of_last_promotion::text, '-'), coalesce(r.promotion_note, '-'), r.present_rank, r.category, r.cadre,
+                          r.home_unit, r.roll_as_given->>'first_name', (r.roll_updated_at IS NOT NULL))
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number = 'P997501'),
+        (SELECT concat_ws('/', p.surname, p.given_names, r.salary_scale, r.contiss_step, r.date_first_appointment, r.home_department, r.cadre)
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number = 'P997506'),
+        'logins ' || (SELECT count(*) FROM iam.credential c JOIN iam.person p ON p.id = c.person_id WHERE p.staff_number IN ('P997501', 'JP997501', 'P997506')))
+      INTO m_staff;
+    SELECT concat_ws(' | ',
+        'people ' || (SELECT count(DISTINCT p.id) FROM iam.person p WHERE regexp_replace(p.staff_number, '[^0-9]', '', 'g') = '997501'),
+        (SELECT string_agg(p.staff_number || '/' || p.surname || '/' || r.cadre || '/' || r.pno, ',' ORDER BY p.staff_number)
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE regexp_replace(p.staff_number, '[^0-9]', '', 'g') = '997501'),
+        (SELECT concat_ws('/', p.phone, r.date_of_birth, r.date_first_appointment, coalesce(r.date_of_confirmation::text, '-'),
+                          coalesce(r.confirmation_note, '-'), r.home_department)
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number = 'JP997501'))
+      INTO m_junior;
+
+    -- the senior on record updated: names, rank, phone filled, e-mail kept, 'NA' erasing nothing, the unit left
+    SELECT concat_ws(' | ',
+        (SELECT concat_ws('/', p.surname, p.given_names, p.email, p.phone, r.present_rank, r.date_of_confirmation, coalesce(r.confirmation_note, '-'),
+                          r.date_of_last_promotion, r.promotion_note, r.home_unit, r.unit_as_given, r.cadre)
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id = pa),
+        (SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') FROM jsonb_array_elements(s1.results) x, jsonb_array_elements(x->'changes') c
+          WHERE x->>'staffNumber' = 'P997502'),
+        (SELECT string_agg(concat_ws(':', c->>'field', c->>'onRecord', c->>'onRoll', c->>'reason'), ',')
+           FROM jsonb_array_elements(s1.results) x, jsonb_array_elements(x->'kept') c WHERE x->>'staffNumber' = 'P997502'),
+        (SELECT string_agg(concat_ws(':', c->>'field', c->>'onRoll'), ',')
+           FROM jsonb_array_elements(s1.results) x, jsonb_array_elements(x->'unresolved') c WHERE x->>'staffNumber' = 'P997502'),
+        (SELECT c->>'from' || '>' || (c->>'to') FROM jsonb_array_elements(s1.results) x, jsonb_array_elements(x->'changes') c
+          WHERE x->>'staffNumber' = 'P997502' AND c->>'field' = 'given_names'))
+      INTO m_update;
+
+    -- the teaching staff: the new one signs in and holds the lecturer office; the one on record renamed, no sign-in, no office
+    SELECT concat_ws(' | ',
+        'lecturers ' || concat_ws('/', l1.rows, l1.created, l1.existing, l1.credentialed, l1.granted, l1.updated, l1.unchanged, l1.errors, l1.no_department),
+        (SELECT x->>'action' || ':' || (x->>'error') FROM jsonb_array_elements(l1.results) x WHERE x->>'row' = '4'),
+        (SELECT concat_ws('/', p.surname, p.given_names, r.category, coalesce(r.cadre, '-'), (r.home_department = dept), (r.home_faculty IS NOT DISTINCT FROM fac),
+                          r.date_of_birth, r.present_rank,
+                          (SELECT count(*) FROM iam.credential c WHERE c.person_id = p.id AND c.username = 'p997507' AND c.must_change),
+                          (SELECT count(*) FROM iam.office_assignment a WHERE a.person_id = p.id AND a.office_code = 'lecturer' AND a.scope_id = dept
+                                                                          AND a.valid_from = DATE '2010-09-15'))
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number = 'P997507'),
+        (SELECT concat_ws('/', p.surname, p.given_names, p.phone, r.present_rank, r.home_department = dept, coalesce(r.home_faculty, '-'),
+                          (SELECT count(*) FROM iam.credential c WHERE c.person_id = p.id),
+                          (SELECT count(*) FROM iam.office_assignment a WHERE a.person_id = p.id))
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id = pb),
+        (SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') FROM jsonb_array_elements(l1.results) x, jsonb_array_elements(x->'changes') c
+          WHERE x->>'staffNumber' = 'P997503'),
+        (SELECT string_agg(concat_ws(':', c->>'field', c->>'reason'), ',')
+           FROM jsonb_array_elements(l1.results) x, jsonb_array_elements(x->'kept') c WHERE x->>'staffNumber' = 'P997503'),
+        (SELECT string_agg(concat_ws(':', c->>'field', c->>'onRoll'), ',')
+           FROM jsonb_array_elements(l1.results) x, jsonb_array_elements(x->'unresolved') c WHERE x->>'staffNumber' = 'P997503'),
+        (SELECT concat_ws('/', p.surname, p.given_names, (SELECT count(*) FROM iam.credential c WHERE c.person_id = p.id))
+           FROM iam.person p WHERE p.staff_number = 'P997509'),
+        (SELECT concat_ws('/', (SELECT count(*) FROM iam.credential c WHERE c.person_id = p.id),
+                          (SELECT count(*) FROM iam.office_assignment a WHERE a.person_id = p.id AND a.office_code = 'lecturer' AND a.scope_id = dept),
+                          (SELECT string_agg(concat_ws(':', c->>'field', c->>'onRoll', c->>'reason'), ',')
+                             FROM jsonb_array_elements(l1.results) x, jsonb_array_elements(x->'kept') c WHERE x->>'staffNumber' = sn))
+           FROM iam.person p WHERE p.staff_number = sn))
+      INTO m_lect;
+    -- the one-digit number written Pn / pn, whichever it is
+    m_lect := regexp_replace(regexp_replace(m_lect, '\m' || sn || '\M', 'Pn', 'g'), '\m' || lower(sn) || '\M', 'pn', 'g');
+
+    -- the same files again: nothing differs
+    SELECT * INTO s2 FROM iam.import_staff(staff_rows, false);
+    SELECT * INTO l2 FROM iam.import_lecturers(lect_rows, false);
+    m_again := concat_ws(' | ',
+        'staff ' || concat_ws('/', s2.rows, s2.created, s2.updated, s2.unchanged, s2.skipped, s2.errors),
+        'lecturers ' || concat_ws('/', l2.rows, l2.created, l2.updated, l2.unchanged, l2.errors, l2.credentialed, l2.granted),
+        'people ' || (SELECT count(*) FROM iam.person p WHERE p.staff_number ~ ('^(J?P9975|' || sn || '$)')),
+        'kept ' || (SELECT string_agg(x->>'staffNumber' || ':' || (c->>'field'), ',') FROM jsonb_array_elements(s2.results) x, jsonb_array_elements(x->'kept') c));
+
+    -- on the portal but not on this roll
+    m_absent := concat_ws(' | ',
+        'academic ' || coalesce((SELECT string_agg(a.staff_number, ',' ORDER BY a.staff_number) FROM hrm.roll_absent('ACADEMIC', ARRAY['P997503', '997507', 'p997509']) a
+                                  WHERE a.staff_number ~ '^J?P9975'), '-'),
+        'senior roll ' || coalesce((SELECT string_agg(a.staff_number, ',' ORDER BY a.staff_number) FROM hrm.roll_absent('NON_ACADEMIC', ARRAY['997501', 'P997502', 'P997506']) a
+                                     WHERE a.staff_number ~ '^J?P9975'), '-'),
+        'junior roll ' || coalesce((SELECT string_agg(a.staff_number, ',' ORDER BY a.staff_number) FROM hrm.roll_absent('NON_ACADEMIC', ARRAY['JP997501']) a
+                                     WHERE a.staff_number ~ '^J?P9975'), '-'),
+        'junior roll without ' || coalesce((SELECT string_agg(a.staff_number, ',' ORDER BY a.staff_number) FROM hrm.roll_absent('NON_ACADEMIC', ARRAY['JP1']) a
+                                             WHERE a.staff_number ~ '^J?P9975'), '-'),
+        (SELECT a.name || '/' || coalesce(a.rank, '-') FROM hrm.roll_absent('NON_ACADEMIC', ARRAY['P1']) a WHERE a.person_id = pd));
+    BEGIN
+        PERFORM * FROM hrm.roll_absent('STUDENTS', ARRAY['P1']);
+        m_absent := m_absent || ' | kind accepted';
+    EXCEPTION WHEN check_violation THEN m_absent := m_absent || ' | ' || split_part(SQLERRM, ':', 1);
+    END;
+
+    RAISE EXCEPTION 'the V750 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a dry run of either staff upload writes nothing and says what it would do, row by row',
+      coalesce(m_dry = 'unchanged true | staff 6/3/1/1/0/1/1/2 | P997501:2:CREATED,JP997501:3:CREATED,P997502:4:UPDATED,P997506:5:CREATED,JP997510:7:SKIPPED,-:8:ERROR'
+                       || ' | lecturers 5/3/1/2/3/1/0/1 | P997507:CREATED,P997503:UPDATED,JP997508:ERROR,P997509:CREATED,Pn:CREATED | sign_in:pn:USERNAME_TOO_SHORT', false),
+      m_dry);
+  PERFORM pg_temp.assert('V750: the non-teaching upload makes a new member of staff from the roll (dates day first, a note kept in place of a date, the contacts written) and still loads the old sheet''s row, with no sign-in',
+      coalesce(m_staff = 'staff 6/3/1/1/0/1/1/2 | 7:SKIPPED:no unit, department or faculty matching UNIT THAT DOES NOT EXIST is on the portal: ask ICT to add it or its spelling (or correct the CURRENT POSTING cell) and upload again,'
+                         || '8:ERROR:no staff number (PNO or JP-NO) on the row'
+                         || ' | ZZROLLNEW/Ada Ene/zz750.new@example.test/08030007501/997501/F/1980-01-04/Makurdi/Benue/2005-02-01/-/(Transfer of Service) Another University/-/-/Executive Officer/NON_ACADEMIC/SENIOR/BUR_FAT_CASH_OFFICE/Ada/t'
+                         || ' | ZZOLDSHEET/Old Template/CONTISS/7/1993-04-29/ANT/SENIOR | logins 0', false),
+      m_staff);
+  PERFORM pg_temp.assert('V750: a junior is JP + the JP-NO digits, a series of its own — never merged into the P record of the same digits',
+      coalesce(m_junior = 'people 2 | JP997501/ZZJUNIOR/JUNIOR/997501,P997501/ZZROLLNEW/SENIOR/997501 | 08030007511/1990-12-13/2012-03-02/-/-/ANT', false),
+      m_junior);
+  PERFORM pg_temp.assert('V750: someone on record follows the roll — names and rank updated and listed, the phone filled, the e-mail on record kept (the roll''s reported), NA erasing nothing, a posting that does not resolve leaving the unit',
+      coalesce(m_update = 'Zzroll/Grace Mnena/zz750.onrecord@example.test/08030007502/Senior Clerk/2001-01-01/-/2015-05-12/12/05/2015-UPG/BUR_FAT_CASH_OFFICE/BUR-DIRECTORATE OF FAT-[CASH OFFICE]/SENIOR'
+                          || ' | cadre,date_of_last_promotion,given_names,phone,present_rank,promotion_note,sex'
+                          || ' | email:zz750.onrecord@example.test:zz750.roll@example.test:DIFFERS | posting:UNIT THAT DOES NOT EXIST | Old Given>Grace Mnena', false),
+      m_update);
+  PERFORM pg_temp.assert('V750: the teaching-staff upload makes a lecturer with a sign-in and the lecturer office, renames one on record with neither, and refuses a junior number; a staff number too short to be a username (P and one digit) is loaded and placed, its sign-in reported as not made',
+      coalesce(m_lect = 'lecturers 5/3/1/2/3/1/0/1/0 | ERROR:JP997508 is a junior staff number (JP-NO): junior staff are loaded on the non-academic staff desk'
+                        || ' | ZZLECTURER/Ngozi/ACADEMIC/-/t/t/1975-10-01/Lecturer I/1/1'
+                        || ' | ZZRENAMED/Bem/08030007503/LECTURER II/t/-/0/0 | home_department,surname | phone:DIFFERS | faculty:FACULTY OF NOWHERE'
+                        || ' | ZZOLDLECT/Old Lecturer/1 | 0/1/sign_in:pn:USERNAME_TOO_SHORT', false),
+      m_lect);
+  PERFORM pg_temp.assert('V750: the same roll uploaded again changes nothing — every row on record UNCHANGED, the e-mail that differs still reported',
+      coalesce(m_again = 'staff 6/0/0/4/1/1 | lecturers 5/0/0/4/1/0/0 | people 10 | kept P997502:email', false),
+      m_again);
+  PERFORM pg_temp.assert('V750: hrm.roll_absent lists the staff in service of the kind named whose number is not on the roll, within the roll''s series (P or JP)',
+      coalesce(m_absent = 'academic P997504 | senior roll P997505 | junior roll - | junior roll without JP997501 | ZZABSENT, Nonteaching/DRIVER | ROLL_KIND', false),
+      m_absent);
+END $$;
+
+-- ── V750. A department, faculty or posting the plain match misses is read as the roll writes it — & as AND, a plural, DEPT. OF and
+--    CHS- before the name, a bracketed note, PAEDIATRICS as PEDIATRICS, a misspelling (ZZROLL ARCHITECTUER), a unit's code, the unit
+--    list's own alias — and placed only when one place alone answers it: two that read alike, an abbreviation, a name with other
+--    words, or a department asked for as a faculty, place nobody. A new lecturer so placed gets the lecturer office there; one whose
+--    department is not on the portal, or blank, is not loaded, the message saying what to do. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); l record; s record; m_place text; m_upload text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 places', true);
+    INSERT INTO ref.faculty (code, name) VALUES ('ZZRF', 'ZZROLL ENVIRONMENTAL SCIENCE');
+    INSERT INTO ref.department (code, name, faculty_code) VALUES
+        ('ZZR1', 'ZZROLL ARTS AND SCIENCES EDUCATION', 'ZZRF'), ('ZZR2', 'ZZROLL PAEDIATRICS', 'ZZRF'), ('ZZR3', 'ZZROLL ARCHITECTURE', 'ZZRF'),
+        ('ZZR4', 'ZZROLL TWIN (MORNING)', 'ZZRF'), ('ZZR5', 'ZZROLL TWIN (EVENING)', 'ZZRF'), ('ZZR6', 'ZZROLL MATHEMATICS', 'ZZRF');
+    INSERT INTO ref.unit (code, name, kind) VALUES ('ZZROLL_DESK', 'ZZroll Desk Office (Annex)', 'OFFICE');
+    INSERT INTO ref.unit_alias (alias_key, alias, dept_code)
+    VALUES (ref.unit_key('DEPARTMENT OF ZZROLL MATHS/STATS'), 'DEPARTMENT OF ZZROLL MATHS/STATS', 'ZZR6');
+
+    SELECT string_agg(x.o || '=' || coalesce((SELECT coalesce(pl.unit_code, pl.dept_code, pl.faculty_code) FROM hrm.roll_place(x.raw, x.kind) pl), '-'),
+                      ' ' ORDER BY x.o)
+      INTO m_place
+      FROM (VALUES (1, 'Dept. of ZZroll Art & Science Education', 'DEPARTMENT'), (2, 'ZZROLL PEDIATRICS', 'DEPARTMENT'),
+                   (3, 'CHS-DEPT. OF ZZROLL PAEDIATRICS (LABORATORY)', 'POSTING'), (4, 'ZZROLL ARCHITECTUER', 'DEPARTMENT'),
+                   (5, 'FACULTY OF ZZROLL ENVIRONMENTL SCIENCES', 'FACULTY'), (6, 'OFFICE OF THE ZZROLL-[DESK]', 'POSTING'),
+                   (7, 'ZZROLL MATHS/STATS', 'DEPARTMENT'), (8, 'ZZROLL TWIN', 'DEPARTMENT'), (9, 'ZZROLL MATHEMATICS/ZZROLL COMPUTING', 'DEPARTMENT'),
+                   (10, 'ZZROLL MATHS', 'DEPARTMENT'), (11, 'ZZROLL PAEDIATRICS', 'FACULTY')) x(o, raw, kind);
+
+    SELECT * INTO l FROM iam.import_lecturers(jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997521', 'first_name', 'Placed', 'last_name', 'ZZPLACED',
+                           'department', 'Dept. of ZZroll Art & Science Education', 'faculty', 'FACULTY OF ZZROLL ENVIRONMENTL SCIENCES'),
+        jsonb_build_object('sheet_row', 3, 'pno', '997522', 'first_name', 'Twin', 'last_name', 'ZZTWIN', 'department', 'ZZROLL TWIN'),
+        jsonb_build_object('sheet_row', 4, 'pno', '997523', 'first_name', 'Blank', 'last_name', 'ZZBLANKDEPT')), false);
+    SELECT * INTO s FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'jp_no', '997524', 'first_name', 'Lab', 'last_name', 'ZZLAB', 'posting', 'CHS-DEPT. OF ZZROLL PAEDIATRICS (LABORATORY)'),
+        jsonb_build_object('sheet_row', 3, 'jp_no', '997525', 'first_name', 'Desk', 'last_name', 'ZZDESK', 'posting', 'OFFICE OF THE ZZROLL-[DESK]')), false);
+    m_upload := concat_ws(' | ',
+        (SELECT string_agg(x->>'row' || ':' || (x->>'action') || coalesce(':' || (x->>'error'), ''), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(l.results) x),
+        (SELECT concat_ws('/', r.home_department, r.home_faculty,
+                          (SELECT string_agg(a.scope_id, ',') FROM iam.office_assignment a WHERE a.person_id = p.id AND a.office_code = 'lecturer'))
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number = 'P997521'),
+        'no department ' || l.no_department || ', loaded ' || (SELECT count(*) FROM iam.person p WHERE p.staff_number IN ('P997522', 'P997523')),
+        (SELECT string_agg(p.staff_number || '/' || concat_ws('/', r.home_unit, r.home_department, r.home_faculty), ',' ORDER BY p.staff_number)
+           FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number IN ('JP997524', 'JP997525')));
+
+    RAISE EXCEPTION 'the V750 places check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 places check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a department, faculty or posting is read as the roll writes it (& as AND, a plural, DEPT. OF, CHS-, a bracketed note, AE as E, a misspelling, a code, the unit list''s alias) and placed only when one place alone answers it',
+      coalesce(m_place = '1=ZZR1 2=ZZR2 3=ZZR2 4=ZZR3 5=ZZRF 6=ZZROLL_DESK 7=ZZR6 8=- 9=- 10=- 11=-', false),
+      m_place);
+  PERFORM pg_temp.assert('V750: a new lecturer so placed gets the lecturer office there; one whose department is not on the portal, or blank, is not loaded and is told to add it or correct the cell and upload again; a junior''s posting so placed',
+      coalesce(m_upload = '2:CREATED,3:SKIPPED:no department matching ZZROLL TWIN is on the portal: ask ICT to add the department (or correct the DEPARTMENT cell) and upload again'
+                          || ' — a new lecturer is given the lecturer office in their department,4:SKIPPED:the DEPARTMENT cell is blank: a new lecturer is given the'
+                          || ' lecturer office in their department — fill it in and upload again | ZZR1/ZZRF/ZZR1 | no department 2, loaded 0'
+                          || ' | JP997524/ZZR2,JP997525/ZZROLL_DESK', false),
+      m_upload);
+END $$;
+
+-- ── V750. A blank or 'NA' name cell never erases a name, and a query ('?', 'A or B') is never written: a blank FIRST NAME, or a
+--    query MIDDLE NAME, leaves the given names as they are; with a blank MIDDLE NAME the roll's first name is kept among them or
+--    put first in their place (the rest kept); both cells rename; a blank or query LAST-SURNAME leaves the surname — each reported
+--    under unresolved (first_name / middle_name / last_name, BLANK or QUERY); a dropped title still goes. A new person needs a
+--    readable surname and first name (a blank or query one is an ERROR, whatever the middle name holds). Each roll keeps to its own staff: a number on record as teaching staff (category or a
+--    lecturer office today) is an ERROR on the non-teaching upload, one on record as non-teaching staff an ERROR on the
+--    teaching-staff upload, and neither writes anything; someone with no category is loaded. A department the roll changes takes
+--    the lecturer office with it — the old ended today, the new open, the head of department's office left — listed as
+--    lecturer_office from → to, said by the dry run, and nothing on the re-run; the Edit form (iam.update_lecturer) moves an
+--    office left behind. An old-sheet row on someone on record names them as the record does. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid();
+    pn1 uuid := gen_random_uuid(); pn2 uuid := gen_random_uuid(); pn3 uuid := gen_random_uuid(); pn4 uuid := gen_random_uuid();
+    pn5 uuid := gen_random_uuid(); pn6 uuid := gen_random_uuid(); pn7 uuid := gen_random_uuid(); pacad uuid := gen_random_uuid();
+    plo uuid := gen_random_uuid(); pnone uuid := gen_random_uuid(); pl uuid := gen_random_uuid(); pdrift uuid := gen_random_uuid();
+    dept text; dept_name text; dept2 text; dept2_name text;
+    staff_rows jsonb; lect_rows jsonb; sd record; ld record; s1 record; l1 record; s2 record; l2 record; so record;
+    fp_all text; fp_kind text; fp_pn1 text; fp_teach text;
+    m_names text; m_new text; m_kind text; m_move text; m_drift text; m_old text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 names, kinds and the lecturer office', true);
+    SELECT p.dept_code, d.name INTO dept, dept_name FROM ref.programme p JOIN ref.department d ON d.code = p.dept_code WHERE p.code = 'C00061';
+    SELECT d.code, d.name INTO dept2, dept2_name FROM ref.department d WHERE d.ended_on IS NULL AND d.code <> dept ORDER BY d.code LIMIT 1;
+
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (pn1, 'P997531', 'ZZNAMES', 'Mary Ann'), (pn2, 'P997532', 'ZZNAMES', 'John Tersoo'), (pn3, 'P997533', 'ZZNAMES', 'Peter Paul'),
+        (pn4, 'P997534', 'ZZNAMES', 'Ngozi Ada'), (pn5, 'P997535', 'ZZQUERYSUR', 'Grace'), (pn6, 'P997536', 'ZZKEEPSUR', 'Tor Terver'),
+        (pn7, 'P997537', 'ZZTITLE', 'PROF.GODWIN'), (pacad, 'P997541', 'ZZACADEMIC', 'Real Name'), (plo, 'P997542', 'ZZOFFICEONLY', 'Lect'),
+        (pnone, 'P997543', 'ZZNOCATEGORY', 'Free'), (pl, 'P997544', 'ZZMOVER', 'Moving'), (pdrift, 'P997545', 'ZZDRIFT', 'Left Behind');
+    INSERT INTO hrm.staff_record (person_id, pno, category, home_department) VALUES
+        (pn1, '997531', 'NON_ACADEMIC', NULL), (pn2, '997532', 'NON_ACADEMIC', NULL), (pn3, '997533', 'NON_ACADEMIC', NULL),
+        (pn4, '997534', 'NON_ACADEMIC', NULL), (pn5, '997535', 'NON_ACADEMIC', NULL), (pn6, '997536', 'NON_ACADEMIC', NULL),
+        (pn7, '997537', 'NON_ACADEMIC', NULL), (pacad, '997541', 'ACADEMIC', dept), (pl, '997544', 'ACADEMIC', dept),
+        (pdrift, '997545', 'ACADEMIC', dept2);
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), pacad, 'lecturer', 'department', dept, 'V750 check', who, current_date - 30),
+        (gen_random_uuid(), plo, 'lecturer', 'department', dept, 'V750 check', who, current_date - 30),
+        (gen_random_uuid(), pl, 'lecturer', 'department', dept, 'V750 check', who, current_date - 30),
+        (gen_random_uuid(), pl, 'hod', 'department', dept, 'V750 check', who, current_date - 30),
+        (gen_random_uuid(), pdrift, 'lecturer', 'department', dept, 'V750 check', who, current_date - 30);
+
+    staff_rows := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997531', 'first_name', '', 'middle_name', 'Ann', 'last_name', 'ZZNAMES', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 3, 'pno', '997532', 'first_name', 'JOHN', 'middle_name', '', 'last_name', 'ZZNAMES', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'pno', '997533', 'first_name', 'Simon', 'middle_name', 'NA', 'last_name', 'ZZNAMES', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 5, 'pno', '997534', 'first_name', 'Ngozi', 'middle_name', 'Ada or Adaeze', 'last_name', 'ZZNAMES', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 6, 'pno', '997535', 'first_name', 'Grace', 'middle_name', 'Mnena', 'last_name', 'ZZQ?', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 7, 'pno', '997536', 'first_name', 'Tor', 'middle_name', '', 'last_name', '', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 8, 'pno', '997537', 'first_name', 'Godwin', 'middle_name', '', 'last_name', 'ZZTITLE', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 9, 'jp_no', '997538', 'first_name', 'Tor', 'middle_name', 'Iyu? Wu?', 'last_name', 'ZZNEWQUERY', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 10, 'jp_no', '997539', 'first_name', 'NA', 'middle_name', 'Solo', 'last_name', 'ZZNEWBLANK', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 11, 'jp_no', '997540', 'first_name', 'Zz', 'last_name', 'Zz?', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 12, 'pno', '997541', 'first_name', 'Mary', 'middle_name', 'Ann', 'last_name', 'Someone', 'sex', 'F',
+                           'present_rank', 'CLERICAL OFFICER', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 13, 'pno', '997542', 'first_name', 'Office', 'last_name', 'Only', 'posting', 'CHS-DEPT. OF ANATOMY'));
+    lect_rows := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997531', 'first_name', 'Mary', 'middle_name', 'Ann', 'last_name', 'ZZNAMES', 'present_rank', 'LECTURER I', 'department', dept),
+        jsonb_build_object('sheet_row', 3, 'pno', '997543', 'first_name', 'Free', 'last_name', 'ZZNOCATEGORY', 'department', dept),
+        jsonb_build_object('sheet_row', 4, 'pno', '997544', 'first_name', 'Moving', 'last_name', 'ZZMOVER', 'department', dept2),
+        jsonb_build_object('sheet_row', 5, 'pno', '997541', 'full_names', 'Dr Somebody Different', 'department', dept));
+
+    -- these people, their records and their offices before anything runs
+    SELECT string_agg(to_jsonb(p)::text || coalesce(to_jsonb(r)::text, '') || coalesce((SELECT string_agg(to_jsonb(a)::text, ',' ORDER BY a.id)
+                        FROM iam.office_assignment a WHERE a.person_id = p.id), ''), '|' ORDER BY p.staff_number)
+      INTO fp_all FROM iam.person p LEFT JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number ~ '^J?P9975[34]';
+    SELECT string_agg(to_jsonb(p)::text || coalesce(to_jsonb(r)::text, '') || coalesce((SELECT string_agg(to_jsonb(a)::text, ',' ORDER BY a.id)
+                        FROM iam.office_assignment a WHERE a.person_id = p.id), ''), '|' ORDER BY p.staff_number)
+      INTO fp_teach FROM iam.person p LEFT JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id IN (pacad, plo);
+
+    -- the dry runs: nothing written, the same words as the uploads
+    SELECT * INTO sd FROM iam.import_staff(staff_rows, true);
+    SELECT * INTO ld FROM iam.import_lecturers(lect_rows, true);
+    m_move := concat_ws(' | ',
+        'dry wrote nothing ' || ((SELECT string_agg(to_jsonb(p)::text || coalesce(to_jsonb(r)::text, '') || coalesce((SELECT string_agg(to_jsonb(a)::text, ',' ORDER BY a.id)
+                        FROM iam.office_assignment a WHERE a.person_id = p.id), ''), '|' ORDER BY p.staff_number)
+                  FROM iam.person p LEFT JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.staff_number ~ '^J?P9975[34]') = fp_all),
+        'dry ' || (SELECT string_agg(c->>'field' || CASE WHEN c->>'field' = 'lecturer_office' THEN ':' || (c->>'from' = dept_name) || '>' || (c->>'to' = dept2_name) ELSE '' END,
+                                     ',' ORDER BY c->>'field')
+                     FROM jsonb_array_elements(ld.results) x, jsonb_array_elements(x->'changes') c WHERE x->>'staffNumber' = 'P997544'));
+
+    -- the uploads (the teaching staff's first: its row on a non-teaching number must write nothing)
+    SELECT to_jsonb(p)::text || to_jsonb(r)::text INTO fp_pn1 FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id = pn1;
+    SELECT * INTO l1 FROM iam.import_lecturers(lect_rows, false);
+    SELECT to_jsonb(p)::text || to_jsonb(r)::text INTO fp_kind FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id = pn1;
+    SELECT * INTO s1 FROM iam.import_staff(staff_rows, false);
+
+    -- the names: kept, renamed, reported
+    m_names := concat_ws(' | ',
+        'staff ' || concat_ws('/', s1.rows, s1.created, s1.updated, s1.unchanged, s1.errors),
+        (SELECT string_agg(concat_ws(':', x->>'staffNumber', x->>'action', x->>'name',
+                    coalesce((SELECT string_agg(u->>'field' || '=' || coalesce(u->>'reason', '-'), '+') FROM jsonb_array_elements(x->'unresolved') u
+                               WHERE u->>'field' IN ('first_name', 'middle_name', 'last_name')), '-'),
+                    coalesce((SELECT string_agg(c->>'field', '+' ORDER BY c->>'field') FROM jsonb_array_elements(x->'changes') c
+                               WHERE c->>'field' IN ('surname', 'given_names')), '-')), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(s1.results) x WHERE x->>'staffNumber' ~ '^P99753[1-7]$'),
+        (SELECT string_agg(p.surname || '/' || p.given_names, ',' ORDER BY p.staff_number) FROM iam.person p WHERE p.staff_number ~ '^P99753[1-7]$'),
+        'dry said the same ' || ((SELECT string_agg(x->>'name' || (x->'unresolved')::text || (x->'changes')::text, ',' ORDER BY (x->>'row')::int)
+                                    FROM jsonb_array_elements(sd.results) x WHERE x->>'staffNumber' ~ '^P99753[1-7]$')
+                               = (SELECT string_agg(x->>'name' || (x->'unresolved')::text || (x->'changes')::text, ',' ORDER BY (x->>'row')::int)
+                                    FROM jsonb_array_elements(s1.results) x WHERE x->>'staffNumber' ~ '^P99753[1-7]$')));
+
+    -- a new person: what can be read; a query surname is an error
+    m_new := concat_ws(' | ',
+        (SELECT string_agg(concat_ws(':', x->>'staffNumber', x->>'action',
+                    coalesce((SELECT string_agg(u->>'field' || '=' || coalesce(u->>'reason', '-'), '+') FROM jsonb_array_elements(x->'unresolved') u), '-'),
+                    x->>'error'), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(s1.results) x WHERE x->>'staffNumber' IN ('JP997538', 'JP997539', 'JP997540')),
+        (SELECT string_agg(p.staff_number || '/' || p.surname || '/' || p.given_names, ',' ORDER BY p.staff_number) FROM iam.person p
+          WHERE p.staff_number IN ('JP997538', 'JP997539', 'JP997540')));
+
+    -- each roll keeps to its own staff
+    m_kind := concat_ws(' | ',
+        (SELECT string_agg(x->>'staffNumber' || ':' || (x->>'action') || ':' || coalesce(x->>'error', '-'), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(s1.results) x WHERE x->>'staffNumber' IN ('P997541', 'P997542')),
+        (SELECT string_agg(x->>'staffNumber' || ':' || (x->>'action') || ':' || coalesce(x->>'error', '-'), ',' ORDER BY (x->>'row')::int)
+           FROM jsonb_array_elements(l1.results) x WHERE x->>'staffNumber' IN ('P997531', 'P997543')),
+        'non-teaching untouched by the teaching roll ' || (fp_kind = fp_pn1),
+        'teaching untouched by the non-teaching roll ' || ((SELECT string_agg(to_jsonb(p)::text || coalesce(to_jsonb(r)::text, '') || coalesce((SELECT string_agg(to_jsonb(a)::text, ',' ORDER BY a.id)
+                        FROM iam.office_assignment a WHERE a.person_id = p.id), ''), '|' ORDER BY p.staff_number)
+                  FROM iam.person p LEFT JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id IN (pacad, plo)) = fp_teach),
+        (SELECT concat_ws('/', r.category, (SELECT count(*) FROM iam.office_assignment a WHERE a.person_id = pnone)) FROM hrm.staff_record r WHERE r.person_id = pnone));
+
+    -- the department moved, and the lecturer office with it (never the head of department's)
+    m_move := concat_ws(' | ', m_move,
+        'lecturers ' || concat_ws('/', l1.rows, l1.created, l1.updated, l1.unchanged, l1.errors, l1.granted),
+        (SELECT string_agg(c->>'field' || CASE WHEN c->>'field' = 'lecturer_office' THEN ':' || (c->>'from' = dept_name) || '>' || (c->>'to' = dept2_name) ELSE '' END,
+                           ',' ORDER BY c->>'field')
+           FROM jsonb_array_elements(l1.results) x, jsonb_array_elements(x->'changes') c WHERE x->>'staffNumber' = 'P997544'),
+        (SELECT 'record in B ' || (r.home_department = dept2) FROM hrm.staff_record r WHERE r.person_id = pl),
+        (SELECT string_agg(a.office_code || ':' || CASE a.scope_id WHEN dept THEN 'A' WHEN dept2 THEN 'B' ELSE '?' END || ':'
+                           || CASE WHEN a.valid_to IS NULL THEN 'open' WHEN a.valid_to = current_date THEN 'ended today' ELSE a.valid_to::text END,
+                           ',' ORDER BY a.office_code, a.valid_from, a.scope_id)
+           FROM iam.office_assignment a WHERE a.person_id = pl));
+
+    -- the same files again: nothing changes, the office moves no further
+    SELECT * INTO l2 FROM iam.import_lecturers(lect_rows, false);
+    SELECT * INTO s2 FROM iam.import_staff(staff_rows, false);
+    m_move := concat_ws(' | ', m_move,
+        'again lecturers ' || concat_ws('/', l2.created, l2.updated, l2.unchanged, l2.errors),
+        'staff ' || concat_ws('/', s2.created, s2.updated, s2.unchanged, s2.errors),
+        'offices ' || (SELECT count(*) FROM iam.office_assignment a WHERE a.person_id = pl));
+
+    -- the Edit form moves a lecturer office the record had left behind
+    PERFORM iam.update_lecturer(pdrift, 'ZZDRIFT', 'Left Behind', NULL, NULL, 'M', 'LECTURER I', NULL, dept2);
+    m_drift := (SELECT string_agg(a.office_code || ':' || CASE a.scope_id WHEN dept THEN 'A' WHEN dept2 THEN 'B' ELSE '?' END || ':'
+                                  || CASE WHEN a.valid_to IS NULL THEN 'open' WHEN a.valid_to = current_date THEN 'ended today' ELSE a.valid_to::text END,
+                                  ',' ORDER BY a.valid_from, a.scope_id)
+                  FROM iam.office_assignment a WHERE a.person_id = pdrift);
+    PERFORM iam.update_lecturer(pdrift, 'ZZDRIFT', 'Left Behind', NULL, NULL, 'M', 'LECTURER I', NULL, dept2);
+    m_drift := m_drift || ' | saved again ' || (SELECT count(*) FROM iam.office_assignment a WHERE a.person_id = pdrift);
+
+    -- the old sheet on someone on record: the record's name, not the guess
+    SELECT * INTO so FROM iam.import_staff(jsonb_build_array(jsonb_build_object('pno', '997532', 'full_names', 'Mrs Entirely Someone Else',
+                                                                                 'unit', 'CHS-DEPT. OF ANATOMY')), true);
+    m_old := concat_ws(' | ',
+        (SELECT x->>'action' || ':' || (x->>'name') FROM jsonb_array_elements(so.results) x),
+        (SELECT x->>'action' || ':' || (x->>'name') FROM jsonb_array_elements(ld.results) x WHERE x->>'staffNumber' = 'P997541'),
+        (SELECT x->>'action' || ':' || (x->>'name') FROM jsonb_array_elements(l1.results) x WHERE x->>'staffNumber' = 'P997541'));
+
+    RAISE EXCEPTION 'the V750 names check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 names check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a blank or NA name cell never erases a name and a query is never written — a blank first name or a query middle name keeps the given names, with a blank middle name the roll''s first name is kept among them or put first in their place, both cells rename, a blank or query surname keeps the surname; each reported; a dry run says the same',
+      coalesce(m_names = 'staff 12/1/7/0/4 | P997531:UPDATED:ZZNAMES, Mary Ann:first_name=BLANK:-,P997532:UPDATED:ZZNAMES, John Tersoo:-:-'
+                          || ',P997533:UPDATED:ZZNAMES, Simon Paul:-:given_names,P997534:UPDATED:ZZNAMES, Ngozi Ada:middle_name=QUERY:-'
+                          || ',P997535:UPDATED:ZZQUERYSUR, Grace Mnena:last_name=QUERY:given_names,P997536:UPDATED:ZZKEEPSUR, Tor Terver:last_name=BLANK:-'
+                          || ',P997537:UPDATED:ZZTITLE, GODWIN:-:given_names'
+                          || ' | ZZNAMES/Mary Ann,ZZNAMES/John Tersoo,ZZNAMES/Simon Paul,ZZNAMES/Ngozi Ada,ZZQUERYSUR/Grace Mnena,ZZKEEPSUR/Tor Terver,ZZTITLE/GODWIN'
+                          || ' | dry said the same true', false), m_names);
+  PERFORM pg_temp.assert('V750: a new person takes the name cells that can be read (a query middle name left out); a blank first name (whatever the middle name holds) or a query surname is an error',
+      coalesce(m_new = 'JP997538:CREATED:middle_name=QUERY,JP997539:ERROR:-:the first name is blank'
+                          || ',JP997540:ERROR:last_name=QUERY:the surname (LAST-SURNAME) is a query (Zz?): correct it and upload again'
+                          || ' | JP997538/ZZNEWQUERY/Tor', false), m_new);
+  PERFORM pg_temp.assert('V750: each roll keeps to its own staff — a number on record as teaching staff (category or a lecturer office today) is an ERROR on the non-teaching upload, one on record as non-teaching staff an ERROR on the teaching-staff upload, neither writing anything; someone with no category is loaded',
+      coalesce(m_kind = 'P997541:ERROR:P997541 is on record as teaching staff: they are loaded on the teaching staff desk'
+                          || ',P997542:ERROR:P997542 is on record as teaching staff: they are loaded on the teaching staff desk'
+                          || ' | P997531:ERROR:P997531 is on record as non-teaching staff: they are loaded on the non-academic staff desk,P997543:UPDATED:-'
+                          || ' | non-teaching untouched by the teaching roll true | teaching untouched by the non-teaching roll true | ACADEMIC/0', false), m_kind);
+  PERFORM pg_temp.assert('V750: a department the teaching-staff roll changes takes the lecturer office with it (the old ended today, the new open, the head of department''s office left), listed as lecturer_office from → to, said by the dry run, nothing more on the re-run',
+      coalesce(m_move = 'dry wrote nothing true | dry home_department,lecturer_office:true>true | lecturers 4/0/2/1/1/0 | home_department,lecturer_office:true>true'
+                          || ' | record in B true | hod:A:open,lecturer:A:ended today,lecturer:B:open | again lecturers 0/0/3/1 | staff 0/0/8/4 | offices 3', false), m_move);
+  PERFORM pg_temp.assert('V750: the Edit form (iam.update_lecturer) moves a lecturer office the record had left behind in another department, once',
+      coalesce(m_drift = 'lecturer:A:ended today,lecturer:B:open | saved again 2', false), m_drift);
+  PERFORM pg_temp.assert('V750: an old-sheet row on someone on record names them as the record does, not by the guess from Full Names',
+      coalesce(m_old = 'UNCHANGED:ZZNAMES, John Tersoo | UNCHANGED:ZZACADEMIC, Real Name | UNCHANGED:ZZACADEMIC, Real Name', false), m_old);
+END $$;
+
+-- ── V750. A blank MIDDLE NAME erases no given name: the roll's first name already among those on record leaves them (a title before
+--    them goes), and any other replaces only the first of them. A row with no number but a name written is reported, not taken for
+--    a blank line; the old sheet's Full Names written as a query names nobody (a new person's ERROR); a number repeated on the old
+--    sheet is named as the record holds it. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); pa uuid := gen_random_uuid();
+    m_given text; m_rows text; v_err text; so record;
+BEGIN
+  m_given := (SELECT string_agg(coalesce(hrm.roll_given_first(h, f), '-'), ',' ORDER BY o)
+                FROM (VALUES (1, 'NGOZI ADAKU', 'NKECHI'), (2, 'ADAKU NGOZI', 'NGOZI'), (3, 'DR. JOHN TERSOO', 'JOHN'),
+                             (4, 'JOHN TERSOO', 'JOHNNY'), (5, 'JOHN-CHIDI TERSOO', 'JOHN'), (6, 'PROF.TPL. OBIOMA ZZDOO', 'Obioma'),
+                             (7, 'ADA MARIE ZZATI', 'ADA-MARIE'), (8, NULL, 'Ada'), (9, 'PROF.', 'Ada'), (10, 'Ada', NULL),
+                             (11, 'MSENDE ZZIOR', 'EMEKA'), (12, 'CHIDI ZZOKE', 'CHIDI ZZOKE OBI'), (13, 'ZZOKE CHIDI', 'CHIDI ZZOKE'),
+                             (14, 'C.Z.', 'CHIDI'), (15, 'CHIDI.ZZOKE', 'EMEKA'), (16, 'HON. CHIDI ZZOKE', 'EMEKA'),
+                             (17, 'DR(MRS) ADAKU NGOZI', 'ADAKU'), (18, 'REV. FR. CHIDI ZZOKE', 'CHIDI'), (19, 'Adaku Ngozi', '...'),
+                             (20, 'CHIEFTAIN ADAKU', 'EMEKA'), (21, 'PASTOR (DR) EMEKA OBI', 'NKECHI'), (22, 'Ngozi Adaku', 'Adaku Nkechi'),
+                             (23, 'CHIDI ZZOKE-OBI', 'EMEKA OBI'), (24, 'MSENDE ZZOKE', 'ZZOKE'), (25, 'CHIDI ZZOKE', '–'), (26, 'Ada Ngozi', '…')) v(o, h, f));
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 blank middle names', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (pa, 'P997551', 'ZZREPEAT', 'On Record');
+    INSERT INTO hrm.staff_record (person_id, pno, category) VALUES (pa, '997551', 'NON_ACADEMIC');
+    SELECT * INTO so FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'first_name', '??', 'middle_name', '', 'last_name', '??', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 3, 'first_name', 'NA', 'middle_name', '', 'last_name', 'NIL', 'sex', 'M', 'present_rank', 'DRIVER', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'sno', '17', 'first_name', '', 'middle_name', 'NA', 'last_name', '', 'posting', '')), true);
+    m_rows := (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', x->>'error'), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(so.results) x)
+              || ' of ' || so.rows;
+    SELECT * INTO so FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('pno', '997552', 'full_names', 'Mrs Ngozi Ada or Adaeze?', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('pno', '997551', 'full_names', 'Mr Entirely Someone', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('pno', '997551', 'full_names', 'Mr Other Guess', 'unit', 'CHS-DEPT. OF ANATOMY')), false);
+    m_rows := m_rows || ' | ' || (SELECT string_agg(concat_ws(':', x->>'staffNumber', x->>'action', x->>'name',
+                                         coalesce((SELECT string_agg(u->>'field' || '=' || coalesce(u->>'reason', '-'), '+') FROM jsonb_array_elements(x->'unresolved') u
+                                                    WHERE u->>'field' = 'full_names'), '-'),
+                                         coalesce(x->>'error', '-')), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(so.results) x)
+              || ' | created ' || (SELECT count(*) FROM iam.person p WHERE p.staff_number = 'P997552');
+    RAISE EXCEPTION 'the V750 blank middle names check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 blank middle names check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a blank MIDDLE NAME erases no given name — a first name whose every word is already among them leaves them (a title before them goes), any other takes the place of the first of them, the rest kept and no word written twice (a hyphened name kept carries its own words); a first name with no letter (or only Word''s dash or ellipsis) is none; a name that only begins like a title keeps its letters',
+      coalesce(m_given = 'NKECHI ADAKU,ADAKU NGOZI,JOHN TERSOO,JOHNNY TERSOO,JOHN-CHIDI TERSOO,OBIOMA ZZDOO,ADA MARIE ZZATI,Ada,Ada,-,EMEKA ZZIOR'
+                      || ',CHIDI ZZOKE OBI,ZZOKE CHIDI,CHIDI Z.,EMEKA ZZOKE,EMEKA ZZOKE,ADAKU NGOZI,CHIDI ZZOKE,-,EMEKA ADAKU,NKECHI OBI,Adaku Nkechi'
+                      || ',EMEKA ZZOKE-OBI,MSENDE ZZOKE,-,-', false), m_given);
+  PERFORM pg_temp.assert('V750: a row with no number but anything written in it (a query name, a rank, a posting) is reported, one blank but for its serial number is a blank line; the old sheet''s Full Names written as a query names nobody; a repeated number is named as the record holds it',
+      coalesce(m_rows = '2:ERROR:no staff number (PNO or JP-NO) on the row,3:ERROR:no staff number (PNO or JP-NO) on the row of 2'
+                     || ' | P997552:ERROR:Mrs Ngozi Ada or Adaeze?:full_names=QUERY:the name (Full Names) is a query (Mrs Ngozi Ada or Adaeze?): correct it and upload again'
+                     || ',P997551:UPDATED:ZZREPEAT, On Record:-:-'
+                     || ',P997551:ERROR:ZZREPEAT, On Record:-:P997551 is on this upload already, at row 2'
+                     || ' | created 0', false), m_rows);
+END $$;
+
+-- ── V750. One reading of who is teaching staff, for both uploads and the absent list (hrm.roll_kind): the live employment's category,
+--    else the HR record's, ACADEMIC — or a lecturer office today — is teaching staff; NON_ACADEMIC with no lecturer office is
+--    non-teaching staff. Someone on non-teaching staff who holds a lecturer office is loaded on the teaching desk and refused on the
+--    other (never on both); someone whose live employment says ACADEMIC is refused on the non-teaching desk though the HR record
+--    holds nothing; someone with neither is loaded by the first roll that names them, and the other then refuses them. The block
+--    undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); px uuid := gen_random_uuid(); py uuid := gen_random_uuid(); pz uuid := gen_random_uuid();
+    pj uuid := gen_random_uuid();
+    dept text; m_kind text; v_err text; r1 record; r2 record; r3 record; r4 record; r5 record; r6 record;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 who is teaching staff', true);
+    SELECT p.dept_code INTO dept FROM ref.programme p WHERE p.code = 'C00061';
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (px, 'P997571', 'ZZKINDX', 'Office Lecturer'), (py, 'P997572', 'ZZKINDY', 'Employed Academic'), (pz, 'P997573', 'ZZKINDZ', 'No Kind'),
+        (pj, 'JP997574', 'ZZKINDJ', 'Junior Lecturer');
+    INSERT INTO hrm.staff_record (person_id, pno, category, cadre) VALUES (px, '997571', 'NON_ACADEMIC', 'SENIOR'), (pj, '997574', 'NON_ACADEMIC', 'JUNIOR');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), px, 'lecturer', 'department', dept, 'V750 check', who, current_date - 10),
+           (gen_random_uuid(), pj, 'lecturer', 'department', dept, 'V750 check', who, current_date - 10);
+    INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status)
+    SELECT py, 'P997572', g.grade, g.step, 'ACADEMIC', current_date - 100, 'ACTIVE' FROM hrm.grade g ORDER BY g.grade, g.step LIMIT 1;
+    m_kind := 'kinds ' || concat_ws('/', hrm.roll_kind(px), hrm.roll_kind(py), coalesce(hrm.roll_kind(pz), '-'), hrm.roll_kind(pj));
+    -- a junior holding a lecturer office: the non-teaching roll loads them, the teaching roll refuses the JP number, the junior roll lists them
+    SELECT * INTO r5 FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('jp_no', '997574', 'first_name', 'Junior', 'last_name', 'ZZKINDJ', 'posting', 'CHS-DEPT. OF ANATOMY')), true);
+    SELECT * INTO r6 FROM iam.import_lecturers(jsonb_build_array(
+        jsonb_build_object('pno', 'JP997574', 'first_name', 'Junior', 'last_name', 'ZZKINDJ', 'department', dept)), true);
+    m_kind := concat_ws(' | ', m_kind,
+        'junior ' || (SELECT string_agg(x->>'action', ',') FROM jsonb_array_elements(r5.results) x) || '/'
+                  || (SELECT string_agg(x->>'action', ',') FROM jsonb_array_elements(r6.results) x) || '/'
+                  || coalesce((SELECT string_agg(a.staff_number, ',') FROM hrm.roll_absent('NON_ACADEMIC', ARRAY['JP1']) a WHERE a.staff_number ~ '^JP99757'), '-'));
+    SELECT * INTO r1 FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('pno', '997571', 'first_name', 'Office', 'last_name', 'ZZKINDX', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('pno', '997572', 'first_name', 'Employed', 'last_name', 'ZZKINDY', 'posting', 'CHS-DEPT. OF ANATOMY')), true);
+    SELECT * INTO r2 FROM iam.import_lecturers(jsonb_build_array(
+        jsonb_build_object('pno', '997571', 'first_name', 'Office', 'last_name', 'ZZKINDX', 'department', dept)), true);
+    m_kind := concat_ws(' | ', m_kind,
+        (SELECT string_agg(x->>'staffNumber' || ':' || (x->>'action') || ':' || coalesce(x->>'error', '-'), ',' ORDER BY x->>'staffNumber') FROM jsonb_array_elements(r1.results) x),
+        (SELECT string_agg(x->>'staffNumber' || ':' || (x->>'action'), ',') FROM jsonb_array_elements(r2.results) x),
+        'absent ' || coalesce((SELECT string_agg(a.staff_number, ',' ORDER BY a.staff_number) FROM hrm.roll_absent('ACADEMIC', ARRAY['P1']) a
+                                WHERE a.staff_number ~ '^P99757'), '-'));
+    -- no kind yet: the non-teaching roll loads them, and the teaching roll then refuses them
+    SELECT * INTO r3 FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('pno', '997573', 'first_name', 'No', 'last_name', 'ZZKINDZ', 'posting', 'CHS-DEPT. OF ANATOMY')), false);
+    SELECT * INTO r4 FROM iam.import_lecturers(jsonb_build_array(
+        jsonb_build_object('pno', '997573', 'first_name', 'No', 'last_name', 'ZZKINDZ', 'department', dept)), true);
+    m_kind := concat_ws(' | ', m_kind,
+        (SELECT x->>'action' FROM jsonb_array_elements(r3.results) x), hrm.roll_kind(pz),
+        (SELECT x->>'action' || ':' || (x->>'error') FROM jsonb_array_elements(r4.results) x));
+    RAISE EXCEPTION 'the V750 kinds check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 kinds check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: one reading of who is teaching staff for both uploads and the absent list — a lecturer office or an ACADEMIC live employment is teaching staff, refused on the non-teaching desk and loaded on the teaching desk; someone with no kind is loaded by the first roll and refused by the other; a JP number is non-teaching staff whatever office it holds',
+      coalesce(m_kind = 'kinds ACADEMIC/ACADEMIC/-/NON_ACADEMIC | junior UPDATED/ERROR/JP997574'
+                     || ' | P997571:ERROR:P997571 is on record as teaching staff: they are loaded on the teaching staff desk,P997572:ERROR:P997572 is on record as teaching staff: they are loaded on the teaching staff desk'
+                     || ' | P997571:UPDATED | absent P997571'
+                     || ' | UPDATED | NON_ACADEMIC | ERROR:P997573 is on record as non-teaching staff: they are loaded on the non-academic staff desk', false), m_kind);
+END $$;
+
+-- ── V750. A new person's names must be read on both desks: a FIRST NAME that is a query or has no letter is the row's ERROR though
+--    the middle name is readable, and so is the old sheet's Full Names left blank or written as a query (its cell then naming the
+--    row); a title outside the old list (HON.) is no name. A staff number given twice in one upload is named as its first row named
+--    them, so a dry run and the upload say the same. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); pr uuid := gen_random_uuid();
+    dept text; m_new text; v_err text; sd record; sr record; ld record; lr record;
+    rows_staff jsonb; rows_lect jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 a new person''s names', true);
+    SELECT p.dept_code INTO dept FROM ref.programme p WHERE p.code = 'C00061';
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (pr, 'P997581', 'ZZONRECORD', 'Lecturer Here');
+    INSERT INTO hrm.staff_record (person_id, pno, category, home_department) VALUES (pr, '997581', 'ACADEMIC', dept);
+    rows_staff := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'jp_no', '997582', 'first_name', 'Ada?', 'middle_name', 'Ngozi', 'last_name', 'ZZQFIRST', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 3, 'jp_no', '997583', 'first_name', '...', 'middle_name', 'Ngozi', 'last_name', 'ZZDOTS', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'pno', '997584', 'full_names', '', 'unit', 'CHS-DEPT. OF ANATOMY', 'present_rank', 'CLERK'),
+        jsonb_build_object('sheet_row', 5, 'pno', '997585', 'full_names', 'HON. Adaku ZZTITLED', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 6, 'pno', '997586', 'full_names', 'Mr Emeka ZZFIRSTROW', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 7, 'pno', '997586', 'full_names', 'Mr Emeka ZZSECONDROW', 'unit', 'CHS-DEPT. OF ANATOMY'));
+    rows_lect := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997587', 'full_names', 'Dr Ngozi Ada or Adaku?', 'department', dept),
+        jsonb_build_object('sheet_row', 3, 'pno', '997581', 'full_names', 'Dr Guess One', 'department', dept),
+        jsonb_build_object('sheet_row', 4, 'pno', '997581', 'full_names', 'Dr Guess Two', 'department', dept),
+        jsonb_build_object('sheet_row', 5, 'pno', '997588', 'full_names', 'Dr Ada ZZLECTFIRST', 'department', dept),
+        jsonb_build_object('sheet_row', 6, 'pno', '997588', 'full_names', 'Dr Ada ZZLECTSECOND', 'department', dept));
+    SELECT * INTO sd FROM iam.import_staff(rows_staff, true);
+    SELECT * INTO ld FROM iam.import_lecturers(rows_lect, true);
+    SELECT * INTO sr FROM iam.import_staff(rows_staff, false);
+    SELECT * INTO lr FROM iam.import_lecturers(rows_lect, false);
+    m_new := concat_ws(' | ',
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', x->>'name', coalesce(x->>'error', '-')), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sr.results) x),
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', x->>'name', coalesce(x->>'error', '-')), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(lr.results) x),
+        'titled ' || (SELECT p.surname || '/' || p.given_names FROM iam.person p WHERE p.staff_number = 'P997585'),
+        'dry named alike ' || ((SELECT string_agg(x->>'name', ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sd.results) x)
+                               = (SELECT string_agg(x->>'name', ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sr.results) x)
+                           AND (SELECT string_agg(x->>'name', ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(ld.results) x)
+                               = (SELECT string_agg(x->>'name', ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(lr.results) x)),
+        'made ' || (SELECT count(*) FROM iam.person p WHERE p.staff_number IN ('JP997582', 'JP997583', 'P997584', 'P997587')));
+    RAISE EXCEPTION 'the V750 new names check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 new names check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a new person''s names must be read on both desks — a query or letterless FIRST NAME, or the old sheet''s Full Names blank or a query, is the row''s ERROR; a title such as HON. is no name; a number given twice is named as its first row named them, alike in a dry run and the upload',
+      coalesce(m_new = '2:ERROR:ZZQFIRST, Ngozi:the first name is a query (Ada?): correct it and upload again'
+                    || ',3:ERROR:ZZDOTS, Ngozi:the first name is blank'
+                    || ',4:ERROR:the name (Full Names) is blank: fill it in and upload again'
+                    || ',5:CREATED:ZZTITLED, Adaku:-,6:CREATED:ZZFIRSTROW, Emeka:-,7:ERROR:ZZFIRSTROW, Emeka:P997586 is on this upload already, at row 6'
+                    || ' | 2:ERROR:Dr Ngozi Ada or Adaku?:the name (Full Names) is a query (Dr Ngozi Ada or Adaku?): correct it and upload again'
+                    || ',3:UNCHANGED:ZZONRECORD, Lecturer Here:-,4:ERROR:ZZONRECORD, Lecturer Here:P997581 is on this upload already, at row 3'
+                    || ',5:CREATED:ZZLECTFIRST, Ada:-,6:ERROR:ZZLECTFIRST, Ada:P997588 is on this upload already, at row 5'
+                    || ' | titled ZZTITLED/Adaku | dry named alike true | made 0', false), m_new);
+END $$;
+
+-- ── V750. Titles, Word's marks, typed given names, a shared e-mail and the posting's own column: a title before the roll's FIRST
+--    NAME or LAST-SURNAME is no name and a cell that is only a title is blank (the old sheet's Full Names too); a cell of Word's
+--    dash or ellipsis is blank and erases nothing; the Add forms' given names (given_names) are written whole, as typed; an
+--    e-mail one row of the upload is given is kept from a later row (GIVEN_TO_ANOTHER_ROW, naming that row); a blank posting on
+--    the old non-teaching sheet names its Department column. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid();
+    m_marks text; v_err text; sd record; sr record; rows_staff jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 titles, marks and typed names', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (pa, 'P997591', 'ZZTYPED', 'Ngozi Adaku'), (pb, 'P997592', 'ZZDASHED', 'Chidi Emeka');
+    INSERT INTO hrm.staff_record (person_id, pno, category, cadre) VALUES (pa, '997591', 'NON_ACADEMIC', 'SENIOR'), (pb, '997592', 'NON_ACADEMIC', 'SENIOR');
+    rows_staff := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997591', 'given_names', 'Ada', 'last_name', 'ZZTYPED', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 3, 'pno', '997592', 'first_name', 'Chidi', 'middle_name', '—', 'last_name', '–', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'jp_no', '997593', 'first_name', 'Dr. Ada', 'last_name', 'Prof. ZZTITLELAST', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 5, 'jp_no', '997594', 'first_name', 'DR.', 'middle_name', 'Ngozi', 'last_name', 'ZZTITLEONLY', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 6, 'pno', '997595', 'full_names', 'Dr.', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 7, 'pno', '997596', 'full_names', 'Mr Ada ZZNODEPT', 'department', ''),
+        jsonb_build_object('sheet_row', 8, 'jp_no', '997597', 'first_name', 'Ada', 'last_name', 'ZZMAILONE', 'email', 'zz750.shared@example.test', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 9, 'jp_no', '997598', 'first_name', 'Ada', 'last_name', 'ZZMAILTWO', 'email', 'ZZ750.Shared@example.test', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 10, 'jp_no', '997599', 'first_name', '…', 'last_name', 'ZZELLIPSIS', 'posting', 'CHS-DEPT. OF ANATOMY'));
+    SELECT * INTO sd FROM iam.import_staff(rows_staff, true);
+    SELECT * INTO sr FROM iam.import_staff(rows_staff, false);
+    m_marks := concat_ws(' | ',
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', x->>'name', coalesce(x->>'error', '-'),
+                    coalesce((SELECT string_agg(u->>'field' || '=' || coalesce(u->>'reason', '-'), '+') FROM jsonb_array_elements(x->'unresolved') u
+                               WHERE u->>'field' IN ('first_name', 'middle_name', 'last_name', 'given_names')), '-'),
+                    coalesce((SELECT string_agg(k->>'reason' || '>' || coalesce(k->>'givenTo', '-'), '+') FROM jsonb_array_elements(x->'kept') k), '-')),
+                  ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sr.results) x),
+        'names ' || (SELECT string_agg(p.surname || '/' || p.given_names, ',' ORDER BY p.staff_number) FROM iam.person p WHERE p.id IN (pa, pb)),
+        'dry said the same ' || ((SELECT string_agg(concat_ws(':', x->>'action', x->>'name', x->>'error', (x->'kept')::text), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sd.results) x)
+                               = (SELECT string_agg(concat_ws(':', x->>'action', x->>'name', x->>'error', (x->'kept')::text), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sr.results) x)));
+    RAISE EXCEPTION 'the V750 marks check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 marks check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a title before the roll''s name cells is no name and a title-only cell is blank; Word''s dash or ellipsis is blank and erases nothing; typed given names are written whole; an e-mail given to one row is kept from a later one, naming it; the old sheet''s blank posting names its Department column',
+      coalesce(m_marks = '2:UPDATED:ZZTYPED, Ada:-:-:-,3:UPDATED:ZZDASHED, Chidi Emeka:-:last_name=BLANK:-,4:CREATED:ZZTITLELAST, Ada:-:-:-,5:ERROR:ZZTITLEONLY, Ngozi:the first name (FIRST NAME) holds no name (DR.): fill it in and upload again:-:-,6:ERROR:the name (Full Names) holds no name (Dr.): fill it in and upload again:-:-,7:SKIPPED:ZZNODEPT, Ada:the Department cell is blank: a new member of staff is placed in their posting — fill it in and upload again:-:-,8:CREATED:ZZMAILONE, Ada:-:-:-,9:CREATED:ZZMAILTWO, Ada:-:-:GIVEN_TO_ANOTHER_ROW>JP997597,10:ERROR:ZZELLIPSIS:the first name is blank:-:- | names ZZTYPED/Ada,ZZDASHED/Chidi Emeka | dry said the same true', false), m_marks);
+END $$;
+
+-- ── V750. A cell that holds no name erases none: a middle name, first name or Full Names of titles only (MRS., (MRS), Dr, PROF DR)
+--    is blank — a single bare title-word as the surname stands — and a bracketed title is dropped wherever it stands; an NA
+--    written any way (NILL, N/A.) and a spreadsheet's error (#N/A) are blank in any column; Word's dashes and the minus sign are
+--    blank; an apostrophe joins a name; a letter outside ASCII is a letter. The Add forms' names are worded by the forms' labels;
+--    an e-mail an earlier request of the upload gave is kept from a later one; the old sheet's Unit column is named. The block
+--    undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid(); pc uuid := gen_random_uuid();
+    pd uuid := gen_random_uuid(); pe uuid := gen_random_uuid(); dept text;
+    m_none text; m_forms text; v_err text; sd record; sr record; r1 record; r2 record; r3 record; rows_staff jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V750 cells that hold no name', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (pa, 'P997601', 'ZZNONAME', 'Chidi Emeka'), (pb, 'P997602', 'ZZSAADU', 'Emeka Zza''adu'), (pc, 'P997603', 'ZZMARKS', 'Chidi–Obi Emeka'),
+        (pd, 'P997616', 'ZZERRORS', 'Chidi Emeka'), (pe, 'P997617', 'ZZBRK', 'Chidi Emeka');
+    INSERT INTO hrm.staff_record (person_id, pno, category, cadre, lga, present_rank, state_of_origin) VALUES
+        (pa, '997601', 'NON_ACADEMIC', 'SENIOR', 'ZZLGA', 'CLERK', NULL), (pb, '997602', 'NON_ACADEMIC', 'SENIOR', NULL, NULL, NULL),
+        (pc, '997603', 'NON_ACADEMIC', 'SENIOR', 'ZZLGA', 'CLERK', NULL), (pd, '997616', 'NON_ACADEMIC', 'SENIOR', 'ZZLGA', 'CLERK', 'ZZSTATE'),
+        (pe, '997617', 'NON_ACADEMIC', 'SENIOR', NULL, NULL, NULL);
+    SELECT p.dept_code INTO dept FROM ref.programme p WHERE p.code = 'C00061';
+    rows_staff := jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'pno', '997601', 'first_name', 'Chidi', 'middle_name', '(MRS)', 'last_name', 'ZZNONAME', 'lga', '#N/A', 'present_rank', 'NIL.', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 3, 'pno', '997602', 'first_name', 'ZZAADU', 'middle_name', 'NILL', 'last_name', 'ZZSAADU', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'pno', '997603', 'first_name', 'Chidi', 'middle_name', 'Dr', 'last_name', 'ZZMARKS', 'lga', '–', 'present_rank', '—', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 5, 'jp_no', '997604', 'first_name', 'DR', 'middle_name', 'Ngozi', 'last_name', 'ZZBAREDR', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 6, 'jp_no', '997605', 'first_name', 'Ada', 'middle_name', 'N/A.', 'last_name', 'PROF DR', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 7, 'jp_no', '997606', 'first_name', 'Ada', 'last_name', 'CHIEF', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 8, 'pno', '997607', 'full_names', 'MR', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 9, 'pno', '997608', 'full_names', 'Ada ZZBRACKET (Mrs)', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 10, 'jp_no', '997609', 'first_name', 'Ɓello', 'last_name', 'ZZHOOK', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 11, 'jp_no', '997610', 'first_name', '−', 'middle_name', 'Ngozi', 'last_name', 'ZZMINUS', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 12, 'pno', '997611', 'full_names', 'Mr Ada ZZUNIT', 'unit', ''),
+        jsonb_build_object('sheet_row', 13, 'pno', '997616', 'first_name', 'Chidi', 'last_name', 'ZZERRORS', 'lga', '#REF!', 'present_rank', '#VALUE!', 'state', '#DIV/0!', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 14, 'pno', '997617', 'first_name', 'Chidi (DR. MRS)', 'last_name', 'ZZBRK (MRS).', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 15, 'pno', '997618', 'full_names', 'Ada ZZDOUBLE (Dr. Mrs)', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 16, 'pno', '997621', 'full_names', 'Ada ZZFULLE - (Mrs)', 'unit', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 17, 'pno', '997622', 'full_names', 'Ada ZZREC - ZZOKON', 'unit', 'CHS-DEPT. OF ANATOMY'));
+    SELECT * INTO sd FROM iam.import_staff(rows_staff, true);
+    SELECT * INTO sr FROM iam.import_staff(rows_staff, false);
+    m_none := concat_ws(' | ',
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', x->>'name', coalesce(x->>'error', '-'),
+                    coalesce((SELECT string_agg(c->>'field', '+' ORDER BY c->>'field') FROM jsonb_array_elements(x->'changes') c
+                               WHERE c->>'field' IN ('surname', 'given_names', 'lga', 'present_rank')), '-')),
+                  ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sr.results) x),
+        'records ' || (SELECT string_agg(p.surname || '/' || p.given_names || '/' || coalesce(r.lga, '-') || '/' || coalesce(r.present_rank, '-')
+                                         || '/' || coalesce(r.state_of_origin, '-'), ',' ORDER BY p.staff_number)
+                         FROM iam.person p JOIN hrm.staff_record r ON r.person_id = p.id WHERE p.id IN (pa, pb, pc, pd, pe)),
+        'given ' || concat_ws(',', hrm.roll_given_first('Chidi–Obi Emeka', 'Chidi'), coalesce(hrm.roll_given_first('Chidi Emeka', '−'), '-'),
+                              coalesce(hrm.roll_given_first('Chidi Emeka', 'Dr'), '-'), hrm.roll_given_first('PROF DR', 'Ada'),
+                              hrm.roll_name_cell('Dr./Mrs. Ngozi'), coalesce(hrm.roll_name_cell('DR/MRS'), '-'),
+                              hrm.roll_name_cell('ZZREC - ZZOKON', true), hrm.roll_name_cell('ZZREC – ZZOKON .', true),
+                              hrm.roll_given_first('Chidi - Obi Emeka', 'Chidi'), hrm.roll_name_cell('Mrs - ZZNGOZI'),
+                              hrm.roll_name_cell('. ZZADA', true), hrm.roll_name_cell('ZZX - (MRS)', true), hrm.roll_name_cell('(DR) - ZZX', true),
+                              hrm.roll_name_cell('ZZCOMMA,', true), hrm.roll_phone('+234 (0) 803 000 7616'), hrm.roll_phone('0803/000/7617')),
+        'dry said the same ' || ((SELECT string_agg(concat_ws(':', x->>'action', x->>'name', x->>'error', (x->'changes')::text), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sd.results) x)
+                               = (SELECT string_agg(concat_ws(':', x->>'action', x->>'name', x->>'error', (x->'changes')::text), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(sr.results) x)));
+    -- the Add forms' rows, and an e-mail an earlier request gave
+    SELECT * INTO r1 FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('sheet_row', 2, 'jp_no', '997612', 'given_names', '?', 'last_name', 'ZZFORMQ', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 3, 'jp_no', '997613', 'given_names', 'Ada', 'last_name', 'Dr.', 'posting', 'CHS-DEPT. OF ANATOMY'),
+        jsonb_build_object('sheet_row', 4, 'jp_no', '997614', 'given_names', 'Ada Ngozi', 'last_name', 'ZZFORMOK', 'email', 'zz750.across@example.test', 'posting', 'CHS-DEPT. OF ANATOMY')), true);
+    SELECT * INTO r2 FROM iam.import_staff(jsonb_build_array(
+        jsonb_build_object('sheet_row', 5, 'jp_no', '997615', 'first_name', 'Ada', 'last_name', 'ZZLATER', 'email', 'ZZ750.Across@example.test', 'posting', 'CHS-DEPT. OF ANATOMY')),
+        true, jsonb_build_object('zz750.across@example.test', 'JP997614'));
+    -- the teaching desk too: an address an earlier request gave
+    SELECT * INTO r3 FROM iam.import_lecturers(jsonb_build_array(
+        jsonb_build_object('sheet_row', 6, 'pno', '997619', 'first_name', 'Ada', 'last_name', 'ZZLCLAIM', 'email', 'zz750.lacross@example.test', 'department', dept)),
+        true, jsonb_build_object('zz750.lacross@example.test', 'P997620'));
+    m_forms := concat_ws(' | ',
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', coalesce(x->>'error', '-')), ',' ORDER BY (x->>'row')::int) FROM jsonb_array_elements(r1.results) x),
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', coalesce((SELECT string_agg(k->>'reason' || '>' || coalesce(k->>'givenTo', '-'), '+') FROM jsonb_array_elements(x->'kept') k), '-')), ',')
+           FROM jsonb_array_elements(r2.results) x),
+        (SELECT string_agg(concat_ws(':', x->>'row', x->>'action', coalesce((SELECT string_agg(k->>'reason' || '>' || coalesce(k->>'givenTo', '-'), '+') FROM jsonb_array_elements(x->'kept') k), '-')), ',')
+           FROM jsonb_array_elements(r3.results) x));
+    RAISE EXCEPTION 'the V750 no-name check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V750 no-name check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V750: a cell that holds no name erases none — titles only (a bare surname title-word aside), an NA written any way, a spreadsheet error (#N/A, #REF!, #VALUE!, #DIV/0!), Word''s dashes and the minus sign are blank; a bracket of titles is dropped with the marks it leaves, and titles joined by ''/''; a cell holding only titles is named in a new person''s error; an apostrophe joins a name; a letter outside ASCII is a letter',
+      coalesce(m_none = '2:UPDATED:ZZNONAME, Chidi Emeka:-:-,3:UPDATED:ZZSAADU, Emeka Zza''adu:-:-,4:UPDATED:ZZMARKS, Chidi–Obi Emeka:-:-,5:ERROR:ZZBAREDR, Ngozi:the first name (FIRST NAME) holds no name (DR): fill it in and upload again:-,6:ERROR:Ada:the surname (LAST-SURNAME) holds no name (PROF DR): fill it in and upload again:-,7:CREATED:CHIEF, Ada:-:given_names+surname,8:ERROR:the name (Full Names) holds no name (MR): fill it in and upload again:-,9:CREATED:ZZBRACKET, Ada:-:given_names+surname,10:CREATED:ZZHOOK, Ɓello:-:given_names+surname,11:ERROR:ZZMINUS, Ngozi:the first name is blank:-,12:SKIPPED:ZZUNIT, Ada:the Unit cell is blank: a new member of staff is placed in their posting — fill it in and upload again:-,13:UPDATED:ZZERRORS, Chidi Emeka:-:-,14:UPDATED:ZZBRK, Chidi Emeka:-:-,15:CREATED:ZZDOUBLE, Ada:-:given_names+surname,16:CREATED:ZZFULLE, Ada:-:given_names+surname,17:CREATED:ZZOKON, Ada ZZREC:-:given_names+surname | records ZZNONAME/Chidi Emeka/ZZLGA/CLERK/-,ZZSAADU/Emeka Zza''adu/-/-/-,ZZMARKS/Chidi–Obi Emeka/ZZLGA/CLERK/-,ZZERRORS/Chidi Emeka/ZZLGA/CLERK/ZZSTATE,ZZBRK/Chidi Emeka/-/-/- | given Chidi–Obi Emeka,-,-,Ada,Ngozi,-,ZZREC - ZZOKON,ZZREC – ZZOKON,Chidi - Obi Emeka,ZZNGOZI,ZZADA,ZZX,ZZX,ZZCOMMA,08030007616,08030007617 | dry said the same true', false), m_none);
+  PERFORM pg_temp.assert('V750: the Add forms'' names are worded by their own labels, and an e-mail an earlier request of the upload gave is kept from a later one, naming it, on both desks',
+      coalesce(m_forms = '2:ERROR:the given names are a query (?): correct them,3:ERROR:the surname holds no name,4:CREATED:- | 5:CREATED:GIVEN_TO_ANOTHER_ROW>JP997614 | 6:CREATED:GIVEN_TO_ANOTHER_ROW>P997620', false), m_forms);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

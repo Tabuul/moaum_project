@@ -56,7 +56,10 @@ class AccountsController {
                              @NotBlank @jakarta.validation.constraints.Size(max = 400) String reason) {
     }
 
-    public record Rows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows) {
+    /** V750: the rows of the nominal roll (or the old sheet), each with its {@code sheet_row} when the screen sends it; whether to
+     *  check them only (a dry run writes nothing); and the e-mail addresses earlier requests of the same upload gave ({address:
+     *  staff number}) — kept from these rows, so a check sent in parts says what the upload in parts will do */
+    public record Rows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows, Boolean dryRun, Map<String, String> claimed) {
     }
 
     private final JdbcClient jdbc;
@@ -76,18 +79,31 @@ class AccountsController {
      * one at a time. Resilient and idempotent; see iam.import_lecturers (V135).
      * Chunk the rows client-side: each credential is a bcrypt-12 hash (~¼s),
      * so a large single request would time out.
+     * V750: the nominal roll's columns or the old sheet's; someone already on record is updated from the roll (the e-mail and
+     * phone only filled), and a dry run says row by row what the upload would do and writes nothing. A new lecturer whose
+     * department is not on the portal is not loaded (SKIPPED, the message saying what to add or correct). The function's row
+     * comes back as it is, with {@code results} — one entry per row, its {@code sheet_row} as {@code row}. A blank or query name
+     * cell never erases a name (reported under {@code unresolved}); a number on record as non-teaching staff is an ERROR that
+     * writes nothing; a home department the roll changes moves the lecturer office with it (the change {@code lecturer_office}).
      */
     @PostMapping("/lecturers/import")
     @PreAuthorize(CREDENTIALS)
     @Transactional
     Map<String, Object> importLecturers(@Valid @RequestBody Rows body) {
-        return jdbc.sql("SELECT * FROM iam.import_lecturers(:j::jsonb)")
-                .param("j", json.writeValueAsString(body.rows())).query().singleRow();
+        return upload("iam.import_lecturers", body.rows(), body.dryRun(), body.claimed());
+    }
+
+    /** an upload function's one row as JSON — its counts and its {@code results} (jsonb), not the driver's wrapper of them */
+    private Map<String, Object> upload(String function, List<Map<String, Object>> rows, Boolean dryRun, Map<String, String> claimed) {
+        String row = jdbc.sql("SELECT to_jsonb(r)::text FROM " + function + "(:j::jsonb, :d, :c::jsonb) r")
+                .param("j", json.writeValueAsString(rows)).param("d", Boolean.TRUE.equals(dryRun))
+                .param("c", json.writeValueAsString(claimed == null ? Map.of() : claimed)).query(String.class).single();
+        return json.readValue(row, new tools.jackson.core.type.TypeReference<java.util.LinkedHashMap<String, Object>>() { });
     }
 
     private static final String STAFF_LOADERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_hrm','OFFICE_ict','OFFICE_admin','OFFICE_super')";
 
-    public record StaffRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows, Boolean dryRun) {
+    public record StaffRows(@jakarta.validation.constraints.NotNull List<Map<String, Object>> rows, Boolean dryRun, Map<String, String> claimed) {
     }
 
     /**
@@ -95,13 +111,43 @@ class AccountsController {
      * CONTISS in place of CONUASS and the unit as written. Each row becomes a person and an establishment
      * record placed in its unit, department or faculty — no sign-in and no office, since a non-academic
      * member of staff has no desk on the portal yet. A dry run resolves every row and writes nothing.
+     * V750: the senior roll (PNO, P + digits) or the junior roll (JP-NO, JP + digits — never merged into a P record); someone
+     * already on record is updated from the roll (the e-mail and phone only filled, a blank or query name cell erasing no name);
+     * a number on record as teaching staff is an ERROR that writes nothing; the function's row comes back with {@code results},
+     * one entry per row.
      */
     @PostMapping("/staff/import")
     @PreAuthorize(STAFF_LOADERS)
     @Transactional
     Map<String, Object> importStaff(@Valid @RequestBody StaffRows body) {
-        return jdbc.sql("SELECT * FROM iam.import_staff(:j::jsonb, :d)")
-                .param("j", json.writeValueAsString(body.rows())).param("d", Boolean.TRUE.equals(body.dryRun())).query().singleRow();
+        return upload("iam.import_staff", body.rows(), body.dryRun(), body.claimed());
+    }
+
+    /** V750: a roll uploaded, by kind (ACADEMIC or NON_ACADEMIC) and the staff numbers on it (P123, JP858; a bare number is a P number) */
+    public record RollAbsent(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "(?i)\\s*(ACADEMIC|NON_ACADEMIC)\\s*") String kind,
+                             @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Size(max = 5000) List<String> numbers) {
+    }
+
+    private static final java.util.Set<String> CREDENTIAL_OFFICES = java.util.Set.of(
+            "OFFICE_registrar", "OFFICE_dregistrar", "OFFICE_ict", "OFFICE_admin", "OFFICE_super");
+
+    /**
+     * V750: the roll's "on the portal but not on this roll" — the staff in service of that kind (V698) whose number is not among
+     * the roll's, within the series the roll holds (P or JP). It reads; nobody is ended by it. The non-academic roll by the offices
+     * that load non-academic staff; the teaching staff's by those that load teaching staff (CREDENTIALS — not Human Resources alone).
+     */
+    @PostMapping("/staff/roll-absent")
+    @PreAuthorize(STAFF_LOADERS)
+    @Transactional(readOnly = true)
+    List<Map<String, Object>> rollAbsent(@Valid @RequestBody RollAbsent body, org.springframework.security.core.Authentication caller) {
+        String kind = body.kind().trim().toUpperCase();
+        if ("ACADEMIC".equals(kind) && caller.getAuthorities().stream().noneMatch(g -> CREDENTIAL_OFFICES.contains(g.getAuthority()))) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "The teaching staff's roll is checked by the offices that load teaching staff: the Registrar, the Deputy Registrar, ICT and the administrators.");
+        }
+        return jdbc.sql("SELECT a.person_id, a.staff_number, a.name, a.rank, a.posting FROM hrm.roll_absent(:k, :n::text[]) a")
+                .param("k", kind).param("n", body.numbers().stream().filter(java.util.Objects::nonNull).toArray(String[]::new))
+                .query().listOfRows();
     }
 
     /** the non-academic staff on record, with where each is placed */

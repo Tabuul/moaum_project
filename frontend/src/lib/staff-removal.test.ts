@@ -41,17 +41,22 @@ test("ties read in a line, counts where they help", () => {
 
 test("a staff id that belongs to someone deactivated is found, so they are restored rather than added again", () => {
   const changes = [
-    { id: "a", staff_number: "P539", restorable: true },
-    { id: "b", staff_number: "P600", restorable: false },
+    { id: "a", staff_number: "P99539", restorable: true },
+    { id: "b", staff_number: "P99600", restorable: false },
   ] as StaffChange[];
-  assert.equal(deactivatedHolder("539", changes)?.id, "a");
-  assert.equal(deactivatedHolder("P539", changes)?.id, "a");
-  assert.equal(deactivatedHolder("600", changes), null);
+  assert.equal(deactivatedHolder("99539", changes)?.id, "a");
+  assert.equal(deactivatedHolder("P99539", changes)?.id, "a");
+  assert.equal(deactivatedHolder("99600", changes), null);
   assert.equal(deactivatedHolder("", changes), null);
+  // V750: a junior's JP number is a series of its own — the deactivated JP99858 is not P99858's holder, nor the other way round
+  const juniors = [{ id: "j", staff_number: "JP99858", restorable: true }] as StaffChange[];
+  assert.equal(deactivatedHolder("99858", juniors), null);
+  assert.equal(deactivatedHolder("JP99858", juniors)?.id, "j");
+  assert.equal(deactivatedHolder("jp99858", changes), null);
 });
 
 test("a date field's day is written as the staff upload reads it", () => {
-  assert.equal(ddmmyyyy("2001-01-04"), "04/01/2001");
+  assert.equal(ddmmyyyy("2003-06-15"), "15/06/2003");
   assert.equal(ddmmyyyy(""), "");
-  assert.equal(ddmmyyyy("04/01/2001"), "");
+  assert.equal(ddmmyyyy("15/06/2003"), "");
 });

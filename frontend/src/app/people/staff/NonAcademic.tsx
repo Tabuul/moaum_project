@@ -9,6 +9,9 @@
  * person is tied to — and restored from Removed staff.
  * V748: the unit register shows what a staff identity card prints as each unit's department (its card name, else its nearest
  * parent's, else its formal name); ICT sets a unit's card name, with a reason.
+ * V750: the upload follows the nominal roll — the senior non-teaching staff's (PNO, P + digits) and the junior staff's (JP-NO,
+ * JP + digits, a series of its own), 16 columns each, from the Excel templates or the Word roll as issued; someone on record is
+ * updated from the roll, the e-mail and phone only filled — the shared components/staff/RollUpload.
  * V754: the Offices tab — the unit each office belongs to, which a staff card prints as the department of someone the HR record
  * places nowhere who holds the office (V751); ICT sets or clears it, with a reason.
  */
@@ -17,8 +20,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { xlsxRows, buildXlsx } from "@/lib/xlsx";
-import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles } from "@/components/proto/ui";
+import { Btn, Note, Panel, PBody, Pil, RoleLine, Tabs } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
@@ -26,7 +28,9 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { BOUND_WORD } from "@/lib/office-scope";
 import { RemoveStaff } from "@/components/staff/RemoveStaff";
 import { RemovedStaff } from "@/components/staff/RemovedStaff";
+import { RollUpload } from "@/components/staff/RollUpload";
 import { ddmmyyyy, deactivatedHolder, type StaffChange, type StaffPick } from "@/lib/staff-removal";
+import { addCheck, addOutcome } from "@/lib/staff-roll";
 
 export interface NonAcademicRow {
   id: string; staff_number: string | null; name: string; surname: string; given_names: string; email: string | null; phone: string | null;
@@ -43,21 +47,15 @@ const MAY = ["registrar", "dregistrar", "hrm", "ict", "admin", "super"];
 /** V748: the offices that set a unit's card name (the API's PUT /iam/units/{code}/card-name) */
 const CARD_NAMERS = ["ict", "super"];
 const CHUNK = 100;
-interface Row { pno: string; full_names: string; sex: string; date_first_appointment: string; department: string; present_rank: string; phone: string; contiss: string }
-interface Tally { rows: number; created: number; existing: number; records: number; unplaced: number; skipped: number; failedRows: number; firstError: string | null; missing: string[]; dry: boolean }
-interface AddForm { pno: string; surname: string; given: string; sex: string; unit: string; rank: string; phone: string; contiss: string; appointed: string; email: string }
-const EMPTY_ADD: AddForm = { pno: "", surname: "", given: "", sex: "", unit: "", rank: "", phone: "", contiss: "", appointed: "", email: "" };
+/** V750: cadre SENIOR (PNO, staff id P + digits) or JUNIOR (JP-NO, staff id JP + digits — a series of its own) */
+interface AddForm { pno: string; cadre: "SENIOR" | "JUNIOR"; surname: string; given: string; sex: string; unit: string; rank: string; phone: string; contiss: string; appointed: string; email: string }
+const EMPTY_ADD: AddForm = { pno: "", cadre: "SENIOR", surname: "", given: "", sex: "", unit: "", rank: "", phone: "", contiss: "", appointed: "", email: "" };
 const KIND: Record<string, string> = { OFFICE: "Office", DIRECTORATE: "Directorate", DIVISION: "Division", UNIT: "Unit", CENTRE: "Centre", SCHOOL: "School", FACULTY_OFFICE: "Faculty office", DEPARTMENT: "Department" };
 
 export function NonAcademic({ actingOffice, staff, units, removed, offices }: { actingOffice: string | null; staff: NonAcademicRow[]; units: Unit[]; removed: StaffChange[]; offices: OfficeRow[] }) {
   const router = useRouter();
   const may = MAY.includes(actingOffice ?? "");
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [problem, setProblem] = useState<Problem | null>(null);
-  const [tally, setTally] = useState<Tally | null>(null);
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [fileName, setFileName] = useState("");
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"staff" | "units" | "offices">("staff");
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -65,6 +63,7 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
   const [done, setDone] = useState<string | null>(null);
   const [add, setAdd] = useState<AddForm | null>(null);
   const [addProblem, setAddProblem] = useState<Problem | null>(null);
+  const [renameOk, setRenameOk] = useState<string | null>(null);   // V750: an Add that renames someone on record, confirmed by a second press
   const [naming, setNaming] = useState<{ unit: Unit; name: string; reason: string } | null>(null);
   const [namingProblem, setNamingProblem] = useState<Problem | null>(null);
   const mayName = CARD_NAMERS.includes(actingOffice ?? "");
@@ -128,108 +127,65 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
     return list.map((s) => ({ id: s.id, name: s.name, staffNumber: s.staff_number }));
   }
 
-  /* one member of staff, through the roll's own import (one row): placed in its unit by the same spellings */
+  /* one member of staff, through the roll's own import (one row): placed in its unit by the same spellings. V750: a senior's
+     number is P + digits, a junior's JP + digits (typed JP858, or 858 with Junior picked); the row is checked first (a dry run),
+     and someone on record as teaching staff is not moved here (lib/staff-roll addCheck) */
   async function saveAdd() {
     if (!add) return;
     const pno = add.pno.replace(/\D/g, "");
+    const junior = add.cadre === "JUNIOR" || /^\s*JP/i.test(add.pno);
+    const id = `${junior ? "JP" : "P"}${pno}`;
     if (!pno || !add.surname.trim() || !add.given.trim() || !add.unit.trim()) {
       const p = { status: 400, title: "Staff number, surname, given names and unit are all required." }; setAddProblem(p); notifyProblem(p); return;
     }
-    const held = deactivatedHolder(pno, removed);
+    const held = deactivatedHolder(id, removed);
     if (held) {
       const p = { status: 409, title: `Staff id ${held.staff_number} belongs to ${held.name}, who was deactivated.`, detail: "Restore them under Removed staff below instead of adding them again." };
       setAddProblem(p); notifyProblem(p); return;
     }
-    if (staff.some((s) => (s.staff_number ?? "").replace(/\D/g, "") === pno)) {
-      const p = { status: 409, title: `Staff id P${pno} is already on record.` }; setAddProblem(p); notifyProblem(p); return;
+    if (staff.some((s) => (s.staff_number ?? "").toUpperCase() === id)) {   // V750: JP858 (a junior) is not P858
+      const p = { status: 409, title: `Staff id ${id} is already on record.` }; setAddProblem(p); notifyProblem(p); return;
     }
     setBusy(true); setAddProblem(null);
     try {
-      const r = await fetch("/api/bff/api/v1/iam/staff/import", {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Non-academic staff P${pno} added`) },
-        body: JSON.stringify({ dryRun: false, rows: [{ pno, full_names: `${add.given.trim()} ${add.surname.trim()}`, sex: add.sex, date_first_appointment: ddmmyyyy(add.appointed),
-          department: add.unit.trim(), present_rank: add.rank.trim(), phone: add.phone.trim(), contiss: add.contiss.trim(), email: add.email.trim() }] }),
+      // one row of the roll: the names in their own cells, so a surname of two words stays whole
+      const row = { [junior ? "jp_no" : "pno"]: pno, given_names: add.given.trim(), last_name: add.surname.trim(), sex: add.sex,
+        date_first_appointment: ddmmyyyy(add.appointed), posting: add.unit.trim(), present_rank: add.rank.trim(), phone: add.phone.trim(),
+        contiss: add.contiss.trim(), email: add.email.trim() };
+      const send = (dryRun: boolean) => fetch("/api/bff/api/v1/iam/staff/import", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(dryRun ? `Non-academic staff ${id} checked` : `Non-academic staff ${id} added`) },
+        body: JSON.stringify({ dryRun, rows: [row] }),
       });
-      const j = await r.json().catch(() => null);
+      let r = await send(true);
+      let j = await r.json().catch(() => null);
+      if (r.ok && j && !(Number(j.unplaced) > 0)) {
+        const v = addCheck(j);
+        if (!v.ok) { const p = { status: 409, title: v.title, detail: v.detail }; setAddProblem(p); notifyProblem(p); return; }
+        // someone on record under this number: adding renames them — said first, done on a second press
+        const key = v.renames ? `${id}|${v.renames.to}` : null;
+        if (v.renames && renameOk !== key) {
+          const p = { status: 409, title: `${id} is on record as ${v.renames.from}: adding renames them ${v.renames.to}.`,
+            detail: "Press Add staff again to rename and update them, or check the staff number." };
+          setRenameOk(key); setAddProblem(p); notifyProblem(p); return;
+        }
+        r = await send(false);
+        j = await r.json().catch(() => null);
+      }
       if (!r.ok || !j) { const p = j ?? { status: r.status, title: r.statusText }; setAddProblem(p); notifyProblem(p); return; }
       if (Number(j.unplaced) > 0) {
         const p = { status: 400, title: `No unit, department or faculty matching "${add.unit.trim()}".`, detail: "Pick the unit from the list, or ask ICT to add the unit or its spelling." };
         setAddProblem(p); notifyProblem(p); return;
       }
-      if (Number(j.skipped) > 0 || j.first_error) {
+      if (Number(j.skipped) > 0 || Number(j.errors) > 0 || j.first_error) {
         const p = { status: 400, title: "That member of staff could not be added.", detail: String(j.first_error ?? "") }; setAddProblem(p); notifyProblem(p); return;
       }
       setAdd(null);
-      setDone(`P${pno} added.`);
-      notify("Staff member added");
+      const out = addOutcome(j, id);
+      setRenameOk(null);
+      setDone(out.text);
+      notify(out.action === "UPDATED" ? "Staff record updated" : out.existing ? "Staff record checked" : "Staff member added");
       router.refresh();
     } finally { setBusy(false); }
-  }
-
-  function downloadTemplate() {
-    const blob = buildXlsx(["PNO", "Full Names", "Sex", "Date of 1st Appt", "Department", "Present Rank", "Phone No", "CONTISS"],
-      [["539", "BARNABAS TERFA HEMBA", "M", "04/01/2001", "OFFICE OF THE REGISTRAR", "REGISTRAR", "07038367476", "CONSOLIDATED"],
-       ["563", "JOHN ELAIGWU AUDU", "M", "26/03/2001", "BUR-DIRECTORATE OF BAEC", "SENIOR DEPUTY BURSAR", "08055673634", "15"]], "Non-academic staff");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "Non-academic staff template.xlsx";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }
-
-  async function read(file: File) {
-    setProblem(null); setTally(null); setRows(null); setFileName(file.name);
-    try {
-      const grid = await xlsxRows(await file.arrayBuffer());
-      const header = (grid[0] ?? []).map((c) => String(c ?? "").trim().toLowerCase());
-      const at = (n: string[]) => header.findIndex((h) => n.some((x) => h.includes(x)));
-      const ci = {
-        pno: at(["pno", "staff"]), name: at(["full name", "name"]), sex: at(["sex", "gender"]), appt: at(["appt", "appoint", "1st"]),
-        dept: at(["department", "unit", "dept"]), rank: at(["rank"]), phone: at(["phone", "mobile", "gsm"]), contiss: at(["contiss", "conuass", "scale", "grade"]),
-      };
-      if (ci.pno < 0 || ci.name < 0 || ci.dept < 0) {
-        const p = { status: 400, title: "That file needs PNO, Full Names and Department columns.", detail: "Download the template; it matches the nominal roll." };
-        setProblem(p); notifyProblem(p); return;
-      }
-      const g = (r: (string | number | null)[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
-      const out = grid.slice(1)
-        .filter((r) => g(r, ci.pno).replace(/\D/g, "") && !/^pno$/i.test(g(r, ci.pno)))
-        .map((r) => ({ pno: g(r, ci.pno), full_names: g(r, ci.name), sex: g(r, ci.sex), date_first_appointment: g(r, ci.appt), department: g(r, ci.dept), present_rank: g(r, ci.rank), phone: g(r, ci.phone), contiss: g(r, ci.contiss) }));
-      if (!out.length) { const p = { status: 400, title: "No staff found in the file." }; setProblem(p); notifyProblem(p); return; }
-      setRows(out);
-      await send(out, true);
-    } catch {
-      const p = { status: 400, title: "That file could not be read as a spreadsheet." }; setProblem(p); notifyProblem(p);
-    }
-  }
-
-  async function send(all: Row[], dry: boolean) {
-    setBusy(true); setProblem(null);
-    const sum: Tally = { rows: 0, created: 0, existing: 0, records: 0, unplaced: 0, skipped: 0, failedRows: 0, firstError: null, missing: [], dry };
-    try {
-      const chunks: Row[][] = [];
-      for (let i = 0; i < all.length; i += CHUNK) chunks.push(all.slice(i, i + CHUNK));
-      setProgress({ done: 0, total: all.length });
-      for (const chunk of chunks) {
-        try {
-          const r = await fetch("/api/bff/api/v1/iam/staff/import", {
-            method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(dry ? `${all.length} non-academic staff rows checked` : `${all.length} non-academic staff uploaded`) },
-            body: JSON.stringify({ rows: chunk, dryRun: dry }),
-          });
-          const j = await r.json().catch(() => null);
-          if (!r.ok || !j) { sum.failedRows += chunk.length; if (!sum.firstError && j?.title) sum.firstError = String(j.title); }
-          else {
-            sum.rows += Number(j.rows ?? 0); sum.created += Number(j.created ?? 0); sum.existing += Number(j.existing ?? 0); sum.records += Number(j.records ?? 0);
-            sum.unplaced += Number(j.unplaced ?? 0); sum.skipped += Number(j.skipped ?? 0);
-            if (!sum.firstError && j.first_error) sum.firstError = String(j.first_error);
-            if (j.unplaced_units) for (const u of String(j.unplaced_units).split(", ")) if (u && !sum.missing.includes(u)) sum.missing.push(u);
-          }
-        } catch { sum.failedRows += chunk.length; }
-        setProgress((p) => (p ? { done: Math.min(p.done + chunk.length, p.total), total: p.total } : p));
-        setTally({ ...sum, missing: [...sum.missing] });
-      }
-      if (!dry) { notify(`${sum.created} staff added · ${sum.existing} already on record`); router.refresh(); }
-    } finally { setBusy(false); setProgress(null); }
   }
 
   const unitRows = units.filter((u) => !u.ended_on);
@@ -237,44 +193,16 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
     <>
       <RoleLine allowed={["registrar", "dregistrar", "hrm", "ict"]} actingOffice={actingOffice} canAct={may} action="Loading non-academic staff" />
       <Note kind="info" title="Upload the nominal roll of non-academic staff">
-        As the teaching-staff sheet, with <b>CONTISS</b> in place of CONUASS. Check the file first (nothing is written), then load it.
-        <b> No sign-in and no office are issued.</b> Re-uploading never duplicates.
+        The <b>senior non-teaching staff</b> roll (PNO, staff id P and the digits) or the <b>junior staff</b> roll (JP-NO, staff id JP and the
+        digits, never merged with a P number). Check the file first (nothing is written), then upload it. A new member of staff is placed in their
+        posting; <b>no sign-in and no office are issued.</b> Someone already on record is <b>updated from the roll</b>; the e-mail and phone are only
+        filled where none is on record. Re-uploading never duplicates.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Registry, Human Resources and the Directorate of ICT">Your office may not load staff.</Note> : null}
-      {problem ? <ProblemNotice problem={problem} /> : null}
 
       {may ? (
-        <Panel title="Load the roll" right={fileName ? `${fileName}${rows ? ` · ${rows.length} rows` : ""}` : "Person · establishment record · unit"}>
-          <PBody>
-            <div className="row">
-              <Btn kind="ghost" onClick={downloadTemplate}>Download Template</Btn>
-              <label className={`btn btn--secondary btn--sm m-0${busy ? " btn--disabled" : ""}`} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
-                {busy && tally?.dry ? "Checking…" : "Check a File (.xlsx)"}
-                <input type="file" accept=".xlsx" style={{ display: "none" }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} />
-              </label>
-              {rows && tally?.dry && !busy ? <Btn kind="primary" onClick={() => void send(rows, false)}>{tally.unplaced ? `Load the ${tally.rows - tally.unplaced} Placed Rows` : `Load All ${tally.rows} Rows`}</Btn> : null}
-              {progress ? <span className="sub2 tnum">{tally?.dry ? "Checking" : "Loading"} {progress.done} of {progress.total}…</span> : null}
-            </div>
-          </PBody>
-        </Panel>
-      ) : null}
-
-      {tally ? (
-        <>
-          <Tiles items={[
-            [tally.dry ? "Rows read" : "Rows loaded", String(tally.rows), null, fileName],
-            [tally.dry ? "Would be added" : "Added", String(tally.created), null, "New people on the register"],
-            [tally.dry ? "Already on record" : "Already on record", String(tally.existing), null, "Matched by staff id; the record refreshed"],
-            ["Not placed", String(tally.unplaced), tally.unplaced ? "var(--red-ink)" : null, tally.unplaced ? "No unit, department or faculty matched" : "Every row placed"],
-          ]} />
-          <Note kind={tally.unplaced || tally.skipped || tally.failedRows ? "bad" : "ok"} title={tally.dry ? (tally.unplaced ? "Checked: some spellings could not be placed" : "Checked: every row can be placed") : (tally.unplaced || tally.skipped || tally.failedRows ? "Loaded, with rows to follow up" : "Non-academic staff loaded")}>
-            {tally.rows} row(s) read · {tally.created} {tally.dry ? "new" : "added"} · {tally.existing} already on record{tally.unplaced ? ` · ${tally.unplaced} not placed` : ""}{tally.skipped ? ` · ${tally.skipped} skipped` : ""}.
-            {tally.failedRows ? <><br /><b>{tally.failedRows} row(s) did not send.</b> Load the same file again to fill the gap.</> : null}
-            {tally.missing.length ? <><br /><b>Not placed, as spelt in the sheet:</b> {tally.missing.join(" · ")}. Correct the spelling, or ask ICT to add the unit or alias.</> : null}
-            {tally.firstError ? <><br />First problem: {tally.firstError}</> : null}
-            {tally.dry && !tally.unplaced ? <><br />Nothing has been written yet. Load the rows to keep them.</> : null}
-          </Note>
-        </>
+        <RollUpload kind="NON_ACADEMIC" templates={["SENIOR", "JUNIOR"]} endpoint="/api/bff/api/v1/iam/staff/import" chunk={CHUNK} what="non-academic staff"
+          onDone={() => router.refresh()} />
       ) : null}
 
       <Panel title="On record" right={<Tabs label="Staff, units or offices" items={[{ id: "staff", label: "Non-Academic Staff", count: staff.length }, { id: "units", label: "The Unit Register", count: unitRows.length }, { id: "offices", label: "Offices", count: offices.length }]} value={tab} onChange={setTab} />}>
@@ -283,7 +211,7 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
             <PBody>
               <div className="row">
                 <input className="ctl" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, staff id, unit or rank" style={{ maxWidth: 320 }} aria-label="Search staff" />
-                {may ? <Btn kind="primary" onClick={() => { setAddProblem(null); setAdd({ ...EMPTY_ADD }); }}>Add staff</Btn> : null}
+                {may ? <Btn kind="primary" onClick={() => { setAddProblem(null); setRenameOk(null); setAdd({ ...EMPTY_ADD }); }}>Add staff</Btn> : null}
                 {may && sel.size ? <Btn kind="urgent" onClick={() => { setDone(null); setRemoving(pick(staff.filter((s) => sel.has(s.id)))); }}>{`Delete selected (${sel.size})`}</Btn> : null}
                 {sel.size ? <Btn kind="ghost" onClick={() => setSel(new Set())}>Clear selection</Btn> : null}
               </div>
@@ -388,9 +316,16 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
           foot={<><Btn kind="ghost" onClick={() => setAdd(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || !add.pno.trim() || !add.surname.trim() || !add.given.trim() || !add.unit.trim()} onClick={() => void saveAdd()}>{busy ? "Adding…" : "Add staff"}</Btn></>}>
           {addProblem ? <ProblemNotice problem={addProblem} /> : null}
-          <div className="sub2 mb-3">As a row of the nominal roll: placed in its unit, no sign-in and no office. The staff id becomes P&lt;number&gt;.</div>
+          <div className="sub2 mb-3">As a row of the nominal roll: placed in its unit, no sign-in and no office. The staff id becomes P&lt;number&gt; for senior staff and JP&lt;number&gt; for junior staff.</div>
           <div className="grid grid--2">
-            <Field id="na-pno" label="Staff number (PNO)" hint="Digits only"><input id="na-pno" className="ctl tnum" value={add.pno} onChange={(e) => setAdd({ ...add, pno: e.target.value })} placeholder="539" /></Field>
+            <Field id="na-pno" label={add.cadre === "JUNIOR" ? "Staff number (JP-NO)" : "Staff number (PNO)"} hint={add.cadre === "JUNIOR" ? "Digits — becomes JP<number>" : "Digits — becomes P<number>"}>
+              <input id="na-pno" className="ctl tnum" value={add.pno} onChange={(e) => setAdd({ ...add, pno: e.target.value, cadre: /^\s*JP/i.test(e.target.value) ? "JUNIOR" : add.cadre })} placeholder={add.cadre === "JUNIOR" ? "99858" : "99539"} />
+            </Field>
+            <Field id="na-cadre" label="Cadre" hint="Junior staff are numbered JP, a series of their own">
+              <select id="na-cadre" className="ctl" value={add.cadre} onChange={(e) => setAdd({ ...add, cadre: e.target.value === "JUNIOR" ? "JUNIOR" : "SENIOR" })}>
+                <option value="SENIOR">Senior staff (PNO)</option><option value="JUNIOR">Junior staff (JP-NO)</option>
+              </select>
+            </Field>
             <Field id="na-unit" label="Unit" hint="As the register names it, or a known spelling">
               <input id="na-unit" className="ctl" list="na-units" value={add.unit} onChange={(e) => setAdd({ ...add, unit: e.target.value })} placeholder="OFFICE OF THE REGISTRAR" />
               <datalist id="na-units">{unitRows.map((u) => <option key={u.code} value={u.name} />)}</datalist>
@@ -400,7 +335,7 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
             <Field id="na-sex" label="Sex">
               <select id="na-sex" className="ctl" value={add.sex} onChange={(e) => setAdd({ ...add, sex: e.target.value })}><option value="">—</option><option value="M">M</option><option value="F">F</option></select>
             </Field>
-            <Field id="na-rank" label="Present rank"><input id="na-rank" className="ctl" value={add.rank} onChange={(e) => setAdd({ ...add, rank: e.target.value })} placeholder="SENIOR DEPUTY BURSAR" /></Field>
+            <Field id="na-rank" label="Present rank"><input id="na-rank" className="ctl" value={add.rank} onChange={(e) => setAdd({ ...add, rank: e.target.value })} placeholder="EXECUTIVE OFFICER" /></Field>
             <Field id="na-contiss" label="CONTISS" hint="A step, or CONSOLIDATED"><input id="na-contiss" className="ctl tnum" value={add.contiss} onChange={(e) => setAdd({ ...add, contiss: e.target.value })} placeholder="15" /></Field>
             <Field id="na-appt" label="Date of first appointment"><input id="na-appt" type="date" className="ctl" value={add.appointed} onChange={(e) => setAdd({ ...add, appointed: e.target.value })} /></Field>
             <Field id="na-phone" label="Phone"><input id="na-phone" className="ctl tnum" value={add.phone} onChange={(e) => setAdd({ ...add, phone: e.target.value })} /></Field>

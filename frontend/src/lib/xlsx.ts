@@ -15,12 +15,13 @@
  * because an empty list looks like a successful import of nothing.
  */
 
-interface ZipEntry {
+/** one entry of a ZIP as its central directory gives it (V750: shared with the Word reader, lib/staff-roll.ts) */
+export interface ZipEntry {
   method: number;
   bytes: Uint8Array;
 }
 
-function zipEntries(buf: ArrayBuffer): Record<string, ZipEntry> {
+export function zipEntries(buf: ArrayBuffer): Record<string, ZipEntry> {
   const dv = new DataView(buf);
   const out: Record<string, ZipEntry> = {};
   let i = buf.byteLength - 22;
@@ -48,7 +49,7 @@ function zipEntries(buf: ArrayBuffer): Record<string, ZipEntry> {
   return out;
 }
 
-async function inflate(e: ZipEntry): Promise<string> {
+export async function inflate(e: ZipEntry): Promise<string> {
   if (e.method === 0) return new TextDecoder().decode(e.bytes);
   if (e.method !== 8) throw new Error(`the file uses ZIP compression method ${e.method}, which cannot be read here`);
   const stream = new Blob([e.bytes as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
@@ -271,8 +272,8 @@ function crc32(bytes: Uint8Array): number {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-/** a stored (method 0) ZIP of the given files */
-function zip(files: { name: string; data: Uint8Array }[]): Uint8Array {
+/** a stored (method 0) ZIP of the given files (V750: exported for the tests that build a .docx) */
+export function zip(files: { name: string; data: Uint8Array }[]): Uint8Array {
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
