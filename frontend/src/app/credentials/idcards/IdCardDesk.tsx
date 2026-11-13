@@ -16,7 +16,7 @@ import { Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { cardSvg, type CardBack, type CardFace } from "@/lib/idcard-design";
 import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-client";
-import { ACTION_WORDS, BLOOD_GROUPS, END_STATES, REPLACE_REASONS, actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord,
+import { ACTION_WORDS, BLOOD_GROUPS, END_STATES, REPLACE_REASONS, actionsFor, cardStateWord, deskBloodGroup, eligibilityWords, eventWord, reasonWord,
   type CardRow, type DeskStudent, type SearchRow } from "@/lib/idcard-desk";
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
@@ -99,15 +99,17 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
 
   async function saveBlood() {
     if (!sel || !blood) return;
+    // V749: the group the record shows, saved as it stands, is the desk confirming it
+    const confirming = sel.eligibility.checks?.blood_group === false && blood === (sel.student.blood_group ?? "");
     setBusy("blood"); setProblem(null);
     try {
       const r = await fetch(`/api/bff/api/v1/credentials/identity-cards/students/${encodeURIComponent(sel.student.student_id)}/blood-group`, {
-        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Blood group ${blood} recorded at the card desk`) },
+        method: "PUT", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Blood group ${blood} ${confirming ? "confirmed" : "recorded"} at the card desk`) },
         body: JSON.stringify({ bloodGroup: blood }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { const p = j ?? { status: r.status, title: r.statusText }; setProblem(p); notifyProblem(p); return; }
-      notify(`Blood group ${String((j as { bloodGroup?: string }).bloodGroup ?? blood)} recorded; the card prints it`);
+      notify(`Blood group ${String((j as { bloodGroup?: string }).bloodGroup ?? blood)} ${confirming ? "confirmed" : "recorded"}; the card prints it`);
       await open(sel.student.student_id);
     } finally { setBusy(null); }
   }
@@ -115,6 +117,8 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
   const s = sel?.student;
   const e = sel?.eligibility;
   const words = e ? eligibilityWords(e) : null;
+  // V749: whether the group on the record is confirmed, and what the desk's entry does with it
+  const bg = e ? deskBloodGroup(e, s?.blood_group, blood) : null;
   const can = e ? actionsFor(e, sel?.card ?? null, may) : { print: false, collect: false, replace: false, end: false };
   const cardWord = cardStateWord(sel?.card?.state ?? null);
 
@@ -126,7 +130,7 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
             <Field id="idc-q" label="Search student"><input id="idc-q" className="ctl" value={q} onChange={(ev) => setQ(ev.target.value)} placeholder="MOAU/AD/BUS/21/12345, a JAMB number, a name, a phone or an e-mail" style={{ minWidth: 360 }} maxLength={80} autoFocus /></Field>
             <Btn kind="primary" disabled={searching} onClick={() => void search(0)}>{searching ? "SEARCHING..." : "SEARCH STUDENT"}</Btn>
           </form>
-          <div className="sub2" style={{ marginTop: "var(--s-2)" }}>A student&rsquo;s first card is issued on the matriculation number alone (V699); a card after it — a replacement — is printed once the student has paid the replacement fee on their portal. The photograph and the school fees are shown, never held against the card; clearance is never read here.</div>
+          <div className="sub2" style={{ marginTop: "var(--s-2)" }}>A student&rsquo;s first card is issued on the matriculation number and a confirmed blood group (V699, V749); a card after it — a replacement — is printed once the student has paid the replacement fee on their portal. The photograph and the school fees are shown, never held against the card; clearance is never read here.</div>
         </PBody>
         {rows ? (
           rows.length ? (
@@ -171,7 +175,7 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
                     ["Faculty", s.faculty ?? "—"], ["Department", s.department ?? "—"], ["Programme", s.programme ?? "—"],
                     ["Level", s.level ? `${s.level} Level` : "—"], ["Admission session", s.entry_session ?? "—"], ["Current session", s.current_session ?? "—"],
                     ["Student status", s.status], ["Academic enrolment", `${s.entry_mode ?? "—"} · ${s.programme_code ?? ""}`], ["Photograph", sel.photo ? "Official photograph on record" : "Missing"],
-                    ["Blood group", s.blood_group ?? "Not on record"]] as [string, string][]).map(([k, v]) => (
+                    ["Blood group", bg?.shown ?? s.blood_group ?? "Not on record"]] as [string, string][]).map(([k, v]) => (
                     <div key={k}><div className="sub2">{k}</div><div className={k.includes("number") ? "tnum" : ""}>{v}</div></div>
                   ))}
                 </div>
@@ -184,14 +188,17 @@ export function IdCardDesk({ actingOffice, initialStudent }: { actingOffice: str
             </Note>
             {may ? (
               <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
-                <Field id="idc-blood" label={s.blood_group ? "Correct the blood group" : "Add the blood group"}>
+                <Field id="idc-blood" label={bg?.label ?? "Add the blood group"}>
                   <select id="idc-blood" className="ctl" value={blood} onChange={(ev) => setBlood(ev.target.value)} disabled={busy !== null}>
                     <option value="">Choose…</option>
                     {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </Field>
-                <Btn kind="secondary" disabled={busy !== null || !blood || blood === (s.blood_group ?? "")} busy={busy === "blood"} busyLabel="Saving…" onClick={() => void saveBlood()}>SAVE BLOOD GROUP</Btn>
-                <span className="sub2">Printed on the card; kept on the student&rsquo;s record.</span>
+                <Btn kind="secondary" disabled={busy !== null || !bg?.canSave} busy={busy === "blood"} busyLabel="Saving…" onClick={() => void saveBlood()}>SAVE BLOOD GROUP</Btn>
+                <span className="sub2">
+                  Printed on the card; kept on the student&rsquo;s record.
+                  {bg && !bg.confirmed ? " Not yet confirmed, so the card waits: the group saved here, the one shown or a corrected one, counts as confirmed." : ""}
+                </span>
               </div>
             ) : null}
             <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>

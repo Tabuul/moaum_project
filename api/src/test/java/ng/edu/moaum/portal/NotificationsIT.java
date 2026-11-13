@@ -166,13 +166,22 @@ class NotificationsIT {
         assertThat(((Number) settings.get("review_days")).intValue()).isEqualTo(365);
         assertThat(((Map<String, Object>) body(it.get(ict, "/api/v1/notices/settings/counts")).get("counts")).get("total")).isNotNull();
         body(it.call(ict, HttpMethod.PUT, "/api/v1/notices/settings", Map.of("remindEnabled", false, "reviewDays", 0)));
-        // a staff member's own contact: a bad phone refused, a good one kept on the person
+        // a staff member's own contact: a bad phone refused, a good one kept on the person; V749: the e-mail is the one on record —
+        // a new address is refused here with nothing saved (it is verified by a code at My identity), and blank leaves it as it stands
         UUID staff = it.person("ZZNOT-STF-" + tag, "ZZNOTSTAFF");
         String staffToken = TestTokens.token(staff, List.of("lecturer"));
         assertThat(it.call(staffToken, HttpMethod.PUT, "/api/v1/staff/contact", Map.of("email", "staff-" + tag + "@example.test", "phone", "12")).getStatusCode().value()).isEqualTo(422);
+        ResponseEntity<Map> newEmail = it.call(staffToken, HttpMethod.PUT, "/api/v1/staff/contact", Map.of("email", "staff-" + tag + "@example.test", "phone", "0801 234 " + tag.substring(0, 4)));
+        assertThat(newEmail.getStatusCode().value()).isEqualTo(422);
+        assertThat(String.valueOf(newEmail.getBody())).contains("STAFF_EMAIL_VERIFY");
+        assertThat(it.db(() -> jdbc.sql("SELECT coalesce(email, '') || '/' || coalesce(phone, '') FROM iam.person WHERE id = :p").param("p", staff).query(String.class).single())).isEqualTo("/");
+        it.db(() -> jdbc.sql("UPDATE iam.person SET email = :e WHERE id = :p").param("e", "staff-" + tag + "@example.test").param("p", staff).update());
         Map<String, Object> contact = body(it.call(staffToken, HttpMethod.PUT, "/api/v1/staff/contact", Map.of("email", "staff-" + tag + "@example.test", "phone", "0801 234 " + tag.substring(0, 4))));
         assertThat(contact.get("email")).isEqualTo("staff-" + tag + "@example.test");
         assertThat(contact.get("email_valid")).isEqualTo(true);
+        assertThat(contact.get("phone")).isEqualTo("0801 234 " + tag.substring(0, 4));
+        assertThat(body(it.call(staffToken, HttpMethod.PUT, "/api/v1/staff/contact", Map.of("phone", "0801 234 " + tag.substring(0, 4)))).get("email"))
+                .isEqualTo("staff-" + tag + "@example.test");
         assertThat(it.db(() -> jdbc.sql("SELECT email FROM iam.person WHERE id = :p").param("p", staff).query(String.class).single())).isEqualTo("staff-" + tag + "@example.test");
         // a student never reaches the staff contact endpoint
         assertThat(it.call(token, HttpMethod.PUT, "/api/v1/staff/contact", Map.of("email", "x@example.test")).getStatusCode().value()).isIn(403, 422);

@@ -15,6 +15,9 @@ import { ContactConfirm, type ContactConfirmData } from "@/components/ContactCon
 import { IdleWatch } from "@/components/IdleWatch";
 import { SupportViewBanner, useSupportView } from "@/components/support/SupportViewBanner";
 import { PolicyPrompt, type PolicyPromptData } from "@/components/PolicyPrompt";
+import { BloodGroupPrompt, type BloodGroupPromptData } from "@/components/BloodGroupPrompt";
+import { IdentityPanel } from "@/components/IdentityPanel";
+import { dashboardPrompts, type StaffIdentityState } from "@/lib/identity";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -87,6 +90,7 @@ export const ROUTES: Record<string, string> = {
   "t/templates": "/notices/templates",
   "t/campaigns": "/notices/campaigns",
   "t/compliance": "/biodata/compliance",
+  "t/identitycompletion": "/identity/completion",
   "t/api": "/api-keys",
   "t/migration": "/migrations",
   "t/dobfromfile": "/records/dates-of-birth",   // V721
@@ -145,6 +149,7 @@ export const ROUTES: Record<string, string> = {
   "t/coursehistory": "/me/courses",
   "r/notices": "/me/notices",
   "t/myprofile": "/me/profile",
+  "t/myidentity": "/me/identity",
   "t/deptstaff": "/hod/staff",
   "t/matriculation": "/matriculation",
   "t/matriculation-config": "/matriculation/config",
@@ -722,6 +727,10 @@ export interface Me {
   contactConfirm?: ContactConfirmData | null;
   /** V441: a legal document (the Privacy Policy) published since the person last accepted one — asked once per version (iam/me) */
   privacyPrompt?: PolicyPromptData | null;
+  /** V749: a student whose blood group is missing or not confirmed — asked on the student's dashboard until saved (iam/me) */
+  bloodGroupPrompt?: BloodGroupPromptData | null;
+  /** V749: a member of staff whose identity information (photograph, e-mail, blood group) is not complete — on the dashboard (iam/me) */
+  identityPrompt?: StaffIdentityState | null;
 }
 
 /* the prototype drew its counts as fixtures; the portal draws what the API says is waiting, and nothing else */
@@ -744,6 +753,8 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
   const viewing = useSupportView() !== null;
   const router = useRouter();
   const pathname = usePathname();
+  // V749: the blood group and the staff identity information, asked on the acting office's dashboard only (lib/home-routes)
+  const prompts = dashboardPrompts(me, pathname);
   // the next screen on its way (lib/activity): the one shown is stale until it arrives
   const staleScreen = useSyncExternalStore(onActivity, () => screensInFlight() > 0, () => false);
   // the drawer on a phone or tablet: a body class the CSS reads, mirrored here so the menu button can say whether it is open
@@ -1020,8 +1031,12 @@ export function Shell({ route, me, children, sub, title }: { route: string; me: 
             )}
             {/* V521: ICT Support viewing the student's portal: said on every screen; the student's own prompts are the student's to answer */}
             <SupportViewBanner />
+            {/* V749: what the staff identity card still needs, at the top of the dashboard until it is done; the blood group asked in a
+                dialog on each visit to the dashboard until it is saved (beneath the privacy policy's, which is answered first) */}
+            {!viewing && prompts.missing.length ? <IdentityPanel missing={prompts.missing} /> : null}
             {!viewing && me?.contactPrompt && me.contactPrompt.state === "ASK" ? <ContactPrompt p={me.contactPrompt} /> : null}
             {!viewing && me?.contactConfirm ? <ContactConfirm c={me.contactConfirm} /> : null}
+            {!viewing && prompts.blood ? <BloodGroupPrompt kind={prompts.blood.kind} current={prompts.blood.current} /> : null}
             {!viewing && me?.privacyPrompt && me.privacyPrompt.documents.length ? <PolicyPrompt p={me.privacyPrompt} /> : null}
             <IdleWatch />
             <ShellTitle.Provider value={t0}>{children}</ShellTitle.Provider>

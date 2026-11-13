@@ -87,6 +87,16 @@ public class StudentService {
                     "This field is read from the JAMB record and is not changed on the portal.",
                     new DomainRuleViolation.Remedy("Corrected with JAMB, not here", "Academic Office"));
         }
+        // V749: the blood group the identity card prints is one of the eight, kept as the card reads it (credentials.blood_group_of:
+        // "o positive" is O+); anything else is refused rather than stored as words the card cannot print
+        if ("blood_group".equals(field)) {
+            String group = students.bloodGroupOf(value);
+            if (group == null) {
+                throw new DomainRuleViolation("STU_BLOOD_GROUP", "A blood group is one of A+, A-, B+, B-, AB+, AB-, O+ or O-.",
+                        new DomainRuleViolation.Remedy("Choose the blood group from the list.", "You"));
+            }
+            value = group;
+        }
         // A student's own biodata is written straight away — express, no Registry
         // approval step. What the student enters is their record, on the attributed
         // spine like any other write. Only JAMB-read fields stay locked above,

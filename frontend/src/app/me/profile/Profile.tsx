@@ -10,6 +10,14 @@
  * It is the person's own and no other: every write goes to /api/v1/staff/profile,
  * which takes the person from the signed-in token, never a parameter. The list
  * sections are edited one entry per line, and saved as arrays.
+ *
+ * V749: the photograph and the e-mail address are changed at My identity (/me/identity) — a new photograph is checked and
+ * enhanced for the identity card and saved only once accepted, and a new address is verified by a code sent to it, the old one
+ * kept until then — so neither is written from here. The address shown is the one the person's record holds (GET /staff/profile
+ * answers it, and is read again after each save), and a save sends none: PUT /staff/profile saves the profile with the address on
+ * record as it stands when it is saved (an e-mail in the body is not read), so a page opened before the address changed never holds
+ * back the save or puts the old address back, and shows the record's address once saved. A profile that could not be read is not
+ * saved: every field would go back blank.
  */
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
@@ -17,7 +25,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Me } from "@/components/proto/Shell";
-import { Btn, Note, Panel, PBody } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody } from "@/components/proto/ui";
 import { Field, Passport } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 
@@ -61,7 +69,8 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
   const router = useRouter();
   const [f, setF] = useState<Record<string, string>>(() => {
     const o: Record<string, string> = {};
-    for (const [k] of SCALARS) o[k] = str(initial?.[k]);
+    // the e-mail is not the form's: shown from the record (initial), never sent
+    for (const [k] of SCALARS) if (k !== "email") o[k] = str(initial?.[k]);
     o.scholarUrl = str(initial?.scholarUrl);
     o.researchInterests = str(initial?.researchInterests);
     o.mastersGraduated = str(initial?.mastersGraduated ?? "0");
@@ -73,8 +82,6 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
-  const [photoMsg, setPhotoMsg] = useState<string | null>(null);
-  const [photoBusy, setPhotoBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -97,12 +104,13 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
   };
 
   async function save() {
+    if (!initial) return;
     setBusy(true);
     setProblem(null);
     setSaved(false);
     try {
+      // V749: no e-mail — the API saves the address on record with the profile, whatever this page was opened with
       const body: Raw = {
-        email: f.email.trim() || null,
         phone: f.phone.trim() || null,
         department: f.department.trim() || null,
         faculty: f.faculty.trim() || null,
@@ -132,48 +140,6 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
     }
   }
 
-  async function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setPhotoMsg(null);
-    setProblem(null);
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      setPhotoMsg("A photograph is a JPEG or PNG image.");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setPhotoMsg("A photograph is up to 2 MB.");
-      return;
-    }
-    setPhotoBusy(true);
-    try {
-      const dataUrl = await new Promise<string>((res, rej) => {
-        const rd = new FileReader();
-        rd.onload = () => res(String(rd.result));
-        rd.onerror = () => rej(new Error("read"));
-        rd.readAsDataURL(file);
-      });
-      const b64 = dataUrl.split(",")[1] ?? "";
-      const r = await fetch("/api/bff/api/v1/staff/profile/photo", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader("Staff photograph updated by the holder") },
-        body: JSON.stringify({ contentType: file.type, dataBase64: b64 }),
-      });
-      if (!r.ok) {
-        const j = await r.json().catch(() => null);
-        setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText });
-        return;
-      }
-      setPhoto(dataUrl);
-      setPhotoMsg("Photograph updated.");
-    } catch {
-      setPhotoMsg("The picture could not be read.");
-    } finally {
-      setPhotoBusy(false);
-    }
-  }
-
   const who = me?.name ?? "My profile";
   const listField = ([k, label, hint]: [string, string, string]) => (
     <Field id={k} label={label} hint={hint} full key={k}>
@@ -190,16 +156,16 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
       </Note>
 
       <div className="grid grid--2">
-        <Panel title="Photograph" right="A recent picture · JPEG or PNG, up to 2 MB">
+        <Panel title="Photograph" right="Your identity-card photograph">
           <PBody>
             <div className="row" style={{ gap: "var(--s-4)" }}>
               <Passport w={104} h={128} src={photo} alt={who} />
               <div className="stack">
-                <label className={`btn btn--primary btn--sm${photoBusy ? " is-disabled" : ""}`} style={{ cursor: "pointer" }}>
-                  {photoBusy ? "Uploading…" : photo ? "Replace photograph" : "Upload photograph"}
-                  <input type="file" accept="image/jpeg,image/png" hidden disabled={photoBusy} onChange={(e) => void onPhoto(e)} />
-                </label>
-                {photoMsg ? <span className="sub2">{photoMsg}</span> : <span className="sub2">A head-and-shoulders photograph on a plain background.</span>}
+                <LinkBtn kind="primary" href="/me/identity#photo">{photo ? "Replace photograph" : "Upload photograph"}</LinkBtn>
+                <span className="sub2">
+                  At My identity: the photograph is checked and enhanced for the identity card, shown beside the one you upload, and saved
+                  only when you accept it.
+                </span>
               </div>
             </div>
           </PBody>
@@ -210,7 +176,13 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
             <div className="grid grid--2 rfgrid">
               {SCALARS.map(([k, label, hint]) => (
                 <Field id={k} label={label} hint={hint} key={k}>
-                  <input id={k} className="ctl" value={f[k]} autoComplete="off" onChange={(e) => set(k, e.target.value)} />
+                  {/* V749: the address changes only once a code sent to the new one comes back (My identity). Shown from the
+                      record as last read, not from the form: the save's router.refresh() reads it again, so after a save the
+                      address on record shows, never the one this page was opened with */}
+                  {k === "email"
+                    ? <input id={k} className="ctl" value={str(initial?.email)} autoComplete="off" readOnly aria-describedby={`${k}-change`} />
+                    : <input id={k} className="ctl" value={f[k]} autoComplete="off" onChange={(e) => set(k, e.target.value)} />}
+                  {k === "email" ? <a id={`${k}-change`} className="lnk sub2" href="/me/identity#email">Change or verify at My identity</a> : null}
                 </Field>
               ))}
             </div>
@@ -252,8 +224,12 @@ export function Profile({ initial, me }: { initial: Raw | null; me: Me | null })
       <Panel title="" right={saved ? <span className="sub2 ink-green">Saved</span> : undefined}>
         <PBody>
           <div className="row" style={{ gap: "var(--s-3)" }}>
-            <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save profile"}</Btn>
-            <span className="sub2">Every field is optional. What you leave blank is saved as empty, not guessed.</span>
+            <Btn kind="primary" disabled={busy || !initial} onClick={() => void save()}>{busy ? "Saving…" : "Save profile"}</Btn>
+            <span className="sub2">
+              {initial
+                ? "Every field is optional. What you leave blank is saved as empty, not guessed."
+                : "Your profile could not be read just now, so it cannot be saved from here: reload the page."}
+            </span>
           </div>
           {saved ? <Note kind="ok" title="Your profile is saved">The record is updated against your account. You can come back and edit it any time.</Note> : null}
         </PBody>

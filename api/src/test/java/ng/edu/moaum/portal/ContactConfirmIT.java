@@ -29,7 +29,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * V575, end to end: contacts a department uploads are held unconfirmed. The forgotten-password door sends no link to them and the
  * desk's reset link is refused (AUTH_CONTACT_UNCONFIRMED); the student sees them on the first screen (iam/me), has a code sent to
- * the e-mail and confirms it — after which the link goes there — and says the phone is not theirs, which empties it; another
+ * the e-mail (V749: read only in the mailbox, never among the notices on the dashboard) and confirms it — after which the link goes
+ * there — and says the phone is not theirs, which empties it; another
  * student's phone is confirmed at the desk. The upload counts what became of its contacts. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -90,6 +91,13 @@ class ContactConfirmIT {
         String body = jdbc.sql("SELECT body FROM platform.notice WHERE lower(recipient) = lower(:r) ORDER BY created_at DESC LIMIT 1").param("r", email).query(String.class).single();
         Matcher m = CODE.matcher(body);
         assertThat(m.find()).as(body).isTrue();
+        // V749: the code is read only in the mailbox — the student's notices on the dashboard never carry it, while a message filed
+        // against the student that carries nothing of the kind is shown
+        it.db(() -> jdbc.sql("SELECT platform.queue_notice('EMAIL', :to, 'ZZCNF your registration', 'Your course registration was approved.', 'student', :s)")
+                .param("to", email).param("s", a).query().singleRow());
+        List<Map<String, Object>> shown = (List<Map<String, Object>>) it.get(student, "/api/v1/me").getBody().get("notices");
+        assertThat(shown).anySatisfy(x -> assertThat(x).containsEntry("subject", "ZZCNF your registration"));
+        assertThat(shown).noneSatisfy(x -> assertThat(String.valueOf(x.get("subject")) + " " + x.get("body")).containsAnyOf(m.group(1), "code to confirm"));
         assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/contact/confirm", Map.of("field", "EMAIL", "code", "000000".equals(m.group(1)) ? "111111" : "000000"))
                 .getBody()).containsEntry("outcome", "WRONG");
         assertThat(it.call(student, HttpMethod.POST, "/api/v1/me/contact/confirm", Map.of("field", "EMAIL", "code", m.group(1))).getBody()).containsEntry("outcome", "CONFIRMED");

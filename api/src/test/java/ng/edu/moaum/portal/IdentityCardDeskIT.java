@@ -122,6 +122,13 @@ class IdentityCardDeskIT {
         paid(owing, session, 50000);   // the earlier session unpaid
         paid(noPhoto, before, 50000);
         paid(noPhoto, session, 50000);
+        // V749: the card waits on a confirmed blood group; the desk records each student's here (the desk's entry counts as confirmed)
+        assertThat((List<String>) eligibility(eligible).get("reasons"))
+                .contains("Blood group not yet confirmed — the student confirms it on their dashboard, or the card desk records it");
+        for (UUID st : List.of(eligible, noPhoto, owing)) {
+            ResponseEntity<Map> bg = it.call(security, HttpMethod.PUT, "/api/v1/credentials/identity-cards/students/" + st + "/blood-group", Map.of("bloodGroup", "O+"));
+            assertThat(bg.getStatusCode().value()).as(String.valueOf(bg.getBody())).isEqualTo(200);
+        }
         // V699: the replacement fee as this test finds it, put back at the end; unset here, so the first replacement is refused for it
         java.math.BigDecimal feeBefore = jdbc.sql("SELECT id_card_replacement_fee FROM finance.fee_setting WHERE id = 1").query(java.math.BigDecimal.class).optional().orElse(null);
         it.db(() -> jdbc.sql("UPDATE finance.fee_setting SET id_card_replacement_fee = NULL WHERE id = 1").update());

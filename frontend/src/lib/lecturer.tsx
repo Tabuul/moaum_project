@@ -63,4 +63,6 @@ export const classListHref = (course: string, session: string, sem: number | str
 export interface StaffNotice {
   id: string; channel: "EMAIL" | "SMS"; subject: string; body: string; about_kind: string | null; about_id: string | null;
   created_at: string; state: "QUEUED" | "SENT" | "FAILED"; sent_at: string | null;
+  /** V749: the template it was sent from; OFFICE_TELL marks an office's notice (admissions.tell_office) among those filed 'application' */
+  template_key?: string | null;
 }

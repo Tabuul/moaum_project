@@ -13,7 +13,10 @@ export interface Eligibility {
   /** V699: said to the desk, never held against the card — the photograph, the study, the school fees */
   warnings?: string[];
   replacement?: Replacement;
-  checks?: { in_study: boolean; matric: boolean; photo: boolean; fees: boolean };
+  /** V749: blood_group — a blood group confirmed by the student or recorded at the card desk (the card waits on it) */
+  checks?: { in_study: boolean; matric: boolean; photo: boolean; fees: boolean; blood_group?: boolean };
+  /** V749: the blood group the card prints, as confirmed — null until the student confirms it or the card desk records it */
+  bloodGroup?: string | null;
   fees?: { session: string | null; stated: boolean | null; released: boolean | null; earlier: { session: string; due: number; paid: number; balance: number; paid_in_full: boolean }[]; short: string[] };
   card?: { card_no: string; state: string; version: number } | null;
 }
@@ -45,6 +48,24 @@ export interface DeskStudent {
 
 /** V622: the blood groups a card prints; the server reads the common spellings ("O positive") as one of these */
 export const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
+
+/** V749: the blood group at the card desk. A group on the record that nobody has confirmed holds the student's card back, and the desk's
+ *  entry counts as confirmed (the University's decision of 12 November 2026) — so the desk may save the very group the record shows, to
+ *  confirm it. A confirmed group is only corrected: saving it unchanged does nothing. An eligibility read before V749 (no
+ *  checks.blood_group) is taken as confirmed, as the desk worked then. */
+export function deskBloodGroup(e: Eligibility, onRecord: string | null | undefined, chosen: string): {
+  confirmed: boolean; label: string; shown: string; canSave: boolean;
+} {
+  const confirmed = e.checks?.blood_group !== false;
+  const held = (onRecord ?? "").trim();
+  const group = (BLOOD_GROUPS as readonly string[]).includes(chosen) ? chosen : "";
+  return {
+    confirmed,
+    label: !held ? "Add the blood group" : confirmed ? "Correct the blood group" : "Confirm the blood group",
+    shown: !held ? "Not on record" : confirmed ? held : `${held} · not confirmed`,
+    canSave: group !== "" && (!confirmed || group !== held),
+  };
+}
 
 /** the card's state in words: the lifecycle the brief names — not printed, printed, issued, then the ways a card ends */
 export const CARD_STATE: Record<string, [string, Kind]> = {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_URL } from "@/lib/api";
+import { bffResponseHeaders } from "@/lib/bff-headers";
 import { OFFICE_COOKIE } from "@/lib/offices";
 import { SESSION_COOKIE } from "@/lib/session";
 
@@ -43,11 +44,8 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
     cache: "no-store",
   });
 
-  const responseHeaders = new Headers();
-  for (const name of ["content-type", "x-correlation-id", "location"]) {
-    const value = upstream.headers.get(name);
-    if (value) responseHeaders.set(name, value);
-  }
+  // V749: nosniff always, and the API's caching word only when it is no-store (a private photograph); any other is dropped as before
+  const responseHeaders = new Headers(bffResponseHeaders(upstream.headers));
   return new NextResponse(await upstream.arrayBuffer(), { status: upstream.status, headers: responseHeaders });
 }
 

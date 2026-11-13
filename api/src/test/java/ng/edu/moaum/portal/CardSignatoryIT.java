@@ -97,6 +97,8 @@ class CardSignatoryIT {
         assertThat(set.getStatusCode().value()).as(String.valueOf(set.getBody())).isEqualTo(200);
         assertThat(set.getBody()).containsEntry("bloodGroup", "O+");
         assertThat((Map<String, Object>) it.get(security, ids + "/students/" + student).getBody().get("student")).containsEntry("blood_group", "O+");
+        // V749: the desk's entry counts as confirmed — the card no longer waits on the blood group
+        assertThat((Map<String, Object>) it.get(security, ids + "/students/" + student + "/eligibility").getBody()).containsEntry("bloodGroup", "O+");
         assertThat(it.call(security, HttpMethod.PUT, ids + "/students/" + student + "/blood-group", Map.of("bloodGroup", "Z")).getBody())
                 .containsEntry("code", "CARD_BLOOD_GROUP");
         UUID person = it.person("ZZ-CBG-" + tag.substring(8), tag);

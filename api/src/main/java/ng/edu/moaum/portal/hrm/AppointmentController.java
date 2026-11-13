@@ -128,13 +128,19 @@ class AppointmentController {
         return parse(jdbc.sql("SELECT hrm.appointments_check(CAST(:j AS jsonb))::text").param("j", json.writeValueAsString(body.rows())).query(String.class).single());
     }
 
-    /** one appointment, from the form */
+    /** one appointment, from the form. V749: an e-mail another person holds verified is left off and the rest made — the check said
+     *  so first (a warning), and the answer names it (emailLeftOff) */
     @PostMapping("/appointments")
     @PreAuthorize(APPOINTERS)
     @Transactional
     Map<String, Object> appoint(@NotNull @RequestBody Map<String, Object> row) {
-        UUID id = jdbc.sql("SELECT hrm.appoint(CAST(:j AS jsonb))").param("j", json.writeValueAsString(row)).query(UUID.class).single();
-        return Map.of("employmentId", id);
+        String j = json.writeValueAsString(row);
+        Object leftOff = jdbc.sql("SELECT hrm.appointment_check(CAST(:j AS jsonb))->>'email_left_off' AS left_off").param("j", j).query().singleRow().get("left_off");
+        UUID id = jdbc.sql("SELECT hrm.appoint(CAST(:j AS jsonb))").param("j", j).query(UUID.class).single();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("employmentId", id);
+        out.put("emailLeftOff", leftOff);
+        return out;
     }
 
     /** an upload: the rows that pass are appointed, the rest listed with their reasons */

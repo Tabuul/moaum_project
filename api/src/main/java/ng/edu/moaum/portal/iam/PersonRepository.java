@@ -35,9 +35,19 @@ class PersonRepository {
                 .update();
     }
 
+    /** an office corrects a person's e-mail and phone (blank clears); V749: never to an address another person holds verified
+     *  (IDENTITY_EMAIL_TAKEN, iam.set_person_contact), and the staff profile's copy follows, so the profile never brings back what
+     *  the office corrected or cleared */
     void setContact(UUID id, String email, String phone) {
-        jdbc.sql("UPDATE iam.person SET email = :email, phone = :phone WHERE id = :id")
-                .param("id", id).param("email", email, Types.VARCHAR).param("phone", phone, Types.VARCHAR).update();
+        jdbc.sql("SELECT iam.set_person_contact(:id, :email, :phone)")
+                .param("id", id).param("email", email, Types.VARCHAR).param("phone", phone, Types.VARCHAR).query().singleRow();
+    }
+
+    /** V749: the signed-in person's own phone; the e-mail only as it stands on record or blank — a new address is refused
+     *  (STAFF_EMAIL_VERIFY, iam.set_my_contact) and is verified by a code at My identity */
+    void setMyContact(String email, String phone) {
+        jdbc.sql("SELECT iam.set_my_contact(:email, :phone)")
+                .param("email", email, Types.VARCHAR).param("phone", phone, Types.VARCHAR).query().singleRow();
     }
 
     /** one grant as the record holds it — the scope as the register's code once the trigger has resolved it (V316/V325) */

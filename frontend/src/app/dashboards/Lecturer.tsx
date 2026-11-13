@@ -9,6 +9,7 @@ import { KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/pr
 import { DTable } from "@/components/proto/DTable";
 import { semesterName } from "@/lib/student-portal";
 import { StandingPil, classListHref, dayOf, dueWords, standingOf, tally, whenAt, type StaffNotice } from "@/lib/lecturer";
+import { NOTICES_AWAIT_EMAIL, noticesAwaitEmail } from "@/lib/identity";
 import type { AllocationRow } from "./AllocationHistory";
 
 export function LecturerDashboard({ me, sheets, session, semester = null, history = [], notices = [] }: {
@@ -21,6 +22,8 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
   const dueSoon = t.open.filter((s) => s.daysToDue != null && s.daysToDue >= 0 && s.daysToDue <= 7);
   const pastSessions = new Set(history.filter((h) => h.session !== session).map((h) => h.session)).size;
   const semesterWord = semester ? `${semesterName(semester)} semester` : "No semester open yet";
+  /* V749: mail to the lecturer's address is listed only once it is verified (iam/me's identityPrompt says when it is not) */
+  const awaitEmail = noticesAwaitEmail(me?.identityPrompt);
 
   /* what each course needs next, by its standing — the one button a lecturer looks for */
   const nextAct = (s: MySheet): [string, "primary" | "urgent" | "go" | "ghost"] => {
@@ -148,6 +151,12 @@ export function LecturerDashboard({ me, sheets, session, semester = null, histor
               ))}
             </ul>
           ) : <PBody><div className="sub2">No notices yet.</div></PBody>}
+          {awaitEmail ? (
+            <PBody>
+              <div className="sub2">{NOTICES_AWAIT_EMAIL}.</div>
+              <div className="mt-2"><LinkBtn kind="ghost" href="/me/identity#email">Verify Your E-mail</LinkBtn></div>
+            </PBody>
+          ) : null}
         </Panel>
       </div>
 

@@ -24,7 +24,7 @@ import org.springframework.web.client.RestClient;
  * V508–V511, the PRD v2.0 gaps closed, through the offices' doors: a student asks for an overload and their own Head of Department
  * grants it (another department's cannot), and the semester's maximum is the grant; the School of Postgraduate Studies replaces a
  * supervisor and removes a panel member, the history kept; Human Resources sets a grade and appoints from the form and an upload,
- * the rows that fail named; an API key reads a student's status on the integration door within its scope, a wrong key refused.
+ * the rows that fail named (V749: an e-mail another person holds verified is left off and named, the rest made); an API key reads a student's status on the integration door within its scope, a wrong key refused.
  * Each run files everything under its own session and numbers. Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -131,21 +131,45 @@ class PrdGapsIT {
         ResponseEntity<Map> g = it.call(hr, HttpMethod.PUT, "/api/v1/hr/grades", Map.of("grade", grade, "step", 1, "category", "NON_ACADEMIC", "basic", 100000, "housing", 20000, "reason", "Integration test: a grade for the test"));
         assertThat(g.getStatusCode().value()).as(String.valueOf(g.getBody())).isEqualTo(200);
 
+        // V749: an e-mail another person holds verified is theirs — the check says so first (a warning, not a reason), and the appointment
+        // is made without it, the address named; one another record holds unverified is still a reason, as V510 had it
+        UUID holder = it.person("ZZ/HR/V" + n, "ZZHRV" + n);
+        UUID typed = it.person("ZZ/HR/T" + n, "ZZHRT" + n);
+        String taken = "zzhrv" + n + "@example.com", typedMail = "zzhrt" + n + "@example.com";
+        it.db(() -> {
+            jdbc.sql("UPDATE iam.person SET email = CASE id WHEN :h THEN :e ELSE :t END WHERE id IN (:h, :u)")
+                    .param("h", holder).param("u", typed).param("e", taken).param("t", " " + typedMail.toUpperCase()).update();
+            return jdbc.sql("INSERT INTO iam.person_email_verified (person_id, email, verified_at) VALUES (:p, :e, now())").param("p", holder).param("e", taken).update();
+        });
+
         Map<String, Object> one = new HashMap<>(Map.of("staff_no", "ZZ/HR/" + n, "surname", "Zzappointed", "given_names", "Form Officer", "category", "NON_ACADEMIC",
                 "grade", grade, "step", "1", "appointment_date", LocalDate.now().toString(), "unit", "", "department", dept));
         one.put("account_number", "0123456789");
+        one.put("email", typedMail);
+        List<Map<String, Object>> held = (List<Map<String, Object>>) (List) it.callList(hr, HttpMethod.POST, "/api/v1/hr/appointments/check", Map.of("rows", List.of(one))).getBody();
+        assertThat(held.get(0)).containsEntry("ok", false);
+        assertThat((List<String>) held.get(0).get("problems")).anySatisfy(p -> assertThat(p).contains(typedMail).contains("belongs to another person"));
+        one.put("email", " " + taken.toUpperCase() + " ");
         List<Map<String, Object>> checked = (List<Map<String, Object>>) (List) it.callList(hr, HttpMethod.POST, "/api/v1/hr/appointments/check", Map.of("rows", List.of(one))).getBody();
-        assertThat(checked.get(0)).containsEntry("ok", true).containsEntry("action", "CREATE");
+        assertThat(checked.get(0)).as(String.valueOf(checked.get(0))).containsEntry("ok", true).containsEntry("action", "CREATE")
+                .containsEntry("email_left_off", taken);
+        assertThat(checked.get(0).get("email")).isNull();
+        assertThat((List<String>) checked.get(0).get("warnings")).anySatisfy(w -> assertThat(w).contains(taken).contains("made without it"));
         ResponseEntity<Map> made = it.call(hr, HttpMethod.POST, "/api/v1/hr/appointments", one);
         assertThat(made.getStatusCode().value()).as(String.valueOf(made.getBody())).isEqualTo(200);
+        assertThat(made.getBody()).containsEntry("emailLeftOff", taken);
         assertThat(jdbc.sql("SELECT account_last4 || '/' || status FROM hrm.employment WHERE staff_no = :s").param("s", "ZZ/HR/" + n).query(String.class).single()).isEqualTo("6789/ACTIVE");
+        assertThat(jdbc.sql("SELECT coalesce(p.email, '-') FROM iam.person p JOIN hrm.employment e ON e.person_id = p.id WHERE e.staff_no = :s").param("s", "ZZ/HR/" + n)
+                .query(String.class).single()).isEqualTo("-");
         assertThat(it.call(ItSupport.token("registrar"), HttpMethod.POST, "/api/v1/hr/appointments", one).getStatusCode().value()).isEqualTo(403);
 
         Map<String, Object> good = new HashMap<>(Map.of("row", "2", "staff_no", "ZZ/HR/U" + n, "surname", "Zzuploaded", "given_names", "Upload Officer", "category", "NON_ACADEMIC",
                 "grade", grade, "step", "1", "appointment_date", "01/10/2026", "department", dept));
+        good.put("email", taken);
         Map<String, Object> again = new HashMap<>(Map.of("row", "3", "staff_no", "ZZ/HR/" + n, "category", "NON_ACADEMIC", "grade", grade, "step", "1", "appointment_date", "01/10/2026", "department", dept));
         Map<String, Object> up = it.call(hr, HttpMethod.POST, "/api/v1/hr/appointments/upload", Map.of("rows", List.of(good, again))).getBody();
         assertThat(up).as(String.valueOf(up)).containsEntry("appointed", 1).containsEntry("skipped", 1);
+        assertThat((List<Map<String, Object>>) up.get("rows")).anySatisfy(r -> assertThat(r).containsEntry("row", "2").containsEntry("appointed", true).containsEntry("email_left_off", taken));
         Map<String, Object> overview = it.get(hr, "/api/v1/hr/appointments").getBody();
         assertThat((List<Map<String, Object>>) overview.get("grades")).anySatisfy(x -> assertThat(x.get("grade")).isEqualTo(grade));
     }

@@ -27,6 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>
  * V425: the portal channel — a notice delivered on the dashboard itself — with how many are unread (the
  * bell), and marking one or all of them read.
+ * <p>
+ * V749: the list is platform.person_notices — by address only for the e-mail the person verified (and,
+ * for the notices of their work — an office's notice among them, never an applicant's own message or a
+ * sign-in ticket's reply — an address or phone no other record holds), newest first and stopping at the
+ * limit however many a person has been sent, and never a message that
+ * carries a code or a link for its mailbox alone (a verification or confirmation code, a password reset or
+ * first sign-in link): an address typed on someone's record no longer shows them another person's mail,
+ * and a code is proved by the mailbox, never read back from the portal.
  */
 @RestController
 @RequestMapping("/api/v1/me/notices")
@@ -44,14 +52,8 @@ class MeNoticesController {
     List<Map<String, Object>> mine(@RequestParam(defaultValue = "100") int limit) {
         UUID me = AuditContextHolder.required().actorId();
         return jdbc.sql("""
-                SELECT n.id, n.channel, n.subject, n.body, n.about_kind, n.about_id, n.created_at, n.state, n.sent_at, n.priority, n.template_key,
-                       r.read_at
-                  FROM platform.notice n LEFT JOIN platform.notice_read r ON r.notice_id = n.id
-                 WHERE (n.about_kind = 'person' AND n.about_id = :me)
-                    OR n.recipient IN (SELECT lower(p.email) FROM iam.person p WHERE p.id = :me AND p.email IS NOT NULL
-                                       UNION SELECT p.phone FROM iam.person p WHERE p.id = :me AND p.phone IS NOT NULL)
-                 ORDER BY n.created_at DESC
-                 LIMIT :n
+                SELECT id, channel, subject, body, about_kind, about_id, created_at, state, sent_at, priority, template_key, read_at
+                  FROM platform.person_notices(:me, :n)
                 """).param("me", me).param("n", Math.max(1, Math.min(limit, 500))).query().listOfRows();
     }
 

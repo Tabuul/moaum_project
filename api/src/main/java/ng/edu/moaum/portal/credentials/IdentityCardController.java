@@ -634,7 +634,8 @@ class IdentityCardController {
         return Map.of("cards", cards);
     }
 
-    /** the photograph the card carries, for the desk's print — only of a member of staff with a card in force */
+    /** the photograph the card carries, for the desk's print — only of a member of staff with a card in force; V749: as a JPEG, which
+     *  is all the card's PDF embeds (a PNG printed a blank frame), a PNG turned into one on white as the student passport is */
     @GetMapping("/staff/{personId}/photo")
     @PreAuthorize(STAFF_READERS)
     @Transactional(readOnly = true)
@@ -644,9 +645,15 @@ class IdentityCardController {
         if (!carded) return org.springframework.http.ResponseEntity.notFound().build();
         return jdbc.sql("SELECT content_type, content, object_id FROM hrm.staff_photo WHERE person_id = :p").param("p", personId)
                 .query().listOfRows().stream().findFirst()
-                .map(r -> org.springframework.http.ResponseEntity.ok()
-                        .contentType(org.springframework.http.MediaType.parseMediaType(String.valueOf(r.get("content_type"))))
-                        .body(files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"))))
+                .map(r -> {
+                    byte[] stored = files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"));
+                    byte[] jpeg = ng.edu.moaum.portal.shared.PhotoEnhancer.toJpeg(stored, 0.9f);
+                    boolean converted = "image/jpeg".equals(ng.edu.moaum.portal.shared.PhotoEnhancer.sniff(jpeg));
+                    return org.springframework.http.ResponseEntity.ok()
+                            .contentType(converted ? org.springframework.http.MediaType.IMAGE_JPEG
+                                    : org.springframework.http.MediaType.parseMediaType(String.valueOf(r.get("content_type"))))
+                            .body(jpeg);
+                })
                 .orElseGet(() -> org.springframework.http.ResponseEntity.notFound().build());
     }
 

@@ -5,7 +5,8 @@
  * screen and the staff registers read — one from the form, or many from an Excel upload — each checked by the database first (the
  * person linked by staff number or made, never one already in employment, a grade set up in the category, the date, the department
  * or unit), and the salary grades an appointment names. Nothing is written by a check; the upload appoints the rows that pass and
- * lists the rest with their reasons.
+ * lists the rest with their reasons. V749: an e-mail another person holds verified is left off and the appointment made — the check
+ * warns, and the appointment's answer names the address left off (the form's message, and the upload's note row by row).
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -17,7 +18,8 @@ import { Field } from "@/components/proto/blocks";
 import { buildXlsx } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { readSheet } from "@/lib/jupeb";
-import { ALIASES, CATEGORY_LABEL, TEMPLATE_HEAD, type AppointmentsOverview, type RowCheck } from "@/lib/appointments";
+import { ALIASES, CATEGORY_LABEL, TEMPLATE_HEAD, appointedMessage, leftOffCount, uploadResultLines, type AppointedOne, type AppointmentsOverview,
+  type RowCheck, type UploadResult } from "@/lib/appointments";
 import { StaffWithoutEmployment } from "./StaffWithoutEmployment";
 
 const vz = (n: number | null | undefined) => Number(n ?? 0).toLocaleString("en-GB");
@@ -50,16 +52,19 @@ export function Appointments({ o, mayAppoint, maySetGrades }: { o: AppointmentsO
   const [file, setFile] = useState<string | null>(null);
   const [rows, setRows] = useState<Record<string, string | number>[]>([]);
   const [checks, setChecks] = useState<RowCheck[] | null>(null);
-  const [result, setResult] = useState<{ appointed: number; skipped: number; rows: { row: string; staff_no: string; name: string; appointed: boolean; problems?: string[] }[] } | null>(null);
+  const [result, setResult] = useState<UploadResult | null>(null);
+  // V749: the last appointment from the form, while its e-mail was left off — kept on the panel until the form is next typed in or checked
+  const [leftOff, setLeftOff] = useState<string | null>(null);
   const [g, setG] = useState({ grade: "", step: "1", category: "ACADEMIC", basic: "", housing: "", transport: "", other: "", reason: "" });
 
   const gradesFor = useMemo(() => o.grades.filter((x) => x.category === form.category), [o.grades, form.category]);
   const gradeNames = Array.from(new Set(gradesFor.map((x) => x.grade)));
   const stepsFor = gradesFor.filter((x) => x.grade === form.grade).map((x) => x.step);
-  const set = (k: keyof typeof EMPTY, v: string) => { setForm({ ...form, [k]: v }); setFormCheck(null); };
+  const set = (k: keyof typeof EMPTY, v: string) => { setForm({ ...form, [k]: v }); setFormCheck(null); setLeftOff(null); };
   const passing = (checks ?? []).filter((c) => c.ok).length;
 
   async function checkForm() {
+    setLeftOff(null);
     const j = await postJson("/api/bff/api/v1/hr/appointments/check", { rows: [{ ...form, row: "form" }] });
     if (j) setFormCheck((j as RowCheck[])[0]);
   }
@@ -67,7 +72,10 @@ export function Appointments({ o, mayAppoint, maySetGrades }: { o: AppointmentsO
   async function appointForm() {
     const j = await postJson("/api/bff/api/v1/hr/appointments", form, `Appointment made: ${form.staff_no.trim()}`);
     if (!j) return;
-    notify(`Appointed: ${formCheck?.name ?? form.staff_no}. The employment record is active.`);
+    // V749: the answer names an e-mail left off (another person's, verified) — even one verified by its holder after the check
+    const said = appointedMessage(formCheck?.name ?? form.staff_no, j as AppointedOne);
+    notify(said.text, said.kind);
+    setLeftOff(said.kind === "warn" ? said.text : null);
     setForm({ ...EMPTY });
     setFormCheck(null);
     router.refresh();
@@ -88,10 +96,12 @@ export function Appointments({ o, mayAppoint, maySetGrades }: { o: AppointmentsO
   async function appointUpload() {
     const j = await postJson("/api/bff/api/v1/hr/appointments/upload", { rows: rows.map((r) => ({ ...r, row: String(r.row) })) }, `Appointments uploaded from ${file}`);
     if (!j) return;
-    const res = j as NonNullable<typeof result>;
+    const res = j as UploadResult;
+    const off = leftOffCount(res);
     setResult(res);
     setChecks(null);
-    notify(`${vz(res.appointed)} appointed${res.skipped ? `; ${vz(res.skipped)} not (listed with the reasons)` : ""}.`);
+    notify(`${vz(res.appointed)} appointed${off ? ` (${vz(off)} without the e-mail given, listed)` : ""}${res.skipped ? `; ${vz(res.skipped)} not (listed with the reasons)` : ""}.`,
+      off ? "warn" : "ok");
     router.refresh();
   }
 
@@ -176,6 +186,7 @@ export function Appointments({ o, mayAppoint, maySetGrades }: { o: AppointmentsO
               <Field id="ap-pin" label="Pension PIN"><input id="ap-pin" className="ctl" value={form.pension_pin} maxLength={20} onChange={(e) => set("pension_pin", e.target.value)} /></Field>
             </div>
             {formCheck ? <div className="mt-2"><Checked c={formCheck} /></div> : null}
+            {leftOff ? <div className="mt-2"><Note kind="info" title="The e-mail was left off">{leftOff}</Note></div> : null}
             <div className="row row--tight mt-2">
               <Btn kind="secondary" disabled={!form.staff_no.trim()} busyLabel="Checking…" onClick={() => checkForm()}>Check</Btn>
               <Btn kind="primary" disabled={!formCheck?.ok} busyLabel="Appointing…" onClick={() => appointForm()}>Appoint</Btn>
@@ -207,8 +218,9 @@ export function Appointments({ o, mayAppoint, maySetGrades }: { o: AppointmentsO
             ) : null}
             {result ? (
               <div className="mt-2">
-                <Note kind={result.skipped ? "info" : "ok"} title={`${vz(result.appointed)} appointed${result.skipped ? `, ${vz(result.skipped)} not` : ""}`}>
-                  {result.rows.filter((r) => !r.appointed).map((r) => <div key={r.row} className="sub2">Row {r.row} ({r.staff_no}): {(r.problems ?? []).join(" ")}</div>)}
+                <Note kind={result.skipped || leftOffCount(result) ? "info" : "ok"} title={`${vz(result.appointed)} appointed${result.skipped ? `, ${vz(result.skipped)} not` : ""}`}>
+                  {/* the rows not appointed with their reasons, and (V749) the appointed ones whose e-mail was left off */}
+                  {uploadResultLines(result).map((l) => <div key={l.row} className="sub2">{l.text}</div>)}
                 </Note>
               </div>
             ) : null}

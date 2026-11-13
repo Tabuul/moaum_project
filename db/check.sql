@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 608
+\set EXPECTED 615
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -2221,6 +2221,10 @@ BEGIN
     PERFORM set_config('moaum.actor_office', 'library', true);
     -- V605: a card asks an official photograph of the student; the check's student is given one
     INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_at, reason) VALUES (st, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check');
+    -- V749: and a confirmed blood group; the card desk records the check's student's
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    PERFORM credentials.set_blood_group('STUDENT', st, 'O+');
+    PERFORM set_config('moaum.actor_office', 'library', true);
     card := credentials.issue_identity_card(st, NULL);
     ok := false;
     BEGIN
@@ -22005,6 +22009,8 @@ BEGIN
         INSERT INTO people.enrolment (id, student_id, session, level) VALUES (gen_random_uuid(), st, v_ses, 100), (gen_random_uuid(), np, v_ses, 100), (gen_random_uuid(), ow, v_ses, 100);
         INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_at, reason)
         VALUES (st, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check'), (ow, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check');
+        -- V749: a card waits on a confirmed blood group; the card desk records the three's
+        PERFORM credentials.set_blood_group('STUDENT', x, 'O+') FROM unnest(ARRAY[st, np, ow]) AS x;
         INSERT INTO finance.fee_schedule (session, item, amount, level) SELECT v_ses, 'School fees', 50000, 100
          WHERE NOT EXISTS (SELECT 1 FROM finance.fee_schedule f WHERE f.session = v_ses AND f.item = 'School fees' AND f.level = 100 AND f.ended_at IS NULL);
         v_ref := finance.new_purpose_reference(st, v_ses, (SELECT coalesce(sum(c.amount), 50000) FROM finance.charges(st, v_ses) c), 'School fees ' || v_ses);
@@ -29478,6 +29484,8 @@ BEGIN
         INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
         VALUES (st, 'MOAUM/ADM/69/969901', 'MOAUM/ZZQ/69/96991', 'CHECKV699', 'Matriculated', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now()),
                (nm, 'MOAUM/ADM/69/969902', NULL, 'CHECKV699', 'Nomatric', ug, 'UTME', v_ses, 100, 100, 'ADMITTED', NULL);
+        -- V749: the card waits on a confirmed blood group; the card desk records the matriculated student's
+        PERFORM credentials.set_blood_group('STUDENT', st, 'A+');
         UPDATE finance.fee_setting SET id_card_replacement_fee = NULL WHERE id = 1;
         e1 := credentials.id_card_eligibility(st);
         e2 := credentials.id_card_eligibility(nm);
@@ -35999,6 +36007,741 @@ BEGIN
   END;
   PERFORM pg_temp.assert('V757: an admitted candidate JAMB moved does not hold the list''s commit — left as offered, counted on the batch and still named; a ghost admission still refuses it',
       coalesce(msg = 'commit committed | admitted left 1 | programme kept true | finding still 1 | ghost refused', false), msg);
+END $$;
+-- ── V749. The blood group confirmed (students). A made-up matriculated student's card is not printed while the blood group is not
+--          confirmed (the reason in words); signed in, the student is refused with the confirmation not ticked, with a value that is not
+--          exactly one of the eight, as an applicant and with no one signed in; confirmed (" ab- " read as AB-), the biodata holds it,
+--          the confirmation (SELF, by the student) and an event (the number, no value before it) are kept, and the card is eligible and
+--          printed. The save is the signed-in student's alone: another student's free text "o positive" reads O+ on the card yet is not
+--          confirmed, until the card desk records it, which counts (an event, DESK, O+ before and after). The free text changed
+--          afterwards is not confirmed; confirmed again, a second event. The block undoes its writes ──
+DO $$
+DECLARE desk uuid := gen_random_uuid(); ug text; v_ses text; st1 uuid := gen_random_uuid(); st2 uuid := gen_random_uuid();
+        no_tick text; bad1 text; bad2 text; as_applicant text; no_actor text; e0 jsonb; e1 jsonb; refused_print text; r1 jsonb; r2 jsonb;
+        c1 text; bio1 text; conf credentials.blood_group_confirmation; ev1 credentials.blood_group_event; st2_bio text; st2_read text;
+        st2_before text; st2_after text; st2_event text; changed text; n_events int; ev2_prev text; printed jsonb; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', desk::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V749', true);
+    v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+    SELECT p.code INTO ug FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (st1, 'MOAUM/ADM/74/974901', 'MOAUM/ZZQ/74/97491', 'CHECKV749', 'Confirms', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now()),
+           (st2, 'MOAUM/ADM/74/974902', 'MOAUM/ZZQ/74/97492', 'CHECKV749', 'Freetext', ug, 'UTME', v_ses, 100, 100, 'ACTIVE', now());
+    INSERT INTO people.biodata (student_id, field, value) VALUES (st2, 'blood_group', 'o positive');
+    -- at the card desk: nothing confirmed yet, so no card
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    e0 := credentials.id_card_eligibility(st1);
+    BEGIN PERFORM credentials.print_identity_card(st1, NULL, NULL); refused_print := 'PRINTED';
+    EXCEPTION WHEN check_violation THEN refused_print := split_part(SQLERRM, ':', 1); END;
+    -- the student, signed in
+    PERFORM set_config('moaum.actor_id', st1::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM credentials.confirm_my_blood_group('O+', false); no_tick := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN no_tick := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM credentials.confirm_my_blood_group('O positive', true); bad1 := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN bad1 := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM credentials.confirm_my_blood_group('C+', true); bad2 := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN bad2 := split_part(SQLERRM, ':', 1); END;
+    r1 := credentials.confirm_my_blood_group(' ab- ', true);
+    bio1 := (SELECT value FROM people.biodata WHERE student_id = st1 AND field = 'blood_group');
+    SELECT * INTO conf FROM credentials.blood_group_confirmation WHERE kind = 'STUDENT' AND holder_id = st1;
+    SELECT * INTO ev1 FROM credentials.blood_group_event WHERE kind = 'STUDENT' AND holder_id = st1;
+    c1 := credentials.blood_group_confirmed('STUDENT', st1);
+    -- the other student: untouched by the first's save, read on the card, not confirmed
+    st2_bio := (SELECT value FROM people.biodata WHERE student_id = st2 AND field = 'blood_group');
+    st2_read := credentials.student_blood_group(st2);
+    st2_before := credentials.blood_group_confirmed('STUDENT', st2);
+    -- an applicant, and no one signed in
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    BEGIN PERFORM credentials.confirm_my_blood_group('A+', true); as_applicant := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN as_applicant := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', '', true);
+    BEGIN PERFORM credentials.confirm_my_blood_group('A+', true); no_actor := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN no_actor := split_part(SQLERRM, ':', 1); END;
+    -- the card desk records the other's: it counts
+    PERFORM set_config('moaum.actor_id', desk::text, true);
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    PERFORM credentials.set_blood_group('STUDENT', st2, 'O+');
+    st2_after := credentials.blood_group_confirmed('STUDENT', st2);
+    st2_event := (SELECT source || '/' || coalesce(previous_value, '-') || '/' || new_value || '/' || holder_number
+                    FROM credentials.blood_group_event WHERE kind = 'STUDENT' AND holder_id = st2);
+    -- the first student's card now: eligible, and printed
+    e1 := credentials.id_card_eligibility(st1);
+    printed := credentials.print_identity_card(st1, NULL, NULL);
+    -- the free text changed afterwards (the biodata form): not confirmed; confirmed again, a second event
+    PERFORM set_config('moaum.actor_id', st1::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    UPDATE people.biodata SET value = 'A+' WHERE student_id = st1 AND field = 'blood_group';
+    changed := coalesce(credentials.blood_group_confirmed('STUDENT', st1), 'none');
+    r2 := credentials.confirm_my_blood_group('a+', true);
+    n_events := (SELECT count(*) FROM credentials.blood_group_event WHERE kind = 'STUDENT' AND holder_id = st1);
+    ev2_prev := (SELECT previous_value FROM credentials.blood_group_event WHERE kind = 'STUDENT' AND holder_id = st1 AND new_value = 'A+');
+    RAISE EXCEPTION 'the V749 student blood group check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 student blood group check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: a student confirms their own blood group (one of the eight, the confirmation ticked) and the card waits on it; free text is not confirmed, the card desk''s entry is',
+        coalesce(NOT (e0->>'eligible')::boolean
+                 AND e0->'reasons' ? 'Blood group not yet confirmed — the student confirms it on their dashboard, or the card desk records it'
+                 AND e0->'checks'->>'blood_group' = 'false' AND e0->>'bloodGroup' IS NULL AND refused_print = 'ID_CARD_NOT_ELIGIBLE'
+                 AND no_tick = 'IDENTITY_BLOOD_UNCONFIRMED' AND bad1 = 'IDENTITY_BLOOD_GROUP' AND bad2 = 'IDENTITY_BLOOD_GROUP'
+                 AND as_applicant = 'IDENTITY_BLOOD_OFFICE' AND no_actor = 'IDENTITY_BLOOD_ACTOR'
+                 AND r1->>'bloodGroup' = 'AB-' AND r1->>'kind' = 'STUDENT' AND bio1 = 'AB-' AND c1 = 'AB-'
+                 AND conf.blood_group = 'AB-' AND conf.source = 'SELF' AND conf.confirmed_by = st1 AND conf.confirmed_office = 'student'
+                 AND ev1.previous_value IS NULL AND ev1.new_value = 'AB-' AND ev1.confirmed AND ev1.source = 'SELF' AND ev1."by" = st1
+                 AND ev1.holder_number = 'MOAUM/ZZQ/74/97491'
+                 AND st2_bio = 'o positive' AND st2_read = 'O+' AND st2_before IS NULL AND st2_after = 'O+' AND st2_event = 'DESK/O+/O+/MOAUM/ZZQ/74/97492'
+                 AND (e1->>'eligible')::boolean AND e1->'checks'->>'blood_group' = 'true' AND e1->>'bloodGroup' = 'AB-' AND printed->>'state' = 'PRINTED'
+                 AND changed = 'none' AND r2->>'bloodGroup' = 'A+' AND n_events = 2 AND ev2_prev = 'A+', false),
+        format('before %s %s %s/%s print %s | refused %s %s %s %s %s | saved %s bio %s confirmed %s (%s %s %s %s) event %s>%s %s %s %s | other %s reads %s %s then %s (%s) | after %s %s %s printed %s | changed %s again %s events %s prev %s',
+               e0->>'eligible', e0->'reasons', e0->'checks'->>'blood_group', e0->>'bloodGroup', refused_print, no_tick, bad1, bad2, as_applicant, no_actor,
+               r1, bio1, c1, conf.blood_group, conf.source, conf.confirmed_by = st1, conf.confirmed_office, ev1.previous_value, ev1.new_value, ev1.source,
+               ev1.holder_number, ev1."by" = st1, st2_bio, st2_read, st2_before, st2_after, st2_event, e1->>'eligible', e1->'checks'->>'blood_group',
+               e1->>'bloodGroup', printed->>'state', changed, r2->>'bloodGroup', n_events, ev2_prev));
+END $$;
+
+-- ── V749. The blood group confirmed (staff). A made-up lecturer, signed in, confirms their own ("b+" read as B+): on the card detail,
+--          confirmed (SELF) with an event under the staff number; their identity state says so, and not complete. A person not in the
+--          University's service is refused. A blood group on the card detail no one confirmed is read on the card but not confirmed,
+--          until the card desk records it. A staff card is still issued to a member of staff with no blood group. The block undoes its
+--          writes ──
+DO $$
+DECLARE desk uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid(); pc uuid := gen_random_uuid(); pd uuid := gen_random_uuid();
+        v_unit text; r1 jsonb; not_staff text; detail credentials.staff_card_detail; conf credentials.blood_group_confirmation; ev text;
+        pc_read text; pc_before text; pc_after text; st jsonb; card text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', desk::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check V749 staff blood group', true);
+    SELECT code INTO v_unit FROM ref.unit WHERE ended_on IS NULL ORDER BY code LIMIT 1;
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (desk, 'ZZ-DESK-V749', 'ZZDESKV749', 'Card Desk'), (pa, 'P7490001', 'ZZSTAFFV749', 'Lecturer'), (pb, 'P7490002', 'ZZSTAFFV749', 'Notinservice'),
+        (pc, 'P7490003', 'ZZSTAFFV749', 'Register'), (pd, 'P7490004', 'ZZSTAFFV749', 'Noblood');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), pa, 'lecturer', 'department', 'MTC', 'check V749', desk, current_date),
+           (gen_random_uuid(), pd, 'lecturer', 'department', 'MTC', 'check V749', desk, current_date);
+    INSERT INTO hrm.staff_record (person_id, present_rank, category, home_unit) VALUES (pc, 'SENIOR EXECUTIVE OFFICER', 'NON_ACADEMIC', v_unit);
+    -- a blood group on the card detail that no one confirmed
+    INSERT INTO credentials.staff_card_detail (person_id, blood_group, set_by, set_office) VALUES (pc, 'A-', desk, 'hrm');
+    pc_read := credentials.staff_blood_group(pc);
+    pc_before := credentials.blood_group_confirmed('STAFF', pc);
+    -- the lecturer, signed in
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    r1 := credentials.confirm_my_blood_group('b+', true);
+    SELECT * INTO detail FROM credentials.staff_card_detail WHERE person_id = pa;
+    SELECT * INTO conf FROM credentials.blood_group_confirmation WHERE kind = 'STAFF' AND holder_id = pa;
+    ev := (SELECT holder_number || '/' || coalesce(previous_value, '-') || '/' || new_value || '/' || source
+             FROM credentials.blood_group_event WHERE kind = 'STAFF' AND holder_id = pa);
+    st := iam.staff_identity_state(pa);
+    -- a person with a staff number, neither in office nor on the HR register
+    PERFORM set_config('moaum.actor_id', pb::text, true);
+    BEGIN PERFORM credentials.confirm_my_blood_group('O-', true); not_staff := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN not_staff := split_part(SQLERRM, ':', 1); END;
+    -- the card desk: a card for the one with no blood group; the register-only member's blood group recorded, which counts
+    PERFORM set_config('moaum.actor_id', desk::text, true);
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    card := credentials.issue_staff_card(pd, NULL);
+    PERFORM credentials.set_blood_group('STAFF', pc, 'A-');
+    pc_after := credentials.blood_group_confirmed('STAFF', pc);
+    RAISE EXCEPTION 'the V749 staff blood group check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 staff blood group check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: a member of staff in service confirms their own blood group; one not in service is refused; the card desk''s entry counts, an unconfirmed one does not; the staff card is not held',
+        coalesce(r1->>'bloodGroup' = 'B+' AND r1->>'kind' = 'STAFF' AND detail.blood_group = 'B+' AND detail.set_by = pa AND detail.set_office = 'lecturer'
+                 AND conf.blood_group = 'B+' AND conf.source = 'SELF' AND ev = 'P7490001/-/B+/SELF'
+                 AND st->>'staff' = 'true' AND st->'bloodGroup'->>'value' = 'B+' AND st->'bloodGroup'->>'confirmed' = 'true' AND st->>'complete' = 'false'
+                 AND not_staff = 'IDENTITY_NOT_STAFF' AND pc_read = 'A-' AND pc_before IS NULL AND pc_after = 'A-' AND card ~ '^MOAUM/SID/[0-9]{2}/[0-9]{5}$', false),
+        format('saved %s | detail %s %s %s | confirmation %s %s | event %s | state %s | not in service %s | unconfirmed %s/%s then %s | card %s',
+               r1, detail.blood_group, detail.set_by = pa, detail.set_office, conf.blood_group, conf.source, ev, st, not_staff, pc_read, pc_before, pc_after, card));
+END $$;
+
+-- ── V749. A member of staff's e-mail verified by a code, and the doors to it. A made-up lecturer is refused a malformed address; an
+--          address another person holds verified is answered TAKEN — not raised, no code, the try kept and counted among the hour's
+--          three — while one only typed (unverified) on someone else's record does not stop its owner; a code is issued (kept lower
+--          case, the code only as a SHA-256 hash, the old address noted), the person's e-mail unchanged; a wrong code is WRONG; a
+--          second code replaces the first; past the hour's three even the address held verified is answered by the limit, never by
+--          whose it is; the right code VERIFIES: the address is the person's and the profile's, recorded verified, the other's
+--          unverified copy left as it stands. The next hour, an address someone else verifies before the code is checked is TAKEN (the
+--          verified address stands); with none open, EXPIRED. The office's correction never places an address another holds
+--          verified (an unchanged one stays); changed by it, the e-mail is no longer verified, and the profile's copy follows — changed,
+--          and cleared with the record, so the profile cannot bring it back. No other write places it either: the
+--          record itself refuses it (an update, a person added), while the unverified copy already on a record, written again
+--          unchanged, stands. The person's own doors refuse a new address with nothing saved, and keep the address when it is blank.
+--          A student is refused. The block undoes its writes ──
+DO $$
+DECLARE hr uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); po uuid := gen_random_uuid(); pq uuid := gen_random_uuid();
+        pr uuid := gen_random_uuid();
+        h1 text := encode(sha256(convert_to('111111', 'UTF8')), 'hex'); h2 text := encode(sha256(convert_to('222222', 'UTF8')), 'hex');
+        h3 text := encode(sha256(convert_to('333333', 'UTF8')), 'hex'); hx text := encode(sha256(convert_to('999999', 'UTF8')), 'hex');
+        fmt text; t1 jsonb; taken_row text; as_student text; a1 jsonb; email_issued text; prev_noted text; w1 text; a2 jsonb; limit_first text;
+        old_code text; ok text; email_after text; prof text; ver iam.person_email_verified; pq_email text; n_replaced int; n_taken int;
+        hashed boolean; state1 jsonb; a3 jsonb; taken_late text; late_outcome text; email_taken text; none_open text; office_taken text;
+        office_kept text; state2 jsonb; door_new text; phone_refused text; door_same text; door_blank text; assert_new text; assert_blank text;
+        a1_row boolean; trg_update text; trg_insert text; trg_same text; po_email text; prof_office text; office_cleared text;
+        msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check V749 staff e-mail', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (pa, 'P7490011', 'ZZSTAFFV749', 'Mail', 'old.v749@example.test'), (po, 'P7490012', 'ZZSTAFFV749', 'Verified', 'Taken.V749@Example.test'),
+        (pq, 'P7490013', 'ZZSTAFFV749', 'Typed', 'New.V749@example.test');
+    INSERT INTO iam.person_email_verified (person_id, email, verified_at) VALUES (po, 'taken.v749@example.test', now());
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), pa, 'lecturer', 'department', 'MTC', 'check V749', hr, current_date);
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    INSERT INTO hrm.staff_profile (person_id, email) VALUES (pa, 'old.v749@example.test');
+    BEGIN PERFORM iam.email_code_issue('not an address', h1); fmt := 'ISSUED';
+    EXCEPTION WHEN OTHERS THEN fmt := split_part(SQLERRM, ':', 1); END;
+    -- another person's, verified: answered, the try kept
+    t1 := iam.email_code_issue('  taken.v749@EXAMPLE.test ', h1);
+    taken_row := (SELECT outcome || '/' || email || '/' || (decided_at IS NOT NULL) FROM iam.email_verification WHERE person_id = pa AND outcome = 'TAKEN');
+    -- typed on another's record, unverified: no bar to its owner
+    a1 := iam.email_code_issue(' New.V749@Example.TEST ', h1);
+    -- the code's row, which its e-mail is filed against
+    a1_row := (a1->>'id')::uuid = (SELECT id FROM iam.email_verification WHERE person_id = pa AND code_hash = h1 AND outcome IS NULL);
+    email_issued := (SELECT email FROM iam.person WHERE id = pa);
+    prev_noted := (SELECT previous_email FROM iam.email_verification WHERE person_id = pa AND code_hash = h1 AND outcome IS NULL);
+    w1 := iam.email_code_check(hx);
+    a2 := iam.email_code_issue('new.v749@example.test', h2);
+    -- the hour's three are spent: the limit answers first, even for the address held verified
+    BEGIN PERFORM iam.email_code_issue('taken.v749@example.test', h3); limit_first := 'ANSWERED';
+    EXCEPTION WHEN OTHERS THEN limit_first := split_part(SQLERRM, ':', 1); END;
+    old_code := iam.email_code_check(h1);
+    ok := iam.email_code_check(h2);
+    email_after := (SELECT email FROM iam.person WHERE id = pa);
+    prof := (SELECT email FROM hrm.staff_profile WHERE person_id = pa);
+    SELECT * INTO ver FROM iam.person_email_verified WHERE person_id = pa;
+    pq_email := (SELECT email FROM iam.person WHERE id = pq);
+    n_replaced := (SELECT count(*) FROM iam.email_verification WHERE person_id = pa AND outcome = 'REPLACED');
+    n_taken := (SELECT count(*) FROM iam.email_verification WHERE person_id = pa AND outcome = 'TAKEN');
+    hashed := (SELECT bool_and(code_hash ~ '^[0-9a-f]{64}$' AND code_hash NOT IN ('111111', '222222')) FROM iam.email_verification WHERE person_id = pa);
+    state1 := iam.staff_identity_state(pa);
+    -- verified, the address is placed on no other record by any write (the record refuses it), but the copy pq already holds stands
+    BEGIN UPDATE iam.person SET email = ' NEW.v749@example.TEST' WHERE id = po; trg_update := 'SET';
+    EXCEPTION WHEN OTHERS THEN trg_update := split_part(SQLERRM, ':', 1); END;
+    po_email := (SELECT email FROM iam.person WHERE id = po);
+    BEGIN INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (gen_random_uuid(), 'P7490015', 'ZZSTAFFV749', 'Added', 'new.v749@example.test');
+          trg_insert := 'ADDED';
+    EXCEPTION WHEN OTHERS THEN trg_insert := split_part(SQLERRM, ':', 1); END;
+    BEGIN UPDATE iam.person SET email = ' NEW.V749@example.test ', given_names = 'Typed' WHERE id = pq; trg_same := 'KEPT';
+    EXCEPTION WHEN OTHERS THEN trg_same := split_part(SQLERRM, ':', 1); END;
+    -- the next hour: a code for an address another person verifies before it is checked
+    UPDATE iam.email_verification SET created_at = created_at - interval '2 hours' WHERE person_id = pa;
+    a3 := iam.email_code_issue('later.v749@example.test', h3);
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES (pr, 'P7490014', 'ZZSTAFFV749', 'Later', 'Later.V749@example.test');
+    INSERT INTO iam.person_email_verified (person_id, email, verified_at) VALUES (pr, 'later.v749@example.test', now());
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    taken_late := iam.email_code_check(h3);
+    late_outcome := (SELECT outcome FROM iam.email_verification WHERE person_id = pa AND code_hash = h3);
+    email_taken := (SELECT email FROM iam.person WHERE id = pa);
+    none_open := iam.email_code_check(h3);
+    -- the office's correction: never to an address another holds verified; one unchanged stays; changed, no longer verified
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    BEGIN PERFORM iam.set_person_contact(pq, ' TAKEN.v749@example.test', NULL); office_taken := 'SET';
+    EXCEPTION WHEN OTHERS THEN office_taken := split_part(SQLERRM, ':', 1); END;
+    PERFORM iam.set_person_contact(pq, 'New.V749@example.test', '08031112222');
+    office_kept := (SELECT email || '/' || phone FROM iam.person WHERE id = pq);
+    PERFORM iam.set_person_contact(pa, 'changed.v749@example.test', NULL);
+    state2 := iam.staff_identity_state(pa);
+    prof_office := (SELECT coalesce(email, '-') FROM hrm.staff_profile WHERE person_id = pa);
+    -- the person's own doors: a new address refused and nothing saved; the one on record, or blank, keeps it and saves the phone
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    BEGIN PERFORM iam.set_my_contact('other.v749@example.test', '08035556666'); door_new := 'SAVED';
+    EXCEPTION WHEN OTHERS THEN door_new := split_part(SQLERRM, ':', 1); END;
+    phone_refused := coalesce((SELECT phone FROM iam.person WHERE id = pa), 'none');
+    PERFORM iam.set_my_contact('  CHANGED.v749@Example.test ', '08035556666');
+    door_same := (SELECT email || '/' || phone FROM iam.person WHERE id = pa);
+    PERFORM iam.set_my_contact(NULL, '08037778888');
+    door_blank := (SELECT email || '/' || phone FROM iam.person WHERE id = pa);
+    BEGIN PERFORM iam.assert_my_email_unchanged('x.v749@example.test'); assert_new := 'PASSED';
+    EXCEPTION WHEN OTHERS THEN assert_new := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM iam.assert_my_email_unchanged('  '); assert_blank := 'PASSED';
+    EXCEPTION WHEN OTHERS THEN assert_blank := split_part(SQLERRM, ':', 1); END;
+    -- the office clears the record's address (keeping the phone): the profile's copy goes with it, and nothing writes it back
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM iam.set_person_contact(pa, '  ', '08037778888');
+    office_cleared := (SELECT coalesce(p.email, '-') || '/' || coalesce(sp.email, '-') || '/' || coalesce(sp.phone, '-')
+                         FROM iam.person p JOIN hrm.staff_profile sp ON sp.person_id = p.id WHERE p.id = pa);
+    -- a student
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM iam.email_code_issue('student.v749@example.test', h1); as_student := 'ISSUED';
+    EXCEPTION WHEN OTHERS THEN as_student := split_part(SQLERRM, ':', 1); END;
+    RAISE EXCEPTION 'the V749 staff e-mail check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 staff e-mail check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: a member of staff''s new e-mail is theirs only when the code sent to it is entered — never a malformed address or another person''s verified one, an unverified copy elsewhere no bar; the old address stands until then, and the person''s own doors cannot change it; the office''s correction is the profile''s too',
+        coalesce(fmt = 'IDENTITY_EMAIL_FORMAT' AND t1->>'outcome' = 'TAKEN' AND t1->>'email' = 'taken.v749@example.test'
+                 AND taken_row = 'TAKEN/taken.v749@example.test/true'
+                 AND a1->>'outcome' = 'ISSUED' AND a1->>'email' = 'new.v749@example.test' AND email_issued = 'old.v749@example.test'
+                 AND prev_noted = 'old.v749@example.test' AND w1 = 'WRONG' AND a2->>'outcome' = 'ISSUED' AND limit_first = 'IDENTITY_EMAIL_CODE_LIMIT'
+                 AND old_code = 'WRONG' AND ok = 'VERIFIED'
+                 AND email_after = 'new.v749@example.test' AND prof = 'new.v749@example.test' AND ver.email = 'new.v749@example.test'
+                 AND pq_email = 'New.V749@example.test' AND n_replaced = 1 AND n_taken = 1 AND hashed
+                 AND state1->'email'->>'verified' = 'true' AND state1->'email'->>'pending' IS NULL
+                 AND a3->>'outcome' = 'ISSUED' AND taken_late = 'TAKEN' AND late_outcome = 'TAKEN'
+                 AND email_taken = 'new.v749@example.test' AND none_open = 'EXPIRED'
+                 AND office_taken = 'IDENTITY_EMAIL_TAKEN' AND office_kept = 'New.V749@example.test/08031112222' AND state2->'email'->>'verified' = 'false'
+                 AND prof_office = 'changed.v749@example.test' AND office_cleared = '-/-/08037778888'
+                 AND door_new = 'STAFF_EMAIL_VERIFY' AND phone_refused = 'none' AND door_same = 'changed.v749@example.test/08035556666'
+                 AND door_blank = 'changed.v749@example.test/08037778888' AND assert_new = 'STAFF_EMAIL_VERIFY' AND assert_blank = 'PASSED'
+                 AND as_student = 'IDENTITY_EMAIL_OFFICE' AND a1_row
+                 AND trg_update = 'IDENTITY_EMAIL_TAKEN' AND po_email = 'Taken.V749@Example.test' AND trg_insert = 'IDENTITY_EMAIL_TAKEN' AND trg_same = 'KEPT', false),
+        format('format %s taken %s row %s | issued %s (its row %s), e-mail still %s, old noted %s | wrong %s | second %s, limit first %s, first now %s, right %s | e-mail %s profile %s verified %s, the typed copy %s | replaced %s taken %s hashed %s | state %s | the record: update %s (%s) insert %s copy %s | later %s: %s (%s) e-mail %s none %s | office %s, kept %s, changed verified %s, profile %s, cleared %s | doors %s phone %s, same %s, blank %s, assert %s/%s | student %s',
+               fmt, t1, taken_row, a1, a1_row, email_issued, prev_noted, w1, a2, limit_first, old_code, ok, email_after, prof, ver.email, pq_email,
+               n_replaced, n_taken, hashed, state1->'email', trg_update, po_email, trg_insert, trg_same, a3, taken_late, late_outcome, email_taken, none_open,
+               office_taken, office_kept, state2->'email'->>'verified', prof_office, office_cleared, door_new, phone_refused, door_same, door_blank, assert_new, assert_blank, as_student));
+END $$;
+
+-- ── V749. The code reaches the mailbox alone. A made-up lecturer A asks for a code for a new address of A's own, then for B's address
+--          (on B's record, not verified: no bar). Each code's e-mail is filed against the code, never against A; the first, replaced
+--          while its message waited, is cancelled and its code no longer in the outbox. Neither A's own notices nor B's list a code, nor
+--          B's password-reset link sent to B's address; A's are what is filed against A and the notices of A's work sent to an address
+--          A's record alone holds (never one filed against B, though sent to A's address) — a score sheet, a deferment at A's desk, a
+--          report sent (its public check code no secret), the office's notice (admissions.tell_office, marked OFFICE_TELL) — but not,
+--          A's address unverified, a reply to a sign-in ticket sent to it (the request names no one). B's, what is filed against B and
+--          the notices of B's work. C's address is also an applicant account's: an applicant's own message to it (filed 'application',
+--          as the office's notice is, but unmarked) is not C's work, nor one sent to an address since corrected away from an applicant's
+--          account; C's deferment and the office's notice are. The newest two of A's are the first two of A's whole list. An office
+--          types B's address on A's record too: A is shown none of B's mail, and B's work notices wait while two records hold the
+--          address. B verifies it: B's work notices are B's again, as is every other message sent to the verified address (one filed
+--          against nothing, and a sign-in ticket's reply, too); still no code or link is listed, and A's code for B's address is then
+--          TAKEN, its message cancelled. A code's message that has gone no longer holds the code. The block undoes its writes ──
+DO $$
+DECLARE hr uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid(); pc uuid := gen_random_uuid();
+        cand uuid := gen_random_uuid();
+        h1 text := encode(sha256(convert_to('741111', 'UTF8')), 'hex'); h2 text := encode(sha256(convert_to('742222', 'UTF8')), 'hex');
+        h3 text := encode(sha256(convert_to('743333', 'UTF8')), 'hex');
+        i1 jsonb; i2 jsonb; i3 jsonb; n1 uuid; n2 uuid; n3 uuid; filed text; n1_after text; list_a1 text; list_b1 text; list_a2 text; list_b2 text;
+        b_ok text; list_a3 text; list_b3 text; list_c text; a_late text; n2_after text; n3_after text; secrets text; msg text;
+        cand2 uuid := gen_random_uuid(); acct2 uuid := gen_random_uuid(); office_mark text; top_two boolean;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check V749 the code reaches the mailbox alone', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (pa, 'P7490041', 'ZZSTAFFV749', 'Asker', 'a.n749@example.test'), (pb, 'P7490042', 'ZZSTAFFV749', 'Owner', 'b.n749@example.test'),
+        (pc, 'P7490043', 'ZZSTAFFV749', 'Parent', 'c.n749@example.test');
+    -- C's address is an applicant's too (an applicant account, made by an office)
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (cand, '9748/9749', '20974900043ZZ', 'ZZAPPLICANTV749', 'Child', 'Computer Science', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+    VALUES (gen_random_uuid(), '9748/9749', cand, '20974900043ZZ', 'C.n749@example.test', '08030749043', 'SET_ON_FIRST_LOGIN');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), pa, 'lecturer', 'department', 'MTC', 'check V749', hr, current_date),
+           (gen_random_uuid(), pb, 'lecturer', 'department', 'MTC', 'check V749', hr, current_date),
+           (gen_random_uuid(), pc, 'lecturer', 'department', 'MTC', 'check V749', hr, current_date);
+    -- A's codes, queued as the API queues them: one for a new address of A's own, then one for B's address
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    i1 := iam.email_code_issue('a.new.n749@example.test', h1);
+    n1 := platform.queue_notice('EMAIL', i1->>'email', 'Your MOAUM verification code',
+              'Your code to verify this e-mail address on your MOAUM portal staff record is 741111. It works for fifteen minutes.',
+              'email_verification', (i1->>'id')::uuid, NULL, 'STAFF_EMAIL_CODE', 'HIGH');
+    i2 := iam.email_code_issue(' B.n749@example.test', h2);
+    n2 := platform.queue_notice('EMAIL', i2->>'email', 'Your MOAUM verification code',
+              'Your code to verify this e-mail address on your MOAUM portal staff record is 742222. It works for fifteen minutes.',
+              'email_verification', (i2->>'id')::uuid, NULL, 'STAFF_EMAIL_CODE', 'HIGH');
+    filed := (SELECT string_agg(n.about_kind || ':' || (x.person_id = pa), ',' ORDER BY n.created_at, n.id)
+                FROM platform.notice n JOIN iam.email_verification x ON x.id = n.about_id WHERE n.id IN (n1, n2));
+    n1_after := (SELECT state || ':' || (position('741111' IN body) > 0) FROM platform.notice WHERE id = n1);
+    -- B's password-reset link, as PasswordResetService files it (about the staff member, to the address on record); the notices of each
+    -- one's work, and one filed against A
+    PERFORM platform.queue_notice('EMAIL', 'b.n749@example.test', 'Reset your MOAUM password',
+              E'Somebody — we hope you — asked to reset the password of your MOAUM staff account. Open this link within the hour to choose a new one:\n\nhttps://portal.example/login/reset?token=n749secretlink\n\nIf it was not you, ignore this message; your password is unchanged.',
+              'staff', pb);
+    PERFORM platform.queue_notice('EMAIL', 'b.n749@example.test', 'N749 work of B', 'A course is allocated to you.', 'offering', gen_random_uuid());
+    PERFORM platform.queue_notice('EMAIL', 'a.n749@example.test', 'N749 work of A', 'A score sheet waits for you.', 'score_sheet', gen_random_uuid());
+    PERFORM platform.queue_notice('EMAIL', 'a.n749@example.test', 'N749 about A', 'A notice filed against A.', 'person', pa);
+    PERFORM platform.queue_notice('EMAIL', 'a.n749@example.test', 'N749 about B', 'A notice filed against B, sent to A''s address.', 'person', pb);
+    PERFORM platform.queue_notice('EMAIL', 'b.n749@example.test', 'N749 to B, filed against nothing', 'An announcement.', NULL::text, NULL::uuid);
+    -- the rest of A's work: a deferment at A's desk (people.deferment_tell_desk), a report sent from the portal (SnapshotsController: its
+    -- check code is public), the office's notice to every holder of the office A, B and C hold (admissions.tell_office, marked); and a
+    -- reply to a sign-in ticket raised with A's address (TicketNotifier: filed against the ticket, which names no one), not A's while
+    -- A's address is not verified
+    PERFORM platform.queue_notice('EMAIL', 'a.n749@example.test', 'N749 deferment at A''s desk', E'A deferment request awaits you.\n\nDeferment reference: DEF/N749', 'deferment', gen_random_uuid());
+    PERFORM platform.queue_notice('EMAIL', 'A.N749@Example.test', 'N749 report to A',
+              E'Please find attached the return.\n\nVerification code: N749CHECK\nThe figures can be checked at https://portal.example/verify/report/N749CHECK',
+              'report_snapshot', gen_random_uuid());
+    PERFORM platform.queue_notice('EMAIL', 'a.n749@example.test', 'N749 ticket to A''s address', 'Your request for help signing in has been received by the Directorate of ICT.', 'ticket', gen_random_uuid());
+    PERFORM platform.queue_notice('EMAIL', 'b.n749@example.test', 'N749 ticket to B''s address', 'Your ticket TCK-N749 needs something from you.', 'ticket', gen_random_uuid());
+    PERFORM admissions.tell_office('lecturer', 'N749 office notice', 'A notice to every holder of the office.', NULL);
+    office_mark := (SELECT string_agg(DISTINCT n.about_kind || ':' || coalesce(n.template_key, '-'), ',') FROM platform.notice n WHERE n.subject = 'N749 office notice');
+    -- C's: an applicant's own message to the address C shares with an applicant account is not C's work, nor one an applicant was sent
+    -- at an address since corrected away from the account (no account holds it now); C's deferment and the office's notice are
+    PERFORM platform.queue_notice('EMAIL', 'c.n749@example.test', 'N749 applicant''s own to C''s address',
+              'The password of your application was reset by the University at your request. Sign in with your JAMB number as the password.', 'application', gen_random_uuid());
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+    VALUES (cand2, '9748/9749', '20974900044ZZ', 'ZZAPPLICANTV749', 'Moved', 'Computer Science', 'UTME', 100, 'PROPOSED');
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+    VALUES (acct2, '9748/9749', cand2, '20974900044ZZ', 'a.n749@example.test', '08030749044', 'SET_ON_FIRST_LOGIN');
+    PERFORM platform.queue_notice('EMAIL', 'a.n749@example.test', 'N749 applicant''s own to A''s address',
+              'Your MOAUM applicant account: application APP/N749, JAMB 20974900044ZZ.', 'application', gen_random_uuid());
+    UPDATE admissions.applicant_account SET email = 'moved.n749@example.test' WHERE id = acct2;
+    PERFORM platform.queue_notice('EMAIL', 'c.n749@example.test', 'N749 deferment at C''s desk', 'A deferment request awaits you.', 'deferment', gen_random_uuid());
+    list_c := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pc, 500) WHERE subject LIKE 'N749%');
+    list_a1 := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pa, 500) WHERE subject LIKE 'N749%' OR body ~ '74[123]{4}|token=' OR template_key = 'STAFF_EMAIL_CODE');
+    list_b1 := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pb, 500) WHERE subject LIKE 'N749%' OR body ~ '74[123]{4}|token=' OR template_key = 'STAFF_EMAIL_CODE');
+    -- every way walked newest first and stopped at the limit: the newest two (one transaction's notices share their time: then by id)
+    -- are the first two of the whole list
+    top_two := (SELECT array_agg(x.id ORDER BY x.created_at DESC, x.id) FROM platform.person_notices(pa, 2) x)
+             = (SELECT (array_agg(x.id ORDER BY x.created_at DESC, x.id))[1:2] FROM platform.person_notices(pa, 500) x);
+    -- an office types B's address on A's record as well (B has not verified it, so nothing refuses it)
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    UPDATE iam.person SET email = 'B.N749@example.test' WHERE id = pa;
+    list_a2 := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pa, 500) WHERE subject LIKE 'N749%' OR body ~ '74[123]{4}|token=' OR template_key = 'STAFF_EMAIL_CODE');
+    list_b2 := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pb, 500) WHERE subject LIKE 'N749%' OR body ~ '74[123]{4}|token=' OR template_key = 'STAFF_EMAIL_CODE');
+    -- B verifies B's address with the code from B's mailbox
+    PERFORM set_config('moaum.actor_id', pb::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    i3 := iam.email_code_issue('b.n749@example.test', h3);
+    n3 := platform.queue_notice('EMAIL', i3->>'email', 'Your MOAUM verification code',
+              'Your code to verify this e-mail address on your MOAUM portal staff record is 743333. It works for fifteen minutes.',
+              'email_verification', (i3->>'id')::uuid, NULL, 'STAFF_EMAIL_CODE', 'HIGH');
+    UPDATE platform.notice SET state = 'SENT', sent_at = now(), attempts = attempts + 1 WHERE id = n3;   -- the dispatcher sends it
+    n3_after := (SELECT state || ':' || (position('743333' IN body) > 0) FROM platform.notice WHERE id = n3);
+    b_ok := iam.email_code_check(h3);
+    list_a3 := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pa, 500) WHERE subject LIKE 'N749%' OR body ~ '74[123]{4}|token=' OR template_key = 'STAFF_EMAIL_CODE');
+    list_b3 := (SELECT string_agg(subject, ',' ORDER BY subject) FROM platform.person_notices(pb, 500) WHERE subject LIKE 'N749%' OR body ~ '74[123]{4}|token=' OR template_key = 'STAFF_EMAIL_CODE');
+    -- A's code for B's address, entered now: TAKEN, and its message (still queued) cancelled with its code gone
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    a_late := iam.email_code_check(h2);
+    n2_after := (SELECT state || ':' || (position('742222' IN body) > 0) FROM platform.notice WHERE id = n2);
+    secrets := concat_ws(',', platform.notice_carries_secret('STAFF_EMAIL_CODE', 'words'),
+                              platform.notice_carries_secret(NULL, 'Your code to confirm this e-mail address on your MOAUM portal record is 123456.'),
+                              platform.notice_carries_secret(NULL, 'MOAUM: reset your password within the hour at https://p/login/reset?token=ab'),
+                              platform.notice_carries_secret(NULL, 'Activate: https://p/login/activate?token=ab'),
+                              platform.notice_carries_secret(NULL, 'Please complete a short reference here: https://p/pg/referee/ab'),
+                              platform.notice_carries_secret(NULL, 'MOAUM: your code to confirm this phone on your portal record is 123456 (15 minutes). Not you? Ignore this message.'),
+                              platform.notice_carries_secret(NULL, 'A course is allocated to you.'),
+                              platform.notice_carries_secret(NULL, E'Please find attached the return.\n\nVerification code: N749CHECK'));
+    RAISE EXCEPTION 'the V749 notices check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 notices check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: a code proves the mailbox alone — filed against the code, never listed back to the person who asked or anyone else, nor a password-reset link; by address only what the person verified, or the notices of their work to an address theirs alone (a deferment, a report sent, the office''s notice — marked OFFICE_TELL — among them; never an applicant''s own, nor a sign-in ticket''s reply); newest first to the limit; its words gone once its message has',
+        coalesce(i1->>'outcome' = 'ISSUED' AND i2->>'outcome' = 'ISSUED' AND i2->>'email' = 'b.n749@example.test'
+                 AND filed = 'email_verification:true,email_verification:true' AND n1_after = 'CANCELLED:false'
+                 AND office_mark = 'application:OFFICE_TELL'
+                 AND list_a1 = 'N749 about A,N749 deferment at A''s desk,N749 office notice,N749 report to A,N749 work of A'
+                 AND list_b1 = 'N749 about B,N749 office notice,N749 work of B' AND list_c = 'N749 deferment at C''s desk,N749 office notice'
+                 AND top_two
+                 AND list_a2 = 'N749 about A' AND list_b2 = 'N749 about B'
+                 AND n3_after = 'SENT:false' AND b_ok = 'VERIFIED'
+                 AND list_a3 = 'N749 about A'
+                 AND list_b3 = 'N749 about B,N749 office notice,N749 ticket to B''s address,N749 to B, filed against nothing,N749 work of B'
+                 AND a_late = 'TAKEN' AND n2_after = 'CANCELLED:false' AND secrets = 't,t,t,t,t,t,f,f', false),
+        format('issued %s / %s | filed %s | first %s | office %s | before: A %s, B %s, C %s | newest two %s | a copy on A: A %s, B %s | B''s code sent %s, %s | verified: A %s, B %s | A''s code for B''s %s, message %s | secrets %s',
+               i1->>'outcome', i2, filed, n1_after, office_mark, list_a1, list_b1, list_c, top_two, list_a2, list_b2, n3_after, b_ok, list_a3, list_b3, a_late, n2_after, secrets));
+END $$;
+
+-- ── V749. An appointment and an e-mail another person holds verified (V510 restated). One made-up member of staff holds an address
+--          verified, another one only typed (unverified, with spaces) on their record. A row giving the verified address (case and
+--          spaces aside) passes the check with a warning, the e-mail left off (email NULL, email_left_off the address), and is
+--          appointed without it; a row giving the typed address is still refused, as V510 refused it (now read case and spaces aside);
+--          a row with an address of its own keeps it. In an upload the appointed row names the address left off. The block undoes its
+--          writes ──
+DO $$
+DECLARE hr uuid := gen_random_uuid(); pv uuid := gen_random_uuid(); pt uuid := gen_random_uuid(); dept text; base jsonb;
+        c1 jsonb; c2 jsonb; c3 jsonb; emp uuid; made_email text; own_email text; up jsonb; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check V749 an appointment and an e-mail verified elsewhere', true);
+    dept := (SELECT d.code FROM ref.department d WHERE d.ended_on IS NULL ORDER BY d.code LIMIT 1);
+    INSERT INTO hrm.grade (grade, step, category, basic) VALUES ('ZZG749', 1, 'NON_ACADEMIC', 100000);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (pv, 'P7490061', 'ZZAPPTV749', 'Verified', 'v.ap749@example.test'), (pt, 'P7490062', 'ZZAPPTV749', 'Typed', ' T.ap749@example.test ');
+    INSERT INTO iam.person_email_verified (person_id, email, verified_at) VALUES (pv, 'v.ap749@example.test', now());
+    base := jsonb_build_object('surname', 'ZZAPPTV749', 'given_names', 'Appointed', 'category', 'NON_ACADEMIC', 'grade', 'ZZG749', 'step', '1',
+                               'appointment_date', to_char(current_date, 'YYYY-MM-DD'), 'department', dept);
+    c1 := hrm.appointment_check(base || jsonb_build_object('staff_no', 'P7490063', 'email', ' V.AP749@Example.test '));
+    c2 := hrm.appointment_check(base || jsonb_build_object('staff_no', 'P7490063', 'email', 't.ap749@example.test'));
+    c3 := hrm.appointment_check(base || jsonb_build_object('staff_no', 'P7490063', 'email', 'own.ap749@example.test'));
+    emp := hrm.appoint(base || jsonb_build_object('staff_no', 'P7490063', 'email', ' V.AP749@Example.test '));
+    made_email := (SELECT coalesce(p.email, '-') FROM iam.person p JOIN hrm.employment e ON e.person_id = p.id WHERE e.id = emp);
+    up := hrm.appoint_many(jsonb_build_array(base || jsonb_build_object('row', '2', 'staff_no', 'P7490064', 'email', 'v.ap749@example.test'),
+                                             base || jsonb_build_object('row', '3', 'staff_no', 'P7490065', 'email', 'own.ap749@example.test')));
+    own_email := (SELECT coalesce(p.email, '-') FROM iam.person p WHERE p.staff_number = 'P7490065');
+    RAISE EXCEPTION 'the V749 appointment check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 appointment check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: an appointment is made without an e-mail another person holds verified — said by the check first (a warning, the address left off), named by the upload — while one another record holds unverified is still refused as V510 refused it',
+        coalesce((c1->>'ok')::boolean AND c1->>'email' IS NULL AND c1->>'email_left_off' = 'v.ap749@example.test'
+                 AND c1->>'warnings' LIKE '%The e-mail v.ap749@example.test is another person''s, verified on their record: the appointment is made without it%'
+                 AND NOT (c2->>'ok')::boolean AND c2->>'email_left_off' IS NULL
+                 AND c2->'problems' @> '["The e-mail t.ap749@example.test belongs to another person."]'::jsonb
+                 AND (c3->>'ok')::boolean AND c3->>'email' = 'own.ap749@example.test' AND c3->>'email_left_off' IS NULL
+                 AND emp IS NOT NULL AND made_email = '-' AND own_email = 'own.ap749@example.test'
+                 AND (up->>'appointed')::int = 2 AND up->'rows'->0->>'email_left_off' = 'v.ap749@example.test' AND NOT (up->'rows'->1) ? 'email_left_off', false),
+        format('verified %s | typed %s | own %s | appointed %s with %s | upload %s, own %s', c1, c2, c3, emp, made_email, up, own_email));
+END $$;
+
+-- ── V749. A member of staff's photograph accepted after enhancement. A made-up lecturer with a PNG photograph on file uploads three: one
+--          enhanced (GOOD), one the enhancement failed on, one judged to need replacing. The one needing replacing is refused, the failed
+--          one cannot be accepted until a retry enhances it; another member of staff can neither accept nor set aside the lecturer's,
+--          and a student uploads none. Accepted, the enhanced copy is the card photograph (JPEG, the upload named) and the PNG it replaced
+--          is kept on the upload, the other two set aside (SUPERSEDED); accepted twice is refused. One enhanced into the file store is
+--          accepted after it (the object, its size), the first's copy kept on it; one set aside keeps its original. Every act is an
+--          event. A photograph uploaded the old way is no longer the enhanced one. Twenty uploads, retries and refused files an hour, a
+--          retry counted as an upload is, and a file refused as it was read too (REFUSED: no upload kept; on a retry the holder's own
+--          upload named, another's never): at twenty, asked before any work (hrm.staff_photo_upload_allowed), an upload and a retry are
+--          both refused. The block undoes its writes ──
+DO $$
+DECLARE hr uuid := gen_random_uuid(); pa uuid := gen_random_uuid(); pb uuid := gen_random_uuid(); obj uuid := gen_random_uuid();
+        s1 uuid; s2 uuid; s3 uuid; s4 uuid; s5 uuid; st1 text; st2 text; st3 text; needs text; failed_accept text; retried text;
+        not_yours_accept text; not_yours_discard text; as_student text; a1 jsonb; twice text; a5 jsonb; discarded text;
+        ph hrm.staff_photo; sub1 hrm.staff_photo_submission; sub5 hrm.staff_photo_submission; sub4 hrm.staff_photo_submission;
+        states text; events1 text; events2 text; state_mid jsonb; enhanced_after_old boolean; s6 uuid; counted int; allowed_under uuid;
+        allowed_at text; upload_at text; retry_at text; r1 uuid; r2 uuid; r3 uuid; refused_rows text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check V749 staff photograph', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (pa, 'P7490031', 'ZZSTAFFV749', 'Photo'), (pb, 'P7490032', 'ZZSTAFFV749', 'Another');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), pa, 'lecturer', 'department', 'MTC', 'check V749', hr, current_date),
+           (gen_random_uuid(), pb, 'lecturer', 'department', 'MTC', 'check V749', hr, current_date);
+    INSERT INTO platform.file_object (id, bucket, object_key, content_type, size_bytes, sha256, owner_table, owner_id)
+    VALUES (obj, 'check', 'hrm/staff_photo_submission/' || pa || '/check-v749.jpg', 'image/jpeg', 12345, sha256('\xffd8'::bytea), 'hrm.staff_photo_submission', pa::text);
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    PERFORM hrm.set_my_staff_photo('image/png', 4, '\x89504e47'::bytea, NULL);
+    s1 := hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, '\xffd8ffe001'::bytea, NULL, 600, 750,
+                                            '{"flags": []}'::jsonb, '{"steps": ["levels"]}'::jsonb, 'GOOD', NULL);
+    s2 := hrm.add_my_staff_photo_submission('image/png', 5, '\x89504e4700'::bytea, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Corrupt image');
+    s3 := hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, '\xffd8ffe003'::bytea, NULL, 120, 150,
+                                            '{"flags": ["LOW_RESOLUTION"]}'::jsonb, '{}'::jsonb, 'REPLACE', NULL);
+    SELECT state INTO st1 FROM hrm.staff_photo_submission WHERE id = s1;
+    SELECT state INTO st2 FROM hrm.staff_photo_submission WHERE id = s2;
+    SELECT state INTO st3 FROM hrm.staff_photo_submission WHERE id = s3;
+    BEGIN PERFORM hrm.accept_my_staff_photo(s3); needs := 'ACCEPTED';
+    EXCEPTION WHEN OTHERS THEN needs := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM hrm.accept_my_staff_photo(s2); failed_accept := 'ACCEPTED';
+    EXCEPTION WHEN OTHERS THEN failed_accept := split_part(SQLERRM, ':', 1); END;
+    retried := hrm.update_my_staff_photo_submission(s2, '\xffd8ffe002'::bytea, NULL, 600, 750, '{"flags": ["TOO_DARK"]}'::jsonb, '{"steps": ["gamma"]}'::jsonb, 'FAIR', NULL);
+    state_mid := iam.staff_identity_state(pa);
+    -- another member of staff, and a student
+    PERFORM set_config('moaum.actor_id', pb::text, true);
+    BEGIN PERFORM hrm.accept_my_staff_photo(s1); not_yours_accept := 'ACCEPTED';
+    EXCEPTION WHEN OTHERS THEN not_yours_accept := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM hrm.discard_my_staff_photo(s1); not_yours_discard := 'DISCARDED';
+    EXCEPTION WHEN OTHERS THEN not_yours_discard := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL); as_student := 'UPLOADED';
+    EXCEPTION WHEN OTHERS THEN as_student := split_part(SQLERRM, ':', 1); END;
+    -- the lecturer accepts the first
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    a1 := hrm.accept_my_staff_photo(s1);
+    SELECT * INTO ph FROM hrm.staff_photo WHERE person_id = pa;
+    SELECT * INTO sub1 FROM hrm.staff_photo_submission WHERE id = s1;
+    states := (SELECT string_agg(state, ',' ORDER BY created_at, id) FROM hrm.staff_photo_submission WHERE id IN (s2, s3));
+    BEGIN PERFORM hrm.accept_my_staff_photo(s1); twice := 'ACCEPTED';
+    EXCEPTION WHEN OTHERS THEN twice := split_part(SQLERRM, ':', 1); END;
+    -- one enhanced into the file store, accepted after it
+    s5 := hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, '\xffd8ffe005'::bytea, obj, 600, 750, '{}'::jsonb, '{}'::jsonb, 'GOOD', NULL);
+    a5 := hrm.accept_my_staff_photo(s5);
+    SELECT * INTO sub5 FROM hrm.staff_photo_submission WHERE id = s5;
+    -- one set aside
+    s4 := hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, '\xffd8ffe004'::bytea, NULL, 600, 750, '{}'::jsonb, '{}'::jsonb, 'FAIR', NULL);
+    discarded := hrm.discard_my_staff_photo(s4);
+    SELECT * INTO sub4 FROM hrm.staff_photo_submission WHERE id = s4;
+    events1 := (SELECT string_agg(action, ',' ORDER BY at, CASE action WHEN 'UPLOADED' THEN 1 WHEN 'ENHANCED' THEN 2 WHEN 'FAILED' THEN 2 WHEN 'RETRIED' THEN 3 ELSE 4 END) FROM hrm.staff_photo_event WHERE submission_id = s1);
+    events2 := (SELECT string_agg(action, ',' ORDER BY at, CASE action WHEN 'UPLOADED' THEN 1 WHEN 'ENHANCED' THEN 2 WHEN 'FAILED' THEN 2 WHEN 'RETRIED' THEN 3 ELSE 4 END) FROM hrm.staff_photo_event WHERE submission_id = s2);
+    -- the old upload: no longer the enhanced photograph
+    PERFORM hrm.set_my_staff_photo('image/jpeg', 2, '\xffd8'::bytea, NULL);
+    enhanced_after_old := (iam.staff_identity_state(pa)->'photo'->>'enhanced')::boolean;
+    -- the hour's twenty: six uploads and a retry so far; two files refused as they were read (one on a retry of the lecturer's own
+    -- upload), and another member of staff's refused retry naming the lecturer's upload, which is not named; then made up to twenty with
+    -- refused files alone — an upload and a retry are refused alike
+    s6 := hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Corrupt image');
+    r1 := hrm.record_my_staff_photo_refusal('PHOTO_CORRUPT', 2388563);
+    r2 := hrm.record_my_staff_photo_refusal('PHOTO_CORRUPT', 4, s6);
+    PERFORM set_config('moaum.actor_id', pb::text, true);
+    r3 := hrm.record_my_staff_photo_refusal('PHOTO_FORMAT', 9, s6);
+    PERFORM set_config('moaum.actor_id', pa::text, true);
+    refused_rows := (SELECT string_agg(CASE e.person_id WHEN pa THEN 'pa' WHEN pb THEN 'pb' END || ':' || coalesce((e.submission_id = s6)::text, 'none') || ':'
+                                       || (e.detail->>'code') || ':' || (e.detail->>'bytes'), ',' ORDER BY e.at)
+                       FROM hrm.staff_photo_event e WHERE e.id IN (r1, r2, r3) AND e.action = 'REFUSED');
+    counted := (SELECT count(*) FROM hrm.staff_photo_event WHERE person_id = pa AND action IN ('UPLOADED', 'RETRIED', 'REFUSED'));
+    allowed_under := hrm.staff_photo_upload_allowed();
+    INSERT INTO hrm.staff_photo_event (person_id, action, by, office, detail)
+    SELECT pa, 'REFUSED', pa, 'lecturer', '{"code": "PHOTO_CORRUPT"}'::jsonb FROM generate_series(1, 20 - counted);
+    BEGIN PERFORM hrm.staff_photo_upload_allowed(); allowed_at := 'ALLOWED';
+    EXCEPTION WHEN OTHERS THEN allowed_at := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, '\xffd8ffe006'::bytea, NULL, 600, 750, '{}'::jsonb, '{}'::jsonb, 'GOOD', NULL);
+          upload_at := 'UPLOADED';
+    EXCEPTION WHEN OTHERS THEN upload_at := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM hrm.update_my_staff_photo_submission(s6, '\xffd8ffe007'::bytea, NULL, 600, 750, '{}'::jsonb, '{}'::jsonb, 'GOOD', NULL); retry_at := 'RETRIED';
+    EXCEPTION WHEN OTHERS THEN retry_at := split_part(SQLERRM, ':', 1); END;
+    RAISE EXCEPTION 'the V749 staff photograph check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 staff photograph check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: a staff photograph becomes the card photograph only once its enhanced copy is accepted by its holder — the original and the one replaced kept, a photograph needing replacement never',
+        coalesce(st1 = 'PROCESSED' AND st2 = 'FAILED' AND st3 = 'PROCESSED' AND needs = 'PHOTO_NEEDS_REPLACING' AND failed_accept = 'PHOTO_STATE'
+                 AND retried = 'PROCESSED' AND state_mid->'photo'->>'enhanced' = 'false' AND state_mid->'photo'->>'present' = 'true'
+                 AND state_mid->'photo'->>'pendingSubmission' IS NOT NULL
+                 AND not_yours_accept = 'PHOTO_NOT_YOURS' AND not_yours_discard = 'PHOTO_NOT_YOURS' AND as_student = 'PHOTO_NOT_STAFF'
+                 AND a1->>'state' = 'ACCEPTED' AND (a1->>'previousKept')::boolean AND (a1->>'superseded')::int = 2
+                 AND sub1.state = 'ACCEPTED' AND sub1.previous_photo_type = 'image/png' AND sub1.previous_photo_content = '\x89504e47'::bytea
+                 AND sub1.original_content = '\xffd8ffd9'::bytea AND states = 'SUPERSEDED,SUPERSEDED' AND twice = 'PHOTO_STATE'
+                 AND ph.content_type = 'image/jpeg' AND ph.content = '\xffd8ffe001'::bytea AND ph.bytes = 5 AND ph.submission_id = s1
+                 AND (a5->>'bytes')::int = 12345 AND a5->>'objectId' = obj::text AND sub5.enhanced_content IS NULL AND sub5.enhanced_object = obj
+                 AND sub5.previous_photo_content = '\xffd8ffe001'::bytea AND sub5.previous_photo_type = 'image/jpeg'
+                 AND discarded = 'DISCARDED' AND sub4.state = 'DISCARDED' AND sub4.original_content IS NOT NULL
+                 AND events1 = 'UPLOADED,ENHANCED,ACCEPTED' AND events2 = 'UPLOADED,FAILED,RETRIED' AND NOT enhanced_after_old
+                 AND refused_rows = 'pa:none:PHOTO_CORRUPT:2388563,pa:true:PHOTO_CORRUPT:4,pb:none:PHOTO_FORMAT:9'
+                 AND counted = 9 AND allowed_under = pa AND allowed_at = 'PHOTO_UPLOAD_LIMIT' AND upload_at = 'PHOTO_UPLOAD_LIMIT'
+                 AND retry_at = 'PHOTO_UPLOAD_LIMIT', false),
+        format('states %s/%s/%s | replace %s failed %s retried %s | mid %s | another %s/%s student %s | accepted %s | sub1 %s prev %s %s | others %s twice %s | photo %s %s %s %s | store %s, sub5 %s %s prev %s | set aside %s %s | events %s ; %s | old upload enhanced %s | refused %s | counted %s allowed %s, at twenty %s upload %s retry %s',
+               st1, st2, st3, needs, failed_accept, retried, state_mid->'photo', not_yours_accept, not_yours_discard, as_student, a1,
+               sub1.state, sub1.previous_photo_type, sub1.previous_photo_content, states, twice, ph.content_type, ph.content, ph.bytes, ph.submission_id = s1,
+               a5, sub5.enhanced_content IS NULL, sub5.enhanced_object = obj, sub5.previous_photo_content, discarded, sub4.state, events1, events2, enhanced_after_old,
+               refused_rows, counted, allowed_under = pa, allowed_at, upload_at, retry_at));
+END $$;
+
+-- ── V749. The identity completion reports on a made-up faculty (ZZF749). Students in study on its programme: one complete (the card
+--          desk's blood group, a photograph on the portal), one with free text not confirmed (the JAMB passport on file), one admitted
+--          without a number, blood group or photograph (200 Level), one confirmed without a photograph; one deferred is not counted. The
+--          counts, the filters (faculty, department, programme, level) and the lists by what is missing, searched and paged; and over
+--          the whole register the set-based reading agrees with credentials.has_photo, student_blood_group and blood_group_confirmed for
+--          every student. Staff in service on it: one complete (photograph accepted, e-mail verified, blood group confirmed) who signs
+--          in; one on the HR register alone (an old photograph, an e-mail not verified, a blood group not confirmed — and no sign-in);
+--          one with nothing, in a department, with a code sent; one who has left is not counted. The counts, the filters and the list.
+--          The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_ses text; prog text := 'C97490';
+        ea uuid := gen_random_uuid(); eb uuid := gen_random_uuid(); ec uuid := gen_random_uuid(); ed uuid := gen_random_uuid(); ee uuid := gen_random_uuid();
+        sa uuid := gen_random_uuid(); sb uuid := gen_random_uuid(); sc uuid := gen_random_uuid(); sd uuid := gen_random_uuid(); sub uuid;
+        cs record; cs_level bigint; cs_faculty bigint; cs_dept bigint; l_blood text; l_photo text; l_any text; l_matric text; l_q text; l_page text;
+        agree_bad bigint; agree_n bigint; cf record; cf_acad bigint; cf_unit bigint; f_email text; f_any text; f_q text; f_pending text; state_sa jsonb; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V749 reports', true);
+    v_ses := (SELECT name FROM policy.academic_session ORDER BY name LIMIT 1);
+    INSERT INTO ref.faculty (code, name) VALUES ('ZZF749', 'Faculty of Identity Checks');
+    INSERT INTO ref.department (code, name, faculty_code) VALUES ('ZZD749', 'Department of Identity Checks', 'ZZF749');
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    VALUES (prog, 'B.Sc. Identity Check', 'ZZD749', 'ZZF749', 'UNDER GRADUATE', 0, 400, 4, 'ZZV');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, jamb_reg_no)
+    VALUES (ea, 'MOAUM/ADM/74/974911', 'MOAU/ZZV/74/7491', 'ZZCHECKV749', 'A Complete', prog, 'UTME', v_ses, 100, 100, 'ACTIVE', now(), NULL),
+           (eb, 'MOAUM/ADM/74/974912', 'MOAU/ZZV/74/7492', 'ZZCHECKV749', 'B Photojamb', prog, 'UTME', v_ses, 100, 100, 'ACTIVE', now(), '74990001zz'),
+           (ec, 'MOAUM/ADM/74/974913', NULL, 'ZZCHECKV749', 'C Admitted', prog, 'UTME', v_ses, 100, 200, 'ADMITTED', NULL, NULL),
+           (ed, 'MOAUM/ADM/74/974914', 'MOAU/ZZV/74/7494', 'ZZCHECKV749', 'D Nophoto', prog, 'UTME', v_ses, 100, 100, 'ACTIVE', now(), NULL),
+           (ee, 'MOAUM/ADM/74/974915', 'MOAU/ZZV/74/7495', 'ZZCHECKV749', 'E Deferred', prog, 'UTME', v_ses, 100, 100, 'DEFERRED', now(), NULL);
+    INSERT INTO people.student_photo (student_id, content, content_type, bytes, replaced_at, reason) VALUES (ea, '\xffd8ffd9'::bytea, 'image/jpeg', 4, now(), 'check V749');
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+    VALUES (gen_random_uuid(), v_ses, 'PASSPORT', 'check-v749-74990001ZZ.jpg', '74990001ZZ', 'EXACT', '{"dataUrl": "data:image/jpeg;base64,/9j/2Q=="}'::jsonb);
+    INSERT INTO people.biodata (student_id, field, value) VALUES (eb, 'blood_group', 'o+ve');
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    PERFORM credentials.set_blood_group('STUDENT', ea, 'O+');
+    PERFORM set_config('moaum.actor_id', ed::text, true);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM credentials.confirm_my_blood_group('B-', true);
+    -- the students: counts, filters, lists
+    SELECT * INTO cs FROM credentials.identity_completion_students(NULL, NULL, prog, NULL);
+    cs_level := (SELECT total FROM credentials.identity_completion_students(NULL, NULL, prog, 200));
+    cs_faculty := (SELECT total FROM credentials.identity_completion_students('ZZF749', NULL, NULL, NULL));
+    cs_dept := (SELECT total FROM credentials.identity_completion_students(NULL, 'ZZD749', NULL, NULL));
+    l_blood := (SELECT string_agg(left(x.name, 13) || ':' || x.total, ',') FROM credentials.identity_completion_student_list(NULL, NULL, prog, NULL, 'blood', NULL, 50, 0) x);
+    l_photo := (SELECT string_agg(left(x.name, 13) || ':' || x.total, ',') FROM credentials.identity_completion_student_list(NULL, NULL, prog, NULL, 'PHOTO', NULL, 50, 0) x);
+    l_any := (SELECT string_agg(left(x.name, 13) || ':' || x.complete, ',') FROM credentials.identity_completion_student_list('ZZF749', NULL, NULL, NULL, 'ANY', NULL, 50, 0) x);
+    l_matric := (SELECT string_agg(left(x.name, 13), ',') FROM credentials.identity_completion_student_list(NULL, NULL, prog, NULL, 'MATRIC', NULL, 50, 0) x);
+    l_q := (SELECT string_agg(x.matric_no || ':' || x.blood_group || ':' || x.blood_confirmed || ':' || x.has_photo, ',')
+              FROM credentials.identity_completion_student_list(NULL, NULL, prog, NULL, NULL, 'photojamb', 50, 0) x);
+    l_page := (SELECT string_agg(left(x.name, 13) || ':' || x.total, ',') FROM credentials.identity_completion_student_list(NULL, NULL, prog, NULL, 'ANY', NULL, 1, 1) x);
+    SELECT count(*) FILTER (WHERE r.has_photo IS DISTINCT FROM credentials.has_photo(r.student_id)
+                              OR r.blood_group IS DISTINCT FROM credentials.student_blood_group(r.student_id)
+                              OR r.blood_confirmed IS DISTINCT FROM (credentials.blood_group_confirmed('STUDENT', r.student_id) IS NOT NULL)),
+           count(*)
+      INTO agree_bad, agree_n FROM credentials.identity_student_rows(NULL, NULL, NULL, NULL) r;
+    -- the staff
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email, ended_on, ended_reason) VALUES
+        (sa, 'P7490021', 'ZZSTAFFV749', 'A Complete', 'sa.v749@example.test', NULL, NULL),
+        (sb, 'P7490022', 'ZZSTAFFV749', 'B Register', 'sb.v749@example.test', NULL, NULL),
+        (sc, 'P7490023', 'ZZSTAFFV749', 'C Nothing', NULL, NULL, NULL),
+        (sd, 'P7490024', 'ZZSTAFFV749', 'D Left', NULL, current_date - 10, 'retired (check V749)');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), sa, 'lecturer', 'department', 'MTC', 'check V749', who, current_date),
+           (gen_random_uuid(), sc, 'lecturer', 'department', 'MTC', 'check V749', who, current_date);
+    INSERT INTO iam.credential (person_id, username, password_hash, set_by)
+    VALUES (sa, 'zz749sa', '$2a$12$checkv749notarealhash' || repeat('x', 31), who), (sc, 'zz749sc', '$2a$12$checkv749notarealhash' || repeat('y', 31), who);
+    INSERT INTO hrm.staff_record (person_id, category, home_faculty, home_department) VALUES
+        (sa, 'ACADEMIC', 'ZZF749', NULL), (sb, 'NON_ACADEMIC', 'ZZF749', NULL), (sc, 'ACADEMIC', NULL, 'ZZD749'), (sd, 'ACADEMIC', 'ZZF749', NULL);
+    INSERT INTO credentials.staff_card_detail (person_id, blood_group, set_by, set_office) VALUES (sb, 'AB+', who, 'hrm');
+    INSERT INTO iam.person_email_verified (person_id, email, verified_at) VALUES (sa, 'sa.v749@example.test', now());
+    PERFORM set_config('moaum.actor_id', sb::text, true);
+    PERFORM hrm.set_my_staff_photo('image/png', 4, '\x89504e47'::bytea, NULL);
+    PERFORM set_config('moaum.actor_id', sa::text, true);
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    PERFORM credentials.confirm_my_blood_group('O-', true);
+    sub := hrm.add_my_staff_photo_submission('image/jpeg', 4, '\xffd8ffd9'::bytea, NULL, '\xffd8ffe0'::bytea, NULL, 600, 750, '{}'::jsonb, '{}'::jsonb, 'GOOD', NULL);
+    PERFORM hrm.accept_my_staff_photo(sub);
+    state_sa := iam.staff_identity_state(sa);
+    PERFORM set_config('moaum.actor_id', sc::text, true);
+    PERFORM iam.email_code_issue('sc.v749@example.test', encode(sha256(convert_to('123456', 'UTF8')), 'hex'));
+    SELECT * INTO cf FROM credentials.identity_completion_staff('ZZF749', NULL, NULL);
+    cf_acad := (SELECT total FROM credentials.identity_completion_staff('ZZF749', NULL, 'academic'));
+    cf_unit := (SELECT total FROM credentials.identity_completion_staff(NULL, 'ZZD749', NULL));
+    f_email := (SELECT string_agg(x.staff_number || ':' || x.total, ',') FROM credentials.identity_completion_staff_list('ZZF749', NULL, NULL, 'EMAIL', NULL, 50, 0) x);
+    f_any := (SELECT string_agg(x.staff_number || ':' || x.complete || ':' || x.can_sign_in, ',') FROM credentials.identity_completion_staff_list('ZZF749', NULL, NULL, NULL, NULL, 50, 0) x);
+    f_q := (SELECT string_agg(x.staff_number, ',') FROM credentials.identity_completion_staff_list('ZZF749', NULL, NULL, 'ANY', 'nothing', 50, 0) x);
+    f_pending := (SELECT x.email_pending FROM credentials.identity_completion_staff_list(NULL, 'ZZD749', NULL, NULL, NULL, 50, 0) x);
+    RAISE EXCEPTION 'the V749 report check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V749 report check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V749: the identity completion reports count the students in study and the staff in service by what each has and lacks, filtered, listed and paged',
+        coalesce(cs.total = 4 AND cs.blood_confirmed = 2 AND cs.blood_missing = 1 AND cs.blood_unconfirmed = 1 AND cs.with_photo = 2 AND cs.without_photo = 2
+                 AND cs.without_matric = 1 AND cs.complete = 1 AND cs.needs_update = 3 AND cs_level = 1 AND cs_faculty = 4 AND cs_dept = 4
+                 AND l_blood = 'ZZCHECKV749 B:2,ZZCHECKV749 C:2' AND l_photo = 'ZZCHECKV749 C:2,ZZCHECKV749 D:2'
+                 AND l_any = 'ZZCHECKV749 B:false,ZZCHECKV749 C:false,ZZCHECKV749 D:false' AND l_matric = 'ZZCHECKV749 C'
+                 AND l_q = 'MOAU/ZZV/74/7492:O+:false:true' AND l_page = 'ZZCHECKV749 C:3' AND agree_bad = 0 AND agree_n >= 4
+                 AND cf.total = 3 AND cf.with_photo = 2 AND cf.without_photo = 1 AND cf.photo_enhanced = 1 AND cf.email_verified = 1
+                 AND cf.email_unverified = 1 AND cf.email_missing = 1 AND cf.blood_confirmed = 1 AND cf.blood_missing = 1 AND cf.blood_unconfirmed = 1
+                 AND cf.complete = 1 AND cf.no_sign_in = 1 AND cf_acad = 2 AND cf_unit = 1
+                 AND f_email = 'P7490022:2,P7490023:2' AND f_any = 'P7490021:true:true,P7490022:false:false,P7490023:false:true'
+                 AND f_q = 'P7490023' AND f_pending = 'sc.v749@example.test' AND (state_sa->>'complete')::boolean, false),
+        format('students %s | level %s faculty %s department %s | blood %s | photo %s | any %s | matric %s | q %s | page %s | agree %s of %s | staff %s | academic %s unit %s | e-mail %s | all %s | q %s | pending %s | complete %s',
+               to_jsonb(cs), cs_level, cs_faculty, cs_dept, l_blood, l_photo, l_any, l_matric, l_q, l_page, agree_bad, agree_n, to_jsonb(cf), cf_acad, cf_unit,
+               f_email, f_any, f_q, f_pending, state_sa->>'complete'));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

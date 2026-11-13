@@ -128,6 +128,36 @@ class IamController {
         } catch (RuntimeException notAsked) {
             // the prompt is a convenience: a record that cannot be read never fails the sign-in
         }
+        /* V749: the blood group the identity card prints, not yet confirmed — asked on the student's dashboard at every visit until the
+         * student confirms it (or the card desk records it); with the value on the record, if any, to start from */
+        try {
+            if (authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()))) {
+                Map<String, Object> b = waiting.bloodGroupPrompt(UUID.fromString(authentication.getName()));
+                if (b != null) me.put("bloodGroupPrompt", b);
+            }
+        } catch (RuntimeException notAsked) {
+            // a convenience: never fails the sign-in
+        }
+        /* V749: a member of staff's identity information — the photograph enhanced and accepted, the e-mail verified, the blood group
+         * confirmed — asked on the dashboard until all three are done; only of a member of staff in the University's service (V698) */
+        try {
+            boolean student = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()));
+            boolean applicant = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_applicant".equals(a.getAuthority()));
+            boolean staff = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().startsWith("OFFICE_") && !"OFFICE_putmecbt".equals(a.getAuthority()));
+            if (staff && !student && !applicant) {
+                Map<String, Object> s = waiting.staffIdentity(UUID.fromString(authentication.getName()));
+                if (Boolean.TRUE.equals(s.get("staff")) && !Boolean.TRUE.equals(s.get("complete"))) {
+                    Map<String, Object> p = new LinkedHashMap<>();
+                    p.put("photo", s.get("photo"));
+                    p.put("email", s.get("email"));
+                    p.put("bloodGroup", s.get("bloodGroup"));
+                    p.put("complete", false);
+                    me.put("identityPrompt", p);
+                }
+            }
+        } catch (RuntimeException notAsked) {
+            // a convenience: never fails the sign-in
+        }
         if (authentication instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken t) {
             me.put("sessionId", t.getToken().getClaimAsString("sid"));
         }

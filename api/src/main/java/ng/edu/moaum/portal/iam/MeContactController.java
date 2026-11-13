@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * V425: a staff member's or lecturer's own e-mail address and phone number — the person's record, where every notice and
  * every password reset reaches them. Read and written by the person themselves; the Registry's edit of another person's
- * contact stays on /persons/{id}/contact. A student's contact is on the student portal, not here.
+ * contact stays on /persons/{id}/contact. A student's contact is on the student portal, not here. V749: the e-mail changes only by
+ * a code sent to the new address (My identity, /api/v1/staff/identity/email/code): here it is the one on record or blank (no
+ * change), and the phone is saved.
  */
 @RestController
 @RequestMapping("/api/v1/staff/contact")
@@ -51,7 +53,7 @@ class MeContactController {
     @PutMapping
     @Transactional
     Map<String, Object> save(@Valid @RequestBody ContactIn in) {
-        UUID me = AuditContextHolder.required().actorId();
+        AuditContextHolder.required();   // the person themselves, signed in: the database takes them from the audit context
         String email = in.email() == null || in.email().isBlank() ? null : in.email().trim();
         String phone = in.phone() == null || in.phone().isBlank() ? null : in.phone().trim();
         if (email == null && phone == null) {
@@ -68,7 +70,9 @@ class MeContactController {
             throw new DomainRuleViolation("CONTACT_PHONE", "'" + phone + "' is not a Nigerian phone number.",
                     new DomainRuleViolation.Remedy("Give the number as 0801 234 5678 or 234 801 234 5678.", "Directorate of ICT"));
         }
-        people.setContact(me, email, phone);
+        // V749: the phone is saved; the e-mail stays as it is on record — a new address is refused (STAFF_EMAIL_VERIFY) with nothing
+        // saved, and is added at My identity by a code sent to it
+        people.setMyContact(email, phone);
         return mine();
     }
 }

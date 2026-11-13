@@ -1312,10 +1312,17 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT finance.new_gst_reference(:s, :ses)").param("s", student).param("ses", session).query(String.class).single();
     }
 
+    /** the notices sent to the student, newest first. V749: never a message that carries a secret for its mailbox alone
+     *  (platform.notice_carries_secret) — the code that confirms an e-mail or phone (V575), a password-reset link — so a contact is
+     *  confirmed only from the mailbox or phone that holds it, never from the dashboard. Read off the student's own messages
+     *  (ix_notice_about), the words tested only on them */
     List<Map<String, Object>> notices(UUID student) {
         return jdbc.sql("""
-                SELECT id, channel, recipient, subject, body, created_at, state, sent_at
-                  FROM platform.notice WHERE about_kind = 'student' AND about_id = :s ORDER BY created_at DESC LIMIT 30
+                SELECT x.id, x.channel, x.recipient, x.subject, x.body, x.created_at, x.state, x.sent_at
+                  FROM (SELECT n.id, n.channel, n.recipient, n.subject, n.body, n.created_at, n.state, n.sent_at, n.template_key
+                          FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = :s OFFSET 0) x
+                 WHERE NOT platform.notice_carries_secret(x.template_key, x.body)
+                 ORDER BY x.created_at DESC LIMIT 30
                 """).param("s", student).query().listOfRows();
     }
 

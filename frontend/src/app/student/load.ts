@@ -59,6 +59,8 @@ export async function loadStudent(opts: { gateOpen?: boolean } = {}): Promise<{ 
     // screens as on everyone else's (the password change page alone leaves them out: the password comes first)
     contactPrompt: who.ok ? who.data.contactPrompt ?? null : null,
     privacyPrompt: who.ok ? who.data.privacyPrompt ?? null : null,
+    // V749: a blood group missing or not confirmed, asked on the student's dashboard (Shell) until the student saves it
+    bloodGroupPrompt: who.ok ? who.data.bloodGroupPrompt ?? null : null,
   };
   return { me, student: mine.data, gate };
 }

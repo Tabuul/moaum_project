@@ -88,20 +88,42 @@ public class FileMigrationJob {
         forgetOrphans();
     }
 
+    /** where the last pass of the orphan sweep stopped (created_at in UTC, ISO, and id): the next pass goes on from there and starts
+     *  again from the oldest once it reaches the end, so an object that cannot be removed is passed over, never taken again ahead of
+     *  every other (one sweep at a time: JobLock) */
+    private String orphanAfterAt;
+    private UUID orphanAfterId;
+
     /**
-     * an object no row points at any more (a photograph replaced by another, a document deleted) is removed;
-     * an hour's grace keeps an upload in progress out of reach. Whether a row points at it is asked of every table that keeps
-     * an object id (each uuid column named object_id, as the database lists them now), never of a list kept by hand: V348
-     * found that the JUPEB documents, added after the list was written, had every object swept away an hour after upload.
+     * the columns that hold a file object: every column with a foreign key to platform.file_object (V749: the staff photograph's
+     * uploads keep theirs in original_object, enhanced_object and previous_photo_object, the institution's logo and the card
+     * signatory's signature in columns of their own names), and every uuid column named object_id besides, as V348 read them — as the
+     * database lists them now, never a list kept by hand. Table schema, table name and column name, in order.
      */
-    void forgetOrphans() {
-        List<Map<String, Object>> holders = jdbc.sql("""
-                SELECT c.table_schema, c.table_name FROM information_schema.columns c JOIN information_schema.tables t
+    List<Map<String, Object>> holders() {
+        return jdbc.sql("""
+                SELECT DISTINCT n.nspname AS table_schema, r.relname AS table_name, a.attname AS column_name
+                  FROM pg_constraint k JOIN pg_class r ON r.oid = k.conrelid JOIN pg_namespace n ON n.oid = r.relnamespace
+                  JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
+                 WHERE k.contype = 'f' AND k.confrelid = 'platform.file_object'::regclass AND cardinality(k.conkey) = 1
+                   AND k.conrelid <> 'platform.file_object'::regclass
+                UNION
+                SELECT c.table_schema, c.table_name, c.column_name FROM information_schema.columns c JOIN information_schema.tables t
                     ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
                  WHERE c.column_name = 'object_id' AND c.data_type = 'uuid' AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
                    AND NOT (c.table_schema = 'platform' AND c.table_name = 'file_object')
-                 ORDER BY 1, 2
+                 ORDER BY 1, 2, 3
                 """).query().listOfRows();
+    }
+
+    /**
+     * an object no row points at any more (a photograph replaced by another, a document deleted) is removed;
+     * an hour's grace keeps an upload in progress out of reach. Whether a row points at it is asked of every column that holds one
+     * ({@link #holders}), never of a list kept by hand: V348 found that the JUPEB documents, added after the list was written, had
+     * every object swept away an hour after upload. A hundred a pass, oldest first, each pass going on from where the last stopped.
+     */
+    void forgetOrphans() {
+        List<Map<String, Object>> holders = holders();
         if (holders.isEmpty()) {
             LOG.warn("files: no table holding object ids was found; nothing is removed");
             return;
@@ -109,10 +131,26 @@ public class FileMigrationJob {
         StringBuilder none = new StringBuilder();
         for (Map<String, Object> h : holders) {
             none.append(" AND NOT EXISTS (SELECT 1 FROM ").append(quoted(h.get("table_schema"))).append('.').append(quoted(h.get("table_name")))
-                    .append(" t WHERE t.object_id = f.id)");
+                    .append(" t WHERE t.").append(quoted(h.get("column_name"))).append(" = f.id)");
         }
-        List<UUID> orphans = jdbc.sql("SELECT f.id FROM platform.file_object f WHERE f.created_at < now() - interval '1 hour'" + none + " LIMIT 100")
-                .query(UUID.class).list();
+        // the place kept as UTC in ISO form, read back the same whatever the session's DateStyle and time zone
+        String after = orphanAfterId == null ? "" : " AND (f.created_at, f.id) > (CAST(:at AS timestamp) AT TIME ZONE 'UTC', CAST(:id AS uuid))";
+        var query = jdbc.sql("SELECT f.id, to_char(f.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') AS at FROM platform.file_object f"
+                + " WHERE f.created_at < now() - interval '1 hour'"
+                + after + none + " ORDER BY f.created_at, f.id LIMIT 100");
+        if (orphanAfterId != null) {
+            query = query.param("at", orphanAfterAt).param("id", orphanAfterId);
+        }
+        List<Map<String, Object>> candidates = query.query().listOfRows();
+        if (candidates.size() < 100) {
+            orphanAfterAt = null;
+            orphanAfterId = null;
+        } else {
+            Map<String, Object> last = candidates.get(candidates.size() - 1);
+            orphanAfterAt = String.valueOf(last.get("at"));
+            orphanAfterId = (UUID) last.get("id");
+        }
+        List<UUID> orphans = candidates.stream().map(r -> (UUID) r.get("id")).toList();
         int n = 0;
         for (UUID id : orphans) {
             try {

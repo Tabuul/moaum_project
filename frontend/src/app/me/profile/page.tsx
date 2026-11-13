@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function ProfilePage() {
   const [me, profile] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
+    // V749: its e-mail is the address the person's record holds — shown only: a save sends none, and the API keeps the record's
     api<Record<string, unknown>>("/api/v1/staff/profile"),
   ]);
 

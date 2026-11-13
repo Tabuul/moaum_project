@@ -1,6 +1,5 @@
 package ng.edu.moaum.portal.staff;
 
-import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,7 +44,8 @@ class StaffController {
         return staff.profile(actor(authentication));
     }
 
-    /** The acting person edits their own profile whole. The DB takes the person from the audit context. */
+    /** The acting person edits their own profile whole. The DB takes the person from the audit context. V749: the e-mail sent with it
+     *  is not read — the profile is saved with the address on record, which changes only by a code at My identity */
     @PutMapping("/profile")
     Map<String, Object> saveProfile(Authentication authentication, @RequestBody Map<String, Object> body) {
         return staff.saveProfile(actor(authentication), body);
@@ -57,27 +57,15 @@ class StaffController {
         return staff.photo(actor(authentication));
     }
 
-    record PhotoIn(String contentType, String dataBase64) {
-    }
-
-    /** Upload or replace the acting person's photograph — JPEG or PNG, up to 2 MB, sent base64 in JSON. */
+    /** V749: retired. The card photograph is uploaded at My identity (/api/v1/staff/identity/photo): assessed and enhanced, the
+     *  original kept, and the card photograph only once its holder accepts it, the one it replaces kept too. This door put the file
+     *  straight on the card, unenhanced, with nothing kept of the photograph before it and nothing on the photograph's log; it now
+     *  says where to go and changes nothing */
     @PutMapping("/profile/photo")
-    Map<String, Object> savePhoto(@RequestBody PhotoIn body) {
-        String type = body == null || body.contentType() == null ? "" : body.contentType().trim().toLowerCase();
-        if (!type.equals("image/jpeg") && !type.equals("image/png")) {
-            throw new DomainRuleViolation("STAFF_PHOTO_TYPE", "A photograph is a JPEG or PNG image.");
-        }
-        byte[] content;
-        try {
-            content = Base64.getDecoder().decode(body.dataBase64() == null ? "" : body.dataBase64());
-        } catch (IllegalArgumentException notBase64) {
-            throw new DomainRuleViolation("STAFF_PHOTO_DATA", "The picture could not be read. Choose the picture again and upload it.");
-        }
-        if (content.length < 1 || content.length > 2_097_152) {
-            throw new DomainRuleViolation("STAFF_PHOTO_SIZE", "A photograph is between 1 byte and 2 MB.");
-        }
-        staff.savePhoto(type, content);
-        return Map.of("ok", true, "bytes", content.length);
+    Map<String, Object> savePhoto() {
+        throw new DomainRuleViolation("STAFF_PHOTO_USE_IDENTITY",
+                "Upload your photograph at My identity — it is enhanced and you accept it before it becomes your card photograph.",
+                new DomainRuleViolation.Remedy("Open My identity and upload the photograph there.", "You"));
     }
 
     @GetMapping("/college/{code}")

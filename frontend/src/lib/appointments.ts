@@ -24,6 +24,44 @@ export interface RowCheck {
   staff_no: string; category: string; grade: string; step: number | null; appointment_date: string | null; department: string | null; unit: string | null;
 }
 
+/** V749: an e-mail another person holds verified is theirs, so the appointment is made without it — the check warns first, and the
+ *  answer names the address left off: POST /hr/appointments answers { employmentId, emailLeftOff }, an upload's appointed row carries
+ *  email_left_off (hrm.appoint_many). Between the check and the appointment its holder may verify it, so the answer is what is told */
+export interface AppointedOne { employmentId: string; emailLeftOff?: string | null }
+
+/** an upload's answer (hrm.appoint_many): each row appointed, or not with its reasons */
+export interface UploadRow { row: string; staff_no: string; name: string; appointed: boolean; problems?: string[]; email_left_off?: string | null }
+export interface UploadResult { appointed: number; skipped: number; rows: UploadRow[] }
+
+/** the words for an address left off: another person's, verified on their record */
+export function leftOffWords(email: string): string {
+  return `appointed without the e-mail ${email}, another person's verified address`;
+}
+
+/** the single appointment's message: the name, and the address left off where there was one */
+export function appointedMessage(name: string, a: AppointedOne | null | undefined): { text: string; kind: "ok" | "warn" } {
+  const off = a?.emailLeftOff?.trim();
+  return off
+    ? { text: `Appointed: ${name}, without the e-mail ${off}: it is another person's, verified on their record. The employment record is active; the member of staff verifies their own address at My identity.`, kind: "warn" }
+    : { text: `Appointed: ${name}. The employment record is active.`, kind: "ok" };
+}
+
+/** the upload's result note, in the file's order: each row not appointed with its reasons, and each appointed one whose e-mail was
+ *  left off */
+export function uploadResultLines(res: UploadResult): { row: string; text: string }[] {
+  const out: { row: string; text: string }[] = [];
+  for (const r of res.rows ?? []) {
+    if (!r.appointed) out.push({ row: r.row, text: `Row ${r.row} (${r.staff_no}): ${(r.problems ?? []).join(" ")}` });
+    else if (r.email_left_off?.trim()) out.push({ row: r.row, text: `Row ${r.row} (${r.staff_no}): ${leftOffWords(r.email_left_off.trim())}` });
+  }
+  return out;
+}
+
+/** how many of an upload's appointed rows had their e-mail left off */
+export function leftOffCount(res: UploadResult): number {
+  return (res.rows ?? []).filter((r) => r.appointed && r.email_left_off?.trim()).length;
+}
+
 /** the fields of an appointment, as the form and the upload send them */
 export const FIELDS = ["staff_no", "surname", "given_names", "sex", "email", "phone", "category", "grade", "step", "appointment_date", "department", "unit",
   "rank", "bank_name", "account_name", "account_number", "pension_pin"] as const;

@@ -48,7 +48,10 @@ class BiodataGateInterceptor implements HandlerInterceptor, WebMvcConfigurer {
             // V720: school fees are seen and paid whatever the biodata stands at — a balance owed never waits on a form
             "/api/v1/me/fees", "/api/v1/me/fees/references", "/api/v1/me/historical-fees", "/api/v1/me/historical-fees/references",
             "/api/v1/me/outstanding-fees", "/api/v1/me/outstanding-fees/references", "/api/v1/payments/checkout", "/api/v1/payments/verify",
-            "/api/v1/payments/gateways");
+            "/api/v1/payments/gateways",
+            // V749: the blood group the card waits on is a biodata item, and the biodata is open here (the fee gate reads this list
+            // too); the forced password change (V485) still comes first
+            "/api/v1/me/blood-group");
     /** … and everything under these */
     private static final List<String> OPEN_UNDER = List.of(
             "/api/v1/me/biodata", "/api/v1/me/notices", "/api/v1/me/notifications", "/api/v1/me/requests", "/api/v1/student-auth", "/api/v1/manual",

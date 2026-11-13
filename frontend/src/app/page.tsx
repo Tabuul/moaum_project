@@ -34,6 +34,7 @@ import type { HostelDeskData } from "@/lib/hostel";
 import type { MySheet, PipelineView, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
 import { currentSession } from "@/lib/sessions";
+import { officeHome } from "@/lib/home-routes";
 
 export const dynamic = "force-dynamic";
 
@@ -57,9 +58,6 @@ export default async function DashboardPage() {
   /* an applicant's home is their application, not an office's dashboard */
   /* a JUPEB candidate signs in as an applicant too (V339); the sign-in leaves a cookie that sends them to their own portal */
   if (office === "applicant") redirect((await cookies()).get("moaum_jupeb") ? "/jupeb/portal" : "/applicant");
-  if (office === "jupeb") redirect("/jupeb");
-  /* V379: the Centre for Continuing Education's home is its desk */
-  if (office === "cce") redirect("/cce");
   if (office === "student") {
     /* V603: the student's dashboard as the API resolves it from the programme on the record — the College's own student area
        for a programme the College runs (MBBS) from 200 Level; every other student, College of Health Sciences or not, keeps
@@ -68,25 +66,11 @@ export default async function DashboardPage() {
     if (sme.ok && sme.data.dashboard === "COLLEGE") redirect("/college/student");
     redirect("/student");
   }
-  /* the administrator's home is the whole institution at one desk (proto part18) */
-  if (office === "admin") redirect("/admin");
-  /* the Vice-Chancellor's home is the institutional overview (menus.ts home t/overview) */
-  if (office === "vc") redirect("/overview");
-  /* the Librarian's home is the identity-card desk — "Card printing" (menus.ts home t/idcards); the
-     circulation figures have their own desk under Library → Circulation */
-  if (office === "library") redirect("/credentials/idcards");
-  /* the College of Health Sciences officers land in the College module — its own dashboard area.
-     They sign in through this same login (single sign-on); the login gate routes them here. */
-  if (office === "provost" || office === "collegesecretary" || office === "financecontroller") redirect("/college/dashboard");
-  if (office === "mbbscoordinator") redirect("/college/coordinator");
-  /* the ICT Support Agent's home is the desk's queue (V251) */
-  if (office === "ictagent") redirect("/helpdesk");
-  /* an external examiner's home is their own workspace (V254) */
-  if (office === "extexaminer") redirect("/examiner");
-  /* the Linkages & Partnerships office and the Legal Officer work from the partnerships desk (V658) */
-  if (office === "linkages" || office === "legal") redirect("/partnerships");
-  /* the preliminary and proficiency offices work from their desk (V446, V701): each opens on its own programmes */
-  if (office === "prelim" || office === "prelimtech") redirect("/preliminary");
+  /* the offices whose home is a desk of their own — JUPEB, the CCE, the administrator, the Vice-Chancellor, the Librarian, the
+     College officers, the ICT Support Agent, the external examiner, partnerships, the preliminary desks — are sent there; the one
+     list (lib/home-routes) is also where the Shell reads which page is the person's dashboard (V749's prompts) */
+  const home = officeHome(office);
+  if (home !== "/") redirect(home);
   const session = currentSession(sessions.ok ? sessions.data : []);
   /* the lecturer's dashboard is the sheets they owe, read from the rolls (V013) */
   const mine = office === "lecturer" ? await api<MySheet[]>(`/api/v1/results/mine?session=${encodeURIComponent(session)}`) : null;

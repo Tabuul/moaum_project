@@ -54,10 +54,20 @@ public class StaffService {
         }
         return staff.profileJson(actor)
                 .map(s -> json.readValue(s, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { }))
-                .orElseGet(this::empty);
+                .orElseGet(() -> {
+                    // V749: the address the University writes to is the one on record, profile or none
+                    Map<String, Object> m = empty();
+                    m.put("email", staff.recordEmail(actor).orElse(null));
+                    return m;
+                });
     }
 
-    /** Save the acting person's profile and read it back. The DB takes the person from the audit context, never the caller. */
+    /**
+     * Save the acting person's profile and read it back. The DB takes the person from the audit context, never the caller. V749: the
+     * e-mail changes only by a code sent to the new address (My identity), so the e-mail the body carries is not read: the profile is
+     * saved with the address on record (iam.person), whatever the page held when it was opened — or, where the record has none, with
+     * the profile's own address, kept (one no other record holds).
+     */
     @Transactional
     public Map<String, Object> saveProfile(UUID actor, Map<String, Object> body) {
         staff.saveProfile(json.writeValueAsString(body == null ? Map.of() : body));
@@ -70,11 +80,6 @@ public class StaffService {
             throw new NotFound("staff-photo", "me");
         }
         return staff.photo(actor).orElseThrow(() -> new NotFound("staff-photo", actor.toString()));
-    }
-
-    @Transactional
-    public void savePhoto(String contentType, byte[] content) {
-        staff.savePhoto(contentType, content.length, content);
     }
 
     private Map<String, Object> empty() {

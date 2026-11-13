@@ -189,6 +189,12 @@ class StudentRepository {
                 .param("id", student).param("f", field).query(String.class).optional();
     }
 
+    /** V749: a blood group as the card reads it (credentials.blood_group_of: one of the eight, the common spellings read), or null */
+    String bloodGroupOf(String value) {
+        java.util.List<String> g = jdbc.sql("SELECT credentials.blood_group_of(:v)").param("v", value, Types.VARCHAR).query(String.class).list();
+        return g.isEmpty() ? null : g.get(0);
+    }
+
     void writeBiodata(UUID student, String field, String value) {
         jdbc.sql("""
                 INSERT INTO people.biodata (student_id, field, value) VALUES (:id, :f, :v)

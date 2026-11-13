@@ -252,6 +252,9 @@ class StudentPortalIT {
         assertThat(it.call(ItSupport.token("library"), HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of())
                 .getStatusCode().value()).isEqualTo(403);
         String security = ItSupport.token("security");
+        // V749: and on a confirmed blood group, which the student confirms on the dashboard
+        assertThat(it.get(token, "/api/v1/iam/me").getBody()).containsKey("bloodGroupPrompt");
+        assertThat(it.call(token, HttpMethod.PUT, "/api/v1/me/blood-group", Map.of("bloodGroup", "A+", "confirmed", true)).getStatusCode().value()).isEqualTo(200);
         ResponseEntity<Map> card = it.call(security, HttpMethod.POST, "/api/v1/credentials/identity-cards/students/" + student + "/issue", Map.of());
         assertThat(card.getStatusCode().value()).as(String.valueOf(card.getBody())).isEqualTo(200);
         assertThat(String.valueOf(card.getBody().get("cardNo"))).startsWith("MOAUM/ID/");

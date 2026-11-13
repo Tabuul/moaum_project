@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { actionsFor, cardStateWord, eligibilityWords, eventWord, reasonWord, BLOOD_GROUPS } from "./idcard-desk.ts";
+import { actionsFor, cardStateWord, deskBloodGroup, eligibilityWords, eventWord, reasonWord, BLOOD_GROUPS } from "./idcard-desk.ts";
 
 test("the card's states and the replacement reasons read in words (V605)", () => {
   assert.deepEqual(cardStateWord(null), ["Not printed", "grey"]);
@@ -42,4 +42,23 @@ test("the eligibility reading never names clearance, and the actions follow the 
 
 test("the blood groups the card prints (V622)", () => {
   assert.deepEqual([...BLOOD_GROUPS], ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]);
+});
+
+test("the card desk confirms a blood group the record shows unconfirmed, and only corrects a confirmed one (V749)", () => {
+  const unconfirmed = { eligible: false, reasons: ["Blood group not yet confirmed — the student confirms it on their dashboard, or the card desk records it"],
+    checks: { in_study: true, matric: true, photo: true, fees: true, blood_group: false }, bloodGroup: null };
+  // the group shown, saved as it stands, confirms it: the save is open, and the record says it is not confirmed
+  assert.deepEqual(deskBloodGroup(unconfirmed, "O+", "O+"), { confirmed: false, label: "Confirm the blood group", shown: "O+ · not confirmed", canSave: true });
+  assert.equal(deskBloodGroup(unconfirmed, "O+", "A-").canSave, true);
+  assert.equal(deskBloodGroup(unconfirmed, "O+", "").canSave, false);
+  assert.equal(deskBloodGroup(unconfirmed, "O+", "O positive").canSave, false);
+  // nothing on the record: added
+  assert.deepEqual(deskBloodGroup(unconfirmed, null, ""), { confirmed: false, label: "Add the blood group", shown: "Not on record", canSave: false });
+  assert.equal(deskBloodGroup(unconfirmed, null, "B+").canSave, true);
+  // confirmed: corrected only, never saved unchanged
+  const confirmed = { eligible: true, reasons: [], checks: { in_study: true, matric: true, photo: true, fees: true, blood_group: true }, bloodGroup: "O+" };
+  assert.deepEqual(deskBloodGroup(confirmed, "O+", "O+"), { confirmed: true, label: "Correct the blood group", shown: "O+", canSave: false });
+  assert.equal(deskBloodGroup(confirmed, "O+", "AB-").canSave, true);
+  // an eligibility read before V749 says nothing of it: the desk as it was
+  assert.deepEqual(deskBloodGroup({ eligible: true, reasons: [] }, "B-", "B-"), { confirmed: true, label: "Correct the blood group", shown: "B-", canSave: false });
 });

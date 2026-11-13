@@ -21,9 +21,11 @@ import org.springframework.stereotype.Repository;
 class WaitingRepository {
 
     private final JdbcClient jdbc;
+    private final tools.jackson.databind.ObjectMapper json;
 
-    WaitingRepository(JdbcClient jdbc) {
+    WaitingRepository(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
         this.jdbc = jdbc;
+        this.json = json;
     }
 
     Map<String, String> waiting() {
@@ -94,6 +96,24 @@ class WaitingRepository {
     List<Map<String, Object>> policyAcceptanceNeeded(String subjectKind, UUID subject) {
         return jdbc.sql("SELECT document_id, kind, version, title, effective_on::text AS effective_on FROM platform.policy_acceptance_needed(:k, :id)")
                 .param("k", subjectKind).param("id", subject).query().listOfRows();
+    }
+
+    /** V749: a student whose blood group the card would print is not confirmed (by the student, or recorded at the card desk): the
+     *  value on the record to start from (absent when there is none); null when it is confirmed — and while the student must change
+     *  their password (V485), which comes first and is all that is open until it is done */
+    Map<String, Object> bloodGroupPrompt(UUID student) {
+        return jdbc.sql("""
+                SELECT credentials.student_blood_group(s.id) AS current FROM people.student s
+                 WHERE s.id = :s AND credentials.blood_group_confirmed('STUDENT', s.id) IS NULL
+                   AND NOT coalesce((SELECT a.must_change FROM iam.student_account a WHERE a.student_id = s.id), false)
+                """).param("s", student).query().listOfRows().stream().findFirst().orElse(null);
+    }
+
+    /** V749: a member of staff's identity information (iam.staff_identity_state): in service, the photograph, the e-mail, the blood
+     *  group, and whether all three are done */
+    Map<String, Object> staffIdentity(UUID person) {
+        String j = jdbc.sql("SELECT iam.staff_identity_state(:p)::text").param("p", person).query(String.class).single();
+        return json.readValue(j, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     private static void count(Map<String, String> out, String item, Object n) {

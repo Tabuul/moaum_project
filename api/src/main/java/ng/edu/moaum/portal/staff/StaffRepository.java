@@ -41,11 +41,13 @@ class StaffRepository {
                 .list();
     }
 
-    /** The acting person's own profile as one JSON object, camel-cased for the portal, or empty when they have none yet. */
+    /** The acting person's own profile as one JSON object, camel-cased for the portal, or empty when they have none yet. V749: the
+     *  e-mail is the one on record (iam.person), the address the University writes to and the one a save writes into the profile —
+     *  the profile's own copy can lag behind an office's correction */
     Optional<String> profileJson(UUID actor) {
         return jdbc.sql("""
                 SELECT jsonb_build_object(
-                    'email', sp.email, 'phone', sp.phone, 'department', sp.department,
+                    'email', (SELECT pe.email FROM iam.person pe WHERE pe.id = sp.person_id), 'phone', sp.phone, 'department', sp.department,
                     'faculty', sp.faculty, 'responsibility', sp.responsibility,
                     'scholarUrl', sp.scholar_url, 'orcid', sp.orcid,
                     'researchInterests', sp.research_interests,
@@ -66,23 +68,44 @@ class StaffRepository {
                 .optional();
     }
 
-    /** Upsert the acting person's profile from one JSON object; the function takes the person from the audit context. */
+    /** Upsert the acting person's profile from one JSON object; the function takes the person from the audit context. V749: the
+     *  e-mail is never the caller's. The address on record (iam.person, of the person in the audit context) is written in its place,
+     *  trimmed, or none where it is not one the profile can hold (ck_sp_email) — so a page opened before the address changed (verified
+     *  at My identity, or corrected by an office) saves the rest. Where the record has no address at all, the profile keeps its own —
+     *  one it can hold that no other record holds — rather than losing it (Human Resources' reach falls back on it), and V425's copy
+     *  puts it on the record, as V749 put such an address there once; an office that clears the record clears the profile too
+     *  (iam.set_person_contact), so this never brings back what an office took off. The record is locked as it is read: the
+     *  profile's contact is copied back to it (hrm.staff_profile_contact, V425), and a code verified or an office's correction in the
+     *  same instant waits for this save rather than being overwritten by the address read before it (only the record is locked here,
+     *  never an address, so the address-then-record order of those doors stands) */
     void saveProfile(String profileJson) {
-        jdbc.sql("SELECT hrm.save_my_staff_profile(:j::jsonb)").param("j", profileJson).query().singleRow();
+        jdbc.sql("""
+                WITH me AS (SELECT pe.id, pe.email FROM iam.person pe WHERE pe.id = nullif(current_setting('moaum.actor_id', true), '')::uuid FOR UPDATE)
+                SELECT hrm.save_my_staff_profile(CAST(:j AS jsonb) || jsonb_build_object('email',
+                           (SELECT CASE WHEN btrim(m.email) ~ '^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$' THEN btrim(m.email)
+                                        WHEN nullif(btrim(coalesce(m.email, '')), '') IS NULL THEN
+                                            (SELECT btrim(sp.email) FROM hrm.staff_profile sp
+                                              WHERE sp.person_id = m.id AND btrim(sp.email) ~ '^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$'
+                                                AND NOT EXISTS (SELECT 1 FROM iam.person o WHERE o.id <> m.id AND lower(btrim(o.email)) = lower(btrim(sp.email))))
+                                   END FROM me m)))
+                """).param("j", profileJson).query().singleRow();
     }
 
+    /** V749: the acting person's e-mail on record, or none */
+    Optional<String> recordEmail(UUID actor) {
+        return jdbc.sql("SELECT email FROM iam.person WHERE id = :id AND email IS NOT NULL").param("id", actor).query(String.class).optional();
+    }
+
+    /** V749: the bytes from the row or, where the photograph is in the file store (object_id), from the store — the row's own bytes
+     *  alone answered nothing for a photograph kept there */
     Optional<StaffMe.Photo> photo(UUID actor) {
-        return jdbc.sql("SELECT content_type, encode(content, 'base64') AS data_base64 FROM hrm.staff_photo WHERE person_id = :id")
+        return jdbc.sql("SELECT content_type, content, object_id FROM hrm.staff_photo WHERE person_id = :id")
                 .param("id", actor)
-                .query(StaffMe.Photo.class)
-                .optional();
-    }
-
-    void savePhoto(String contentType, long bytes, byte[] content) {
-        java.util.UUID oid = files.store("hrm.staff_photo", "me", null, contentType, content);
-        jdbc.sql("SELECT hrm.set_my_staff_photo(:ct, :b, :c, :o)")
-                .param("ct", contentType).param("b", bytes).param("c", oid == null ? content : null, java.sql.Types.BINARY).param("o", oid, java.sql.Types.OTHER)
-                .query().singleRow();
+                .query().listOfRows().stream().findFirst()
+                .map(r -> {
+                    byte[] b = files.resolve((byte[]) r.get("content"), (UUID) r.get("object_id"));
+                    return new StaffMe.Photo(String.valueOf(r.get("content_type")), b == null ? null : java.util.Base64.getEncoder().encodeToString(b));
+                });
     }
 
     Optional<College.Row> college(String code) {
