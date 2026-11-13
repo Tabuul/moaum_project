@@ -22,6 +22,8 @@ interface Found {
   account_id: string; session: string; jamb_key: string | null; application_no: string | null; surname: string; other_names: string; email: string; phone: string;
   failed_attempts: number; locked: boolean; must_change: boolean; temp_expires_at: string | null; last_signed_in_at: string | null; last_reset_at: string | null;
   last_reset_method: string | null; resets: number; on_default?: boolean; default_number?: string | null;
+  /** V745: the old portal's application number of a preliminary applicant brought across */
+  legacy_application_no?: string | null;
 }
 export interface ResetRow {
   id: string; account_id: string; method: string; reason: string; sent_to: string | null; expires_at: string; was_locked: boolean; sessions_ended: number;
@@ -32,6 +34,7 @@ interface Account {
   accountId: string; name: string; jambKey: string | null; applicationNo: string | null; session: string; email: string; phone: string; failedAttempts: number;
   locked: boolean; mustChange: boolean; temporaryUntil: string | null; firstSignIn: boolean; lastSignedIn: string | null; resets: ResetRow[];
   defaultNumber: string | null; defaultKind: "JAMB" | "APPLICATION";
+  legacyNo?: string | null;
 }
 interface Done { method: string; number?: string; numberKind?: string; expiresAt?: string; sentTo?: string; note: string; wasLocked?: boolean }
 
@@ -106,13 +109,13 @@ export function ApplicantPasswords({ office, history, problem: loadProblem, init
           </PBody>
           {found ? (found.length ? (
             <DTable pageSize={25} cols={["S/N|num", "Applicant", "JAMB number", "Application", "Session", "Account|mid", "Last reset", ""]}
-              texts={found.map((f) => `${f.surname} ${f.other_names} ${f.jamb_key ?? ""} ${f.application_no ?? ""} ${f.email}`)}
+              texts={found.map((f) => `${f.surname} ${f.other_names} ${f.jamb_key ?? ""} ${f.application_no ?? ""} ${f.legacy_application_no ?? ""} ${f.email}`)}
               rows={found.map((f, i) => {
                 const [word, kind] = accountState(f);
                 return [
                   <span key="n" className="tnum sub2">{i + 1}</span>,
                   <span key="a"><b>{f.surname}</b>, {f.other_names}<div className="sub2">{f.email} · {f.phone}</div></span>,
-                  <span key="j" className="tnum">{f.jamb_key ?? "—"}</span>, <span key="p" className="tnum">{f.application_no ?? "—"}</span>, <span key="s">{f.session}</span>,
+                  <span key="j" className="tnum">{f.jamb_key ?? "—"}</span>, <span key="p" className="tnum">{f.application_no ?? "—"}{f.legacy_application_no ? <div className="sub2">old portal: {f.legacy_application_no}</div> : null}</span>, <span key="s">{f.session}</span>,
                   <Pil key="t" kind={kind}>{word}</Pil>,
                   <span key="r" className="sub2">{f.last_reset_at ? `${RESET_METHOD[f.last_reset_method ?? ""] ?? f.last_reset_method} · ${when(f.last_reset_at)}` : "—"}</span>,
                   <Btn key="o" kind="secondary" size="sm" onClick={() => void open(f.account_id)}>Reset password</Btn>,
@@ -151,7 +154,7 @@ export function ApplicantPasswords({ office, history, problem: loadProblem, init
             ) : <Note kind="ok" title="Reset link sent">{`Sent to ${done.sentTo ?? "the applicant"}. ${done.note}`}</Note>
           ) : (
             <>
-              <KvGrid pairs={[["Email", acct.email], ["Phone", acct.phone], ["Application", acct.applicationNo ?? "—"],
+              <KvGrid pairs={[["Email", acct.email], ["Phone", acct.phone], ["Application", acct.applicationNo ?? "—"], ...(acct.legacyNo ? [["Old portal number", acct.legacyNo] as [string, string]] : []),
                 ["Account", accountState(acct)[0]], ["Failed sign-ins", String(acct.failedAttempts)], ["Last signed in", when(acct.lastSignedIn)]]} />
               <div className="eyebrow mt-3">How</div>
               <label className="row row--inline row--tight mt-1"><input type="radio" name="apw-m" checked={method === "DEFAULT"} disabled={!acct.defaultNumber} onChange={() => setMethod("DEFAULT")} />

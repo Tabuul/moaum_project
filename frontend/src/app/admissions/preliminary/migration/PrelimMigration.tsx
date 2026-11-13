@@ -6,7 +6,7 @@
  *  confirmation, then the import with real progress. The programme of an upload is its section's, never the file's. The history
  *  of uploads; the old-portal application fees, held until the Bursary — never the officer who uploaded them — verifies them; the
  *  programme corrected by ICT between the two routes on the same application. What anyone may do is the server's to say. */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { Problem } from "@/lib/api";
 import { xlsx } from "@/lib/xlsx-write";
 import { loadCrest } from "@/lib/xlsx";
@@ -15,9 +15,10 @@ import { getInstitution, institutionLogoUrl } from "@/lib/document/institution-c
 import { useQueryNav } from "@/lib/query-nav";
 import { STATE, labelOf, naira, pcall, when } from "@/lib/preliminary";
 import {
-  ACTION, BATCH_STATE, FEE_STATE, HISTORY_HEAD, MATCH, MAX_BYTES, MAX_ROWS, MIGRATION_API, MIGRATION_HOME, PAYMENT, PRELIM_ROUTES, REPORT_HEAD, RESULT, VERDICT,
-  figuresOf, fileNameOf, firstProblem, historyLine, historyLines, legacyFeeOf, mayConfirmNew, num, pick, progressWords, ranges, readFile, reportLines,
-  routeChangeOf, rowLink, rowsOf, sha256Hex, str, templateOf, templateSheets, wordOf, words, type LegacyFee, type MigrationRow, type RowLinkAccess,
+  ACTION, BATCH_STATE, FEE_STATE, HISTORY_HEAD, IMPORT_REPORT_HEAD, MATCH, MAX_BYTES, MAX_ROWS, MIGRATION_API, MIGRATION_HOME, PAYMENT, PRELIM_ROUTES, REPORT_HEAD, RESULT,
+  VERDICT, feeAmountWords, figuresOf, fileNameOf, firstProblem, historyLine, historyLines, importReportLines, legacyFeeOf, mayConfirmNew, num, pick, progressWords,
+  ranges, readFile, reportLines, routeChangeOf, rowLink, rowsOf, sha256Hex, stillToDo, str, templateOf, templateSheets, wordOf, words, type LegacyFee, type MigrationRow,
+  type Programme, type RowLinkAccess,
 } from "@/lib/prelim-migration";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles, Two, KvGrid } from "@/components/proto/ui";
 import { Bar, Field, Modal } from "@/components/proto/blocks";
@@ -35,6 +36,11 @@ export interface Access {
 export type Tab = "upload" | "history" | "fees" | "corrections";
 
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/* V745: what reading the file said — the sheet read, other sheets holding applicants, columns not read — kept for the batch's panel in
+   this tab (sessionStorage, by batch id): the upload opens the new batch, whose panel would otherwise never show it */
+const READ_NOTE = "prelimmig.read.";
+type ReadNote = { sheet: string | null; notes: string[] };
+const noSubscription = () => () => {};
 const n0 = (v: number) => v.toLocaleString("en-GB");
 /** a route's application fee as /access gives it: a sum, or {application, portal, stated} */
 function feeWords(v: unknown): string {
@@ -47,11 +53,17 @@ function feeWords(v: unknown): string {
 }
 const windowWords = (v: unknown) => (typeof v === "string" ? v : str(v, "state")).toLowerCase().replace(/_/g, " ");
 
-export function PrelimMigration({ access, office, actorId, batch, batchProblem, view, app }: {
+export function PrelimMigration({ access, office, actorId, batch, batchProblem, view, app, sheet }: {
   access: Access; office: string | null; actorId: string | null; batch: Record<string, unknown> | null; batchProblem: Problem | null; view: Tab | null; app: string | null;
+  /** V745: the sheet of the file the upload just sent was read from (?sheet=, set by the upload) */
+  sheet: string | null;
 }) {
   const go = useQueryNav();
+  /* V745: why an import or its finish stopped, kept here: the upload's panel is drawn afresh from the server's batch after each refresh,
+     which would otherwise take the notice with it */
+  const [batchErr, setBatchErr] = useState<Problem | null>(null);
   const routes = PRELIM_ROUTES.map((r) => (access.routes ?? []).find((x) => x.route === r)).filter((x): x is AccessRoute => !!x);
+  const programmes: Programme[] = routes.map((r) => ({ route: r.route, name: r.name }));
   const nameOf = (r: string) => routes.find((x) => x.route === r)?.name ?? r;
   const readsUploads = access.mayRead !== false || access.mayMigrate;
   const readsCorrections = access.mayReadCorrections !== false || access.mayChangeProgramme;
@@ -77,7 +89,7 @@ export function PrelimMigration({ access, office, actorId, batch, batchProblem, 
         upload is the section it is uploaded in. Nothing is written until a file is checked and you confirm the import, and an application fee paid on the old
         portal counts as paid only once the Bursary verifies it.
       </Note>
-      <Tabs<Tab> label="Preliminary migration" value={tab} onChange={setTab} items={([
+      <Tabs<Tab> label="Preliminary applicant data migration" value={tab} onChange={setTab} items={([
         { id: "upload", label: "Upload" },
         { id: "history", label: "Import history" },
         { id: "fees", label: "Old-portal fees" },
@@ -87,7 +99,8 @@ export function PrelimMigration({ access, office, actorId, batch, batchProblem, 
         <>
           {routes.length ? (
             <div className="grid grid--2">
-              {routes.map((r) => <UploadCard key={r.route} r={r} mayMigrate={access.mayMigrate} onDone={(id) => go(`${MIGRATION_HOME}?batch=${id}`)} />)}
+              {routes.map((r) => <UploadCard key={r.route} r={r} programmes={programmes} mayMigrate={access.mayMigrate}
+                onDone={(id, read) => go(`${MIGRATION_HOME}?batch=${id}${read ? `&sheet=${encodeURIComponent(read)}` : ""}`)} />)}
             </div>
           ) : <Note kind="info" title="No preliminary programme to upload for">The server named no preliminary programme this office uploads or reads.</Note>}
           {!access.mayMigrate ? (
@@ -96,7 +109,9 @@ export function PrelimMigration({ access, office, actorId, batch, batchProblem, 
             </Note>
           ) : null}
           {batchProblem ? <ProblemNotice problem={batchProblem} /> : null}
-          {batch ? <BatchPanel key={[str(batch, "id"), str(batch, "state"), str(batch, "checkedAt"), num(batch, "imported"), num(batch, "ready"), num(batch, "requiresReview")].join("|")} b={batch} mayMigrate={access.mayMigrate} links={links} nameOf={nameOf} refresh={() => go(`${MIGRATION_HOME}?batch=${str(batch, "id")}`)} /> : null}
+          {batch ? <BatchPanel key={[str(batch, "id"), str(batch, "state"), str(batch, "checkedAt"), num(batch, "imported"), num(batch, "ready"), num(batch, "requiresReview")].join("|")}
+            b={batch} mayMigrate={access.mayMigrate} links={links} nameOf={nameOf} sheet={sheet} err={batchErr} setErr={setBatchErr}
+            refresh={() => go(`${MIGRATION_HOME}?batch=${str(batch, "id")}${sheet ? `&sheet=${encodeURIComponent(sheet)}` : ""}`)} /> : null}
         </>
       ) : null}
       {tab === "history" ? <HistoryPanel routes={routes} current={batch ? str(batch, "id") : null} showCurrent={() => setTab("upload")} /> : null}
@@ -107,7 +122,9 @@ export function PrelimMigration({ access, office, actorId, batch, batchProblem, 
 }
 
 /* ── one programme's upload: the template, the file, the check ─────────────────────────────────────────────────────── */
-function UploadCard({ r, mayMigrate, onDone }: { r: AccessRoute; mayMigrate: boolean; onDone: (batchId: string) => void }) {
+function UploadCard({ r, programmes, mayMigrate, onDone }: {
+  r: AccessRoute; programmes: Programme[]; mayMigrate: boolean; onDone: (batchId: string, sheet: string | null) => void;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [update, setUpdate] = useState(false);
   const [tell, setTell] = useState(true);
@@ -142,17 +159,33 @@ function UploadCard({ r, mayMigrate, onDone }: { r: AccessRoute; mayMigrate: boo
       const buf = await file.arrayBuffer();
       const t = await pcall<unknown>(`${MIGRATION_API}/template?route=${encodeURIComponent(r.route)}`);
       if (!t.ok) { setErr(t.problem); return; }
-      const read = await readFile(buf, templateOf(t.data));
+      const read = await readFile(buf, templateOf(t.data), programmes);
+      if (read.ambiguous) {
+        setErr({ status: 422, title: "Applicants are on more than one sheet", detail: `The sheets ${read.otherSheets.map((s) => `“${s}”`).join(", ")} each have the template's columns and applicant rows, and none is the Applicants sheet. Keep the applicants on the Applicants sheet only, then upload the file again.` });
+        return;
+      }
+      // V745: a file made for the other programme is refused here, before anything is sent
+      if (read.wrongProgramme) {
+        const w = read.wrongProgramme;
+        setErr(w.by === "template"
+          ? { status: 422, title: `This is the ${w.name} template`, detail: `The file was made from the ${w.name} template. Upload it in the ${w.name} section; nothing was sent.` }
+          : { status: 422, title: `Every applicant in the file names ${w.name}`, detail: `Every row's Programme names ${w.name}. Upload the file in the ${w.name} section, or correct the Programme column; nothing was sent.` });
+        return;
+      }
       if (read.missing.length) {
         setErr({ status: 422, title: "The file is not the template", detail: `It has no column for: ${read.missing.join(", ")}. Download the ${r.name} template and copy the old portal's data into it.` });
         return;
       }
       if (!read.rows.length) { setErr({ status: 422, title: "The file has no applicants", detail: "Fill one row per applicant under the headings of the Applicants sheet." }); return; }
       if (read.rows.length > MAX_ROWS) { setErr({ status: 422, title: "The file is too long", detail: `${n0(read.rows.length)} rows; a migration file holds up to ${n0(MAX_ROWS)}. Split it.` }); return; }
-      if (read.unknown.length) setWarn(`Columns not read (not on the template): ${read.unknown.join(", ")}.`);
+      const notes = [
+        read.otherSheets.length ? `The sheet${read.otherSheets.length === 1 ? "" : "s"} ${read.otherSheets.map((s) => `“${s}”`).join(", ")} also ${read.otherSheets.length === 1 ? "has" : "have"} applicant rows and ${read.otherSheets.length === 1 ? "was" : "were"} not read.` : "",
+        read.unknown.length ? `Columns not read (not on the template): ${read.unknown.join(", ")}.` : "",
+      ].filter(Boolean);
+      setWarn(`Read from the sheet “${read.sheet}”.${notes.length ? ` ${notes.join(" ")}` : ""}`);
       const sha = await sha256Hex(buf);
       const opened = await pcall<Record<string, unknown>>(`${MIGRATION_API}/batches`, "POST",
-        { route: r.route, fileName: file.name, sha256: sha, rows: read.rows.length, update, tell }, `${r.name} old-portal applicants uploaded: ${file.name}`);
+        { route: r.route, fileName: file.name, sha256: sha, rows: read.rows.length, update, tell }, `${r.name} old-portal applicants uploaded: ${file.name}, sheet ${read.sheet}`);
       if (!opened.ok) { setErr(opened.problem); return; }
       const id = str(opened.data, "id");
       const ref = str(opened.data, "reference");
@@ -170,9 +203,10 @@ function UploadCard({ r, mayMigrate, onDone }: { r: AccessRoute; mayMigrate: boo
         const c = await pcall(`${MIGRATION_API}/batches/${id}/check`, "POST", { from, to }, `${ref}: rows ${from} to ${to} checked`);
         if (!c.ok) { setErr(c.problem); return; }
       }
-      notify(`${ref}: ${n0(total)} rows checked. Nothing is written until you confirm the import.`);
+      notify(`${ref}: ${n0(total)} rows of the sheet “${read.sheet}” checked. Nothing is written until you confirm the import.`);
       setFile(null);
-      onDone(id);
+      try { window.sessionStorage.setItem(`${READ_NOTE}${id}`, JSON.stringify({ sheet: read.sheet, notes } satisfies ReadNote)); } catch { /* the toast named the sheet */ }
+      onDone(id, read.sheet);
     } catch (e) {
       setErr({ status: 422, title: "The file could not be read", detail: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -221,7 +255,7 @@ function UploadCard({ r, mayMigrate, onDone }: { r: AccessRoute; mayMigrate: boo
           </div>
         ) : null}
         {err ? <ProblemNotice problem={err} /> : null}
-        {warn ? <Note kind="info" title="Some columns were not read">{warn}</Note> : null}
+        {warn ? <Note kind="info" title="What was read">{warn}</Note> : null}
       </PBody>
     </Panel>
   );
@@ -241,8 +275,34 @@ async function downloadReport(id: string, reference: string, sub: string) {
   downloadBlob(blob, `${reference.replace(/\//g, "-")} error report.xlsx`);
 }
 
-function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
-  b: Record<string, unknown>; mayMigrate: boolean; links: RowLinkAccess; nameOf: (r: string) => string; refresh: () => void;
+/** V745: the import report — every row of the upload, the old number beside the application number it became or matched, and what
+ *  the import did with it */
+async function downloadImportReport(id: string, reference: string, sub: string) {
+  const r = await pcall<unknown>(`${MIGRATION_API}/batches/${id}/report?scope=all`);
+  if (!r.ok) { notifyProblem(r.problem); return; }
+  const lines = importReportLines(rowsOf(r.data).rows);
+  const blob = await brandedXlsx("Preliminary migration import report", IMPORT_REPORT_HEAD, lines, { sheetName: "Import", serial: docSerial("PRELIMMIG"), sub, noSerialColumn: true });
+  downloadBlob(blob, `${reference.replace(/\//g, "-")} import report.xlsx`);
+}
+
+/** the rows of an upload whose import failed, every page of them (a failed row keeps the check's action: what is left to create
+ *  leaves them out) */
+async function failedRowsOf(id: string): Promise<MigrationRow[] | null> {
+  const out: MigrationRow[] = [];
+  for (let pg = 0; pg < 40; pg++) {
+    const r = await pcall<unknown>(`${MIGRATION_API}/batches/${id}/rows?status=FAILED&page=${pg}&size=500`);
+    if (!r.ok) return null;
+    const x = rowsOf<MigrationRow>(r.data);
+    out.push(...x.rows);
+    if (!x.rows.length || out.length >= x.total) break;
+  }
+  return out;
+}
+
+function BatchPanel({ b, mayMigrate, links, nameOf, sheet, err, setErr, refresh }: {
+  b: Record<string, unknown>; mayMigrate: boolean; links: RowLinkAccess; nameOf: (r: string) => string; sheet: string | null;
+  /** the panel's notice, held by the screen so that it outlives the panel's redraw after a refresh (V745) */
+  err: Problem | null; setErr: (p: Problem | null) => void; refresh: () => void;
 }) {
   const [live, setLive] = useState<Record<string, unknown>>(b);
   const [status, setStatus] = useState("problems");
@@ -251,7 +311,7 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
   const [rows, setRows] = useState<{ total: number; rows: MigrationRow[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pct, setPct] = useState<number | null>(null);
-  const [err, setErr] = useState<Problem | null>(null);
+  const [failedRows, setFailedRows] = useState<MigrationRow[] | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [read, setRead] = useState(false);
   const [abandon, setAbandon] = useState(false);
@@ -259,6 +319,9 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
   const [newRow, setNewRow] = useState<MigrationRow | null>(null);
   const id = str(b, "id");
   const L = live;
+  const readRaw = useSyncExternalStore(noSubscription, () => { try { return window.sessionStorage.getItem(`${READ_NOTE}${id}`); } catch { return null; } }, () => null);
+  const readNote = useMemo<ReadNote | null>(() => { try { return readRaw ? (JSON.parse(readRaw) as ReadNote) : null; } catch { return null; } }, [readRaw]);
+  const sheetRead = sheet ?? readNote?.sheet ?? null;
   const F = figuresOf(L);
   const state = str(L, "state");
   const reference = str(L, "reference");
@@ -269,6 +332,9 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
   const tells = pick(L, "notify") !== false;
   const open = state === "CHECKED" || state === "IMPORTING";
   const total = F.rows;
+  /* V745: an import already begun counts only the rows still to do */
+  const left = stillToDo(F, failedRows);
+  const feesOfUpload = F.feesHeld + F.feesVerified + F.feesRejected;
 
   function fetchRows(st: string, pg: number, query: string) {
     const qs = new URLSearchParams({ page: String(pg), size: String(PAGE) });
@@ -281,6 +347,8 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
   useEffect(() => {
     let live = true;
     void fetchRows("problems", 0, "").then((r) => { if (live) showRows(r); });
+    // a server that does not count what is left to create: the failed rows read, to leave them out
+    if (F.failed && F.newApplicantsToImport == null) void failedRowsOf(id).then((x) => { if (live) setFailedRows(x); });
     return () => { live = false; };
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- the first page once; the filters reload it
 
@@ -324,7 +392,12 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
     if (!newRow) return;
     const r = await pcall<unknown>(`${MIGRATION_API}/rows/${newRow.id}/new`, "POST", { reason: reason.trim() }, `${reference} row ${newRow.row_no}: a new applicant: ${reason.trim()}`);
     if (!r.ok) { notifyProblem(r.problem); return; }
-    setNewRow(null); setReason(""); notify("Confirmed as a new applicant; the row is checked again."); refresh(); void load();
+    // V745: a row the import had left out for this review is imported there and then; the server says how it went
+    const result = newRow.result === "SKIPPED" ? str(r.data, "result") : "";
+    setNewRow(null); setReason("");
+    notify(result && result !== "SKIPPED" ? `Row ${newRow.row_no}: confirmed as a new applicant and imported (${wordOf(RESULT, result)[0].toLowerCase()}). ${str(r.data, "resultNote")}`.trim()
+      : "Confirmed as a new applicant; the row is checked again.");
+    refresh(); void load();
   }
 
   const st = wordOf(BATCH_STATE, state);
@@ -333,9 +406,10 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
     <>
       <Panel title={<>{reference} · {name}</>} right={<Pil kind={st[1]}>{st[0]}</Pil>}>
         <PBody>
-          <div className="sub2">{file} · uploaded {when(str(L, "startedAt", "started_at"))} by {str(L, "startedBy", "startedByName", "started_by") || "—"}
-            {" · "}{allowUpdate ? "missing details of applicants already here are filled in" : "applicants already here are left as they are"}
+          <div className="sub2">{file}{sheetRead ? <>, read from the sheet &ldquo;{sheetRead}&rdquo;</> : null} · uploaded {when(str(L, "startedAt", "started_at"))} by {str(L, "startedBy", "startedByName", "started_by") || "—"}
+            {" · "}{allowUpdate ? "missing details of applicants already here are filled in" : "applicants already here only get the old number kept beside their application"}
             {" · "}{tells ? "new applicants are told once" : "applicants are not told"}</div>
+          {readNote?.notes.length ? <Note kind="info" title="Not read from the file">{readNote.notes.join(" ")}</Note> : null}
           {str(L, "abandonedReason", "abandoned_reason") ? <Note kind="info" title="Set aside">{str(L, "abandonedReason", "abandoned_reason")}</Note> : null}
           {state === "STAGING" && staged < total ? (
             <Note kind="bad" title="The upload stopped before every row reached the server">
@@ -349,8 +423,10 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
           ["Invalid", n0(F.invalid), F.invalid ? "var(--red-ink)" : null, "Errors to correct in the file"],
           ["Existing applicants", n0(F.existing), null, "Already on the portal: never made twice"],
           ["Potential duplicates", n0(F.duplicates), F.duplicates ? "var(--chrome)" : null, "Repeated in the file, or a possible same person"],
-          ["New applicants ready", n0(F.newApplicants), null, "Will be created"],
-          ["Fees to hold for the Bursary", n0(F.paymentsToVerify), F.paymentsToVerify ? "var(--chrome)" : null, "Paid on the old portal, held on import"],
+          left ? ["New applicants still to create", left.create == null ? "…" : n0(left.create), null, `${n0(F.created)} created so far`]
+            : ["New applicants ready", n0(F.newApplicants), null, "Will be created"],
+          left ? ["Fees held for the Bursary", n0(feesOfUpload), feesOfUpload ? "var(--chrome)" : null, "Brought in by this upload so far"]
+            : ["Fees to hold for the Bursary", n0(F.paymentsToVerify), F.paymentsToVerify ? "var(--chrome)" : null, "Paid on the old portal, held on import"],
           ["Programme conflicts", n0(F.programmeConflicts), F.programmeConflicts ? "var(--red-ink)" : null, "Name the other programme: not imported"],
         ]} />
         {F.imported ? (
@@ -368,6 +444,7 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
           {err ? <ProblemNotice problem={err} /> : null}
           <div className="row row--inline" style={{ marginTop: 8, flexWrap: "wrap" }}>
             <Btn kind="secondary" onClick={() => downloadReport(id, reference, `${reference} · ${name} · ${file}`)}>Download error report</Btn>
+            {F.imported ? <Btn kind="secondary" onClick={() => downloadImportReport(id, reference, `${reference} · ${name} · ${file}`)}>Download import report</Btn> : null}
             {mayMigrate && (state === "CHECKED" || (state === "STAGING" && staged >= total && total > 0)) ? <Btn kind="ghost" onClick={check} disabled={!!busy}>{state === "STAGING" ? "Check the rows" : "Check again"}</Btn> : null}
             {mayMigrate && open ? <Btn kind="primary" onClick={() => { setRead(false); setConfirm(true); }} disabled={!!busy}>{state === "IMPORTING" ? "Continue the import" : "Confirm import"}</Btn> : null}
             {mayMigrate && (open || state === "STAGING") ? <Btn kind="ghost" onClick={() => { setReason(""); setAbandon(true); }} disabled={!!busy}>Set aside</Btn> : null}
@@ -399,7 +476,7 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
                 <Pil key="v" kind={v[1]}>{v[0]}</Pil>,
                 <span key="e" className="sub2">{p ? <>{p.message}{p.fix ? <div><i>{p.fix}</i></div> : null}{more > 0 ? <div>and {more} more in the error report</div> : null}</> : r.result_note ?? ""}</span>,
                 <span key="ac">{r.result === "SKIPPED" || r.result === "FAILED" || (!r.result && !ready) ? <i className="sub2">Not imported</i> : ACTION[r.action ?? ""] ?? "—"}</span>,
-                mayConfirmNew(r) && mayMigrate ? <Btn key="b" kind="ghost" size="sm" onClick={() => { setReason(""); setNewRow(r); }}>Confirm as new applicant</Btn>
+                mayConfirmNew(r, state) && mayMigrate ? <Btn key="b" kind="ghost" size="sm" onClick={() => { setReason(""); setNewRow(r); }}>Confirm as new applicant</Btn>
                   : link ? <LinkBtn key="b" href={link}>Open</LinkBtn> : <span key="b" />,
               ];
             })}
@@ -419,10 +496,20 @@ function BatchPanel({ b, mayMigrate, links, nameOf, refresh }: {
       {confirm ? (
         <Modal title={`Import ${reference}`} sub={file} onClose={() => setConfirm(false)}
           foot={<><Btn kind="ghost" onClick={() => setConfirm(false)}>Cancel</Btn><Btn kind="primary" disabled={!read} onClick={importAll}>Import</Btn></>}>
-          <KvGrid cls="grid--2" pairs={[
+          {/* V745: an import already begun counts only the rows still to do; what is imported is said apart */}
+          <KvGrid cls="grid--2" pairs={left ? [
+            ["Target programme", `${name}${str(L, "session") ? ` · ${str(L, "session")}` : ""}`],
+            ["Already imported", `${n0(F.imported)} rows: ${n0(F.created)} created, ${n0(F.updated + F.reconciled)} updated, ${n0(F.unchanged)} already on record, ${n0(F.notImported)} not imported, ${n0(F.failed)} failed`],
+            ["Ready rows still to import", n0(left.ready)],
+            ["New applicants still to create", left.create == null ? "being counted…" : n0(left.create)],
+            ["Applicants already here, still to go through", left.existing == null ? "being counted…" : n0(left.existing)],
+            ["Rows still to go that will not import", n0(left.notReady)],
+            ["Fees held for the Bursary so far", n0(feesOfUpload)],
+          ] : [
             ["Target programme", `${name}${str(L, "session") ? ` · ${str(L, "session")}` : ""}`],
             ["New applicants to create", n0(F.newApplicants)],
-            ["Existing applicants to update", allowUpdate ? n0(F.toUpdate) : `${n0(F.toUpdate)} (registered here, matched by email: the old number kept with the application)`],
+            ["Existing applicants to update", allowUpdate ? n0(F.toUpdate)
+              : `${n0(F.toUpdate)} (registered here, matched by email: only the old number is kept with the application; no outcome published, no state moved, no fee held)`],
             ["Not imported", n0(F.skipped)],
             ["Invalid (errors)", n0(F.invalid)],
             ["Fees to hold for the Bursary", n0(F.paymentsToVerify)],
@@ -478,9 +565,9 @@ function HistoryPanel({ routes, current, showCurrent }: { routes: AccessRoute[];
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- the first page once; the filter reloads it
   async function download() {
     if (!d) return;
-    const blob = await brandedXlsx("Preliminary applicant migration history", HISTORY_HEAD, historyLines(d.rows), { sheetName: "History", serial: docSerial("PRELIMMIG"),
+    const blob = await brandedXlsx("Preliminary applicant data migration history", HISTORY_HEAD, historyLines(d.rows), { sheetName: "History", serial: docSerial("PRELIMMIG"),
       sub: route ? routes.find((x) => x.route === route)?.name ?? route : "Both programmes" });
-    downloadBlob(blob, "Preliminary applicant migration history.xlsx");
+    downloadBlob(blob, "Preliminary applicant data migration history.xlsx");
   }
   const lines = (d?.rows ?? []).map(historyLine);
   return (
@@ -504,7 +591,8 @@ function HistoryPanel({ routes, current, showCurrent }: { routes: AccessRoute[];
               <span key="o" className="row row--inline row--tight">
                 {h.id && h.id === current ? <Btn kind="ghost" size="sm" onClick={showCurrent}>Open</Btn>
                   : h.id ? <LinkBtn href={`${MIGRATION_HOME}?batch=${h.id}`}>Open</LinkBtn> : null}
-                {h.id ? <Btn kind="ghost" size="sm" onClick={() => downloadReport(h.id, h.reference, `${h.reference} · ${h.routeName} · ${h.file}`)}>Report</Btn> : null}
+                {h.id ? <Btn kind="ghost" size="sm" onClick={() => downloadReport(h.id, h.reference, `${h.reference} · ${h.routeName} · ${h.file}`)}>Errors</Btn> : null}
+                {h.id && h.successful + h.skipped + h.failed > 0 ? <Btn kind="ghost" size="sm" onClick={() => downloadImportReport(h.id, h.reference, `${h.reference} · ${h.routeName} · ${h.file}`)}>Import report</Btn> : null}
               </span>,
             ];
           })}
@@ -531,7 +619,7 @@ function FeesPanel({ routes, mayDecide, actorId }: { routes: AccessRoute[]; mayD
   const [figures, setFigures] = useState<unknown>(null);
   const [d, setD] = useState<{ rows: LegacyFee[]; total: number } | null>(null);
   const [err, setErr] = useState<Problem | null>(null);
-  const [act, setAct] = useState<{ fee: LegacyFee; verify: boolean; note: string; reference: string } | null>(null);
+  const [act, setAct] = useState<{ fee: LegacyFee; verify: boolean; note: string; reference: string; amount: string } | null>(null);
   function fetchFees(r: string, s: string, pg: number) {
     const fq = new URLSearchParams();
     if (r) fq.set("route", r);
@@ -552,7 +640,9 @@ function FeesPanel({ routes, mayDecide, actorId }: { routes: AccessRoute[]; mayD
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps -- the first page once; the filters reload it
   async function decide() {
     if (!act) return;
-    const body = { verify: act.verify, note: act.note.trim(), reference: act.verify && !act.fee.reference ? act.reference.trim() : null };
+    // V745: a fee the file gave no amount for is posted at the amount the Bursary found, else at the programme's stated fee
+    const amount = act.verify && !act.fee.amountGiven && act.amount.trim() ? Number(act.amount.replace(/[,\s₦]/g, "")) : null;
+    const body = { verify: act.verify, note: act.note.trim(), reference: act.verify && !act.fee.reference ? act.reference.trim() : null, amount };
     const r = await pcall<{ outcome?: string }>(`${MIGRATION_API}/fees/${act.fee.id}/decide`, "POST", body,
       `Old-portal application fee ${act.fee.reference || act.reference.trim()} for ${act.fee.applicationNo} ${act.verify ? "verified" : "not verified"}: ${act.note.trim()}`);
     if (!r.ok) { notifyProblem(r.problem); return; }
@@ -561,6 +651,7 @@ function FeesPanel({ routes, mayDecide, actorId }: { routes: AccessRoute[]; mayD
       : "Recorded as not verified; the applicant is told to pay on the portal or see the Bursary."));
     void load();
   }
+  const amountOk = (v: string) => /^[0-9]{1,10}(\.[0-9]{1,2})?$/.test(v.replace(/[,\s₦]/g, "")) && Number(v.replace(/[,\s₦]/g, "")) > 0;
   const mine = (f: LegacyFee) => f.uploadedByMe || (!!actorId && f.uploadedById === actorId);
   const fg = figures;
   return (
@@ -600,13 +691,13 @@ function FeesPanel({ routes, mayDecide, actorId }: { routes: AccessRoute[]; mayD
               return [
                 <span key="a">{f.name || "—"}</span>, <Two key="n" a={f.applicationNo || "—"} b={f.legacyNo} />, <span key="p">{f.routeName}</span>,
                 <Two key="r" a={f.reference || <i>none given</i>} b={f.gatewayReference ? `gateway ${f.gatewayReference}` : ""} />,
-                <span key="m" className="tnum">{naira(f.amount)}</span>, <span key="d" className="tnum">{f.paidOn || "—"}</span>, <span key="st" className="sub2">{f.statedStatus || "—"}</span>,
+                <span key="m" className="tnum">{feeAmountWords(f, naira)}</span>, <span key="d" className="tnum">{f.paidOn || "—"}</span>, <span key="st" className="sub2">{f.statedStatus || "—"}</span>,
                 <Two key="b" a={f.batchReference || "—"} b={f.uploadedBy} />,
                 <span key="s"><Pil kind={s[1]}>{s[0]}</Pil>{f.decidedAt ? <div className="sub2">{when(f.decidedAt)}{f.decidedBy ? ` · ${f.decidedBy}` : ""}{f.postedReference ? ` · posted as ${f.postedReference}` : ""}{f.note ? ` · ${f.note}` : ""}</div> : null}</span>,
                 f.state === "REQUIRES_REVIEW" && mayDecide ? (mine(f) ? <span key="x" className="sub2">You uploaded it: another Bursary officer must verify it</span> : f.mayDecide === false ? <span key="x" /> : (
                   <span key="x" className="row row--inline row--tight">
-                    <Btn kind="secondary" size="sm" onClick={() => setAct({ fee: f, verify: true, note: "", reference: "" })}>Verify</Btn>
-                    <Btn kind="ghost" size="sm" onClick={() => setAct({ fee: f, verify: false, note: "", reference: "" })}>Not verified</Btn>
+                    <Btn kind="secondary" size="sm" onClick={() => setAct({ fee: f, verify: true, note: "", reference: "", amount: "" })}>Verify</Btn>
+                    <Btn kind="ghost" size="sm" onClick={() => setAct({ fee: f, verify: false, note: "", reference: "", amount: "" })}>Not verified</Btn>
                   </span>
                 )) : <span key="x" />,
               ];
@@ -626,8 +717,18 @@ function FeesPanel({ routes, mayDecide, actorId }: { routes: AccessRoute[]; mayD
       {act ? (
         <Modal title={act.verify ? "Verify the old-portal fee" : "Record the fee as not verified"} sub={`${act.fee.applicationNo}${act.fee.legacyNo ? ` · ${act.fee.legacyNo}` : ""}`} onClose={() => setAct(null)}
           foot={<><Btn kind="ghost" onClick={() => setAct(null)}>Cancel</Btn>
-            <Btn kind="primary" onClick={decide} disabled={act.note.trim().length < 5 || (act.verify && !act.fee.reference && !act.reference.trim())}>{act.verify ? "Verify" : "Not verified"}</Btn></>}>
-          <p>{naira(act.fee.amount)} for {act.fee.name || act.fee.applicationNo}, {act.fee.routeName}{act.fee.paidOn ? `, paid ${act.fee.paidOn}` : ""}{act.fee.reference ? ` under ${act.fee.reference}` : ""}.</p>
+            <Btn kind="primary" onClick={decide} disabled={act.note.trim().length < 5 || (act.verify && !act.fee.reference && !act.reference.trim())
+              || (act.verify && !act.fee.amountGiven && !!act.amount.trim() && !amountOk(act.amount))}>{act.verify ? "Verify" : "Not verified"}</Btn></>}>
+          <p>{act.fee.amountGiven ? naira(act.fee.amount) : "An amount still to confirm"} for {act.fee.name || act.fee.applicationNo}, {act.fee.routeName}{act.fee.paidOn ? `, paid ${act.fee.paidOn}` : ""}{act.fee.reference ? ` under ${act.fee.reference}` : ""}.</p>
+          {act.verify && !act.fee.amountGiven ? (
+            <>
+              <Note kind="info" title="The file gave no amount">Give the amount the bank statement or the gateway&rsquo;s record shows. Left blank, the fee is posted at the programme&rsquo;s stated application fee.</Note>
+              <Field id="fee-amount" label="The amount paid (₦)" hint="As the statement or the gateway's record shows it; the amount posted and receipted.">
+                <input id="fee-amount" className="ctl" inputMode="decimal" value={act.amount} onChange={(e) => setAct({ ...act, amount: e.target.value })} />
+              </Field>
+              {act.amount.trim() && !amountOk(act.amount) ? <p className="sub2">An amount in naira, more than nothing, at most two places after the point.</p> : null}
+            </>
+          ) : null}
           {act.verify && !act.fee.reference ? (
             <Field id="fee-ref" label="The payment reference you found" required hint="The file gave none: the reference on the bank statement or the gateway's record. It is the reference posted.">
               <input id="fee-ref" className="ctl" value={act.reference} onChange={(e) => setAct({ ...act, reference: e.target.value })} />
@@ -732,7 +833,7 @@ function CorrectionsPanel({ routes, mayChange, app }: { routes: AccessRoute[]; m
                   ["Intended programme", [str(target, "name"), str(target, "specialisationName")].filter(Boolean).join(" — ") || "not chosen"],
                   ["Area / group", str(target, "group") || "—"],
                   ["Payment", <span key="p"><Pil kind={pay[1]}>{pay[0]}</Pil>{refs.length ? ` ${refs.join(", ")}` : ""}</span>],
-                  ["Old-portal fee", oldFees.length ? oldFees.map((x) => `${x.reference || "no reference"} · ${naira(x.amount)} · ${wordOf(FEE_STATE, x.state)[0].toLowerCase()}`).join("; ") : "—"],
+                  ["Old-portal fee", oldFees.length ? oldFees.map((x) => `${x.reference || "no reference"} · ${feeAmountWords(x, naira)} · ${wordOf(FEE_STATE, x.state)[0].toLowerCase()}`).join("; ") : "—"],
                   ["Documents uploaded", String(num(rec, "documents", "documentsCount", "documents_count"))],
                   ["Applied on", str(legacy, "appliedOn", "applied_on") || (str(rec, "appliedAt", "createdAt", "created_at") ? when(str(rec, "appliedAt", "createdAt", "created_at")) : "—")],
                   ["Brought across", legacy ? `${str(legacy, "batchReference", "batch_reference") || "—"}${str(legacy, "migratedAt", "migrated_at") ? ` · ${when(str(legacy, "migratedAt", "migrated_at"))}` : ""}` : "Applied on this portal"],

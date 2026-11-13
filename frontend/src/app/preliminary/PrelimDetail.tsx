@@ -20,7 +20,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ACTION, ELIGIBILITY, REMEDIATION, STATE, TARGET_NOTE, VERIFICATION, labelOf, naira, pcall, remediationWords, when, type PrelimBlock, type PrelimLegacy } from "@/lib/preliminary";
-import { FEE_STATE, PAYMENT, legacyFeeOf, routeChangeOf, wordOf } from "@/lib/prelim-migration";
+import { FEE_STATE, PAYMENT, feeAmountWords, legacyFeeOf, routeChangeOf, wordOf } from "@/lib/prelim-migration";
 import { PrelimProgrammeChange } from "@/components/preliminary/PrelimProgrammeChange";
 
 interface Detail {
@@ -186,7 +186,7 @@ export function PrelimDetail({ id, may, programme, onClose }: { id: string; may:
       {oldFees.length ? (
         <DTable noPrint pageSize={0} cols={["Paid on the old portal", "Reference", "Amount|num", "Paid on", "Standing"]} rows={oldFees.map((x) => {
           const w = wordOf(FEE_STATE, x.state);
-          return ["Application fee", x.reference || "none given", naira(x.amount), x.paidOn || "—",
+          return ["Application fee", x.reference || "none given", feeAmountWords(x, naira), x.paidOn || "—",
             <span key="s"><Pil kind={w[1]}>{w[0]}</Pil>{x.decidedAt ? <div className="sub2">{when(x.decidedAt)}{x.note ? ` · ${x.note}` : ""}</div> : null}</span>];
         })} />
       ) : null}

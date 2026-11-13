@@ -239,8 +239,18 @@ public class ApplicantService {
                 new DomainRuleViolation.Remedy("Use your application number, your email or your JAMB number, and the password you chose; five failures lock the account for fifteen minutes.", "Registry"));
     }
 
-    /** V428: an applicant's own JAMB or application number is never their password — at the door, at registration or at a reset */
+    /** V428: an applicant's own JAMB or application number is never the password chosen — at registration, at a reset, at a change;
+     *  V745: compared whatever its case and its spaces (the old portal's number written "opt/ 845243568/1" is that number) */
     static boolean ownNumber(String password, String... numbers) {
+        String p = password == null ? "" : password.replaceAll("\\s+", "");
+        if (p.isEmpty()) return false;
+        for (String n : numbers) if (n != null && !n.isBlank() && p.equalsIgnoreCase(n.replaceAll("\\s+", ""))) return true;
+        return false;
+    }
+
+    /** V428 at the door: the number typed as the password once a password is chosen, compared as V428 compares it (case, the ends'
+     *  spaces) — V745 leaves the door so, so a password chosen before it with a space inside the number still opens the account */
+    static boolean typedOwnNumber(String password, String... numbers) {
         String p = password == null ? "" : password.trim();
         if (p.isEmpty()) return false;
         for (String n : numbers) if (n != null && !n.isBlank() && p.equalsIgnoreCase(n.trim())) return true;
@@ -259,7 +269,7 @@ public class ApplicantService {
 
     private static DomainRuleViolation numberIsNoPassword() {
         return new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your JAMB or application number cannot be your password.",
-                new DomainRuleViolation.Remedy("Choose a password that is not your JAMB or application number.", "You"));
+                new DomainRuleViolation.Remedy("Choose a password that is not your JAMB or application number (this portal's, or the old portal's application number).", "You"));
     }
 
     public SignedIn signIn(String identifier, String password, String ip) {
@@ -283,7 +293,7 @@ public class ApplicantService {
             // application number opens nothing (V428). V706: a reset by the University puts the account back on the sentinel, and an
             // applicant with no JAMB number signs in on the application number
             boolean sentinel = "SET_ON_FIRST_LOGIN".equals(a.passwordHash());
-            if (!sentinel && ownNumber(password, a.jambKey(), a.applicationNo(), a.legacyNo())) {   // V737: the old portal's number too
+            if (!sentinel && typedOwnNumber(password, a.jambKey(), a.applicationNo(), a.legacyNo())) {   // V737: the old portal's number too
                 repo.event(identifier, a.id(), "OWN_NUMBER_REFUSED", ip);
                 throttle.count(ng.edu.moaum.portal.shared.Throttle.Door.APPLICANT_SIGN_IN, ip);
                 return new DomainRuleViolation("AUTH_FIRST_PASSWORD_RETIRED", "Your JAMB or application number is no longer your password.",

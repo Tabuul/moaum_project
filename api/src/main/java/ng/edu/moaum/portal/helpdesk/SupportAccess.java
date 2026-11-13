@@ -13,6 +13,8 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
 
 import ng.edu.moaum.portal.platform.NoticeRepository;
+import ng.edu.moaum.portal.shared.AuditContext;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
@@ -80,6 +82,14 @@ class SupportAccess {
             Map.entry("EDIT_PROGRAMME_CODE", "changing a programme's code"),
             Map.entry("MIGRATE_PRELIM_APPLICANTS", "uploading old-portal preliminary applicants"),
             Map.entry("CHANGE_PRELIM_PROGRAMME", "changing a preliminary applicant's programme"));
+    /** V745, the University's decision of 12 November 2026: the two preliminary capabilities are granted on a posting only by the
+     *  Director of ICT or super (HelpdeskController), and held by office only by them — the Head of the Support Desk (and Admin) hold
+     *  them only through a posting of their own that carries them, as any agent */
+    static final Set<String> PRELIM = Set.of("MIGRATE_PRELIM_APPLICANTS", "CHANGE_PRELIM_PROGRAMME");
+    /** the offices that grant the two preliminary capabilities on a posting, and hold them by office */
+    static final Set<String> PRELIM_GRANTORS = Set.of("ict", "super");
+    /** what the Head of the Support Desk and Admin hold by office: every capability the desk defines but the two preliminary ones */
+    private static final List<String> HEAD_CAPS = ALL.stream().filter(c -> !PRELIM.contains(c)).toList();
 
     private final JdbcClient jdbc;
     private final NoticeRepository notices;
@@ -123,10 +133,21 @@ class SupportAccess {
         return List.of();
     }
 
-    /** the agent across the desk: the union of their live postings' capabilities — for the desk-wide lists, each filtered by its own scope */
+    /** the agent across the desk: the union of their live postings' capabilities — for the desk-wide lists, each filtered by its own scope.
+     *  V745: the Director of ICT and super hold every capability; the Head of the Support Desk and Admin every one but the two
+     *  preliminary ones, which they hold only as their own postings carry them. The two preliminary ones follow the office acted in,
+     *  as the upload, the correction and the grant do: the Director acting as the Head holds them only as a posting carries them. */
     Access access(Authentication auth) {
         UUID me = UUID.fromString(auth.getName());
-        if (head(auth)) return new Access(me, true, Set.copyOf(ALL), "The University");
+        boolean director = has(auth, "OFFICE_ict") || has(auth, "OFFICE_super");
+        if (director && PRELIM_GRANTORS.contains(AuditContextHolder.current().map(AuditContext::actorOffice).orElse(""))) {
+            return new Access(me, true, Set.copyOf(ALL), "The University");
+        }
+        if (director || head(auth)) {
+            Set<String> caps = new java.util.HashSet<>(HEAD_CAPS);
+            texts(jdbc.sql("SELECT helpdesk.agent_capabilities(:p)").param("p", me).query().singleValue()).stream().filter(PRELIM::contains).forEach(caps::add);
+            return new Access(me, true, Set.copyOf(caps), "The University");
+        }
         // V591: the Students Account Officer (not also an agent) reaches every student on the level desk, with the level capabilities
         // and no other; the desk's other doors never admit the office (LEVEL_DESK against AGENTS), so the reach carries nothing else
         if (!has(auth, "OFFICE_ictagent") && has(auth, "OFFICE_studentaccounts")) return new Access(me, true, LEVEL_DESK_CAPS, "The University");

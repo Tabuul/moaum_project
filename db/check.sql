@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 580
+\set EXPECTED 582
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -34543,6 +34543,324 @@ BEGIN
   PERFORM pg_temp.assert('V753: a staff card''s department from a unit typed by name, a programme or a course; a course followed by itself, not by a code another took',
       coalesce(msg = 'librarian Zed Reading Room | exams its department | lecturer its department | renamed twice ZZT 704 | renamed then merged ZZT 712', false),
       msg);
+END $$;
+
+-- ── V745: the independent review of V737 applied ──
+-- Made-up applicants (CHECKVFF…) in each preliminary route's session. File A (Science): two siblings of one surname and one phone — the
+-- dry run holds the second for review as the import will, the import creates the first and skips the second, and the second, confirmed
+-- as another person after the batch is finished, is imported in its own batch; a third row made to fail at the import (a stand-in
+-- trigger) leaves nothing of itself. File B (Science): a gateway reference two rows share is a duplicate at the check, the same JAMB
+-- number on another row is held for review, the fees to verify are those the import holds; the skipped claim is still counted once the
+-- batch is finished, among those for the Bursary's review. File C (Technology): the JAMB number of B's first row (an earlier migration)
+-- held for review; a postgraduate applicant's old number and a JUPEB old reference held back; a Paid draft with no amount held for the
+-- Bursary (its status says the payment is being verified; the Bursary verifies it at the stated fee); subjects run together on one line
+-- an error; a results cell a subject a line read; the import asked for no summary. File D (Science, "fill in missing details" not
+-- ticked): an email match naming another first name and sex a conflict (Ada's application untouched); an application made here found by
+-- its email keeps only the old number (no admission, no state forward, no fee). Then: a programme change keeps the Office's pending
+-- correction; "new" leaves the undated migrated out; the Head of ICT Support with no posting and a faculty's Database Operator are
+-- refused, a University-wide operator uploads; the ICT password desk finds A's first applicant by the old number written in lower case.
+-- The block undoes its writes.
+CREATE OR REPLACE FUNCTION pg_temp.v745_fail() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.legacy_application_no = 'CHK/V745/FAIL' THEN RAISE EXCEPTION 'V745 check: a row made to fail'; END IF;
+    RETURN NEW;
+END $$;
+DO $$
+DECLARE up uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); head uuid := gen_random_uuid(); dbo uuid := gen_random_uuid(); dbf uuid := gen_random_uuid();
+        v_err text; msg text; ss text := policy.route_session('PRELIMINARY_SCIENCE'); ts text := policy.route_session('PRELIMINARY_TECHNOLOGY');
+        ol jsonb := jsonb_build_object('olevel1Body', 'WAEC', 'olevel1Year', '2022', 'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Chemistry:C6; Biology:B2');
+        olt jsonb := jsonb_build_object('olevel1Body', 'NECO', 'olevel1Year', '2022', 'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Technical Drawing:C6; Chemistry:B2');
+        ba uuid; bb uuid; bc uuid; bd uuid; bn uuid; s jsonb; x jsonb; n1 uuid; n2 uuid; c3 uuid; c5 uuid; stats0 jsonb; stats1 jsonb; fig jsonb;
+        a_chk text; a_imp text; a_new text; a_fail text; b_chk text; b_imp text; c_chk text; c_imp text; d_chk text; d_imp text; d_ada text; d_here text;
+        st text; held_paid text; corr text; acc_j uuid; pga uuid := gen_random_uuid(); pgapp uuid := gen_random_uuid(); pgb uuid := gen_random_uuid(); who text; fnd text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V745 check: the independent review of V737', true);
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+            (up, 'CHK/V745/U', 'CHECKVFF', 'Uploader'), (bur, 'CHK/V745/B', 'CHECKVFF', 'Bursar'), (head, 'CHK/V745/H', 'CHECKVFF', 'Head'),
+            (dbo, 'CHK/V745/D', 'CHECKVFF', 'Operator'), (dbf, 'CHK/V745/F', 'CHECKVFF', 'Faculty Operator');
+        stats0 := admissions.prelim_stats('PRELIMINARY_SCIENCE', ss);
+        CREATE TRIGGER trg_v745_check_fail BEFORE INSERT ON admissions.prelim_legacy_application FOR EACH ROW EXECUTE FUNCTION pg_temp.v745_fail();
+
+        -- ── A: siblings of one file; a row that fails ──
+        ba := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 a.xlsx', repeat('1', 64), 3, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(ba, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/A1', 'surname', 'Checkvffsib', 'firstName', 'Adaeze', 'gender', 'F', 'dateOfBirth', '14/02/2006',
+                                     'email', 'v745.a1@check.test', 'phone', '08074400001', 'olevel1Number', 'V745A1', 'applicationStatus', 'Submitted'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/A2', 'surname', 'CHECKVFFSIB', 'firstName', 'Chinedu', 'gender', 'M', 'dateOfBirth', '03/07/2007',
+                                     'email', 'v745.a2@check.test', 'phone', '0807 440 0001', 'olevel1Number', 'V745A2', 'applicationStatus', 'Submitted'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/FAIL', 'surname', 'Checkvfffail', 'firstName', 'Bimpe', 'gender', 'F', 'dateOfBirth', '15/02/2006',
+                                     'email', 'v745.fail@check.test', 'phone', '08074400009', 'olevel1Number', 'V745A3', 'applicationStatus', 'Submitted',
+                                     'paymentStatus', 'Paid', 'paymentReference', 'CHK-V745-FAIL', 'amountPaid', '5000')));
+        PERFORM admissions.prelim_migration_check(ba, 1, 3);
+        s := admissions.prelim_migration_summary(ba);
+        a_chk := (SELECT string_agg(r.verdict, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = ba) || ' new ' || (s->>'newApplicants');
+        PERFORM admissions.prelim_migration_import(ba, 1, 3);
+        PERFORM admissions.prelim_migration_finish(ba);
+        a_imp := (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = ba);
+        a_fail := (SELECT r.result_note FROM admissions.prelim_migration_row r WHERE r.batch_id = ba AND r.row_no = 3)
+                  || ' left ' || ((SELECT count(*) FROM admissions.candidate c WHERE c.surname = 'CHECKVFFFAIL') + (SELECT count(*) FROM admissions.applicant_account a WHERE a.email = 'v745.fail@check.test')
+                                  + (SELECT count(*) FROM admissions.prelim_legacy_fee f WHERE f.legacy_reference = 'CHK-V745-FAIL'));
+        x := admissions.prelim_migration_row_new((SELECT r.id FROM admissions.prelim_migration_row r WHERE r.batch_id = ba AND r.row_no = 2), 'Siblings: another first name and birth date');
+        a_new := (x->>'result') || ' ' || (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = ba)
+                 || ' ' || (SELECT b.state FROM admissions.prelim_migration_batch b WHERE b.id = ba);
+        DROP TRIGGER trg_v745_check_fail ON admissions.prelim_legacy_application;
+        -- the ICT password desk finds a migrated applicant by the old number, whatever its case
+        fnd := (SELECT string_agg((x.application_no IS NOT NULL) || ':' || x.legacy_application_no, ',') FROM admissions.applicant_password_find('chk/v745/a1') x);
+
+        -- ── B: a shared gateway reference; the same JAMB number ──
+        bb := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 b.xlsx', repeat('2', 64), 3, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bb, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/B1', 'surname', 'Checkvffgate', 'firstName', 'Amaka', 'gender', 'F', 'dateOfBirth', '01/01/2006', 'jambRegNo', '97440001AB',
+                                     'email', 'v745.b1@check.test', 'phone', '08074400101', 'olevel1Number', 'V745B1', 'applicationStatus', 'Submitted',
+                                     'paymentStatus', 'Paid', 'paymentReference', 'CHK-V745-R1', 'gatewayReference', 'CHK-V745-GW', 'amountPaid', '5000'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/B2', 'surname', 'Checkvffgatetwo', 'firstName', 'Bola', 'gender', 'F', 'dateOfBirth', '02/01/2006',
+                                     'email', 'v745.b2@check.test', 'phone', '08074400102', 'olevel1Number', 'V745B2', 'applicationStatus', 'Submitted',
+                                     'paymentStatus', 'Paid', 'paymentReference', 'CHK-V745-R2', 'gatewayReference', 'chk-v745-gw', 'amountPaid', '5000'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/B3', 'surname', 'Checkvffjamb', 'firstName', 'Efe', 'gender', 'M', 'dateOfBirth', '03/01/2006', 'jambRegNo', '97440001 ab',
+                                     'email', 'v745.b3@check.test', 'phone', '08074400103', 'olevel1Number', 'V745B3', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(bb, 1, 3);
+        s := admissions.prelim_migration_summary(bb);
+        b_chk := (SELECT string_agg(r.verdict, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = bb) || ' pay ' || (s->>'paymentsToVerify');
+        PERFORM admissions.prelim_migration_import(bb, 1, 3);
+        PERFORM admissions.prelim_migration_finish(bb);
+        s := admissions.prelim_migration_summary(bb);
+        b_imp := (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = bb) || ' held ' || (s->>'feesHeld');
+        fig := admissions.prelim_legacy_fee_figures('PRELIMINARY_SCIENCE');
+
+        -- ── C: Technology — the JAMB number of an earlier migration, a PG old number, a JUPEB old reference, a Paid draft with no amount,
+        --    subjects run together, a results cell a subject a line ──
+        INSERT INTO admissions.pg_migration_batch (id, reference, kind, file_name, rows_expected, started_by, started_office)
+        VALUES (pgb, 'PG-MIG/9744/000001', 'APPLICANTS', 'check-v745.xlsx', 1, up, 'pgschool');
+        INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, password_hash)
+        VALUES (pga, ts, 'Checkvffpg', 'Applicant', 'check.pg.v745@example.test', crypt('An old password', gen_salt('bf', 12)));
+        INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+        VALUES (pgapp, pga, ts, 'PG/97/744001', (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1), 800, 'SUBMITTED', now());
+        INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id) VALUES (pgapp, 'S00744202610000001', pgb);
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check.v745@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc_j;
+        INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state, legacy_ref)
+        VALUES (acc_j, ts, 'JUPEB/APP/9744/900001', 'CHECKVFFJUPEB', 'Candidate', 'zz.check.v745@example.com', 'Benue', 'DRAFT', 'S007442026000001');
+        bc := (admissions.prelim_migration_open('PRELIMINARY_TECHNOLOGY', 'v745 c.xlsx', repeat('3', 64), 6, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bc, 1, jsonb_build_array(
+            olt || jsonb_build_object('legacyApplicationNo', 'CHK/V745/C1', 'surname', 'Checkvffjambtwo', 'firstName', 'Gbenga', 'gender', 'M', 'dateOfBirth', '07/01/2006', 'jambRegNo', '97440001AB',
+                                      'email', 'v745.c1@check.test', 'phone', '08074400201', 'olevel1Number', 'V745C1', 'applicationStatus', 'Submitted'),
+            olt || jsonb_build_object('legacyApplicationNo', 's00744202610000001', 'surname', 'Checkvffpgclash', 'firstName', 'Musa', 'gender', 'M', 'dateOfBirth', '08/01/2006',
+                                      'email', 'v745.c2@check.test', 'phone', '08074400202', 'olevel1Number', 'V745C2', 'applicationStatus', 'Submitted'),
+            olt || jsonb_build_object('legacyApplicationNo', 'S007442026000001', 'surname', 'Checkvffjupclash', 'firstName', 'Nike', 'gender', 'F', 'dateOfBirth', '09/01/2006',
+                                      'email', 'v745.c3@check.test', 'phone', '08074400203', 'olevel1Number', 'V745C3', 'applicationStatus', 'Submitted'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/V745/C4', 'surname', 'Checkvffnoamount', 'firstName', 'Ife', 'gender', 'F', 'dateOfBirth', '10/01/2006',
+                               'email', 'v745.c4@check.test', 'phone', '08074400204', 'applicationStatus', 'Draft', 'paymentStatus', 'Paid', 'paymentReference', 'CHK-V745-NOAMT'),
+            olt || jsonb_build_object('legacyApplicationNo', 'CHK/V745/C5', 'surname', 'Checkvffrunon', 'firstName', 'Jide', 'gender', 'M', 'dateOfBirth', '11/01/2006',
+                                      'email', 'v745.c5@check.test', 'phone', '08074400205', 'olevel1Number', 'V745C5', 'applicationStatus', 'Submitted',
+                                      'olevel1Results', 'English Language:B2 Mathematics:B3 Physics:C4 Technical Drawing:C5 Chemistry:C6'),
+            olt || jsonb_build_object('legacyApplicationNo', 'CHK/V745/C6', 'surname', 'Checkvfflines', 'firstName', 'Kola', 'gender', 'M', 'dateOfBirth', '12/01/2006',
+                                      'email', 'v745.c6@check.test', 'phone', '08074400206', 'olevel1Number', 'V745C6', 'applicationStatus', 'Submitted',
+                                      'olevel1Results', E'English Language:B2\nMathematics:B3\r\nPhysics:C4\nTechnical Drawing:C5\nChemistry:C6')));
+        PERFORM admissions.prelim_migration_check(bc, 1, 6);
+        c_chk := (SELECT string_agg(r.verdict || ':' || coalesce((SELECT e->>'code' FROM jsonb_array_elements(r.problems) e WHERE e->>'level' <> 'warning' LIMIT 1),
+                                                                 (SELECT e->>'code' FROM jsonb_array_elements(r.problems) e LIMIT 1), '-'), ',' ORDER BY r.row_no)
+                    FROM admissions.prelim_migration_row r WHERE r.batch_id = bc);
+        x := admissions.prelim_migration_import(bc, 1, 6, false);
+        c_imp := (SELECT string_agg(k, ',' ORDER BY k) FROM jsonb_object_keys(x) k) || ' ' || (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = bc);
+        c3 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/V745/C4');
+        c5 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/V745/C6');
+        st := (SELECT p.next_action FROM admissions.prelim_status(c3) p) || ' / ' || admissions.prelim_fee_status(c3)
+              || ' / ' || (SELECT count(*) FROM admissions.screening_olevel o WHERE o.application_id = c5 AND o.active);
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.prelim_legacy_fee_decide((SELECT f.id FROM admissions.prelim_legacy_fee f WHERE f.application_id = c3), true, 'V745 check: seen on the statement');
+        held_paid := (SELECT fr.amount::text FROM admissions.fee_reference fr WHERE fr.application_id = c3 AND fr.confirmed_at IS NOT NULL) || ' ' || admissions.prelim_fee_status(c3);
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+
+        -- ── D: an email match of another person; an application made here keeps only the old number ──
+        bn := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 here.xlsx', repeat('4', 64), 2, false, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bn, 1, jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'CHK/V745/N1', 'surname', 'Checkvffokafor', 'firstName', 'Ada', 'gender', 'F', 'dateOfBirth', '14/02/2006',
+                               'email', 'v745.family@check.test', 'phone', '08074400401', 'applicationStatus', 'Draft'),
+            jsonb_build_object('legacyApplicationNo', 'CHK/V745/N2', 'surname', 'Checkvffhere', 'firstName', 'Kemi', 'gender', 'F', 'dateOfBirth', '15/02/2006',
+                               'email', 'v745.here@check.test', 'phone', '08074400402', 'applicationStatus', 'Draft')));
+        PERFORM admissions.prelim_migration_check(bn, 1, 2);
+        PERFORM admissions.prelim_migration_import(bn, 1, 2);
+        n1 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/V745/N1');
+        n2 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/V745/N2');
+        DELETE FROM admissions.prelim_legacy_application WHERE application_id IN (n1, n2);   -- as though made on this portal
+        bd := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 d.xlsx', repeat('5', 64), 2, false, true) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bd, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/D1', 'surname', 'Checkvffokafor', 'firstName', 'Chidi', 'gender', 'M', 'dateOfBirth', '14/02/2006',
+                                     'email', 'v745.family@check.test', 'phone', '08074400403', 'olevel1Number', 'V745D1', 'applicationStatus', 'Submitted', 'admissionStatus', 'Admitted',
+                                     'paymentStatus', 'Paid', 'paymentReference', 'CHK-V745-D1', 'amountPaid', '5000'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/D2', 'surname', 'Checkvffhere', 'firstName', 'Kemi', 'gender', 'F', 'dateOfBirth', '15/02/2006',
+                                     'email', 'v745.here@check.test', 'phone', '08074400402', 'olevel1Number', 'V745D2', 'applicationStatus', 'Submitted', 'admissionStatus', 'Admitted',
+                                     'paymentStatus', 'Paid', 'paymentReference', 'CHK-V745-D2', 'amountPaid', '5000')));
+        PERFORM admissions.prelim_migration_check(bd, 1, 2);
+        s := admissions.prelim_migration_summary(bd);
+        d_chk := (SELECT string_agg(r.verdict || ':' || r.action || ':' || (SELECT string_agg(e->>'code', '+' ORDER BY e->>'code') FROM jsonb_array_elements(r.problems) e), ',' ORDER BY r.row_no)
+                    FROM admissions.prelim_migration_row r WHERE r.batch_id = bd) || ' pay ' || (s->>'paymentsToVerify') || ' only ' || (s->>'oldNumberOnly');
+        PERFORM admissions.prelim_migration_import(bd, 1, 2);
+        d_imp := (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = bd);
+        d_ada := (SELECT r.state || ':' || (r.published_at IS NOT NULL) || ':' || (SELECT count(*) FROM admissions.prelim_legacy_application l WHERE l.application_id = n1)
+                    FROM admissions.prelim_review r WHERE r.application_id = n1);
+        d_here := (SELECT r.state || ':' || (r.published_at IS NOT NULL) || ':' || admissions.prelim_fee_status(n2) || ':'
+                          || (SELECT l.legacy_application_no FROM admissions.prelim_legacy_application l WHERE l.application_id = n2)
+                     FROM admissions.prelim_review r WHERE r.application_id = n2)
+                  || CASE WHEN (SELECT r.result_note FROM admissions.prelim_migration_row r WHERE r.batch_id = bd AND r.row_no = 2) LIKE '%only the old number kept%' THEN ' said' ELSE ' unsaid' END;
+        stats1 := admissions.prelim_stats('PRELIMINARY_SCIENCE', ss);
+
+        -- ── a programme change keeps the Office's pending correction ──
+        UPDATE admissions.prelim_review SET state = 'CORRECTION_REQUIRED', request_note = 'OFFICE NOTE: upload the O''Level statement again.' WHERE application_id = c5;
+        PERFORM admissions.prelim_change_route(c5, 'PRELIMINARY_SCIENCE', 'PRELIMINARY_TECHNOLOGY', 'V745 check: applied for the wrong programme on the old portal');
+        corr := (SELECT r.state || ':' || (r.request_note LIKE 'OFFICE NOTE: upload the O''Level statement again.' || E'\n\n' || 'Your application was moved by the University%')
+                   FROM admissions.prelim_review r WHERE r.application_id = c5);
+
+        -- ── who uploads ──
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+            (gen_random_uuid(), dbo, 'dbops', 'institution', NULL, 'V745 check', up, current_date),
+            (gen_random_uuid(), dbf, 'dbops', 'faculty', (SELECT f.code FROM ref.faculty f ORDER BY f.code LIMIT 1), 'V745 check', up, current_date);
+        PERFORM set_config('moaum.actor_id', head::text, true); PERFORM set_config('moaum.actor_office', 'helpdeskhead', true);
+        BEGIN PERFORM admissions.prelim_mig_writer(); who := 'head uploads'; EXCEPTION WHEN insufficient_privilege THEN who := 'head refused'; END;
+        BEGIN PERFORM admissions.prelim_route_officer(); who := who || '/corrects'; EXCEPTION WHEN insufficient_privilege THEN who := who || '/refused'; END;
+        PERFORM set_config('moaum.actor_id', dbf::text, true); PERFORM set_config('moaum.actor_office', 'dbops', true);
+        BEGIN PERFORM admissions.prelim_mig_writer(); who := who || ' faculty operator uploads'; EXCEPTION WHEN insufficient_privilege THEN who := who || ' faculty operator refused'; END;
+        PERFORM set_config('moaum.actor_id', dbo::text, true);
+        BEGIN PERFORM admissions.prelim_mig_writer(); who := who || ' university operator uploads'; EXCEPTION WHEN insufficient_privilege THEN who := who || ' university operator refused'; END;
+        PERFORM set_config('moaum.actor_id', up::text, true); PERFORM set_config('moaum.actor_office', 'ict', true);
+
+        msg := 'A ' || coalesce(a_chk, '-') || ' / ' || coalesce(a_imp, '-') || ' / ' || coalesce(a_fail, '-') || ' / ' || coalesce(a_new, '-')
+            || ' | B ' || coalesce(b_chk, '-') || ' / ' || coalesce(b_imp, '-') || ' / dup ' || coalesce(fig->>'duplicateReferences', '-')
+            || ' review ' || CASE WHEN (fig->>'forReview')::int = (fig->>'unverified')::int + (fig->>'noPaymentRecord')::int + (fig->>'duplicateReferences')::int THEN 'all' ELSE 'short' END
+            || ' | C ' || coalesce(c_chk, '-') || ' / ' || coalesce(c_imp, '-') || ' / ' || coalesce(st, '-') || ' / ' || coalesce(held_paid, '-')
+            || ' | D ' || coalesce(d_chk, '-') || ' / ' || coalesce(d_imp, '-') || ' / ' || coalesce(d_ada, '-') || ' / ' || coalesce(d_here, '-')
+            || ' | new +' || ((stats1->>'new')::int - (stats0->>'new')::int) || ' migrated +' || ((stats1->>'migrated')::int - (stats0->>'migrated')::int)
+            || ' | ' || coalesce(corr, '-') || ' | ' || coalesce(who, '-') || ' | find ' || coalesce(fnd, '-');
+        RAISE EXCEPTION 'the V745 check undoes its writes';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'the V745 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V745: a file''s rows compared with each other as the import will (the same person, a shared gateway reference, the same JAMB number) and a skipped row confirmed in its batch; a failed row leaves nothing; an email match agrees on the first name and sex; an application made here keeps only the old number unless details are filled in; PG and JUPEB old numbers held back; a Paid row with no amount held and verified at the stated fee; the held fee in the applicant''s status; duplicate references counted for review after the batch; the Office''s correction kept; undated migrated not new; the Head of ICT Support and a faculty''s operator refused; the password desk finds the old number',
+        v_err IS NULL AND msg =
+           'A READY,REQUIRES_REVIEW,READY new 2 / CREATED,SKIPPED,FAILED / V745 check: a row made to fail left 0 / CREATED CREATED,CREATED,FAILED COMPLETED'
+        || ' | B READY,DUPLICATE_IN_FILE,REQUIRES_REVIEW pay 1 / CREATED,SKIPPED,SKIPPED held 1 / dup 1 review all'
+        || ' | C REQUIRES_REVIEW:POSSIBLE_SAME_APPLICANT,CONFLICT:LEGACY_NO_IS_PORTAL_NUMBER,CONFLICT:LEGACY_NO_IS_PORTAL_NUMBER,WARNING:AMOUNT_MISSING,ERROR:OLEVEL_SUBJECT_UNKNOWN,READY:-'
+        || ' / processed,reference,state SKIPPED,SKIPPED,SKIPPED,CREATED,SKIPPED,CREATED / Your old-portal payment is being verified by the Bursary / HELD / 5 / 5000.00 PAID'
+        || ' | D CONFLICT:RECONCILE:FIRST_NAME_DIFFERS+OLD_NUMBER_ONLY+SEX_DIFFERS,WARNING:RECONCILE:OLD_NUMBER_ONLY pay 0 only 1 / SKIPPED,RECONCILED / DRAFT:false:0 / DRAFT:false:UNPAID:CHK/V745/D2 said'
+        || ' | new +2 migrated +4 | CORRECTION_REQUIRED:true | head refused/refused faculty operator refused university operator uploads | find true:CHK/V745/A1',
+        format('err=%s | %s', v_err, msg));
+END $$;
+
+-- ── V745 (2): the review of the V737 follow-up ──
+-- Made-up applicants (CHECKVFG…). File E (Science): applicants with no JAMB number, written "N/A", "nil" and "n/a", are three people,
+-- not one held for review; a later file's "NIL" is no earlier migration's JAMB number. File H ("fill in missing details" ticked) gives E's
+-- first applicant the old portal's Application Date: the day of the application is that date, no longer unknown (the import day never).
+-- File T (Technology): a row whose target is one of Preliminary Science's own, with no Programme cell, is held back as that programme's
+-- applicant; a target on neither list is still imported without one. A postgraduate old number, a JUPEB old reference and a JUPEB
+-- application number equal (in another case) to a migrated preliminary applicant's old number are refused. The block undoes its writes.
+DO $$
+DECLARE up uuid := gen_random_uuid(); v_err text; msg text; ts text := policy.route_session('PRELIMINARY_TECHNOLOGY');
+        ol jsonb := jsonb_build_object('olevel1Body', 'WAEC', 'olevel1Year', '2022', 'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Chemistry:C6; Biology:B2');
+        olt jsonb := jsonb_build_object('olevel1Body', 'NECO', 'olevel1Year', '2022', 'olevel1Results', 'English Language:C4; Mathematics:B3; Physics:C5; Technical Drawing:C6; Chemistry:B2');
+        be uuid; bf uuid; bh uuid; bt uuid; e1 uuid; sci text; e_chk text; f_chk text; e_day text; h_day text; h_imp text; t_chk text; pg_r text; ju_r text; ju_r2 text;
+        pga uuid := gen_random_uuid(); pgapp uuid := gen_random_uuid(); pgb uuid := gen_random_uuid(); acc_j uuid;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V745 check (2): the review of the V737 follow-up', true);
+        PERFORM set_config('moaum.actor_id', up::text, true);
+        PERFORM set_config('moaum.actor_office', 'ict', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (up, 'CHK/V745/U2', 'CHECKVFG', 'Uploader');
+
+        -- ── E and F: no JAMB number, written as a placeholder ──
+        be := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 e.xlsx', repeat('6', 64), 3, false, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(be, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/E1', 'surname', 'Checkvfgnone', 'firstName', 'Ngozi', 'gender', 'F', 'dateOfBirth', '01/03/2006', 'jambRegNo', 'N/A',
+                                     'email', 'v745.e1@check.test', 'phone', '08074400501', 'olevel1Number', 'V745E1', 'applicationStatus', 'Submitted'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/E2', 'surname', 'Checkvfgnil', 'firstName', 'Tunde', 'gender', 'M', 'dateOfBirth', '02/03/2006', 'jambRegNo', 'nil',
+                                     'email', 'v745.e2@check.test', 'phone', '08074400502', 'olevel1Number', 'V745E2', 'applicationStatus', 'Submitted'),
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/E3', 'surname', 'Checkvfgalso', 'firstName', 'Musa', 'gender', 'M', 'dateOfBirth', '03/03/2006', 'jambRegNo', 'n/a',
+                                     'email', 'v745.e3@check.test', 'phone', '08074400503', 'olevel1Number', 'V745E3', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(be, 1, 3);
+        e_chk := (SELECT string_agg(r.verdict, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = be)
+                 || ' same ' || (SELECT count(*) FROM admissions.prelim_migration_row r WHERE r.batch_id = be AND r.problems @> '[{"code":"POSSIBLE_SAME_APPLICANT"}]');
+        PERFORM admissions.prelim_migration_import(be, 1, 3);
+        e_chk := e_chk || ' / ' || (SELECT string_agg(r.result, ',' ORDER BY r.row_no) FROM admissions.prelim_migration_row r WHERE r.batch_id = be);
+        PERFORM admissions.prelim_migration_finish(be);
+        e1 := (SELECT l.application_id FROM admissions.prelim_legacy_application l WHERE l.legacy_application_no = 'CHK/V745/E1');
+        e_day := coalesce(admissions.prelim_applied_on(e1)::text, 'unknown');
+        bf := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 f.xlsx', repeat('7', 64), 1, false, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bf, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'CHK/V745/F1', 'surname', 'Checkvfglater', 'firstName', 'Ifeoma', 'gender', 'F', 'dateOfBirth', '04/03/2006', 'jambRegNo', 'NIL',
+                                     'email', 'v745.f1@check.test', 'phone', '08074400504', 'olevel1Number', 'V745F1', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(bf, 1, 1);
+        f_chk := (SELECT r.verdict || ' same ' || (r.problems @> '[{"code":"POSSIBLE_SAME_APPLICANT"}]') FROM admissions.prelim_migration_row r WHERE r.batch_id = bf);
+
+        -- ── H: the Application Date given by a later upload that fills in missing details ──
+        bh := (admissions.prelim_migration_open('PRELIMINARY_SCIENCE', 'v745 h.xlsx', repeat('8', 64), 1, true, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bh, 1, jsonb_build_array(
+            ol || jsonb_build_object('legacyApplicationNo', 'chk/v745/e1', 'surname', 'Checkvfgnone', 'firstName', 'Ngozi', 'gender', 'F', 'dateOfBirth', '01/03/2006', 'jambRegNo', 'N/A',
+                                     'email', 'v745.e1@check.test', 'phone', '08074400501', 'olevel1Number', 'V745E1', 'applicationStatus', 'Submitted', 'applicationDate', '10/01/2024')));
+        PERFORM admissions.prelim_migration_check(bh, 1, 1);
+        PERFORM admissions.prelim_migration_import(bh, 1, 1);
+        h_imp := (SELECT r.result FROM admissions.prelim_migration_row r WHERE r.batch_id = bh);
+        h_day := coalesce(admissions.prelim_applied_on(e1)::text, 'unknown');
+
+        -- ── T: Technology — a target of Preliminary Science's own; a target of neither ──
+        sci := (SELECT t.requested_name FROM admissions.prelim_target t
+                 WHERE t.route = 'PRELIMINARY_SCIENCE' AND t.state = 'MAPPED' AND t.requested_name IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM admissions.prelim_target u LEFT JOIN ref.programme g ON g.code = u.programme_code
+                                    WHERE u.route = 'PRELIMINARY_TECHNOLOGY' AND u.state = 'MAPPED'
+                                      AND admissions.pg_legacy_key(t.requested_name) IN (admissions.pg_legacy_key(u.programme_code), admissions.pg_legacy_key(g.name),
+                                                                                         admissions.pg_legacy_key(u.requested_name), admissions.pg_legacy_key(u.group_name)))
+                 ORDER BY t.ord, t.requested_name LIMIT 1);
+        bt := (admissions.prelim_migration_open('PRELIMINARY_TECHNOLOGY', 'v745 t.xlsx', repeat('9', 64), 2, false, false) ->> 'id')::uuid;
+        PERFORM admissions.prelim_migration_stage(bt, 1, jsonb_build_array(
+            olt || jsonb_build_object('legacyApplicationNo', 'CHK/V745/T1', 'surname', 'Checkvfgsci', 'firstName', 'Halima', 'gender', 'F', 'dateOfBirth', '05/03/2006', 'target', sci,
+                                      'email', 'v745.t1@check.test', 'phone', '08074400505', 'olevel1Number', 'V745T1', 'applicationStatus', 'Submitted'),
+            olt || jsonb_build_object('legacyApplicationNo', 'CHK/V745/T2', 'surname', 'Checkvfgnone', 'firstName', 'Obinna', 'gender', 'M', 'dateOfBirth', '06/03/2006', 'target', 'Underwater Basket Weaving',
+                                      'email', 'v745.t2@check.test', 'phone', '08074400506', 'olevel1Number', 'V745T2', 'applicationStatus', 'Submitted')));
+        PERFORM admissions.prelim_migration_check(bt, 1, 2);
+        t_chk := (sci IS NOT NULL) || ' ' || (SELECT string_agg(r.verdict || ':' || (r.problems @> '[{"code":"PROGRAMME_MISMATCH"}]') || ':' || (r.problems @> '[{"code":"TARGET_NOT_FOUND"}]'), ',' ORDER BY r.row_no)
+                                              FROM admissions.prelim_migration_row r WHERE r.batch_id = bt);
+
+        -- ── another import bringing a migrated preliminary applicant's old number ──
+        INSERT INTO admissions.pg_migration_batch (id, reference, kind, file_name, rows_expected, started_by, started_office)
+        VALUES (pgb, 'PG-MIG/9745/000002', 'APPLICANTS', 'check-v745-2.xlsx', 1, up, 'pgschool');
+        INSERT INTO admissions.pg_applicant (id, session, surname, other_names, email, password_hash)
+        VALUES (pga, ts, 'Checkvfgpg', 'Applicant', 'check.pg2.v745@example.test', crypt('An old password', gen_salt('bf', 12)));
+        INSERT INTO admissions.pg_application (id, applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+        VALUES (pgapp, pga, ts, 'PG/97/745002', (SELECT code FROM ref.programme WHERE category = 'POST GRADUATE' AND NOT archived ORDER BY code LIMIT 1), 800, 'SUBMITTED', now());
+        BEGIN
+            INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id) VALUES (pgapp, ' chk/v745/e2', pgb);
+            pg_r := 'pg brought';
+        EXCEPTION WHEN unique_violation THEN pg_r := 'pg ' || split_part(SQLERRM, ':', 1);
+        END;
+        INSERT INTO jupeb.account (email, password_hash) VALUES ('zz.check2.v745@example.com', '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO acc_j;
+        BEGIN
+            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state, legacy_ref)
+            VALUES (acc_j, ts, 'JUPEB/APP/9745/900002', 'CHECKVFGJUPEB', 'Candidate', 'zz.check2.v745@example.com', 'Benue', 'DRAFT', 'Chk/V745/E3');
+            ju_r := 'jupeb brought';
+        EXCEPTION WHEN unique_violation THEN ju_r := 'jupeb ' || split_part(SQLERRM, ':', 1);
+        END;
+        BEGIN
+            INSERT INTO jupeb.application (account_id, session, application_no, surname, first_name, email, state_of_origin, state)
+            VALUES (acc_j, ts, 'chk/v745/e1', 'CHECKVFGJUPEB', 'Candidate', 'zz.check2.v745@example.com', 'Benue', 'DRAFT');
+            ju_r2 := 'number brought';
+        EXCEPTION WHEN unique_violation THEN ju_r2 := 'number ' || split_part(SQLERRM, ':', 1);
+        END;
+
+        msg := 'E ' || coalesce(e_chk, '-') || ' / F ' || coalesce(f_chk, '-') || ' | day ' || coalesce(e_day, '-') || ' then ' || coalesce(h_imp, '-') || ' ' || coalesce(h_day, '-')
+            || ' | T ' || coalesce(t_chk, '-') || ' | ' || coalesce(pg_r, '-') || ', ' || coalesce(ju_r, '-') || ', ' || coalesce(ju_r2, '-');
+        RAISE EXCEPTION 'the V745 check (2) undoes its writes';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'the V745 check (2) undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V745 (2): a JAMB cell that is no JAMB number ("N/A", "nil") makes no two applicants one; an Application Date a later upload fills in is the day of the application; a target of the other preliminary programme holds the row back; no postgraduate or JUPEB number a migrated preliminary applicant signs in with',
+        v_err IS NULL AND msg =
+           'E WARNING,WARNING,WARNING same 0 / CREATED,CREATED,CREATED / F WARNING same false'
+        || ' | day unknown then UPDATED 2024-01-10'
+        || ' | T true CONFLICT:true:false,WARNING:false:true'
+        || ' | pg LEGACY_NO_IS_PORTAL_NUMBER, jupeb LEGACY_NO_IS_PORTAL_NUMBER, number LEGACY_NO_IS_PORTAL_NUMBER',
+        format('err=%s | %s', v_err, msg));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

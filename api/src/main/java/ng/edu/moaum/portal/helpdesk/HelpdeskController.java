@@ -18,6 +18,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.auth.PasswordResetService;
+import ng.edu.moaum.portal.shared.AuditContext;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.ClientAddress;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
@@ -1146,6 +1148,40 @@ class HelpdeskController {
         return String.join(",", out);
     }
 
+    /** V745, the University's decision of 12 November 2026: a posting carries MIGRATE_PRELIM_APPLICANTS or CHANGE_PRELIM_PROGRAMME only by
+     *  the grant of the Director of ICT or super — the Head of the Support Desk and Admin may keep or take away what a posting already
+     *  carries, never add either. A 403 with its code otherwise. */
+    private static void prelimGrant(String caps, String before) {
+        if (caps == null) return;
+        String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        if (SupportAccess.PRELIM_GRANTORS.contains(office)) return;
+        Set<String> had = before == null || before.isBlank() ? Set.of() : Set.of(before.split(","));
+        List<String> added = java.util.Arrays.stream(caps.split(",")).filter(c -> SupportAccess.PRELIM.contains(c) && !had.contains(c)).toList();
+        if (added.isEmpty()) return;
+        throw grantRefused(added, " on a posting.");
+    }
+
+    /** V745: nor may they bring back a posting carrying either, once ended, or keep it longer than the Director set — that is a grant
+     *  again. The capabilities are those the posting will carry after the edit (an edit that also takes them away is let through). */
+    private static void prelimRevive(String capsAfter, boolean wasActive, LocalDate wasTo, Boolean active, LocalDate to) {
+        String office = AuditContextHolder.current().map(AuditContext::actorOffice).orElse("");
+        if (SupportAccess.PRELIM_GRANTORS.contains(office) || capsAfter == null || capsAfter.isBlank()) return;
+        List<String> held = java.util.Arrays.stream(capsAfter.split(",")).filter(SupportAccess.PRELIM::contains).toList();
+        if (held.isEmpty()) return;
+        boolean revived = Boolean.TRUE.equals(active) && !wasActive;
+        boolean lengthened = !Boolean.FALSE.equals(active) && to != null && wasTo != null && to.isAfter(wasTo);
+        if (revived || lengthened) throw grantRefused(held, revived ? " on a posting that has ended." : " beyond the date the posting was given to.");
+    }
+
+    private static org.springframework.web.ErrorResponseException grantRefused(List<String> caps, String where) {
+        org.springframework.http.ProblemDetail p = org.springframework.http.ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatus.FORBIDDEN,
+                "Only the Director of ICT grants " + String.join(" or ", caps.stream().map(c -> SupportAccess.WORDS.getOrDefault(c, c)).toList()) + where);
+        p.setTitle("Not for your office");
+        p.setProperty("code", "HELPDESK_GRANT_DIRECTOR");
+        p.setProperty("remedy", Map.of("message", "Ask the Director of ICT to grant it, on a posting over the whole University.", "office", "Director of ICT"));
+        return new org.springframework.web.ErrorResponseException(org.springframework.http.HttpStatus.FORBIDDEN, p, null);
+    }
+
     /** a person who holds the ICT Support Agent office (or the Head's, or the Director's) placed on a queue within a scope; never anyone else */
     @PostMapping("/admin/agents")
     @PreAuthorize(DIRECTOR)
@@ -1177,6 +1213,7 @@ class HelpdeskController {
             throw new DomainRuleViolation("HELPDESK_POSTED_ALREADY", "The person is posted on that queue in that scope already.", new DomainRuleViolation.Remedy("Edit the posting instead.", "Directorate of ICT"));
         }
         String caps = capabilities(body.capabilities());
+        prelimGrant(caps, null);   // V745
         UUID id = jdbc.sql("""
                 INSERT INTO helpdesk.agent_assignment (person_id, queue_code, scope_kind, scope_ref, is_primary, availability, effective_from, effective_to, assigned_by, reason, capabilities)
                 VALUES (:p, :q, :k, :r, :prim, :av, coalesce(:from, current_date), :to, :by, :why, string_to_array(coalesce(:caps, ''), ',')) RETURNING id
@@ -1197,6 +1234,15 @@ class HelpdeskController {
         String availability = body.availability() == null || body.availability().isBlank() ? null : body.availability().trim().toUpperCase();
         if (availability != null && !AVAILABILITY.contains(availability)) throw new DomainRuleViolation("HELPDESK_AVAILABILITY", "Availability is available, busy, away, offline or on leave.", new DomainRuleViolation.Remedy("Choose one of those.", "Directorate of ICT"));
         String caps = capabilities(body.capabilities());
+        // V745: what the posting carries now, against which a new grant of the preliminary capabilities is told apart; whether it is
+        // live and until when, against which a revival or a later end (a grant again) is told apart — the row locked until the update,
+        // so an edit the Director commits meanwhile is never overwritten by one checked against what it replaced
+        Map<String, Object> was = jdbc.sql("SELECT array_to_string(capabilities, ',') AS caps, active, effective_to FROM helpdesk.agent_assignment WHERE id = :id FOR UPDATE")
+                .param("id", id).query().listOfRows().stream().findFirst().orElse(null);
+        if (was == null) throw new NotFound("posting", id);
+        prelimGrant(caps, (String) was.get("caps"));
+        prelimRevive(caps != null ? caps : (String) was.get("caps"), Boolean.TRUE.equals(was.get("active")),
+                was.get("effective_to") instanceof java.sql.Date d ? d.toLocalDate() : (LocalDate) was.get("effective_to"), body.active(), body.effectiveTo());
         int n = jdbc.sql("""
                 UPDATE helpdesk.agent_assignment SET availability = coalesce(:av, availability), active = coalesce(:a, active), is_primary = coalesce(:prim, is_primary),
                        effective_to = CASE WHEN :a = false THEN least(coalesce(effective_to, current_date), current_date) ELSE coalesce(:to, effective_to) END,

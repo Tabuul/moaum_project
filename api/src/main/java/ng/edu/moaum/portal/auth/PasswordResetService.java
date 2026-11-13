@@ -246,11 +246,13 @@ public class PasswordResetService {
         UUID resetId = (UUID) r.get("id");
         UUID subject = (UUID) r.get("subject_id");
         String kind = (String) r.get("subject_kind");
-        // V428: the person's own number is never the new password
-        String chosen = password.trim();
-        if (identifiers(kind, subject).stream().anyMatch(n -> n != null && !n.isBlank() && chosen.equalsIgnoreCase(n.trim()))) {
+        // V428: the person's own number is never the new password; V745: an applicant's old-portal number neither, and a number is
+        // compared whatever its case and its spaces ("opt/ 845243568/1" is OPT/845243568/1)
+        String chosen = bare(password);
+        if (identifiers(kind, subject).stream().anyMatch(n -> n != null && !n.isBlank() && chosen.equalsIgnoreCase(bare(n)))) {
             throw new DomainRuleViolation("AUTH_PASSWORD_IS_NUMBER", "Your own number cannot be your password.",
-                    new DomainRuleViolation.Remedy("Choose a password that is not your matriculation, admission, staff, JAMB or application number.", "You"));
+                    new DomainRuleViolation.Remedy("Choose a password that is not your matriculation, admission, staff, JAMB or application number"
+                            + " (this portal's, or the old portal's application number).", "You"));
         }
         String pwHash = encoder.encode(password);
         AuditContextHolder.with(new AuditContext(subject, "registrar", "password reset", null, null), () -> tx.execute(st -> {
@@ -278,13 +280,25 @@ public class PasswordResetService {
         }));
     }
 
-    /** V428: the numbers that name the account — none of them may be its password */
+    /** a number or a password without its spaces, compared whatever its case */
+    private static String bare(String v) {
+        return v == null ? "" : v.replaceAll("\\s+", "");
+    }
+
+    /** V428: the numbers that name the account — none of them may be its password; V745: a preliminary applicant brought from the old
+     *  portal is named by the old portal's application number too (Forgot password finds them by it, and the sign-in refuses it as a
+     *  password once one is chosen — so it is never let in as the password chosen here: finding 3 of the review of V737) */
     private java.util.List<String> identifiers(String kind, UUID subject) {
         String sql = switch (kind) {
             case "STAFF" -> "SELECT c.username AS n FROM iam.credential c WHERE c.person_id = :s UNION ALL SELECT p.staff_number FROM iam.person p WHERE p.id = :s";
             case "STUDENT" -> "SELECT unnest(ARRAY[matric_no, admission_no, jamb_reg_no]) AS n FROM people.student WHERE id = :s";
             case "PGAPPLICANT" -> "SELECT ap.application_no AS n FROM admissions.pg_application ap WHERE ap.applicant_id = :s";
-            default -> "SELECT unnest(ARRAY[a.jamb_key, ap.application_no]) AS n FROM admissions.applicant_account a LEFT JOIN admissions.application ap ON ap.account_id = a.id WHERE a.id = :s";
+            default -> """
+                    SELECT unnest(ARRAY[a.jamb_key, ap.application_no, pl.legacy_application_no]) AS n
+                      FROM admissions.applicant_account a LEFT JOIN admissions.application ap ON ap.account_id = a.id
+                      LEFT JOIN admissions.prelim_legacy_application pl ON pl.application_id = ap.id
+                     WHERE a.id = :s
+                    """;
         };
         return jdbc.sql(sql).param("s", subject).query(String.class).list();
     }

@@ -51,8 +51,9 @@ class PrelimDeskController {
     private static final String CENTRAL = "'OFFICE_prelim','OFFICE_prelimtech','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin','OFFICE_ict'";
     /** V737: the General Admissions dashboard's panel of the preliminary programmes */
     private static final String OVERVIEW_READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_super','OFFICE_admin','OFFICE_ict','OFFICE_prelim','OFFICE_prelimtech')";
-    /** V737: who changes an applicant's programme between the two preliminary routes (an ICT Support Agent only with the capability) */
-    private static final Set<String> CORRECTORS = Set.of("ict", "super", "helpdeskhead");
+    /** V737: who changes an applicant's programme between the two preliminary routes; V745: the Director of ICT and super — an ICT
+     *  Support Agent or the Head of the ICT Support Desk only with the capability on a posting over the whole University */
+    private static final Set<String> CORRECTORS = Set.of("ict", "super");
     private static final String READERS = "hasAnyAuthority(" + CENTRAL + ",'OFFICE_hod','OFFICE_dean')";
     private static final String CENTRAL_READERS = "hasAnyAuthority(" + CENTRAL + ")";
     private static final String REVIEWERS = "hasAnyAuthority('OFFICE_prelim','OFFICE_prelimtech','OFFICE_academic','OFFICE_super')";
@@ -211,8 +212,12 @@ class PrelimDeskController {
                    a.fee_confirmed_at IS NOT NULL AS paid, a.fee_confirmed_at, r.state, r.published_at, r.submitted_at, a.session, a.created_at,
                    so.value AS state_of_origin, lg.value AS lga, acc.email, acc.phone,
                    -- V737: the old portal's number, the day of the application (Lagos), the payment as it stands, the offer, and whether
-                   -- anything is outstanding — set-based, as admissions.prelim_stats counts them
-                   lgy.legacy_application_no AS legacy_no, (a.created_at AT TIME ZONE 'Africa/Lagos')::date AS applied_on, c.offer_state,
+                   -- anything is outstanding — set-based, as admissions.prelim_stats counts them. V745: the day is admissions.prelim_applied_on,
+                   -- set-based — none for an application a migration created with no Application Date (never the day of the import), so
+                   -- "new this week" and the applied-from/to filter leave it out, as prelim_stats does
+                   lgy.legacy_application_no AS legacy_no, c.offer_state,
+                   CASE WHEN lmr.action = 'CREATE' THEN lgy.applied_on
+                        ELSE (a.created_at AT TIME ZONE 'Africa/Lagos')::date END AS applied_on,
                    lgy.application_id IS NOT NULL AS migrated, held.application_id IS NOT NULL AS fee_held,
                    CASE WHEN a.fee_confirmed_at IS NOT NULL THEN 'PAID' WHEN held.application_id IS NOT NULL THEN 'HELD' ELSE 'UNPAID' END AS payment,
                    (r.state NOT IN ('WITHDRAWN', 'ADMITTED', 'NOT_ADMITTED', 'REJECTED')
@@ -233,6 +238,7 @@ class PrelimDeskController {
               LEFT JOIN admissions.screening_answer so ON so.application_id = a.id AND so.field = 'state_of_origin'
               LEFT JOIN admissions.screening_answer lg ON lg.application_id = a.id AND lg.field = 'lga'
               LEFT JOIN admissions.prelim_legacy_application lgy ON lgy.application_id = a.id
+              LEFT JOIN admissions.prelim_migration_row lmr ON lmr.id = lgy.row_id
               LEFT JOIN (SELECT DISTINCT lf.application_id FROM admissions.prelim_legacy_fee lf WHERE lf.state = 'REQUIRES_REVIEW') held ON held.application_id = a.id
              WHERE r.route = :route AND a.session = :s
                AND (:bd::text IS NULL OR p.dept_code = :bd) AND (:bf::text IS NULL OR p.faculty_code = :bf)
@@ -358,6 +364,11 @@ class PrelimDeskController {
             Map<String, Object> m = new LinkedHashMap<>(r);
             m.remove("total_rows");
             m.put("remediation_subjects", PrelimApplicantService.strings(r.get("remediation_subjects")));
+            // V745 (finding 29, the contract with the desk's Excel and PDF reports): the old portal's application number and the fee as
+            // admissions.prelim_fee_status gives it (PAID, HELD for the Bursary, UNPAID — the same test, set-based, as "payment"), beside
+            // V737's legacy_no and payment
+            m.put("legacyApplicationNo", r.get("legacy_no"));
+            m.put("feeStatus", r.get("payment"));
             // the scoped readers see who applied and how they stand, never how to reach them
             if (b.dept() != null || b.faculty() != null) { m.remove("email"); m.remove("phone"); }
             out.add(m);
@@ -405,12 +416,13 @@ class PrelimDeskController {
         return out;
     }
 
-    /** V737: the Director of ICT, super and the Head of the ICT Support Desk change a preliminary applicant's programme; an ICT Support
-     *  Agent only on a posting over the whole University that carries the capability (agents do not read this desk: said for completeness) */
+    /** V737: the Director of ICT and super change a preliminary applicant's programme; an ICT Support Agent — V745: and the Head of the
+     *  ICT Support Desk, who has no implicit right — only on a posting over the whole University that carries the capability (neither
+     *  reads this desk: said for completeness) */
     private boolean mayChangeProgramme() {
         String o = office();
         if (CORRECTORS.contains(o)) return true;
-        if (!"ictagent".equals(o)) return false;
+        if (!PrelimMigrationController.SUPPORT_OFFICES.contains(o)) return false;
         UUID me = AuditContextHolder.current().map(c -> c.actorId()).orElse(null);
         return me != null && Boolean.TRUE.equals(jdbc.sql("SELECT global FROM helpdesk.agent_scope_for(:p, :c)").param("p", me)
                 .param("c", PrelimMigrationController.CHANGE).query(Boolean.class).optional().orElse(false));

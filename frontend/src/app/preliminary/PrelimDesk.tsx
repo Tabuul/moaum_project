@@ -18,6 +18,7 @@ import { useQueryNav } from "@/lib/query-nav";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { ELIGIBILITY, REMEDIATION, STATE, VERIFICATION, labelOf, naira, pcall, prelimSerial, when, type PrelimDeskRoute, type PrelimRow } from "@/lib/preliminary";
 import { day } from "@/lib/jupeb";
+import { PAYMENT, feeStatusOf, legacyNoOf, wordOf } from "@/lib/prelim-migration";
 import { PrelimDetail } from "./PrelimDetail";
 
 export interface DeskFilters {
@@ -61,8 +62,11 @@ const reportsOf = (name: string, course: boolean): [string, string, Partial<Desk
   ...(course ? [] : [["Remediation required report", "The applicants with O'Level credits to make up before completion", { view: "remediationRequired" }] as [string, string, Partial<DeskFilters>]]),
   ["Application status report", "Every application and its state", { sort: "number" }],
 ];
-const headOf = (targetWord: string): string[] => ["S/N", "Application no", "Name", "Sex", targetWord, "Area / category", "Specialisation", "Credits", "Core credits", "Sittings", "Eligibility",
-  "Remediation", "O'Level", "Paid", "Status", "Submitted", "State of origin", "LGA"];
+/* V745: the old portal's application number beside this portal's, and the fee as the screen shows it (a fee paid on the old portal and
+   held for the Bursary is not "not paid") */
+const headOf = (targetWord: string): string[] => ["S/N", "Application no", "Old application no", "Name", "Sex", targetWord, "Area / category", "Specialisation", "Credits",
+  "Core credits", "Sittings", "Eligibility", "Remediation", "O'Level", "Payment", "Status", "Submitted", "State of origin", "LGA"];
+const paymentWord = (r: PrelimRow) => wordOf(PAYMENT, feeStatusOf(r))[0];
 
 export function PrelimDesk({ summary, list, filters, page, generatedBy, routes }: {
   summary: PrelimSummary; list: { session: string; total: number; page: number; size: number; rows: PrelimRow[] }; filters: DeskFilters; page: number; generatedBy: string | null;
@@ -92,9 +96,10 @@ export function PrelimDesk({ summary, list, filters, page, generatedBy, routes }
     return `/preliminary?${qs.toString()}`;
   };
   const statusWord = (r: PrelimRow) => r.state === "NOT_ADMITTED" || r.state === "REJECTED" ? `${labelOf(STATE, r.state)[0]}${r.published_at ? "" : " (not published)"}` : labelOf(STATE, r.state)[0];
-  const cells = (r: PrelimRow, i: number) => [i, r.application_no, `${r.surname}, ${r.other_names}`, r.sex ?? "", r.target_name ?? "", r.target_group ?? "", r.specialisation_name ?? "", r.total_credits ?? "", r.core_credits ?? "", r.sittings ?? "",
+  const cells = (r: PrelimRow, i: number) => [i, r.application_no, legacyNoOf(r), `${r.surname}, ${r.other_names}`, r.sex ?? "", r.target_name ?? "", r.target_group ?? "",
+    r.specialisation_name ?? "", r.total_credits ?? "", r.core_credits ?? "", r.sittings ?? "",
     labelOf(ELIGIBILITY, r.eligibility_status)[0], r.remediation_status ? labelOf(REMEDIATION, r.remediation_status)[0] : "", labelOf(VERIFICATION, r.olevel_verification)[0],
-    r.paid ? "Yes" : "No", statusWord(r), r.submitted_at ? r.submitted_at.slice(0, 10) : "", r.state_of_origin ?? "", r.lga ?? ""];
+    paymentWord(r), statusWord(r), r.submitted_at ? r.submitted_at.slice(0, 10) : "", r.state_of_origin ?? "", r.lga ?? ""];
   const meta = (title: string): [string, string][] => [["Programme", name], ["Session", list.session], ["Filter", title], ...(summary.scope.scoped ? [["Scope", summary.scope.department || summary.scope.faculty] as [string, string]] : []),
     ...(Object.entries(filters).filter(([k, v]) => v && !["session", "size", "sort", "route"].includes(k)).map(([k, v]) => [k, v] as [string, string]))];
   async function exportRows(patch: Partial<DeskFilters>) {
@@ -194,16 +199,17 @@ export function PrelimDesk({ summary, list, filters, page, generatedBy, routes }
           {list.rows.length === 0 ? <Note kind="info" title="No application answers these filters" /> : (
             <DTable noPrint pageSize={0} cols={["S/N|num", "Application no", "Applicant", targetWord, "Credits|num", "Core|num", "Sittings|num", "Eligibility", "Remediation", "Payment", "Status", "Applied", "Submitted", ""]}
               rows={list.rows.map((r, i) => [
-                (page - 1) * size + i + 1, <span key="n" className="tnum">{r.application_no}{r.legacy_no ? <div className="sub2">old portal: {r.legacy_no}</div> : null}</span>,
+                (page - 1) * size + i + 1, <span key="n" className="tnum">{r.application_no}{legacyNoOf(r) ? <div className="sub2">old portal: {legacyNoOf(r)}</div> : null}</span>,
                 <span key="a"><b>{r.surname}</b>, {r.other_names}<div className="sub2">{r.sex === "F" ? "Female" : r.sex === "M" ? "Male" : ""}{r.state_of_origin ? ` · ${r.state_of_origin}` : ""}</div></span>,
                 r.target_name ? <span key="t">{r.target_name}{r.target_group && r.target_group !== r.target_name || r.specialisation_name ? <div className="sub2">{[r.target_group !== r.target_name ? r.target_group : null, r.specialisation_name].filter(Boolean).join(" · ")}</div> : null}</span>
                   : <span key="t" className="sub2">not chosen</span>,
                 r.total_credits ?? "—", r.core_credits ?? "—", r.sittings ?? 0,
                 <Pil key="e" kind={labelOf(ELIGIBILITY, r.eligibility_status)[1] as "ok"}>{labelOf(ELIGIBILITY, r.eligibility_status)[0]}</Pil>,
                 r.remediation_status ? <Pil key="r" kind={labelOf(REMEDIATION, r.remediation_status)[1] as "ok"}>{labelOf(REMEDIATION, r.remediation_status)[0]}</Pil> : "—",
-                r.payment === "HELD" ? <Pil key="p" kind="warn">Held for the Bursary</Pil> : (r.payment ? r.payment === "PAID" : r.paid) ? <Pil key="p" kind="ok">Paid</Pil> : <Pil key="p" kind="grey">Not paid</Pil>,
+                <Pil key="p" kind={wordOf(PAYMENT, feeStatusOf(r))[1]}>{paymentWord(r)}</Pil>,
                 <span key="s">{statusWord(r)}{r.offer_state === "ACCEPTED" ? <div className="sub2">accepted</div> : null}</span>,
-                r.applied_on ? day(r.applied_on) : r.created_at ? day(r.created_at) : "—",
+                // V745: an application brought from the old portal with no Application Date has none here (its created_at is the day of the import)
+                r.applied_on ? day(r.applied_on) : legacyNoOf(r) ? <span key="ad" className="sub2">not given (old portal)</span> : r.created_at ? day(r.created_at) : "—",
                 r.submitted_at ? when(r.submitted_at) : "—",
                 <span key="x" className="row row--inline row--tight"><Btn kind="secondary" size="sm" onClick={() => setOpen(r.id)}>Open</Btn>
                   <a className="btn btn--ghost btn--sm" href={`/applicant/preliminary/pdf/form?id=${r.id}`} target="_blank" rel="noopener">Print</a></span>,

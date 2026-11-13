@@ -67,7 +67,8 @@ class ApplicantPasswordDeskController {
         scope.requireUniversityOperator("Resetting an applicant's password");
     }
 
-    /** applicants by JAMB number, application number, email, phone or name (three characters or more) */
+    /** applicants by JAMB number, application number, email, phone or name (three characters or more); V745: a preliminary applicant
+     *  brought from the old portal by the old portal's application number too (legacy_application_no on the row) */
     @GetMapping("/search")
     @PreAuthorize(DESK)
     @Transactional(readOnly = true)
@@ -86,6 +87,7 @@ class ApplicantPasswordDeskController {
         out.put("name", a.surname() + ", " + a.otherNames());
         out.put("jambKey", a.jambKey());
         out.put("applicationNo", a.applicationNo());
+        out.put("legacyNo", a.legacyNo());   // V745: the old portal's number of a preliminary applicant brought across
         out.put("session", a.session());
         out.put("email", a.email());
         out.put("phone", a.phone());

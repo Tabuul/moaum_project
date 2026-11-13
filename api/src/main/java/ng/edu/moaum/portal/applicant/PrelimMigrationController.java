@@ -10,10 +10,12 @@ import java.util.UUID;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.AuditContext;
@@ -49,18 +51,20 @@ import org.springframework.web.bind.annotation.RestController;
  * The rules are the database's (admissions.prelim_migration_*, prelim_legacy_*, prelim_change_route*); this door holds who may do
  * what, the route each reader is held to, and carries the rows.
  *
- * Who: the Director of ICT, the Academic Office, a Database Operator over the whole University, super and the Head of the ICT
- * Support Desk upload; an ICT Support Agent only on a posting over the whole University that carries MIGRATE_PRELIM_APPLICANTS. The
- * Bursary (and super) verify the fees. The Director of ICT, super and the Head of the Support Desk change a programme; an agent only
- * with CHANGE_PRELIM_PROGRAMME on a posting over the whole University. The Registry reads everything; each preliminary office
- * reads its own programme's uploads, fees and corrections.
+ * Who: the Director of ICT, the Academic Office, a Database Operator over the whole University and super upload; an ICT Support
+ * Agent — and, by the University's decision of 12 November 2026 (V745), the Head of the ICT Support Desk, who has no implicit right —
+ * only on a posting over the whole University that carries MIGRATE_PRELIM_APPLICANTS. The Bursary (and super) verify the fees. The
+ * Director of ICT and super change a programme; an agent or the Head of the Support Desk only with CHANGE_PRELIM_PROGRAMME on a
+ * posting over the whole University (only the Director of ICT or super grants either capability: HelpdeskController). The Registry
+ * reads everything; each preliminary office reads its own programme's uploads, fees and corrections.
  */
 @RestController
 @RequestMapping("/api/v1/admissions/preliminary/migration")
 class PrelimMigrationController {
 
-    /** who uploads: the Director of ICT, the Academic Office, a Database Operator (over the whole University), super, the Head of the
-     *  ICT Support Desk, and an ICT Support Agent the Director authorised (the capability on a University-wide posting) */
+    /** who uploads: the Director of ICT, the Academic Office, a Database Operator (over the whole University), super, and an ICT Support
+     *  Agent or the Head of the ICT Support Desk the Director authorised (the capability on a University-wide posting: V745, the head has
+     *  no implicit right — the office is let through here and held to the posting by mayMigrate, as the database's prelim_mig_writer) */
     private static final String MIGRATORS =
             "hasAnyAuthority('OFFICE_ict','OFFICE_academic','OFFICE_dbops','OFFICE_super','OFFICE_helpdeskhead','OFFICE_ictagent')";
     /** who verifies a fee paid on the old portal: the Bursary (the database refuses the officer who uploaded it) */
@@ -76,13 +80,14 @@ class PrelimMigrationController {
             "hasAnyAuthority('OFFICE_ict','OFFICE_super','OFFICE_helpdeskhead','OFFICE_ictagent','OFFICE_academic','OFFICE_registrar',"
             + "'OFFICE_dregistrar','OFFICE_prelim','OFFICE_prelimtech')";
 
-    /* the same sets, for the acting office (hasAnyAuthority matches any office the token carries) */
-    private static final Set<String> MIGRATOR_OFFICES = Set.of("ict", "academic", "dbops", "super", "helpdeskhead", "ictagent");
-    private static final Set<String> READER_OFFICES = Set.of("ict", "academic", "dbops", "super", "helpdeskhead", "ictagent",
-            "bursar", "registrar", "dregistrar", "prelim", "prelimtech");
-    private static final Set<String> CORRECTOR_OFFICES = Set.of("ict", "super", "helpdeskhead", "ictagent");
-    private static final Set<String> CORRECTION_READER_OFFICES = Set.of("ict", "super", "helpdeskhead", "ictagent", "academic",
-            "registrar", "dregistrar", "prelim", "prelimtech");
+    /* the same sets, for the acting office (hasAnyAuthority matches any office the token carries). V745: the support offices are in none
+       of them — an ICT Support Agent and the Head of the ICT Support Desk act only through a posting carrying the capability */
+    private static final Set<String> MIGRATOR_OFFICES = Set.of("ict", "academic", "dbops", "super");
+    private static final Set<String> READER_OFFICES = Set.of("ict", "academic", "dbops", "super", "bursar", "registrar", "dregistrar", "prelim", "prelimtech");
+    private static final Set<String> CORRECTOR_OFFICES = Set.of("ict", "super");
+    private static final Set<String> CORRECTION_READER_OFFICES = Set.of("ict", "super", "academic", "registrar", "dregistrar", "prelim", "prelimtech");
+    /** V745: the offices that act here only through a support posting over the whole University carrying the capability */
+    static final Set<String> SUPPORT_OFFICES = Set.of("ictagent", "helpdeskhead");
     private static final Set<String> FEE_DECIDER_OFFICES = Set.of("bursar", "super");
     /** who reads the preliminary desk (PrelimDeskController's READERS: its central offices, and a Head of Department or a Dean over
      *  their own): a row's link to the desk is offered only to them */
@@ -141,8 +146,8 @@ class PrelimMigrationController {
         return AuditContextHolder.current().map(AuditContext::actorId).orElse(null);
     }
 
-    /** whether the acting person, as an ICT Support Agent, holds the capability on a posting over the whole University (the
-     *  database's own helpdesk.agent_scope_for — a FACULTY, DEPARTMENT or COLLEGE posting does not reach an applicant) */
+    /** whether the acting person, as an ICT Support Agent or the Head of the Support Desk, holds the capability on a posting over the
+     *  whole University (the database's own helpdesk.agent_scope_for — a FACULTY, DEPARTMENT or COLLEGE posting does not reach an applicant) */
     private boolean agentHolds(String capability) {
         UUID me = actor();
         if (me == null) return false;
@@ -152,13 +157,13 @@ class PrelimMigrationController {
 
     private boolean mayMigrate() {
         String o = office();
-        if ("ictagent".equals(o)) return agentHolds(MIGRATE);
+        if (SUPPORT_OFFICES.contains(o)) return agentHolds(MIGRATE);
         return MIGRATOR_OFFICES.contains(o);
     }
 
     private boolean mayChange() {
         String o = office();
-        if ("ictagent".equals(o)) return agentHolds(CHANGE);
+        if (SUPPORT_OFFICES.contains(o)) return agentHolds(CHANGE);
         return CORRECTOR_OFFICES.contains(o);
     }
 
@@ -166,13 +171,13 @@ class PrelimMigrationController {
      *  programme reads the corrections and finds an applicant, never the files) */
     private boolean mayReadMigration() {
         String o = office();
-        if ("ictagent".equals(o)) return agentHolds(MIGRATE);
+        if (SUPPORT_OFFICES.contains(o)) return agentHolds(MIGRATE);
         return READER_OFFICES.contains(o);
     }
 
     private boolean mayReadCorrections() {
         String o = office();
-        if ("ictagent".equals(o)) return agentHolds(CHANGE);
+        if (SUPPORT_OFFICES.contains(o)) return agentHolds(CHANGE);
         return CORRECTION_READER_OFFICES.contains(o);
     }
 
@@ -187,7 +192,7 @@ class PrelimMigrationController {
 
     private void requireMigrator() {
         if (mayMigrate()) return;
-        if ("ictagent".equals(office())) {
+        if (SUPPORT_OFFICES.contains(office())) {
             throw forbidden("PRELIMMIG_CAPABILITY", "Your support posting does not carry uploading old-portal preliminary applicants over the whole University.",
                     "Ask the Director of ICT to grant it with a posting over the whole University.", "Director of ICT");
         }
@@ -197,7 +202,7 @@ class PrelimMigrationController {
 
     private void requireReader() {
         if (mayReadMigration()) return;
-        if ("ictagent".equals(office())) {
+        if (SUPPORT_OFFICES.contains(office())) {
             throw forbidden("PRELIMMIG_CAPABILITY", "Your support posting does not carry the old-portal preliminary applicant migration.",
                     "Ask the Director of ICT to grant it with a posting over the whole University.", "Director of ICT");
         }
@@ -206,7 +211,7 @@ class PrelimMigrationController {
 
     private void requireCorrector() {
         if (mayChange()) return;
-        if ("ictagent".equals(office())) {
+        if (SUPPORT_OFFICES.contains(office())) {
             throw forbidden("PRELIM_CHANGE_CAPABILITY", "Your support posting does not carry changing a preliminary applicant's programme over the whole University.",
                     "Ask the Director of ICT to grant it with a posting over the whole University.", "Director of ICT");
         }
@@ -215,7 +220,7 @@ class PrelimMigrationController {
 
     private void requireCorrectionReader() {
         if (mayReadCorrections()) return;
-        if ("ictagent".equals(office())) {
+        if (SUPPORT_OFFICES.contains(office())) {
             throw forbidden("PRELIM_CHANGE_CAPABILITY", "Your support posting does not carry changing a preliminary applicant's programme.",
                     "Ask the Director of ICT to grant it with a posting over the whole University.", "Director of ICT");
         }
@@ -225,7 +230,7 @@ class PrelimMigrationController {
     /** finding an applicant is the upload's search and the correction's: a reader of either */
     private void requireFinder() {
         if (mayReadMigration() || mayReadCorrections()) return;
-        if ("ictagent".equals(office())) {
+        if (SUPPORT_OFFICES.contains(office())) {
             throw forbidden("PRELIMMIG_CAPABILITY", "Your support posting carries neither the old-portal preliminary applicant migration nor changing a preliminary applicant's programme.",
                     "Ask the Director of ICT to grant one with a posting over the whole University.", "Director of ICT");
         }
@@ -390,11 +395,14 @@ class PrelimMigrationController {
         out.put("columns", columns);
         out.put("targets", jdbc.sql("""
                 SELECT t.id, coalesce(g.name, t.requested_name) AS name, t.programme_code AS code, t.group_name AS "group", t.kind,
+                       -- V745: the word the Target column's drop-down offers (prelim_migration_columns lists requested_name), so the
+                       -- template's Targets sheet pairs each word with its register name by name, not by place in the list
+                       t.requested_name AS "requestedName",
                        (SELECT coalesce(jsonb_agg(jsonb_build_object('code', sp.code, 'name', sp.name) ORDER BY sp.ord, sp.name), '[]'::jsonb)::text
                           FROM admissions.prelim_specialisation sp WHERE sp.target_id = t.id AND sp.active) AS specialisations
                   FROM admissions.prelim_target t LEFT JOIN ref.programme g ON g.code = t.programme_code
                  WHERE t.route = :r AND t.state = 'MAPPED'
-                 ORDER BY t.ord, coalesce(g.name, t.requested_name)
+                 ORDER BY t.ord, t.requested_name
                 """).param("r", r).query().listOfRows().stream().map(t -> {
                     Map<String, Object> m = new LinkedHashMap<>(t);
                     m.put("specialisations", PrelimApplicantService.json(t.get("specialisations")));
@@ -500,15 +508,62 @@ class PrelimMigrationController {
                 .param("b", id).param("f", body.from()).param("t", body.to()).query(String.class).single());
     }
 
+    /** V745: the rows of a call imported a few at a time, each few in a transaction of its own (finding 2 of the review of V737) */
+    static final int IMPORT_STEP = 10;
+    /** a call imports up to 1,000 rows (the database's own PRELIMMIG_CHUNK) */
+    private static final int IMPORT_MAX = 1000;
+
+    /**
+     * The rows from..to of a checked batch not yet imported, and the batch's summary with the rows processed — the contract as before.
+     * V745: a new applicant's number is drawn from the session's APPLICATION series (platform.next_number), whose row stays locked until
+     * the transaction that drew it commits, and every applicant registering in the session (Post-UTME, CCE, the preliminary programmes)
+     * draws from the same row. So the rows are imported {@value #IMPORT_STEP} at a time, each few committed on its own
+     * (prelim_migration_import(…, false)), and the series is held for a few rows, never for the page's chunk of 250. A row that fails is
+     * undone alone and recorded FAILED by the database, and the rest go on. A call that stops part-way (the batch set aside meanwhile, the
+     * connection lost) keeps the rows already committed — each with its result on its row — and answers the refusal; the same range sent
+     * again ("Continue the import") imports only the rows still without a result, never one twice.
+     */
     @PostMapping("/batches/{id}/import")
     @PreAuthorize(MIGRATORS)
-    @Transactional
     Map<String, Object> importRows(@PathVariable UUID id, @Valid @RequestBody RangeIn body) {
-        requireMigrator();
         AuditContextHolder.required();
-        batchRoute(id);
-        return parseMap(jdbc.sql("SELECT admissions.prelim_migration_import(:b, :f, :t)::text")
-                .param("b", id).param("f", body.from()).param("t", body.to()).query(String.class).single());
+        // the rows still to import, in order: each step names the first and the last of a few of them (a row imported in between is
+        // passed over by the database, as in one call)
+        List<Integer> pending = readTx.execute(st -> {
+            requireMigrator();
+            batchRoute(id);
+            if (body.to() - body.from() + 1 > IMPORT_MAX) {
+                throw new DomainRuleViolation("PRELIMMIG_CHUNK", "Rows are imported up to 1,000 at a time.",
+                        new DomainRuleViolation.Remedy("Send the rows in smaller ranges (the page sends 250 at a time).", "You"));
+            }
+            return jdbc.sql("""
+                    SELECT row_no FROM admissions.prelim_migration_row WHERE batch_id = :b AND row_no BETWEEN :f AND :t AND result IS NULL ORDER BY row_no
+                    """).param("b", id).param("f", body.from()).param("t", body.to()).query(Integer.class).list();
+        });
+        int processed = 0;
+        try {
+            if (pending.isEmpty()) {
+                // nothing to import: the call still answers the batch's own refusals (set aside, finished, not checked)
+                processed += importStep(id, body.from(), body.to());
+            }
+            for (int i = 0; i < pending.size(); i += IMPORT_STEP) {
+                processed += importStep(id, pending.get(i), pending.get(Math.min(i + IMPORT_STEP, pending.size()) - 1));
+            }
+        } catch (RuntimeException stopped) {
+            if (processed > 0) LOG.warn("the import of batch {} stopped after {} rows (kept, each with its result): {}", id, processed, stopped.getMessage());
+            throw stopped;
+        }
+        Map<String, Object> out = new LinkedHashMap<>(readTx.execute(st -> parseMap(jdbc.sql("SELECT admissions.prelim_migration_summary(:b)::text")
+                .param("b", id).query(String.class).single())));
+        out.put("processed", processed);
+        return out;
+    }
+
+    /** the rows from..to not yet imported, in a transaction of their own, committed: how many were processed */
+    private int importStep(UUID batch, int from, int to) {
+        Map<String, Object> step = tx.execute(st -> parseMap(jdbc.sql("SELECT admissions.prelim_migration_import(:b, :f, :t, false)::text")
+                .param("b", batch).param("f", from).param("t", to).query(String.class).single()));
+        return step != null && step.get("processed") instanceof Number n ? n.intValue() : 0;
     }
 
     @PostMapping("/batches/{id}/finish")
@@ -582,15 +637,25 @@ class PrelimMigrationController {
     }
 
     /** every row that is not plainly ready or did not import, for the downloadable error report (the cells as given are left out:
-     *  the report names the row, the applicant, the old number, the verdict or result, and each problem with its fix) */
+     *  the report names the row, the applicant, the old number, the verdict or result, and each problem with its fix). V745 (findings
+     *  19, 24): scope=all is the import report — every row of the batch, the ones imported cleanly too, each with this portal's
+     *  application number (the one it created or matched), its result and note, and the old-portal fee it held; no scope (or
+     *  scope=problems) is the error report as before */
     @GetMapping("/batches/{id}/report")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
-    List<Map<String, Object>> report(@PathVariable UUID id) {
+    List<Map<String, Object>> report(@PathVariable UUID id, @RequestParam(required = false) String scope) {
         requireReader();
         batchRoute(id);
-        return listRows(id, rowFilter("PROBLEMS"), "PROBLEMS", null, 20000, 0, false);
+        String sc = scope == null || scope.isBlank() ? "PROBLEMS" : scope.trim().toUpperCase();
+        if (!REPORT_SCOPES.contains(sc)) {
+            throw new DomainRuleViolation("PRELIMMIG_REPORT_SCOPE", "A batch's report is of every row (all) or of the rows with a problem (problems).",
+                    new DomainRuleViolation.Remedy("Ask for scope=all or scope=problems.", "You"));
+        }
+        return listRows(id, rowFilter(sc), sc, null, 20000, 0, false);
     }
+
+    private static final Set<String> REPORT_SCOPES = Set.of("PROBLEMS", "ALL");
 
     private static final String LIKE = """
              AND (:like::text IS NULL OR r.legacy_no ILIKE :like OR r.applicant ILIKE :like OR r.email ILIKE :like OR a.application_no ILIKE :like)
@@ -605,14 +670,19 @@ class PrelimMigrationController {
     }
 
     /** the rows, with the matched application's own route and session (appRoute, appSession): a row matched to an application of the
-     *  other programme or another session links to where that application is */
+     *  other programme or another session links to where that application is; V745: and the state of the old-portal fee the row held
+     *  (fee_state: REQUIRES_REVIEW, VERIFIED or REJECTED; null when it held none) */
     private List<Map<String, Object>> listRows(UUID batch, String where, String st, String like, int limit, int offset, boolean withData) {
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT r.id, r.row_no, r.data ->> 'sheetRow' AS sheet_row, r.legacy_no, r.applicant, r.email, r.fee_ref, r.verdict, r.match, r.action,
                        r.problems::text AS problems, r.result, r.result_note, r.decided_new, r.decided_new_reason, r.application_id, r.imported_at,
-                       a.application_no, pr.route AS "appRoute", a.session AS "appSession", CASE WHEN :data THEN r.data::text END AS data
+                       a.application_no, pr.route AS "appRoute", a.session AS "appSession", CASE WHEN :data THEN r.data::text END AS data,
+                       fs.state AS fee_state
                   FROM admissions.prelim_migration_row r LEFT JOIN admissions.application a ON a.id = r.application_id
                   LEFT JOIN admissions.prelim_review pr ON pr.application_id = r.application_id
+                  -- the batch's fees read once (ix_prelim_legacy_fee_batch), the latest of each row, joined: never a look-up a row
+                  LEFT JOIN (SELECT DISTINCT ON (f.row_id) f.row_id, f.state FROM admissions.prelim_legacy_fee f
+                              WHERE f.batch_id = :b AND f.row_id IS NOT NULL ORDER BY f.row_id, f.created_at DESC) fs ON fs.row_id = r.id
                  WHERE r.batch_id = :b AND (""" + where + ")" + LIKE + """
                  ORDER BY r.row_no LIMIT :lim OFFSET :off
                 """).param("b", batch).param("st", st).param("like", like, Types.VARCHAR).param("lim", limit).param("off", offset).param("data", withData)
@@ -628,12 +698,14 @@ class PrelimMigrationController {
         return out;
     }
 
-    /** the uploader's word on a row held as a possible same person: a new applicant all the same, with the reason */
+    /** the uploader's word on a row held as a possible same person: a new applicant all the same, with the reason. V745: a row the
+     *  import skipped for that review alone is imported there and then, in its own batch (one row: the series held for that row) */
     @PostMapping("/rows/{rowId}/new")
     @PreAuthorize(MIGRATORS)
     @Transactional
     Map<String, Object> decideNew(@PathVariable UUID rowId, @Valid @RequestBody ReasonIn body) {
         requireMigrator();
+        AuditContextHolder.required();
         UUID batch = jdbc.sql("SELECT batch_id FROM admissions.prelim_migration_row WHERE id = :r").param("r", rowId).query(UUID.class).optional()
                 .orElseThrow(() -> new NotFound("preliminary migration row", rowId));
         batchRoute(batch);
@@ -683,7 +755,11 @@ class PrelimMigrationController {
         return out;
     }
 
-    public record DecideIn(boolean verify, @NotBlank @Size(max = 1000) String note, @Size(max = 100) String reference) {
+    /** V745: amount — what the Bursary verifies a fee at that came from the file with no amount (prelim_legacy_fee_decide's p_amount);
+     *  left out, such a fee is verified at the programme's stated application fee, and a fee that came with an amount at that amount
+     *  (another amount is refused, PRELIMMIG_FEE_AMOUNT) */
+    public record DecideIn(boolean verify, @NotBlank @Size(max = 1000) String note, @Size(max = 100) String reference,
+                           @Positive @Digits(integer = 10, fraction = 2) java.math.BigDecimal amount) {
     }
 
     @PostMapping("/fees/{id}/decide")
@@ -694,9 +770,10 @@ class PrelimMigrationController {
         String app = jdbc.sql("SELECT application_id::text FROM admissions.prelim_legacy_fee WHERE id = :f").param("f", id).query(String.class).optional()
                 .orElseThrow(() -> new NotFound("old-portal application fee", id));
         applicationRoute(UUID.fromString(app));
-        return parseMap(jdbc.sql("SELECT admissions.prelim_legacy_fee_decide(:f, :v, :n, :ref)::text")
+        return parseMap(jdbc.sql("SELECT admissions.prelim_legacy_fee_decide(:f, :v, :n, :ref, :amt)::text")
                 .param("f", id).param("v", body.verify()).param("n", body.note().trim())
                 .param("ref", body.reference() == null || body.reference().isBlank() ? null : body.reference().trim(), Types.VARCHAR)
+                .param("amt", body.verify() ? body.amount() : null, Types.NUMERIC)
                 .query(String.class).single());
     }
 
