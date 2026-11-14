@@ -1,18 +1,10 @@
 package ng.edu.moaum.portal.credentials;
 
-import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.sql.Types;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-
-import javax.imageio.ImageIO;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
@@ -46,8 +38,7 @@ class CardSignatoryController {
 
     private static final String READERS = "hasAnyAuthority('OFFICE_ict','OFFICE_security','OFFICE_super')";
     private static final String SETTERS = "hasAnyAuthority('OFFICE_ict','OFFICE_super')";
-    private static final int MAX_BYTES = 1_000_000;
-    private static final int JPEG_MAX_SIDE = 800;
+    private static final int MAX_BYTES = SignatureImages.MAX_BYTES;
 
     private final JdbcClient jdbc;
     private final FileObjects files;
@@ -111,34 +102,24 @@ class CardSignatoryController {
                     .query().listOfRows();
             return info();
         }
-        int comma = b64.indexOf(',');
-        if (b64.startsWith("data:") && comma > 0) b64 = b64.substring(comma + 1);
-        byte[] bytes;
-        try {
-            bytes = Base64.getDecoder().decode(b64);
-        } catch (IllegalArgumentException bad) {
+        byte[] bytes = SignatureImages.bytesOf(b64);
+        if (bytes == null) {
             throw refusal("CARD_SIGNATURE_UNREADABLE", "The upload is not a file the portal can read.", "Upload the signature as a PNG or JPEG image.");
         }
         if (bytes.length > MAX_BYTES) {
             throw refusal("CARD_SIGNATURE_TOO_LARGE", "The signature is " + (bytes.length / 1024) + " KB; the limit is " + (MAX_BYTES / 1000) + " KB.",
                     "Scan or export the signature smaller — 600 pixels wide prints sharply on the card.");
         }
-        String type = bytes.length > 3 && (bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G' ? "image/png"
-                : bytes.length > 2 && (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 ? "image/jpeg" : null;
+        String type = SignatureImages.typeOf(bytes);
         if (type == null) {
             throw refusal("CARD_SIGNATURE_FORMAT", "The signature must be a PNG or a JPEG; this file is neither.", "Scan the signature on white paper and save it as PNG or JPEG.");
         }
-        BufferedImage img;
-        try {
-            img = ImageIO.read(new ByteArrayInputStream(bytes));
-        } catch (java.io.IOException unreadable) {
-            img = null;
-        }
+        BufferedImage img = SignatureImages.decode(bytes).image();
         if (img == null || img.getWidth() < 60 || img.getHeight() < 20) {
             throw refusal("CARD_SIGNATURE_UNREADABLE", "The image could not be decoded, or is too small to print (at least 60 × 20 pixels).",
                     "Upload a clear scan of the signature, cropped close to the ink.");
         }
-        byte[] jpeg = jpegOnWhite(img);
+        byte[] jpeg = SignatureImages.jpegOnWhite(img);
         UUID original = files.store("credentials.card_signatory", "CHIEF_SECURITY_OFFICER", in.filename() == null ? "signature" : in.filename(), type, bytes);
         UUID derived = files.store("credentials.card_signatory", "CHIEF_SECURITY_OFFICER", "signature.jpg", "image/jpeg", jpeg);
         jdbc.sql("SELECT credentials.set_card_signatory(:n, :b, :bo, :t, :j, :jo, false)")
@@ -160,30 +141,5 @@ class CardSignatoryController {
 
     private static DomainRuleViolation refusal(String code, String words, String remedy) {
         return new DomainRuleViolation(code, words, new DomainRuleViolation.Remedy(remedy, "Directorate of ICT"));
-    }
-
-    /** the signature drawn on white, no larger than 800 pixels on its longest side, as a JPEG the PDF engine embeds */
-    static byte[] jpegOnWhite(BufferedImage img) {
-        int w = img.getWidth(), h = img.getHeight();
-        double k = Math.min(1.0, (double) JPEG_MAX_SIDE / Math.max(w, h));
-        int tw = Math.max(1, (int) Math.round(w * k)), th = Math.max(1, (int) Math.round(h * k));
-        BufferedImage rgb = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = rgb.createGraphics();
-        try {
-            g.setColor(Color.WHITE);
-            g.fillRect(0, 0, tw, th);
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g.drawImage(img, 0, 0, tw, th, null);
-        } finally {
-            g.dispose();
-        }
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try {
-            ImageIO.write(rgb, "jpeg", out);
-        } catch (java.io.IOException impossible) {
-            throw new IllegalStateException("the JPEG writer is part of the JDK", impossible);
-        }
-        return out.toByteArray();
     }
 }

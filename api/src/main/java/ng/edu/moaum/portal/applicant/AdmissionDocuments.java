@@ -2,9 +2,11 @@ package ng.edu.moaum.portal.applicant;
 
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
 
 /**
@@ -29,12 +32,16 @@ import ng.edu.moaum.portal.shared.NotFound;
 @Component
 public class AdmissionDocuments {
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(AdmissionDocuments.class);
+
     private final JdbcClient jdbc;
     private final CheckCodes codes;
+    private final FileObjects files;
 
-    AdmissionDocuments(JdbcClient jdbc, CheckCodes codes) {
+    AdmissionDocuments(JdbcClient jdbc, CheckCodes codes, FileObjects files) {
         this.jdbc = jdbc;
         this.codes = codes;
+        this.files = files;
     }
 
     /** the application behind a student, when the student came through the admission lifecycle */
@@ -157,9 +164,38 @@ public class AdmissionDocuments {
                  WHERE a.id = :a
                 """).param("a", app).query().singleRow());
         // the wording, the signatory and the notes: the active ADMISSION_LETTER template (V283), a new version from Document settings
-        out.put("template", jdbc.sql("SELECT title, subtitle, signatory_name, signatory_title, second_name, second_title, footer, remarks FROM credentials.document_template WHERE kind = 'ADMISSION_LETTER' AND active ORDER BY version DESC LIMIT 1")
-                .query().listOfRows().stream().findFirst().orElse(null));
+        Map<String, Object> template = jdbc.sql("SELECT title, subtitle, signatory_name, signatory_title, second_name, second_title, footer, remarks FROM credentials.document_template WHERE kind = 'ADMISSION_LETTER' AND active ORDER BY version DESC LIMIT 1")
+                .query().listOfRows().stream().findFirst().orElse(null);
+        out.put("template", template);
+        // V759: the signature held for the signatory that template names, drawn above the name; none held, no key, and the letter
+        // leaves the space for a hand signature. Only the letter's owner reads it here — the offices read it on Document settings
+        if (template != null && template.get("signatory_name") instanceof String signatory) {
+            signature(signatory).ifPresent(sig -> out.put("signature", sig));
+        }
         return out;
+    }
+
+    /** V759: the JPEG on white held for a signatory (credentials.signatory_signature_of: by the name's key), with its size in pixels.
+     *  A signature the file store cannot give back (an object gone, the store out of reach) never stops the letter: it prints with
+     *  the space for a hand signature, as it did before the signature was a setting */
+    private Optional<Map<String, Object>> signature(String signatory) {
+        return jdbc.sql("SELECT signature_jpeg, signature_jpeg_object_id, jpeg_width, jpeg_height FROM credentials.signatory_signature_of(:n)")
+                .param("n", signatory).query().listOfRows().stream().findFirst().map(r -> {
+                    byte[] jpeg;
+                    try {
+                        jpeg = files.resolve((byte[]) r.get("signature_jpeg"), (UUID) r.get("signature_jpeg_object_id"));
+                    } catch (RuntimeException unreadable) {
+                        LOG.warn("admission letter: the signature of {} could not be read from the file store; the letter prints without it: {}",
+                                signatory, unreadable.toString());
+                        return null;
+                    }
+                    if (jpeg == null) return null;
+                    Map<String, Object> sig = new LinkedHashMap<>();
+                    sig.put("jpegBase64", Base64.getEncoder().encodeToString(jpeg));
+                    sig.put("width", r.get("jpeg_width"));
+                    sig.put("height", r.get("jpeg_height"));
+                    return sig;
+                });
     }
 
     /** the screening forms of a successful screening (V280), each opening on the document's trail */

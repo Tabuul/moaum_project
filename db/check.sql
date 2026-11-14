@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 616
+\set EXPECTED 617
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -36814,6 +36814,141 @@ BEGIN
   PERFORM pg_temp.assert('V758: an accidental decline reversed by the Academic Office while the place is free, with a new date once the deadline passed; refused once the place went to the waiting list',
       coalesce(msg = 'bursar DECLINE_REVERSAL_OFFICE | short DECLINE_REVERSAL_REASON | no date DECLINE_REVERSAL_DEADLINE | REVERSED ADMITTED | state ADMITTED/true'
                      || ' | deadline +7 | vacancy 0 past 0 recorded 1 | B refused, named', false), msg);
+END $$;
+-- ── V759. The admission letter's signature, uploaded as a setting. The key reads a signatory's name with case, spacing and the spaces
+--          beside punctuation aside — the Latin capitals beyond A-Z (a Yoruba name in capitals, a Hausa hooked letter) and a letter
+--          typed with a combining mark included, whatever the database's locale; only the offices that keep the document templates set
+--          one (the Records Office, ICT and a change with no actor refused), only for a name a template states, a PNG or JPEG that is
+--          what it says, at most 1 MB (a file over it told its size in the limit's unit), its JPEG at most 800 pixels a side; the
+--          Deputy Registrar uploads it for a made-up signatory the admission letter's current version names (the name typed loosely),
+--          the Academic Office replaces it (version 2), and the letter's lookup by the template in force finds it. A later version
+--          naming someone else finds none (a letter is drawn with the version in force, whenever it was issued) and the held one is
+--          listed as no longer in use; a version naming the signatory again, spelt otherwise, prints it again. The Registrar removes it
+--          (version 3, the row kept, a second removal refused), and the audit trail has all three acts. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); v_next int; keys text; latin text; offices text;
+    rec_refused text; ict_refused text; anon_refused text; unknown_refused text; blank_refused text; gif_refused text; lie_refused text;
+    big_refused text; dims_refused text; nojpeg_refused text; keyrow_refused text; none_refused text;
+    s1 credentials.signatory_signature; s2 credentials.signatory_signature; s3 credentials.signatory_signature;
+    letter_now text; listed_held text; letter_again int; letter_other int; listed_after text; letter_removed int; listed_removed text;
+    kept text; audits text; attached boolean; msg text;
+BEGIN
+  BEGIN
+    keys := (SELECT string_agg(coalesce(credentials.signatory_key(v), 'NULL'), ' | ' ORDER BY o)
+               FROM unnest(ARRAY['ZZ Check Signatory V759, MAUA, MIMC', '  zz  CHECK signatory v759 ,maua,MIMC ',
+                                 E'ZZ\u00a0Check  Signatory V759 , MAUA , MIMC', '   ', NULL]) WITH ORDINALITY x(v, o));
+    -- OLA ADEWALE with a dotted O and acute accents: in capitals, as written, and typed with combining marks; DAN BAKO in Hausa's letters
+    latin := (SELECT string_agg(coalesce(credentials.signatory_key(v), 'NULL'), ' | ' ORDER BY o)
+                FROM unnest(ARRAY[E'\u1eccL\u00c1 AD\u00c9W\u00c1L\u00c9', E'\u1eccl\u00e1 Ad\u00e9w\u00e1l\u00e9', E'O\u0323la\u0301 Ade\u0301wa\u0301le\u0301',
+                                  E'\u018aAN \u0181A\u0198O']) WITH ORDINALITY x(v, o));
+    offices := (SELECT string_agg(o || '=' || credentials.signature_office(o), ' ' ORDER BY o)
+                  FROM unnest(ARRAY['academic', 'dregistrar', 'ict', 'records', 'registrar', 'student', 'super']) o);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.reason', 'CHECK V759', true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-CHK-V759', 'ZZCHKV759', 'Invented Officer');
+    -- the admission letter's next version names a made-up signatory
+    v_next := (SELECT coalesce(max(version), 0) + 1 FROM credentials.document_template WHERE kind = 'ADMISSION_LETTER');
+    UPDATE credentials.document_template SET active = false WHERE kind = 'ADMISSION_LETTER';
+    INSERT INTO credentials.document_template (kind, version, title, signatory_name, signatory_title)
+    VALUES ('ADMISSION_LETTER', v_next, 'CHECK V759', 'ZZ Check Signatory V759, MAUA, MIMC', 'Deputy Registrar');
+    -- who may not, and what is not a signature
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS rec_refused = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS ict_refused = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', '', true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN insufficient_privilege THEN GET STACKED DIAGNOSTICS anon_refused = MESSAGE_TEXT; END;
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'dregistrar', true);
+    BEGIN PERFORM credentials.set_signatory_signature('Nobody Named V759', '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS unknown_refused = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.set_signatory_signature('   ', '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS blank_refused = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x47494638'::bytea, NULL, 'image/gif', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS gif_refused = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\xffd8ffe0'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS lie_refused = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x89504e47'::bytea || convert_to(repeat('x', 1000000), 'UTF8'), NULL, 'image/png',
+                                                      '\xffd8ffe0'::bytea, NULL, 600, 199);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS big_refused = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x89504e47'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 1057, 350);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS dims_refused = MESSAGE_TEXT; END;
+    BEGIN PERFORM credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\x89504e47'::bytea, NULL, 'image/png', NULL, NULL, 600, 199);
+    EXCEPTION WHEN check_violation THEN GET STACKED DIAGNOSTICS nojpeg_refused = MESSAGE_TEXT; END;
+    BEGIN INSERT INTO credentials.signatory_signature (name_key, name, set_by, set_office) VALUES ('not the key', 'ZZ Check Signatory V759', who, 'dregistrar');
+    EXCEPTION WHEN check_violation THEN keyrow_refused := 'refused'; END;
+    -- the Deputy Registrar uploads it, the name typed loosely; the Academic Office replaces it as the template states the name
+    s1 := credentials.set_signatory_signature('  zz  CHECK signatory v759 ,maua,MIMC ', '\x89504e470d0a1a0a'::bytea, NULL, 'image/png', '\xffd8ffe0'::bytea, NULL, 600, 199);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    s2 := credentials.set_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC', '\xffd8ffe1'::bytea, NULL, 'image/jpeg', '\xffd8ffdb'::bytea, NULL, 800, 265);
+    -- the letter: what its current template's signatory finds
+    letter_now := (SELECT s.version || ':' || s.jpeg_width || 'x' || s.jpeg_height || ':' || encode(s.signature_jpeg, 'hex')
+                     FROM credentials.signatory_signature_of((SELECT t.signatory_name FROM credentials.document_template t
+                                                               WHERE t.kind = 'ADMISSION_LETTER' AND t.active ORDER BY t.version DESC LIMIT 1)) s);
+    listed_held := (SELECT l.name || ':' || l.in_use || ':' || l.has_signature || ':' || l.version || ':' || l.set_by_name || ':' || l.set_office
+                      FROM credentials.signatory_signatures() l WHERE l.name_key = s1.name_key);
+    -- a later version names someone else: every letter is drawn with it, so none prints this signature, which is listed as unused;
+    -- a version naming the signatory again (spelt in capitals, spaced otherwise) prints it again
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    UPDATE credentials.document_template SET active = false WHERE kind = 'ADMISSION_LETTER';
+    INSERT INTO credentials.document_template (kind, version, title, signatory_name, signatory_title)
+    VALUES ('ADMISSION_LETTER', v_next + 1, 'CHECK V759', 'ZZ Another Signatory V759', 'Deputy Registrar');
+    letter_other := (SELECT count(*) FROM credentials.signatory_signature_of((SELECT t.signatory_name FROM credentials.document_template t
+                                                                               WHERE t.kind = 'ADMISSION_LETTER' AND t.active ORDER BY t.version DESC LIMIT 1)));
+    listed_after := (SELECT string_agg(l.name || ':' || l.in_use || ':' || l.has_signature, ',' ORDER BY l.name)
+                       FROM credentials.signatory_signatures() l WHERE l.name LIKE 'ZZ %V759%');
+    UPDATE credentials.document_template SET active = false WHERE kind = 'ADMISSION_LETTER';
+    INSERT INTO credentials.document_template (kind, version, title, signatory_name, signatory_title)
+    VALUES ('ADMISSION_LETTER', v_next + 2, 'CHECK V759', 'ZZ CHECK SIGNATORY V759 , MAUA , MIMC', 'Deputy Registrar');
+    letter_again := (SELECT count(*) FROM credentials.signatory_signature_of((SELECT t.signatory_name FROM credentials.document_template t
+                                                                               WHERE t.kind = 'ADMISSION_LETTER' AND t.active ORDER BY t.version DESC LIMIT 1)));
+    -- the Registrar removes it: the row and its trail stay; a second removal finds nothing to remove
+    s3 := credentials.remove_signatory_signature('zz check signatory v759, maua, mimc');
+    BEGIN PERFORM credentials.remove_signatory_signature('ZZ Check Signatory V759, MAUA, MIMC');
+    EXCEPTION WHEN no_data_found THEN GET STACKED DIAGNOSTICS none_refused = MESSAGE_TEXT; END;
+    letter_removed := (SELECT count(*) FROM credentials.signatory_signature_of('ZZ Check Signatory V759, MAUA, MIMC'));
+    listed_removed := (SELECT string_agg(l.name || ':' || l.in_use || ':' || l.has_signature, ',' ORDER BY l.name)
+                         FROM credentials.signatory_signatures() l WHERE l.name ILIKE 'ZZ %V759%');
+    kept := (SELECT s.version || ':' || coalesce(s.signature_type, 'none') || ':' || (s.signature IS NULL AND s.signature_jpeg IS NULL AND s.jpeg_width IS NULL)
+               FROM credentials.signatory_signature s WHERE s.name_key = s1.name_key);
+    audits := (SELECT string_agg(e.action || ':' || e.actor_office, ',' ORDER BY e.seq) FROM audit.entries e
+                WHERE e.subject_type = 'credentials.signatory_signature' AND coalesce(e.after_state, e.before_state)->>'name_key' = s1.name_key);
+    attached := EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'credentials.signatory_signature'::regclass AND tgname = 'trg_audit_credentials_signatory_signature');
+    RAISE EXCEPTION 'the V759 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'the V759 check undoes its writes' THEN RAISE; END IF;
+  END;
+    PERFORM pg_temp.assert('V759: a signatory''s signature is the template offices'' setting, matched to the name a letter''s template states, replaced and removed on the audit trail',
+        coalesce(keys = 'zz check signatory v759,maua,mimc | zz check signatory v759,maua,mimc | zz check signatory v759,maua,mimc | NULL | NULL'
+                 AND latin = E'\u1ecdl\u00e1 ad\u00e9w\u00e1l\u00e9 | \u1ecdl\u00e1 ad\u00e9w\u00e1l\u00e9 | \u1ecdl\u00e1 ad\u00e9w\u00e1l\u00e9 | \u0257an \u0253a\u0199o'
+                 AND offices = 'academic=true dregistrar=true ict=false records=false registrar=true student=false super=true'
+                 AND rec_refused LIKE 'SIGNATORY_SIGNATURE_OFFICE%' AND ict_refused LIKE 'SIGNATORY_SIGNATURE_OFFICE%' AND anon_refused LIKE 'SIGNATORY_SIGNATURE_OFFICE%'
+                 AND unknown_refused LIKE 'SIGNATORY_SIGNATURE_UNKNOWN%' AND blank_refused LIKE 'SIGNATORY_SIGNATURE_NAME%'
+                 AND gif_refused LIKE 'SIGNATORY_SIGNATURE_FORMAT%' AND lie_refused LIKE 'SIGNATORY_SIGNATURE_FORMAT%'
+                 AND big_refused = 'SIGNATORY_SIGNATURE_TOO_LARGE: the signature is 1.01 MB (1,000,004 bytes); the limit is 1 MB (1,000,000 bytes)'
+                 AND dims_refused LIKE 'SIGNATORY_SIGNATURE_IMAGE%' AND nojpeg_refused LIKE 'SIGNATORY_SIGNATURE_IMAGE%' AND keyrow_refused = 'refused'
+                 AND s1.version = 1 AND s1.name = 'zz  CHECK signatory v759 ,maua,MIMC' AND s1.name_key = 'zz check signatory v759,maua,mimc'
+                 AND s1.signature_type = 'image/png' AND s1.set_office = 'dregistrar' AND s1.set_by = who
+                 AND s2.version = 2 AND s2.name = 'ZZ Check Signatory V759, MAUA, MIMC' AND s2.name_key = s1.name_key AND s2.signature_type = 'image/jpeg'
+                 AND s2.set_office = 'academic'
+                 AND letter_now = '2:800x265:ffd8ffdb' AND listed_held = 'ZZ Check Signatory V759, MAUA, MIMC:true:true:2:ZZCHKV759, Invented Officer:academic'
+                 AND letter_other = 0 AND letter_again = 1
+                 AND listed_after = 'ZZ Another Signatory V759:true:false,ZZ Check Signatory V759, MAUA, MIMC:false:true'
+                 AND s3.version = 3 AND s3.signature_type IS NULL AND s3.set_office = 'registrar' AND none_refused LIKE 'SIGNATORY_SIGNATURE_NONE%'
+                 AND letter_removed = 0 AND listed_removed = 'ZZ CHECK SIGNATORY V759 , MAUA , MIMC:true:false' AND kept = '3:none:true'
+                 AND audits = 'INSERT:dregistrar,UPDATE:academic,UPDATE:registrar' AND attached, false),
+        format('keys %s | latin %s | offices %s | records %s ict %s anon %s | unknown %s blank %s gif %s lie %s big %s dims %s nojpeg %s keyrow %s | up v%s %s %s %s | replaced v%s %s %s | letter %s | listed %s | other %s again %s | after %s | removed v%s %s, again %s | letter %s listed %s kept %s | audit %s attached %s',
+               keys, latin, offices, left(rec_refused, 26), left(ict_refused, 26), left(anon_refused, 26), left(unknown_refused, 27), left(blank_refused, 24),
+               left(gif_refused, 26), left(lie_refused, 26), big_refused, left(dims_refused, 25), left(nojpeg_refused, 25), keyrow_refused,
+               s1.version, s1.name, s1.signature_type, s1.set_office, s2.version, s2.signature_type, s2.set_office, letter_now, listed_held,
+               letter_other, letter_again, listed_after, s3.version, s3.set_office, left(none_refused, 24), letter_removed, listed_removed, kept, audits, attached));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

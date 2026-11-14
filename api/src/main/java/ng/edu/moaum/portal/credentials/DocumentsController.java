@@ -41,12 +41,18 @@ import org.springframework.web.bind.annotation.RestController;
 class DocumentsController {
 
     private static final String STUDENT = "hasAuthority('OFFICE_student')";
-    private static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_audit')";
+    // READERS and CONFIG also guard the signatories' signatures (V759, SignatorySignatureController): who reads or changes a template
+    // reads or changes the signature it prints
+    static final String READERS = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records','OFFICE_dvc','OFFICE_vc','OFFICE_bursar','OFFICE_ict','OFFICE_admin','OFFICE_super','OFFICE_audit')";
     private static final String OFFICE = "hasAnyAuthority('OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_records')";
     private static final String SIGNERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic')";
     private static final String REVOKERS = "hasAnyAuthority('OFFICE_registrar','OFFICE_vc')";
-    private static final String CONFIG = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
+    static final String CONFIG = "hasAnyAuthority('OFFICE_registrar','OFFICE_dregistrar','OFFICE_academic','OFFICE_super')";
     private static final Set<String> KINDS = Set.of("DEGREE_CERTIFICATE", "TRANSCRIPT", "SESSIONAL_TRANSCRIPT", "MINI_TRANSCRIPT", "ACADEMIC_STATEMENT");
+    // V759: the kinds a new template version is put in force for — the requested kinds and the admission letter, whose wording,
+    // signatory and notes are its template (V283; the letter is never requested, so KINDS stays as the students' requests read it)
+    private static final Set<String> TEMPLATE_KINDS = Set.of("DEGREE_CERTIFICATE", "TRANSCRIPT", "SESSIONAL_TRANSCRIPT", "MINI_TRANSCRIPT", "ACADEMIC_STATEMENT",
+            "ADMISSION_LETTER");
     private static final int VERIFY_LIMIT = 40;
     private static final long VERIFY_WINDOW_MS = 15 * 60_000L;
 
@@ -603,13 +609,14 @@ class DocumentsController {
                              @Size(max = 120) String secondName, @Size(max = 120) String secondTitle, @Size(max = 600) String footer, @Size(max = 1000) String remarks) {
     }
 
-    /** a new template version: documents already issued stay under the version they were issued with */
+    /** a new template version: documents already issued stay under the version they were issued with — except the admission letter,
+     *  drawn with the version in force whenever it is opened */
     @PostMapping("/api/v1/documents/templates")
     @PreAuthorize(CONFIG)
     @Transactional
     Map<String, Object> template(@Valid @RequestBody TemplateIn body) {
         String k = body.kind().trim().toUpperCase();
-        if (!KINDS.contains(k)) throw new NotFound("document kind", k);
+        if (!TEMPLATE_KINDS.contains(k)) throw new NotFound("document kind", k);
         int v = jdbc.sql("SELECT coalesce(max(version), 0) + 1 FROM credentials.document_template WHERE kind = :k").param("k", k).query(Integer.class).single();
         jdbc.sql("UPDATE credentials.document_template SET active = false WHERE kind = :k").param("k", k).update();
         UUID id = jdbc.sql("INSERT INTO credentials.document_template (kind, version, title, subtitle, signatory_name, signatory_title, second_name, second_title, footer, remarks) VALUES (:k, :v, :t, :s, :sn, :st, :n2, :t2, :f, :r) RETURNING id")

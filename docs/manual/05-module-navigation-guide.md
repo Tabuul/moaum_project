@@ -5178,7 +5178,7 @@ Students → Documents Office → /credentials/documents
 ```text
 /credentials/documents → Policies & templates → /credentials/documents/settings
 ```
-**URL** `/credentials/documents/settings` · **Purpose** Policies per kind and template versions. · **Who** `CONFIG` registrar, dregistrar, academic, super (others read).
+**URL** `/credentials/documents/settings` · **Purpose** Policies per kind, template versions and (V759) the signature printed on the admission letter. · **Who** `CONFIG` registrar, dregistrar, academic, super (others read).
 
 | Field | Description | Required | Validation |
 |---|---|---|---|
@@ -5187,11 +5187,14 @@ Students → Documents Office → /credentials/documents
 | Mini-transcript covers | current semester / selected semester / selected session / cumulative | — | CHECK |
 | Billable, Self-service, Graduates only, Active | Checkboxes | — | — |
 | Fields shown to a stranger on verification | holder, matricNo, programme, award, classOfDegree, faculty, department, graduationSession, graduationDate, session, level, standing, cgpa | — | Results never |
-| Template: Document, Title, Subtitle, Signatory, Signatory's title, Second signatory, its title, Footer, Official remarks | New version deactivates the previous | Title, Signatory, title | — |
+| Template: Document, Title, Subtitle, Signatory, Signatory's title, Second signatory, its title, Footer, Official remarks | New version deactivates the previous; Document lists the kinds drawn from a template, the admission letter (ADMISSION_LETTER, its remarks labelled Notes, one a line) among them | Title, Signatory, title | — |
+| Admission letter signature (panel, V759): Upload a signature / Replace the signature, Remove the signature | The signature printed above the signatory the admission letter's template in force names, on every admission letter (the ones issued earlier included); shown as printed; "Other signatures held" lists any kept for a signatory the template in force does not name, each with Remove | — | PNG or JPEG by its first bytes, at most 1 MB (1,000,000 bytes), checked in the browser and again by the API; decodes; at least 60 × 20 pixels |
 
-**Actions** `PUT /documents/policies/{kind}`; `POST /documents/templates` ("Put in force"). · **Messages** "You are reading these settings"; "every document already issued stays under the version it was issued with".
+**Actions** `PUT /documents/policies/{kind}`; `POST /documents/templates` ("Put in force"); `GET /documents/signatures`, `GET /documents/signatures/image?name=&format=jpeg`, `PUT /documents/signatures` (upload or replace), `DELETE /documents/signatures?name=` (remove, after "Remove the signature?"). · **Messages** "You are reading these settings"; "Documents already issued keep the version they were issued with. An admission letter is printed with the version in force whenever it is opened."; "No signature uploaded: the letter leaves the space for a hand signature"; "Printed above the name on every admission letter that names this signatory, including letters already issued. If a later version of the template names someone else, upload that person's signature."; "Signature saved: every admission letter that names {signatory} prints it"; "Signature removed: the letters that name {signatory} leave the space for a hand signature"; the API's refusals `SIGNATORY_SIGNATURE_*` through the problem notice.
 
 > **Screenshot Required:** Document policies — `/credentials/documents/settings` — the policies table and the policy modal.
+
+> **Screenshot Required:** Admission letter signature — `/credentials/documents/settings` — the panel with a signature uploaded.
 
 #### 4.17.6 Transcripts (legacy queue)
 
@@ -5773,7 +5776,7 @@ All PDFs are drawn by Next.js route handlers with `frontend/src/lib/pdf-write.ts
 |---|---|---|---|---|---|---|---|
 | Application form | `/applicant/apply/pdf` | Applicant | Any time (says "Not yet submitted" before submission) | Passport, 11 biodata rows, O'Level sittings, submitted date, footer with APP number | None | None | Applicant's own token |
 | Post-UTME examination slip | `/applicant/screening/slip` | Applicant | Once seated in a PUBLISHED batch (409 "No examination slip yet" before) | Exam name and session, passport, name, APP/JAMB, programme, POSTPONED/CANCELLED banner, Batch, Date, Report by, Examination, Centre, Room, Seat, Workstation, address, QR, instructions, what to bring | `/verify/putme/{token}` (public, unthrottled) | Token fixed per application | Photo and personal data on the public page |
-| Admission letter | `/applicant/status/letter` | Applicant | After OFFERED released **and** accepted (409 "No offer to print" / "Accept your offer first") | "Office of the Registrar · Academic Affairs", Our ref, "OFFER OF PROVISIONAL ADMISSION" with level, programme, faculty, session, basis, provisional terms, "As screened" box, "Registrar / For: Vice-Chancellor" | None | None | — |
+| Admission letter | `/applicant/status/letter` | Applicant | After OFFERED released **and** accepted (409 "No offer to print" / "Accept your offer first") | "Office of the Registrar · Academic Affairs", Our ref, "OFFER OF PROVISIONAL ADMISSION" with level, programme, faculty, session, basis, provisional terms, "As screened" box, "Registrar / For: Vice-Chancellor" (since V283 the wording, signatory and notes of the ADMISSION_LETTER template in force; since V759 the signature uploaded for that signatory on Document settings above the name, else the space for a hand signature; also `/student/documents/admission/letter`) | None | None | — |
 | PG application summary | `/pg/summary/pdf` | PG applicant | Any time | APPLICATION (passport), APPLICANT, QUALIFICATIONS, RESEARCH PROPOSAL, REFEREES, "Documents on file" | None | None | — |
 | PG confirmation of offer of admission | `/pg/offer/pdf` | PG applicant | After the acceptance fee is confirmed (409 "Offer letter not available yet") | "(Office of the Registrar)", DATE, APPLICANT'S NAME, APPLICATION NUMBER, "CONFIRMATION OF OFFER OF ADMISSION", COURSE/PROGRAMME/FACULTY/LEVEL/DURATION, six notes, signed "Ajuma Isaac Ugbabe, Secretary, Postgraduate School" (hard-coded), QR text `MOAUM PG {applicationNo}` | **None** (QR is decorative) | None | — |
 | PG merged documents | `GET /api/v1/pg/applications/{id}/documents.pdf` | PG admissions desk | Once documents exist | Every uploaded PDF concatenated plus the passport page | None | None | `READERS` |

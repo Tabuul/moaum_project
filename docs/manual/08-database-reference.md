@@ -127,7 +127,7 @@ Each module owns a PostgreSQL schema (ADR-006, quoted in `V001`). The migrations
 | `registration` | 3 | Course registrations, entries, attendance | V001 |
 | `assessment` | 10 | Examination sessions, score sheets, scores, approval decisions, held scripts, result queries, exam timetable, CBT question bank, SIWES supervisors, legacy holding | V001 |
 | `records` | 1 | Graduands and Senate approval of awards | V001 |
-| `credentials` | 15 | Document policies and templates, issued documents, requests, deliveries, tokens, revocations, printed certificates, identity cards, verification logs, signing keys | V001 |
+| `credentials` | 16 | Document policies and templates, the signatories' signatures (V759), issued documents, requests, deliveries, tokens, revocations, printed certificates, identity cards, verification logs, signing keys | V001 |
 | `clearance` | 2 | Clearance units and items | V001 |
 | `finance` | 21 | Fee schedule and settings, payment references, gateway events and credentials, bank credits, refunds, reconciliation, general ledger, wallet, NELFUND, PayDirect | V001 |
 | `payments` | 0 | Created for the payments module; no table (gateway tables are in `finance`) | V001 |
@@ -348,6 +348,7 @@ The most important functions:
 | `assessment.student_gpa` / `student_cumulative` / `standing_of` | GPA and CGPA from published scores and the grade bands in force; standing (GOOD / PROBATION / ADVISED_TO_WITHDRAW, per `policy`) |
 | `credentials.issue(...)` / `issue_certificate` / `build_statement` | Builds the statement of record from the authoritative tables, stores it byte for byte with its SHA-256 and verification code, numbers it; the certificate is gated by `credentials.assert_issuable` (GRADUATED, Senate-approved, cleared) |
 | `credentials.verify_document(code_or_number)` | The public answer VALID / REVOKED / REPLACED / NOT FOUND with public fields only; logs every lookup |
+| `credentials.signatory_key(name)` / `set_signatory_signature(...)` / `remove_signatory_signature(name)` / `signatory_signature_of(name)` / `signatory_signatures()` (V759) | The signature printed above a signatory's name on the admission letter, a setting: the name matched with case, spacing and the spaces beside punctuation aside (composed, the Latin capitals in small letters whatever the database's locale); uploaded, replaced (a new version) and removed (the row and the trail kept) only by the offices that keep the document templates (registrar, dregistrar, academic, super) and only for a name a template states; the signature a letter prints for its template's signatory; the signatories the current templates name and any signature kept for one they do not |
 | `hostel.apply`, `hostel.draw`, `hostel.hold`, `hostel.accept`, `hostel.checkin`, `hostel.transfer`, `hostel.inspect`, `hostel.charge`, `hostel.complete_clearance`, `hostel.lapse_holds` | The bed lifecycle from application to clearance; `confirm_by_reference` is called by `finance.confirm_payment` |
 | `admissions.application_stage(application)` | Derives the applicant's milestone 0–9 from the timestamps on the application, the registration and the student record |
 | `admissions.programme_change_route(application)` / `admission_stage` / `correction_preview` / `recommend_admission_correction` / `decide_admission_correction` / `programme_change_register(session)` (V297) | Which road a change of programme takes (CHANGE, CORRECTION, TRANSFER, CLOSED) and where the admission stands; what a correction would do; the correction recommended (a reason, the error described) and decided by the Registrar's offices, never by its recommender — the programme moved on candidate and student, fees paid kept and read against the new programme, registrations returned, a proposed matriculation row dropped, letters reissued; the register of every applicant moved from the programme applied for |
@@ -908,7 +909,7 @@ Total tables: 331 across 26 schemas (the `public` schema holds only the deployme
 | `catalogue` | 5 | Courses, offerings and curriculum |
 | `clearance` | 2 | Clearance units and items |
 | `college` | 28 | College of Health Sciences (MB;BS) specifics |
-| `credentials` | 15 | Issued documents, certificates, transcripts, ID cards, verification |
+| `credentials` | 16 | Issued documents, certificates, transcripts, ID cards, verification, the signatories' signatures |
 | `expenditure` | 10 | Vouchers, requisitions, stores |
 | `extexam` | 14 | External examiners |
 | `finance` | 21 | Fee schedules, charges, payment references, positions |
@@ -1134,6 +1135,7 @@ Total tables: 331 across 26 schemas (the `public` schema holds only the deployme
 | `issued` | ── the credential ──────────────────────────────────────────────────────── | id | issued, signing_key, transcript_request, ref.office | 22 | (verification_code) | 1 | attached | V005 |
 | `lookup_miss` | Failed public verification lookups (audit-exempt) | id |  | 3 |  | 0 | exempt | V005 |
 | `revocation` | ── revocation, which is an act like any other ──────────────────────────── Everything consequential in this design carries its authority: an office assignment cites an instrument, a fee schedule a Council minute, a returned result set a reason that cannot be e | credential_id | issued, ref.office | 7 |  | 1 | attached | V005 |
+| `signatory_signature` | V759: a signatory's signature, by the name a document template states (name_key = `credentials.signatory_key(name)`): as uploaded and as a JPEG on white for the PDF engine (each in the file store when one is configured, else in the row), the version rising with every upload, replacement and removal; set by the offices that keep the document templates; never public | name_key | platform.file_object | 13 |  | 1 | attached | V759 |
 | `signing_key` | Signing keys, effective-dated. A key stops signing and is never retired from verification: a 2027 certificate must verify in 2071 against the 2027 key. There is deliberately no column for a private key. | id |  | 8 |  | 1 | attached | V005 |
 | `stationery_batch` | A batch of certificate stationery | id |  | 7 | (batch) | 1 | attached | V013 |
 | `transcript_request` | A document request of any kind (transcript, statement, certificate) and its pipeline stage; the table keeps its historical name | id | document_policy, issued, people.student | 40 | (ref) | 2 | attached | V013 |
@@ -1969,6 +1971,8 @@ Every column whose CHECK constraint enumerates its values, compiled from `constr
 **`credentials.lookup_miss`**: id `bigint` NOT NULL, code `text` NOT NULL, looked_up_at `timestamp with time zone` NOT NULL
 
 **`credentials.revocation`**: credential_id `uuid` NOT NULL, revoked_on `date` NOT NULL, reason `text` NOT NULL, instrument `text` NOT NULL, revoked_by `uuid` NOT NULL, revoked_office `text` NOT NULL, recorded_at `timestamp with time zone` NOT NULL
+
+**`credentials.signatory_signature`**: name_key `text` NOT NULL, name `text` NOT NULL, signature `bytea`, signature_object_id `uuid`, signature_type `text`, signature_jpeg `bytea`, signature_jpeg_object_id `uuid`, jpeg_width `integer`, jpeg_height `integer`, version `integer` NOT NULL, set_at `timestamp with time zone` NOT NULL, set_by `uuid` NOT NULL, set_office `text` NOT NULL
 
 **`credentials.signing_key`**: id `uuid` NOT NULL, algorithm `text` NOT NULL, public_key `bytea` NOT NULL, custody_ref `text` NOT NULL, validity `daterange` NOT NULL, instrument `text` NOT NULL, retired_on `date`, retired_why `text`
 

@@ -2,7 +2,8 @@
 
 /** Document policies and templates (V262): per kind, whether it is billable and the fee, urgent, physical and international fees,
  *  self-service, the SLA, the scope a mini-transcript covers, the fields a stranger sees on verification; and the template
- *  versions — a new version never changes what an issued document was issued under. */
+ *  versions — a new version never changes what an issued document was issued under. V759: the signature printed above the admission
+ *  letter's signatory, uploaded here (LetterSignature). */
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,6 +12,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { callDocs, dayOf, naira, type Policy, type Template } from "@/lib/documents";
+import { LetterSignature } from "./LetterSignature";
 
 const CONFIG = ["registrar", "dregistrar", "academic", "super"];
 const FIELDS = ["holder", "matricNo", "programme", "award", "classOfDegree", "faculty", "department", "graduationSession", "graduationDate", "session", "level", "standing", "cgpa"];
@@ -43,6 +45,11 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
     } finally { setBusy(false); }
   }
   const latest = (k: string) => templates.filter((t) => t.kind === k).sort((a, b) => b.version - a.version)[0];
+  // V759: the admission letter's template in force (the newest when none is marked), whose signatory the signature is uploaded for
+  const letterTpl = templates.find((t) => t.kind === "ADMISSION_LETTER" && t.active) ?? latest("ADMISSION_LETTER");
+  // a new version is offered for the kinds a document is drawn from a template for (the admission letter among them; the screening
+  // forms have none), as the API takes them
+  const templateKinds = policies.filter((p) => templates.some((t) => t.kind === p.kind));
 
   return (
     <>
@@ -64,8 +71,10 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
       </Panel>
       <Panel title="Templates" right={may ? <Btn kind="secondary" onClick={() => { const l = latest("TRANSCRIPT"); setTf({ kind: "TRANSCRIPT", title: l?.title ?? "", subtitle: l?.subtitle ?? "", signatoryName: l?.signatory_name ?? "", signatoryTitle: l?.signatory_title ?? "", secondName: l?.second_name ?? "", secondTitle: l?.second_title ?? "", footer: l?.footer ?? "", remarks: l?.remarks ?? "" }); }}>New template version</Btn> : `${templates.length} version(s)`}>
         <DTable cols={["Document|mid", "Version|mid", "Title", "Signatories", "Footer", "From|mid", "|mid"]} rows={templates.map((t) => [<span key="k" className="sub2">{t.kind.toLowerCase().replace("_", " ")}</span>, <span key="v" className="tnum">v{t.version}</span>, <strong key="t">{t.title}{t.subtitle ? <div className="sub2">{t.subtitle}</div> : null}</strong>, <span key="s" className="sub2">{t.signatory_name} ({t.signatory_title}){t.second_name ? `; ${t.second_name} (${t.second_title})` : ""}</span>, <span key="f" className="sub2">{t.footer ?? ""}</span>, <span key="d" className="tnum sub2">{dayOf(t.created_at)}</span>, <Pil key="a" kind={t.active ? "ok" : "grey"}>{t.active ? "In force" : "Kept"}</Pil>])} />
-        <PBody><div className="sub2">Documents already issued keep the version they were issued with.</div></PBody>
+        <PBody><div className="sub2">Documents already issued keep the version they were issued with. An admission letter is printed with the version in force whenever it is opened.</div></PBody>
       </Panel>
+      {/* read again when a new version of the letter's template is put in force: it may name another signatory */}
+      {letterTpl?.signatory_name ? <LetterSignature key={letterTpl.version} signatory={letterTpl.signatory_name} templateVersion={letterTpl.version} may={may} /> : null}
 
       {pf ? (
         <Modal title={`Policy · ${pf.label}`} wide onClose={() => setPf(null)} foot={<><Btn kind="ghost" onClick={() => setPf(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void savePolicy()} disabled={busy}>Save</Btn></>}>
@@ -93,7 +102,7 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
       {tf ? (
         <Modal title="New template version" wide onClose={() => setTf(null)} foot={<><Btn kind="ghost" onClick={() => setTf(null)}>Cancel</Btn><Btn kind="primary" onClick={() => void saveTemplate()} disabled={busy || !tf.title.trim() || !tf.signatoryName.trim() || !tf.signatoryTitle.trim()}>Put in force</Btn></>}>
           <div className="grid grid--2">
-            <Field id="tf-kind" label="Document"><select id="tf-kind" className="ctl" value={tf.kind} onChange={(e) => { const l = latest(e.target.value); setTf({ kind: e.target.value, title: l?.title ?? "", subtitle: l?.subtitle ?? "", signatoryName: l?.signatory_name ?? "", signatoryTitle: l?.signatory_title ?? "", secondName: l?.second_name ?? "", secondTitle: l?.second_title ?? "", footer: l?.footer ?? "", remarks: l?.remarks ?? "" }); }}>{policies.map((p) => <option key={p.kind} value={p.kind}>{p.label}</option>)}</select></Field>
+            <Field id="tf-kind" label="Document"><select id="tf-kind" className="ctl" value={tf.kind} onChange={(e) => { const l = latest(e.target.value); setTf({ kind: e.target.value, title: l?.title ?? "", subtitle: l?.subtitle ?? "", signatoryName: l?.signatory_name ?? "", signatoryTitle: l?.signatory_title ?? "", secondName: l?.second_name ?? "", secondTitle: l?.second_title ?? "", footer: l?.footer ?? "", remarks: l?.remarks ?? "" }); }}>{templateKinds.map((p) => <option key={p.kind} value={p.kind}>{p.label}</option>)}</select></Field>
             <Field id="tf-title" label="Title" required><input id="tf-title" className="ctl" value={tf.title} onChange={(e) => setTf({ ...tf, title: e.target.value })} /></Field>
             <Field id="tf-sub" label="Subtitle" full><input id="tf-sub" className="ctl" value={tf.subtitle} onChange={(e) => setTf({ ...tf, subtitle: e.target.value })} /></Field>
             <Field id="tf-sn" label="Signatory" required><input id="tf-sn" className="ctl" value={tf.signatoryName} onChange={(e) => setTf({ ...tf, signatoryName: e.target.value })} /></Field>
@@ -101,7 +110,7 @@ export function Settings({ policies, templates, office }: { policies: Policy[]; 
             <Field id="tf-n2" label="Second signatory"><input id="tf-n2" className="ctl" value={tf.secondName} onChange={(e) => setTf({ ...tf, secondName: e.target.value })} /></Field>
             <Field id="tf-t2" label="Second signatory's title"><input id="tf-t2" className="ctl" value={tf.secondTitle} onChange={(e) => setTf({ ...tf, secondTitle: e.target.value })} /></Field>
             <Field id="tf-f" label="Footer" full><input id="tf-f" className="ctl" value={tf.footer} onChange={(e) => setTf({ ...tf, footer: e.target.value })} /></Field>
-            <Field id="tf-r" label="Official remarks" full><textarea id="tf-r" className="ctl" rows={2} value={tf.remarks} onChange={(e) => setTf({ ...tf, remarks: e.target.value })} /></Field>
+            <Field id="tf-r" label={tf.kind === "ADMISSION_LETTER" ? "Notes" : "Official remarks"} full hint={tf.kind === "ADMISSION_LETTER" ? "One note a line. {session}, {from} and {date} are filled from the record. The signature above the signatory is uploaded under Admission letter signature." : undefined}><textarea id="tf-r" className="ctl" rows={tf.kind === "ADMISSION_LETTER" ? 7 : 2} value={tf.remarks} onChange={(e) => setTf({ ...tf, remarks: e.target.value })} /></Field>
           </div>
         </Modal>
       ) : null}

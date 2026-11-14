@@ -5,6 +5,7 @@
 import type { ScreeningResult } from "./applicant.ts";
 import { currentInstitution } from "./document/institution-cache.ts";
 import { A4, Page, pdf, type Image } from "./pdf-write.ts";
+import { SIGNATURE_BOX, fitBottomLeft, type LetterSignature } from "./letter-signature.ts";
 
 export interface LetterApplication {
   applicationNo: string; session: string; name: string; jambKey: string; entryLevel: number; programme: string | null; faculty: string | null;
@@ -13,10 +14,16 @@ export interface LetterApplication {
   department?: string | null; degreeType?: string | null; durationSemesters?: number | null; registrationOpens?: string | null; surname?: string | null; otherNames?: string | null;
 }
 export interface LetterTemplate { title?: string | null; subtitle?: string | null; signatory_name?: string | null; signatory_title?: string | null; second_name?: string | null; second_title?: string | null; footer?: string | null; remarks?: string | null }
-export interface LetterDoc { number: string; version: number; verification_code: string; statement: string; issued_on: string; verifyPath: string; application?: LetterApplication; template?: LetterTemplate | null }
+export interface LetterDoc {
+  number: string; version: number; verification_code: string; statement: string; issued_on: string; verifyPath: string; application?: LetterApplication; template?: LetterTemplate | null;
+  /** V759: the signature uploaded for the signatory the template in force names (the letter is drawn with it whenever it is
+   *  opened), when one is held; absent otherwise */
+  signature?: LetterSignature | null;
+}
 
-/** what the route supplies from the server: the crest, the lodged signature, the QR of the verifying address, and (V379, a CCE
- *  admission) the applicant's passport photograph as a JPEG */
+/** what the route supplies from the server: the crest, the signature (V759: the one uploaded for the template's signatory, from the
+ *  letter's JSON — lib/letter-signature), the QR of the verifying address, and (V379, a CCE admission) the applicant's passport
+ *  photograph as a JPEG */
 export interface LetterArt { crest: Image | null; signature: Image | null; qr: { size: number; dark: Uint8Array | boolean[] | number[] } | null; passport?: Image | null }
 
 /** V379: what a CCE admission's statement adds — the route, the study mode, the Centre and the programme's duration on the route */
@@ -110,13 +117,17 @@ export function admissionLetterPdf(a: LetterApplication, letter: LetterDoc, orig
     p.textStyled(L + 14, y, `${i + 1}.`, 10.5, { font: R });
     y = p.paragraphStyled(L + 30, y, n, W - 30, 10.5, { font: R }, 1.35);
   });
-  // the signatory the template names, the signature above it when the University has lodged one
+  // the signatory the template names, the name where it has always stood. V759: above it, the signature uploaded for that
+  // signatory, in its own proportions within the space a hand signature takes (140 x 48 pt), standing 12 pt over the name's
+  // baseline (clear of its capitals); the space's top is at least 18 pt under the notes' next line, and the QR is on the right.
+  // Without a signature the space is left for a hand signature
   const sigTop = Math.min(y - 20, 176);
+  let sy = sigTop - 58;
   const sig = art.signature;
-  if (sig) p.jpeg(L, sigTop - 44, 120, 44, sig);
+  const at = sig ? fitBottomLeft(sig, { x: L, y: sy + 12, w: SIGNATURE_BOX.w, h: SIGNATURE_BOX.h }) : null;
+  if (sig && at) p.jpeg(at.x, at.y, at.w, at.h, sig);
   const sName = t.signatory_name || "The Registrar";
   const sTitle = t.signatory_title || "Registrar";
-  let sy = sigTop - 58;
   p.textStyled(L, sy, sName, 10.5, { font: B }); sy -= 15;
   p.textStyled(L, sy, sTitle, 10.5, { font: R }); sy -= 15;
   if (t.second_title || !t.signatory_name) p.textStyled(L, sy, t.second_title || "For: Registrar", 10.5, { font: R });

@@ -886,7 +886,8 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 
 | Feature | Status | Evidence | Notes |
 |---|---|---|---|
-| Policies per kind; templates with versions | IMPLEMENTED | `DocumentsController.java:505-548`; `Settings.tsx` | |
+| Policies per kind; templates with versions | IMPLEMENTED | `DocumentsController.java:505-548`; `Settings.tsx` | Since V759 a new admission letter version is put in force here too (`TEMPLATE_KINDS`) |
+| The admission letter's signature, a setting (V759) | IMPLEMENTED | `V759`; `SignatorySignatureController.java`; `SignatureImages.java`; `AdmissionDocuments.java`; `LetterSignature.tsx`; `admission-letter-pdf.ts` | Uploaded, replaced and removed by registrar, dregistrar, academic, super (also in the database); printed above the signatory the template in force names on every admission letter; never public; replaces `public/signatures/registrar.jpg`, which was never lodged |
 | Student request wizard, fee, payment reference, PayByCard | IMPLEMENTED | `V262:315-375`; `Documents.tsx:121-168` | |
 | Free self-service issue at once | IMPLEMENTED | `V262:366-370` | |
 | Validation with findings; generation; QC (approve / correction / reject); release by a second officer | IMPLEMENTED | `V262:584-699`; `Request.tsx` | Segregation of duty on release enforced |

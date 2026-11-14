@@ -798,6 +798,17 @@ public class PhotoEnhancer {
         return dst;
     }
 
+    /** V759: a JPEG's EXIF orientation, read by hand as an upload's is here (1 when it states none) — for a signature scanned or
+     *  photographed on a phone, which stores its pixels on their side and says so only in this tag */
+    public static int jpegOrientation(byte[] jpeg) {
+        return jpeg == null || jpeg.length < 4 ? 1 : jpegHeader(jpeg).orientation();
+    }
+
+    /** V759: a decoded picture put upright as its EXIF orientation says, on white (a JPEG has no transparency); as it is for 1 */
+    public static BufferedImage upright(BufferedImage src, int orientation) {
+        return orientation <= 1 || orientation > 8 ? src : orient(onWhite(src), orientation);
+    }
+
     static String orientationWords(int o) {
         return switch (o) {
             case 2 -> "mirrored left to right";

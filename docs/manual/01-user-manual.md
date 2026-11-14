@@ -799,7 +799,7 @@ Nothing about the decision — the status, the tracker, the documents list, the 
 1. Read the **Undertaking**, tick "I have read the undertaking and I accept it." and press **Sign the undertaking**.
 2. **Generate a reference for ₦…** (the acceptance fee alone — the checking fee is paid on its own, before; ₦25,000 by default if the Bursary has not set it — it is **non-refundable**) and pay by card/USSD, transfer or branch, as for the application fee.
 
-When both stand, the offer is accepted: "Offer accepted — ₦… received", a **Receipt** with "Non-refundable: Yes", and the notice "Your place is held". **Print Offer Letter** now appears on Admission Status → the admission letter PDF (§8). You may instead **Decline this offer** ("Decline this offer? A declined offer is not reinstated."); nothing is emailed on a decline, and a declined offer cannot be taken up again.
+When both stand, the offer is accepted: "Offer accepted — ₦… received", a **Receipt** with "Non-refundable: Yes", and the notice "Your place is held". **Print Offer Letter** now appears on Admission Status → the admission letter PDF (§8). Above the signatory's name the letter carries the signature the Registry has uploaded for that signatory (V759); until one is uploaded the space is left for a hand signature. You may instead **Decline this offer** ("Decline this offer? A declined offer is not reinstated."); nothing is emailed on a decline, and a declined offer cannot be taken up again.
 
 #### Stage 7 — Document clearance
 

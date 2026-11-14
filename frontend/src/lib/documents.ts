@@ -91,7 +91,7 @@ export function parseStatement(s: string | null | undefined): Statement | null {
 }
 
 /** one call to the document doors from the browser: the problem returned, never thrown */
-export async function callDocs<T>(method: "GET" | "POST" | "PUT", path: string, body: unknown, reason: string): Promise<{ ok: true; data: T } | { ok: false; problem: Problem }> {
+export async function callDocs<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body: unknown, reason: string): Promise<{ ok: true; data: T } | { ok: false; problem: Problem }> {
   const r = await fetch(`/api/bff/api/v1${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: body === undefined ? undefined : JSON.stringify(body) });
   const j = await r.json().catch(() => null);
   if (!r.ok) return { ok: false, problem: (j as Problem) ?? { status: r.status, title: r.statusText } };

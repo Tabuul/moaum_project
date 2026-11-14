@@ -3,7 +3,8 @@ import { api, API_URL } from "@/lib/api";
 import { acceptanceOf, type Application } from "@/lib/applicant";
 import { money } from "@/lib/format";
 import { admissionLetterPdf, type LetterDoc } from "@/lib/admission-letter-pdf";
-import { crestImage, signatureImage } from "@/lib/pdf-crest";
+import { crestImage } from "@/lib/pdf-crest";
+import { signatureImageOf } from "@/lib/letter-signature";
 import { qrMatrix } from "@/lib/qr";
 import { isPrelimRoute } from "@/lib/preliminary";
 import { sessionToken } from "@/lib/session";
@@ -56,6 +57,7 @@ export async function GET(req: Request) {
   if (!doc.ok) return NextResponse.json(doc.problem, { status: doc.problem.status });
   const letter = doc.data;
   const app = letter.application ?? { applicationNo: a.applicationNo, session: a.session, name: a.name, jambKey: a.jambKey, entryLevel: a.entryLevel, programme: a.programme, faculty: a.faculty, decision: a.decision, decisionReleasedAt: a.decisionReleasedAt, decisionBasis: a.decisionBasis, acceptedAt: a.acceptedAt };
-  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin, { crest: crestImage(), signature: signatureImage("registrar"), qr: qrMatrix(`${url.origin}${letter.verifyPath}`), passport: await passport(a) });
+  // V759: the signature uploaded for the signatory the letter's template names comes with the letter; none, and the space is left
+  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin, { crest: crestImage(), signature: signatureImageOf(letter.signature), qr: qrMatrix(`${url.origin}${letter.verifyPath}`), passport: await passport(a) });
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `${download ? "attachment" : "inline"}; filename="admission-letter-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });
 }

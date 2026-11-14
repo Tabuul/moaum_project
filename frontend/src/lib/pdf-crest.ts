@@ -25,25 +25,6 @@ export function crestImage(): Image | null {
   return currentLogo() ?? fileCrest();
 }
 
-/** A signatory's signature as a JPEG for pdf-write, read once from /public/signatures/<name>.jpg — for example
- *  signatures/registrar.jpg for the letter of admission. Null when the file is not there, so the letter prints
- *  with the space above the name left for a hand signature. */
-const signatures = new Map<string, Image | null>();
-export function signatureImage(name: string): Image | null {
-  const hit = signatures.get(name);
-  if (hit !== undefined) return hit;
-  let img: Image | null = null;
-  try {
-    const data = new Uint8Array(fs.readFileSync(path.join(process.cwd(), "public", "signatures", `${name.replace(/[^a-z0-9_-]/gi, "")}.jpg`)));
-    const size = jpegSize(data);
-    img = size ? { data, width: size.width, height: size.height } : null;
-  } catch {
-    img = null;
-  }
-  signatures.set(name, img);
-  return img;
-}
-
 /** The branded document header (V320): the logo, the University's name, its motto and contacts from the
  *  institution profile, a subtitle, and a rule under them. Returns the y to continue writing from. If the
  *  logo cannot be read, the name sits where it always did, so nothing is lost. */
