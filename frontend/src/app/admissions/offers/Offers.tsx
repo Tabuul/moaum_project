@@ -21,7 +21,13 @@ interface Past { app_id: string; application_no: string; name: string; programme
 interface Vacancy { vacated_id: string; application_no: string; name: string; programme: string; programme_name: string; basis: string | null; why: "LAPSED" | "DECLINED"; freed_at: string }
 interface Waiting { rank: number; app_id: string; application_no: string; jamb_reg_no: string; name: string; entry_mode: string; aggregate: number; state_of_origin: string | null; lga: string | null }
 /** V758: a declined offer whose place is still free — its decline may be reversed */
-interface Reversible { application_id: string; application_no: string; name: string; programme: string; declined_at: string; deadline_on: string | null; deadline_passed: boolean }
+interface Reversible {
+  application_id: string; application_no: string; name: string; programme: string; declined_at: string; deadline_on: string | null; deadline_passed: boolean;
+  /** V760: the programme the offer comes back on (the Board's, where JAMB's course was followed while it stood declined) */
+  programme_restores?: string | null;
+  /** V760: the undertaking and the acceptance fee are complete — the reversal accepts the offer at once, no date asked */
+  completes?: boolean;
+}
 interface View {
   reversible?: Reversible[];
   session: string; deadline: { accept_by: string | null; days_after_release: number | null; note: string | null; set_at: string; set_by: string | null } | null;
@@ -98,17 +104,20 @@ export function Offers({ session, sessions, canDecide, canReverse = false }: { s
   // V758: the University's day (Africa/Lagos), as the database reads the dates; a new date from today to 120 days ahead
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
   const latest = (() => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + 120); return d.toISOString().slice(0, 10); })();
-  const revDateBad = !!rev?.deadline_passed && (!revForm.acceptBy || revForm.acceptBy < today || revForm.acceptBy > latest);
+  const askDate = !!rev?.deadline_passed && !rev?.completes;
+  const revDateBad = askDate && (!revForm.acceptBy || revForm.acceptBy < today || revForm.acceptBy > latest);
   async function reverse() {
     if (!rev) return;
     setBusy(true);
     try {
       const d = await call<View>(`/applications/${rev.application_id}/reverse-decline`, "POST",
-        { reason: revForm.reason.trim(), acceptBy: revForm.acceptBy || null }, `Decline reversed (${rev.application_no})`);
-      const done = (d as (View & { reversed?: { offer_state?: string; programme_restored?: string } }) | null)?.reversed;
+        { reason: revForm.reason.trim(), acceptBy: askDate ? revForm.acceptBy || null : null }, `Decline reversed (${rev.application_no})`);
+      const done = (d as (View & { reversed?: { offer_state?: string; programme?: string; programme_restored?: boolean; accepted?: boolean } }) | null)?.reversed;
       if (d) {
         setV(d); setRev(null); setTick((t) => t + 1);
-        notify(`The decline of ${rev.application_no} is reversed: the offer stands again and the applicant is told.${done?.offer_state === "ACCEPTED" ? " The undertaking and the acceptance fee were already complete, so the offer is accepted." : ""}`);
+        notify(`The decline of ${rev.application_no} is reversed: the offer of ${done?.programme ?? rev.programme} stands again and the applicant is told.`
+          + `${done?.accepted ? " The undertaking and the acceptance fee were already complete, so the offer is accepted." : ""}`
+          + `${done?.programme_restored ? " It is back on the programme offered: correct it on Programme Changes if JAMB's course stands." : ""}`);
       } else {
         // refused (the place given away meanwhile, or the deadline passed since the page was read): the list is read again
         setRev(null); setTick((t) => t + 1);
@@ -181,16 +190,20 @@ export function Offers({ session, sessions, canDecide, canReverse = false }: { s
         <Modal title={`Reverse the decline — ${rev.application_no}, ${rev.name}`} onClose={() => setRev(null)}
           foot={<><Btn kind="ghost" onClick={() => setRev(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy || revForm.reason.trim().length < 20 || revDateBad} onClick={() => void reverse()}>Reverse the decline</Btn></>}>
-          <p>{`Declined ${day(rev.declined_at)}. The offer of ${rev.programme} stands again and the applicant is told. A decline is reversed only while its place is free: once the place is given to someone from the waiting list it stands.`}</p>
+          <p>{`Declined ${day(rev.declined_at)}. The offer of ${rev.programme_restores ?? rev.programme} stands again and the applicant is told. A decline is reversed only while its place is free: once the place is given to someone from the waiting list it stands.`}</p>
+          {rev.programme_restores && rev.programme_restores !== rev.programme ? (
+            <p className="sub2">{`JAMB moved the candidate to ${rev.programme} while the offer stood declined. The offer comes back on ${rev.programme_restores}, the programme offered; correct it on Programme Changes if JAMB's course stands.`}</p>
+          ) : null}
+          {rev.completes ? <p className="sub2">The undertaking was signed and the acceptance fee is complete, so the reversal accepts the offer at once.</p> : null}
           <Field id="rv-why" label="Why" hint="The applicant's request and how it was received, at least 20 characters">
             <textarea id="rv-why" className="ctl" rows={3} maxLength={1000} value={revForm.reason} onChange={(e) => setRevForm({ ...revForm, reason: e.target.value })} />
           </Field>
-          {rev.deadline_passed ? (
+          {askDate ? (
             <Field id="rv-by" label="New acceptance date" hint={`The acceptance deadline (${day(rev.deadline_on)}) has passed: the applicant accepts and pays by this date, today to 120 days ahead`}
               error={revForm.acceptBy && (revForm.acceptBy < today || revForm.acceptBy > latest) ? "A date from today to 120 days ahead" : undefined}>
               <input id="rv-by" className="ctl" type="date" min={today} max={latest} value={revForm.acceptBy} onChange={(e) => setRevForm({ ...revForm, acceptBy: e.target.value })} />
             </Field>
-          ) : rev.deadline_on ? <p className="sub2">{`The applicant accepts and pays by ${day(rev.deadline_on)}.`}</p> : null}
+          ) : rev.deadline_on && !rev.completes ? <p className="sub2">{`The applicant accepts and pays by ${day(rev.deadline_on)}.`}</p> : null}
         </Modal>
       ) : null}
       {lapse ? (

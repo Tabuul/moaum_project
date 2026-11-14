@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 618
+\set EXPECTED 619
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -37392,6 +37392,70 @@ BEGIN
                      || ' | round 6 NOT_RECEIVED/NOT_RECEIVED_WAITING/true/OPEN:true,OPEN:true/PAY_NOT_RECEIVED_SIWES_REFUNDED/true/false'
                      || ' | round 7 none/PROPOSED/true:NOT_RECEIVED/REFUND_SIWES_CHECK_BANK/true/APPLIED:SETTLES:true', false),
       msg);
+END $$;
+-- ── V760: the review of V758. In 9760/9761 admitted applicant A declined; A's JAMB list was withdrawn and the right list uploaded:
+--          the reversal re-links A to the live row. Admitted applicant B declined and JAMB's course was then followed (B moved to
+--          programme 2): the screen's list names programme 1, the reversal brings B back on it, and the applicant is told which. The
+--          block undoes its writes ──
+DO $$
+DECLARE
+    S constant text := '9760/9761'; who uuid := gen_random_uuid();
+    b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid(); ra uuid := gen_random_uuid(); ra2 uuid := gen_random_uuid(); rb uuid := gen_random_uuid();
+    ca uuid := gen_random_uuid(); cb uuid := gen_random_uuid(); acA uuid := gen_random_uuid(); acB uuid := gen_random_uuid();
+    appA uuid := gen_random_uuid(); appB uuid := gen_random_uuid();
+    p1 text; n1 text; p2 text; n2 text; moved text; listed text; done jsonb; relinked text; back text; told text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V760', true);
+    SELECT code, name INTO p1, n1 FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT code, name INTO p2, n2 FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived AND code <> p1 ORDER BY code LIMIT 1;
+    INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b1, S, 'CAPS_DOWNLOAD', 'check-v760.xlsx', decode(repeat('e0', 32), 'hex'), 2, 'DIRECT_ENTRY', current_date, who, 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+        (ra, b1, S, '976000000001DE', '{}'::jsonb, 'CHECKV760', 'Applicant A', p1, NULL, 'DIRECT_ENTRY'),
+        (rb, b1, S, '976000000002DE', '{}'::jsonb, 'CHECKV760', 'Applicant B', p1, NULL, 'DIRECT_ENTRY');
+    INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from) VALUES
+        (ca, S, '976000000001DE', 'CHECKV760', 'Applicant A', n1, 'DIRECT_ENTRY', 200, 'ADMITTED', ra),
+        (cb, S, '976000000002DE', 'CHECKV760', 'Applicant B', n1, 'DIRECT_ENTRY', 200, 'ADMITTED', rb);
+    INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash) VALUES
+        (acA, S, ca, '976000000001DE', 'v760a@example.test', '08030000761', crypt('x', gen_salt('bf', 12))),
+        (acB, S, cb, '976000000002DE', 'v760b@example.test', '08030000762', crypt('x', gen_salt('bf', 12)));
+    INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, submitted_at, decision, decided_at, decision_released_at) VALUES
+        (appA, acA, ca, S, 'APP/60/760001', now(), 'OFFERED', now() - interval '5 days', now() - interval '5 days'),
+        (appB, acB, cb, S, 'APP/60/760002', now(), 'OFFERED', now() - interval '5 days', now() - interval '5 days');
+    -- both decline (as decline_offer records it)
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    UPDATE admissions.application SET declined_at = now() - interval '2 days' WHERE id IN (appA, appB);
+    UPDATE admissions.candidate SET offer_state = 'DECLINED' WHERE id IN (ca, cb);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- JAMB moves B to programme 2 and the follow runs (no offer stands while declined)
+    UPDATE admissions.caps_row SET jamb_code = p2 WHERE id = rb;
+    PERFORM admissions.follow_caps_course(S, false);
+    SELECT programme INTO moved FROM admissions.candidate WHERE id = cb;
+    -- A's list is withdrawn as the wrong file and the right one uploaded
+    PERFORM admissions.withdraw_batch(b1, 'the wrong file was loaded (check V760)');
+    INSERT INTO admissions.caps_batch (id, session, source, filename, file_sha256, rows_read, list_kind, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (b2, S, 'CAPS_DOWNLOAD', 'check-v760b.xlsx', decode(repeat('e1', 32), 'hex'), 2, 'DIRECT_ENTRY', current_date, who, 'academic');
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode) VALUES
+        (ra2, b2, S, '976000000001DE', '{}'::jsonb, 'CHECKV760', 'Applicant A', p1, NULL, 'DIRECT_ENTRY'),
+        (gen_random_uuid(), b2, S, '976000000002DE', '{}'::jsonb, 'CHECKV760', 'Applicant B', p2, NULL, 'DIRECT_ENTRY');
+    SELECT string_agg(x.application_no || '=' || coalesce(x.programme_restores, '-'), ',' ORDER BY x.application_no) INTO listed
+      FROM admissions.declines_reversible(S) x;
+    PERFORM admissions.reverse_decline(appA, 'The applicant wrote that the decline was pressed by mistake.');
+    SELECT CASE WHEN admitted_from = ra2 THEN 'live row' ELSE coalesce(admitted_from::text, 'none') END INTO relinked FROM admissions.candidate WHERE id = ca;
+    done := admissions.reverse_decline(appB, 'The applicant wrote that the decline was pressed by mistake.');
+    SELECT programme INTO back FROM admissions.candidate WHERE id = cb;
+    msg := format('moved %s | listed %s | A %s | B %s on %s restored %s', (moved = n2)::text,
+                  replace(replace(listed, n1, 'programme 1'), n2, 'programme 2'), relinked, done ->> 'outcome',
+                  CASE back WHEN n1 THEN 'programme 1' WHEN n2 THEN 'programme 2' ELSE back END, done ->> 'programmeRestored');
+    RAISE EXCEPTION 'the V760 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V760 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V760: a reversal re-links to the live row of a re-uploaded JAMB list, and brings back the programme offered after JAMB''s course was followed',
+      coalesce(msg = 'moved true | listed APP/60/760001=programme 1,APP/60/760002=programme 1 | A live row | B REVERSED on programme 1 restored true', false), msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

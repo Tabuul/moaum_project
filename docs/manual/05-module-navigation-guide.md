@@ -1759,7 +1759,7 @@ Every module is described against the same 22 points, as a two-column table, fol
 | Create | `POST /applicant/register`; `POST /me/fee-references`; `POST /me/submit`; `POST /me/accept`; `POST /me/decline`; `POST /me/eligibility/change` (a programme the engine listed only). |
 | View | Every screen renders from one `GET /api/v1/applicant/me`. |
 | Edit | Next of kin until submission; PASSPORT replaceable after submission (API only). |
-| Delete / deactivate | Decline the offer (not reinstated). |
+| Delete / deactivate | Decline the offer (reversed by the Academic Office while the place is free, V758). |
 | Search | None. |
 | Filters | None. |
 | Reports | None. |
@@ -3859,7 +3859,7 @@ Admission → Admission Status → /applicant/status
 ```text
 Admission → Accept Your Offer → /applicant/accept
 ```
-**URL** `/applicant/accept?paid=` · **Purpose** Sign the undertaking and pay the acceptance fee, or decline. · **Who** applicant. · **Layout** "To accept, you must do both" table; Undertaking text with checkbox "I have read the undertaking and I accept it."; PayByCard when a reference is open; after both: "Offer accepted — ₦… received" and a Receipt ("Non-refundable: Yes"). · **Actions** Sign the undertaking → `POST /me/accept {undertaking:true}`; Generate a reference for ₦… → `POST /me/fee-references {kind:"ACCEPTANCE"}`; Decline this offer (confirm "Decline this offer? A declined offer is not reinstated.") → `POST /me/decline`. · **Messages** "there is no offer to accept"; "this offer was declined on …".
+**URL** `/applicant/accept?paid=` · **Purpose** Sign the undertaking and pay the acceptance fee, or decline. · **Who** applicant. · **Layout** "To accept, you must do both" table; Undertaking text with checkbox "I have read the undertaking and I accept it."; PayByCard when a reference is open; after both: "Offer accepted — ₦… received" and a Receipt ("Non-refundable: Yes"). · **Actions** Sign the undertaking → `POST /me/accept {undertaking:true}`; Generate a reference for ₦… → `POST /me/fee-references {kind:"ACCEPTANCE"}`; Decline this offer (confirm "Decline this offer? Your place may then be given to someone else, and a decline is reversed only while it has not been.") → `POST /me/decline`. · **Messages** "there is no offer to accept"; "this offer was declined on …".
 
 > **Screenshot Required:** Accept Your Offer — `/applicant/accept` — the undertaking and the two requirements.
 

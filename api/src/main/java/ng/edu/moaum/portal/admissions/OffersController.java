@@ -66,7 +66,8 @@ class OffersController {
                 .param("s", session).query().listOfRows());
         out.put("vacancies", jdbc.sql("SELECT * FROM admissions.vacancies(:s)").param("s", session).query().listOfRows());
         // V758: the declined offers whose place is still free — an accidental decline the Academic Office may reverse
-        out.put("reversible", jdbc.sql("SELECT application_id, application_no, name, programme, declined_at, deadline::text AS deadline_on, deadline_passed "
+        out.put("reversible", jdbc.sql("SELECT application_id, application_no, name, programme, declined_at, deadline::text AS deadline_on, deadline_passed, "
+                + "programme_restores, completes "
                 + "FROM admissions.declines_reversible(:s)").param("s", session).query().listOfRows());
         out.put("counts", jdbc.sql("""
                 SELECT count(*) FILTER (WHERE decision = 'OFFERED' AND decision_released_at IS NOT NULL) AS offered,
@@ -141,8 +142,10 @@ class OffersController {
     @PreAuthorize(REVERSERS)
     @Transactional
     Map<String, Object> reverseDecline(@PathVariable UUID id, @Valid @RequestBody ReverseIn b) {
+        // V760: the answer names the programme the offer came back on and whether the reversal accepted it
         Map<String, Object> done = jdbc.sql("SELECT x ->> 'outcome' AS outcome, x ->> 'applicationNo' AS application_no, x ->> 'offerState' AS offer_state, "
-                        + "x ->> 'deadline' AS deadline FROM (SELECT admissions.reverse_decline(:a, :r, :d) AS x) q")
+                        + "x ->> 'deadline' AS deadline, x ->> 'programme' AS programme, (x ->> 'programmeRestored')::boolean AS programme_restored, "
+                        + "(x ->> 'accepted')::boolean AS accepted FROM (SELECT admissions.reverse_decline(:a, :r, :d) AS x) q")
                 .param("a", id).param("r", b.reason().trim()).param("d", b.acceptBy(), Types.DATE).query().singleRow();
         String session = jdbc.sql("SELECT session FROM admissions.application WHERE id = :a").param("a", id).query(String.class).single();
         Map<String, Object> out = new LinkedHashMap<>(read(session));
