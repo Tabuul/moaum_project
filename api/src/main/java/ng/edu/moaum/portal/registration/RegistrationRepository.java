@@ -148,12 +148,15 @@ class RegistrationRepository {
     }
 
     /** the SIWES / industrial-training units for a registration's semester, or empty when it is a normal
-     *  semester — the industrial-training semester carries exactly this many units, not the level range */
+     *  semester — the industrial-training semester carries exactly this many units, not the level range. V752: as the unit rule
+     *  reads it — a SIWES student's Second Semester (registration.siwes_applies) carries their SIWES course's units, and V503's
+     *  attachment semester stands for every programme the Academic Office has not configured */
     Optional<Integer> siwesUnits(UUID id) {
         return jdbc.sql("""
-                SELECT registration.siwes_units(s.programme_code, r.level, r.semester)
-                  FROM registration.course_registration r JOIN people.student s ON s.id = r.student_id
-                 WHERE r.id = :id
+                SELECT u.min_units
+                  FROM registration.course_registration r
+                  CROSS JOIN LATERAL registration.unit_rule(r.student_id, r.level, r.session, r.semester) u
+                 WHERE r.id = :id AND u.basis = 'SIWES'
                 """).param("id", id).query(Integer.class).optional();
     }
 

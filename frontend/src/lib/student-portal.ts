@@ -141,7 +141,9 @@ export interface RegistrationView {
     /** V380: a student of the Centre for Continuing Education: the door is the CCE calendar and the CCE window */
     cce?: boolean;
     /** V389: a postgraduate student: the door is the School's calendar and the postgraduate window */
-    pg?: boolean };
+    pg?: boolean;
+    /** V752: the Second Semester is the student's SIWES semester (registration.siwes_applies), registered on the SIWES page */
+    siwes?: boolean };
   /** whether THIS semester's school fees are cleared (registration for it is gated on that) */
   clears?: boolean;
   /** the highest open semester of the session; the student may also register any earlier one */
@@ -214,6 +216,9 @@ export interface Me {
   dashboard?: string; collegeArea?: boolean;
   /** V735: the Summer Semester page is in the menu (registration.summer_area) */
   summerArea?: boolean;
+  /** V752: the SIWES page is in the menu — the SIWES rule applies to the student this session, or they are eligible for a period set
+   *  beyond a draft (registration.siwes_applies / siwes_eligibility) */
+  siwesArea?: boolean;
   /** where the student stands (V331): the cohort that carries them, the expected completion, the spillover — the entry session stays history */
   jambYear?: number | null; effectiveCohort?: string | null; cohortSource?: "ENTRY" | "MERGED" | "OVERRIDE" | "COHORT_START" | string | null; durationYears?: number | null;
   expectedCompletion?: string | null; spilloverState?: string | null; spilloverYears?: number | null; classification?: string | null;

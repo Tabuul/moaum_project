@@ -28,6 +28,10 @@ import { SEMESTER_STATUS_WORDS, registeringWords, semesterWord as spilloverSemes
 import { unpaidGstRegistered } from "@/lib/gst-payable";
 import { OverloadRequest } from "./OverloadRequest";
 import { codeVariant, courseLabel, shownCode } from "@/lib/course-code";
+import {
+  dropOthersWords, isSiwesRegistration, otherCoursesOf, schoolFeesOwed, siwesApplies, siwesClearing, siwesCourseOf, siwesFormRows, siwesInTheWay, siwesSemesterWords,
+  waitsWords, FEES_PAGE, SIWES_RESET_WORDS, type MySiwes,
+} from "@/lib/siwes";
 
 /** V655: a course under a shared code named by its curriculum, as courseLabel names it ("ITN 201" + " (BMAS)") */
 const curriculumMark = (code: string) => { const v = codeVariant(code)?.replace(/\d$/, ""); return v && v !== "V" ? ` (${v})` : ""; };
@@ -59,12 +63,126 @@ function byOrder<T extends Categorised>(rows: T[]): T[] {
   return inUniversityOrder(rows);
 }
 
-export function Register({ s, v }: { s: Me; v: RegistrationView }) {
+export function Register({ s, v, siwes = null }: { s: Me; v: RegistrationView;
+  /** V752: the student's SIWES (GET /me/siwes), read for a Second Semester */
+  siwes?: MySiwes | null }) {
   // V602: a graduated record registers nothing — the server sends no menu and says why; the registration of the semester, if any, is history
   if (v.closed) {
     return <RegisterClosed v={v} />;
   }
+  // V752: the Second Semester of a student the SIWES rule binds is registered on the SIWES page — the SIWES course alone, after its fee;
+  // the ordinary page stays beneath (the server's gate says it is closed to them; an ordinary course already on it is shown, to be removed)
+  if (v.semester === 2 && siwes && siwes.session === v.session && siwesApplies(siwes)) {
+    return <><SiwesSemesterNote s={s} v={v} siwes={siwes} /><RegisterForm s={s} v={v} siwesSemester={{ course: siwesCourseOf(siwes)?.code ?? null }} /></>;
+  }
   return <RegisterForm s={s} v={v} />;
+}
+
+/** V752: the note that sends a 300 Level student of a programme taking SIWES this session to the SIWES page: no ordinary course, no
+ *  carry-over in the Second Semester — the SIWES course, registered there once its fee (and the semester's school fees, K10) is paid.
+ *  Its words follow where the student stands (not paid, paid, registered). A course already on the Second Semester registration leaves
+ *  it here (K11): by the student's own drop door (Remove), which takes any course but the SIWES course, only while add and drop is open;
+ *  by the reset when the reset door allows it, which clears the courses, carry-overs and deferred courses alike; otherwise the Academic
+ *  Office or ICT Support removes them. Carry-overs and deferred courses are listed apart: they wait for a later semester. The SIWES
+ *  course is the one registered once registered, whatever the programme is mapped to since. */
+function SiwesSemesterNote({ s, v, siwes }: { s: Me; v: RegistrationView; siwes: MySiwes }) {
+  const { act, busy, problem } = useAct();
+  const [askReset, setAskReset] = useState(false);
+  const others = otherCoursesOf(siwes);
+  const note = siwesSemesterWords(siwes, v.session);
+  // the courses the server counts as in the way (otherCourses), as they stand on the registration: never the SIWES course
+  const { ordinary, waiting } = siwesInTheWay(v.registration?.entries, siwes);
+  const shown = ordinary.length + waiting.length;
+  const clearing = siwesClearing({ addDropOpen: v.addDropOpen, resetAllowed: v.reset?.allowed, count: shown });
+  const feesFirst = !!siwes.paid && !siwes.registration && schoolFeesOwed(siwes);
+  const row = (e: (typeof ordinary)[number], waits: boolean) => (
+    <div key={e.offeringId} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "center" }}>
+      <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(e.courseCode)}</span>
+      <span className="grow">{e.title} <span className="sub2">· {e.units} unit{e.units === 1 ? "" : "s"}</span>
+        {waits ? <span className="blk sub2">{waitsWords(e.courseCode)}</span> : null}</span>
+      {waits ? <Pil kind={e.entryType === "DEFERRED" ? "warn" : "bad"}>{e.entryType === "DEFERRED" ? "Deferred" : "Carry-over"}</Pil> : null}
+      {/* the student's drop door takes a course only while add and drop is open (registration.student_drop) */}
+      {clearing.remove ? (
+        <Btn kind="ghost" size="sm" disabled={busy !== null} busy={busy === `siwes-drop-${e.offeringId}`} busyLabel="Removing…"
+          onClick={() => void act(`siwes-drop-${e.offeringId}`, "POST", "/me/registration/drop", { session: v.session, semester: v.semester, offering: e.offeringId },
+            waits ? `${e.courseCode} removed by the student: it waits for a later semester, the Second Semester being SIWES`
+              : `${e.courseCode} removed by the student: the Second Semester is SIWES`,
+            waits ? `${e.courseCode} removed: it waits for a later semester` : `${e.courseCode} removed`)}>Remove</Btn>
+      ) : null}
+    </div>
+  );
+  return (
+    <>
+      <Note kind={note.tone} title={note.title} action={<span className="row row--inline row--tight">
+        {feesFirst ? <LinkBtn kind="urgent" href={FEES_PAGE.href}>{FEES_PAGE.label}</LinkBtn> : null}
+        <LinkBtn kind="primary" href="/student/siwes">{siwes.registration ? "SIWES page" : "Go to SIWES"}</LinkBtn>
+      </span>}>
+        {note.words}
+        {!others.length ? "" : shown
+          ? ` ${others.join(", ")} ${others.length === 1 ? "is" : "are"} on your Second Semester registration; the SIWES course is registered alone. ${clearing.words}`
+          : ` ${others.join(", ")} ${others.length === 1 ? "is" : "are"} on your Second Semester registration. ${dropOthersWords(others)}.`}
+      </Note>
+      {shown ? (
+        <Panel title={clearing.remove ? "Remove before you register SIWES" : "In the way of your SIWES course"} right={`${shown} course${shown === 1 ? "" : "s"}`}>
+          <PBody>
+            {ordinary.map((e) => row(e, false))}
+            {waiting.length ? <div className={`eyebrow${ordinary.length ? " mt-2" : ""}`}>Carry-overs and deferred courses</div> : null}
+            {waiting.map((e) => row(e, true))}
+            {/* K11: the reset door judges the SIWES Second Semester by reset_refusal alone; it clears carry-overs and deferred courses too */}
+            {clearing.reset ? (
+              <div className="row mt-2" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <span className="sub2 grow">{SIWES_RESET_WORDS}</span>
+                <Btn kind="ghost" disabled={busy !== null} onClick={() => setAskReset(true)}>RESET COURSE REGISTRATION</Btn>
+              </div>
+            ) : null}
+            {problem ? <ProblemNotice problem={problem} /> : null}
+          </PBody>
+        </Panel>
+      ) : null}
+      {askReset && v.registration ? (
+        <ResetModal s={s} v={v} kind="siwes" count={(v.registration.entries ?? []).filter((e) => e.status !== "DROPPED").length} units={v.registration.units}
+          onClose={() => setAskReset(false)} />
+      ) : null}
+    </>
+  );
+}
+
+/** V491: the student's reset of the semester's registration, through the reset door (POST /me/registration/reset); the words by whose
+ *  registration it is — every course a spillover student added (V682); in a SIWES Second Semester (K11) the courses, carry-overs and
+ *  deferred courses, which wait for a later semester; otherwise the student's courses, the carry-overs the published results state
+ *  staying. A refusal shows in the modal with its remedy. */
+function ResetModal({ s, v, kind, count, units, onClose }: { s: Me; v: RegistrationView; kind: "siwes" | "carryOnly" | "ordinary"; count: number; units: number; onClose: () => void }) {
+  const { act, busy, problem } = useAct();
+  const siwes = kind === "siwes";
+  return (
+    <Modal title="RESET COURSE REGISTRATION?"
+      sub={siwes ? "This clears your Second Semester registration, so that your SIWES course can be registered alone on the SIWES page."
+        : "This will remove your current editable course registration for this session/semester and allow you to register your courses again."}
+      onClose={() => { if (busy === null) onClose(); }}
+      foot={<>
+        <Btn kind="ghost" disabled={busy !== null} onClick={onClose}>CANCEL</Btn>
+        <Btn kind="urgent" busy={busy === "reset"} busyLabel="Resetting registration..." onClick={async () => {
+          const j = await act("reset", "POST", "/me/registration/reset",
+            { session: v.session, semester: v.semester, reason: siwes ? "Reset by the student: the Second Semester is SIWES" : "Reset by the student to register the courses again" },
+            siwes ? "Course registration reset by the student: the Second Semester is SIWES" : "Course registration reset by the student", "");
+          if (j) { onClose(); notify(siwes ? "Registration cleared. Register your SIWES course on the SIWES page." : "Registration cleared. Select your courses and submit again."); }
+        }}>{siwes ? "RESET THE REGISTRATION" : "RESET AND RE-REGISTER"}</Btn>
+      </>}>
+      <div className="grid grid--2">
+        <div className="kv"><span className="k">Academic session</span><span className="v tnum">{v.session}</span></div>
+        <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
+        <div className="kv"><span className="k">Student</span><span className="v">{s.name}</span></div>
+        <div className="kv"><span className="k">Programme</span><span className="v">{s.programme}</span></div>
+        <div className="kv"><span className="k">Level</span><span className="v tnum">{v.level} Level</span></div>
+        <div className="kv"><span className="k">Current courses</span><span className="v tnum">{count} ({units} units)</span></div>
+      </div>
+      <p className="sub2" style={{ marginBottom: 0 }}>{siwes
+        ? "The courses, carry-overs and deferred courses are cleared; carry-overs and deferred courses wait for a later semester. Then register your SIWES course on the SIWES page."
+        : kind === "carryOnly" ? "Every course on the registration is cleared, and you pick your carry-overs again."
+        : "The carry-overs your published results state stay on the registration; a carry-over you declared is cleared with your other courses."} Your results, payments, GST/EPS entitlement and earlier semesters are not changed.</p>
+      {problem ? <ProblemNotice problem={problem} /> : null}
+    </Modal>
+  );
 }
 
 function RegisterClosed({ v }: { v: RegistrationView }) {
@@ -86,9 +204,17 @@ function RegisterClosed({ v }: { v: RegistrationView }) {
   );
 }
 
-function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
+function RegisterForm({ s, v, siwesSemester = null }: { s: Me; v: RegistrationView;
+  /** V752: the Second Semester the SIWES rule binds, and the student's SIWES course (the one registered, once registered) */
+  siwesSemester?: { course: string | null } | null }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
+  // V752: a Second Semester the SIWES rule binds (the note above it, or the server's window): nothing is added to it here — the SIWES
+  // course is registered on the SIWES page — and the SIWES course is never dropped here; V503's attachment semester adds nothing either
+  const siwesSem = !!siwesSemester || (v.semester === 2 && v.window?.siwes === true);
+  const siwesCourse = siwesSemester?.course ?? null;
+  const isSiwesCourse = (code: string) => siwesSem && siwesCourse !== null && code === siwesCourse;
+  const noAdds = !!v.siwes || siwesSem;
   // V674: a spillover student registers carry-overs only: the level's courses are not offered as fresh courses — every course is added
   // through ADD CARRY-OVER, and the server enters any course of theirs as a carry-over
   // V682: and no course is listed for them to register, the carry-overs the results state included (the picker lists those first):
@@ -109,7 +235,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   // the address when the picker closes so that the next click opens it again
   const params = useSearchParams();
   const router = useRouter();
-  const carryAsked = params.get("carry") === "1" && !v.siwes;
+  const carryAsked = params.get("carry") === "1" && !noAdds;
   const [addingCarry, setAddingCarry] = useState(carryAsked);
   const [carrySeen, setCarrySeen] = useState(carryAsked);
   if (carryAsked !== carrySeen) { setCarrySeen(carryAsked); if (carryAsked) setAddingCarry(true); }
@@ -255,6 +381,17 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
   const lateReg = v.window?.portal && v.window.portal.state === "OPEN" && v.window.portal.phase === "LATE" ? v.window.portal : null;
   // V287 · the calendar's door on this semester: closed, not yet open, or open early to the session's fresh students
   if (v.window && !v.window.open && !locked) {
+    // V752: a SIWES Second Semester is not closed — the gate sends it to the SIWES page. The note above says so (and how the courses in
+    // the way leave it); without that note, the gate's own words, never "the Academic Office opens the semester"
+    if (siwesSem) {
+      if (siwesSemester) return switcher;
+      return (
+        <>
+          {switcher}
+          <Note kind="info" title="Your Second Semester is SIWES (industrial training)" action={<LinkBtn kind="primary" href="/student/siwes">Go to SIWES</LinkBtn>}>{v.window.gate}</Note>
+        </>
+      );
+    }
     return (
       <>
         {switcher}
@@ -369,14 +506,15 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
       ) : null}
       {carryOnly ? (
         <Note kind="info" title="IN SPILLOVER, THE COURSES YOU STILL OWE ARE CARRY-OVERS"
-          action={!v.siwes && (!locked || v.addDropOpen) ? <Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn> : undefined}>
+          action={!noAdds && (!locked || v.addDropOpen) ? <Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn> : undefined}>
           You have completed your programme&rsquo;s years, so you register only the courses you still owe. Pick them with ADD CARRY-OVER &mdash; of your
           level and the levels before it, those your results show failed listed first. Each is registered as a carry-over, never as a fresh course; as you
           pick, the window shows this semester&rsquo;s spillover fee, owed once a course is on your registration. You may also add an elective of your
           programme below; it is registered as an elective.
         </Note>
       ) : null}
-      {v.siwes ? (
+      {/* V503's attachment semester; a SIWES Second Semester has its own note above the form */}
+      {v.siwes && !siwesSemester ? (
         <Note kind="info" title="Industrial training (SIWES) semester">
           Register only the SIWES / industrial training course ({max} units) this semester — no other course and no carryover.
         </Note>
@@ -385,7 +523,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         reg!.status === "SUBMITTED" && auto && v.reviewReason ? (
           <Note kind="bad" title="REGISTRATION REQUIRES REVIEW">
             {reasonWords(v.reviewReason)}. Your registration was submitted ({reg!.units} units) and is held until this is put right; the Academic Office checks it again
-            {v.reset?.allowed ? ", or reset it below and register again" : ""}.
+            {v.reset?.allowed ? `, or reset it ${siwesSemester ? "above" : "below"} and register again` : ""}.
           </Note>
         ) : (
         <Note kind={reg!.status === "APPROVED" || reg!.status === "LOCKED" ? "ok" : "info"}
@@ -409,18 +547,20 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         </Note>
       ) : null}
       {/* V663: ADD CARRY-OVER from the dashboard on a registration that can take no more courses now */}
-      {addingCarry && locked && !v.addDropOpen && !v.siwes ? (
+      {addingCarry && locked && !v.addDropOpen && !noAdds ? (
         <Note kind="info" title="Carry-overs are added in add and drop">
           Your registration for this semester is {reg!.status === "SUBMITTED" ? "submitted" : "approved"}, so no course can be added to it now.
           A carry-over can be added when the add and drop window opens{v.reset?.allowed ? ", or reset your registration below and register again" : ""}.
         </Note>
       ) : null}
 
-      {reg && reg.status !== "DRAFT" && v.reset?.allowed ? (
+      {/* K11: in a SIWES Second Semester the reset is offered in the SIWES note above, in its words, a draft included (the reset door
+          judges it by reset_refusal alone); here only where that note is not shown */}
+      {reg && v.reset?.allowed && !siwesSemester && (siwesSem || reg.status !== "DRAFT") ? (
         <Panel title="CURRENT COURSE REGISTRATION" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg.units} units`}>
           <PBody>
             <div className="row" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <span className="sub2 grow">{carryOnly
+              <span className="sub2 grow">{siwesSem ? SIWES_RESET_WORDS : carryOnly
                 ? "Courses brought over from the old portal, or added in error? Clear this semester's registration and pick your carry-overs again. Every course you added is cleared; your results, payments and earlier semesters are not touched."
                 : <>Courses brought over from the old portal, or chosen in error? Clear this semester&rsquo;s registration and choose your courses again. The carry-overs your published results state stay (those you declared are cleared with your other courses); your results, payments and earlier semesters are not touched.</>}</span>
               <Btn kind="ghost" disabled={busy !== null} onClick={() => setAskReset(true)}>RESET COURSE REGISTRATION</Btn>
@@ -430,37 +570,25 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         </Panel>
       ) : null}
       {askReset && reg ? (
-        <Modal title="RESET COURSE REGISTRATION?" sub="This will remove your current editable course registration for this session/semester and allow you to register your courses again."
-          onClose={() => { if (busy === null) setAskReset(false); }}
-          foot={<>
-            <Btn kind="ghost" disabled={busy !== null} onClick={() => setAskReset(false)}>CANCEL</Btn>
-            <Btn kind="urgent" busy={busy === "reset"} busyLabel="Resetting registration..." onClick={async () => {
-              const j = await act("reset", "POST", "/me/registration/reset", { session: v.session, semester: v.semester, reason: "Reset by the student to register the courses again" }, "Course registration reset by the student", "");
-              if (j) { setAskReset(false); notify("Registration cleared. Select your courses and submit again."); }
-            }}>RESET AND RE-REGISTER</Btn>
-          </>}>
-          <div className="grid grid--2">
-            <div className="kv"><span className="k">Academic session</span><span className="v tnum">{v.session}</span></div>
-            <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
-            <div className="kv"><span className="k">Student</span><span className="v">{s.name}</span></div>
-            <div className="kv"><span className="k">Programme</span><span className="v">{s.programme}</span></div>
-            <div className="kv"><span className="k">Level</span><span className="v tnum">{v.level} Level</span></div>
-            <div className="kv"><span className="k">Current courses</span><span className="v tnum">{registered.length} ({reg.units} units)</span></div>
-          </div>
-          <p className="sub2" style={{ marginBottom: 0 }}>{carryOnly ? "Every course on the registration is cleared, and you pick your carry-overs again." : "The carry-overs your published results state stay on the registration; a carry-over you declared is cleared with your other courses."} Your results, payments, GST/EPS entitlement and earlier semesters are not changed.</p>
-        </Modal>
+        <ResetModal s={s} v={v} kind={siwesSem ? "siwes" : carryOnly ? "carryOnly" : "ordinary"} count={registered.length} units={reg.units} onClose={() => setAskReset(false)} />
       ) : null}
 
       {locked && v.addDropOpen ? (() => {
         const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
         // V611: a carry-over the student declared is dropped as it was added; one the results state is repeated
-        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && (e.entryType !== "CARRYOVER" || e.addedAs === "CARRY_OVER_DECLARED") && e.entryType !== "DEFERRED"));
-        const addable = menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
+        // V752: in a SIWES Second Semester the SIWES course is never dropped here (a carry-over there is removed in the note above)
+        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && (e.entryType !== "CARRYOVER" || e.addedAs === "CARRY_OVER_DECLARED") && e.entryType !== "DEFERRED"
+          && !isSiwesCourse(e.courseCode)));
+        // V752: and nothing is added to it: the SIWES course is registered on the SIWES page
+        const addable = siwesSem ? [] : menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
+        if (siwesSem && !droppable.length) return null;
         return (
-          <Panel title="Add or drop courses" right="the add/drop window is open">
+          <Panel title={siwesSem ? "Drop courses" : "Add or drop courses"} right="the add/drop window is open">
             <PBody>
               {problem ? <ProblemNotice problem={problem} /> : null}
-              <div className="sub2">You can still add or drop a course (not a carry-over your results state, or a course with a mark). Total: {min}–{max} units.</div>
+              <div className="sub2">{siwesSem
+                ? "Your Second Semester is SIWES: drop a course registered before SIWES bound it. Nothing is added here; your SIWES course is registered on the SIWES page."
+                : <>You can still add or drop a course (not a carry-over your results state, or a course with a mark). Total: {min}–{max} units.</>}</div>
               {droppable.length ? (<>
                 <div className="eyebrow mt-2">Registered — drop</div>
                 {droppable.map((e) => (
@@ -482,13 +610,13 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 ))}
               </>) : null}
               {!droppable.length && !addable.length ? <div className="sub2">Nothing to add or drop.</div> : null}
-              {!v.siwes ? (
+              {!noAdds ? (
                 <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
                   <span className="sub2 grow">{carryOnly ? "Select the courses you still owe, of your level and the levels before it." : "Select courses from previous levels that you have not cleared."}</span>
                   <Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn>
                 </div>
               ) : null}
-              {v.flex?.allow_other_courses !== false && !carryOnly ? (
+              {v.flex?.allow_other_courses !== false && !carryOnly && !siwesSem ? (
                 <div className="row mt-3" style={{ alignItems: "center", gap: 8 }}>
                   <span className="sub2 grow">A course not listed here — of your programme at another level, or a University GST/EPS course?</span>
                   <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn>
@@ -513,7 +641,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
         </div>
       </div></div>
       {/* V508: an overload asked of the Head of Department, and where it stands (not in the SIWES semester) */}
-      {v.limit.basis !== "SIWES" && (!locked || v.addDropOpen) ? <OverloadRequest session={v.session} semester={v.semester} total={total} max={max} /> : null}
+      {v.limit.basis !== "SIWES" && !siwesSem && (!locked || v.addDropOpen) ? <OverloadRequest session={v.session} semester={v.semester} total={total} max={max} /> : null}
       {locked ? (
         <div id="registered-courses">
         <Panel title="Your registered courses" right={`${registered.length} course${registered.length === 1 ? "" : "s"} · ${reg!.units} units`}>
@@ -523,7 +651,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
                 <span className="tnum sub2" style={{ minWidth: 24 }}>{i + 1}</span>
                 <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(e.courseCode)}</span>
                 <span className="grow">{e.title}{e.lecturer ? <span className="sub2"> · {e.lecturer}</span> : null}{e.studentAdded ? <span className="sub2"> · {addedAsLabel(e.addedAs) ?? "added by you"}</span> : null}</span>
-                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : "grey"}>{e.entryType === "DEFERRED" ? "Deferred" : categoryWords(e)}</Pil>
+                <Pil kind={e.entryType === "CARRYOVER" ? "bad" : e.entryType === "DEFERRED" ? "warn" : isSiwesCourse(e.courseCode) ? "info" : "grey"}>{e.entryType === "DEFERRED" ? "Deferred" : isSiwesCourse(e.courseCode) ? "SIWES" : categoryWords(e)}</Pil>
                 <span className="tnum b600" style={{ minWidth: 28, textAlign: "right" }}>{e.units}</span>
               </div>
             )) : <div className="sub2">No course is on this registration.</div>}
@@ -589,7 +717,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
           <PBody>{special.map((m) => pick(m, false, chosen.has(m.offering_id)))}
             <div className="sub2 mt-2">A deficiency course earns no credit; register it where the School requires it of you.</div></PBody></Panel>
       ) : null}
-      {!locked && !v.siwes ? (
+      {!locked && !noAdds ? (
         <Panel title={<span className="ink-red">CARRY-OVER COURSES</span>} right={<Btn kind="urgent" disabled={busy !== null} onClick={() => setAddingCarry(true)}>ADD CARRY-OVER</Btn>}>
           <PBody>
             <div className="sub2">{carryOnly ? "The courses you still owe are registered as carry-overs: pick them with ADD CARRY-OVER, of your level and the levels before it. Each one you add is listed here; remove one before you submit if you added it in error." : "Select courses from previous levels that you have not cleared."}</div>
@@ -607,7 +735,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
           </PBody>
         </Panel>
       ) : null}
-      {!locked && !v.siwes && !carryOnly ? (
+      {!locked && !noAdds && !carryOnly ? (
         <Panel title="ADD OTHER COURSES" right={v.flex?.allow_other_courses !== false ? <Btn kind="secondary" disabled={busy !== null} onClick={() => setAdding(true)}>+ ADD OTHER COURSE</Btn> : "closed for now"}>
           <PBody>
             <div className="sub2">{v.flex?.allow_other_courses !== false
@@ -647,7 +775,7 @@ function RegisterForm({ s, v }: { s: Me; v: RegistrationView }) {
           onAdded={(id) => { if (!locked) setChosen((c) => new Set(c).add(id)); }} onClose={() => setAdding(false)} />
       ) : null}
       {/* only where a course can still be added: before submission, or in add and drop (the dashboard's ?carry=1 included) */}
-      {addingCarry && !v.siwes && (!locked || v.addDropOpen) ? (
+      {addingCarry && !noAdds && (!locked || v.addDropOpen) ? (
         <CarryOverPicker session={v.session} semester={v.semester} spillover={carryOnly} addDrop={locked}
           onAdded={(ids) => { if (!locked) setChosen((c) => { const n = new Set(c); ids.forEach((id) => n.add(id)); return n; }); }}
           onClose={closeCarry}
@@ -679,8 +807,13 @@ function printPdf(url: string) {
   document.body.appendChild(f);
 }
 
-export function Form({ s, v }: { s: Me; v: RegistrationView }) {
+export function Form({ s, v, siwes = null }: { s: Me; v: RegistrationView;
+  /** V752: the student's SIWES for the session: a Second Semester registration that is the SIWES one prints as the SIWES course form */
+  siwes?: MySiwes | null }) {
   const reg = v.registration;
+  const siwesForm = isSiwesRegistration(siwes, v.session, v.semester);
+  // the course the SIWES registration was made on, even when the programme has been mapped to another course since
+  const siwesCode = siwesForm ? siwesCourseOf(siwes)?.code ?? null : null;
   const pdfUrl = `/student/form/pdf?session=${encodeURIComponent(v.session)}&semester=${v.semester}`;
   if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
     return (
@@ -698,7 +831,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/crest.png" alt="University crest" style={{ width: 46, height: 48, objectFit: "contain" }} />
           <div className="u">REV. FR. MOSES ORSHIO ADASU<br />UNIVERSITY, MAKURDI</div>
-          <div className="eyebrow">Course Registration Form</div>
+          <div className="eyebrow">{siwesForm ? "SIWES Course Registration Form" : "Course Registration Form"}</div>
         </div>
         <div className="row row--top" style={{ gap: "var(--s-5)", marginBottom: "var(--s-4)" }}>
           <Passport w={62} h={77} radius={3} src={s.hasPhoto ? `/api/bff/api/v1/me/passport?v=${encodeURIComponent(s.matricNo ?? s.admissionNo ?? s.id)}` : null} />
@@ -708,6 +841,13 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
           <div className="kv"><span className="k">Session</span><span className="v tnum">{v.session}</span></div>
           <div className="kv"><span className="k">Semester</span><span className="v">{semesterName(v.semester)}</span></div>
         </div>
+        {siwesForm ? (
+          <div className="row" style={{ gap: "var(--s-5)", marginBottom: "var(--s-4)", flexWrap: "wrap" }}>
+            {[["Programme", s.programme] as [string, string], ...siwesFormRows(siwes)].map(([k, val]) => (
+              <div key={k} className="kv"><span className="k">{k}</span><span className="v tnum">{val}</span></div>
+            ))}
+          </div>
+        ) : null}
         <div className="tablewrap" tabIndex={0}><table className="tbl--data" style={{ minWidth: 520 }}>
           <thead><tr>
             {["S/N", "Course code", "Course title", "Lecturer"].map((h) => <th key={h} style={{ background: "var(--chrome)", color: "var(--surface)" }}>{h}</th>)}
@@ -722,7 +862,7 @@ export function Form({ s, v }: { s: Me; v: RegistrationView }) {
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>
-                <td className="num t-xs b600 ink-muted">{e.basis === "Research" || e.basis === "Deficiency" ? courseType(e) : e.entryType === "DEFERRED" ? "Deferred" : categoryWords(e)}</td>
+                <td className="num t-xs b600 ink-muted">{siwesCode && e.courseCode === siwesCode ? "SIWES" : e.basis === "Research" || e.basis === "Deficiency" ? courseType(e) : e.entryType === "DEFERRED" ? "Deferred" : categoryWords(e)}</td>
               </tr>); })}
             <tr style={{ background: "var(--bg)" }}><td className="b700" colSpan={4}>TOTAL CREDIT UNITS</td><td className="mid tnum b700" style={{ fontSize: "var(--t-base)" }}>{reg.units}</td><td /></tr>
           </tbody>

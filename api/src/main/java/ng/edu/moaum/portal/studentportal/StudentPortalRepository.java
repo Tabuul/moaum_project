@@ -381,13 +381,19 @@ class StudentPortalRepository {
                 .param("st", student).param("t", type).param("s", session).param("sem", semester, Types.INTEGER).query().singleRow();
     }
 
-    /** the SIWES / industrial-training units for the student's programme at a level and semester, else null */
-    Integer siwesUnits(UUID student, int level, int semester) {
+    /** V752: whether SIWES binds the student's Second Semester of the session (registration.siwes_applies): it is registered on the
+     *  SIWES page, the SIWES course alone */
+    boolean siwesApplies(UUID student, String session) {
+        return jdbc.sql("SELECT registration.siwes_applies(:s, :ses)").param("s", student).param("ses", session).query(Boolean.class).optional().orElse(false);
+    }
+
+    /** V752: whether a class is of the student's SIWES course — the programme's (registration.siwes_course_for), or the one a SIWES
+     *  registration of the student was made on */
+    boolean siwesCourse(UUID student, UUID offering) {
         return jdbc.sql("""
-                SELECT registration.siwes_units(s.programme_code, :lvl, :sem)
-                  FROM people.student s WHERE s.id = :id
-                """).param("id", student).param("lvl", level).param("sem", semester)
-                .query(Integer.class).optional().orElse(null);
+                SELECT EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.id = :o AND o.course_code = registration.siwes_course_for(:s))
+                    OR EXISTS (SELECT 1 FROM registration.siwes_registration x WHERE x.student_id = :s AND x.offering_id = :o)
+                """).param("s", student).param("o", offering).query(Boolean.class).single();
     }
 
     /** the semesters of the session the student has actually registered (submitted or beyond) */
@@ -912,6 +918,12 @@ class StudentPortalRepository {
                 SELECT r.id, r.session, r.semester, r.status, r.level, r.submitted_at, r.approved_at, registration.units_of(r.id) AS units,
                        -- V756: the student's Summer semester (a CCE or postgraduate semester 3 is their own third semester)
                        (r.semester = 3 AND registration.is_summer_for(r.student_id, r.session, r.semester)) AS summer,
+                       -- V752: a SIWES registration (the SIWES course registered on the SIWES page) says so in the history — while its
+                       -- SIWES course stands (registration.siwes_registered's test): undone by an office, it is an ordinary registration
+                       EXISTS (SELECT 1 FROM registration.siwes_registration sr
+                                 JOIN registration.entry se ON se.registration_id = sr.course_registration_id AND se.offering_id = sr.offering_id
+                                                           AND se.status NOT IN ('DROPPED', 'WITHDRAWN')
+                                WHERE sr.course_registration_id = r.id) AS siwes,
                        (SELECT json_agg(json_build_object('courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE e.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
@@ -1043,6 +1055,13 @@ class StudentPortalRepository {
     /** V735: whether the Summer Semester page is in the student's menu (registration.summer_area) */
     boolean summerArea(UUID student) {
         return jdbc.sql("SELECT registration.summer_area(:s)").param("s", student).query(Boolean.class).optional().orElse(false);
+    }
+
+    /** V752: whether the SIWES page is in the student's menu (registration.siwes_area): SIWES binds the student's current session, or a
+     *  SIWES of theirs still stands — a SIWES registration not undone, or a SIWES payment standing for a session SIWES bound them in (K30:
+     *  a SIWES wholly undone leaves no menu item) */
+    boolean siwesArea(UUID student) {
+        return jdbc.sql("SELECT registration.siwes_area(:s)").param("s", student).query(Boolean.class).optional().orElse(false);
     }
 
     String classOf(BigDecimal cgpa) {

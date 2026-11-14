@@ -15,6 +15,7 @@ import { JupebClaims } from "./JupebClaims";
 import { OldFeesOverpaid } from "../legacy-fees/OldFeesOverpaid";
 import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFields";
 import { type BankAccountValue, EMPTY_ACCOUNT, accountDigits, accountProblem, bankToSend, valueFromAccount } from "@/lib/banks";
+import { siwesRefundHint } from "@/lib/siwes";
 import { BanksPanel } from "./BanksPanel";
 import { PaidOut } from "./PaidOut";
 import { StatementMatch } from "./StatementMatch";
@@ -112,6 +113,8 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
 
   const open = refunds.filter((r) => r.state === "PROPOSED").length;
   const toPay = refunds.filter((r) => r.state === "APPROVED").length;
+  // V752 (K13): a refund against a SIWES payment is the whole fee, never a part
+  const siwesHint = txn?.confirmed_at ? siwesRefundHint(txn.purpose, txn.amount, f.amount) : null;
 
   // launched from a transaction on the ledger: the modal opens pre-filled (above),
   // and this fetches that transaction to fill in the payer and amount
@@ -214,7 +217,9 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
           <Field id="rf-payer" label="Paid to" hint="The student or sponsor the money is owed to"><input id="rf-payer" className="ctl" value={f.payer} onChange={(e) => setF({ ...f, payer: e.target.value })} autoComplete="off" /></Field>
           <div className="grid grid--2">
             <Field id="rf-reason" label="Reason"><input id="rf-reason" className="ctl" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="Duplicate payment — timeout retry" autoComplete="off" /></Field>
-            <Field id="rf-amount" label="Amount (₦)"><input id="rf-amount" className="ctl tnum" value={f.amount} inputMode="decimal" onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+            {/* V752 (K13): a SIWES payment is refunded whole or not at all — a smaller amount is refused REFUND_SIWES_PART */}
+            <Field id="rf-amount" label="Amount (₦)" hint={siwesHint ? <span className={siwesHint.part ? "ink-red" : undefined}>{siwesHint.words}</span> : undefined}>
+              <input id="rf-amount" className="ctl tnum" value={f.amount} inputMode="decimal" onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
           </div>
           <Field id="rf-acct-bank" label="The account it is paid into" hint={<>Optional now: it can be recorded later, and the refund is not paid until it is. A refund of overpaid school fees takes the student&rsquo;s own.</>}>
             <BankAccountFields id="rf-acct" value={acct} onChange={setAcct} banks={banks} holderName={f.payer} />

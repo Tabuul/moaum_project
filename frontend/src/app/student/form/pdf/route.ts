@@ -11,6 +11,7 @@ import { qrMatrix, regVerifyPath, studentCheckCode } from "@/lib/qr";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
 import { shownCode } from "@/lib/course-code";
+import { isSiwesRegistration, siwesCourseOf, siwesFormRows, type MySiwes } from "@/lib/siwes";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,9 @@ function courseType(e: Entry): string {
   return categoryWords(e);   // V512: a GST/EPS carry-over "Carry-over · GST"
 }
 
-/** the course registration form as a PDF: what the Head of Department approved, with the student's passport */
+/** the course registration form as a PDF: what the Head of Department approved, with the student's passport. V752: a Second Semester
+ *  registration that is the student's SIWES registration prints as the SIWES course registration form, with the training period and
+ *  the SIWES fee's payment beside the student's details */
 export async function GET(request: NextRequest) {
   await loadInstitution();
   const q = request.nextUrl.searchParams;
@@ -47,6 +50,10 @@ export async function GET(request: NextRequest) {
   if (!reg || !(reg.status === "APPROVED" || reg.status === "LOCKED")) {
     return NextResponse.json({ status: 409, title: "Not approved", detail: "The form is issued when the registration is approved." }, { status: 409 });
   }
+  const siwesRead = semester === 2 && s.entryMode !== "POSTGRADUATE" ? await api<MySiwes>(`/api/v1/me/siwes?session=${encodeURIComponent(session)}`) : null;
+  const siwes = siwesRead && siwesRead.ok && isSiwesRegistration(siwesRead.data, session, semester) ? siwesRead.data : null;
+  // the course the SIWES registration was made on, even when the programme has been mapped to another course since
+  const siwesCode = siwesCourseOf(siwes)?.code ?? null;
 
   // the passport, embedded as JPEG (blank box when none) — resolved from the document store OR the
   // JAMB/attachment store, so a migrated / JAMB-loaded student's photo also prints
@@ -63,7 +70,7 @@ export async function GET(request: NextRequest) {
 
   const p = new Page();
   const L = 64;
-  let y = brandHeader(p, L, "Course Registration Form");
+  let y = brandHeader(p, L, siwes ? "SIWES Course Registration Form" : "Course Registration Form");
 
   // passport at the top-right, aligned with the candidate block
   const pw = 62, ph = 76, px = A4.w - L - pw, ptop = y + 6;
@@ -72,7 +79,8 @@ export async function GET(request: NextRequest) {
 
   const regDate = day(reg.submitted_at ?? reg.approved_at);
   // V756: a Summer registration's semester printed "Summer" (the API's "summer"); a CCE or postgraduate semester 3 stays "Third"
-  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester, registrationSummer(v.data))], ["Date of registration", regDate]]) {
+  const siwesRows = siwesFormRows(siwes).map(([k, val]) => [k, clean(val.replace(/[–—]/g, "-"))]);
+  for (const [k, val] of [["Name", clean(s.name)], ["Matriculation number", s.matricNo ?? s.admissionNo ?? ""], ["Programme", clean(s.programme)], ["Level", `${reg.level} Level`], ["Session", session], ["Semester", semesterName(semester, registrationSummer(v.data))], ["Date of registration", regDate], ...siwesRows]) {
     p.text(L, y, k.toUpperCase(), 7.5, false, [0.4, 0.4, 0.4]);
     p.text(L + 150, y, val, 10.5);
     y -= 17;
@@ -95,7 +103,7 @@ export async function GET(request: NextRequest) {
     p.text(codeX, y, clean(shownCode(e.courseCode)), 9, true, co ? [0.72, 0.11, 0.11] : [0, 0, 0]);
     p.text(titleX, y, cut(clean(e.title), 42), 9, false, [0.2, 0.2, 0.2]);
     p.text(unitX, y, String(e.units), 9);
-    p.text(typeX, y, courseType(e), 8.5, true, [0.35, 0.35, 0.35]);
+    p.text(typeX, y, siwesCode && e.courseCode === siwesCode ? "SIWES" : courseType(e), 8.5, true, [0.35, 0.35, 0.35]);
     if (co) p.text(codeX, y - 8, "carryover", 6.5, false, [0.72, 0.11, 0.11]);
     y -= co ? 19 : 16;
   }
@@ -129,6 +137,6 @@ export async function GET(request: NextRequest) {
   }
 
   p.text(L, 50, `Issued by the portal on ${day(new Date().toISOString())} · ${reg.id.slice(0, 8).toUpperCase()}`, 7.5, false, [0.4, 0.4, 0.4]);
-  const bytes = finishPdf([p], `Course form ${s.matricNo ?? ""}`, "FORM");
-  return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="course-form-${session.replace("/", "-")}-${semester}.pdf"` } });
+  const bytes = finishPdf([p], `${siwes ? "SIWES course form" : "Course form"} ${s.matricNo ?? ""}`, "FORM");
+  return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${siwes ? "siwes-" : ""}course-form-${session.replace("/", "-")}-${semester}.pdf"` } });
 }

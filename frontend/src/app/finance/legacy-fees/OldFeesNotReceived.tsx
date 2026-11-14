@@ -3,11 +3,15 @@
 /** V561: old-portal payment records the bank shows never arrived — raised for withdrawal on evidence (from a bank check of a
  *  possible double charge, or for a reference on its own) by one Bursary officer and approved by another. Approved, the record is
  *  withdrawn: its ledger posting reversed, the record kept on the withdrawn list, its payment number remembered so the export
- *  loaded again never brings it back, and the student told. Rejected with a note, or cancelled by the officer who raised it. */
+ *  loaded again never brings it back, and the student told. Rejected with a note, or cancelled by the officer who raised it. A refusal
+ *  (the record holds several payments, is tied to a request, or — V752 — is the only SIWES payment a standing SIWES registration rests
+ *  on, or a SIWES payment whose credit was refunded, PAY_NOT_RECEIVED_SIWES_REFUNDED) is shown in the open form in the database's words,
+ *  with what to do. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
+import { ProblemNotice } from "@/components/ProblemNotice";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
@@ -22,6 +26,9 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
   const [own, setOwn] = useState(0);
   const [raising, setRaising] = useState<{ reference: string; evidence: string; reason: string } | null>(null);
   const [deciding, setDeciding] = useState<Deciding | null>(null);
+  // the refusal of the form open, in the database's words (e.g. PAY_NOT_RECEIVED_SIWES_REGISTERED: the registration is undone first;
+  // PAY_NOT_RECEIVED_SIWES_REFUNDED: the money given back stays with the payment)
+  const [problem, setProblem] = useState<Problem | null>(null);
 
   const listUrl = `/api/bff/api/v1/finance/payments-not-received${state ? `?state=${state}` : ""}`;
   const asked = `${listUrl}#${tick}#${own}`;
@@ -45,7 +52,13 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
       method: "POST", headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}),
     });
     const j = await r.json().catch(() => null);
-    if (!r.ok) { notifyProblem((j ?? { status: r.status, title: r.statusText }) as Problem); return null; }
+    if (!r.ok) {
+      const p = (j ?? { status: r.status, title: r.statusText }) as Problem;
+      setProblem(p);
+      notifyProblem(p);
+      return null;
+    }
+    setProblem(null);
     setOwn((x) => x + 1);
     onChanged?.();
     return j as Record<string, unknown>;
@@ -90,7 +103,7 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
               {(Object.keys(PNR_STATE) as PnrState[]).map((s) => <option key={s} value={s}>{PNR_STATE[s][0]}</option>)}
             </select>
           </Field>
-          {may ? <Btn kind="ghost" onClick={() => setRaising({ reference: "", evidence: "", reason: "" })}>Raise for a payment reference…</Btn> : null}
+          {may ? <Btn kind="ghost" onClick={() => { setProblem(null); setRaising({ reference: "", evidence: "", reason: "" }); }}>Raise for a payment reference…</Btn> : null}
           {loading && data ? <span className="sub2" role="status">Looking…</span> : null}
         </div>
       </PBody>
@@ -108,8 +121,8 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
           may && w.state === "PROPOSED" ? (
             <span key="b" className="row" style={{ gap: "var(--s-2)" }}>
               {w.mine ? <Btn kind="ghost" size="sm" busyLabel="Cancelling…" onClick={() => cancel(w)}>Cancel</Btn> : <>
-                <Btn kind="primary" size="sm" onClick={() => setDeciding({ w, approve: true, note: "" })}>Approve…</Btn>
-                <Btn kind="ghost" size="sm" onClick={() => setDeciding({ w, approve: false, note: "" })}>Reject…</Btn>
+                <Btn kind="primary" size="sm" onClick={() => { setProblem(null); setDeciding({ w, approve: true, note: "" }); }}>Approve…</Btn>
+                <Btn kind="ghost" size="sm" onClick={() => { setProblem(null); setDeciding({ w, approve: false, note: "" }); }}>Reject…</Btn>
               </>}
             </span>
           ) : <span key="b" />,
@@ -123,7 +136,9 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
               onClick={() => raise()}>Raise</Btn></>}>
           <Note kind="info" title="Only an old-portal payment record">
             A record imported from the old portal (MOAUM-LEG-…) that the University&rsquo;s bank statement shows never arrived. A record holding several payments, one a refund
-            or deferment fee points at, one in a payment swap, or one whose session&rsquo;s overpayment was already carried or refunded is refused.
+            or deferment fee points at, one in a payment swap, one whose session&rsquo;s overpayment was already carried or refunded, the only SIWES payment a
+            standing SIWES registration rests on (the Academic Office or ICT Support undoes the registration first), or a SIWES payment whose credit was
+            refunded, by the Bursar or on the refund desk (the money given back stays on the books with it), is refused.
           </Note>
           <Field id="pnr-ref" label="Payment reference" required>
             <input id="pnr-ref" className="ctl tnum" maxLength={120} value={raising.reference} onChange={(e) => setRaising({ ...raising, reference: e.target.value })}
@@ -135,6 +150,7 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
           <Field id="pnr-reason" label="Reason" required hint="At least ten characters">
             <textarea id="pnr-reason" className="ctl" rows={2} maxLength={500} value={raising.reason} onChange={(e) => setRaising({ ...raising, reason: e.target.value })} />
           </Field>
+          {problem ? <ProblemNotice problem={problem} /> : null}
         </Modal>
       ) : null}
 
@@ -154,6 +170,7 @@ export function OldFeesNotReceived({ may, tick = 0, onChanged }: { may: boolean;
           <Field id="pnr-note" label={deciding.approve ? "Note (optional)" : "Why it is rejected"} required={!deciding.approve}>
             <input id="pnr-note" className="ctl" maxLength={500} value={deciding.note} onChange={(e) => setDeciding({ ...deciding, note: e.target.value })} />
           </Field>
+          {problem ? <ProblemNotice problem={problem} /> : null}
         </Modal>
       ) : null}
     </Panel>

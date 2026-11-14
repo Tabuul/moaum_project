@@ -27,6 +27,7 @@ import {
   FIELD_WORD, SEVERITY, jambYear, reasonProblem, sessionYear, words,
   type EditPage, type HistoryRow, type Permission,
 } from "@/lib/student-edit";
+import { SIWES_OFFICE_ADD_WORDS, SIWES_OFFICE_NO_ADD, siwesDroppedWords } from "@/lib/siwes";
 
 type Section = "identity" | "admission" | "placement" | "level" | "postgraduate" | "status" | "matriculation" | "registration" | "graduation" | "finance" | "history";
 const SECTIONS: [Section, string][] = [
@@ -673,7 +674,7 @@ function MatriculationSection({ page, may }: { page: EditPage; may: May }) {
 /* ── course registration and carry-over: the registration engine's own acts ── */
 
 type RegCurrent = { registration: { id: string; status: string; level: number; units: number; returned_comment: string | null } | null;
-  courses: { offering_id: string; course_code: string; title: string; units: number; basis: string; level: number; semester: number; status: string; support_override_at: string | null; support_override_reason: string | null }[] };
+  courses: { offering_id: string; course_code: string; title: string; units: number; entry_type?: string | null; basis: string; level: number; semester: number; status: string; support_override_at: string | null; support_override_reason: string | null }[] };
 type RegData = { view: RegistrationView & { window?: { open?: boolean; gate?: string | null } ; clears?: boolean }; current: RegCurrent; manage: boolean; override: boolean };
 type Rule = { ord: number; rule: string; passed: boolean; overridable: boolean; detail: string | null };
 type Act = { verb: "add" | "drop" | "restore"; offering: string; code: string; title: string; rules: Rule[] | null; allowed: boolean; overridable: boolean; mayOverride: boolean };
@@ -683,6 +684,8 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
   const [sel, setSel] = useState({ session: page.session, semester: String(page.semester) });
   const [reg, setReg] = useState<RegData | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
+  // the refusal of an add, drop, restore or submit as it is made, with its remedy (V752: REG_STATUS_SIWES, SIWES_COURSE_KEPT…)
+  const [actProblem, setActProblem] = useState<Problem | null>(null);
   const [act, setAct] = useState<Act | null>(null);
   const [reason, setReason] = useState("");
   const [override, setOverride] = useState(false);
@@ -702,7 +705,7 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
   }, [base, sel.session, sel.semester]);
 
   async function open(verb: Act["verb"], offering: string, code: string, title: string) {
-    setReason(""); setOverride(false); setDescription("");
+    setReason(""); setOverride(false); setDescription(""); setActProblem(null);
     setAct({ verb, offering, code, title, rules: null, allowed: false, overridable: false, mayOverride: false });
     const r = await call<{ rules: Rule[]; allowed: boolean; overridable: boolean; mayOverride: boolean }>("GET",
       `${base}/checks?session=${encodeURIComponent(sel.session)}&semester=${sel.semester}&offering=${offering}&verb=${verb === "drop" ? "drop" : "add"}`, null, "Registration rules read");
@@ -711,17 +714,21 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
 
   async function perform(verb: string, offering: string | null) {
     setBusy(true);
+    setActProblem(null);
     try {
       const r = await call<{ reference: string; view: RegData["view"]; current: RegCurrent }>("POST", `${base}/${verb}`, {
         session: sel.session, semester: Number(sel.semester), offering, reason: reason.trim(), override, description: override ? description.trim() : null,
       }, `Course registration ${verb} on the student edit page`);
       if (r.ok) { notify(`Registration updated · ${r.data.reference}`); setReg(reg ? { ...reg, view: r.data.view, current: r.data.current } : reg); setAct(null); setReason(""); }
-      else notifyProblem(r.problem);
+      else { notifyProblem(r.problem); setActProblem(r.problem); }
     } finally { setBusy(false); }
   }
 
   const live = reg?.current.courses.filter((c) => c.status !== "DROPPED") ?? [];
   const canManage = may("EDIT_STUDENT_REGISTRATION");
+  // V752: the Second Semester the SIWES rule binds (the registration view's window.siwes) is registered on the student's SIWES page and
+  // approved as it is made: the office does not submit it (a standing SIWES registration never goes back to SUBMITTED: REG_STATUS_SIWES)
+  const siwesSem = reg?.view.window?.siwes === true;
   return (
     <>
       <Panel title="Carry-over courses" right={`${page.carryovers.length}`}>
@@ -735,10 +742,10 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
         ])} /> : <PBody><div className="sub2">No course registration on record.</div></PBody>}
       </Panel>
       <Panel title="Manage course registration" right={<span className="row row--inline row--tight">
-        <select aria-label="Session" className="ctl" value={sel.session} onChange={(e) => setSel({ ...sel, session: e.target.value })}>
+        <select aria-label="Session" className="ctl" value={sel.session} onChange={(e) => { setSel({ ...sel, session: e.target.value }); setActProblem(null); }}>
           {page.lists.sessions.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
         </select>
-        <select aria-label="Semester" className="ctl" value={sel.semester} onChange={(e) => setSel({ ...sel, semester: e.target.value })}>
+        <select aria-label="Semester" className="ctl" value={sel.semester} onChange={(e) => { setSel({ ...sel, semester: e.target.value }); setActProblem(null); }}>
           <option value="1">First semester</option><option value="2">Second semester</option>
         </select></span>}>
         {problem ? <PBody><ProblemNotice problem={problem} /></PBody> : reg === null ? <PBody><div className="sub2">Reading the registration…</div></PBody> : (
@@ -754,28 +761,39 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
               <b key="c" className="tnum">{c.course_code}</b>, <Two key="t" a={c.title} b={c.support_override_at ? `Override: ${c.support_override_reason ?? ""}` : ""} />, c.units, words(c.basis),
               <Pil key="s" kind={c.status === "DROPPED" ? "grey" : "ok"}>{words(c.status)}</Pil>,
               canManage ? (c.status === "DROPPED"
-                ? <Btn key="a" kind="ghost" size="sm" onClick={() => void open("restore", c.offering_id, c.course_code, c.title)}>Restore</Btn>
+                // v4-1: in the SIWES semester the database refuses every restore, override or not (support_add_checks' SIWES rule): why, not Restore
+                ? siwesSem ? <span key="a" className="sub2">{siwesDroppedWords(c.entry_type)}</span>
+                : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("restore", c.offering_id, c.course_code, c.title)}>Restore</Btn>
                 : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("drop", c.offering_id, c.course_code, c.title)}>Remove</Btn>) : <span key="a" />,
             ])} /> : <div className="sub2">No course registered for this semester.</div>}
-            {canManage && live.length ? <div className="row mt-2"><Btn kind="secondary" disabled={busy} onClick={() => { setAct(null); setReason(""); setOverride(false); void perform("submit", null); }}>Submit the registration</Btn><span className="sub2">Submitting needs a reason below first.</span></div> : null}
+            {siwesSem ? <div className="sub2 mt-2">The Second Semester is the student&rsquo;s SIWES semester: it holds the SIWES course alone, registered on the student&rsquo;s SIWES page and approved as it is made; it is not submitted here. Another course on it, a carry-over or deferred course included, is removed here and waits for a later semester.</div>
+              : canManage && live.length ? <div className="row mt-2"><Btn kind="secondary" disabled={busy} onClick={() => { setAct(null); setReason(""); setOverride(false); void perform("submit", null); }}>Submit the registration</Btn><span className="sub2">Submitting needs a reason below first.</span></div> : null}
+            {actProblem && !act ? <div className="mt-2"><ProblemNotice problem={actProblem} /></div> : null}
             {canManage ? (
               <>
                 <div className="eyebrow mt-3">Eligible courses — the engine&rsquo;s own menu</div>
                 {reg.view.menu.length ? <DTable pageSize={10} noPrint cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "|num"]} rows={reg.view.menu.map((m) => [
                   <b key="c" className="tnum">{m.course_code}</b>, m.title, m.units, words(m.basis),
-                  live.some((e) => e.offering_id === m.offering_id) ? <span key="a" className="sub2">Registered</span> : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
+                  live.some((e) => e.offering_id === m.offering_id) ? <span key="a" className="sub2">Registered</span>
+                    // V752: in the SIWES semester the database refuses every add, override or not (support_add_checks' SIWES rule)
+                    : siwesSem ? <span key="a" className="sub2">{SIWES_OFFICE_ADD_WORDS}</span>
+                    : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
                 ])} /> : <div className="sub2">The menu is empty for this semester.</div>}
-                <div className="eyebrow mt-3">A course missing from the menu</div>
-                <div className="row row--inline">
-                  <input aria-label="Find a course" className="ctl" placeholder="Course code or title" value={q} onChange={(e) => setQ(e.target.value)} />
-                  <Btn kind="ghost" disabled={q.trim().length < 2} onClick={async () => {
-                    const r = await call<typeof found>("GET", `${base}/offerings?session=${encodeURIComponent(sel.session)}&semester=${sel.semester}&q=${encodeURIComponent(q.trim())}`, null, "Courses found");
-                    if (r.ok) setFound(r.data); else notifyProblem(r.problem);
-                  }}>Find</Btn>
-                </div>
-                {found.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "|num"]} rows={found.map((m) => [
-                  <b key="c" className="tnum">{m.course_code}</b>, m.title, m.units, <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
-                ])} /> : null}
+                {siwesSem ? <div className="sub2 mt-3">{SIWES_OFFICE_NO_ADD}</div> : (
+                  <>
+                    <div className="eyebrow mt-3">A course missing from the menu</div>
+                    <div className="row row--inline">
+                      <input aria-label="Find a course" className="ctl" placeholder="Course code or title" value={q} onChange={(e) => setQ(e.target.value)} />
+                      <Btn kind="ghost" disabled={q.trim().length < 2} onClick={async () => {
+                        const r = await call<typeof found>("GET", `${base}/offerings?session=${encodeURIComponent(sel.session)}&semester=${sel.semester}&q=${encodeURIComponent(q.trim())}`, null, "Courses found");
+                        if (r.ok) setFound(r.data); else notifyProblem(r.problem);
+                      }}>Find</Btn>
+                    </div>
+                    {found.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "|num"]} rows={found.map((m) => [
+                      <b key="c" className="tnum">{m.course_code}</b>, m.title, m.units, <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
+                    ])} /> : null}
+                  </>
+                )}
                 <ReasonBox id="rg" reason={reason} setReason={setReason} />
               </>
             ) : null}
@@ -803,6 +821,7 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
                 </>
               ) : <Note kind="bad" title="Override not held">Your office does not hold OVERRIDE_STUDENT_REGISTRATION.</Note>) : null}
               <ReasonBox id="rg-m" reason={reason} setReason={setReason} />
+              {actProblem ? <ProblemNotice problem={actProblem} /> : null}
             </>
           )}
         </Modal>

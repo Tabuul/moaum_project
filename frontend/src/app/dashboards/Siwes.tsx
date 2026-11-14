@@ -51,6 +51,8 @@ export function SiwesDashboard({ me, offerings, semester }: { me: Me | null; off
         <PBody>
           <div className="grid--fill">
             <LinkBtn kind="ghost" href="/siwes">SIWES supervision</LinkBtn>
+            {/* V752: the department's SIWES registrations: eligible, paid, registered */}
+            <LinkBtn kind="ghost" href="/siwes/registration?tab=students">SIWES registration</LinkBtn>
             <LinkBtn kind="ghost" href="/results/desk">Result desk</LinkBtn>
             <LinkBtn kind="ghost" href="/students">Students</LinkBtn>
           </div>

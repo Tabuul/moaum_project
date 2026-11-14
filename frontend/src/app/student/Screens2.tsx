@@ -21,6 +21,7 @@ import { SpilloverCard } from "./SpilloverCard";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { isTransferPurpose } from "@/lib/transfer-fee";
 import { isSummerPurpose } from "@/lib/summer";
+import { isSiwesPurpose } from "@/lib/siwes";
 
 /** V528: the student gives the bank account a refund of overpaid fees is paid into — while it awaits approval (and may change it
  *  then), or once after approval when none was given; the database refuses anything else */
@@ -71,9 +72,10 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
   const [now] = useState(() => new Date().getTime());
   const [sel, setSel] = useState<number>(fees.balance);
   // the school-fee reference awaiting payment; the GST fee (V314) has a reference of its own, paid from GST & EPS and offered below,
-  // and the inter-departmental transfer fee (V727) one paid from the transfer page, the Summer Semester fees (V735) from the Summer page
+  // and the inter-departmental transfer fee (V727) one paid from the transfer page, the Summer Semester fees (V735) from the Summer page,
+  // the SIWES registration fee (V752) from the SIWES page — none of them a school fee
   const isGst = (purpose: string | null | undefined) => (purpose ?? "").startsWith("GST fee");
-  const open = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session && !isGst(r.purpose) && !isTransferPurpose(r.purpose) && !isSummerPurpose(r.purpose)) ?? null;
+  const open = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session && !isGst(r.purpose) && !isTransferPurpose(r.purpose) && !isSummerPurpose(r.purpose) && !isSiwesPurpose(r.purpose)) ?? null;
   const openGst = fees.references.find((r) => !r.confirmed_at && new Date(r.expires_at).getTime() > now && r.session === fees.session && isGst(r.purpose)) ?? null;
   const justPaid = paid ? fees.references.find((r) => r.reference === paid) ?? null : null;
   // V361: "no charge" is a charge not yet stated; a ₦0 charge the Bursary stated on purpose is a charge
@@ -233,7 +235,7 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
         <DTable cols={["S/N|num", "Reference", "Purpose", "Programme type", "Session", "Amount|num", "Status", "|num"]} rows={fees.references.map((r, i) => [
           <span className="tnum sub2" key="sn">{i + 1}</span>,
           <span className="tnum t-xs ink-muted" key="r" style={{ letterSpacing: "-.2px" }}>{r.reference}</span>,
-          <Two key="p" a={r.purpose_label ?? r.purpose} b={r.confirmed_at ? `${r.purpose} · confirmed ${when(r.confirmed_at)} · ${r.channel}` : `${r.purpose} · generated ${when(r.generated_at)}`} />,
+          <Two key="p" a={isSiwesPurpose(r.purpose) ? "SIWES registration fee" : r.purpose_label ?? r.purpose} b={r.confirmed_at ? `${r.purpose} · confirmed ${when(r.confirmed_at)} · ${r.channel}` : `${r.purpose} · generated ${when(r.generated_at)}`} />,
           <span key="pt">{r.programme_type_label ?? "—"}</span>,
           <span className="tnum" key="ss">{r.session}</span>,
           <span className="tnum" key="a">{naira(r.amount)}</span>,
@@ -248,6 +250,8 @@ export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string 
             : isTransferPurpose(r.purpose) ? <LinkBtn key="x" kind="ghost" href="/student/transfer">{new Date(r.expires_at).getTime() > now ? "Pay on the transfer page" : "Transfer"}</LinkBtn>
             // V735: nor a Summer reference — the Summer page reads what is owed now and pays the reference open for exactly that
             : isSummerPurpose(r.purpose) ? <LinkBtn key="x" kind="ghost" href={`/student/summer?session=${encodeURIComponent(r.session)}`}>{new Date(r.expires_at).getTime() > now ? "Pay on the Summer page" : "Summer Semester"}</LinkBtn>
+            // V752: nor a SIWES reference — the SIWES page pays the one reference open for the fee, and draws a new one when it expired
+            : isSiwesPurpose(r.purpose) ? <LinkBtn key="x" kind="ghost" href={`/student/siwes?session=${encodeURIComponent(r.session)}`}>{new Date(r.expires_at).getTime() > now ? "Pay on the SIWES page" : "SIWES"}</LinkBtn>
             : new Date(r.expires_at).getTime() > now ? <PayFromHistory key="x" reference={r.reference} amount={Number(r.amount)} purpose={r.purpose_label ?? r.purpose} />
             // Oct 2026: an expired GST reference is paid from GST & EPS, which says whether the fee is still owed and why
             : r.purpose.startsWith("GST fee ") ? <LinkBtn key="x" kind="ghost" href={`/student/gst?session=${encodeURIComponent(r.session)}`}>GST &amp; EPS</LinkBtn>

@@ -96,7 +96,7 @@ export const OUTCOME: Record<BankOutcome, [string, Kind, string]> = {
   NO_NUMBER: ["No payment number", "grey", "A record carries no payment number to look for; check by hand"],
   CHECKED: ["Checked already", "info", "Checked with the bank before, or a withdrawal waits"],
   OUTSIDE_PERIOD: ["Outside the days", "grey", "Paid outside the days the list covers"],
-  REFUSED: ["Withdrawal refused", "bad", "The withdrawal was refused (several payments in one record, linked, swapped, or the excess decided); left unchecked"],
+  REFUSED: ["Withdrawal refused", "bad", "The withdrawal was refused (several payments in one record, linked, swapped, the excess decided, or a SIWES payment a registration rests on or whose credit was refunded); left unchecked"],
 };
 
 export interface BankGroup {

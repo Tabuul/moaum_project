@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 617
+\set EXPECTED 618
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -36949,6 +36949,449 @@ BEGIN
                left(gif_refused, 26), left(lie_refused, 26), big_refused, left(dims_refused, 25), left(nojpeg_refused, 25), keyrow_refused,
                s1.version, s1.name, s1.signature_type, s1.set_office, s2.version, s2.signature_type, s2.set_office, letter_now, listed_held,
                letter_other, letter_again, listed_after, s3.version, s3.set_office, left(none_refused, 24), letter_removed, listed_removed, kept, audits, attached));
+END $$;
+
+-- ── V752: SIWES registration. In 9892/9893 (current; 9891/9892 before it) C97521 takes part (ZZN 302 its SIWES course, 6 units; ZZN 304
+--          an elective of 300/2; ZZN 301 a first-semester core), C97522 does not (ZZN 399 alone at 300/2: V503's attachment semester), C97523
+--          is postgraduate. A, B and G at 300 Level of C97521 (A and G with the session's school fees paid, G with an old-portal SIWES
+--          payment), H at 300 who passed ZZN 302 in 9891/9892, C at 300 of C97522, D postgraduate. The reasons; the entry trigger refusing B
+--          an ordinary course and the SIWES course unpaid, leaving C (V503 unchanged), D and A's first semester alone; the gate and the unit
+--          rule; the old portal's payment counting; A's reference drawn once and never twice once paid; paying registers nothing; A
+--          registers (APPROVED, AUTO), and again the same; G registers on the old portal's payment; B is refused while the Second Semester
+--          school fees are owed; the period (OPEN undated) and fee rules (a statement is a draft beside the fee in force; the Bursar
+--          publishes). The reviews: the old fees history started over keeps G's payment and registration; no refund is raised on A's
+--          payment; whether SIWES binds (applies); a programme neither added to an open period nor the period opened while a configured
+--          programme's cohort has no SIWES course, an old-portal payer binding and holding nothing. The third round: an old-portal credit
+--          refunded by hand kept by the reset, the office's drop of a course in the way and of a SIWES course registered in error, a SIWES
+--          payment refunded whole, a SIWES registration staying approved, the Second Semester school fees in the eligibility. The fourth
+--          round: G's second old-portal payment (an open credit) taken away by the reset with its credit, G's registered one kept; H's
+--          two old-portal payments of one day and amount under two payment numbers credited by V752's one rule (the second), held from
+--          a refund by hand and on the refund desk until the bank check finds it received, then withdrawn as never received (archived,
+--          its credit off the list); A's registration approved by a Head before gaining the SIWES course stamped AUTO. The fifth round:
+--          H's two first-semester old-portal payments of one day under two payment numbers held from the correction desk too, and
+--          still held once the bank check finds one never received and its withdrawal is rejected; G's old-portal payment a SIWES
+--          registration rests on not withdrawn as never received; B's credit refunded on the desk of kind DESK_REFUND; B deferred not
+--          bound. The sixth round: the bank check's wait as a code on the payments report, a record found never received off the
+--          credits list until found received, a SIWES payment refunded by hand not withdrawn as never received, the SIWES menu item kept
+--          by a registration that stands and never given to an old-portal payer SIWES never bound. The seventh round: no bank-check hold
+--          on H's payment given back (its credit refunded), H's record found never received still held and refused on the refund desk
+--          once its day is put right, and H's credit reopened settling the fee once the payment that settled it is refunded. The block
+--          undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9891/9892'; S text := '9892/9893'; who uuid := gen_random_uuid(); dept text; fac text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    g uuid := gen_random_uuid(); h uuid := gen_random_uuid(); r1 uuid := gen_random_uuid(); rb uuid := gen_random_uuid();
+    rc uuid := gen_random_uuid(); rd uuid := gen_random_uuid(); o301 uuid := gen_random_uuid(); o304 uuid := gen_random_uuid();
+    o399 uuid := gen_random_uuid(); o702 uuid := gen_random_uuid(); o302 uuid;
+    reasons text; trig text := ''; v503 text; old text; ref1 text; ref2 text; drawn text; before_reg int; j1 jsonb; j2 jsonb; jg text; owed text;
+    sem1 text; sem1_after text; rules text := ''; lim record; msg text; v_err text; fixes text;
+    round2 text; rb2 text; rf text; cb uuid; o204 uuid := gen_random_uuid(); o206 uuid := gen_random_uuid();
+    round3 text; lb text := 'MOAUM-LEG-MOAUZSN987522-9892-9893-S1-SIWES'; cl uuid; a_reg text;
+    round4 text; lg2 text := 'MOAUM-LEG-MOAUZSN987527-9892-9893-S2-SIWES'; lh1 text := 'MOAUM-LEG-MOAUZSN987528-9892-9893-S2-SIWES';
+    lh2 text := 'MOAUM-LEG-MOAUZSN987528-9892-9893-S2-SIWES-PAYH2'; b4 record; rq text;
+    round5 text; lh3 text := 'MOAUM-LEG-MOAUZSN987528-9892-9893-S1-SIWES'; lh4 text := 'MOAUM-LEG-MOAUZSN987528-9892-9893-S1-SIWES-PAYH4'; round6 text;
+    round7 text; j7 jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V752', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9891-10-01', DATE '9892-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9892-10-01', DATE '9893-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9892/752' WHERE name = S;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97521', 'B.Sc. SIWES Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4), ('C97522', 'B.Sc. SIWES Check Unconfigured', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97523', 'M.Sc. SIWES Check', dept, fac, 'POST GRADUATE', 0, 900, 2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
+        ('ZZN 302', 'SIWES check training', 6, 2, 300, dept, 'Core', 'LIVE', true), ('ZZN 304', 'SIWES check elective', 3, 2, 300, dept, 'Elective', 'LIVE', false),
+        ('ZZN 301', 'SIWES check first', 3, 1, 300, dept, 'Core', 'LIVE', false), ('ZZN 399', 'SIWES check attachment', 6, 2, 300, dept, 'Core', 'LIVE', true),
+        ('ZZN 702', 'SIWES check postgraduate', 3, 2, 700, dept, 'Core', 'LIVE', false);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZN 302', 'C97521', 300, 'Core'), ('ZZN 301', 'C97521', 300, 'Core'), ('ZZN 304', 'C97521', 300, 'Elective'),
+        ('ZZN 399', 'C97522', 300, 'Core'), ('ZZN 304', 'C97522', 300, 'Elective'), ('ZZN 702', 'C97523', 700, 'Core');
+    INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES
+        (o304, 'ZZN 304', S, 2, 'REGULAR'), (o301, 'ZZN 301', S, 1, 'REGULAR'), (o399, 'ZZN 399', S, 2, 'REGULAR'), (o702, 'ZZN 702', S, 2, 'PG');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/98/975201', 'MOAU/ZSN/98/7521', 'ZZSIWES', 'A', 'C97521', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/98/975202', 'MOAU/ZSN/98/7522', 'ZZSIWES', 'B', 'C97521', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/98/975203', 'MOAU/ZSN/98/7523', 'ZZSIWES', 'C', 'C97522', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/98/975204', 'MOAU/ZSN/98/7524', 'ZZSIWES', 'D', 'C97523', 'POSTGRADUATE', S0, 700, 700, 'ACTIVE', now()),
+        (g, 'MOAUM/ADM/98/975207', 'MOAU/ZSN/98/7527', 'ZZSIWES', 'G', 'C97521', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (h, 'MOAUM/ADM/98/975208', 'MOAU/ZSN/98/7528', 'ZZSIWES', 'H', 'C97521', 'UTME', S0, 100, 300, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (S, 'School fees (check V752)', 100000, 300, 'C97521');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(a, S, 100000, NULL), 'Bank transfer', 'check V752');
+    PERFORM finance.confirm_payment(finance.new_reference(g, S, 100000, NULL), 'Bank transfer', 'check V752');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (g, S, 'MOAUM-LEG-MOAUZSN987527-9892-9893-S1-SIWES', 'SIWES (legacy) · semester 1', 4000, now() - interval '30 days', now() - interval '30 days',
+            now() - interval '30 days', who, 'Legacy', 'Imported from the old portal', 'RCT-CHK-975207');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSN/98/7528', 'course', 'ZZN 302', 'total', '70', 'level', '300')), true);
+    -- the Academic Office: the period OPEN needs its dates; C97521 takes part with ZZN 302; the Bursary states ₦4,000 and the Bursar publishes
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM registration.siwes_set_period(S, 'OPEN', NULL, NULL, NULL, NULL, 6, 'check V752'); rules := 'opened';
+    EXCEPTION WHEN check_violation THEN rules := split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.siwes_add_programme(S, 'C97521');
+    PERFORM registration.siwes_set_course('C97521', NULL, 'ZZN 302');
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V752');
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM finance.siwes_fee_state(S, 4000, 'check V752');
+    BEGIN PERFORM finance.siwes_fee_publish(S); rules := rules || '/published';
+    EXCEPTION WHEN check_violation THEN rules := rules || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.siwes_fee_publish(S);
+
+    SELECT string_agg(x.k || ':' || coalesce(nullif(array_to_string(registration.siwes_reasons(x.id, S), '+'), ''), '-'), ',' ORDER BY x.k) INTO reasons
+      FROM (VALUES ('A', a), ('B', b), ('C', c), ('D', d), ('G', g), ('H', h)) x(k, id);
+    -- the entry trigger, on the raw path every writer ends in
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    o302 := catalogue.open_class('ZZN 302', S, 2, 'REGULAR');
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES
+        (rb, b, S, 2, 300), (rc, c, S, 2, 300), (rd, d, S, 2, 700), (r1, a, S, 1, 300);
+    BEGIN INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (rb, o304, 3); trig := 'placed';
+    EXCEPTION WHEN check_violation THEN trig := split_part(SQLERRM, ':', 1); END;
+    BEGIN INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (rb, o302, 6); trig := trig || '/placed';
+    EXCEPTION WHEN check_violation THEN trig := trig || '/' || split_part(SQLERRM, ':', 1); END;
+    INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (rc, o304, 3), (rd, o702, 3);
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r1, o301, 3, 'REGISTERED');
+    UPDATE registration.course_registration SET status = 'APPROVED', approved_at = now(), approval_mode = 'HOD' WHERE id = r1;
+    UPDATE registration.entry SET status = 'APPROVED' WHERE registration_id = r1;
+    trig := trig || '/' || (SELECT count(*) FROM registration.entry WHERE registration_id IN (rc, rd, r1));
+    SELECT string_agg(o.course_code || ':' || e.status, ',') INTO sem1 FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r1;
+    -- V503 unchanged for C; SIWES read first for A
+    SELECT * INTO lim FROM registration.unit_rule(c, 300, S, 2);
+    v503 := lim.basis || ' ' || lim.min_units || '-' || lim.max_units || '/' || coalesce(registration.registration_gate(c, S, 2), 'open')
+            || '/' || (SELECT split_part(x.refusal, ':', 1) FROM registration.course_check(c, S, 2, 'ZZN 301', '{}', '{}', '{}', '{}') x);
+    SELECT * INTO lim FROM registration.unit_rule(a, 300, S, 2);
+    v503 := v503 || ' | ' || lim.basis || ' ' || lim.min_units || '-' || lim.max_units || '/' || (registration.registration_gate(a, S, 2) LIKE '%SIWES page%')
+            || '/' || (SELECT string_agg(m.course_code, ',') FROM registration.student_menu(a, S, 2) m);
+    old := registration.siwes_eligibility(g, S) -> 'paid' ->> 'source';
+
+    -- A's reference: drawn once; paid (paying registers nothing); never drawn again
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    ref1 := finance.siwes_reference(a) ->> 'reference';
+    ref2 := finance.siwes_reference(a) ->> 'reference';
+    drawn := (ref1 = ref2) || '/' || (SELECT amount FROM finance.payment_reference WHERE reference = ref1) || '/' || finance.siwes_reference_payable(ref1)
+             || '/' || finance.categorise(NULL, (SELECT purpose FROM finance.payment_reference WHERE reference = ref1));
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.confirm_payment(ref1, 'Bank transfer', 'check V752');
+    SELECT count(*) INTO before_reg FROM registration.course_registration WHERE student_id = a AND session = S AND semester = 2;
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM finance.siwes_reference(a); drawn := drawn || '/drawn again';
+    EXCEPTION WHEN check_violation THEN drawn := drawn || '/' || split_part(SQLERRM, ':', 1); END;
+    -- A registers, then again: the same
+    j1 := registration.siwes_register(a);
+    j2 := registration.siwes_register(a);
+    -- A's registration as made (the third round drops its SIWES course later)
+    SELECT r.approval_mode || '/' || string_agg(o.course_code || ':' || e.status, ',') INTO a_reg
+      FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.id = (j1 ->> 'registrationId')::uuid GROUP BY r.approval_mode;
+    SELECT sem1 = string_agg(o.course_code || ':' || e.status, ',') INTO sem1_after FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id WHERE e.registration_id = r1;
+    -- G on the old portal's payment
+    PERFORM set_config('moaum.actor_id', g::text, true);
+    jg := registration.siwes_register(g) ->> 'status';
+    jg := jg || '/' || (SELECT (legacy_payment_id IS NOT NULL)::text FROM registration.siwes_registration WHERE student_id = g);
+    -- B: the school fees owed refuse the registration; the fee restated (a draft) leaves ₦4,000 in force
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    DELETE FROM registration.entry WHERE registration_id = rb;
+    ref2 := finance.siwes_reference(b) ->> 'reference';
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(ref2, 'Bank transfer', 'check V752');
+    PERFORM finance.siwes_fee_state(S, 5000, 'check V752 restated');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    BEGIN PERFORM registration.siwes_register(b); owed := 'registered';
+    EXCEPTION WHEN check_violation THEN owed := split_part(SQLERRM, ':', 1); END;
+    -- the fee restated is a draft beside the ₦4,000 in force, in force itself once the Bursar publishes it; H (SIWES passed) draws nothing
+    rules := rules || '/' || coalesce(finance.siwes_fee_for(S)::text, 'draft');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.siwes_fee_publish(S);
+    rules := rules || '/' || coalesce(finance.siwes_fee_for(S)::text, 'draft');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', h::text, true);
+    BEGIN PERFORM finance.siwes_reference(h); rules := rules || '/H drawn';
+    EXCEPTION WHEN check_violation THEN rules := rules || '/' || split_part(SQLERRM, ':', 1); END;
+    -- the reviews: the old fees history started over keeps the old-portal payment G registered on; no refund is raised against A's
+    -- payment (A's registration stands on it); whether SIWES binds A and C; the period not opened while C97522, configured, has a 300
+    -- Level student no SIWES course reaches
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.reset_legacy_payments(S, 'RESET', 5000);
+    fixes := (SELECT count(*) FROM registration.siwes_registration x JOIN finance.payment_reference r ON r.id = x.legacy_payment_id WHERE x.student_id = g)::text;
+    BEGIN PERFORM finance.propose_refund(a, 'ZZSIWES A', 'check V752', 4000, 'Bank', 'ZZSIWES A', '1234', ref1); fixes := fixes || '/refund raised';
+    EXCEPTION WHEN check_violation THEN fixes := fixes || '/' || split_part(SQLERRM, ':', 1); END;
+    fixes := fixes || '/' || (registration.siwes_eligibility(a, S) ->> 'applies') || '/' || (registration.siwes_eligibility(c, S) ->> 'applies');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- C97522 is not added to the open period while C (its 300 Level) has no SIWES course; configured all the same (as an earlier build
+    -- let it), the period is not opened again; C's old-portal SIWES payment binds C to nothing and holds nothing: taken out again
+    BEGIN PERFORM registration.siwes_add_programme(S, 'C97522'); fixes := fixes || '/added';
+    EXCEPTION WHEN check_violation THEN fixes := fixes || '/' || split_part(SQLERRM, ':', 1); END;
+    INSERT INTO registration.siwes_programme (session, programme_code, added_by, added_office) VALUES (S, 'C97522', who, 'academic') ON CONFLICT DO NOTHING;
+    BEGIN PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V752'); fixes := fixes || '/opened';
+    EXCEPTION WHEN check_violation THEN fixes := fixes || '/' || split_part(SQLERRM, ':', 1); END;
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (c, S, 'MOAUM-LEG-MOAUZSN987523-9892-9893-S2-SIWES', 'SIWES (legacy) · semester 2', 4000, now() - interval '9 days', now() - interval '9 days',
+            now() - interval '9 days', who, 'Legacy', 'Imported from the old portal', 'RCT-CHK-975203');
+    fixes := fixes || '/' || registration.siwes_applies(c, S) || '/' || registration.siwes_in_use(S, 'C97522');
+    BEGIN PERFORM registration.siwes_remove_programme(S, 'C97522'); fixes := fixes || '/removed';
+    EXCEPTION WHEN check_violation THEN fixes := fixes || '/' || split_part(SQLERRM, ':', 1); END;
+    -- the second round: one payment never given back twice (B's second payment, an old reference paid at the bank, is a credit: recorded
+    -- refunded, the refund desk refuses it; reopened and raised on the refund desk, the credits list waits; approved, the desk settles the
+    -- credit); A's SIWES registration never returned; a carry-over and a deferred course placed on B's Second Semester before SIWES bound
+    -- B (a level corrected since) dropped by ICT Support and by B; the mapping paid students need never taken away; ZZN 302 ended, B
+    -- (paid) still bound and told SIWES_COURSE_MISSING
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    rb2 := finance.new_purpose_reference(b, S, 4000, 'SIWES registration fee ' || S);
+    PERFORM finance.confirm_payment(rb2, 'PayDirect', 'check V752: paid at the bank later');
+    SELECT x.id INTO cb FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = rb2;
+    PERFORM finance.siwes_credit_settle(cb, 'REFUNDED', 'check V752: refunded by transfer');
+    BEGIN PERFORM finance.propose_refund(b, 'ZZSIWES B', 'check V752', 4000, 'Bank', 'ZZSIWES B', '1234', rb2); round2 := 'raised';
+    EXCEPTION WHEN check_violation THEN round2 := split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.siwes_credit_reopen(cb, 'check V752: recorded in error');
+    rf := finance.propose_refund(b, 'ZZSIWES B', 'check V752', 4000, 'Bank', 'ZZSIWES B', '1234', rb2);
+    BEGIN PERFORM finance.siwes_credit_settle(cb, 'REFUNDED', 'check V752: refunded by transfer'); round2 := round2 || '/settled';
+    EXCEPTION WHEN check_violation THEN round2 := round2 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rf));
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    round2 := round2 || '/' || (SELECT state || ':' || (settled_note LIKE 'Refunded on the refund desk: %') FROM finance.siwes_credit WHERE id = cb);
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    BEGIN UPDATE registration.course_registration SET status = 'RETURNED', returned_comment = 'check V752' WHERE id = (j1 ->> 'registrationId')::uuid;
+          round2 := round2 || '/returned';
+    EXCEPTION WHEN check_violation THEN round2 := round2 || '/' || split_part(SQLERRM, ':', 1); END;
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZN 204', 'SIWES check failed', 3, 2, 200, dept, 'Core', 'LIVE'), ('ZZN 206', 'SIWES check deferred', 3, 2, 200, dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (o204, 'ZZN 204', S, 2, 'REGULAR'), (o206, 'ZZN 206', S, 2, 'REGULAR');
+    INSERT INTO policy.semester (id, session, number, state, registration_opens, registration_closes) VALUES (gen_random_uuid(), S, 2, 'OPEN', current_date - 1, current_date + 10)
+    ON CONFLICT (session, number) DO UPDATE SET state = 'OPEN', registration_opens = EXCLUDED.registration_opens, registration_closes = EXCLUDED.registration_closes;
+    UPDATE people.student SET current_level = 200 WHERE id = b;
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (rb, o204, 3, 'CARRYOVER', 'REGISTERED'), (rb, o206, 3, 'DEFERRED', 'REGISTERED');
+    UPDATE people.student SET current_level = 300 WHERE id = b;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM registration.support_drop(b, S, 2, o204, true, who, 'check V752: a SIWES semester holds the SIWES course alone'); round2 := round2 || '/office dropped';
+    EXCEPTION WHEN check_violation THEN round2 := round2 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    BEGIN PERFORM registration.student_drop(b, S, 2, o206); round2 := round2 || '/dropped';
+    EXCEPTION WHEN check_violation THEN round2 := round2 || '/' || split_part(SQLERRM, ':', 1); END;
+    round2 := round2 || '/' || jsonb_array_length(registration.siwes_eligibility(b, S) -> 'otherCourses');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    BEGIN PERFORM registration.siwes_set_course('C97521', NULL, ''); round2 := round2 || '/cleared';
+    EXCEPTION WHEN check_violation THEN round2 := round2 || '/' || split_part(SQLERRM, ':', 1); END;
+    UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = 'ZZN 302';
+    round2 := round2 || '/' || registration.siwes_applies(b, S);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    BEGIN PERFORM registration.siwes_register(b); round2 := round2 || '/registered';
+    EXCEPTION WHEN check_violation THEN round2 := round2 || '/' || split_part(SQLERRM, ':', 1); END;
+    -- the third round: B's old-portal SIWES payment, loaded after B paid on the portal, is B's credit; the Bursar records it refunded by
+    -- hand; the old fees history started over keeps it, and the refund desk refuses it. ZZN 304 placed on B's draft before SIWES bound B
+    -- (a level corrected since) dropped by ICT Support with no override; B's Second Semester school fees owed, in the eligibility. G's
+    -- standing SIWES registration not submitted again. A made unbound (200 Level): ICT Support drops A's SIWES course with no override,
+    -- and the refund desk refunds A's fee whole, never in part
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (b, S, lb, 'SIWES (legacy) · semester 1', 4000, now() - interval '20 days', now() - interval '20 days', now() - interval '20 days', who, 'Legacy',
+            'Imported from the old portal', 'RCT-CHK-975202');
+    SELECT x.id, x.state INTO cl, round3 FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = lb;
+    round3 := coalesce(round3, 'no credit');
+    BEGIN PERFORM finance.siwes_credit_settle(cl, 'REFUNDED', 'check V752: refunded by transfer'); round3 := round3 || '/refunded';
+    EXCEPTION WHEN check_violation THEN round3 := round3 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.reset_legacy_payments(S, 'RESET', 5000);
+    round3 := round3 || '/' || EXISTS (SELECT 1 FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = lb AND x.state = 'REFUNDED');
+    BEGIN PERFORM finance.propose_refund(b, 'ZZSIWES B', 'check V752', 4000, 'Bank', 'ZZSIWES B', '1234', lb); round3 := round3 || '/raised';
+    EXCEPTION WHEN check_violation OR foreign_key_violation THEN round3 := round3 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE people.student SET current_level = 200 WHERE id = b;
+    INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (rb, o304, 3);
+    UPDATE people.student SET current_level = 300 WHERE id = b;
+    round3 := round3 || ' | ' || (SELECT x.passed FROM registration.support_drop_checks(b, S, 2, o304) x WHERE x.rule = 'REGISTRATION_WINDOW');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM registration.support_drop(b, S, 2, o304, false, NULL, NULL); round3 := round3 || '/office dropped';
+    EXCEPTION WHEN check_violation THEN round3 := round3 || '/' || split_part(SQLERRM, ':', 1); END;
+    round3 := round3 || '/' || coalesce(registration.siwes_eligibility(b, S) -> 'semesterFees' ->> 'cleared', '-') || '/' || (registration.siwes_eligibility(b, S) ->> 'canRegister');
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    BEGIN UPDATE registration.course_registration SET status = 'SUBMITTED', submitted_at = now()
+           WHERE id = (SELECT x.course_registration_id FROM registration.siwes_registration x WHERE x.student_id = g AND x.session = S);
+          round3 := round3 || ' | submitted';
+    EXCEPTION WHEN check_violation THEN round3 := round3 || ' | ' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE people.student SET current_level = 200 WHERE id = a;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM registration.support_drop(a, S, 2, o302, false, NULL, NULL); round3 := round3 || '/A dropped';
+    EXCEPTION WHEN check_violation THEN round3 := round3 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    BEGIN PERFORM finance.propose_refund(a, 'ZZSIWES A', 'check V752', 1000, 'Bank', 'ZZSIWES A', '1234', ref1); round3 := round3 || '/part raised';
+    EXCEPTION WHEN check_violation THEN round3 := round3 || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.propose_refund(a, 'ZZSIWES A', 'check V752', 4000, 'Bank', 'ZZSIWES A', '1234', ref1); round3 := round3 || '/raised';
+    EXCEPTION WHEN check_violation THEN round3 := round3 || '/' || split_part(SQLERRM, ':', 1); END;
+    -- the fourth round: G's second old-portal SIWES payment, loaded beside the one G registered on, is G's open credit: the old fees
+    -- history started over takes it away with its credit (only a settlement made by hand keeps a payment), and keeps the registered one
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (g, S, lg2, 'SIWES (legacy) · semester 2', 4000, now() - interval '10 days', now() - interval '10 days', now() - interval '10 days', who, 'Legacy',
+            'Imported from the old portal', 'RCT-CHK-975217');
+    round4 := coalesce((SELECT x.state FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = lg2), 'no credit');
+    PERFORM finance.reset_legacy_payments(S, 'RESET', 5000);
+    round4 := round4 || '/' || (NOT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = lg2)) || '/' || (SELECT count(*) FROM finance.siwes_credit WHERE student_id = g)
+              || '/' || (SELECT count(*) FROM registration.siwes_registration x JOIN finance.payment_reference r ON r.id = x.legacy_payment_id WHERE x.student_id = g);
+    -- H's two old-portal SIWES payments of one day and amount under two payment numbers (V561's possible bank double charge), on record
+    -- before V752 (no credit): V752's one rule credits the second; no refund by hand or on the desk until the bank check finds it received;
+    -- checked again, never received: withdrawn by a second officer, archived for good, its credit off the list
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (h, S, lh1, 'SIWES (legacy) · semester 2', 4000, now() - interval '15 days', now() - interval '15 days', now() - interval '15 days', who, 'Legacy',
+            'Imported from the old portal', 'LEG-' || lh1),
+           (h, S, lh2, 'SIWES (legacy) · semester 2', 4000, now() - interval '15 days', now() - interval '15 days', now() - interval '15 days', who, 'Legacy',
+            'Imported from the old portal', 'LEG-' || lh2);
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PAYH1', lh1, 4000), ('PAYH2', lh2, 4000);
+    DELETE FROM finance.siwes_credit WHERE student_id = h;
+    SELECT * INTO b4 FROM finance.siwes_credit_second_payments();
+    SELECT x.id INTO cl FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = lh2;
+    round4 := round4 || ' | ' || b4.credits || '/' || b4.held;
+    BEGIN PERFORM finance.siwes_credit_settle(cl, 'REFUNDED', 'check V752: refunded by transfer'); round4 := round4 || '/refunded';
+    EXCEPTION WHEN check_violation THEN round4 := round4 || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.propose_refund(h, 'ZZSIWES H', 'check V752', 4000, 'Bank', 'ZZSIWES H', '1234', lh2); round4 := round4 || '/raised';
+    EXCEPTION WHEN check_violation THEN round4 := round4 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.check_double_charge(h, S, 'SIWES (legacy) · semester 2', ((now() - interval '15 days') AT TIME ZONE 'Africa/Lagos')::date, 4000,
+                                        'RECEIVED', 'check V752: the bank statement', NULL, '{}');
+    round4 := round4 || '/' || (SELECT z.can_refund || ':' || coalesce(z.bank_check, 'null') FROM finance.siwes_credits(S) z WHERE z.reference = lh2);
+    PERFORM finance.check_double_charge(h, S, 'SIWES (legacy) · semester 2', ((now() - interval '15 days') AT TIME ZONE 'Africa/Lagos')::date, 4000,
+                                        'NOT_RECEIVED', 'check V752: the bank statement again', NULL, ARRAY[lh2]);
+    round4 := round4 || '/' || (SELECT z.bank_check_state || ':' || (z.bank_check LIKE 'the withdrawal of % waits for a second Bursary officer%')
+                                  FROM finance.siwes_payments(S, NULL, NULL, NULL, NULL, 500, 0) z WHERE z.reference = lh2)
+              || ':' || (NOT EXISTS (SELECT 1 FROM finance.siwes_credits(S) z WHERE z.reference = lh2));
+    SELECT w.request_ref INTO rq FROM finance.payment_not_received w WHERE w.reference = lh2 AND w.state = 'PROPOSED';
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM finance.decide_not_received(rq, true, 'check V752: never received');
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    round4 := round4 || '/' || (SELECT (r.archived_at IS NOT NULL)::text FROM finance.payment_reference r WHERE r.reference = lh2)
+              || ':' || (NOT EXISTS (SELECT 1 FROM finance.siwes_credits(S) z WHERE z.reference = lh2));
+    -- A's Second Semester registration, approved by a Head of Department (its SIWES course dropped in round 3), gains the SIWES course
+    -- again: stamped approved on the fee (AUTO, now, by nobody), the status as it was
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE catalogue.course SET state = 'LIVE', ended_on = NULL WHERE code = 'ZZN 302';
+    UPDATE people.student SET current_level = 300 WHERE id = a;
+    UPDATE registration.course_registration SET approval_mode = 'HOD', approved_by = who, approved_at = now() - interval '1 day' WHERE id = (j1 ->> 'registrationId')::uuid;
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM registration.siwes_register(a);
+          round4 := round4 || ' | ' || (SELECT r.status || '/' || r.approval_mode || '/' || (r.approved_by IS NULL) || '/' || (r.approved_at = now())
+                                          FROM registration.course_registration r WHERE r.id = (j1 ->> 'registrationId')::uuid);
+    EXCEPTION WHEN check_violation THEN round4 := round4 || ' | ' || split_part(SQLERRM, ':', 1); END;
+    -- the fifth round: H's two first-semester old-portal payments of one day and amount under two payment numbers (H's fee settled: both
+    -- credits) — V561's group read for one record, and held from the correction desk too; the bank check finds one never received and
+    -- its withdrawal is rejected: the other is still held. G's old-portal payment, a SIWES registration resting on it and G holding no
+    -- other, is not withdrawn as never received. B's credit refunded on the desk is of kind DESK_REFUND. B deferred is not bound.
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (h, S, lh3, 'SIWES (legacy) · semester 1', 4000, now() - interval '20 days', now() - interval '20 days', now() - interval '20 days', who, 'Legacy',
+            'Imported from the old portal', 'LEG-' || lh3),
+           (h, S, lh4, 'SIWES (legacy) · semester 1', 4000, now() - interval '20 days', now() - interval '20 days', now() - interval '20 days', who, 'Legacy',
+            'Imported from the old portal', 'LEG-' || lh4);
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PAYH3', lh3, 4000), ('PAYH4', lh4, 4000);
+    round5 := (SELECT CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements_text(finance.payment_reallocation_check(r.id, 'SCHOOL_FEES', S, 2) -> 'refusals') x
+                                         WHERE x LIKE 'REALLOC_SIWES_CHECK_BANK:%') THEN 'held' ELSE 'free' END
+                 FROM finance.payment_reference r WHERE r.reference = lh4)
+              || '/' || (finance.double_charge_group((SELECT r.id FROM finance.payment_reference r WHERE r.reference = lh4)) = ARRAY[lh3, lh4]);
+    PERFORM finance.check_double_charge(h, S, 'SIWES (legacy) · semester 1', ((now() - interval '20 days') AT TIME ZONE 'Africa/Lagos')::date, 4000,
+                                        'NOT_RECEIVED', 'check V752: the bank statement of the fifth round', NULL, ARRAY[lh3]);
+    SELECT w.request_ref INTO rq FROM finance.payment_not_received w WHERE w.reference = lh3 AND w.state = 'PROPOSED';
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM finance.decide_not_received(rq, false, 'check V752: not on this statement');
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    round5 := round5 || '/' || (SELECT z.can_refund || ':' || (z.bank_check LIKE '%found payment ' || lh3 || ' never received; until it is withdrawn%')
+                                  FROM finance.siwes_credits(S) z WHERE z.reference = lh4);
+    BEGIN PERFORM finance.propose_not_received((SELECT r.reference FROM registration.siwes_registration x JOIN finance.payment_reference r ON r.id = x.legacy_payment_id
+                                                 WHERE x.student_id = g), 'check V752: the bank statement', 'check V752: the bank never received it');
+          round5 := round5 || '/withdrawn';
+    EXCEPTION WHEN check_violation THEN round5 := round5 || '/' || split_part(SQLERRM, ':', 1); END;
+    round5 := round5 || '/' || coalesce((SELECT c.settled_kind FROM finance.siwes_credit c WHERE c.id = cb), '-');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    UPDATE people.student SET status = 'DEFERRED' WHERE id = b;
+    round5 := round5 || '/' || registration.siwes_applies(b, S);
+    -- the sixth round: H's first-semester pair as round 5 left it (lh3 found never received, its withdrawal rejected) — the hold's code on
+    -- the payments report (lh3 NOT_RECEIVED, lh4 NOT_RECEIVED_WAITING) and lh3's credit off the credits list; found received, both
+    -- listed open and refundable again; lh4 refunded by hand is not withdrawn as never received through a new check; the SIWES menu item
+    -- for G (registered) and not for C (an old-portal payer SIWES never bound)
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    round6 := (SELECT coalesce(z.bank_check_state, 'none') FROM finance.siwes_payments(S, NULL, NULL, NULL, NULL, 500, 0) z WHERE z.reference = lh3)
+              || '/' || (SELECT coalesce(z.bank_check_state, 'none') FROM finance.siwes_payments(S, NULL, NULL, NULL, NULL, 500, 0) z WHERE z.reference = lh4)
+              || '/' || (NOT EXISTS (SELECT 1 FROM finance.siwes_credits(S) z WHERE z.reference = lh3));
+    PERFORM finance.check_double_charge(h, S, 'SIWES (legacy) · semester 1', ((now() - interval '20 days') AT TIME ZONE 'Africa/Lagos')::date, 4000,
+                                        'RECEIVED', 'check V752: the bank statement of the sixth round', NULL, '{}');
+    round6 := round6 || '/' || (SELECT string_agg(z.state || ':' || z.can_refund, ',' ORDER BY z.reference) FROM finance.siwes_credits(S) z WHERE z.reference IN (lh3, lh4));
+    SELECT x.id INTO cl FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = lh4;
+    PERFORM finance.siwes_credit_settle(cl, 'REFUNDED', 'check V752: refunded by transfer');
+    BEGIN PERFORM finance.check_double_charge(h, S, 'SIWES (legacy) · semester 1', ((now() - interval '20 days') AT TIME ZONE 'Africa/Lagos')::date, 4000,
+                                              'NOT_RECEIVED', 'check V752: the bank statement once more', NULL, ARRAY[lh4]);
+          round6 := round6 || '/withdrawn';
+    EXCEPTION WHEN check_violation THEN round6 := round6 || '/' || split_part(SQLERRM, ':', 1); END;
+    round6 := round6 || '/' || registration.siwes_area(g) || '/' || registration.siwes_area(c);
+    -- the seventh round: H's first-semester pair as round 6 left it (found received, lh4's credit refunded by hand). Checked again, lh3
+    -- named never received: lh4, given back, shows no hold on the payments report. The withdrawal rejected and lh3's day put right by a
+    -- day (as an upload without payment numbers puts it right): lh3 is still found never received, held, refused on the refund desk.
+    -- lh1, which settled H's fee, refunded on the desk: nothing stands; lh4's credit reopened then settles the fee (SETTLES)
+    PERFORM finance.check_double_charge(h, S, 'SIWES (legacy) · semester 1', ((now() - interval '20 days') AT TIME ZONE 'Africa/Lagos')::date, 4000,
+                                        'NOT_RECEIVED', 'check V752: the bank statement of the seventh round', NULL, ARRAY[lh3]);
+    round7 := (SELECT coalesce(z.bank_check_state, 'none') FROM finance.siwes_payments(S, NULL, NULL, NULL, NULL, 500, 0) z WHERE z.reference = lh4)
+              || '/' || (SELECT coalesce(z.bank_check_state, 'none') FROM finance.siwes_payments(S, NULL, NULL, NULL, NULL, 500, 0) z WHERE z.reference = lh3);
+    SELECT w.request_ref INTO rq FROM finance.payment_not_received w WHERE w.reference = lh3 AND w.state = 'PROPOSED';
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM finance.decide_not_received(rq, false, 'check V752: not on the statement of the seventh round');
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    UPDATE finance.payment_reference SET confirmed_at = confirmed_at + interval '1 day', expires_at = confirmed_at + interval '1 day' WHERE reference = lh3;
+    round7 := round7 || '/' || finance.siwes_found_not_received((SELECT r.id FROM finance.payment_reference r WHERE r.reference = lh3))
+              || ':' || (SELECT coalesce(z.bank_check_state, 'none') FROM finance.siwes_payments(S, NULL, NULL, NULL, NULL, 500, 0) z WHERE z.reference = lh3);
+    BEGIN PERFORM finance.propose_refund(h, 'ZZSIWES H', 'check V752', 4000, 'Bank', 'ZZSIWES H', '1234', lh3); round7 := round7 || '/raised';
+    EXCEPTION WHEN check_violation THEN round7 := round7 || '/' || split_part(SQLERRM, ':', 1); END;
+    rf := finance.propose_refund(h, 'ZZSIWES H', 'check V752', 4000, 'Bank', 'ZZSIWES H', '1234', lh1);
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rf));
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    round7 := round7 || '/' || NOT EXISTS (SELECT 1 FROM finance.siwes_paid(h, S));
+    j7 := finance.siwes_credit_reopen(cl, 'check V752: the transfer came back');
+    round7 := round7 || '/' || (j7 ->> 'state') || ':' || coalesce(j7 ->> 'settled_kind', '-')
+              || ':' || coalesce((SELECT p.reference = lh4 FROM finance.siwes_paid(h, S) p), false);
+
+    msg :='reasons ' || reasons || ' | trigger ' || trig || ' | first semester ' || coalesce(sem1, '-') || ' ' || coalesce(sem1_after, 'false')
+        || ' | V503 ' || coalesce(v503, '-') || ' | old portal ' || coalesce(old, '-')
+        || ' | reference ' || drawn || ' | registered before ' || before_reg
+        || ' | register ' || (j1 ->> 'status') || '/' || coalesce(a_reg, '-')
+        || ' again ' || (j1 = j2) || ' | G ' || coalesce(jg, '-') || ' | B ' || owed || ' | rules ' || rules || ' | reviews ' || coalesce(fixes, '-')
+        || ' | round 2 ' || coalesce(round2, '-') || ' | round 3 ' || coalesce(round3, '-') || ' | round 4 ' || coalesce(round4, '-')
+        || ' | round 5 ' || coalesce(round5, '-') || ' | round 6 ' || coalesce(round6, '-') || ' | round 7 ' || coalesce(round7, '-');
+    RAISE EXCEPTION 'the V752 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V752 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V752: SIWES registration — eligibility, the Second Semester held to the SIWES course paid (unconfigured, postgraduate and first-semester rows untouched, V503 unchanged), the old portal''s payment counting, the reference drawn once, registration after payment (AUTO, idempotent, school fees still owed), the period and fee rules (the fee in force while a restatement waits); the old fees reset, the refund desk, applies and the unmapped cohort; one payment never given back twice, a SIWES registration never returned, carry-overs waiting for a later semester, a paid student never stranded; an old-portal payer binding nothing, a credited old-portal payment kept by the reset, the office''s drop, a SIWES payment refunded whole, a SIWES registration staying approved, the semester''s school fees in the eligibility; an open credit taken by the reset with its payment, the second payments on record credited by one rule, a possible double charge held until the bank check, an approved registration stamped AUTO; the bank check holding the move too and a day with a record never received until it is withdrawn, V561''s group read for one record, a registration''s only payment not withdrawn, the settled kind, a deferred student not bound; the bank check''s code, no credit on a record never received, a refunded payment not withdrawn, the SIWES menu item; no hold on a payment given back, a record found never received held whatever day it is given, a reopened credit settling where nothing else does',
+      coalesce(msg = 'reasons A:-,B:-,C:NOT_CONFIGURED+NO_COURSE,D:NOT_UNDERGRADUATE+NOT_300_LEVEL+NOT_CONFIGURED+NO_COURSE,G:-,H:ALREADY_PASSED'
+                     || ' | trigger SIWES_COURSE_ONLY/SIWES_UNPAID/3 | first semester ZZN 301:APPROVED true'
+                     || ' | V503 SIWES 6-6/open/REG_SIWES_SEMESTER | SIWES 6-6/true/ZZN 302 | old portal OLD_PORTAL'
+                     || ' | reference true/4000.00/true/SIWES/SIWES_PAID | registered before 0'
+                     || ' | register APPROVED/AUTO/ZZN 302:APPROVED again true | G APPROVED/true | B REG_SEMESTER_FEES_DUE'
+                     || ' | rules SIWES_PERIOD_DATES/SIWES_FEE_OFFICE/4000.00/5000.00/SIWES_NOT_ELIGIBLE'
+                     || ' | reviews 1/REFUND_SIWES_REGISTERED/true/false/SIWES_COURSE_MISSING/SIWES_COURSE_MISSING/false/0/removed'
+                     || ' | round 2 REFUND_SIWES_CREDIT_SETTLED/SIWES_CREDIT_REFUND_DESK/REFUNDED:true/REG_RETURN_SIWES/office dropped/dropped/0/SIWES_COURSE_IN_USE/true/SIWES_COURSE_MISSING'
+                     || ' | round 3 OPEN/refunded/true/REFUND_SIWES_CREDIT_SETTLED | true/office dropped/false/false | REG_STATUS_SIWES/A dropped/REFUND_SIWES_PART/raised'
+                     || ' | round 4 OPEN/true/0/1 | 1/1/SIWES_CREDIT_CHECK_BANK/REFUND_SIWES_CHECK_BANK/true:null/PROPOSED:true:true/true:true | APPROVED/AUTO/true/true'
+                     || ' | round 5 held/true/false:true/PAY_NOT_RECEIVED_SIWES_REGISTERED/DESK_REFUND/false'
+                     || ' | round 6 NOT_RECEIVED/NOT_RECEIVED_WAITING/true/OPEN:true,OPEN:true/PAY_NOT_RECEIVED_SIWES_REFUNDED/true/false'
+                     || ' | round 7 none/PROPOSED/true:NOT_RECEIVED/REFUND_SIWES_CHECK_BANK/true/APPLIED:SETTLES:true', false),
+      msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

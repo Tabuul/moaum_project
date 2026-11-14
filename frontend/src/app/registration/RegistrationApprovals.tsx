@@ -22,9 +22,14 @@ export interface RegistrationRow {
   id: string; status: string; level: number; semester?: number; submitted_at: string | null; approved_at: string | null; units: number;
   matric_no: string | null; admission_no: string | null; surname: string; other_names: string; programme: string; dept_code: string; dept_name: string;
   courses: string | null; range: string | null; entries?: RegEntry[];
+  /** V752: a SIWES registration — the SIWES course alone, registered and approved on the SIWES page; never an ordinary registrant */
+  siwes?: boolean;
 }
 
 const SEM = (n?: number) => (n === 1 ? "First" : n === 2 ? "Second" : n === 3 ? "Third" : "—");
+
+/** V752: why a SIWES registration offers no Return — the database refuses it (REG_RETURN_SIWES) */
+const SIWES_NOT_RETURNED = "A SIWES registration is approved on the SIWES fee; it is not returned.";
 
 /** display order: carryover first, then GST, then Core, then Elective */
 function entryRank(e: RegEntry): number {
@@ -72,13 +77,14 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice, a
         </button>,
         <span className="sub2" key="p">{r.programme}</span>,
         <span className="tnum" key="l">{r.level}</span>,
-        <span className="sub2" key="sem">{SEM(r.semester)}</span>,
+        <span className="sub2" key="sem">{SEM(r.semester)}{r.siwes ? <> <Pil kind="info">SIWES</Pil></> : null}</span>,
         <span className="sub2" key="c">{r.courses ?? "—"}</span>,
         <span key="u"><b className="tnum">{r.units}</b><div className="sub2">of {r.range ?? "—"}</div></span>,
         <span className="sub2 tnum" key="w">{r.submitted_at ? new Date(r.submitted_at).toLocaleDateString("en-GB") : "—"}</span>,
         <span key="a" className="row row--inline row--tight">
           <Btn kind="go" disabled={!may || busy !== null} onClick={() => void act(`ok-${r.id}`, `${r.id}/approve`, {}, `Registration of ${r.matric_no ?? r.admission_no} approved`)}>{busy === `ok-${r.id}` ? "Approving…" : "Approve"}</Btn>
-          <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${r.id}`, `${r.id}/return`, { comment }, `Registration of ${r.matric_no ?? r.admission_no} returned: ${comment}`); }}>Return</Btn>
+          {/* V752: a SIWES registration is never returned (REG_RETURN_SIWES); a refusal that comes all the same shows above */}
+          {r.siwes ? null : <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${r.id}`, `${r.id}/return`, { comment }, `Registration of ${r.matric_no ?? r.admission_no} returned: ${comment}`); }}>Return</Btn>}
         </span>,
       ])} texts={rows.map((r) => `${r.surname} ${r.other_names} ${r.matric_no} ${r.admission_no} ${r.programme} ${r.courses ?? ""}`)} />
       {!rows.length ? <PBody><div className="sub2">Nothing submitted is waiting. <Pil kind="grey">Approved ones are on the class lists</Pil></div></PBody> : null}
@@ -86,12 +92,13 @@ export function RegistrationApprovals({ rows, session, semester, actingOffice, a
 
     {open ? (
       <Modal wide title={`${open.surname}, ${open.other_names}`}
-        sub={`${open.matric_no ?? open.admission_no ?? ""} · ${open.programme} · ${open.level} Level · ${SEM(open.semester)} semester · ${session}`}
+        sub={`${open.matric_no ?? open.admission_no ?? ""} · ${open.programme} · ${open.level} Level · ${SEM(open.semester)} semester${open.siwes ? " (SIWES)" : ""} · ${session}`}
         onClose={() => setOpen(null)}
         foot={<>
           <Btn kind="ghost" onClick={() => setOpen(null)}>Close</Btn>
           <span className="grow" />
-          <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${open.id}`, `${open.id}/return`, { comment }, `Registration of ${open.matric_no ?? open.admission_no} returned: ${comment}`).then(() => setOpen(null)); }}>Return</Btn>
+          {open.siwes ? <span className="sub2">{SIWES_NOT_RETURNED}</span>
+            : <Btn kind="ghost" disabled={!may || busy !== null} onClick={() => { const comment = window.prompt("What must the student change? They read this."); if (!comment) return; void act(`back-${open.id}`, `${open.id}/return`, { comment }, `Registration of ${open.matric_no ?? open.admission_no} returned: ${comment}`).then(() => setOpen(null)); }}>Return</Btn>}
           <Btn kind="go" disabled={!may || busy !== null} onClick={() => void act(`ok-${open.id}`, `${open.id}/approve`, {}, `Registration of ${open.matric_no ?? open.admission_no} approved`).then(() => setOpen(null))}>{busy === `ok-${open.id}` ? "Approving…" : "Approve"}</Btn>
         </>}>
         <DTable cols={["Code|mid", "Course title", "Units|num", "Kind|mid", "Basis|mid"]} rows={[...(open.entries ?? [])].sort((a, b) => entryRank(a) - entryRank(b) || a.code.localeCompare(b.code)).map((e) => [

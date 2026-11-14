@@ -15,6 +15,8 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
+import { ProblemNotice } from "@/components/ProblemNotice";
+import type { Problem } from "@/lib/api";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import {
   FIGURES, LIST_LABELS, MODE_WORD, loadWord, reasonWords, semesterWord, type ApprovalMode, type Overview, type OverviewRow, type Rules,
@@ -46,6 +48,8 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
   const [below, setBelow] = useState<number | null>(null);
   const [deciding, setDeciding] = useState<{ row: OverviewRow; decision: "ACCEPTED" | "RETURNED" } | null>(null);
   const [decisionReason, setDecisionReason] = useState("");
+  // the refusal of a decision, in the database's words and with its remedy (V752: a SIWES registration is not returned, REG_RETURN_SIWES / REG_STATUS_SIWES)
+  const [decideProblem, setDecideProblem] = useState<Problem | null>(null);
   // each decision taken here reads the figures again (a registration accepted or returned leaves the list)
   const [decided, setDecided] = useState(0);
   const [search, setSearch] = useState(q);
@@ -74,7 +78,7 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
       body: JSON.stringify({ decision, reason: decisionReason.trim() }),
     });
     const j = await r.json().catch(() => null);
-    if (!r.ok) { notifyProblem(j ?? { status: r.status, title: r.statusText }); return; }
+    if (!r.ok) { const p = (j && typeof j === "object" && "status" in j ? j : { status: r.status, title: r.statusText }) as Problem; notifyProblem(p); setDecideProblem(p); return; }
     setDeciding(null);
     setDecisionReason("");
     setDecided((n) => n + 1);
@@ -258,8 +262,8 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
                 <span key="c" className="tnum">{r.card_times ?? "—"}</span>,
                 list.kind === "BELOW_MINIMUM" && mayDecide && (r.status === "APPROVED" || r.status === "SUBMITTED")
                   ? <span key="x" className="row row--inline row--tight">
-                      <Btn kind="ghost" size="sm" onClick={() => { setDecisionReason(""); setDeciding({ row: r, decision: "ACCEPTED" }); }}>Accept</Btn>
-                      <Btn kind="ghost" size="sm" onClick={() => { setDecisionReason(""); setDeciding({ row: r, decision: "RETURNED" }); }}>Return</Btn>
+                      <Btn kind="ghost" size="sm" onClick={() => { setDecisionReason(""); setDecideProblem(null); setDeciding({ row: r, decision: "ACCEPTED" }); }}>Accept</Btn>
+                      <Btn kind="ghost" size="sm" onClick={() => { setDecisionReason(""); setDecideProblem(null); setDeciding({ row: r, decision: "RETURNED" }); }}>Return</Btn>
                     </span>
                   : r.review_reason && r.status === "SUBMITTED" && mayChange ? <Btn key="x" kind="ghost" size="sm" busyLabel="Checking…" onClick={() => revalidate(r.registration_id)}>Validate again</Btn> : <span key="x" />,
               ])} />
@@ -288,6 +292,7 @@ export function RegistrationApproval({ rules, session, semester, kind, q, overvi
               <input id="ra-decision-reason" className="ctl" value={decisionReason} maxLength={2000} autoFocus onChange={(e) => setDecisionReason(e.target.value)}
                 placeholder={deciding.decision === "ACCEPTED" ? "e.g. final-year student with only the project left" : "e.g. add the core courses of the semester"} />
             </Field>
+            {decideProblem ? <ProblemNotice problem={decideProblem} /> : null}
           </div>
         </Modal>
       ) : null}

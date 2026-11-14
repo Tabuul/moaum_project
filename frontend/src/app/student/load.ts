@@ -52,7 +52,8 @@ export async function loadStudent(opts: { gateOpen?: boolean } = {}): Promise<{ 
     unit: mine.data.entryMode === "POSTGRADUATE" ? mine.data.programme : null,
     // V606: an MBBS student's menu carries the College's own student area beside the University's
     // V735: and the Summer Semester page where a Summer is set the student may take (or one they took)
-    flags: [...(mine.data.collegeArea ? ["college"] : []), ...(mine.data.summerArea ? ["summer"] : [])],
+    // V752: and the SIWES page where the SIWES registration of 300 Level, Second Semester is the student's
+    flags: [...(mine.data.collegeArea ? ["college"] : []), ...(mine.data.summerArea ? ["summer"] : []), ...(mine.data.siwesArea ? ["siwes"] : [])],
     // V575: a contact a department uploaded that the student has not confirmed, asked on every screen until answered
     contactConfirm: who.ok ? who.data.contactConfirm ?? null : null,
     // V430 "how do we reach you" and V441 the privacy policy: worked out for the student by iam/me, asked on the student's own

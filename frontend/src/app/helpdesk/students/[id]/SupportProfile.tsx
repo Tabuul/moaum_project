@@ -21,11 +21,14 @@ import {
   type Checks, type CurrentRegistration, type Rule, type SupportProfile as Profile,
 } from "@/lib/support";
 import type { RegistrationView } from "@/lib/student-portal";
+import type { Problem as ApiProblem } from "@/lib/api";
+import { ProblemNotice } from "@/components/ProblemNotice";
 import type { GstEpsExplain } from "@/lib/gst";
 import { GstEligibilityView } from "@/components/gst/GstEligibilityView";
 import { PasswordReset } from "@/components/support/PasswordReset";
 import { LevelManagement } from "@/components/support/LevelManagement";
 import { OpenStudentPortal } from "@/components/support/OpenStudentPortal";
+import { SIWES_OFFICE_ADD_WORDS, SIWES_OFFICE_NO_ADD, siwesDroppedWords } from "@/lib/siwes";
 
 type Tab = "profile" | "registration" | "payments" | "documents" | "clearance" | "history" | "tickets";
 const TABS: Tab[] = ["profile", "registration", "payments", "documents", "clearance", "history", "tickets"];
@@ -39,7 +42,8 @@ interface HistoryRow { id: string; session: string; semester: number; status: st
 interface Reg { view: RegistrationView; current: CurrentRegistration; issues: string[]; history: { history?: HistoryRow[] } | HistoryRow[]; manage: boolean; override: boolean }
 interface Pay { fees: Record<string, unknown> | null; session: string; capabilities: string[]; gstEps?: GstEpsExplain | null; references: { reference: string; session: string; purpose: string; amount: number; generated_at: string; confirmed_at: string | null; channel: string | null; receipt_no: string | null; status: string; gateway: string | null; gateway_ref: string | null; gateway_outcome: string | null }[] }
 interface Docs { admission: Record<string, unknown>[]; issued: Record<string, unknown>[]; receipts: Record<string, unknown>[] }
-interface CourseAct { verb: "add" | "drop" | "restore"; offering: string; code: string; title: string; units: number; checks: Checks | null; reason: string; override: boolean; description: string }
+/** problem: the refusal of the act itself, in the database's words, shown in the modal (V752: SIWES_COURSE_KEPT, REG_STATUS_SIWES…) */
+interface CourseAct { verb: "add" | "drop" | "restore"; offering: string; code: string; title: string; units: number; checks: Checks | null; reason: string; override: boolean; description: string; problem: ApiProblem | null }
 interface TicketField { key: string; label: string; type?: string; required?: boolean; options?: string[]; hint?: string }
 
 /** the engine's rules for one course, judged: what passes, what blocks, what an override may set aside, what only informs */
@@ -73,7 +77,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   const [pay, setPay] = useState<Pay | null>(null);
   const [docs, setDocs] = useState<Docs | null>(null);
   const [course, setCourse] = useState<CourseAct | null>(null);
-  const [submit, setSubmit] = useState<{ reason: string; override: boolean; description: string } | null>(null);
+  const [submit, setSubmit] = useState<{ reason: string; override: boolean; description: string; problem?: ApiProblem | null } | null>(null);
   const [find, setFind] = useState<{ q: string; rows: { offering_id: string; course_code: string; title: string; units: number; level: number; kind: string; department: string | null }[] } | null>(null);
   const [reset, setReset] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);   // V521: the student's portal, as the student, read-only
@@ -86,12 +90,17 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   /** the latest course search typed: an answer to an earlier keystroke that arrives late is dropped */
   const searchSeq = useRef(0);
 
-  async function call(method: "POST" | "PUT", path: string, body: unknown, reason: string, quiet = false): Promise<Record<string, unknown> | null> {
+  async function call(method: "POST" | "PUT", path: string, body: unknown, reason: string, quiet = false, onProblem?: (p: ApiProblem) => void): Promise<Record<string, unknown> | null> {
     setBusy(true);
     try {
       const r = await fetch(`/api/bff/api/v1/helpdesk/support/students/${id}${path}`, { method, headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(reason) }, body: JSON.stringify(body ?? {}) });
       const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
-      if (!r.ok) { notifyProblem(j ? (j as unknown as Problem) : { status: r.status, title: r.statusText } as Problem); return null; }
+      if (!r.ok) {
+        const p = (j && typeof j === "object" && "status" in j ? j : { status: r.status, title: r.statusText }) as unknown as ApiProblem;
+        notifyProblem(p);
+        onProblem?.(p);
+        return null;
+      }
       if (!quiet) notify(reason);
       return j;
     } finally { setBusy(false); }
@@ -131,7 +140,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   /* ── course registration: every act after the engine's rules are read ── */
   async function openCourse(verb: "add" | "drop" | "restore", offering: string, code: string, title: string, units: number) {
     if (!reg) return;
-    setCourse({ verb, offering, code, title, units, checks: null, reason: "", override: false, description: "" });
+    setCourse({ verb, offering, code, title, units, checks: null, reason: "", override: false, description: "", problem: null });
     const r = await fetch(`/api/bff/api/v1/helpdesk/support/students/${id}/registration/checks?session=${encodeURIComponent(reg.view.session)}&semester=${reg.view.semester}&offering=${offering}&verb=${verb === "drop" ? "drop" : "add"}`);
     const j = (await r.json().catch(() => null)) as Checks | null;
     if (!r.ok || !j) { notifyProblem((j as unknown as Problem) ?? ({ status: r.status, title: r.statusText } as Problem)); setCourse(null); return; }
@@ -140,16 +149,17 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   async function confirmCourse() {
     if (!course || !reg) return;
     const label = course.verb === "drop" ? `${course.code} dropped` : course.verb === "restore" ? `${course.code} restored` : `${course.code} added`;
+    const offering = course.offering;
     const j = await call("POST", `/registration/${course.verb}`, {
-      session: reg.view.session, semester: reg.view.semester, offering: course.offering, reason: course.reason.trim(), ticket: ticket?.id ?? null,
+      session: reg.view.session, semester: reg.view.semester, offering, reason: course.reason.trim(), ticket: ticket?.id ?? null,
       override: course.override, description: course.override ? course.description.trim() : null,
-    }, course.override ? `${label} by support override` : label);
+    }, course.override ? `${label} by support override` : label, false, (p) => setCourse((c) => (c && c.offering === offering ? { ...c, problem: p } : c)));
     if (j) { setCourse(null); setReg(null); router.refresh(); }
   }
   async function confirmSubmit() {
     if (!submit || !reg) return;
     const j = await call("POST", "/registration/submit", { session: reg.view.session, semester: reg.view.semester, reason: submit.reason.trim(), ticket: ticket?.id ?? null, override: submit.override, description: submit.override ? submit.description.trim() : null },
-      submit.override ? "Registration submitted by support override" : "Registration submitted");
+      submit.override ? "Registration submitted by support override" : "Registration submitted", false, (p) => setSubmit((x) => (x ? { ...x, problem: p } : x)));
     if (j) { setSubmit(null); setReg(null); router.refresh(); }
   }
   async function searchOfferings(q: string) {
@@ -231,6 +241,11 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   const history: HistoryRow[] = reg ? (Array.isArray(reg.history) ? reg.history : reg.history.history ?? []) : [];
   const live = reg?.current.courses.filter((c) => c.status !== "DROPPED") ?? [];
   const regStatus = reg?.current.registration?.status ?? null;
+  // V752 (K12, K14): the Second Semester is the student's SIWES semester (registration.siwes_applies, as the registration view reads it):
+  // it holds the SIWES course alone, so a carry-over or deferred course on it waits for a later semester and the office drop takes it
+  // (support_drop_checks lets NOT_CARRYOVER and the window pass there); the registration is made on the student's SIWES page, never
+  // submitted here
+  const siwesSem = reg?.view.window?.siwes === true;
 
   return (
     <>
@@ -367,11 +382,15 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                   <Pil key="st" kind={c.status === "DROPPED" ? "grey" : c.status === "APPROVED" ? "ok" : "info"}>{c.status.toLowerCase()}</Pil>,
                   <span key="d" className="sub2">{day(c.registered_at)}</span>,
                   reg.manage ? (c.status === "DROPPED"
-                    ? <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void openCourse("restore", c.offering_id, c.course_code, c.title, c.units)}>Restore</Btn>
-                    : c.entry_type !== "CARRYOVER" && c.entry_type !== "DEFERRED" && !c.marked
+                    // v4-1: in the SIWES semester the database refuses every restore, override or not (support_add_checks' SIWES rule): why, not Restore
+                    ? siwesSem ? <span key="a" className="sub2">{siwesDroppedWords(c.entry_type)}</span>
+                    : <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void openCourse("restore", c.offering_id, c.course_code, c.title, c.units)}>Restore</Btn>
+                    : (siwesSem || (c.entry_type !== "CARRYOVER" && c.entry_type !== "DEFERRED")) && !c.marked
                       ? <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void openCourse("drop", c.offering_id, c.course_code, c.title, c.units)}>Drop</Btn> : <span key="a" />) : <span key="a" />,
                 ])} /> : <div className="sub2">Nothing registered yet for this semester.</div>}
-                {reg.manage && (!regStatus || ["DRAFT", "RETURNED"].includes(regStatus)) && live.length ? (
+                {siwesSem ? (
+                  <div className="sub2 mt-2">The Second Semester is the student&rsquo;s SIWES semester: it holds the SIWES course alone, registered on the student&rsquo;s SIWES page once its fee is paid and approved as it is made; it is not submitted here. Another course on it, a carry-over or deferred course included, is dropped here and waits for a later semester.</div>
+                ) : reg.manage && (!regStatus || ["DRAFT", "RETURNED"].includes(regStatus)) && live.length ? (
                   <div className="row mt-2"><Btn kind="secondary" disabled={busy} onClick={() => setSubmit({ reason: "", override: false, description: "" })}>Submit the registration</Btn><span className="sub2">The engine checks the fees, the units and the GST gate. A submitted registration is returned only by the department&rsquo;s level adviser.</span></div>
                 ) : null}
               </PBody>
@@ -381,12 +400,15 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                   const on = live.some((e) => e.offering_id === m.offering_id);
                   return [
                     <b key="c" className="tnum">{m.course_code}</b>, <span key="t">{m.title}</span>, <span key="u" className="tnum">{m.units}</span>, <span key="b" className="sub2">{m.basis}</span>, <span key="o" className="sub2">{m.owner_dept}</span>,
-                    <span key="n" className="sub2">{on ? "Already registered" : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : m.prerequisiteLocked ? `Prerequisite not passed: ${m.prerequisitesUnmet} — the override sets it aside` : m.prerequisitesUnmet ? `Eligible · prerequisite not yet passed: ${m.prerequisitesUnmet}` : "Eligible"}</span>,
-                    reg.manage && !on ? <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void openCourse("add", m.offering_id, m.course_code, m.title, m.units)}>Add course</Btn> : <span key="a" />,
+                    <span key="n" className="sub2">{on ? "Already registered" : siwesSem ? SIWES_OFFICE_ADD_WORDS : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : m.prerequisiteLocked ? `Prerequisite not passed: ${m.prerequisitesUnmet} — the override sets it aside` : m.prerequisitesUnmet ? `Eligible · prerequisite not yet passed: ${m.prerequisitesUnmet}` : "Eligible"}</span>,
+                    // V752: in the SIWES semester the database refuses every add, override or not (support_add_checks' SIWES rule)
+                    reg.manage && !on && !siwesSem ? <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void openCourse("add", m.offering_id, m.course_code, m.title, m.units)}>Add course</Btn> : <span key="a" />,
                   ];
                 })} /> : <div className="sub2">No course is offered for this student this semester.</div>}
               </PBody>
-              {reg.manage ? (
+              {reg.manage && siwesSem ? (
+                <PBody><div className="sub2">{SIWES_OFFICE_NO_ADD}</div></PBody>
+              ) : reg.manage ? (
                 <PBody>
                   <div className="eyebrow">A course missing from the menu</div>
                   <div className="sub2 mb-1">Find a valid course missing from the student&rsquo;s list. Its rules are shown first; the menu is set aside only by a support override on the ticket.</div>
@@ -519,6 +541,12 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
             </div>
             {course.checks === null ? <div className="sub2">Reading the engine&rsquo;s rules…</div> : (
               <>
+                {/* K12: in the SIWES semester the window rule passes for a course that is not the SIWES course, in the database's words
+                    ("… waits for a later semester: the SIWES semester holds the SIWES course alone.") */}
+                {siwesSem && course.verb === "drop" ? (() => {
+                  const said = course.checks.rules.filter((r) => r.passed && (r.rule === "REGISTRATION_WINDOW" || r.rule === "NOT_CARRYOVER") && /SIWES/.test(r.message)).map((r) => r.message);
+                  return said.length ? <Note kind="info" title="The Second Semester is the student's SIWES semester">{[...new Set(said)].join(" ")}</Note> : null;
+                })() : null}
                 <RulesTable rules={course.checks.rules} />
                 {course.checks.allowed ? <Note kind="ok" title="The engine's rules allow it" />
                   : course.checks.overridable ? (course.checks.mayOverride
@@ -541,6 +569,8 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                 </Field>
               </>
             ) : null}
+            {/* the act refused all the same (the rules judged again as it is made): the database's words and their remedy */}
+            {course.problem ? <ProblemNotice problem={course.problem} /> : null}
           </div>
         </Modal>
       ) : null}
@@ -555,6 +585,7 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
               : <Note kind="bad" title="The registration window is closed">Your postings do not carry the support override; the engine refuses the submission.</Note>) : null}
             {submit.override ? <Field id="sb-desc" label="Description — the problem found" required><textarea id="sb-desc" className="ctl" rows={3} value={submit.description} onChange={(e) => setSubmit({ ...submit, description: e.target.value })} maxLength={4000} /></Field> : null}
             <Field id="sb-reason" label={submit.override ? "SUPPORT ACTION: Override approved because" : "Reason"} required><input id="sb-reason" className="ctl" value={submit.reason} onChange={(e) => setSubmit({ ...submit, reason: e.target.value })} maxLength={2000} /></Field>
+            {submit.problem ? <ProblemNotice problem={submit.problem} /> : null}
           </div>
         </Modal>
       ) : null}

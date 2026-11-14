@@ -3,11 +3,15 @@
 /** V561: old-portal payments the bank may have charged twice — one student, session, item, day and amount under two or more of
  *  the old portal's payment numbers. Each is checked against the bank statement or the gateway's report before its excess is
  *  carried or refunded: every payment received (the excess is real), or not all — naming those that never arrived, which are then
- *  raised for withdrawal for another Bursary officer to approve. Until checked, the student is held on the Overpaid list. */
+ *  raised for withdrawal for another Bursary officer to approve. Until checked, the student is held on the Overpaid list. A refusal of
+ *  the check (V752: a record named never received that is the only SIWES payment a standing SIWES registration rests on, or a SIWES
+ *  payment whose credit was refunded — PAY_NOT_RECEIVED_SIWES_REFUNDED: the check is refused whole, the one recorded before stands) is
+ *  shown in the open form in the database's words, with what to do. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
+import { ProblemNotice } from "@/components/ProblemNotice";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
@@ -22,6 +26,8 @@ export function OldFeesDoubleCharges({ may, tick = 0, onChanged }: { may: boolea
   const [answered, setAnswered] = useState<string | null>(null);
   const [own, setOwn] = useState(0);
   const [checking, setChecking] = useState<Checking | null>(null);
+  // the check's refusal, in the database's words, kept in the form
+  const [problem, setProblem] = useState<Problem | null>(null);
 
   const listUrl = `/api/bff/api/v1/finance/legacy-fees/double-charges${session ? `?session=${encodeURIComponent(session)}` : ""}`;
   const asked = `${listUrl}#${tick}#${own}`;
@@ -61,7 +67,13 @@ export function OldFeesDoubleCharges({ may, tick = 0, onChanged }: { may: boolea
         evidence: evidence.trim(), note: note.trim() || null, notReceived: verdict === "NOT_RECEIVED" ? notReceived : [] }),
     });
     const j = await r.json().catch(() => null);
-    if (!r.ok) { notifyProblem((j ?? { status: r.status, title: r.statusText }) as Problem); return; }
+    if (!r.ok) {
+      const p = (j ?? { status: r.status, title: r.statusText }) as Problem;
+      setProblem(p);
+      notifyProblem(p);
+      return;
+    }
+    setProblem(null);
     const raised = ((j as { raised?: string[] } | null)?.raised ?? []);
     notify(verdict === "RECEIVED" ? "Recorded: the bank received every payment"
       : `Recorded; withdrawal ${raised.join(", ")} raised for another Bursary officer to approve`);
@@ -110,7 +122,7 @@ export function OldFeesDoubleCharges({ may, tick = 0, onChanged }: { may: boolea
                 <span key="c"><Pil kind={verdictWord(g.verdict)[1]}>{verdictWord(g.verdict)[0]}</Pil>
                   {g.evidence ? <div className="sub2">{g.evidence}{g.checked_by ? ` — ${g.checked_by}` : ""}</div> : null}
                   {g.open_requests ? <div className="sub2 ink-amber">Withdrawal waiting for approval</div> : null}</span>,
-                may && !g.open_requests ? <Btn key="b" kind={g.verdict ? "ghost" : "secondary"} size="sm" onClick={() => setChecking({ g, verdict: "", evidence: "", note: "", notReceived: [] })}
+                may && !g.open_requests ? <Btn key="b" kind={g.verdict ? "ghost" : "secondary"} size="sm" onClick={() => { setProblem(null); setChecking({ g, verdict: "", evidence: "", note: "", notReceived: [] }); }}
                   aria-label={`Check the payments of ${g.name} with the bank`}>{g.verdict ? "Check again" : "Check with the bank…"}</Btn> : <span key="b" />,
               ])} />
           </>
@@ -152,6 +164,7 @@ export function OldFeesDoubleCharges({ may, tick = 0, onChanged }: { may: boolea
             <input id="odc-note" className="ctl" maxLength={500} value={checking.note} onChange={(e) => setChecking({ ...checking, note: e.target.value })} />
           </Field>
           {checking.verdict === "NOT_RECEIVED" ? <div className="sub2">Each record named is raised for withdrawal; another Bursary officer approves it before anything changes on the student&rsquo;s account.</div> : null}
+          {problem ? <ProblemNotice problem={problem} /> : null}
         </Modal>
       ) : null}
     </Panel>

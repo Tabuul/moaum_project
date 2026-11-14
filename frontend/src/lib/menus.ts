@@ -28,6 +28,7 @@ export const MENUS: Record<string, Menu> = {
       {
         "name": "Students",
         "items": [
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" },
           { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
           { "id": "r/mysiwes", "icon": "user", "label": "My SIWES Students" }
         ]
@@ -141,7 +142,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -239,7 +241,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -477,6 +480,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/paymentarchive", "icon": "box", "label": "Archived Payments" },
           { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -541,6 +545,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/paymentarchive", "icon": "box", "label": "Archived Payments" },
           { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -661,7 +666,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -811,7 +817,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -861,7 +868,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/ledger", "icon": "swap", "label": "Transactions & Accounts" },
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
           { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" },
-          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" }
+          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" },
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" }
         ]
       },
       {
@@ -902,7 +910,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/feereport", "icon": "chart", "label": "School Fees Report" },
           { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
-          { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" }
+          { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" },
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" }
         ]
       },
       {
@@ -947,7 +956,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/supportlevels", "icon": "cap", "label": "Student Level Management" },
           { "id": "t/supportlevelhistory", "icon": "clock", "label": "Level Change History" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
-          { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" }
+          { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -1194,6 +1204,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/clearance", "icon": "check", "label": "Faculty Clearance" },
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" },
           { "id": "t/students", "icon": "cap", "label": "Students" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
           { "id": "t/matriculation-manage", "icon": "check", "label": "Matriculation Management" },
@@ -1334,7 +1345,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/extassessments", "icon": "check", "label": "Assessments" },
           { "id": "t/extreports", "icon": "chart", "label": "Examiner Reports" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -1434,7 +1446,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -1508,7 +1521,9 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
           { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
-          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" }
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" },
+          { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" },
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" }
         ]
       },
       {
@@ -1647,7 +1662,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -1793,7 +1809,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
           { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -2142,7 +2159,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/programmechanges", "icon": "swap", "label": "Programme Changes" },
           { "id": "t/projects", "icon": "flask", "label": "Research" },
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
-          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" }
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },
       {
@@ -2196,6 +2214,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "s/register", "icon": "book", "label": "Course Registration" },
           { "id": "s/addcarry", "icon": "plus", "label": "Add Carry-Over", "tone": "urgent" },
           { "id": "s/summer", "icon": "cal", "label": "Summer Semester", "when": "summer" },
+          { "id": "s/siwes", "icon": "cal", "label": "SIWES", "when": "siwes" },
           { "id": "s/reghistory", "icon": "chart", "label": "Registration History" },
           { "id": "s/results", "icon": "cap", "label": "Results" },
           { "id": "s/broadsheet", "icon": "chart", "label": "Result Broadsheet" },

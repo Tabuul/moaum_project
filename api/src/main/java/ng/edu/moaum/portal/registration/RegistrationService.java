@@ -114,6 +114,7 @@ public class RegistrationService {
     @Transactional
     public Map<String, Object> submit(UUID id) {
         RegistrationRepository.RegistrationRow r = repo.registration(id).orElseThrow(() -> new NotFound("course registration", id));
+        // V752: a standing SIWES registration stays approved — the database refuses the write (REG_STATUS_SIWES, a 422 with its code)
         repo.setStatus(id, "SUBMITTED", null);
         // V491: where the Head's approval is suspended, the registration is approved now by the same rules, or kept for review
         if ("AUTO_APPROVAL".equals(repo.approvalMode(r.session(), r.semester()))) {
@@ -182,6 +183,8 @@ public class RegistrationService {
             throw new DomainRuleViolation("REG_RETURN_SAYS_WHY", "A registration is returned with the reason on the record.",
                     new DomainRuleViolation.Remedy("Say what the student must change.", "Head of Department"));
         }
+        // V752: a SIWES registration is approved on the SIWES fee and never returned — the student could not submit it again; the
+        // database refuses the write (REG_RETURN_SIWES, a 422 with its code) before the student is told anything
         repo.returnWithComment(id, comment.trim());
         repo.tellStudent(r.studentId(), "Course registration returned: " + r.session() + " semester " + r.semester(),
                 "Your course registration for " + r.session() + ", semester " + r.semester() + " has been returned to you for correction.\n\nWhat to change: " + comment.trim() + "\n\nOpen Course registration on the portal, make the change and submit again.\n\nOffice of the Registrar, " + ng.edu.moaum.portal.platform.Branding.name() + "",

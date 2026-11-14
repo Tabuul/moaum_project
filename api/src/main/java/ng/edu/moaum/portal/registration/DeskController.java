@@ -72,8 +72,16 @@ class DeskController {
                        coalesce((SELECT jsonb_agg(jsonb_build_object('code', c.code, 'title', c.title, 'units', e.units, 'kind', c.kind, 'type', e.entry_type) ORDER BY c.code)
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                          WHERE e.registration_id = r.id), '[]'::jsonb) AS entries,
-                       coalesce(registration.siwes_units(s.programme_code, r.level, r.semester)::text,
-                                (SELECT l.min_units || '–' || l.max_units FROM registration.unit_limit(s.id, r.level, r.session, r.semester) l)) AS range
+                       -- the SIWES semester carries exactly its units (V752: the unit rule's SIWES basis — a SIWES student's course, else V503's)
+                       (SELECT CASE WHEN l.applies_to = 'SIWES (industrial training)' THEN l.min_units::text ELSE l.min_units || '–' || l.max_units END
+                          FROM registration.unit_limit(s.id, r.level, r.session, r.semester) l) AS range,
+                       -- V752: a SIWES registration (the SIWES course alone, approved as it was made on the SIWES page) says so —
+                       -- while its SIWES course stands (registration.siwes_registered's test): undone by an office, the registration
+                       -- is an ordinary one again, returned by the Head as any
+                       EXISTS (SELECT 1 FROM registration.siwes_registration sr
+                                 JOIN registration.entry se ON se.registration_id = sr.course_registration_id AND se.offering_id = sr.offering_id
+                                                           AND se.status NOT IN ('DROPPED', 'WITHDRAWN')
+                                WHERE sr.course_registration_id = r.id) AS siwes
                   FROM registration.course_registration r
                   JOIN people.student s ON s.id = r.student_id
                   JOIN ref.programme p ON p.code = s.programme_code

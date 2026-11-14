@@ -11,7 +11,9 @@ import { registrationSummer, semesterName } from "@/lib/student-portal";
 interface Entry { courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
 interface Reg { id: string; session: string; semester: number; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[];
   /** V756: semester 3 was this student's Summer Semester (registration.is_summer_for); missing is not the Summer */
-  summer?: boolean }
+  summer?: boolean
+  /** V752: the SIWES registration of a 300 Level Second Semester (the SIWES course alone, registered on the SIWES page) */
+  siwes?: boolean }
 export interface RegHistory { matricNo: string | null; admissionNo: string | null; name: string; programme: string; history: Reg[] }
 
 const REG_PILL: Record<string, "ok" | "info" | "warn" | "grey" | "bad"> = { APPROVED: "ok", LOCKED: "ok", SUBMITTED: "info", DRAFT: "warn", RETURNED: "bad" };
@@ -60,6 +62,7 @@ function RegPanel({ r }: { r: Reg }) {
       title={`${r.session} · ${semesterName(r.semester, registrationSummer(r))} semester`}
       right={<span className="row row--inline">
         <span className="sub2">{r.level} Level · {r.units} units</span>
+        {r.siwes ? <Pil kind="info">SIWES</Pil> : null}
         <Pil kind={REG_PILL[r.status] ?? "grey"}>{r.status}</Pil>
         {issued ? <>
           <a href={pdfUrl} target="_blank" rel="noopener" className="btn btn--primary btn--sm">Download PDF</a>

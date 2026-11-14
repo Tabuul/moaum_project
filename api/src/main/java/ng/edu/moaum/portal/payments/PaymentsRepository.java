@@ -109,6 +109,18 @@ class PaymentsRepository {
         return jdbc.sql("SELECT registration.summer_reference_payable(:r)").param("r", reference).query(Boolean.class).single();
     }
 
+    /** V752: whether a reference is a student's SIWES registration fee reference */
+    boolean siwesReference(String reference) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM finance.payment_reference WHERE reference = upper(btrim(:r)) AND purpose LIKE 'SIWES registration fee%')")
+                .param("r", reference).query(Boolean.class).single();
+    }
+
+    /** V752: whether a SIWES reference may still be paid — unpaid and unexpired, of the student's current session, the SIWES window
+     *  open, the student eligible and the session's fee not already paid (finance.siwes_reference_payable); it keeps its own amount */
+    boolean siwesPayable(String reference) {
+        return jdbc.sql("SELECT finance.siwes_reference_payable(:r)").param("r", reference).query(Boolean.class).single();
+    }
+
     String confirmStudent(String reference, String channel, String note) {
         return jdbc.sql("SELECT finance.confirm_payment(:r, :c, :n)")
                 .param("r", reference).param("c", channel).param("n", note, Types.VARCHAR).query(String.class).single();

@@ -10,7 +10,9 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.AuditContextHolder;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
+import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.shared.OfficeScope;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -38,6 +40,7 @@ class SiwesController {
     /** the offices that assign supervisors: the department's own, plus the Registry */
     private static final String ASSIGNERS =
             "hasAnyAuthority('OFFICE_hod','OFFICE_siwes','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar','OFFICE_admin','OFFICE_super')";
+    private static final java.util.Set<String> ASSIGNER_OFFICES = java.util.Set.of("hod", "siwes", "academic", "registrar", "dregistrar", "admin", "super");
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
@@ -62,6 +65,24 @@ class SiwesController {
         return UUID.fromString(auth.getName());
     }
 
+    /** V752: the office acting must be one that assigns. Authority is checked against every office the token carries, so a Head of
+     *  Department acting as another office would otherwise be held to nothing (as V739 found on the Summer desk) */
+    private static void assigning() {
+        String o = AuditContextHolder.current().map(c -> c.actorOffice()).orElse(null);
+        if (o == null || !ASSIGNER_OFFICES.contains(o)) {
+            throw new org.springframework.security.access.AccessDeniedException("SIWES supervision is done in an office that assigns supervisors.");
+        }
+    }
+
+    /** V752: a SIWES offering is read and written only within the office's unit — its course's department (a department office its
+     *  own, a faculty office its faculty's); before, any assigning office could read or write another department's offering by id */
+    private void offeringInScope(UUID offering) {
+        assigning();
+        String course = jdbc.sql("SELECT course_code FROM catalogue.offering WHERE id = :o").param("o", offering).query(String.class).optional()
+                .orElseThrow(() -> new NotFound("SIWES offering", offering));
+        scope.assertCourseInScope(course);
+    }
+
     /* ── the coordinator / HOD side ── */
 
     /** the SIWES offerings in scope (a department office sees only its own department) */
@@ -70,6 +91,7 @@ class SiwesController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> offerings(@RequestParam(required = false) String dept, @RequestParam String session,
                                         @RequestParam(defaultValue = "2") int semester) {
+        assigning();                                        // V752
         String d = scope.deptWithin(dept);                  // a department office is bound to its department, a faculty office to its faculty
         return jdbc.sql("""
                 SELECT o.id, o.course_code, c.title, c.units, c.dept_code, dp.name AS dept_name, o.session, o.semester,
@@ -92,6 +114,7 @@ class SiwesController {
     @PreAuthorize(ASSIGNERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> students(@PathVariable UUID offering) {
+        offeringInScope(offering);   // V752
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number,
                        st.surname, st.other_names, pr.name AS programme, st.current_level AS level,
@@ -122,6 +145,7 @@ class SiwesController {
     @PreAuthorize(ASSIGNERS)
     @Transactional(readOnly = true)
     List<Map<String, Object>> supervisorPool(@PathVariable UUID offering) {
+        offeringInScope(offering);   // V752
         return jdbc.sql("""
                 SELECT DISTINCT p.id, p.surname || ', ' || p.given_names AS name, p.staff_number
                   FROM catalogue.offering o
@@ -140,6 +164,7 @@ class SiwesController {
     @PreAuthorize(ASSIGNERS)
     @Transactional
     Map<String, Object> assign(@PathVariable UUID offering, @PathVariable UUID student, @Valid @RequestBody AssignIn body) {
+        offeringInScope(offering);   // V752
         jdbc.sql("SELECT assessment.assign_siwes_supervisor(:o, :s, :sup)")
                 .param("o", offering).param("s", student).param("sup", body.supervisor()).query().singleRow();
         return Map.of("offering", offering, "student", student, "supervisor", body.supervisor(), "assigned", true);
@@ -196,6 +221,7 @@ class SiwesController {
     @PreAuthorize(ASSIGNERS)
     @Transactional
     Map<String, Object> practical(@PathVariable UUID offering, @PathVariable UUID student, @Valid @RequestBody PracticalIn body) {
+        offeringInScope(offering);   // V752
         return record(offering, student, false, body.mark(), body.reason(), "SIWES Coordinator");
     }
 

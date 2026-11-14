@@ -36,7 +36,8 @@ class CourseRegistrationReportController {
             + "'OFFICE_ict','OFFICE_dbops','OFFICE_ictagent','OFFICE_helpdeskhead','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar',"
             + "'OFFICE_dean','OFFICE_facultyofficer','OFFICE_vc','OFFICE_dvc','OFFICE_admin','OFFICE_super')";
 
-    private static final Set<String> CATEGORIES = Set.of("GST", "EPS", "DEPARTMENTAL", "FACULTY", "OTHER", "CARRY_OVER", "OTHER_COURSES");
+    /** V752: SIWES — a SIWES registration (the SIWES course registered on the SIWES page), never listed as an ordinary course */
+    private static final Set<String> CATEGORIES = Set.of("GST", "EPS", "DEPARTMENTAL", "FACULTY", "OTHER", "CARRY_OVER", "OTHER_COURSES", "SIWES");
     private static final int PAGE_MAX = 500;
     private static final int EXPORT_MAX = 50_000;
 
@@ -88,7 +89,7 @@ class CourseRegistrationReportController {
         if (offering != null) f.put("offering", offering.toString());
         String cat = blank(category);
         if (cat != null) {
-            if (!CATEGORIES.contains(cat.toUpperCase())) throw new DomainRuleViolation("REPORT_CATEGORY", "A category is GST, EPS, departmental, faculty, other, carry-over or the other courses.");
+            if (!CATEGORIES.contains(cat.toUpperCase())) throw new DomainRuleViolation("REPORT_CATEGORY", "A category is GST, EPS, departmental, faculty, other, carry-over, the other courses or SIWES.");
             f.put("category", cat.toUpperCase());
         }
         String cur = blank(curriculum);

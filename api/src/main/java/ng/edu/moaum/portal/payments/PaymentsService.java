@@ -296,6 +296,11 @@ public class PaymentsService {
             throw new DomainRuleViolation("SUMMER_REFERENCE_STALE", "This reference is no longer for what you owe, or the Summer Semester's registration has closed.",
                     new DomainRuleViolation.Remedy("The Summer Semester page draws the reference for what you owe now. A payment already made is never charged again.", "You"));
         }
+        /* V752: a SIWES reference is taken to a gateway only while the SIWES window is open, the student eligible and the fee unpaid */
+        if (siwes(r) && !repo.siwesPayable(r.reference())) {
+            throw new DomainRuleViolation("SIWES_REFERENCE_STALE", "This reference can no longer be paid: the SIWES registration fee is already paid, SIWES registration is closed, or you are not eligible.",
+                    new DomainRuleViolation.Remedy("The SIWES page says where you stand and draws a reference while the fee is owed. A payment already made is never charged again.", "You"));
+        }
         if (transfer(r) && !repo.transferPayable(r.reference())) {
             throw new DomainRuleViolation("TRANSFER_REFERENCE_STALE", "This reference is no longer for what you owe. Pay the transfer fee from the transfer page.",
                     new DomainRuleViolation.Remedy("The transfer page draws the reference for the balance owed now. A payment already made is never charged again.", "You"));
@@ -459,9 +464,16 @@ public class PaymentsService {
         return "FEES".equals(r.kind()) && repo.summerReference(r.reference());
     }
 
+    /** V752: a student's SIWES registration fee reference: paid like any student reference, named the SIWES registration fee at the
+     *  gateway and returned to the SIWES page */
+    private boolean siwes(PaymentsRepository.Reference r) {
+        return "FEES".equals(r.kind()) && repo.siwesReference(r.reference());
+    }
+
     /** the fee as the gateway names it to the payer */
     private String nameOf(PaymentsRepository.Reference r) {
-        return gst(r) ? "GST fee" : transfer(r) ? "inter-departmental transfer fee" : summer(r) ? "Summer Semester fees" : feeName(r.kind());
+        return gst(r) ? "GST fee" : transfer(r) ? "inter-departmental transfer fee" : summer(r) ? "Summer Semester fees"
+                : siwes(r) ? "SIWES registration fee" : feeName(r.kind());
     }
 
     /** where the gateway returns the payer: the page that shows this fee paid, which verifies the reference on arrival — V724: a
@@ -475,6 +487,9 @@ public class PaymentsService {
         }
         if (summer(r)) {
             return portalUrl + "/student/summer?paid=" + r.reference();
+        }
+        if (siwes(r)) {
+            return portalUrl + "/student/siwes?paid=" + r.reference();
         }
         return transfer(r) ? portalUrl + "/student/transfer?paid=" + r.reference() : backUrl(r.kind(), r.reference());
     }
@@ -527,6 +542,10 @@ public class PaymentsService {
         // V735: as at the checkout, a Summer reference is paid only while the Summer is open and it is for what is owed now
         if (summer(r) && !repo.summerPayable(r.reference())) {
             return notice("This reference is no longer for what you owe", "Pay from the Summer Semester page; it draws the reference for what you owe now, while registration is open. A payment already made is never charged again.");
+        }
+        // V752: as at the checkout, a SIWES reference is paid only while the window is open, the student eligible and the fee unpaid
+        if (siwes(r) && !repo.siwesPayable(r.reference())) {
+            return notice("This reference can no longer be paid", "The SIWES registration fee is already paid, SIWES registration is closed, or you are not eligible; the SIWES page says which. A payment already made is never charged again.");
         }
         // V727: as at the checkout, a transfer fee reference is paid only while it is for what the application owes now
         if (transfer(r) && !repo.transferPayable(r.reference())) {
@@ -833,7 +852,9 @@ public class PaymentsService {
         boolean staleTransfer = c.valid() && !reference.isEmpty() && laneRepo.transferReference(reference) && !laneRepo.transferPayable(reference);
         // V735: a Summer reference is paid at the bank only while the Summer is open and every charge it was drawn for is still owed
         boolean staleSummer = c.valid() && !reference.isEmpty() && laneRepo.summerReference(reference) && !laneRepo.summerPayable(reference);
-        boolean valid = c.valid() && !staleTransfer && !staleSummer;
+        // V752: a SIWES reference is paid at the bank only while the window is open, the student eligible and the fee unpaid
+        boolean staleSiwes = c.valid() && !reference.isEmpty() && laneRepo.siwesReference(reference) && !laneRepo.siwesPayable(reference);
+        boolean valid = c.valid() && !staleTransfer && !staleSummer && !staleSiwes;
         Map<String, Object> said = new LinkedHashMap<>();
         said.put("merchantReference", m.field("MerchantReference"));
         said.put("paymentItemCode", m.field("PaymentItemCode"));
@@ -843,6 +864,8 @@ public class PaymentsService {
             said.put("why", "TRANSFER_REFERENCE_STALE: the reference is no longer for what the transfer application owes");
         } else if (staleSummer) {
             said.put("why", "SUMMER_REFERENCE_STALE: the Summer Semester's registration is closed, or the reference is no longer for what is owed");
+        } else if (staleSiwes) {
+            said.put("why", "SIWES_REFERENCE_STALE: the SIWES registration fee is already paid, SIWES registration is closed, or the student is not eligible");
         } else if (c.why() != null) {
             said.put("why", c.why());
         }

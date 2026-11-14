@@ -274,6 +274,9 @@ public class StudentPortalService {
         v.put("collegeArea", repo.collegeArea(id));
         // V735: the Summer Semester page in the menu — a Summer set and not closed that the student may be eligible for, or one they took
         v.put("summerArea", repo.summerArea(id));
+        // V752: the SIWES page in the menu — SIWES binds the student's current session (300 Level, a programme the Academic Office
+        // configured, its period no longer a draft), or the student has registered SIWES before
+        v.put("siwesArea", repo.siwesArea(id));
         v.put("department", s.deptName());
         v.put("entryMode", s.entryMode());
         v.put("entrySession", s.entrySession());
@@ -872,12 +875,13 @@ public class StudentPortalService {
             out.put("openSemester", semester);
             return out;
         }
-        // the SIWES / industrial-training semester carries exactly the SIWES units, not the 18-24 range
-        Integer siwes = repo.siwesUnits(id, s.currentLevel(), semester);
+        // the SIWES / industrial-training semester carries exactly the SIWES units, not the 18-24 range — V752: as the unit rule reads it,
+        // a SIWES student's Second Semester (registration.siwes_applies) first, V503's attachment semester for every programme not configured
+        Map<String, Object> unitRule = new java.util.LinkedHashMap<>(repo.limit(id, s.currentLevel(), session, semester));
+        Integer siwes = "SIWES".equals(unitRule.get("basis")) && unitRule.get("min_units") instanceof Number n ? n.intValue() : null;
         // on probation, the form's ceiling is the level's probation ceiling where the Registry has set one
         Map<String, Object> standing = repo.standing(s.id(), s.currentLevel());
-        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes, "basis", "SIWES")
-                : new java.util.LinkedHashMap<>(repo.limit(id, s.currentLevel(), session, semester));
+        Map<String, Object> limit = siwes != null ? Map.of("min_units", siwes, "max_units", siwes, "basis", "SIWES") : unitRule;
         if (siwes == null && "PROBATION".equals(standing.get("standing")) && standing.get("probation_max_units") != null) {
             int cap = ((Number) standing.get("probation_max_units")).intValue();
             int max = ((Number) limit.get("max_units")).intValue();
@@ -940,6 +944,9 @@ public class StudentPortalService {
         String gate = repo.registrationGate(id, session, semester);
         window.put("gate", gate);
         window.put("open", gate == null);
+        // V752: the Second Semester is the student's SIWES semester, registered on the SIWES page
+        boolean siwesSemester = semester == 2 && repo.siwesApplies(id, session);
+        window.put("siwes", siwesSemester);
         window.put("fresh", session.equals(s.entrySession()));
         window.put("portal", repo.windowFor(id, "COURSE_REGISTRATION", session, semester));   // V288 (V380: the CCE window for a CCE student)
         window.put("cce", "CCE".equals(s.entryMode()));
@@ -950,7 +957,10 @@ public class StudentPortalService {
         Map<String, Object> rule = repo.approvalRule(session, semester);
         out.put("approval", rule);
         Map<String, Object> reset = new LinkedHashMap<>();
-        String why = gate != null ? gate : repo.resetRefusal(id, session, semester);
+        // V752: the reset door's own word (reset()): a SIWES student's Second Semester passes the gate there — a reset clears what stands
+        // in the SIWES course's way, carry-overs and deferred courses too — so whether it is allowed is reset_refusal's alone
+        // (REG_RESET_SIWES once the SIWES course stands registered); every other semester keeps the gate's refusal first
+        String why = gate != null && !siwesSemester ? gate : repo.resetRefusal(id, session, semester);
         reset.put("allowed", why == null);
         reset.put("why", why);
         reset.put("history", repo.resets(id, session, semester));
@@ -992,9 +1002,27 @@ public class StudentPortalService {
 
     /** the calendar's word on the semester (V287): a registration is drafted, changed or submitted only while the door is open */
     private void assertWindowOpen(UUID id, String session, int semester) {
+        assertWindowOpen(id, session, semester, false);
+    }
+
+    /** the door's word, and whether it stands open only because a SIWES student's Second Semester is shedding (V752): the gate sends
+     *  that semester to the SIWES page, yet registration.siwes_register refuses while a course placed before SIWES bound the student is
+     *  still on it (SIWES_OTHER_COURSES), so the drop and reset doors pass. What they may shed is the database's word, never judged here:
+     *  ordinary courses, and carry-overs and deferred courses too, which wait for a later semester while no SIWES registration stands
+     *  (registration.siwes_sheds, read by student_drop and student_reset); the add/drop calendar (student_drop) and the reset rule
+     *  (reset_refusal: REG_RESET_SIWES once the SIWES course stands registered). Every other door keeps the gate's refusal. */
+    private boolean assertWindowOpen(UUID id, String session, int semester, boolean shedding) {
         String gate = repo.registrationGate(id, session, semester);
         if (gate != null) {
             String mode = student(id).entryMode();
+            // V752: a SIWES student's Second Semester is registered on the SIWES page (the gate reads registration.siwes_applies first)
+            if (semester == 2 && repo.siwesApplies(id, session)) {
+                if (shedding) {
+                    return true;
+                }
+                throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate,
+                        new DomainRuleViolation.Remedy("Register your SIWES course on the SIWES page once its fee is paid; it is the only course of the semester.", "You"));
+            }
             throw new DomainRuleViolation("COURSE_REGISTRATION_CLOSED", gate, "CCE".equals(mode)
                     // V380: a CCE student's door is the Centre's calendar and classes
                     ? new DomainRuleViolation.Remedy("The Centre opens the semester on the CCE calendar; the Directorate of ICT may also hold the CCE registration window.", "Centre for Continuing Education")
@@ -1003,6 +1031,7 @@ public class StudentPortalService {
                     ? new DomainRuleViolation.Remedy("The School opens the semester on its calendar; the Directorate of ICT may also hold the postgraduate registration window.", "School of Postgraduate Studies")
                     : new DomainRuleViolation.Remedy("The Directorate of ICT opens the registration window; the Academic Office opens the semester on the calendar.", "Directorate of ICT"));
         }
+        return false;
     }
 
     @Transactional
@@ -1289,7 +1318,14 @@ public class StudentPortalService {
 
     @Transactional
     public Map<String, Object> dropCourse(UUID id, String session, int semester, UUID offering) {
-        assertWindowOpen(id, session, semester);
+        // V752: a SIWES student's Second Semester sheds here what was placed before SIWES bound the student — an ordinary course, or a
+        // carry-over or deferred course, which waits for a later semester (the database's word) — never the SIWES course itself: the
+        // programme's course or, after a remap, the one a SIWES registration was made on, whether or not one stands yet (the database
+        // refuses the standing one too, SIWES_COURSE_KEPT)
+        if (assertWindowOpen(id, session, semester, true) && repo.siwesCourse(id, offering)) {
+            throw new DomainRuleViolation("SIWES_COURSE_KEPT", "This is your SIWES course; it is registered on the SIWES page and is not dropped here.",
+                    new DomainRuleViolation.Remedy("The Academic Office or ICT Support undoes a SIWES registration.", "Academic Office"));
+        }
         repo.dropCourse(id, session, semester, offering);
         return registrationView(id, session, semester);
     }
@@ -1334,10 +1370,11 @@ public class StudentPortalService {
     private static final tools.jackson.databind.ObjectMapper RESET_JSON = new tools.jackson.databind.ObjectMapper();
 
     /** V491: the student resets the semester's registration while the window is open and the rule allows it — the registration
-     *  as it stood is kept on its reset record, the chosen courses are cleared (carryovers stay), and it is a draft again */
+     *  as it stood is kept on its reset record, the chosen courses are cleared (carryovers stay, but for a SIWES student's Second
+     *  Semester before the SIWES course is registered: V752, they wait for a later semester), and it is a draft again */
     @Transactional
     public Map<String, Object> reset(UUID id, String session, int semester, String reason) {
-        assertWindowOpen(id, session, semester);
+        assertWindowOpen(id, session, semester, true);   // V752: a SIWES student's Second Semester resets what stands in the SIWES course's way
         String done = repo.reset(id, session, semester, reason == null || reason.isBlank() ? "Reset by the student to register again" : reason.trim());
         Map<String, Object> out = new LinkedHashMap<>(registrationView(id, session, semester));
         out.put("result", RESET_JSON.readValue(done, Map.class));

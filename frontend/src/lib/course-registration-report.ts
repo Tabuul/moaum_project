@@ -44,6 +44,8 @@ export const CATEGORIES: [string, string, string][] = [
   ["OTHER", "Other university courses", "courses of a department outside the student's faculty"],
   ["CARRY_OVER", "Carry-over courses", "a course registered again after it was failed or not taken"],
   ["OTHER_COURSES", "Other courses (not GST or EPS)", "every course that is not GST or EPS: departmental, faculty, BMAS, CCMAS, carry-over"],
+  // V752: a 300 Level student's SIWES course, registered on the SIWES page — never an ordinary Second Semester course
+  ["SIWES", "SIWES (industrial training)", "the SIWES course a 300 Level student registered on the SIWES page for the Second Semester, alone"],
 ];
 
 export const CATEGORY_WORD: Record<string, string> = Object.fromEntries(CATEGORIES.map(([k, w]) => [k, w]));
