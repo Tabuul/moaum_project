@@ -34,6 +34,9 @@ export const OFFICE_HOME: Readonly<Record<string, string>> = {
   /* the preliminary and proficiency offices work from their desk (V446, V701): each opens on its own programmes */
   prelim: "/preliminary",
   prelimtech: "/preliminary",
+  /* the Dean of Student Affairs runs the hostels (V290): their home is the hostel dashboard (menus.ts home t/hostel), not the
+     general dashboard at "/", which has no figures for the office */
+  dsa: "/hostel",
 };
 
 /** the student's dashboards: the University's student portal, and the College's own student area for a programme the College

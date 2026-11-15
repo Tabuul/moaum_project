@@ -645,7 +645,7 @@ On the letter the signature keeps its proportions within 140 × 48 points, stand
 
 ### 2.15 Hostel inventory, window and rules
 
-**Status: IMPLEMENTED (V030 + V261).** Actors: `services, housing, registrar, admin, super`. Menu (housing, Accommodation group): Hostel Dashboard `/hostel`, Application Window & Rules `/hostel/window`, Hostel Inventory `/hostel/inventory`, Applications & Waitlist, Occupancy & Check-in, Checkout & Clearance. **No hall and no window is seeded**; the halls on the audited database are integration-test residue.
+**Status: IMPLEMENTED (V030 + V261; the Dean of Student Affairs, `dsa`, since V290).** Actors: `dsa, services, housing, registrar, admin, super`. The Dean of Student Affairs runs the hostels and lands on the Hostel Dashboard `/hostel`; the University's workbook is uploaded at Hostel Setup → Import Hostels & Rooms `/hostel/import`. Menu (housing, Accommodation group): Hostel Dashboard `/hostel`, Application Window & Rules `/hostel/window`, Hostel Inventory `/hostel/inventory`, Applications & Waitlist, Occupancy & Check-in, Checkout & Clearance. **No hall and no window is seeded**; the halls on the audited database are integration-test residue.
 
 **2.15.1 Inventory — `/hostel/inventory`.**
 

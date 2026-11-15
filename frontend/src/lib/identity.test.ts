@@ -40,6 +40,11 @@ test("the dashboard is the acting office's home: '/', or its own desk, or the st
   assert.equal(isHomePath("student", "/student/fees"), false);
   assert.equal(isHomePath("student", "/"), false);
   assert.equal(isHomePath("hrm", null), false);
+  // the Dean of Student Affairs lands on the hostel dashboard, and is asked there, not on the general dashboard at "/"
+  assert.equal(officeHome("dsa"), "/hostel");
+  assert.equal(isHomePath("dsa", "/hostel"), true);
+  assert.equal(isHomePath("dsa", "/hostel/import"), false);
+  assert.equal(isHomePath("dsa", "/"), false);
   // every desk named is a path, never the dashboard itself
   for (const [o, p] of Object.entries(OFFICE_HOME)) assert.ok(p.startsWith("/") && p !== "/", o);
 });

@@ -86,6 +86,7 @@ Student menus use **Start here / Academic / Learning / Services / Account** (und
 | `mbbscoordinator` | redirect → `/college/coordinator` |
 | `ictagent` | redirect → `/helpdesk` |
 | `extexaminer` | redirect → `/examiner` |
+| `dsa` | redirect → `/hostel` (Hostel Dashboard) |
 | `ict`, `super` | Platform dashboard |
 | `academic`, `dregistrar`, `records`, `dvc` | Academic dashboard |
 | `registrar` | Registrar dashboard |
@@ -1073,7 +1074,38 @@ Me
  → ICT Support Tickets → /tickets
 ```
 
-### 2.30 Support Services (`services`)
+### 2.30 Dean of Student Affairs (`dsa`)
+
+```text
+Dean of Student Affairs — home: Hostel Dashboard → /hostel
+Overview
+ → Hostel Dashboard → /hostel
+ → Search → /search
+Hostel Setup
+ → Hostels, Rooms & Categories → /hostel/inventory
+ → Import Hostels & Rooms → /hostel/import
+ → Application Window & Rules → /hostel/window
+Allocation & Occupancy
+ → Applications & Waitlist → /hostel/applications
+ → Occupancy & Check-in → /hostel/occupancy
+ → Special Allocations → /hostel/special
+ → Checkout, Transfers & Clearance → /hostel/clearance
+ → Discipline & Room Swaps → /hostel/discipline
+Reports
+ → Occupancy Accountability → /hostel/accountability
+ → Hostel Fees (read) → /hostel/finance
+ → Audit Trail → /audit
+ → Partnerships → /partnerships
+ → Identity Completion → /identity/completion
+Me
+ → Support Escalations → /helpdesk/office
+ → My Profile → /me/profile
+ → My Identity → /me/identity
+```
+
+The Dean lands on the hostel dashboard itself (`/` redirects to `/hostel`, `lib/home-routes.ts`), where the blood-group and staff identity prompts of the dashboard are asked. The University's hostel workbook is uploaded at **Hostel Setup → Import Hostels & Rooms** (also the **Import** button on the dashboard): read and previewed in the browser, then committed without duplicates (V290, V705).
+
+### 2.31 Support Services (`services`)
 
 ```text
 Support Services — home: Clinic → /clinic
@@ -1095,7 +1127,7 @@ Me
  → ICT Support Tickets → /tickets
 ```
 
-### 2.31 Chief Security Officer (`security`)
+### 2.32 Chief Security Officer (`security`)
 
 ```text
 Chief Security Officer — home: Verify a Card → /  (Security dashboard)
@@ -1112,7 +1144,7 @@ Me
  → ICT Support Tickets → /tickets
 ```
 
-### 2.32 Librarian (`library`)
+### 2.33 Librarian (`library`)
 
 ```text
 Librarian — home: Card Printing → /credentials/idcards
@@ -1130,7 +1162,7 @@ Me
  → ICT Support Tickets → /tickets
 ```
 
-### 2.33 Student — undergraduate (`student`)
+### 2.34 Student — undergraduate (`student`)
 
 ```text
 Student — home: Dashboard → /student
@@ -1168,7 +1200,7 @@ Account
 
 A College of Health Sciences student from 200 Level lands on `/college/student` (views Dashboard / Fees & payments / Course registration / Postings & logbook / Results history) and keeps the same menu.
 
-### 2.34 Postgraduate student (`pgstudent` menu, office `student`)
+### 2.35 Postgraduate student (`pgstudent` menu, office `student`)
 
 ```text
 Postgraduate Student — home: Dashboard → /student
@@ -1199,7 +1231,7 @@ Profile
  → Health → /student/health
 ```
 
-### 2.35 Applicant (`applicant`)
+### 2.36 Applicant (`applicant`)
 
 ```text
 Applicant — home: Overview → /applicant
@@ -1217,7 +1249,7 @@ Admission
  → Matriculation → /applicant/matric
 ```
 
-### 2.36 Postgraduate applicant (`pgapplicant` menu, office `applicant`)
+### 2.37 Postgraduate applicant (`pgapplicant` menu, office `applicant`)
 
 ```text
 Postgraduate Applicant — home: pg/home (no route — placeholder; the portal opens at /pg/portal)
@@ -1227,7 +1259,7 @@ My application
  → Application Summary → /pg/summary/pdf  (a PDF route, not a page)
 ```
 
-### 2.37 Screens on no menu
+### 2.38 Screens on no menu
 
 The following real screens are reached from buttons, links, QR codes or by URL only: `/students/{id}` (Student 360), `/deferments/{id}` and `/deferments/returns`, `/matriculation/faculty/{code}`, `/results/sheets/{id}`, `/examiners/{id}`, `/examiners/projects/{id}`, `/examiners/assignments/{id}`, `/examiners/rubrics`, `/examiner/projects/{id}`, `/lms/{offering}`, `/hostel/allocations/{id}`, `/hostel/students/{id}`, `/helpdesk/tickets/{id}`, `/tickets/new`, `/tickets/{id}`, `/support` (Help & requests desk — on no office menu at all), `/credentials/documents/requests`, `/credentials/documents/requests/{id}`, `/credentials/documents/register`, `/credentials/documents/settings`, `/admissions/putme/setup`, `/admissions/putme/candidates`, `/admissions/putme/batches/{id}`, `/admissions/putme/checkin`, `/admissions/screened`, `/admissions/screening/{batch}`, `/reports/{slug}/view`, `/reports/snapshots/{id}`, `/stats/students`, `/transfers/memo`, `/college/student`, `/student/form`, `/student/receipt/{reference}`, `/student/results/{session}/{semester}`, `/student/courses/{offering}`, `/student/transfer/letter/{id}`, `/account/password`, `/me/notices` (menu item on the lecturer menu only), `/ethics` (static), and the public pages `/login`, `/login/first`, `/login/forgot`, `/login/reset`, `/login/activate`, `/apply`, `/pg/referee/{token}`, `/track`, `/documents/d/{token}` and every `/verify/…` page.
 
