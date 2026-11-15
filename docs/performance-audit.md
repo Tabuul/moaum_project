@@ -775,3 +775,55 @@ staff sign-ins), local PostgreSQL 18, cold then warm:
   ICT reads both by their routes; every wait is bounded and every lock released on every path. `StatementStoppedTest` covers the
   translator on a request's thread, a pool thread, a write, outside a transaction and on the door's pool; the answer per cause;
   the office from the audit context; the fifty kept; the read-out's sentences.
+
+## Y. The database's load from page traffic, for a smaller database (15 November 2026, V767)
+
+The AWS cost report of 7 November 2026 found the portal's database at the 4xlarge size it was given on 26 October, using 3.5% of
+it on average and 25% in the busiest five minutes, at about 100 requests a second (11:00–13:00 WAT). What sizes the database is the
+sum of every request, not the slowest screen, so this section measures the requests page traffic makes, weighted by how often.
+
+- **The method** (`api/scripts/perf/replay.mjs`, `endpoint-cost.sh`, `compare.mjs`; §5 of its README). A copy of the live data
+  (Railway, 22 October; 54,575 students, 538,180 course registrations) migrated to main and restored into a PostgreSQL cluster of
+  its own with `pg_stat_statements` loaded (the shared scratch cluster cannot be restarted to load it). 400 real students and 200
+  applicants of 2026/2027 sampled, each given a session of the portal's own kind (`platform.session`) and a token naming it, so the
+  session check and the student gates run as in production. Each page load is replayed as the frontend makes it: the proxy's
+  `iam/session`, then the page's calls in their stages (`loadStudent`'s `iam/me`, `me`, `me/biodata/completion` together, then the
+  page's own). The mix of a November week: the dashboard (30%, half through `/`), fees 20%, course registration 15%, results 10%,
+  then courses, examinations, profile, notifications, timetable; the applicant's home, status and admission pages. 3,000 page
+  loads (the students eight at a time, the applicants four); then each endpoint alone, once per person.
+- **What it found.** 1,958 s of database time and 31.7 million pages read for the 3,000 loads (about 0.65 s a page):
+  - 53.5%: one statement, `StudentPortalRepository.sessionsWithChargesFor` — the sessions a postgraduate, CCE or MBBS student has
+    fees in, read inside `fees()` on every screen of theirs (`me`). Written `FROM (SELECT DISTINCT session …) x WHERE
+    finance.fee_stated(:s, x.session)`, the planner pushed the stable function below the DISTINCT: `finance.fee_stated` (which
+    works out the student's spillover, final level, faculty rule and postgraduate stage) ran once for each of the 851 fee lines,
+    not the two sessions — about 4 s a call. Listed first (`WITH x AS MATERIALIZED`), it runs twice.
+  - 8.0% + 6.7% + 6.1%: the GST/EPS engine, `finance.gst_eps_rows(session, student)`, behind the dashboard's GST & EPS panel
+    (`me/gst`, which also worked out the whole `finance.gst_eps_explain` to keep only its eligibility), the registration page's gate
+    (`registration.gst_gate`, asked once for every GST/EPS course on the menu) and the entitlement and payable courses. Written
+    for the whole register and one student at once (`p_student IS NULL OR …`), a plan made for any student — inside another SQL
+    function, a plpgsql body, a kept plan — read every student, joined every GST registration entry of the register (about 50,000)
+    and every score on the student's GST sheets (about 13,000) for one student's rows: about 350 ms a call. V767 makes the
+    register and the student two branches, one skipped at once (a one-time filter on the parameter): the student's registrations
+    by their key, their own latest scores alone — about 9 ms. The register's rows (68,534) and 60 students' were compared row for
+    row, old against new: the same; `finance.gst_eps_rows_all` (§U) is unchanged in what it gives (V468's check).
+  - 2.3%: `iam/me` counted the University's nine queues (`WaitingRepository.waiting`, over the whole register) and read the staff
+    record on every screen of every student and applicant, whose screens show neither. They are not read for those two offices
+    now; a student keeps the bell (their own unread notices on `s/notifications`, which the transfer, password and manual pages
+    show from this answer).
+- **After V767** (the same replay): 350 s of database time (−82%), 17.8 million pages (−44%); the students' 2,000 page loads took
+  101 s instead of 300. Each endpoint alone, per call: `me` 258 → 32 ms, `me/outstanding-fees` 261 → 52 ms, `me/fees` 192 → 38 ms,
+  `iam/me` (student) 13 → 0.7 ms; `me/gst` and `me/registration` lose most of their GST work. Every student's and applicant's
+  answers from the changed endpoints were compared, old code and database against new, on the copy (`compare.mjs`): identical,
+  but for `iam/me`'s `waiting`, which no longer carries the University's queues for the two offices.
+- **PostgreSQL 17 and 18.** The live databases run PostgreSQL 17; the measuring cluster ran 18. 17 plans a non-inlined SQL
+  function's body afresh at every call with its parameters unknown (a generic plan, every time); 18 keeps the plan, custom for
+  the first five calls. The changes cut execution, not planning, and do not add to the planning (`gst_eps_rows` plans in 9–14 ms
+  warm before and after), so they hold on both; on 18 the GST functions' kept plan is re-planned each call (the register branch
+  makes the generic plan look costly), still faster than before. A measurement on 17 itself is the check still to make.
+- **What remains** (by share of the 350 s): the historical fees read twice per dashboard and fees page (`finance.historical_rows`
+  through `historical_account` and `historical_review`, 14%, nothing found on the copy, whose `historical_start` is the current
+  session); `admissions.admission_tracker` (8%); and `fees()` — `finance.position`, `charges`, `semester_cleared`,
+  `spillover_panel`, `fee_unstated_semesters`, `due_for_semester` — about 31%, more than half of it from `me` on every student
+  screen, which the student shell reads only for the name, number, entry mode and menu flags. A slimmer `me` for the shell is the
+  next step; the staff dashboards that read the whole University (§S, the HOD's fees and results pipeline, the registration
+  approval cards) are the step after.

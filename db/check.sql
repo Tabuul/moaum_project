@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 626
+\set EXPECTED 627
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -38018,6 +38018,70 @@ BEGIN
                      || ' | report P7680001:ACADEMIC,P7680003:NON_ACADEMIC,P7680004:NON_ACADEMIC | blood A saved B IDENTITY_NOT_STAFF', false), msg);
 END $$;
 
+-- ── V767. The GST/EPS courses one student owes are read by the student's own keys, and they are the register's rows for that
+--          student. Two made-up students of a made-up programme sat its GST course in a past session on one published sheet: one
+--          failed it, one passed it; a third was never registered for it. Asked for one student, each is given exactly the rows the
+--          register gives for them — the student who failed owes the course again as a carry-over with their own grade (not the
+--          other student's), the student who passed and the student never registered owe nothing. The block undoes its writes ──
+DO $$
+DECLARE
+    v_dept text; v_fac text; prog text; cur text := '9767/9768'; past text := '9766/9767';
+    sa uuid := gen_random_uuid(); sb uuid := gen_random_uuid(); sn uuid := gen_random_uuid();
+    o_past uuid := gen_random_uuid(); sh uuid := gen_random_uuid(); r uuid;
+    diff bigint; a_row text; b_rows bigint; n_rows bigint; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', gen_random_uuid()::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.reason', 'check V767', true);
+    PERFORM set_config('moaum.spill_basis', 'LEVEL', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+      (gen_random_uuid(), past, '9766-10-01', '9767-09-30', 'CLOSED'),
+      (gen_random_uuid(), cur, '9767-10-01', '9768-09-30', 'PLANNED');
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9767/01' WHERE name = cur;
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), cur, 1, 'OPEN');
+    SELECT dept_code, faculty_code INTO v_dept, v_fac FROM ref.programme WHERE category = 'UNDER GRADUATE' AND NOT archived ORDER BY code LIMIT 1;
+    SELECT 'C' || lpad(x::text, 5, '0') INTO prog FROM generate_series(90000, 99999) x
+     WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(x::text, 5, '0')) ORDER BY x DESC LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level) VALUES (prog, 'B.Sc. CHECK V767', v_dept, v_fac, 'UNDER GRADUATE', 0, 400);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (sa, 'MOAUM/ADM/66/767001', 'MOAUM/ZZV/66/7671', 'CHECKV767', 'Failed', prog, 'UTME', past, 100, 200, 'ACTIVE', now()),
+        (sb, 'MOAUM/ADM/66/767002', 'MOAUM/ZZV/66/7672', 'CHECKV767', 'Passed', prog, 'UTME', past, 100, 200, 'ACTIVE', now()),
+        (sn, 'MOAUM/ADM/66/767003', 'MOAUM/ZZV/66/7673', 'CHECKV767', 'Never', prog, 'UTME', past, 100, 200, 'ACTIVE', now());
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+        ('ZZV 101', 'Check V767 Use of English', 2, 1, 100, v_dept, 'GST', 'LIVE', 'GST');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZV 101', prog, 100, 'GST');
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (o_past, 'ZZV 101', past, 1), (gen_random_uuid(), 'ZZV 101', cur, 1);
+    -- last session's record, on one sheet: sa failed, sb passed — published
+    r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, sa, past, 1, 100, 'APPROVED', now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, o_past, 2, 'APPROVED');
+    r := gen_random_uuid(); INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, approved_at) VALUES (r, sb, past, 1, 100, 'APPROVED', now());
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, o_past, 2, 'APPROVED');
+    INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at, submitted_at) VALUES (sh, o_past, 'PUBLISHED', 'SEN/9767/01', now(), now());
+    INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (sh, sa, 10, 15, 'GRADED'), (sh, sb, 30, 40, 'GRADED');
+
+    -- each student's rows against the register's rows for them, both ways
+    diff := (SELECT count(*) FROM (
+                (SELECT x.* FROM people.student s CROSS JOIN LATERAL finance.gst_eps_rows(cur, s.id) x WHERE s.id IN (sa, sb, sn)
+                 EXCEPT ALL SELECT r2.* FROM finance.gst_eps_rows(cur, NULL) r2 WHERE r2.student_id IN (sa, sb, sn))
+                UNION ALL
+                (SELECT r2.* FROM finance.gst_eps_rows(cur, NULL) r2 WHERE r2.student_id IN (sa, sb, sn)
+                 EXCEPT ALL SELECT x.* FROM people.student s CROSS JOIN LATERAL finance.gst_eps_rows(cur, s.id) x WHERE s.id IN (sa, sb, sn))) d);
+    n_rows := (SELECT count(*) FROM finance.gst_eps_rows(cur, NULL) r2 WHERE r2.student_id IN (sa, sb, sn));
+    SELECT x.source || '/' || x.counts || '/' || x.status || '/' || coalesce(x.last_grade, '-') || '/' || coalesce(x.failed_in, '-')
+      INTO a_row FROM finance.gst_eps_rows(cur, sa) x WHERE x.course_code = 'ZZV 101';
+    b_rows := (SELECT count(*) FROM finance.gst_eps_rows(cur, sb) x WHERE x.course_code = 'ZZV 101')
+            + (SELECT count(*) FROM finance.gst_eps_rows(cur, sn) x WHERE x.course_code = 'ZZV 101');
+    RAISE EXCEPTION 'CHECK_V767_UNDONE';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+    IF msg <> 'CHECK_V767_UNDONE' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V767: one student''s GST/EPS courses, read by the student''s own keys, are the register''s rows for them — their own grade, carried over when failed',
+      coalesce(diff = 0 AND n_rows = 1 AND a_row = 'CARRYOVER/true/OUTSTANDING/F/' || past || ' semester 1' AND b_rows = 0, false),
+      format('differing rows %s | register rows %s | failed %s | passed and never registered %s', diff, n_rows, a_row, b_rows));
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

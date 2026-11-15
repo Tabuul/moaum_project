@@ -1,0 +1,41 @@
+{
+ "applicant_home": {
+  "weight": 50,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/applicant/me"
+   ],
+   [
+    "GET /api/v1/applicant/me/admission",
+    "GET /api/v1/manual/context?route=a/dashboard"
+   ]
+  ]
+ },
+ "applicant_status": {
+  "weight": 30,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/applicant/me"
+   ],
+   [
+    "GET /api/v1/applicant/me/admission"
+   ]
+  ]
+ },
+ "applicant_admission": {
+  "weight": 20,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/applicant/me"
+   ],
+   [
+    "GET /api/v1/applicant/me/admission",
+    "GET /api/v1/applicant/me/documents-centre",
+    "GET /api/v1/applicant/me/school-fees"
+   ]
+  ]
+ }
+}

@@ -720,11 +720,13 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT DISTINCT session FROM finance.fee_schedule WHERE ended_at IS NULL ORDER BY session DESC").query(String.class).list();
     }
 
-    /** V379: the sessions with a fee line that applies to this student (finance.fee_stated) */
+    /** V379: the sessions with a fee line that applies to this student (finance.fee_stated). The sessions are listed first and each is
+     *  asked once: left in a subquery, the test was pushed below the DISTINCT and asked once for every fee line (851 times for two
+     *  sessions, about 4 s on live data, every page of a postgraduate, CCE or MBBS student) */
     List<String> sessionsWithChargesFor(UUID student) {
         return jdbc.sql("""
-                SELECT x.session FROM (SELECT DISTINCT session FROM finance.fee_schedule WHERE ended_at IS NULL) x
-                 WHERE finance.fee_stated(:s, x.session) ORDER BY x.session DESC
+                WITH x AS MATERIALIZED (SELECT DISTINCT session FROM finance.fee_schedule WHERE ended_at IS NULL)
+                SELECT x.session FROM x WHERE finance.fee_stated(:s, x.session) ORDER BY x.session DESC
                 """).param("s", student).query(String.class).list();
     }
 
@@ -1267,6 +1269,17 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT registration.gst_gate(:s, :ses, :c)").param("s", student).param("ses", session).param("c", course).query(String.class).optional().orElse(null);
     }
 
+    /** V767: the GST gate of several courses in one call (registration.gst_gate_many: each course's answer is registration.gst_gate's
+     *  for it, the student's entitlement and payable courses worked out once, not once a course); a course with no hold maps to null */
+    Map<String, String> gstGates(UUID student, String session, java.util.Collection<String> courses) {
+        Map<String, String> out = new java.util.HashMap<>();
+        if (courses.isEmpty()) return out;
+        jdbc.sql("SELECT g.course_code, g.message FROM registration.gst_gate_many(:s, :ses, CAST(:codes AS text[])) g")
+                .param("codes", courses.toArray(String[]::new), java.sql.Types.ARRAY).param("s", student).param("ses", session)
+                .query().listOfRows().forEach(r -> out.put(String.valueOf(r.get("course_code")), (String) r.get("message")));
+        return out;
+    }
+
     List<Map<String, Object>> gstReferences(UUID student) {
         return jdbc.sql("""
                 SELECT r.reference, r.receipt_no, r.amount, r.session, r.purpose, r.generated_at, r.expires_at, r.confirmed_at, r.channel
@@ -1293,9 +1306,13 @@ class StudentPortalRepository {
                 """).param("s", student).param("ses", session).query().listOfRows();
     }
 
-    /** V366: the student's whole GST/EPS answer for the session (finance.gst_eps_explain) — their requirement, its reasons, the courses */
-    Map<String, Object> gstExplain(UUID student, String session) {
-        return ng.edu.moaum.portal.shared.GstEpsExplain.read(jdbc, student, session);
+    /** V767: the requirement part of the student's GST/EPS answer alone — finance.gst_eps_explain's 'eligibility', the same to_jsonb of
+     *  finance.gst_eps_eligibility. The dashboard reads no more of the answer (it reads the entitlement and the courses on their own),
+     *  and the rest, worked out only to be dropped, was most of the dashboard's GST read */
+    Map<String, Object> gstEligibility(UUID student, String session) {
+        String text = jdbc.sql("SELECT (SELECT to_jsonb(e) FROM finance.gst_eps_eligibility(:s, :ses) e)::text")
+                .param("s", student).param("ses", session).query(String.class).optional().orElse(null);
+        return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     /** V643: the GST/EPS courses the registration page shows the student this session (finance.gst_payable_courses) — a student

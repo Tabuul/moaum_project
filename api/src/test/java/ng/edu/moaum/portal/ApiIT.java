@@ -89,6 +89,27 @@ class ApiIT {
         assertThat(waiting.keySet().stream().map(String::valueOf)).contains("t/users");
     }
 
+    /** V767: a student's and an applicant's screens show no queue, no bell and no staff record from iam/me (they draw their own
+     *  from their own record), and the portal asks it on every screen they open: none of it is read for them; who they are and
+     *  as what is said as before */
+    @Test
+    void aStudentOrAnApplicantIsToldWhoTheyAreWithoutTheUniversitysQueues() {
+        for (String office : List.of("student", "applicant")) {
+            UUID who = UUID.randomUUID();
+            ResponseEntity<Map> r = client.get().uri("/api/v1/iam/me")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + TestTokens.token(who, List.of(office)))
+                    .header("X-Active-Office", office)
+                    .retrieve().toEntity(Map.class);
+            assertThat(r.getStatusCode().value()).as(office + ": " + r.getBody()).isEqualTo(200);
+            assertThat(r.getBody().get("actorId")).isEqualTo(who.toString());
+            assertThat(r.getBody().get("activeOffice")).isEqualTo(office);
+            assertThat(r.getBody().get("offices")).isEqualTo(List.of(office));
+            assertThat(r.getBody().get("waiting")).as(office).isEqualTo(Map.of());
+            assertThat(r.getBody().get("name")).as(office).isNull();
+            assertThat(r.getBody().get("staffNumber")).as(office).isNull();
+        }
+    }
+
     @Test
     void anOfficeTheTokenDoesNotCarryIsRefusedBeforeAnyServiceRuns() {
         ResponseEntity<Map> r = client.get().uri("/api/v1/iam/me")

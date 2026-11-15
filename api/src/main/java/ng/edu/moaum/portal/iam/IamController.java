@@ -68,24 +68,43 @@ class IamController {
                 .map(a -> a.substring("OFFICE_".length()))
                 .toList());
         me.put("correlationId", AuditContextHolder.current().map(c -> c.correlationId().toString()).orElse(null));
-        try {
-            Person person = people.get(UUID.fromString(authentication.getName()));
-            me.put("name", person.surname() + ", " + person.givenNames());
-            me.put("staffNumber", person.staffNumber());
-        } catch (RuntimeException noPerson) {
+        /* V767: a student's or an applicant's screens draw their own name, number and menu from their own record, show none of the
+         * University's queues, and the portal asks this on every screen they open: the staff record and the University's queues
+         * (WaitingRepository.waiting, a count over the whole register) are not read for them. A student keeps the bell — their own
+         * unread notices on s/notifications, read for them alone — which the screens that hand this answer to the shell show */
+        boolean studentOffice = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()));
+        boolean ownPortal = studentOffice || authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_applicant".equals(a.getAuthority()));
+        if (ownPortal) {
             me.put("name", null);
             me.put("staffNumber", null);
+            Map<String, String> bell = new LinkedHashMap<>();
+            if (studentOffice) {
+                try {
+                    waiting.unread(bell, UUID.fromString(authentication.getName()), true);
+                } catch (RuntimeException notCounted) {
+                    // the bell is a convenience: a count that cannot be read never fails the sign-in
+                }
+            }
+            me.put("waiting", bell);
+        } else {
+            try {
+                Person person = people.get(UUID.fromString(authentication.getName()));
+                me.put("name", person.surname() + ", " + person.givenNames());
+                me.put("staffNumber", person.staffNumber());
+            } catch (RuntimeException noPerson) {
+                me.put("name", null);
+                me.put("staffNumber", null);
+            }
+            /* what waits in each queue, by menu item: the menu draws these, and nothing invented; V425: and the bell — the
+             * signed-in person's unread portal notices, on the item that opens them */
+            Map<String, String> queues = new LinkedHashMap<>(waiting.waiting());
+            try {
+                waiting.unread(queues, UUID.fromString(authentication.getName()), false);
+            } catch (RuntimeException notCounted) {
+                // the bell is a convenience: a count that cannot be read never fails the sign-in
+            }
+            me.put("waiting", queues);
         }
-        /* what waits in each queue, by menu item: the menu draws these, and nothing invented; V425: and the bell — the
-         * signed-in person's (or student's) unread portal notices, on the item that opens them */
-        Map<String, String> queues = new LinkedHashMap<>(waiting.waiting());
-        try {
-            boolean student = authentication.getAuthorities().stream().anyMatch(a -> "OFFICE_student".equals(a.getAuthority()));
-            waiting.unread(queues, UUID.fromString(authentication.getName()), student);
-        } catch (RuntimeException notCounted) {
-            // the bell is a convenience: a count that cannot be read never fails the sign-in
-        }
-        me.put("waiting", queues);
         /* V430: "how do we reach you" — asked on the first screen while the portal holds no usable e-mail or phone for the
          * person (a student's own contact, a staff member's record), unless they put it off in the last seven days */
         try {

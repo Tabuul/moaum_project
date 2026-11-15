@@ -1,0 +1,17 @@
+student|GET /api/v1/iam/session
+student|GET /api/v1/iam/me
+student|GET /api/v1/me
+student|GET /api/v1/me/biodata/completion
+student|GET /api/v1/manual/context?route=s/dashboard
+student|GET /api/v1/me/biodata-status
+student|GET /api/v1/me/outstanding-fees
+student|GET /api/v1/me/gst?session={session}
+student|GET /api/v1/me/transfer
+student|GET /api/v1/me/fees?session={session}
+student|GET /api/v1/me/historical-fees
+student|GET /api/v1/me/registration?session={session}&semester=1
+student|GET /api/v1/me/results
+student|GET /api/v1/me/courses
+applicant|GET /api/v1/iam/me
+applicant|GET /api/v1/applicant/me
+applicant|GET /api/v1/applicant/me/admission

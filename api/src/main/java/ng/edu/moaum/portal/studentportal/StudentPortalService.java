@@ -892,9 +892,13 @@ public class StudentPortalService {
         out.put("siwes", siwes != null);
         // V314: a GST/EPS course on the menu says whether the GST fee locks it, and why
         List<Map<String, Object>> menu = repo.menu(id, session, semester);
+        // V767: the gate of every GST/EPS course on the menu asked in one call, not once a course
+        Map<String, String> gates = repo.gstGates(id, session, menu.stream()
+                .filter(m -> "GST".equals(m.get("kind")) || "GST".equals(m.get("basis")))
+                .map(m -> String.valueOf(m.get("course_code"))).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)));
         for (Map<String, Object> m : menu) {
             if ("GST".equals(m.get("kind")) || "GST".equals(m.get("basis"))) {
-                String gate = repo.gstGate(id, session, String.valueOf(m.get("course_code")));
+                String gate = gates.get(String.valueOf(m.get("course_code")));
                 m.put("gstLocked", gate != null);
                 m.put("gstGate", gate);
             }
@@ -978,7 +982,7 @@ public class StudentPortalService {
     public Map<String, Object> gst(UUID id, String session) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("session", session);
-        out.put("eligibility", repo.gstExplain(id, session).get("eligibility"));
+        out.put("eligibility", repo.gstEligibility(id, session));   // V767: the answer's requirement alone, not the whole answer
         out.put("entitlement", repo.gstEntitlement(id, session));
         // V643: the GST/EPS courses the registration page shows — the fee is paid for them though not yet owed
         out.put("payable", repo.gstPayable(id, session));
@@ -1078,12 +1082,17 @@ public class StudentPortalService {
         out.put("page", p);
         out.put("size", COURSE_PAGE);
         out.put("total", rows.isEmpty() ? 0 : ((Number) rows.get(0).get("total")).longValue());
+        // V767: the gate of every GST/EPS course of the page that the student could add, asked in one call
+        java.util.function.Predicate<Map<String, Object>> addableGst = r -> "GST".equals(r.get("kind")) && r.get("refusal") == null
+                && !Boolean.TRUE.equals(r.get("on_registration"));
+        Map<String, String> gates = repo.gstGates(id, session, rows.stream().filter(addableGst)
+                .map(r -> String.valueOf(r.get("course_code"))).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)));
         out.put("results", rows.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>(r);
             m.remove("total");
             // V512: a GST/EPS course the student could add is held while the GST fee they owe is not paid — said before they click
-            if ("GST".equals(m.get("kind")) && m.get("refusal") == null && !Boolean.TRUE.equals(m.get("on_registration"))) {
-                String gate = repo.gstGate(id, session, String.valueOf(m.get("course_code")));
+            if (addableGst.test(m)) {
+                String gate = gates.get(String.valueOf(m.get("course_code")));
                 if (gate != null) m.put("gstHeld", gate);
             }
             return m;

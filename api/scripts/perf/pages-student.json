@@ -1,0 +1,199 @@
+{
+ "dashboard": {
+  "weight": 15,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/biodata-status"
+   ],
+   [
+    "GET /api/v1/me/outstanding-fees"
+   ],
+   [
+    "GET /api/v1/me/gst?session={session}",
+    "GET /api/v1/me/transfer"
+   ],
+   [
+    "GET /api/v1/me/study-session",
+    "GET /api/v1/me/biodata",
+    "GET /api/v1/manual/context?route=s/dashboard"
+   ]
+  ]
+ },
+ "dashboard_via_root": {
+  "weight": 15,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/ref/sessions"
+   ],
+   [
+    "GET /api/v1/me"
+   ],
+   [
+    "GET /api/v1/iam/session"
+   ],
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/biodata-status"
+   ],
+   [
+    "GET /api/v1/me/outstanding-fees"
+   ],
+   [
+    "GET /api/v1/me/gst?session={session}",
+    "GET /api/v1/me/transfer"
+   ],
+   [
+    "GET /api/v1/me/study-session",
+    "GET /api/v1/me/biodata",
+    "GET /api/v1/manual/context?route=s/dashboard"
+   ]
+  ]
+ },
+ "fees": {
+  "weight": 20,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/fees?session={session}",
+    "GET /api/v1/me/payment-corrections",
+    "GET /api/v1/me/historical-fees",
+    "GET /api/v1/me/payment-archives",
+    "GET /api/v1/me/outstanding-fees"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/fees"
+   ]
+  ]
+ },
+ "register": {
+  "weight": 15,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/registration?session={session}&semester=1"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/register"
+   ]
+  ]
+ },
+ "results": {
+  "weight": 10,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/results"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/results"
+   ]
+  ]
+ },
+ "courses": {
+  "weight": 6,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/courses",
+    "GET /api/v1/me/registration-history"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/courses"
+   ]
+  ]
+ },
+ "exams": {
+  "weight": 5,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/docket",
+    "GET /api/v1/me/exam-card?session={session}",
+    "GET /api/v1/me/gst-eps-permit",
+    "GET /api/v1/me/registration?session={session}&semester=1"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/exams"
+   ]
+  ]
+ },
+ "profile": {
+  "weight": 4,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/record-views"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/profile"
+   ]
+  ]
+ },
+ "notifications": {
+  "weight": 4,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/notifications?limit=100",
+    "GET /api/v1/me/notifications/preferences"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/notifications"
+   ]
+  ]
+ },
+ "timetable": {
+  "weight": 3,
+  "stages": [
+   [
+    "GET /api/v1/iam/me",
+    "GET /api/v1/me",
+    "GET /api/v1/me/biodata/completion"
+   ],
+   [
+    "GET /api/v1/me/timetable"
+   ],
+   [
+    "GET /api/v1/manual/context?route=s/timetable"
+   ]
+  ]
+ }
+}

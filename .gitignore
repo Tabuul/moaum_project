@@ -11,3 +11,9 @@ proto/_hooks.html
 # MOAUM_FIXTURES at them locally instead.
 fixtures/
 *.xlsx
+
+# the perf replay's people and measurements (taken from a copy of the live data: never committed)
+api/scripts/perf/students.txt
+api/scripts/perf/applicants.txt
+api/scripts/perf/*-run.json
+api/scripts/perf/*-run.txt
