@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import { parseStatement, verifyPathFor, type DocumentFull } from "@/lib/documents";
-import { documentPdf, originOf } from "@/lib/document-pdf";
+import { documentPdf } from "@/lib/document-pdf";
+import { publicOrigin } from "@/lib/public-origin";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 
@@ -16,6 +17,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const d = r.data;
   const s = parseStatement(d.statement);
   if (!s) return NextResponse.json({ status: 500, title: "The document's statement could not be read" }, { status: 500 });
-  const bytes = documentPdf(s, d.template, `${originOf(request)}${verifyPathFor(d.verification_code)}`, d.verification_code, d.status);
+  const bytes = documentPdf(s, d.template, `${publicOrigin(request)}${verifyPathFor(d.verification_code)}`, d.verification_code, d.status);
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${(d.number ?? d.verification_code).replace(/[\/\s]/g, "-")}.pdf"`, "cache-control": "private, no-store" } });
 }

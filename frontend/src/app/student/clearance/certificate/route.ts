@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { clearanceVerifyPath } from "@/lib/clearance";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
@@ -9,12 +10,6 @@ export const dynamic = "force-dynamic";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 const clean = (s: unknown) => String(s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 interface Certificate {
   reference: string; workflow_label: string; session: string; completed_at: string; surname: string; other_names: string; matric_no: string | null;
@@ -58,7 +53,7 @@ export async function GET(request: Request) {
   }
   y -= 10;
   y = p.paragraph(L, y, `This certifies that every office of the University required for the ${clean(v.workflow_label).toLowerCase()} of the student named has cleared them on the University's record. It does not of itself confer a degree: graduation remains with Senate.`, A4.w - 2 * L - 110, 9.5);
-  const { size, dark } = qrMatrix(`${originOf(request)}${clearanceVerifyPath(v.reference, v.verify_code)}`);
+  const { size, dark } = qrMatrix(`${publicOrigin(request)}${clearanceVerifyPath(v.reference, v.verify_code)}`);
   const side = 92, cell = side / size, qx = A4.w - L - side, qy = 84;
   for (let r = 0; r < size; r++) for (let col = 0; col < size; col++) if (dark[r * size + col]) p.fill(qx + col * cell, qy + (size - 1 - r) * cell, cell, cell, 0);
   p.text(qx - 4, qy - 10, "Scan to verify", 7, false, [0.4, 0.4, 0.4]);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import { A4, jpegSize, type Image } from "@/lib/pdf-write";
 import { loadInstitution } from "@/lib/document/institution-server";
@@ -13,13 +14,6 @@ import { classificationWord, permitSections, permitSemesterName, permitSummary, 
 import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
-
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 /** the examination card's instructions and regulations, in the permit's own words */
 const forPermit = (t: string) => t.replace(/(the|[Yy]our) examination card/g, "$1 permit").replace(/this card/g, "this permit");
@@ -130,7 +124,7 @@ export async function GET(request: NextRequest) {
   // signed check code. The QR and the lines beside it stay clear of the permit's own line (58) and the document's footer under it:
   // the rules are made smaller where the papers leave too little room, and go to a second page where even that is not enough — the
   // QR staying on the first, under the papers — never printed over the QR or the footers ──
-  const url = originOf(request) + permitVerifyPath(v.permit.reference, v.checkCode);
+  const url = publicOrigin(request) + permitVerifyPath(v.permit.reference, v.checkCode);
   const verifyFloor = 68 + cardVerifyDepth(url, 1);
   const pages = [p];
   let vy = cardRulesFit(p, y, INSTRUCTIONS, REGULATIONS, verifyFloor + 14);

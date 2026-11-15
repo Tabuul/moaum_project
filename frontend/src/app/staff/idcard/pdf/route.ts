@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { api, API_URL } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import { jpegSize, type Image } from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
     } catch { /* the blank frame */ }
   }
 
-  const page = staffCardPage(card, photo, crestImage(), await cardSignatory(), new URL(req.url).origin);
+  const page = staffCardPage(card, photo, crestImage(), await cardSignatory(), publicOrigin(req));
   if (!page) return NextResponse.json({ status: 409, title: "No staff number" }, { status: 409 });
   const staffNo = card.face.staff_number;
   const bytes = finishPdf([page], `Staff identity card ${staffNo}`, "ID_CARD");

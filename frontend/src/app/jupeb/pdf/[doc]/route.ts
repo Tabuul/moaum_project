@@ -3,6 +3,7 @@ import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import { jpegSize } from "@/lib/pdf-write";
 import { qrMatrix } from "@/lib/qr";
+import { publicOrigin } from "@/lib/public-origin";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument, type DocumentMeta } from "@/lib/document/pdf";
 import { formatDocDate } from "@/lib/document/institution";
@@ -224,9 +225,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     if (issued.ok) code = issued.data.code;
   }
   if (code) {
-    const h = req.headers;
-    const host = h.get("x-forwarded-host") ?? h.get("host");
-    const origin = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : url.origin;
+    const origin = publicOrigin(req);
     pdf.space(6);
     pdf.qr(qrMatrix(`${origin}/verify/jupeb/${code}`), `Verify at ${origin}/verify/jupeb with the code ${code}`, 64);
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { api, API_URL } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import { A4, Page, jpegSize, type Image } from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
   p.textCenter(A4.w / 2, frontTop - H - 18, "FRONT", 7, true, C.foot);
   const backTop = frontTop - H - 44;
   drawBack(p, x0, backTop - H, W, H, {
-    kind: "student", barcode: matric, serial: s.card_no, qr: `${new URL(req.url).origin}${s.verify_path}`,
+    kind: "student", barcode: matric, serial: s.card_no, qr: `${publicOrigin(req)}${s.verify_path}`,
     aside: ["In an emergency", s.reach_phone ? clean(s.reach_phone) : "—"], signatory,
   }, crest);
   p.textCenter(A4.w / 2, backTop - H - 18, "BACK", 7, true, C.foot);

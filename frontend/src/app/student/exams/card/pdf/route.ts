@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import type { Me, Docket } from "@/lib/student-portal";
 import type { ExamCardState } from "@/lib/exam-card";
@@ -14,13 +15,6 @@ import { finishPdf } from "@/lib/document/pdf";
 import { shownCode } from "@/lib/course-code";
 
 export const dynamic = "force-dynamic";
-
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 /** the examination card as a PDF: the courses to sit, the student's photograph, and a QR that
  *  opens the public verification page — so it cannot be cloned, and the face is checked at the hall */
@@ -88,7 +82,7 @@ export async function GET(request: NextRequest) {
   // V589: the API's own refusal is shown as it is (the card's rule, or a read-only support view), never a bare "try again"
   const check = await studentCheckCodeResult("EXAM", session, semester);
   if (!check.ok) return NextResponse.json(check.problem, { status: check.problem.status || 503 });
-  const url = originOf(request) + examVerifyPath(check.number, session, semester, check.code);
+  const url = publicOrigin(request) + examVerifyPath(check.number, session, semester, check.code);
 
   // ── instructions and examination regulations, two compact columns, then the QR with the card's line beside it — clear of the
   // document's footer (its rule at 46): the rules are made smaller where the papers leave too little room, and go to a second page

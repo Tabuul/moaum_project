@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { clearanceVerifyPath } from "@/lib/clearance";
 import { A4, Page, pdf } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
@@ -11,12 +12,6 @@ export const dynamic = "force-dynamic";
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 const clean = (s: unknown) => String(s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
 const ngn = (n: unknown) => `NGN ${Number(n ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 /** V654: the financial clearance certificate of a graduate whose final clearance's Bursary stage is cleared — read from the
  *  historical account (the API checks the office), with the clearance's QR to the University's public check */
@@ -53,7 +48,7 @@ export async function GET(request: Request) {
   }
   y -= 10;
   p.paragraph(L, y, "This certifies that the student named has no outstanding school-fee obligation to the University on the historical account of the sessions of their record, assessed at the University's fees for each session and level or by an assessment the Bursar approved, against the payments confirmed for each session. It does not of itself confer a degree: graduation remains with Senate.", A4.w - 2 * L - 110, 9.5);
-  const { size, dark } = qrMatrix(`${originOf(request)}${clearanceVerifyPath(c.reference, c.verify_code)}`);
+  const { size, dark } = qrMatrix(`${publicOrigin(request)}${clearanceVerifyPath(c.reference, c.verify_code)}`);
   const side = 92, cell = side / size, qx = A4.w - L - side, qy = 84;
   for (let rr = 0; rr < size; rr++) for (let col = 0; col < size; col++) if (dark[rr * size + col]) p.fill(qx + col * cell, qy + (size - 1 - rr) * cell, cell, cell, 0);
   p.text(qx - 4, qy - 10, "Scan to verify", 7, false, [0.4, 0.4, 0.4]);

@@ -3,6 +3,7 @@ import { api, API_URL } from "@/lib/api";
 import { sessionToken } from "@/lib/session";
 import { jpegSize } from "@/lib/pdf-write";
 import { qrMatrix } from "@/lib/qr";
+import { publicOrigin } from "@/lib/public-origin";
 import { loadInstitution } from "@/lib/document/institution-server";
 import { PdfDocument, type DocumentMeta } from "@/lib/document/pdf";
 import { formatDocDate, formatDocDateTime } from "@/lib/document/institution";
@@ -165,7 +166,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ doc: str
     conditions.forEach((t, i) => pdf.paragraph(`${i + 1}. ${t}`));
     pdf.paragraph("Congratulations.");
     pdf.signatures([{ designation: "Registrar" }]);
-    pdf.qr(qrMatrix(`${url.origin}${letter.verifyPath}`), `Document ${letter.number} · version ${letter.version} · verification code ${letter.verification_code}`);
+    pdf.qr(qrMatrix(`${publicOrigin(req)}${letter.verifyPath}`),`Document ${letter.number} · version ${letter.version} · verification code ${letter.verification_code}`);
     file = `${slug}-admission-letter-${appNo.replace(/\//g, "-")}`;
   } else {
     return refuse("No such paper.", 404);

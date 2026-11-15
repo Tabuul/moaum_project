@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import type { ScreeningView } from "@/lib/screening";
 import { buildScreeningForms, type IssuedForms } from "@/lib/screening-forms-build";
 
@@ -15,6 +16,6 @@ export async function GET(req: Request) {
   if (!v.data.form) {
     return NextResponse.json({ status: 409, title: "No screening yet", detail: "The forms are generated once the University's screening is successful." }, { status: 409 });
   }
-  const { bytes, file } = buildScreeningForms(v.data, doc.data, url.origin);
+  const { bytes, file } = buildScreeningForms(v.data, doc.data, publicOrigin(req));
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `${download ? "attachment" : "inline"}; filename="${file}"` } });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_URL } from "@/lib/api";
 import { OFFICE_COOKIE } from "@/lib/offices";
+import { publicOrigin } from "@/lib/public-origin";
 import { SESSION_COOKIE, cookieOptions, sessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -11,17 +12,11 @@ export const dynamic = "force-dynamic";
  * the applicant's own, the cookies switch sides, and the browser lands where
  * it was going (school fees, registration). While the applicant is not yet on
  * the register, they are sent back to Admission Progress, which says so.
+ * Every redirect names the portal's public address (lib/public-origin): behind Railway the request's own URL names the bind
+ * address ([::]:8080), on AWS the task's private name, never the site.
  */
-/** the public origin, honouring the proxy: behind Railway the request's own URL names the bind address ([::]:8080), not the site */
-function originOf(request: NextRequest): string {
-  const h = request.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : request.nextUrl.origin; } catch { return request.nextUrl.origin; }
-}
-
 export async function GET(request: NextRequest) {
-  const origin = originOf(request);
+  const origin = publicOrigin(request);
   const nextParam = request.nextUrl.searchParams.get("next") ?? "/student/fees";
   const next = /^\/student(\/|$)/.test(nextParam) ? nextParam : "/student/fees";
   const token = await sessionToken();

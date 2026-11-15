@@ -214,10 +214,3 @@ export function transcriptPdf(s: Statement, t: Template | null, verifyUrl: strin
 export function documentPdf(s: Statement, t: Template | null, verifyUrl: string, verificationCode: string, status = "ACTIVE"): Uint8Array {
   return s.kind === "DEGREE_CERTIFICATE" ? certificatePdf({ ...s, ...({ verificationCode } as object) }, t, verifyUrl, status) : transcriptPdf(s, t, verifyUrl, verificationCode, status);
 }
-
-export function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import type { DefermentFull } from "@/lib/deferments";
 import { defermentLetter } from "@/lib/deferment-letter";
 
@@ -13,6 +14,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!["APPROVED", "ACTIVE", "COMPLETED"].includes(r.data.state)) {
     return NextResponse.json({ status: 409, title: "The letter is issued once the deferment is approved." }, { status: 409 });
   }
-  const bytes = defermentLetter(r.data, `${new URL(req.url).origin}/verify/deferment/${encodeURIComponent(r.data.reference)}?c=${encodeURIComponent(r.data.verify_code ?? "")}`);
+  const bytes = defermentLetter(r.data, `${publicOrigin(req)}/verify/deferment/${encodeURIComponent(r.data.reference)}?c=${encodeURIComponent(r.data.verify_code ?? "")}`);
   return new NextResponse(Buffer.from(bytes), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${r.data.reference}.pdf"` } });
 }

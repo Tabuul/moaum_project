@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Receipt } from "@/lib/student-portal";
-import { originOf } from "@/lib/receipt-pdf";
+import { publicOrigin } from "@/lib/public-origin";
 import { qrDataUrl, verifyPath } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!r.ok) return NextResponse.json(r.problem, { status: r.problem.status });
   let qr: string | null = null, verifyUrl: string | null = null;
   if (r.data.checkCode) {
-    verifyUrl = originOf(req) + verifyPath(r.data.reference, r.data.checkCode);
+    verifyUrl = publicOrigin(req) + verifyPath(r.data.reference, r.data.checkCode);
     qr = await qrDataUrl(verifyUrl);
   }
   return NextResponse.json({ receipt: r.data, qr, verifyUrl, token: r.data.checkCode ?? null }, { headers: { "cache-control": "no-store" } });

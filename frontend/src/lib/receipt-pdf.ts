@@ -3,14 +3,7 @@ import { A4, Page, jpegSize } from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 import { qrMatrix, verifyPath } from "@/lib/qr";
 import { finishPdf } from "@/lib/document/pdf";
-
-/** the public origin, honouring the proxy so the QR opens a real address */
-export function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
+import { publicOrigin } from "@/lib/public-origin";
 
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 const naira = (n: number | string) => `NGN ${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
@@ -77,7 +70,7 @@ export function receiptPdf(req: Request, x: Receipt, photo: { width: number; hei
   // ── verify: a QR to the public verification page, drawn as module squares ──
   // V360: the check code the API signed for this receipt
   const token = x.checkCode ?? "";
-  const url = originOf(req) + verifyPath(x.reference, token);
+  const url = publicOrigin(req) + verifyPath(x.reference, token);
   const { size, dark } = qrMatrix(url);
   const cell = 2.7;
   const qDim = size * cell;

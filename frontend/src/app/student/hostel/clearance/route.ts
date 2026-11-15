@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import type { StudentHostelFull } from "@/lib/hostel";
 import { hostelVerifyPath } from "@/lib/hostel";
 import { A4, Page, pdf } from "@/lib/pdf-write";
@@ -10,12 +11,6 @@ export const dynamic = "force-dynamic";
 
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "—");
 const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 /** the hostel clearance certificate as a PDF (V261): issued once every requirement is cleared, waived or not applicable */
 export async function GET(request: Request) {
@@ -53,7 +48,7 @@ export async function GET(request: Request) {
   }
   y -= 10;
   y = p.paragraph(L, y, "This certifies that the student named has returned the bed space above, that the room, bed and assets were inspected, keys and access card returned, and that no hostel obligation is outstanding for the session. The hostel unit of the graduation clearance is signed on this record.", A4.w - 2 * L - 110, 9.5);
-  const { size, dark } = qrMatrix(`${originOf(request)}${hostelVerifyPath(v.allocation_ref ?? "", h.data.verifyCode)}`);
+  const { size, dark } = qrMatrix(`${publicOrigin(request)}${hostelVerifyPath(v.allocation_ref ?? "", h.data.verifyCode)}`);
   const side = 92, cell = side / size, qx = A4.w - L - side, qy = 84;
   for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (dark[r * size + c]) p.fill(qx + c * cell, qy + (size - 1 - r) * cell, cell, cell, 0);
   p.text(qx - 4, qy - 10, "Scan to verify", 7, false, [0.4, 0.4, 0.4]);

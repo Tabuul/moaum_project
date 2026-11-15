@@ -113,18 +113,9 @@ export class Page {
     return this.textStyled(cx - w / 2, y, s, size, o);
   }
 
-  /** a paragraph in a styled font, wrapped by an approximate width; returns the y under it */
+  /** a paragraph in a styled font, wrapped by an approximate width (styledLines); returns the y under it */
   paragraphStyled(x: number, y: number, s: string, width: number, size: number, o: { font?: "F1" | "F2" | "F3" | "F4" | "F5"; colour?: [number, number, number] } = {}, lead = 1.4): number {
-    const bold = o.font === "F2" || o.font === "F3" || o.font === "F5";
-    const per = size * (bold ? 0.52 : 0.47);
-    const max = Math.max(8, Math.floor(width / per));
-    const words = s.split(/\s+/);
-    let line = "";
-    for (const w of words) {
-      const next = line ? `${line} ${w}` : w;
-      if (next.length > max && line) { this.textStyled(x, y, line, size, o); y -= size * lead; line = w; } else line = next;
-    }
-    if (line) { this.textStyled(x, y, line, size, o); y -= size * lead; }
+    for (const line of styledLines(s, width, size, o.font)) { this.textStyled(x, y, line, size, o); y -= size * lead; }
     return y;
   }
 
@@ -244,6 +235,22 @@ const HELVETICA_BOLD = [
   333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
   611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
 ];
+
+/** the lines paragraphStyled sets a paragraph in: words joined while a line holds no more characters than the width allows at the
+ *  face's average width (Times and the bold faces approximated), a word longer than that on a line of its own — for a document that
+ *  places a paragraph's lines one by one (the admission letter's notes, which may go on to a second page) */
+export function styledLines(s: string, width: number, size: number, font?: "F1" | "F2" | "F3" | "F4" | "F5"): string[] {
+  const bold = font === "F2" || font === "F3" || font === "F5";
+  const max = Math.max(8, Math.floor(width / (size * (bold ? 0.52 : 0.47))));
+  const lines: string[] = [];
+  let line = "";
+  for (const w of s.split(/\s+/)) {
+    const next = line ? `${line} ${w}` : w;
+    if (next.length > max && line) { lines.push(line); line = w; } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 /** the width in points of a string set in Helvetica (or Helvetica-Bold) at a size — the characters as escapePdf
  *  writes them: curly quotes as straight ones, dashes as hyphens, the ellipsis as three stops, the naira as "NGN " */

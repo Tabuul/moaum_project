@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import {A4, Page} from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
 import { qrMatrix } from "@/lib/qr";
+import { publicOrigin } from "@/lib/public-origin";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 import { finishPdf } from "@/lib/document/pdf";
@@ -78,9 +79,8 @@ export async function pgOfferResponse(req: Request, path: string): Promise<NextR
   p.text(L, y, "Secretary, Postgraduate School", 9.5, false, [0.35, 0.35, 0.35]);
 
   // the verification QR (V286): the public verifier of this offer, by the application number and its code — V360: signed by the API
-  const origin = (() => { const h = req.headers; const host = h.get("x-forwarded-host") ?? h.get("host"); const proto = h.get("x-forwarded-proto") ?? "https"; try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; } })();
   const code = s.offerCode ?? "";
-  const verifyUrl = `${origin}/verify/pg-offer/${encodeURIComponent(s.applicationNo)}?t=${code}`;
+  const verifyUrl = `${publicOrigin(req)}/verify/pg-offer/${encodeURIComponent(s.applicationNo)}?t=${code}`;
   const { size, dark } = qrMatrix(verifyUrl);
   const cell = 1.7, qDim = size * cell, qx = A4.w - L - qDim, qy = y + 6;
   for (let rr = 0; rr < size; rr++) for (let cc = 0; cc < size; cc++) if (dark[rr * size + cc]) p.fill(qx + cc * cell, qy + qDim - (rr + 1) * cell, cell, cell, 0);

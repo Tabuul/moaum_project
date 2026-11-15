@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { deflateSync } from "node:zlib";
 import { cookies } from "next/headers";
 import { api, API_URL } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import { jpegSize, type Image, type Page } from "@/lib/pdf-write";
 import { crestImage } from "@/lib/pdf-crest";
@@ -54,8 +55,9 @@ export async function GET(req: Request) {
   const crest = crestImage();
   const signatory = await cardSignatory();
   const pages: Page[] = [];
+  const origin = publicOrigin(req);
   for (const c of cards) {
-    const p = staffCardPage(c, photos.get(c.person_id) ?? null, crest, signatory, url.origin);
+    const p = staffCardPage(c, photos.get(c.person_id) ?? null, crest, signatory, origin);
     if (p) pages.push(p);
   }
   const what = url.searchParams.get("unit") ? `unit ${url.searchParams.get("unit")}` : url.searchParams.get("faculty") ? `faculty ${url.searchParams.get("faculty")}` : "all";

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import { putmeVerifyPath, reportingTime, type Application } from "@/lib/applicant";
 import { A4, Page, jpegSize, pdf } from "@/lib/pdf-write";
@@ -11,13 +12,6 @@ export const dynamic = "force-dynamic";
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const clock = (t: string) => String(t).slice(0, 5);
 const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
-
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 /** the examination slip as a PDF (V260): the crest, the same facts as the screen, the photograph on file, and the QR the door scans */
 export async function GET(request: Request) {
@@ -73,7 +67,7 @@ export async function GET(request: Request) {
 
   /* the QR, bottom right of the facts: the door scans it and the portal answers with the record */
   if (slip.token) {
-    const { size, dark } = qrMatrix(`${originOf(request)}${putmeVerifyPath(slip.token)}`);
+    const { size, dark } = qrMatrix(`${publicOrigin(request)}${putmeVerifyPath(slip.token)}`);
     const side = 92, cell = side / size, qx = A4.w - L - side, qy = y + 6;
     for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (dark[r * size + c]) p.fill(qx + c * cell, qy + (size - 1 - r) * cell, cell, cell, 0);
     p.text(qx - 2, qy - 10, "Scan to verify at the door", 7, false, [0.4, 0.4, 0.4]);

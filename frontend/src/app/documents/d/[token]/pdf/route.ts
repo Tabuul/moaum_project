@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import { verifyPathFor, type Statement, type Template } from "@/lib/documents";
-import { documentPdf, originOf } from "@/lib/document-pdf";
+import { documentPdf } from "@/lib/document-pdf";
+import { publicOrigin } from "@/lib/public-origin";
 
 import { loadInstitution } from "@/lib/document/institution-server";
 
@@ -17,6 +18,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   const c = JSON.parse(r.data.result) as { ok: boolean; why?: string; statement?: Statement; code?: string; number?: string };
   if (!c.ok || !c.statement) return NextResponse.json({ status: 410, title: `This link is ${(c.why ?? "not valid").toLowerCase()}` }, { status: 410 });
   const tpl = r.data.template ? (JSON.parse(r.data.template) as Template) : null;
-  const bytes = documentPdf(c.statement, tpl, `${originOf(request)}${verifyPathFor(c.code ?? "")}`, c.code ?? "", "ACTIVE");
+  const bytes = documentPdf(c.statement, tpl, `${publicOrigin(request)}${verifyPathFor(c.code ?? "")}`, c.code ?? "", "ACTIVE");
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${(c.number ?? "document").replace(/[\/\s]/g, "-")}.pdf"`, "cache-control": "private, no-store" } });
 }

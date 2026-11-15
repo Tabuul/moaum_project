@@ -2,6 +2,7 @@ import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { api } from "@/lib/api";
 import { headers } from "next/headers";
+import { publicOriginOf } from "@/lib/public-origin";
 import { loadStudent } from "../../load";
 
 export const dynamic = "force-dynamic";
@@ -17,11 +18,7 @@ export default async function Page({ params }: { params: Promise<{ reference: st
   const r = await api<Receipt>(`/api/v1/me/fees/receipts/${encodeURIComponent(reference)}`);
   let qr: string | null = null, verifyUrl: string | null = null, token: string | null = null;
   if (r.ok && r.data.confirmed_at && r.data.checkCode) {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") ?? h.get("host");
-    const proto = h.get("x-forwarded-proto") ?? "https";
-    const origin = host ? `${proto}://${host}` : "";
-    verifyUrl = origin + verifyPath(r.data.reference, r.data.checkCode);
+    verifyUrl = publicOriginOf(await headers()) + verifyPath(r.data.reference, r.data.checkCode);
     token = r.data.checkCode;
     qr = await qrDataUrl(verifyUrl);
   }

@@ -93,6 +93,20 @@ The frontend task gets `PORTAL_API_URL=http://api:8081`, `HOSTNAME=0.0.0.0`,
 `PORT=3000`, `NODE_ENV=production`. In production the BFF forwards the signed-in
 user's token; `PORTAL_API_TOKEN` is a development fallback and is not set.
 
+The frontend container should also carry `MOAUM_PORTAL_URL`, set to the same
+`portal_url` as the API's (e.g. `https://portal.moaum.edu.ng`: a scheme and a
+host, no path). The frontend prints it in every verification link and QR code
+it draws: admission letters, identity cards, receipts, certificates and slips.
+It is read when each document is printed, and it is used before the request's
+`X-Forwarded-Host`/`Host` headers. Without it, the address depends on what
+CloudFront and the ALB forward. If CloudFront's origin request policy does not
+forward the viewer's `Host`, Next sees the origin's name instead, and a letter
+printed from the task's own address names
+`ip-10-….compute.internal:3000`. A value that is not an absolute `http(s)`
+origin is ignored. `ecs.tf` does not pass it to the frontend task yet. Add it
+to that container's `environment`, as the API's is, or set it on the live task
+definition.
+
 On Railway the same API reads one `DATABASE_URL`; `DatabaseUrlConfig` prefers it
 when present. Both shapes work; nothing in the code changed for AWS.
 

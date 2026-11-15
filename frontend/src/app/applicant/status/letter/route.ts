@@ -7,6 +7,7 @@ import { crestImage } from "@/lib/pdf-crest";
 import { signatureImageOf } from "@/lib/letter-signature";
 import { qrMatrix } from "@/lib/qr";
 import { isPrelimRoute } from "@/lib/preliminary";
+import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
 import { jpegSize, type Image } from "@/lib/pdf-write";
 
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const a = me.data;
   /* V446/V701: a preliminary or proficiency admission has its own letter — the programme, and the target only as an intended progression */
-  if (isPrelimRoute(a.route)) return NextResponse.redirect(new URL("/applicant/preliminary/pdf/letter", req.url));
+  if (isPrelimRoute(a.route)) return NextResponse.redirect(new URL("/applicant/preliminary/pdf/letter", publicOrigin(req)));
   if (!a.decisionReleasedAt || a.decision !== "OFFERED") {
     return NextResponse.json({ status: 409, title: "No offer to print", detail: "The letter is issued when the Admissions Board's offer is released." }, { status: 409 });
   }
@@ -57,7 +58,9 @@ export async function GET(req: Request) {
   if (!doc.ok) return NextResponse.json(doc.problem, { status: doc.problem.status });
   const letter = doc.data;
   const app = letter.application ?? { applicationNo: a.applicationNo, session: a.session, name: a.name, jambKey: a.jambKey, entryLevel: a.entryLevel, programme: a.programme, faculty: a.faculty, decision: a.decision, decisionReleasedAt: a.decisionReleasedAt, decisionBasis: a.decisionBasis, acceptedAt: a.acceptedAt };
-  // V759: the signature uploaded for the signatory the letter's template names comes with the letter; none, and the space is left
-  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, url.origin, { crest: crestImage(), signature: signatureImageOf(letter.signature), qr: qrMatrix(`${url.origin}${letter.verifyPath}`), passport: await passport(a) });
+  // V759: the signature uploaded for the signatory the letter's template names comes with the letter; none, and the space is left.
+  // The QR and the "verify at" line name the portal's public address, never the server's own (lib/public-origin)
+  const origin = publicOrigin(req);
+  const bytes = admissionLetterPdf({ ...app, result: a.result }, letter, origin, { crest: crestImage(), signature: signatureImageOf(letter.signature), qr: qrMatrix(`${origin}${letter.verifyPath}`), passport: await passport(a) });
   return new NextResponse(Buffer.from(bytes), { status: 200, headers: { "content-type": "application/pdf", "content-disposition": `${download ? "attachment" : "inline"}; filename="admission-letter-${a.applicationNo.replace(/\//g, "-")}.pdf"` } });
 }

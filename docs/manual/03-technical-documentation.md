@@ -1034,6 +1034,7 @@ Fixed observability settings: `management.endpoints.web.exposure.include=health,
 | `PORTAL_API_URL` | `http://localhost:8081` | where the API is; server-side only; on Railway `http://moaum-api.railway.internal:8081` (private network, IPv6 — hence `HOSTNAME="::"` in the image) |
 | `PORTAL_API_TOKEN` | empty | development only: a token minted with `dev-token.mjs`; used when there is no session cookie and `NODE_ENV !== "production"`; also lets `proxy.ts` through without a cookie in that case |
 | `PORTAL_ACTIVE_OFFICE` | `academic` in `.env.example` | development only: the office when no cookie names one |
+| `MOAUM_PORTAL_URL` | unset | the portal's public address (an absolute `http(s)` origin, no path; anything else is ignored), read at run time by `lib/public-origin.ts` for every verification link and QR the frontend prints, before the request's `X-Forwarded-Host`/`Host`; unset, the headers decide. Set it on AWS, the same value as the API's (`docs/aws-deployment.md` §3) |
 | `PORT` | `3000` (image) | listening port |
 | `HOSTNAME` | `::` (image) | bind both stacks |
 | `NODE_ENV` | `production` (image) | switches on `secure` cookies and switches off the development bypass |

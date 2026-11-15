@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/public-origin";
 import type { Results } from "@/lib/student-portal";
 import { isSummer, semesterName } from "@/lib/student-portal";
 import {A4, Page} from "@/lib/pdf-write";
@@ -20,12 +21,6 @@ const clean = (s: string | null | undefined) => (s ?? "").replace(/[\u00A0\u2007
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…".replace("…", "...") : s);
 const scoreOf = (c: { outcome: string | null; total: number | null | undefined }) =>
   c.outcome === "GRADED" ? (c.total == null ? "—" : String(c.total)) : (c.outcome ? c.outcome.charAt(0) + c.outcome.slice(1).toLowerCase() : "—");
-function originOf(req: Request): string {
-  const h = req.headers;
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  try { return host ? `${proto}://${host}` : new URL(req.url).origin; } catch { return new URL(req.url).origin; }
-}
 
 /** the statement of results as a PDF: one semester, the published grades and nothing else */
 export async function GET(request: Request, { params }: { params: Promise<{ session: string; semester: string }> }) {
@@ -143,7 +138,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ sess
   //    altered statement is exposed. The grades and GPA shown on scan come from the register, not this sheet.
   const check = await studentCheckCode("RESULT", session, semester);
   if (!check) return NextResponse.json({ status: 503, title: "The statement's check code could not be made", detail: "Try again in a moment." }, { status: 503 });
-  const verifyUrl = originOf(request) + resultVerifyPath(check.number, session, semester, check.code);
+  const verifyUrl = publicOrigin(request) + resultVerifyPath(check.number, session, semester, check.code);
   const code = check.code;
   const { size, dark } = qrMatrix(verifyUrl);
   const qDim = Math.min(size * 2.6, 96), cell = qDim / size, qx = L, qy = y;
