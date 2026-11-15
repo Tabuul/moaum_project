@@ -14,6 +14,7 @@ import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, zipStored, type Cell, type XlsxLogo } from "@/lib/xlsx-write";
+import { deFileName, deSheets, mergeDeTemplates, type DeTemplate } from "@/lib/de-template";
 import { buildXlsx, loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
@@ -128,6 +129,13 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
     return j as Template;
   }
+  /** V764: the Direct Entry template of one programme (or none, for every programme's rows) — GET …/de-template */
+  async function fetchDeTemplate(programme: string): Promise<DeTemplate | null> {
+    const r = await fetch(`${base}/de-template${programme ? `?programme=${encodeURIComponent(programme)}` : ""}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { setProblem(j ?? { status: r.status, title: r.statusText }); notifyProblem(j ?? { status: r.status, title: r.statusText }); return null; }
+    return j as DeTemplate;
+  }
   /** the whole session's summary (since 27 October 2026, beside a workbook of each programme's own): every programme's own template added up, so each count, quota and criterion is the programme's and the totals agree */
   function mergeTemplates(parts: Template[]): Template {
     const sum = (k: string) => parts.reduce<number | null>((a, p) => (p.summary[k] === null || p.summary[k] === undefined ? a : (a ?? 0) + Number(p.summary[k])), null);
@@ -230,7 +238,8 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     URL.revokeObjectURL(url);
   }
 
-  async function exportTemplate(programme: string) {
+  async function exportTemplate(programme: string, kind: string) {
+    if (kind === "DE") return exportDeTemplate(programme);
     setExporting(true);
     setExportProgress(null);
     setProblem(null);
@@ -273,6 +282,55 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       }
       save(zipStored(entries), `ADMISSION TEMPLATES EVERY PROGRAMME ${session}.zip`, "application/zip");
       notify(`${all.length} programme workbooks and the session's summary, in one ZIP`);
+    } finally {
+      setExporting(false);
+      setExportProgress(null);
+    }
+  }
+
+  /** V764: the Direct Entry list for JAMB — one programme's workbook, or every programme with a Direct Entry applicant, a workbook
+   *  each and the session's summary by programme, in one ZIP (three requests at a time, as the UTME list is built) */
+  async function exportDeTemplate(programme: string) {
+    setExporting(true);
+    setExportProgress(null);
+    setProblem(null);
+    try {
+      const logo = await loadCrest();
+      const book = (t: DeTemplate, summaryOnly = false) => xlsx(deSheets(t, summaryOnly), { logo: logo ?? undefined });
+      if (programme) {
+        const t = await fetchDeTemplate(programme);
+        if (!t) return;
+        save(book(t), deFileName(t), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return;
+      }
+      const names = dePrograms;
+      const parts: (DeTemplate | null)[] = new Array(names.length).fill(null);
+      let next = 0, done = 0, failed = false;
+      const worker = async () => {
+        while (!failed) {
+          const i = next++;
+          if (i >= names.length) return;
+          const p = await fetchDeTemplate(names[i]);
+          if (!p) { failed = true; return; }
+          parts[i] = p;
+          setExportProgress(`${++done} of ${names.length}`);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (failed) return;
+      const all = parts as DeTemplate[];
+      const merged = mergeDeTemplates(all, desk.session, new Date().toISOString().slice(0, 10));
+      const session = merged.session.replace("/", "-");
+      const used = new Set<string>();
+      const entries: [string, Uint8Array][] = [[`DE ADMISSION SUMMARY ALL PROGRAMMES ${session}.xlsx`, book(merged, true)]];
+      for (const t of all) {
+        let name = deFileName(t);
+        for (let k = 2; used.has(name); k++) name = deFileName(t).replace(/\.xlsx$/, ` (${k}).xlsx`);
+        used.add(name);
+        entries.push([name, book(t)]);
+      }
+      save(zipStored(entries), `DE ADMISSION TEMPLATES EVERY PROGRAMME ${session}.zip`, "application/zip");
+      notify(`${all.length} Direct Entry programme workbooks and the session's summary, in one ZIP`);
     } finally {
       setExporting(false);
       setExportProgress(null);
@@ -355,8 +413,11 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const rows = desk.applications;
   const feeUnset = !desk.fees?.stated || Number(desk.fees?.acceptanceFee) <= 0;
   const programmes = [...new Set(rows.map((r) => r.programme))].sort();
+  // V764: the programmes with a Direct Entry candidate on JAMB's list, for the Direct Entry template
+  const dePrograms = [...new Set(rows.filter((r) => r.entry_mode === "DIRECT_ENTRY").map((r) => r.programme))].sort();
   const stageOf = (n: number) => STAGES[Math.min(n, 9)][0];
   const val = (k: string, d = "") => (k in edits ? edits[k] : d);
+  const exportKind = val("exportKind", "UTME");
 
   return (
     <>
@@ -424,10 +485,15 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
 
       <Panel title="The list that goes back to JAMB" right="JAMB’s admission template, five sheets">
         <PBody>
-          <div className="sub2">Admission summary, merit list, other qualified and non-qualified cases, per programme.</div>
+          <div className="sub2">
+            Admission summary, merit list, other qualified and non-qualified cases, per programme — for the UTME list, or for Direct
+            Entry: every registered Direct Entry applicant, ranked by the points of their qualification (A-Level, IJMB and JUPEB before
+            ND, HND and NCE), qualified or not with the reasons.
+          </div>
           <div className="row mt-2">
-            <SearchSelect value={val("export", "")} onChange={(v) => setEdits({ ...edits, export: v })} allLabel="Every programme, a workbook each (ZIP)" placeholder="Every programme, a workbook each (ZIP)" options={programmes.map((p) => ({ value: p, label: p }))} />
-            <Btn kind="primary" disabled={exporting || !rows.length} onClick={() => void exportTemplate(val("export", ""))}>{exporting ? (exportProgress ? `Building ${exportProgress}…` : "Building…") : "Download for JAMB"}</Btn>
+            <SearchSelect value={exportKind} onChange={(v) => setEdits({ ...edits, exportKind: v || "UTME", export: "" })} options={[{ value: "UTME", label: "UTME list" }, { value: "DE", label: "Direct Entry list" }]} />
+            <SearchSelect value={val("export", "")} onChange={(v) => setEdits({ ...edits, export: v })} allLabel="Every programme, a workbook each (ZIP)" placeholder="Every programme, a workbook each (ZIP)" options={(exportKind === "DE" ? dePrograms : programmes).map((p) => ({ value: p, label: p }))} />
+            <Btn kind="primary" disabled={exporting || !rows.length || (exportKind === "DE" && !dePrograms.length)} onClick={() => void exportTemplate(val("export", ""), exportKind)}>{exporting ? (exportProgress ? `Building ${exportProgress}…` : "Building…") : "Download for JAMB"}</Btn>
           </div>
         </PBody>
       </Panel>

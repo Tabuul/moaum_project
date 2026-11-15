@@ -1419,6 +1419,7 @@ Branded Excel and print exports put **S/N** as the first column, generated at ex
 | Courses offered to a programme; whole catalogue | catalogue | readers | programme/curriculum | branded print | yes (CRS/CAT) | `catalogue.*` |
 | Post-UTME: batches, candidates, attendance sheet per batch | admissions (putme) | readers / office | session, filters | branded print | yes (CBT) | `screening_batch`, `screening_assignment` |
 | JAMB admission template | admissions | academic, registrar | programme or all | — | yes (JAMB's own layout, five sheets) | `admissions.*` |
+| JAMB admission template, Direct Entry (V764) | admissions | academic, admin, bursar, dregistrar, ict, records, registrar, super | programme or all | — | yes (JAMB's own layout, five sheets; ranked by the points of the qualification) | `admissions.de_template` |
 | Computed Post-UTME; Screened summary/detail/all-O'Level | admissions | academic, super (computed); readers | programme, faculty | branded print | yes (CPU) | `non_sitter_post_utme`, screening views |
 | Screening register non-index scores | admissions | readers | — | — | **CSV only** | — |
 | Postgraduate applications (V694: date of application, documents, times applied) | pgadmissions | readers | session; documents complete / pending / paid, not uploaded / fee unpaid; applied more than once; order | — | yes (PGAPP) | `pg_application`, `pg_document_state`, `pg_session_duplicates` |

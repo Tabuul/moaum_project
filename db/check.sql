@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 623
+\set EXPECTED 624
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -37789,6 +37789,110 @@ BEGIN
       coalesce(msg = 'dry UPDATED:lecturer_office=OFFICE_KEPT | upload UPDATED:category,home_department,pno:lecturer_office=OFFICE_KEPT'
                      || ' | record in B | offices A:open', false), msg);
 END $$;
+-- ── V764: the Direct Entry admission template. In 9764/9765, programme C00019 with a Direct Entry requirement (two of Chemistry,
+--          Biology, Physics), seven made-up Direct Entry applicants: D2 JUPEB A A B (14 points), D1 A-Level A B C (12, offered by
+--          the Board on National Merit), D7 A-Level B B B (12, never submitted), D4 A-Level C D E (6, Mathematics a pass at
+--          O'Level), D3 HND Distinction, Upper Credit, Credit (9), D6 ND Mathematics only (short of the requirement), D5 nothing
+--          captured, D8 A-Level A* (as A), A1 (not read, named), B and a blank subject (never counted) — 9; and U1, a UTME applicant, not a row. The A-Level group ranks before the diplomas, ties by name, nothing
+--          captured last; each row qualified or not with the reasons, placed by the Board's decision or, without one, by whether it
+--          qualifies. The block undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9764/9765'; v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid(); v_ubatch uuid := gen_random_uuid();
+    v_grp uuid := gen_random_uuid(); who uuid := gen_random_uuid(); code text := 'C00019';
+    r record; s record; apps jsonb := '{}'::jsonb; got text; pts text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V764', true);
+    INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKV764', 'Recorder');
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9764-10-01', date '9765-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+    VALUES (v_pol, ses, 10, 70, 30, 80, 20, 'CHECK CAC/9764/1', tstzrange(now(), NULL), 'IN_FORCE');
+    INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text) VALUES (v_pol, code, 10, 'check', 'check', 'check');
+    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (v_grp, v_pol, code, 'DE', 2);
+    INSERT INTO admissions.rule_subject (group_id, subject) VALUES (v_grp, 'Chemistry'), (v_grp, 'Biology'), (v_grp, 'Physics');
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+    VALUES (v_batch, ses, 'CAPS_DOWNLOAD', 'DIRECT_ENTRY', '\x764d'::bytea, 7, current_date, who, 'academic'),
+           (v_ubatch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x764e'::bytea, 1, current_date, who, 'academic');
+    FOR r IN SELECT * FROM (VALUES
+        ('D1', '29764000001', true,  'A_LEVEL', '[["Chemistry","A"],["Biology","B"],["Physics","C"]]', 'C4'),
+        ('D2', '29764000002', true,  'JUPEB',   '[["Chemistry","A"],["Biology","A"],["Physics","B"]]', 'B3'),
+        ('D3', '29764000003', true,  'HND',     '[["Chemistry","Distinction"],["Biology","Upper Credit"],["Physics","Credit"]]', 'C6'),
+        ('D4', '29764000004', true,  'A_LEVEL', '[["Chemistry","C"],["Biology","D"],["Physics","E"]]', 'F9'),
+        ('D5', '29764000005', true,  NULL,      NULL, 'C5'),
+        ('D6', '29764000006', true,  'ND',      '[["Mathematics","Credit"]]', 'B2'),
+        ('D7', '29764000007', false, 'A_LEVEL', '[["Chemistry","B"],["Biology","B"],["Physics","B"]]', 'A1'),
+        ('D8', '29764000009', true,  'A_LEVEL', '[["Chemistry","A*"],["Biology","A1"],["Physics","B"],["  ","A"]]', 'B2'),
+        ('D10', '29764000010', true, 'JUPEB',   '[["Chemistry","B"],["Biology","B"],["Physics","B"]]', 'C4'),
+        ('U1', '29764000008', true,  NULL,      NULL, 'A1')
+    ) AS t(tag, jamb, submitted, basis, subj, maths)
+    LOOP
+        DECLARE cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid(); app uuid := gen_random_uuid();
+                att uuid := gen_random_uuid(); sit uuid := gen_random_uuid(); aw uuid := gen_random_uuid();
+                mode text := CASE WHEN r.tag = 'U1' THEN 'UTME' ELSE 'DIRECT_ENTRY' END;
+        BEGIN
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+            VALUES (cr, CASE WHEN mode = 'UTME' THEN v_ubatch ELSE v_batch END, ses, r.jamb, '{}'::jsonb, 'CHECKV764', r.tag, code,
+                    CASE WHEN mode = 'UTME' THEN 250 END, mode, 'F', 'Benue', 'Makurdi');
+            INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+            VALUES (cand, ses, r.jamb, 'CHECKV764', r.tag, (SELECT name FROM ref.programme WHERE ref.programme.code = 'C00019'), mode,
+                    CASE WHEN mode = 'UTME' THEN 100 ELSE 200 END, 'PROPOSED', cr);
+            INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+            VALUES (acct, ses, cand, r.jamb, lower(r.jamb) || '@example.com', '08030007640', crypt('x', gen_salt('bf', 12)));
+            INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at)
+            VALUES (app, acct, cand, ses, 'APP/64/' || right(r.jamb, 6), CASE WHEN r.submitted THEN now() END, CASE WHEN r.submitted THEN now() END);
+            INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, candidate_id, matched_at)
+            VALUES (att, ses, 'OLEVEL', r.jamb || '-olevel.json', r.jamb, 'EXACT', cand, now());
+            INSERT INTO admissions.olevel_sitting (id, attachment_id, session, jamb_key, exam_body, exam_year, exam_number, ord)
+            VALUES (sit, att, ses, r.jamb, 'WAEC', '9760', 'WAEC/' || r.jamb, 1);
+            INSERT INTO admissions.olevel_grade (sitting_id, subject, grade) VALUES
+                (sit, 'English Language', 'B3'), (sit, 'Mathematics', r.maths), (sit, 'Physics', 'C5'), (sit, 'Chemistry', 'C6'), (sit, 'Biology', 'C4');
+            IF r.basis IS NOT NULL THEN
+                INSERT INTO admissions.de_award (id, session, jamb_key, basis, awarded_year, institution, recorded_by)
+                VALUES (aw, ses, r.jamb, r.basis, 2024, 'Check College', who);
+                FOR s IN SELECT e->>0 AS subject, e->>1 AS grade FROM jsonb_array_elements(r.subj::jsonb) e LOOP
+                    INSERT INTO admissions.de_award_subject (award_id, subject, grade) VALUES (aw, s.subject, s.grade);
+                END LOOP;
+            END IF;
+            apps := apps || jsonb_build_object(r.tag, app);
+        END;
+    END LOOP;
+    -- D10's A-Level, keyed with a stray full stop on each grade: not read, so the JUPEB counts — named all the same
+    INSERT INTO admissions.de_award (id, session, jamb_key, basis, awarded_year, institution, recorded_by)
+    VALUES (gen_random_uuid(), ses, '29764000010', 'A_LEVEL', 2023, 'Check College', who);
+    INSERT INTO admissions.de_award_subject (award_id, subject, grade)
+    SELECT d.id, x.s, 'A.' FROM admissions.de_award d, unnest(ARRAY['Chemistry', 'Biology', 'Physics']) x(s)
+     WHERE d.session = ses AND d.jamb_key = '29764000010' AND d.basis = 'A_LEVEL';
+    -- the Board offered D1 on National Merit
+    UPDATE admissions.application SET decision = 'OFFERED', decision_basis = 'NM' WHERE id = (apps->>'D1')::uuid;
+
+    SELECT string_agg(t.rank || ':' || t.other_names || ':' || t.decision || ':' || coalesce(t.points::text, '-') || ':' || coalesce(t.reason, '-')
+                      || coalesce(':not read ' || t.unread_grades, ''), ' | ' ORDER BY t.rank)
+      INTO got FROM admissions.de_template(ses, (SELECT name FROM ref.programme WHERE ref.programme.code = 'C00019')) t;
+    SELECT string_agg(t.other_names || '=' || t.qualification || '/' || t.de_status || '/' || (t.subjects->0->>'subject') || ' ' || (t.subjects->0->>'grade')
+                      || '/' || coalesce(t.english, '-') || '/' || coalesce(t.mathematics, '-'), ',' ORDER BY t.rank)
+      INTO pts FROM admissions.de_template(ses, NULL) t WHERE t.qualification IS NOT NULL;
+    msg := got || ' || ' || pts || ' || grades ' || (SELECT string_agg(coalesce(admissions.de_grade_points('HND', g)::text, '-'), ',' ORDER BY o)
+                                                      FROM unnest(ARRAY['A*', 'b+', 'Upper-Credit', 'U/C', 'Dist.', 'Credit (Upper)', 'Lower credit', 'Merit', 'A1', '', NULL, 'F', 'U', 'Fail']) WITH ORDINALITY u(g, o));
+    RAISE EXCEPTION 'the V764 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V764 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V764: the Direct Entry template lists every registered Direct Entry applicant of the programme, ranked by the points of their qualification (the A-Level group before the diplomas, ties by name, nothing captured last), each qualified or not with the reasons and placed by the Board''s decision',
+      coalesce(msg = '1:D2:WAITING:14:- | 2:D1:OFFERED:12:- | 3:D10:WAITING:12:-:not read A-Level: Biology A., Chemistry A., Physics A.'
+                     || ' | 4:D7:NOT_OFFERED:12:Application not submitted'
+                     || ' | 5:D8:WAITING:9:-:not read A-Level: Biology A1'
+                     || ' | 6:D4:NOT_OFFERED:6:No O''Level credit in Mathematics | 7:D3:WAITING:9:-'
+                     || ' | 8:D6:NOT_OFFERED:2:Direct Entry subjects short of the programme''s requirement'
+                     || ' | 9:D5:NOT_OFFERED:-:Direct Entry qualification not captured'
+                     || ' || D2=JUPEB/MET/Biology A/B3/B3,D1=A_LEVEL/MET/Chemistry A/B3/C4,D10=JUPEB/MET/Biology B/B3/C4,D7=A_LEVEL/MET/Biology B/B3/A1'
+                     || ',D8=A_LEVEL/MET/Chemistry A*/B3/B2,D4=A_LEVEL/MET/Chemistry C/B3/F9,D3=HND/MET/Chemistry Distinction/B3/C6,D6=ND/SHORT/Mathematics Credit/B3/B2'
+                     || ' || grades 5,4,3,3,4,3,2,1,-,0,0,0,0,0', false), msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran
