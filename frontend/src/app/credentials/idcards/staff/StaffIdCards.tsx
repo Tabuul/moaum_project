@@ -86,7 +86,7 @@ export function StaffIdCards({ roster, filters, actingOffice }: { roster: StaffR
       ]} />
       <Note kind="info" title="A staff card is issued on the staff number to a member of staff in service">
         In service means holding an office on the portal today, or being on the HR staff register (the non-teaching staff), and not
-        deactivated or out of service in HR (every employment ended) — someone who has left is not listed. A card is
+        deactivated or out of service in HR (every employment ended, from the exit&rsquo;s effective date) — someone who has left is not listed. A card is
         numbered and valid while its holder is in service — it ends when replaced, reported lost, or they leave; the print carries its
         QR, which the public check answers. A lost or
         damaged card is replaced on the Student ID Card desk&rsquo;s staff list.

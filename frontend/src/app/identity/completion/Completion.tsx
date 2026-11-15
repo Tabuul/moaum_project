@@ -128,7 +128,7 @@ export function Completion({ tab, tabs, filters, faculties, departments: allDepa
       <Note kind="info" title={tab === "students" ? "Students in study — what the student identity card waits on" : "Staff in service — what the staff identity card and the University's letters need"}>
         {tab === "students"
           ? "A student's card is printed once the blood group is confirmed (by the student on the dashboard, or recorded at the card desk) and the matriculation number is issued; the photograph prints in its frame. Students are asked on their dashboard until their blood group is confirmed."
-          : "Complete means the photograph enhanced and accepted, the e-mail address verified by a code, and the blood group confirmed. Staff who cannot sign in (on the HR register only, or with no sign-in) are never asked on a dashboard: reach them another way."}
+          : "In service means a staff number, an office today or the HR register, and not deactivated or out of service in HR (every employment ended, from the exit's effective date) — the staff card's own reading. Complete means the photograph enhanced and accepted, the e-mail address verified by a code, and the blood group confirmed. Staff who cannot sign in (on the HR register only, or with no sign-in) are never asked on a dashboard: reach them another way."}
         {narrowing ? ` Showing: ${narrowing}.` : ""}
       </Note>
 

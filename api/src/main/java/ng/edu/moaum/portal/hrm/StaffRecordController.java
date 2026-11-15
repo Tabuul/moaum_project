@@ -106,12 +106,13 @@ class StaffRecordController {
                        sr.pno, sr.sex, sr.present_rank AS rank, sr.conuass_step, sr.date_first_appointment,
                        sr.home_department AS department_code, dp.name AS department, f.code AS faculty_code, f.name AS faculty,
                        e.grade, e.step, e.category, e.appointment_date, e.status AS employment_status, e.ended_on AS employment_ended_on,
-                       CASE WHEN pe.ended_on IS NOT NULL THEN 'ENDED' ELSE coalesce(e.status, 'ACTIVE') END AS status,
+                       hrm.staff_status(pe.id) AS status,   -- V768: ENDED once out of service, deactivated or every employment ended
                        EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo,
                        EXISTS (SELECT 1 FROM iam.credential c WHERE c.person_id = pe.id) AS has_account
                   FROM iam.person pe
                   LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
-                  LEFT JOIN hrm.employment e ON e.person_id = pe.id AND e.status <> 'ENDED'
+                  LEFT JOIN LATERAL (SELECT x.* FROM hrm.employment x WHERE x.person_id = pe.id AND hrm.employment_in_force(x.status, x.ended_on)
+                                      ORDER BY x.appointment_date DESC NULLS LAST LIMIT 1) e ON true   -- V768: the employment in force
                   LEFT JOIN ref.department dp ON dp.code = sr.home_department
                   LEFT JOIN ref.faculty f ON f.code = dp.faculty_code
                  WHERE pe.id = :id

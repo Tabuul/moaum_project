@@ -185,8 +185,9 @@ class RegistersController {
             params.put("category", c.toUpperCase());
         }
         if (st != null) {
-            if ("ENDED".equalsIgnoreCase(st)) where.append(" AND (pe.ended_on IS NOT NULL OR e.status = 'ENDED')");
-            else { where.append(" AND pe.ended_on IS NULL AND coalesce(e.status, 'ACTIVE') = :status"); params.put("status", st.toUpperCase()); }
+            // V768: the status as the card reads service — ENDED once deactivated or every employment ended (hrm.staff_status)
+            where.append(" AND hrm.staff_status(pe.id) = :status");
+            params.put("status", st.toUpperCase());
         }
         if (of != null) {
             where.append(" AND EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = pe.id AND a.office_code = :office"
@@ -201,7 +202,8 @@ class RegistersController {
         String from = """
                  FROM iam.person pe
                  LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
-                 LEFT JOIN hrm.employment e ON e.person_id = pe.id AND e.status <> 'ENDED'
+                 LEFT JOIN LATERAL (SELECT x.* FROM hrm.employment x WHERE x.person_id = pe.id AND hrm.employment_in_force(x.status, x.ended_on)
+                                     ORDER BY x.appointment_date DESC NULLS LAST LIMIT 1) e ON true
                  LEFT JOIN ref.department dp ON dp.code = sr.home_department
                  LEFT JOIN ref.faculty f ON f.code = dp.faculty_code
                  LEFT JOIN LATERAL (
@@ -216,7 +218,7 @@ class RegistersController {
                 SELECT count(*) AS total,
                        count(*) FILTER (WHERE coalesce(e.category, CASE WHEN ax.academic THEN 'ACADEMIC' ELSE 'NON_ACADEMIC' END) = 'ACADEMIC') AS academic,
                        count(*) FILTER (WHERE sr.sex = 'F') AS female, count(*) FILTER (WHERE sr.sex = 'M') AS male,
-                       count(*) FILTER (WHERE pe.ended_on IS NULL AND coalesce(e.status, 'ACTIVE') = 'ACTIVE') AS active
+                       count(*) FILTER (WHERE hrm.staff_status(pe.id) = 'ACTIVE') AS active
                 """ + from + where);
         params.forEach(count::param);
         Map<String, Object> summary = count.query().singleRow();
@@ -228,7 +230,7 @@ class RegistersController {
                        sr.home_department AS department_code, dp.name AS department, f.name AS faculty,
                        coalesce(e.category, CASE WHEN ax.academic THEN 'ACADEMIC' ELSE 'NON_ACADEMIC' END) AS category,
                        e.grade, e.step, e.appointment_date,
-                       CASE WHEN pe.ended_on IS NOT NULL THEN 'ENDED' ELSE coalesce(e.status, 'ACTIVE') END AS status,
+                       hrm.staff_status(pe.id) AS status,
                        ax.offices
                 """ + from + where + " ORDER BY f.name NULLS LAST, dp.name NULLS LAST, pe.surname, pe.given_names LIMIT :lim OFFSET :off");
         params.forEach(list::param);

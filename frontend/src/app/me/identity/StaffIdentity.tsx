@@ -498,8 +498,9 @@ export function StaffIdentity({ state, name }: { state: StaffIdentityState; name
     <>
       {state.staff === false ? (
         <Note kind="bad" title="The portal does not hold you as a member of staff in service">
-          A staff number and an office, or a record on the HR register, make a member of staff in service. Until HR records you, the blood group cannot be
-          saved here.
+          A staff number and an office today or a record on the HR register, and not out of service in HR (every employment ended, from the
+          exit&rsquo;s effective date), make a member of staff in service. If you are still in service, Human Resources puts your record right;
+          until then the blood group cannot be saved here.
         </Note>
       ) : null}
       {missing.length ? (

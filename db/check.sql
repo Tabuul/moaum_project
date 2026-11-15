@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 625
+\set EXPECTED 626
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -37950,6 +37950,72 @@ BEGIN
     END;
     PERFORM pg_temp.assert('V765: a staff identity card is valid while its holder is in service (not deactivated, and not out of service in HR — every employment ended; a suspension is in service), no card issued to nor listed for one who is not, — issued one by one or in bulk it carries no end date and never reads as expired; an ended card keeps the date it was issued with',
         coalesce(msg = 'in service t,f,t,f,t,t | retired STAFF_CARD_LEFT roster 1:P7650011 | live no end date expired no | bulk no end date | roster no end date | ended 2026-12-31', false), msg);
+END $$;
+
+-- ── V768: in service read one way for staff — an HR exit counts from its effective date. Three made-up members of staff on the HR
+--          register: A retiring in thirty days (an exit instrument issued ahead of its date), B retired yesterday, C in employment.
+--          A is still in service on every reading — the card, the card roster, the Identity Completion report (its category from the
+--          employment still in force) and the blood-group self-confirmation; B on none — the card refused, the roster and the report
+--          leave B out, the self-confirmation refused with its reason. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); s uuid := gen_random_uuid();
+    zones text; z text;
+    gg text; gs int; msg text; v_err text; card_a text; card_b text; blood_a text; blood_b text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    PERFORM set_config('moaum.reason', 'check V768', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-ISSUER-768', 'ZZISSUER', 'Card Desk'),
+        (a, 'P7680001', 'ZZRETIRING', 'Next Month'), (b, 'P7680002', 'ZZRETIRED', 'Yesterday'), (c, 'P7680003', 'ZZACTIVE', 'In Post'), (s, 'P7680004', 'ZZSUSPENDED', 'For Now');
+    INSERT INTO hrm.staff_record (person_id, pno, category) VALUES (a, '7680001', 'NON_ACADEMIC'), (b, '7680002', 'NON_ACADEMIC'), (c, '7680003', 'NON_ACADEMIC'), (s, '7680004', 'NON_ACADEMIC');
+    SELECT g.grade, g.step INTO gg, gs FROM hrm.grade g ORDER BY g.grade, g.step LIMIT 1;
+    INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status, ended_on, ended_reason) VALUES
+        (a, 'P7680001', gg, gs, 'ACADEMIC', date '2000-01-01', 'ENDED', current_date + 30, 'Retirement'),
+        (b, 'P7680002', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', current_date - 1, 'Retirement'),
+        (c, 'P7680003', gg, gs, 'NON_ACADEMIC', date '2010-01-01', 'ACTIVE', NULL, NULL),
+        (s, 'P7680004', gg, gs, 'NON_ACADEMIC', date '2012-01-01', 'SUSPENDED', NULL, NULL);
+    BEGIN card_a := credentials.issue_staff_card(a, NULL); EXCEPTION WHEN check_violation THEN card_a := split_part(SQLERRM, ':', 1); END;
+    BEGIN card_b := credentials.issue_staff_card(b, NULL); EXCEPTION WHEN check_violation THEN card_b := split_part(SQLERRM, ':', 1); END;
+    -- each confirms their own blood group, signed in as themselves
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM credentials.confirm_my_blood_group('O+', true); blood_a := 'saved';
+    EXCEPTION WHEN OTHERS THEN blood_a := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    BEGIN PERFORM credentials.confirm_my_blood_group('O+', true); blood_b := 'saved';
+    EXCEPTION WHEN OTHERS THEN blood_b := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'security', true);
+    -- an exit dated Lagos today has ended; one dated tomorrow has not — whatever the session's time zone
+    -- one zone at a time (the outer two are a day either side of Lagos at every hour, so a helper reading current_date fails here)
+    FOREACH z IN ARRAY ARRAY['Etc/GMT+12', 'Pacific/Kiritimati', 'UTC'] LOOP
+        PERFORM set_config('TimeZone', z, true);
+        zones := concat_ws(',', zones, z || '=' || hrm.employment_in_force('ENDED', (now() AT TIME ZONE 'Africa/Lagos')::date)::text
+                                      || '/' || hrm.employment_in_force('ENDED', (now() AT TIME ZONE 'Africa/Lagos')::date + 1)::text);
+    END LOOP;
+    PERFORM set_config('TimeZone', 'UTC', true);
+    msg := concat_ws(' | ',
+        'lagos ' || zones,
+        'status ' || concat_ws(',', hrm.staff_status(a), hrm.staff_status(b), hrm.staff_status(c), hrm.staff_status(s)),
+        'kind A ' || coalesce(hrm.roll_kind(a), '-'),
+        'card ' || concat_ws(',', credentials.staff_in_service(a), credentials.staff_in_service(b), credentials.staff_in_service(c)),
+        'identity ' || concat_ws(',', iam.staff_in_service(a), iam.staff_in_service(b), iam.staff_in_service(c)),
+        'issued A ' || (card_a ~ '^MOAUM/SID/')::text || ' B ' || card_b,
+        'roster ' || coalesce((SELECT string_agg(r.staff_number, ',' ORDER BY r.staff_number) FROM credentials.staff_card_roster(NULL, NULL, 'P768000') r), '-'),
+        'report ' || coalesce((SELECT string_agg(r.staff_number || ':' || r.category, ',' ORDER BY r.staff_number)
+                                 FROM credentials.identity_staff_rows(NULL, NULL, NULL) r WHERE r.staff_number LIKE 'P768000%'), '-'),
+        'blood A ' || blood_a || ' B ' || blood_b);
+    RAISE EXCEPTION 'the V768 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V768 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V768: an HR exit counts from its effective date (Lagos today), and in service is read one way — the staff status, the roll''s kind, — the card, its roster, the Identity Completion report and the blood-group self-confirmation keep someone retiring next month and leave out someone retired yesterday',
+      coalesce(msg = 'lagos Etc/GMT+12=false/true,Pacific/Kiritimati=false/true,UTC=false/true | status ACTIVE,ENDED,ACTIVE,SUSPENDED | kind A ACADEMIC'
+                     || ' | card t,f,t | identity t,f,t | issued A true B STAFF_CARD_LEFT | roster P7680001,P7680003,P7680004'
+                     || ' | report P7680001:ACADEMIC,P7680003:NON_ACADEMIC,P7680004:NON_ACADEMIC | blood A saved B IDENTITY_NOT_STAFF', false), msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -510,7 +510,8 @@ class IdentityCardController {
                    sr.date_first_appointment, e.appointment_date, EXISTS (SELECT 1 FROM hrm.staff_photo ph WHERE ph.person_id = pe.id) AS has_photo,
                    credentials.staff_blood_group(pe.id) AS blood_group
               FROM iam.person pe LEFT JOIN hrm.staff_record sr ON sr.person_id = pe.id
-              LEFT JOIN LATERAL (SELECT x.category, x.appointment_date FROM hrm.employment x WHERE x.person_id = pe.id AND x.status <> 'ENDED'
+              LEFT JOIN LATERAL (SELECT x.category, x.appointment_date FROM hrm.employment x
+                                  WHERE x.person_id = pe.id AND hrm.employment_in_force(x.status, x.ended_on)   -- V768
                                   ORDER BY x.appointment_date DESC NULLS LAST LIMIT 1) e ON true
               LEFT JOIN ref.department dp ON dp.code = sr.home_department
               LEFT JOIN ref.faculty f ON f.code = coalesce(dp.faculty_code, sr.home_faculty)

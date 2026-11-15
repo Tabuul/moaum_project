@@ -27,7 +27,8 @@ export function canSaveBloodGroup(group: string, confirmed: boolean): boolean {
 // ── the staff identity state (iam.staff_identity_state, GET /api/v1/staff/identity; iam/me's identityPrompt) ─────────────────────
 
 export interface StaffIdentityState {
-  /** in service by V698's reading (a staff number, not ended, an office today or an HR record) */
+  /** in service by V698's reading (a staff number, not ended, an office today or an HR record) and, since V768, not out of service in HR
+   *  (every employment ended, from the exit's effective date) — the staff card's reading */
   staff?: boolean;
   photo?: {
     present?: boolean;

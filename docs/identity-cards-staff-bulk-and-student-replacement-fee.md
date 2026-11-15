@@ -18,7 +18,9 @@ Before V698 only the first counted. On the copy of 21 October 2026, 870 of the 1
 office, and none of them could be issued a card. A staff number is still needed and someone who has left gets no card
 (STAFF_CARD_NO_NUMBER, STAFF_CARD_ENDED), and since V765 nor does someone out of service in HR — every employment ended
 (STAFF_CARD_LEFT). Someone neither in office nor on the register is refused (STAFF_CARD_NO_OFFICE). Since V765 a staff card has no end
-date: it is valid while its holder is in service.
+date: it is valid while its holder is in service. Since V768 an HR exit counts from its effective date (a retirement issued ahead of its
+date leaves the card in force until then), and the Identity Completion report and the blood-group confirmation read service the same way
+(credentials.staff_in_service).
 
 **The desk.** The Chief Security Officer's menu has **Staff ID Cards** under Services (`/credentials/idcards/staff`, `t/staffidcards`).
 * **The list.** Every member of staff in service, with the rank, category, department or unit, faculty, whether a photograph is on
