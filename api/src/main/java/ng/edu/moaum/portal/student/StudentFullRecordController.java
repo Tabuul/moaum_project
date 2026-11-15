@@ -136,9 +136,11 @@ class StudentFullRecordController {
                                f.code AS faculty_code, f.name AS faculty,
                                (SELECT a.application_no FROM admissions.application a WHERE a.candidate_id = s.candidate_id ORDER BY a.created_at DESC LIMIT 1) AS application_no,
                                (SELECT c.session FROM admissions.candidate c WHERE c.id = s.candidate_id) AS jamb_session,
-                               -- V578: the programme the student was admitted to, where the record has moved since
-                               (SELECT ap.name FROM admissions.candidate c JOIN ref.programme ap ON ap.code = c.programme
-                                 WHERE c.id = s.candidate_id AND c.programme <> s.programme_code) AS admitted_programme
+                               -- V578: the programme the student was admitted to, where the record has moved since. V769: the
+                               -- candidate's programme is the NAME JAMB's list gives, read as its code (one the student holds first)
+                               (SELECT ap.name FROM admissions.candidate c
+                                  JOIN ref.programme ap ON ap.code = admissions.candidate_programme_code(c.programme, s.programme_code)
+                                 WHERE c.id = s.candidate_id AND ap.code <> s.programme_code) AS admitted_programme
                           FROM people.student s
                           JOIN ref.programme p ON p.code = s.programme_code
                           LEFT JOIN ref.department d ON d.code = p.dept_code

@@ -31,7 +31,7 @@ export interface StudentView {
   openTransfer: { state: string; to_programme_code: string; applied_at: string } | null;
   pendingSwap: { id: string; swap_ref: string; to_programme: string; to_level: number; prepared_at: string } | null;
   swaps: { id: string; swap_ref: string; status: string; kind: string; from_programme: string; from_level: number | null; to_programme: string; to_level: number; prepared_at: string; decided_at: string | null }[];
-  signals: { matric_segment: string | null; programme_segment: string | null; registration: { dept: string; department: string | null; share: number } | null; admitted: { code: string; name: string | null } | null } | null;
+  signals: { matric_segment: string | null; programme_segment: string | null; registration: { dept: string; department: string | null; share: number } | null; admitted: { code: string | null; name: string | null } | null } | null;
   review: { status: ReviewStatus; note: string | null; reviewed_at: string; reviewed_office: string | null; reviewed_by: string | null } | null;
 }
 

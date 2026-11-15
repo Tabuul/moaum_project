@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 627
+\set EXPECTED 628
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -38082,6 +38082,80 @@ BEGIN
       coalesce(diff = 0 AND n_rows = 1 AND a_row = 'CARRYOVER/true/OUTSTANDING/F/' || past || ' semester 1' AND b_rows = 0, false),
       format('differing rows %s | register rows %s | failed %s | passed and never registered %s', diff, n_rows, a_row, b_rows));
 END $$;
+-- ── V769: a candidate's programme read by its name. Made-up candidates of a made-up session, their programme the NAME JAMB's list
+--          gives (B.Sc. ACCOUNTING, B.Sc. COMPUTER SCIENCE), one written as a code, one a name no programme carries; three on the
+--          register, all on Accounting — admitted to it by name, admitted to it by code, admitted to Computer Science. The merit table
+--          (admissions.offers_by_programme joined as the Admissions page joins it) counts each offer and acceptance on the programme
+--          its name reads as and the unknown name on none, so the rows sum to the cards less it; the mismatch list flags the student
+--          admitted to Computer Science, naming it, and neither of the others; the programme history's original admission is the
+--          programme admitted to; the transfer lookup names an applicant's programme, an unknown one as written. Undoes its writes ──
+DO $$
+DECLARE
+    ses text := '9769/9770'; who uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid();
+    acc text := 'C00019'; csc text := 'C00023'; acc_name text; csc_name text; odd text := 'ZZ NOT A PROGRAMME OF V769';
+    s_name uuid := gen_random_uuid(); s_code uuid := gen_random_uuid(); s_other uuid := gen_random_uuid();
+    r record; cand jsonb := '{}'; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V769', true);
+    INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKV769', 'Recorder');
+    SELECT p.name INTO acc_name FROM ref.programme p WHERE p.code = acc;
+    SELECT p.name INTO csc_name FROM ref.programme p WHERE p.code = csc;
+    INSERT INTO admissions.caps_batch (id, session, source, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office, committed_at)
+    VALUES (v_batch, ses, 'CAPS_DOWNLOAD', 'UTME', '\x7690'::bytea, 8, current_date, who, 'academic', now());
+    FOR r IN SELECT * FROM (VALUES
+        ('A1', '29769000001', acc, acc_name, 'ADMITTED'),
+        ('A2', '29769000002', acc, acc_name, 'ACCEPTED'),
+        ('A3', '29769000003', acc, acc_name, 'PROPOSED'),
+        ('A4', '29769000004', acc, acc,      'ACCEPTED'),   -- written as the code, as before the name was the rule
+        ('C1', '29769000005', csc, csc_name, 'ADMITTED'),
+        ('C2', '29769000006', csc, csc_name, 'ACCEPTED'),
+        ('X1', '29769000007', acc, odd,      'ADMITTED')    -- a name no programme carries
+    ) AS t(tag, jamb, jamb_code, programme, state)
+    LOOP
+        DECLARE cr uuid := gen_random_uuid(); c uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga)
+            VALUES (cr, v_batch, ses, r.jamb, '{}'::jsonb, 'CHECKV769', r.tag, r.jamb_code, 250, 'UTME', 'F', 'Benue', 'Makurdi');
+            INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+            VALUES (c, ses, r.jamb, 'CHECKV769', r.tag, r.programme, 'UTME', 100, r.state, cr);
+            cand := cand || jsonb_build_object(r.tag, c);
+        END;
+    END LOOP;
+    -- on the register, all three on Accounting: admitted to it by its name, by its code, and admitted to Computer Science
+    INSERT INTO people.student (id, candidate_id, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status)
+    VALUES (s_name, (cand->>'A2')::uuid, '29769000002', 'CHECKV769', 'By Name', acc, 'UTME', ses, 100, 100, 'ADMITTED'),
+           (s_code, (cand->>'A4')::uuid, '29769000004', 'CHECKV769', 'By Code', acc, 'UTME', ses, 100, 100, 'ADMITTED'),
+           (s_other, (cand->>'C2')::uuid, '29769000006', 'CHECKV769', 'Elsewhere', acc, 'UTME', ses, 100, 100, 'ADMITTED');
+    msg := concat_ws(' | ',
+        -- the merit table, as AdmissionCycleRepository.programmes joins it, and the cards as AdmissionCycleRepository.counts counts them
+        'merit ' || (SELECT string_agg(p.code || ':' || coalesce(cd.offered, 0) || '/' || coalesce(cd.accepted, 0), ',' ORDER BY p.code)
+                       FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code LEFT JOIN admissions.offers_by_programme(ses) cd ON cd.code = p.code
+                      WHERE NOT p.archived AND p.code IN (acc, csc)),
+        'rows ' || (SELECT sum(cd.offered) || '/' || sum(cd.accepted) FROM admissions.offers_by_programme(ses) cd JOIN ref.programme p ON p.code = cd.code WHERE NOT p.archived),
+        'cards ' || (SELECT count(*) FILTER (WHERE c.offer_state IN ('ADMITTED', 'ACCEPTED')) || '/' || count(*) FILTER (WHERE c.offer_state = 'ACCEPTED')
+                       FROM admissions.candidate c WHERE c.session = ses AND c.entry_mode NOT IN ('PRELIMINARY', 'PROFICIENCY')),
+        'mismatch ' || coalesce((SELECT string_agg(m.other_names || ':' || m.classification || ':' || coalesce(m.admitted_programme, '-')
+                                                   || ':' || (m.admitted_programme_name IS NOT DISTINCT FROM csc_name)::text, ',' ORDER BY m.other_names)
+                                   FROM people.programme_mismatches(NULL, NULL, acc) m WHERE m.student_id IN (s_name, s_code, s_other)), '-'),
+        'history ' || (SELECT string_agg(h.programme_code || ':' || (h.programme IS NOT DISTINCT FROM CASE h.programme_code WHEN acc THEN acc_name WHEN csc THEN csc_name END)::text, ',' ORDER BY x.n)
+                         FROM unnest(ARRAY[s_name, s_code, s_other]) WITH ORDINALITY x(s, n) CROSS JOIN LATERAL people.programme_history(x.s) h
+                        WHERE h.kind = 'ORIGINAL_ADMISSION'),
+        'lookup ' || (SELECT string_agg(coalesce(l->'applicant'->>'programme', '-') || ':' || (l->'applicant'->>'programmeName' IS NOT DISTINCT FROM
+                                          CASE l->'applicant'->>'programme' WHEN csc THEN csc_name ELSE odd END)::text, ',' ORDER BY n)
+                        FROM unnest(ARRAY['29769000005', '29769000007']) WITH ORDINALITY x(no, n), people.university_transfer_lookup(x.no, 'INCOMING') l));
+    RAISE EXCEPTION 'the V769 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V769 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V769: a candidate''s programme is the NAME JAMB''s list gives — each offer and acceptance counted on the merit row of the programme it names (a code as itself, a name no programme carries on none, the rows summing to the cards less it), a student admitted elsewhere by name flagged and named and not one on the programme admitted to, the original admission in the programme history, an applicant''s programme named by the transfer lookup',
+      coalesce(msg = 'merit C00019:3/2,C00023:2/1 | rows 5/3 | cards 6/3 | mismatch Elsewhere:POSSIBLE:C00023:true'
+                     || ' | history C00019:true,C00019:true,C00023:true | lookup C00023:true,ZZ NOT A PROGRAMME OF V769:true', false), msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -47,13 +47,15 @@ class AdmissionCycleRepository {
 
     List<AdmissionCycle.ProgrammeRow> programmes(String session, boolean inForce) {
         // V537: the session's JAMB list and candidates counted once by programme, not once for each of the 456 programmes
-        // (about 14 s on the live-shaped copy, on the Admissions page and the Registrar's dashboard)
+        // (about 14 s on the live-shaped copy, on the Admissions page and the Registrar's dashboard).
+        // V769: a candidate's programme is the NAME JAMB's list gives, never the code — grouped by it and joined to the code, every
+        // programme read OFFERED 0 and ACCEPTED 0 beside the cards' totals; admissions.offers_by_programme counts the candidates once
+        // for each name, reads each name once as its code and sums by code (the preliminary and proficiency candidates left out, as
+        // the cards leave them out)
         return jdbc.sql("""
                 WITH applied AS (SELECT r.jamb_code AS code, count(*) AS n FROM admissions.caps_row r JOIN admissions.caps_batch b ON b.id = r.batch_id
                                   WHERE r.session = :s AND b.committed_at IS NOT NULL GROUP BY r.jamb_code),
-                     cand AS (SELECT c.programme AS code, count(*) FILTER (WHERE c.offer_state IN ('ADMITTED','ACCEPTED')) AS offered,
-                                     count(*) FILTER (WHERE c.offer_state = 'ACCEPTED') AS accepted
-                                FROM admissions.candidate c WHERE c.session = :s GROUP BY c.programme)
+                     cand AS (SELECT o.code, o.offered, o.accepted FROM admissions.offers_by_programme(:s) o)
                 SELECT p.code, p.name, p.faculty_code, f.name AS faculty_name, coalesce(ap.n, 0) AS applied,
                        (SELECT r.quota FROM admissions.programme_rule r JOIN admissions.session_policy sp ON sp.id = r.policy_id
                          WHERE sp.session = :s AND r.programme_code = p.code) AS quota,

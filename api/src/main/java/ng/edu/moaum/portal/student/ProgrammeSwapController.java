@@ -265,7 +265,10 @@ class ProgrammeSwapController {
                                                     ORDER BY r2.session DESC, r2.semester DESC LIMIT 1)
                                        AND c.kind NOT IN ('GST', 'EPS') AND c.dept_code IS NOT NULL
                                      GROUP BY c.dept_code ORDER BY count(*) DESC, c.dept_code LIMIT 1) q LEFT JOIN ref.department dd ON dd.code = q.dept_code) AS registration,
-                               (SELECT json_build_object('code', c.programme, 'name', ap.name) FROM admissions.candidate c LEFT JOIN ref.programme ap ON ap.code = c.programme
+                               -- V769: the candidate's programme is the NAME JAMB's list gives: the code it reads as (one the student
+                               -- holds first; none for a name no programme carries), which the page compares with the code held
+                               (SELECT json_build_object('code', ap.code, 'name', coalesce(ap.name, c.programme)) FROM admissions.candidate c
+                                  LEFT JOIN ref.programme ap ON ap.code = admissions.candidate_programme_code(c.programme, s.programme_code)
                                  WHERE c.id = s.candidate_id) AS admitted
                           FROM people.student s LEFT JOIN ref.programme p ON p.code = s.programme_code WHERE s.id = :s) t),
                     'review', (SELECT row_to_json(t) FROM (SELECT rv.status, rv.note, rv.reviewed_at, rv.reviewed_office, helpdesk.person_name(rv.reviewed_by) AS reviewed_by
