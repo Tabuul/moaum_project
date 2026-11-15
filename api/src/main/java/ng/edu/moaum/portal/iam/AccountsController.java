@@ -79,12 +79,14 @@ class AccountsController {
      * one at a time. Resilient and idempotent; see iam.import_lecturers (V135).
      * Chunk the rows client-side: each credential is a bcrypt-12 hash (~¼s),
      * so a large single request would time out.
-     * V750: the nominal roll's columns or the old sheet's; someone already on record is updated from the roll (the e-mail and
-     * phone only filled), and a dry run says row by row what the upload would do and writes nothing. A new lecturer whose
+     * V750: the nominal roll's columns or the old sheet's; someone already on record has only what the record lacks filled (V761:
+     * a different value kept and listed under {@code kept}, the posting and the salary scale and step each once), and a dry run
+     * says row by row what the upload would do and writes nothing. A new lecturer whose
      * department is not on the portal is not loaded (SKIPPED, the message saying what to add or correct). The function's row
      * comes back as it is, with {@code results} — one entry per row, its {@code sheet_row} as {@code row}. A blank or query name
      * cell never erases a name (reported under {@code unresolved}); a number on record as non-teaching staff is an ERROR that
-     * writes nothing; a home department the roll changes moves the lecturer office with it (the change {@code lecturer_office}).
+     * writes nothing; an upload moves no lecturer office (V761: a department it fills beside an office open elsewhere is listed as
+     * {@code lecturer_office} {@code OFFICE_KEPT}), while the Add form still moves it (the change {@code lecturer_office}).
      */
     @PostMapping("/lecturers/import")
     @PreAuthorize(CREDENTIALS)
@@ -112,7 +114,8 @@ class AccountsController {
      * record placed in its unit, department or faculty — no sign-in and no office, since a non-academic
      * member of staff has no desk on the portal yet. A dry run resolves every row and writes nothing.
      * V750: the senior roll (PNO, P + digits) or the junior roll (JP-NO, JP + digits — never merged into a P record); someone
-     * already on record is updated from the roll (the e-mail and phone only filled, a blank or query name cell erasing no name);
+     * already on record has only what the record lacks filled (V761; the e-mail and phone likewise, a blank or query name cell
+     * erasing no name, their sign-in, password and offices never touched);
      * a number on record as teaching staff is an ERROR that writes nothing; the function's row comes back with {@code results},
      * one entry per row.
      */

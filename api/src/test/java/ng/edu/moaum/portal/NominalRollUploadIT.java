@@ -24,8 +24,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * LAST-SURNAME, PNO, … DEPARTMENT, FAC-COLL-DIR): a dry run says row by row what the upload would do and writes nothing — not the
  * new lecturers, not a change to one on record; uploaded, each new lecturer is a person, a sign-in and the lecturer office, the
  * dates read day first and a note kept where a date is expected ('NA' is no value); the same file again is all UNCHANGED; a roll
- * that differs updates the names and the record and lists each change, while an e-mail that differs from the one on record is kept
- * and reported, never written, and one missing is filled; a department not on the portal leaves the one on record and is reported,
+ * that differs (V761) leaves someone on record as the record holds them — the names, rank, promotion, posting and e-mail that differ
+ * kept and reported, never written — and fills only what is missing; a department not on the portal leaves the one on record and is reported,
  * and a new lecturer in such a department is not loaded (SKIPPED, the message saying to add the department or correct the cell).
  * The non-teaching rolls: a senior P number and a junior JP number of the same digits are two people, the junior never merged into
  * the P record; the old sheet still loads. The roll's "on the portal but not on this roll" by kind and series. Who may: Human
@@ -142,8 +142,9 @@ class NominalRollUploadIT {
             assertThat(result(again, a)).containsEntry("action", "UNCHANGED");
             assertThat((List) result(again, a).get("changes")).isEmpty();
 
-            // a roll that differs: names and record follow it; an e-mail that differs is kept, one missing filled; 'NA' erases nothing;
-            // a department not on the portal leaves the one on record, and is reported
+            // a roll that differs (V761): someone on record keeps what the record holds — the surname, rank, promotion (a date and the
+            // note in its place are one detail) and e-mail differing on the roll are kept and reported; what the record lacks is filled
+            // (B's e-mail and phone); 'NA' erases nothing; a department not on the portal leaves the one on record, and is reported
             Map<String, Object> rowA2 = new LinkedHashMap<>(rowA);
             rowA2.putAll(row("last_name", "Zzrollnew" + n[0], "email", "zzroll" + n[0] + "other@example.com", "lga", "NA", "present_rank", "LECTURER I",
                     "date_of_last_promotion", "01/10/2024"));
@@ -153,20 +154,23 @@ class NominalRollUploadIT {
             Map<String, Object> fingerprint = fingerprint(pa, pb);
             ResponseEntity<Map> check = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("dryRun", true, "rows", List.of(rowA2, rowB2)));
             assertThat(check.getStatusCode().value()).as(String.valueOf(check.getBody())).isEqualTo(200);
-            assertThat(check.getBody()).containsEntry("updated", 2);
+            assertThat(check.getBody()).containsEntry("updated", 1).containsEntry("unchanged", 1);
             assertThat(fingerprint(pa, pb)).as("a dry run changes no one on record").isEqualTo(fingerprint);
 
             ResponseEntity<Map> upd = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("rows", List.of(rowA2, rowB2)));
             assertThat(upd.getStatusCode().value()).as(String.valueOf(upd.getBody())).isEqualTo(200);
-            assertThat(upd.getBody()).containsEntry("created", 0).containsEntry("updated", 2).containsEntry("credentialed", 0).containsEntry("granted", 0);
+            assertThat(upd.getBody()).containsEntry("created", 0).containsEntry("updated", 1).containsEntry("unchanged", 1)
+                    .containsEntry("credentialed", 0).containsEntry("granted", 0);
             Map<String, Object> ra = result(upd, a);
-            assertThat(ra).containsEntry("action", "UPDATED");
-            assertThat(changes(ra)).containsEntry("surname", List.of("Zzroll" + n[0], "Zzrollnew" + n[0]))
-                    .containsEntry("present_rank", List.of("LECTURER II", "LECTURER I"))
-                    .containsKeys("date_of_last_promotion", "promotion_note")
-                    .doesNotContainKeys("email", "lga");
-            assertThat((List<Map<String, Object>>) ra.get("kept")).anySatisfy(k -> assertThat(k).containsEntry("field", "email")
+            assertThat(ra).containsEntry("action", "UNCHANGED");
+            assertThat((List) ra.get("changes")).isEmpty();
+            List<Map<String, Object>> keptA = (List<Map<String, Object>>) ra.get("kept");
+            assertThat(keptA).anySatisfy(k -> assertThat(k).containsEntry("field", "email")
                     .containsEntry("onRecord", "zzroll" + n[0] + "a@example.com").containsEntry("reason", "DIFFERS"));
+            assertThat(keptA).anySatisfy(k -> assertThat(k).containsEntry("field", "surname").containsEntry("onRecord", "Zzroll" + n[0])
+                    .containsEntry("onRoll", "Zzrollnew" + n[0]).containsEntry("reason", "DIFFERS"));
+            assertThat(keptA).anySatisfy(k -> assertThat(k).containsEntry("field", "present_rank").containsEntry("reason", "DIFFERS"));
+            assertThat(keptA).anySatisfy(k -> assertThat(k).containsEntry("field", "date_of_last_promotion").containsEntry("reason", "DIFFERS"));
             Map<String, Object> rb = result(upd, b);
             assertThat(rb).containsEntry("action", "UPDATED");
             assertThat(changes(rb)).containsKeys("email", "phone").doesNotContainKey("home_department");
@@ -179,9 +183,10 @@ class NominalRollUploadIT {
                     SELECT p.surname, p.email, sr.lga, sr.present_rank, sr.date_of_last_promotion::text AS promoted, sr.promotion_note
                       FROM iam.person p JOIN hrm.staff_record sr ON sr.person_id = p.id WHERE p.id = :p
                     """).param("p", pa).query().singleRow();
-            assertThat(nowA).containsEntry("surname", "Zzrollnew" + n[0]).containsEntry("email", "zzroll" + n[0] + "a@example.com")
-                    .containsEntry("lga", "Makurdi").containsEntry("present_rank", "LECTURER I").containsEntry("promoted", "2024-10-01");
-            assertThat(nowA.get("promotion_note")).isNull();
+            assertThat(nowA).containsEntry("surname", "Zzroll" + n[0]).containsEntry("email", "zzroll" + n[0] + "a@example.com")
+                    .containsEntry("lga", "Makurdi").containsEntry("present_rank", "LECTURER II")
+                    .containsEntry("promotion_note", "(Transfer of Service) Another University");
+            assertThat(nowA.get("promoted")).as("the note on record stands in place of the date: the roll's date is reported, not written").isNull();
             assertThat(jdbc.sql("SELECT email || '|' || phone FROM iam.person WHERE id = :p").param("p", pb).query(String.class).single())
                     .isEqualTo("zzroll" + n[1] + "b@example.com|0806" + n[1]);
             assertThat(jdbc.sql("SELECT count(*) FROM iam.credential WHERE person_id IN (:a, :b)").param("a", pa).param("b", pb).query(Integer.class).single())
@@ -192,7 +197,7 @@ class NominalRollUploadIT {
             rowA3.put("middle_name", "");
             ResponseEntity<Map> blankMiddle = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("rows", List.of(rowA3)));
             assertThat(blankMiddle.getStatusCode().value()).as(String.valueOf(blankMiddle.getBody())).isEqualTo(200);
-            assertThat(result(blankMiddle, a)).containsEntry("action", "UNCHANGED").containsEntry("name", "Zzrollnew" + n[0] + ", Adaeze Roll");
+            assertThat(result(blankMiddle, a)).containsEntry("action", "UNCHANGED").containsEntry("name", "Zzroll" + n[0] + ", Adaeze Roll");
             assertThat((List) result(blankMiddle, a).get("changes")).isEmpty();
             // a blank (NA) FIRST NAME keeps them too, and is reported
             Map<String, Object> rowA3f = new LinkedHashMap<>(rowA2);
@@ -204,19 +209,20 @@ class NominalRollUploadIT {
                     .containsEntry("field", "first_name").containsEntry("onRoll", "NA").containsEntry("reason", "BLANK"));
             assertThat(jdbc.sql("SELECT given_names FROM iam.person WHERE id = :p").param("p", pa).query(String.class).single())
                     .as("a blank name cell never erases a name").isEqualTo("Adaeze Roll");
-            // a different first name beside a blank MIDDLE NAME replaces only the first of the given names: the rest stand
+            // a different first name beside a blank MIDDLE NAME: the given names on record stand, the roll's reported (V761)
             Map<String, Object> rowA3d = new LinkedHashMap<>(rowA2);
             rowA3d.put("first_name", "Adanna");
             rowA3d.put("middle_name", "NA");
             ResponseEntity<Map> otherFirst = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("dryRun", true, "rows", List.of(rowA3d)));
             assertThat(otherFirst.getStatusCode().value()).as(String.valueOf(otherFirst.getBody())).isEqualTo(200);
-            assertThat(result(otherFirst, a)).containsEntry("action", "UPDATED");
-            assertThat(changes(result(otherFirst, a))).containsEntry("given_names", List.of("Adaeze Roll", "Adanna Roll"));
+            assertThat(result(otherFirst, a)).containsEntry("action", "UNCHANGED");
+            assertThat((List<Map<String, Object>>) result(otherFirst, a).get("kept")).anySatisfy(k -> assertThat(k).containsEntry("field", "given_names")
+                    .containsEntry("onRecord", "Adaeze Roll").containsEntry("onRoll", "Adanna").containsEntry("reason", "DIFFERS"));
             assertThat(jdbc.sql("SELECT given_names FROM iam.person WHERE id = :p").param("p", pa).query(String.class).single())
                     .as("a dry run writes nothing").isEqualTo("Adaeze Roll");
 
-            // a department the roll changes takes the lecturer office with it, as the Edit form moves it: said by the dry run (nothing
-            // written), then the old office ended today and one open in the new department; the same file again moves nothing
+            // a department the roll gives for a lecturer placed elsewhere (V761): the department on record and the lecturer office stand,
+            // the roll's department reported — by the dry run and the upload alike; the same file again changes nothing
             Map<String, Object> rowA4 = new LinkedHashMap<>(rowA2);
             rowA4.put("department", dept2[0]);
             long[] beforeMove = counts();
@@ -224,20 +230,20 @@ class NominalRollUploadIT {
             assertThat(officesBefore).containsExactly(dept[0] + ":open");
             ResponseEntity<Map> moveDry = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("dryRun", true, "rows", List.of(rowA4)));
             assertThat(moveDry.getStatusCode().value()).as(String.valueOf(moveDry.getBody())).isEqualTo(200);
-            assertThat(changes(result(moveDry, a))).containsEntry("home_department", List.of(dept[1], dept2[1]))
-                    .containsEntry("lecturer_office", List.of(dept[1], dept2[1]));
+            assertThat((List) result(moveDry, a).get("changes")).isEmpty();
+            assertThat((List<Map<String, Object>>) result(moveDry, a).get("kept")).anySatisfy(k -> assertThat(k).containsEntry("field", "posting")
+                    .containsEntry("onRecord", dept[1]).containsEntry("onRoll", dept2[1]).containsEntry("reason", "DIFFERS"));
             assertThat(counts()).as("a dry run moves no office").containsExactly(beforeMove);
             assertThat(lecturerOffices(pa)).isEqualTo(officesBefore);
             ResponseEntity<Map> move = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("rows", List.of(rowA4)));
             assertThat(move.getStatusCode().value()).as(String.valueOf(move.getBody())).isEqualTo(200);
-            assertThat(result(move, a)).containsEntry("action", "UPDATED");
-            assertThat(changes(result(move, a))).containsEntry("lecturer_office", List.of(dept[1], dept2[1]));
-            assertThat(lecturerOffices(pa)).containsExactlyInAnyOrder(dept[0] + ":ended today", dept2[0] + ":open");
+            assertThat(result(move, a)).containsEntry("action", "UNCHANGED");
+            assertThat(lecturerOffices(pa)).as("the lecturer office stands where it is").isEqualTo(officesBefore);
             assertThat(jdbc.sql("SELECT home_department FROM hrm.staff_record WHERE person_id = :p").param("p", pa).query(String.class).single())
-                    .isEqualTo(dept2[0]);
+                    .isEqualTo(dept[0]);
             ResponseEntity<Map> moveAgain = it.call(ict, HttpMethod.POST, I + "/lecturers/import", Map.of("rows", List.of(rowA4)));
             assertThat(result(moveAgain, a)).containsEntry("action", "UNCHANGED");
-            assertThat(lecturerOffices(pa)).hasSize(2);
+            assertThat(lecturerOffices(pa)).hasSize(1);
 
             // the teaching staff's upload refuses a junior's number; a new lecturer in a department not on the portal is not loaded;
             // the old sheet still loads

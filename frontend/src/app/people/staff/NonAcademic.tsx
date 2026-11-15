@@ -10,8 +10,8 @@
  * V748: the unit register shows what a staff identity card prints as each unit's department (its card name, else its nearest
  * parent's, else its formal name); ICT sets a unit's card name, with a reason.
  * V750: the upload follows the nominal roll — the senior non-teaching staff's (PNO, P + digits) and the junior staff's (JP-NO,
- * JP + digits, a series of its own), 16 columns each, from the Excel templates or the Word roll as issued; someone on record is
- * updated from the roll, the e-mail and phone only filled — the shared components/staff/RollUpload.
+ * JP + digits, a series of its own), 16 columns each, from the Excel templates or the Word roll as issued; someone on record
+ * has only what their record lacks filled (V761) — the shared components/staff/RollUpload.
  * V754: the Offices tab — the unit each office belongs to, which a staff card prints as the department of someone the HR record
  * places nowhere who holds the office (V751); ICT sets or clears it, with a reason.
  */
@@ -195,8 +195,9 @@ export function NonAcademic({ actingOffice, staff, units, removed, offices }: { 
       <Note kind="info" title="Upload the nominal roll of non-academic staff">
         The <b>senior non-teaching staff</b> roll (PNO, staff id P and the digits) or the <b>junior staff</b> roll (JP-NO, staff id JP and the
         digits, never merged with a P number). Check the file first (nothing is written), then upload it. A new member of staff is placed in their
-        posting; <b>no sign-in and no office are issued.</b> Someone already on record is <b>updated from the roll</b>; the e-mail and phone are only
-        filled where none is on record. Re-uploading never duplicates.
+        posting; <b>no sign-in and no office are issued.</b> Someone already on record has <b>only what their record is missing</b> filled
+        from the roll; a detail the portal holds differently is kept and listed, and their sign-in, password and offices are never touched.
+        Re-uploading never duplicates.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Registry, Human Resources and the Directorate of ICT">Your office may not load staff.</Note> : null}
 

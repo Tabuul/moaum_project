@@ -28,7 +28,7 @@ export interface RollColumn { head: string; field: RollField; note: string }
 
 const col = (head: string, field: RollField, note: string): RollColumn => ({ head, field, note });
 const DAY_FIRST = "Day first, as the roll writes it: 25/12/1970 is 25 December 1970.";
-const DATE_OR_NOTE = "Day first (1/2/2010 is 1 February 2010), NA, or a note such as (Transfer of Service) Another University: a note is kept with the record.";
+const DATE_OR_NOTE = "Day first (1/2/2010 is 1 February 2010), NA, or a note such as (Transfer of Service) Another University: a note is kept with the record of someone new, or of someone on record with neither the date nor a note.";
 
 function columns(t: RollTemplate): RollColumn[] {
   const number = t === "JUNIOR"
@@ -53,9 +53,9 @@ function columns(t: RollTemplate): RollColumn[] {
   ];
   return t === "ACADEMIC"
     ? [...head,
-       col("DEPARTMENT", "department", "The department, by its name or code as on the portal. A new lecturer is given the lecturer office in it; a lecturer on record whose department changes has the office moved to it."),
+       col("DEPARTMENT", "department", "The department, by its name or code as on the portal. A new lecturer is given the lecturer office in it. For a lecturer on record it is written only where the portal has none for them and places them nowhere else; a lecturer office they hold is never moved by the upload."),
        col("FAC-COLL-DIR", "faculty", "The faculty, college or directorate.")]
-    : [...head, col("CURRENT POSTING", "posting", "The unit, department or faculty the person works in, as the roll spells it. A new member of staff is placed in it.")];
+    : [...head, col("CURRENT POSTING", "posting", "The unit, department or faculty the person works in, as the roll spells it. A new member of staff is placed in it; someone on record is placed only if the portal has no posting for them.")];
 }
 
 /** the columns of a template, in the roll's order: 17 for the teaching staff, 16 for the senior and the junior staff */
@@ -74,9 +74,9 @@ export function rollTemplate(t: RollTemplate): SheetSpec[] {
     ["Dates", "Day first, as the roll writes them: 1/2/2010 is 1 February 2010, never 2 January. Type them as text, or format the date columns as Text before pasting, so Excel does not turn them round."],
     ["NA and blanks", "NA, NIL, N/A (written any way), a blank cell, a cell of dots or dashes, or a spreadsheet error such as #N/A is no value: it never erases what the portal holds. A name cell holding only a title (MR, DR., PROF DR) holds no name either, so it never erases a name on record — except a single bare title-word as the surname, which may be someone's surname."],
     ["Names written as a query", "A name cell the roll writes as a query (with a question mark, or two names joined by \"or\") is not written, and the result lists it. A query MIDDLE NAME, like a blank or query FIRST NAME, keeps all the given names on record as they are, the roll's first name too. For someone new, a surname or first name that is blank or a query stops the row (Not loaded): correct it and upload again."],
-    ["Given names", "Someone on record: the given names follow the roll when FIRST NAME and MIDDLE NAME are both given. With MIDDLE NAME blank, a first name whose every word is already among the given names on record leaves them as they are; any other first name takes the place of the first of them, and the rest stay (none written twice). A title before the names on record (PROF., DR, …) goes. A blank surname or first name keeps the name on record and is listed; a blank middle name is not listed. Someone new needs a surname and a first name that can be read."],
+    ["Given names", "Someone on record keeps the names the portal holds; names the roll writes differently are listed on the result, for HR to look at, and are not written (a name the portal lacks is filled). Someone new takes the names as the roll gives them, and needs a surname and a first name that can be read."],
     ["E-mail and phone", "Filled only where the portal has none. A different e-mail or phone on the roll is reported on the result and left as it is on the portal."],
-    ["Staff on record", `Found by the staff number alone, never by name. Uploading the roll again updates them: the names, sex, date of birth, LGA, state, the dates, the present rank and ${academic ? "the department and faculty" : "the current posting"} follow the roll${academic ? ", and a lecturer whose department changes has the lecturer office moved to the new one" : ""}. The same file uploaded twice changes nothing the second time.`],
+    ["Staff on record", `Found by the staff number alone, never by name. Uploading the roll again only fills what their record is missing: the names, sex, date of birth, LGA, state, the dates, the present rank and ${academic ? "the department and faculty" : "the current posting"} are written only where the portal has none (NA on the portal is none). A different value on the portal is kept and listed on the result (Not written) for HR to look at: ${academic ? "the Edit form on this desk corrects the names, sex, rank, phone, e-mail and department; ask ICT for anything else" : "ask ICT to correct a record where the roll is right"}. ${academic ? "The department and faculty are" : "The posting is"} one detail: someone placed elsewhere keeps their whole posting, listed once; someone placed in the same place has only the missing part filled. A date and the note written in its place are one detail too, and so are the salary scale and step. Their sign-in, password and offices are never touched${academic ? " — a lecturer office stays where it is, even when the upload fills a department; move it on the Edit form" : ""}. The same file uploaded twice changes nothing the second time.`],
     ["The other kind of staff", academic
       ? "A staff number on record as non-teaching staff is not loaded here: load them on the non-academic staff desk."
       : "A staff number on record as teaching staff is not loaded here: load them on the teaching staff desk."],
@@ -389,7 +389,7 @@ const FIELD_WORDS: Record<string, string> = {
   present_rank: "Present rank", category: "Category", cadre: "Cadre", salary_scale: "Salary scale", contiss_step: "CONTISS step",
   conuass_step: "CONUASS step", home_department: "Department", home_faculty: "Faculty", home_unit: "Unit",
   unit_as_given: "Posting as the roll gives it", email: "E-mail", phone: "Phone", sign_in: "Sign-in", department: "Department",
-  faculty: "Faculty", posting: "Current posting", full_names: "Full Names",
+  faculty: "Faculty", posting: "Current posting", full_names: "Full Names", grade: "Salary scale and step",
 };
 export function fieldWord(f: string): string {
   return FIELD_WORDS[f] ?? f.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -403,7 +403,7 @@ export function shown(v: unknown): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
 }
 
-/** a change the upload makes: "Department: ACCOUNTING → ADVERTISING"; the lecturer office moved with a new department */
+/** a change the upload makes: "Department: — → ADVERTISING"; the lecturer office moved with a department an Add form changes */
 export function changeText(c: RollChange): string {
   if (c.field === "lecturer_office") return `Lecturer office moved: ${shown(c.from)} → ${shown(c.to)}`;
   return `${fieldWord(c.field)}: ${shown(c.from)} → ${shown(c.to)}`;
@@ -411,19 +411,24 @@ export function changeText(c: RollChange): string {
 
 const KEPT_WHY: Record<string, string> = {
   DIFFERS: "differs from the one on the portal, which is kept",
+  NOT_THE_DEPARTMENTS: "is not the faculty the portal holds the department under, so it is not written",
   NOT_AN_EMAIL: "is not an e-mail address",
   NOT_A_PHONE: "could not be read as a phone number (0 and ten digits, or +234 and ten)",
   HELD_BY_ANOTHER: "is held by another person on the portal",
   GIVEN_TO_ANOTHER_ROW: "is given to another row of this file, so it is written for that row only",
   USERNAME_TOO_SHORT: "is shorter than a username may be (three characters), so no sign-in was made",
 };
-/** a contact (or the sign-in) the roll gives and the upload did not write; a reason these words do not know is shown as given */
+/** a detail the roll gives and the upload did not write (V761: one the record holds differently, the posting once), a contact, the
+ * sign-in, or the lecturer office left where it is; a reason these words do not know is shown as given */
 export function keptText(k: RollKept): string {
   const why = k.reason === "GIVEN_TO_ANOTHER_ROW" && k.givenTo
     ? `is given to another row of this file (${k.givenTo}), so it is written for that row only`
     : KEPT_WHY[k.reason ?? "DIFFERS"] ?? `was not written (${k.reason})`;
   if (k.field === "sign_in") return `Sign-in: the staff id ${why}`;
-  return `${fieldWord(k.field)}: the roll's ${shown(k.onRoll)} ${why}${k.reason === "DIFFERS" || !k.reason ? ` (${shown(k.onRecord)})` : ""}`;
+  if (k.field === "lecturer_office" && k.reason === "OFFICE_KEPT") {
+    return `Lecturer office stays in ${shown(k.onRecord)}: the roll places them in ${shown(k.onRoll)} — an upload moves no office (move it on the Edit form)`;
+  }
+  return `${fieldWord(k.field)}: the roll's ${shown(k.onRoll)} ${why}${k.reason === "DIFFERS" || k.reason === "NOT_THE_DEPARTMENTS" || !k.reason ? ` (${shown(k.onRecord)})` : ""}`;
 }
 
 /** the name cells: one the roll leaves blank keeps the name on record, one it writes as a query is not written */
@@ -508,7 +513,7 @@ type OutCell = string | number | null;
 
 /** the result as a sheet: every row of the file and what happened to it, then the staff on the portal not on the roll */
 export function resultSheet(t: RollTally, absent: RollAbsent[] | null): { headers: string[]; rows: OutCell[][] } {
-  const headers = ["Row", "Staff id", "Name", t.dry ? "What the upload will do" : "What happened", "Changes", "Contacts and sign-in not written", "Not resolved", "Problem"];
+  const headers = ["Row", "Staff id", "Name", t.dry ? "What the upload will do" : "What happened", "Changes", "Not written", "Not resolved", "Problem"];
   const rows: OutCell[][] = byRow(t.results).map((r) => [
     r.row ?? "", r.staffNumber ?? "", r.name, actionWord(r.action, t.dry),
     r.changes.map(changeText).join("; "), r.kept.map(keptText).join("; "), r.unresolved.map(unresolvedText).join("; "), r.error ?? "",

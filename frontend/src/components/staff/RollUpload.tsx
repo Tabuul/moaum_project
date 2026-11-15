@@ -1,11 +1,12 @@
 "use client";
 /**
  * V750: the nominal roll uploaded — the teaching staff's desk (t/lecturers) and the non-teaching staff's (t/staffupload) share it.
- * The University's word of 12 November 2026: the roll is the authentic list of staff, and an upload updates who is on record.
+ * The University's word of 12 November 2026: the roll is the authentic list of staff; of 14 November (V761): an upload only fills
+ * what the record of someone on record is missing, and never touches their sign-in, password or offices.
  *
  * The file is the Excel template (the roll's columns, a sheet of instructions beside them) or the Word roll as issued (.docx). It
  * is checked first — the upload run as a dry run, which writes nothing — and the check says who is new, who will be updated and
- * how, whose contacts the portal keeps, and what cannot be loaded; with it, the staff on the portal that the file leaves out. Then
+ * how, what the upload does not write, and what cannot be loaded; with it, the staff on the portal that the file leaves out. Then
  * Upload writes it. Both are sent in chunks (a new lecturer's sign-in is a bcrypt hash), and a chunk that does not land is counted,
  * not fatal: the upload is idempotent, so the same file again fills the gap. The result, row by row, downloads as Excel.
  */
@@ -169,9 +170,9 @@ export function RollUpload({ kind, templates, endpoint, chunk, what, onDone }: {
           <div className="sub2">
             The nominal roll as issued (<b>.docx</b>) or the <b>Excel template</b>, whose columns are the roll&apos;s
             {academic ? " (17)" : ": the senior staff under PNO, the junior staff under JP-NO (16 each)"}. The file is <b>checked first</b> and
-            nothing is written until <b>Upload</b>. Someone on record is found by the staff number and updated from the roll; the
-            e-mail and phone are only filled where the portal has none, and a blank or NA cell never erases what is on record.
-            {academic ? " A lecturer whose department changes has the lecturer office moved to the new one." : ""}
+            nothing is written until <b>Upload</b>. Someone on record is found by the staff number and has <b>only what their record
+            is missing</b> filled from the roll: a detail the portal holds differently is kept and listed under Not written, and
+            a blank or NA cell never erases what is on record. Their sign-in, password and offices are never touched.
             {` A staff number on record as ${academic ? "non-teaching" : "teaching"} staff is not loaded here.`}
           </div>
           <div className="row mt-2">
@@ -203,8 +204,8 @@ export function RollUpload({ kind, templates, endpoint, chunk, what, onDone }: {
         <>
           <Tiles items={[
             [t.dry ? "New" : "Added", String(t.created), null, academic ? `${t.credentialed} with a sign-in · ${t.granted} with the lecturer office` : "Placed in their posting"],
-            [t.dry ? "To update" : "Updated", String(t.updated), null, "The roll differs from the record"],
-            ["Unchanged", String(t.unchanged), null, "As the portal has them"],
+            [t.dry ? "To update" : "Updated", String(t.updated), null, "The roll fills what the record is missing"],
+            ["Unchanged", String(t.unchanged), null, "Nothing missing to fill"],
             [t.dry ? "Will not be loaded" : "Not loaded", String(t.skipped + t.errors), t.skipped + t.errors ? "var(--red-ink)" : null, t.skipped + t.errors ? "See Not loaded below" : "Every row can be loaded"],
           ]} />
           <Note kind={t.skipped || t.errors || t.failedRows ? "bad" : "ok"}
@@ -214,7 +215,7 @@ export function RollUpload({ kind, templates, endpoint, chunk, what, onDone }: {
             {t.rows} row(s) {t.dry ? "checked" : "read"} · {t.created} {t.dry ? "new" : "added"} · {t.updated} {t.dry ? "to update" : "updated"} · {t.unchanged} unchanged
             {t.skipped ? ` · ${t.skipped} not loaded` : ""}{t.errors ? ` · ${t.errors} with an error` : ""}
             {academic && !t.dry && t.created ? ` · ${t.credentialed} sign-in(s) made, ${t.granted} lecturer office(s) given` : ""}.
-            {kept.length ? <> {kept.length} row(s) carry an e-mail, phone or sign-in the portal does not take from the roll.</> : null}
+            {kept.length ? <> {kept.length} row(s) give a detail the upload does not write (see Not written).</> : null}
             {t.failedRows ? <><br /><b>{t.failedRows} row(s) did not send.</b> {t.dry ? "Check the file again." : "Upload the same file again to fill the gap."}</> : null}
             {t.missing.length ? <><br /><b>Not on the portal, as the roll spells {academic ? "the department" : "the posting"}:</b> {t.missing.join(" · ")}. {academic ? "Ask ICT to add the department (Department upload)" : "Ask ICT to add it or its spelling"}, or correct the cell, and upload again.</> : null}
             {t.firstError ? <><br />First problem: {t.firstError}</> : null}
@@ -224,7 +225,7 @@ export function RollUpload({ kind, templates, endpoint, chunk, what, onDone }: {
           <Panel title={t.dry ? "What the upload will do, row by row" : "What the upload did, row by row"}
             right={<Tabs label="Rows" value={view} onChange={setView} items={[
               { id: "changes", label: t.dry ? "New and to update" : "Added and updated", count: changed.length },
-              { id: "kept", label: "Contacts kept", count: kept.length },
+              { id: "kept", label: "Not written", count: kept.length },
               { id: "problems", label: "Not loaded", count: problems.length },
               { id: "unresolved", label: "Not resolved", count: unresolved.length },
               { id: "absent", label: "On the portal, not on this roll", count: absent ? absent.length : "…" },
@@ -232,8 +233,8 @@ export function RollUpload({ kind, templates, endpoint, chunk, what, onDone }: {
             <PBody>
               <div className="row">
                 <span className="sub2 grow">
-                  {view === "changes" ? "Each row new to the portal, or whose record the roll changes: the field, what the portal held and what the roll gives."
-                    : view === "kept" ? "The portal fills an e-mail or phone only where it has none: what the roll gives otherwise is shown here and not written."
+                  {view === "changes" ? "Each row new to the portal, or whose record the roll fills: the field, what the portal held and what the roll gives."
+                    : view === "kept" ? `What the roll gives and the upload does not write: for someone on record, a detail the portal holds differently (kept as it is, for HR to look at — ${academic ? "the Edit form on this desk corrects the names, sex, rank, phone, e-mail and department; ask ICT for anything else" : "ask ICT to correct a record where the roll is right"}) and a lecturer office left where it is; for anyone, an e-mail, phone or sign-in the portal cannot take.`
                     : view === "problems" ? "Rows that are not loaded, with the reason. Correct the file, or ask ICT to add the department or posting it names, and upload again."
                     : view === "unresolved" ? "Rows loaded with a cell the portal could not place or read, or a name the roll leaves blank or writes as a query: the record keeps what it held for that field."
                     : `In service on the portal as ${academic ? "teaching" : "non-teaching"} staff${file?.read.header.junior ? " (the JP series)" : academic ? "" : " (the P series)"}, and not on this file. Nobody is ended by this list.`}
@@ -255,7 +256,7 @@ export function RollUpload({ kind, templates, endpoint, chunk, what, onDone }: {
                 <DTable cols={["Row|num", "Staff id", "Name", "Not written"]} texts={kept.map(text)} rows={kept.map((r) => [
                   rowCell(r), idCell(r), nameCell(r), <span key="k">{r.kept.map((k, i) => <div key={i} className="sub2">{keptText(k)}</div>)}</span>,
                 ])} />
-              ) : <PBody><div className="sub2">Every e-mail and phone on the roll is the portal&apos;s, or fills a blank.</div></PBody>
+              ) : <PBody><div className="sub2">Every detail on the roll is the portal&apos;s, or fills a blank.</div></PBody>
             ) : view === "problems" ? (
               problems.length ? (
                 <DTable cols={["Row|num", "Staff id", "Name", "|mid", "Why"]} texts={problems.map(text)} rows={problems.map((r) => [

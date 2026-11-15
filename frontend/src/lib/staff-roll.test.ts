@@ -36,7 +36,7 @@ test("a template downloaded and read back is recognised, its instructions sheet 
     assert.equal(h.header.junior, junior);
     assert.equal(sheets[0].rows.length, 1, "nothing but the headings: no example row to upload by mistake");
     const text = sheets[1].rows.flat().join(" ");
-    for (const w of ["Day first", "NA", "only where the portal has none", "updates them", "(.docx)"]) assert.ok(text.includes(w), `${t}: the instructions say ${w}`);
+    for (const w of ["Day first", "NA", "only where the portal has none", "only fills what their record is missing", "(.docx)"]) assert.ok(text.includes(w), `${t}: the instructions say ${w}`);
     assert.equal(findHeader(sheets[1].rows), null);
   }
 });
@@ -200,6 +200,17 @@ test("the words for actions, changes, contacts kept and what did not resolve", (
   assert.equal(keptText({ field: "email", onRecord: "a@x.ng", onRoll: "b@x.ng", reason: "DIFFERS" }), "E-mail: the roll's b@x.ng differs from the one on the portal, which is kept (a@x.ng)");
   assert.equal(keptText({ field: "phone", onRecord: null, onRoll: "0803", reason: "NOT_A_PHONE" }), "Phone: the roll's 0803 could not be read as a phone number (0 and ten digits, or +234 and ten)");
   assert.match(keptText({ field: "sign_in", onRecord: null, onRoll: "p6", reason: "USERNAME_TOO_SHORT" }), /^Sign-in: .*no sign-in was made$/);
+  // V761: someone on record keeps what the record holds — a detail, the posting (once, by place) and the lecturer office
+  assert.equal(keptText({ field: "present_rank", onRecord: "LECTURER II", onRoll: "LECTURER I", reason: "DIFFERS" }),
+    "Present rank: the roll's LECTURER I differs from the one on the portal, which is kept (LECTURER II)");
+  assert.equal(keptText({ field: "posting", onRecord: "Bursary Department", onRoll: "Human Anatomy", reason: "DIFFERS" }),
+    "Current posting: the roll's Human Anatomy differs from the one on the portal, which is kept (Bursary Department)");
+  assert.equal(keptText({ field: "lecturer_office", onRecord: "Mathematics and Computer Science", onRoll: "Accounting", reason: "OFFICE_KEPT" }),
+    "Lecturer office stays in Mathematics and Computer Science: the roll places them in Accounting — an upload moves no office (move it on the Edit form)");
+  assert.equal(keptText({ field: "grade", onRecord: "CONSOLIDATED", onRoll: "CONTISS step 7", reason: "DIFFERS" }),
+    "Salary scale and step: the roll's CONTISS step 7 differs from the one on the portal, which is kept (CONSOLIDATED)");
+  assert.equal(keptText({ field: "home_faculty", onRecord: "Science", onRoll: "Arts", reason: "NOT_THE_DEPARTMENTS" }),
+    "Faculty: the roll's Arts is not the faculty the portal holds the department under, so it is not written (Science)");
   assert.equal(unresolvedText({ field: "department", onRoll: "ULIS" }), "Department: ULIS is not on the portal");
   assert.equal(unresolvedText({ field: "posting", onRoll: null }), "Current posting: blank");
   assert.equal(unresolvedText({ field: "date_of_birth", onRoll: "31/02/1970" }), "Date of birth: 31/02/1970 could not be read");
@@ -289,6 +300,7 @@ test("the result as a sheet: every row in row order, then the staff not on the r
   t = addChunk(t, { rows: 2, results: [res({ row: 5, changes: [{ field: "surname", from: "OKAFOR", to: "OKAFOR-EZE" }] }), res({ row: 2, action: "UNCHANGED" })] });
   const s = resultSheet(t, [{ person_id: "x", staff_number: "P77", name: "ABSENT, ONE", rank: "LECTURER I", posting: "ACCOUNTING" }]);
   assert.equal(s.headers[3], "What happened");
+  assert.equal(s.headers[5], "Not written");
   assert.deepEqual(s.rows.map((r) => [r[0], r[3]]), [[2, "Unchanged"], [5, "Updated"], ["", "On the portal, not on this roll"]]);
   assert.equal(s.rows[1][4], "Surname: OKAFOR → OKAFOR-EZE");
   assert.equal(s.rows[2][4], "LECTURER I · ACCOUNTING");

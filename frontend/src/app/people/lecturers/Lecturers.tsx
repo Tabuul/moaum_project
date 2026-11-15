@@ -13,8 +13,8 @@
  * on the register is reported so it can be created first.
  * V750: the upload follows the nominal roll (17 columns: first, middle and last name, PNO, sex, date of birth, e-mail, phone, LGA,
  * state, first appointment, confirmation, last promotion, present rank, department, faculty), from the Excel template or the Word
- * roll as issued; checked first (a dry run), then uploaded; someone on record is updated from the roll, the e-mail and phone only
- * filled — the shared components/staff/RollUpload. A department the roll changes moves the lecturer office with it; a number on
+ * roll as issued; checked first (a dry run), then uploaded; someone on record has only what their record lacks filled (V761), the
+ * lecturer office never moved by the upload — the shared components/staff/RollUpload. The Edit form moves the office; a number on
  * record as non-teaching staff is refused (an ERROR row), on the upload as on Add.
  */
 import { useMemo, useState } from "react";
@@ -179,7 +179,7 @@ export function Lecturers({ actingOffice, staff, removed }: { actingOffice: stri
         From the <b>nominal roll</b> (the Word roll as issued, or the Excel template). A new lecturer gets a sign-in whose <b>username is the staff id</b>, and the <b>lecturer
         office at the home department</b>. The lecturer signs in with the <b>staff id as the first password</b> and chooses a password at once; after that
         the staff id opens nothing (<b>Forgot password</b> sends a link to the email or phone on record, or the Registry gives a new one on Users &amp; roles).
-        Someone already on record is <b>updated from the roll</b> (names, dates, rank, department and faculty; a new department moves the lecturer office with it); the e-mail and phone are only filled where none is on record.
+        Someone already on record has <b>only what their record is missing</b> filled from the roll (names, dates, rank, department and faculty, e-mail and phone); a detail the portal holds differently is kept and listed, and their sign-in, password and offices are never touched (the Edit form moves the lecturer office).
         Re-uploading never duplicates or resets a password. The department must exist first.
       </Note>
       {!may ? <Note kind="bad" title="This desk is for the Directorate of ICT and the Registry">Your office may not onboard teaching staff.</Note> : null}

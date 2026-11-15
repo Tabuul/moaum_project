@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 620
+\set EXPECTED 623
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -35364,19 +35364,14 @@ BEGIN
   PERFORM pg_temp.assert('V750: a junior is JP + the JP-NO digits, a series of its own — never merged into the P record of the same digits',
       coalesce(m_junior = 'people 2 | JP997501/ZZJUNIOR/JUNIOR/997501,P997501/ZZROLLNEW/SENIOR/997501 | 08030007511/1990-12-13/2012-03-02/-/-/ANT', false),
       m_junior);
-  PERFORM pg_temp.assert('V750: someone on record follows the roll — names and rank updated and listed, the phone filled, the e-mail on record kept (the roll''s reported), NA erasing nothing, a posting that does not resolve leaving the unit',
-      coalesce(m_update = 'Zzroll/Grace Mnena/zz750.onrecord@example.test/08030007502/Senior Clerk/2001-01-01/-/2015-05-12/12/05/2015-UPG/BUR_FAT_CASH_OFFICE/BUR-DIRECTORATE OF FAT-[CASH OFFICE]/SENIOR'
-                          || ' | cadre,date_of_last_promotion,given_names,phone,present_rank,promotion_note,sex'
-                          || ' | email:zz750.onrecord@example.test:zz750.roll@example.test:DIFFERS | posting:UNIT THAT DOES NOT EXIST | Old Given>Grace Mnena', false),
+  PERFORM pg_temp.assert('V750, V761: someone on record keeps what the record holds — the names and rank kept and reported as differing, the empty details filled (cadre, promotion, phone, sex), the e-mail on record kept (the roll''s reported), NA erasing nothing, a posting that does not resolve leaving the unit',
+      coalesce(m_update = $v761$Zzroll/Old Given/zz750.onrecord@example.test/08030007502/CLERK/2001-01-01/-/2015-05-12/12/05/2015-UPG/BUR_FAT_CASH_OFFICE/BUR-DIRECTORATE OF FAT-[CASH OFFICE]/SENIOR | cadre,date_of_last_promotion,phone,promotion_note,sex | given_names:Old Given:Grace Mnena:DIFFERS,present_rank:CLERK:Senior Clerk:DIFFERS,email:zz750.onrecord@example.test:zz750.roll@example.test:DIFFERS | posting:UNIT THAT DOES NOT EXIST$v761$, false),
       m_update);
-  PERFORM pg_temp.assert('V750: the teaching-staff upload makes a lecturer with a sign-in and the lecturer office, renames one on record with neither, and refuses a junior number; a staff number too short to be a username (P and one digit) is loaded and placed, its sign-in reported as not made',
-      coalesce(m_lect = 'lecturers 5/3/1/2/3/1/0/1/0 | ERROR:JP997508 is a junior staff number (JP-NO): junior staff are loaded on the non-academic staff desk'
-                        || ' | ZZLECTURER/Ngozi/ACADEMIC/-/t/t/1975-10-01/Lecturer I/1/1'
-                        || ' | ZZRENAMED/Bem/08030007503/LECTURER II/t/-/0/0 | home_department,surname | phone:DIFFERS | faculty:FACULTY OF NOWHERE'
-                        || ' | ZZOLDLECT/Old Lecturer/1 | 0/1/sign_in:pn:USERNAME_TOO_SHORT', false),
+  PERFORM pg_temp.assert('V750, V761: the teaching-staff upload makes a lecturer with a sign-in and the lecturer office, fills one on record with neither (its department) keeping its surname (reported), and refuses a junior number; a staff number too short to be a username (P and one digit) is loaded and placed, its sign-in reported as not made',
+      coalesce(m_lect = $v761$lecturers 5/3/1/2/3/1/0/1/0 | ERROR:JP997508 is a junior staff number (JP-NO): junior staff are loaded on the non-academic staff desk | ZZLECTURER/Ngozi/ACADEMIC/-/t/t/1975-10-01/Lecturer I/1/1 | ZZBEFORE/Bem/08030007503/LECTURER II/t/-/0/0 | home_department | surname:DIFFERS,phone:DIFFERS | faculty:FACULTY OF NOWHERE | ZZOLDLECT/Old Lecturer/1 | 0/1/sign_in:pn:USERNAME_TOO_SHORT$v761$, false),
       m_lect);
-  PERFORM pg_temp.assert('V750: the same roll uploaded again changes nothing — every row on record UNCHANGED, the e-mail that differs still reported',
-      coalesce(m_again = 'staff 6/0/0/4/1/1 | lecturers 5/0/0/4/1/0/0 | people 10 | kept P997502:email', false),
+  PERFORM pg_temp.assert('V750, V761: the same roll uploaded again changes nothing — every row on record UNCHANGED, what differs from the record (names, rank, e-mail) still reported',
+      coalesce(m_again = $v761$staff 6/0/0/4/1/1 | lecturers 5/0/0/4/1/0/0 | people 10 | kept P997502:given_names,P997502:present_rank,P997502:email$v761$, false),
       m_again);
   PERFORM pg_temp.assert('V750: hrm.roll_absent lists the staff in service of the kind named whose number is not on the roll, within the roll''s series (P or JP)',
       coalesce(m_absent = 'academic P997504 | senior roll P997505 | junior roll - | junior roll without JP997501 | ZZABSENT, Nonteaching/DRIVER | ROLL_KIND', false),
@@ -35615,13 +35610,8 @@ BEGIN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
     IF v_err <> 'the V750 names check undoes its writes' THEN RAISE; END IF;
   END;
-  PERFORM pg_temp.assert('V750: a blank or NA name cell never erases a name and a query is never written — a blank first name or a query middle name keeps the given names, with a blank middle name the roll''s first name is kept among them or put first in their place, both cells rename, a blank or query surname keeps the surname; each reported; a dry run says the same',
-      coalesce(m_names = 'staff 12/1/7/0/4 | P997531:UPDATED:ZZNAMES, Mary Ann:first_name=BLANK:-,P997532:UPDATED:ZZNAMES, John Tersoo:-:-'
-                          || ',P997533:UPDATED:ZZNAMES, Simon Paul:-:given_names,P997534:UPDATED:ZZNAMES, Ngozi Ada:middle_name=QUERY:-'
-                          || ',P997535:UPDATED:ZZQUERYSUR, Grace Mnena:last_name=QUERY:given_names,P997536:UPDATED:ZZKEEPSUR, Tor Terver:last_name=BLANK:-'
-                          || ',P997537:UPDATED:ZZTITLE, GODWIN:-:given_names'
-                          || ' | ZZNAMES/Mary Ann,ZZNAMES/John Tersoo,ZZNAMES/Simon Paul,ZZNAMES/Ngozi Ada,ZZQUERYSUR/Grace Mnena,ZZKEEPSUR/Tor Terver,ZZTITLE/GODWIN'
-                          || ' | dry said the same true', false), m_names);
+  PERFORM pg_temp.assert('V750, V761: a blank or NA name cell never erases a name and a query is never written; someone on record keeps the names on record (a different one reported); a dry run says the same',
+      coalesce(m_names = $v761$staff 12/1/7/0/4 | P997531:UPDATED:ZZNAMES, Mary Ann:first_name=BLANK:-,P997532:UPDATED:ZZNAMES, John Tersoo:-:-,P997533:UPDATED:ZZNAMES, Peter Paul:-:-,P997534:UPDATED:ZZNAMES, Ngozi Ada:middle_name=QUERY:-,P997535:UPDATED:ZZQUERYSUR, Grace:last_name=QUERY:-,P997536:UPDATED:ZZKEEPSUR, Tor Terver:last_name=BLANK:-,P997537:UPDATED:ZZTITLE, PROF.GODWIN:-:- | ZZNAMES/Mary Ann,ZZNAMES/John Tersoo,ZZNAMES/Peter Paul,ZZNAMES/Ngozi Ada,ZZQUERYSUR/Grace,ZZKEEPSUR/Tor Terver,ZZTITLE/PROF.GODWIN | dry said the same true$v761$, false), m_names);
   PERFORM pg_temp.assert('V750: a new person takes the name cells that can be read (a query middle name left out); a blank first name (whatever the middle name holds) or a query surname is an error',
       coalesce(m_new = 'JP997538:CREATED:middle_name=QUERY,JP997539:ERROR:-:the first name is blank'
                           || ',JP997540:ERROR:last_name=QUERY:the surname (LAST-SURNAME) is a query (Zz?): correct it and upload again'
@@ -35631,9 +35621,8 @@ BEGIN
                           || ',P997542:ERROR:P997542 is on record as teaching staff: they are loaded on the teaching staff desk'
                           || ' | P997531:ERROR:P997531 is on record as non-teaching staff: they are loaded on the non-academic staff desk,P997543:UPDATED:-'
                           || ' | non-teaching untouched by the teaching roll true | teaching untouched by the non-teaching roll true | ACADEMIC/0', false), m_kind);
-  PERFORM pg_temp.assert('V750: a department the teaching-staff roll changes takes the lecturer office with it (the old ended today, the new open, the head of department''s office left), listed as lecturer_office from → to, said by the dry run, nothing more on the re-run',
-      coalesce(m_move = 'dry wrote nothing true | dry home_department,lecturer_office:true>true | lecturers 4/0/2/1/1/0 | home_department,lecturer_office:true>true'
-                          || ' | record in B true | hod:A:open,lecturer:A:ended today,lecturer:B:open | again lecturers 0/0/3/1 | staff 0/0/8/4 | offices 3', false), m_move);
+  PERFORM pg_temp.assert('V750, V761: a department the teaching-staff roll gives for a lecturer placed elsewhere is kept with the lecturer office (reported, nothing moved), the head of department''s office left, said by the dry run, nothing more on the re-run',
+      coalesce(m_move = $v761$dry wrote nothing true | lecturers 4/0/1/2/1/0 | record in B false | hod:A:open,lecturer:A:open | again lecturers 0/0/3/1 | staff 0/0/8/4 | offices 2$v761$, false), m_move);
   PERFORM pg_temp.assert('V750: the Edit form (iam.update_lecturer) moves a lecturer office the record had left behind in another department, once',
       coalesce(m_drift = 'lecturer:A:ended today,lecturer:B:open | saved again 2', false), m_drift);
   PERFORM pg_temp.assert('V750: an old-sheet row on someone on record names them as the record does, not by the guess from Full Names',
@@ -37561,6 +37550,244 @@ BEGIN
                  AND by_direction = 'none:MATRIC:CHECKIUFG:none' AND differs = 'RECORD_ON_EXISTING:NAME_DIFFERS+STUDENT_EXISTS', false),
         format('file %s | thin %s | bursary %s | made %s | batch %s | kept %s | twice %s | pending %s | decided %s | record %s | out %s | searched %s | table %s | direction %s | differs %s',
                file_codes, thin, bursary, made->>'ref', batch, kept, twice, pending, decided, record, found_out, searched, table_cgpa, by_direction, differs));
+END $$;
+
+-- ── V761: a staff list uploaded again fills only what the record is missing. A made-up member of staff on record (surname, given
+--          names, rank, a unit of posting, a sign-in and an office) meets a list row with other names, another rank and a department:
+--          the names and rank stay (each reported as differing), the posting stays (reported once), the empty cadre and date of
+--          birth are filled, the password and the office untouched. The Add form for the same person still writes what it is given.
+--          A staff number not on record takes every detail. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); p uuid := gen_random_uuid(); dept text; unit text; out_list jsonb; out_form jsonb; out_new jsonb;
+    hash_before text; hash_after text; offices_before int; offices_after int; rec text; changed text; kept text; formed text; made text; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'CHECK V761', true);
+    SELECT code INTO dept FROM ref.department ORDER BY code LIMIT 1;
+    SELECT code INTO unit FROM ref.unit ORDER BY code LIMIT 1;
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (p, 'P997611', 'ZZONRECORD', 'Old Given');
+    INSERT INTO hrm.staff_record (person_id, pno, present_rank, home_unit, category) VALUES (p, '997611', 'CLERK', unit, 'NON_ACADEMIC');
+    INSERT INTO iam.credential (person_id, username, password_hash, must_change, set_by) VALUES (p, 'p997611', crypt('a password of theirs', gen_salt('bf', 12)), false, who);
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), p, 'records', 'institution', NULL, 'check V761', who, current_date);
+    SELECT password_hash INTO hash_before FROM iam.credential WHERE person_id = p;
+    SELECT count(*) INTO offices_before FROM iam.office_assignment WHERE person_id = p AND valid_to IS NULL;
+
+    -- a row of the uploaded list
+    out_list := hrm.roll_apply(p, 'P997611', jsonb_build_object('surname', 'ZZNEWNAME', 'first_name', 'Grace', 'middle_name', 'Ada',
+                    'present_rank', 'Senior Clerk', 'cadre', 'SENIOR', 'date_of_birth', '1980-01-04', 'home_department', dept));
+    SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') INTO changed FROM jsonb_array_elements(out_list->'changes') c;
+    SELECT string_agg((k->>'field') || ':' || (k->>'reason'), ',' ORDER BY k->>'field') INTO kept FROM jsonb_array_elements(out_list->'kept') k;
+    SELECT concat_ws('/', pe.surname, pe.given_names, sr.present_rank, sr.cadre, sr.date_of_birth::text, CASE WHEN sr.home_unit = unit THEN 'unit kept' ELSE 'unit changed' END,
+                     coalesce(sr.home_department, 'no department'))
+      INTO rec FROM iam.person pe JOIN hrm.staff_record sr ON sr.person_id = pe.id WHERE pe.id = p;
+    SELECT password_hash INTO hash_after FROM iam.credential WHERE person_id = p;
+    SELECT count(*) INTO offices_after FROM iam.office_assignment WHERE person_id = p AND valid_to IS NULL;
+
+    -- the Add form for the same person writes what it is given
+    out_form := hrm.roll_apply(p, 'P997611', jsonb_build_object('surname', 'ZZFORMNAME', 'given_names', 'Grace Ada', 'add_form', true, 'present_rank', 'Senior Clerk'));
+    SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') INTO formed FROM jsonb_array_elements(out_form->'changes') c;
+
+    -- a staff number not on record takes every detail
+    out_new := hrm.roll_apply(NULL, 'P997612', jsonb_build_object('surname', 'ZZBRANDNEW', 'first_name', 'Tor', 'present_rank', 'Driver', 'cadre', 'JUNIOR'));
+    SELECT concat_ws('/', pe.surname, pe.given_names, sr.present_rank, sr.cadre) INTO made
+      FROM iam.person pe JOIN hrm.staff_record sr ON sr.person_id = pe.id WHERE pe.id = (out_new->>'person')::uuid;
+
+    msg := format('list changed %s | kept %s | record %s | password kept %s | offices %s>%s | form changed %s | new %s',
+                  changed, kept, rec, (hash_before = hash_after)::text, offices_before, offices_after, formed, made);
+    RAISE EXCEPTION 'the V761 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V761 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V761: a staff list uploaded again fills only what the record lacks — names, rank and posting kept and reported, empty details filled, the password and offices untouched; the Add form writes what it is given; a new staff number takes every detail',
+      coalesce(msg = 'list changed cadre,date_of_birth | kept given_names:DIFFERS,posting:DIFFERS,present_rank:DIFFERS,surname:DIFFERS'
+                     || ' | record ZZONRECORD/Old Given/CLERK/SENIOR/1980-01-04/unit kept/no department | password kept true | offices 1>1'
+                     || ' | form changed given_names,present_rank,surname | new ZZBRANDNEW/Tor/Driver/JUNIOR', false), msg);
+END $$;
+
+-- ── V761: the record's own gaps — NA, NIL or a dash on record is no value and is filled; the posting is one place: one placed where
+--          the roll places them has only the missing part filled (a department its faculty; on the teaching-staff list a faculty
+--          alone takes a department of that faculty, and a faculty alone on the roll is no other place), nothing reported; one
+--          placed elsewhere keeps its whole posting, reported once by place (a non-teaching faculty office is not moved into a
+--          department); a faculty stated against the one on record, or against the department's, is reported and not written; the
+--          salary scale and step one detail (a step filled on the same scale, any other grade kept and reported once); a note in
+--          place of a date keeps the date out; kept given names reported as the roll's own cells. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); pna uuid := gen_random_uuid(); pfac uuid := gen_random_uuid(); pdep uuid := gen_random_uuid();
+    pnote uuid := gen_random_uuid(); pelse uuid := gen_random_uuid(); pnt uuid := gen_random_uuid(); pfx uuid := gen_random_uuid();
+    pbad uuid := gen_random_uuid(); pfo uuid := gen_random_uuid(); pg1 uuid := gen_random_uuid(); pg2 uuid := gen_random_uuid();
+    pg3 uuid := gen_random_uuid(); pgn uuid := gen_random_uuid(); pg4 uuid := gen_random_uuid(); pg5 uuid := gen_random_uuid();
+    pun uuid := gen_random_uuid(); unit text;
+    dept text; fac text; dept2 text; fac2 text; o jsonb; msg text := '';
+    shown_out text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'CHECK V761', true);
+    -- two departments of two faculties
+    SELECT d.code, d.faculty_code INTO dept, fac FROM ref.department d WHERE d.faculty_code IS NOT NULL AND d.ended_on IS NULL ORDER BY d.code LIMIT 1;
+    SELECT d.code, d.faculty_code INTO dept2, fac2 FROM ref.department d
+     WHERE d.faculty_code IS NOT NULL AND d.faculty_code <> fac AND d.ended_on IS NULL ORDER BY d.code LIMIT 1;
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES
+        (pna, 'P997621', 'ZZNA', 'On Record'), (pfac, 'P997622', 'ZZFAC', 'On Record'), (pdep, 'P997623', 'ZZDEP', 'On Record'),
+        (pnote, 'P997624', 'ZZNOTE', 'On Record'), (pelse, 'P997625', 'ZZELSE', 'On Record'), (pnt, 'P997626', 'ZZOFFICE', 'Faculty Office'),
+        (pfx, 'P997627', 'ZZFACX', 'On Record'), (pbad, 'P997628', 'ZZFACBAD', 'On Record'), (pfo, 'P997629', 'ZZFACONLY', 'On Record'),
+        (pg1, 'P997632', 'ZZGRADE', 'Consolidated'), (pg2, 'P997633', 'ZZGRADE', 'Contiss'), (pg3, 'P997634', 'ZZGRADE', 'Step Only'),
+        (pgn, 'P997635', 'ZZGIVEN', 'NGOZI ADAKU'), (pg4, 'P997636', 'ZZGRADE', 'Conuass'), (pg5, 'P997637', 'ZZGRADE', 'Contiss Lecturer'),
+        (pun, 'P997638', 'ZZUNIT', 'Beside');
+    SELECT code INTO unit FROM ref.unit ORDER BY code LIMIT 1;
+    INSERT INTO hrm.staff_record (person_id, pno, present_rank, lga, state_of_origin, home_department, category) VALUES
+        (pna, '997621', 'NA', 'NIL', '-', dept, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_faculty, category) VALUES (pfac, '997622', fac2, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_department, category) VALUES (pdep, '997623', dept, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, promotion_note, category) VALUES (pnote, '997624', '(Transfer of Service) Another University', 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_department, home_faculty, category) VALUES (pelse, '997625', dept, fac, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_faculty, unit_as_given, category) VALUES (pnt, '997626', fac2, 'FACULTY OFFICE', 'NON_ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_department, home_faculty, category) VALUES (pfx, '997627', dept, fac2, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_department, category) VALUES (pbad, '997628', dept, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_department, category) VALUES (pfo, '997629', dept, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, salary_scale, category) VALUES (pg1, '997632', 'CONSOLIDATED', 'NON_ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, salary_scale, category) VALUES (pg2, '997633', 'CONTISS', 'NON_ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, contiss_step, category) VALUES (pg3, '997634', 7, 'NON_ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, salary_scale, category) VALUES (pg4, '997636', 'CONUASS', 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, salary_scale, contiss_step, category) VALUES (pg5, '997637', 'CONTISS', 7, 'ACADEMIC');
+    INSERT INTO hrm.staff_record (person_id, pno, home_department, home_unit, category) VALUES (pun, '997638', dept, unit, 'ACADEMIC');
+
+    -- NA, NIL and a dash on record are filled (the department the same: nothing of the posting reported)
+    o := hrm.roll_apply(pna, 'P997621', jsonb_build_object('present_rank', 'Lecturer I', 'lga', 'Makurdi', 'state_of_origin', 'Benue',
+                                                           'home_department', dept, 'home_unit', NULL, 'category', 'ACADEMIC'));
+    msg := msg || 'na ' || coalesce((SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') FROM jsonb_array_elements(o->'changes') c), '-')
+               || ' kept ' || jsonb_array_length(o->'kept');
+    -- the teaching-staff list: a faculty alone on record and a department of that faculty on the roll — the department filled
+    o := hrm.roll_apply(pfac, 'P997622', jsonb_build_object('home_department', dept2, 'home_unit', NULL, 'category', 'ACADEMIC'));
+    msg := msg || ' | faculty-only ' || coalesce((SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') FROM jsonb_array_elements(o->'changes') c), '-')
+               || ' kept ' || jsonb_array_length(o->'kept')
+               || ' now ' || (SELECT concat_ws('/', r.home_department = dept2, r.home_faculty = fac2) FROM hrm.staff_record r WHERE r.person_id = pfac);
+    -- the non-teaching list: a faculty office on record is not moved into a department of that faculty — reported once
+    o := hrm.roll_apply(pnt, 'P997626', jsonb_build_object('home_unit', NULL, 'home_department', dept2, 'home_faculty', fac2,
+                                                           'unit_as_given', 'SOME DEPARTMENT', 'category', 'NON_ACADEMIC'));
+    msg := msg || ' | faculty office ' || jsonb_array_length(o->'changes') || ' changes, kept '
+               || coalesce((SELECT string_agg((k->>'field') || '=' || (k->>'onRecord' = (SELECT f.name FROM ref.faculty f WHERE f.code = fac2))::text, ',')
+                              FROM jsonb_array_elements(o->'kept') k), '-')
+               || ' record ' || (SELECT concat_ws('/', coalesce(r.home_department, '-'), r.home_faculty = fac2) FROM hrm.staff_record r WHERE r.person_id = pnt);
+    -- a department on record without its faculty, the roll giving both: the faculty filled
+    o := hrm.roll_apply(pdep, 'P997623', jsonb_build_object('home_department', dept, 'home_unit', NULL, 'home_faculty', fac, 'category', 'ACADEMIC'));
+    msg := msg || ' | faculty filled ' || coalesce((SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') FROM jsonb_array_elements(o->'changes') c), '-')
+               || ' kept ' || jsonb_array_length(o->'kept');
+    -- the same department, the faculties stated on both sides differing: the faculty reported, not the department twice
+    o := hrm.roll_apply(pfx, 'P997627', jsonb_build_object('home_department', dept, 'home_unit', NULL, 'home_faculty', fac, 'category', 'ACADEMIC'));
+    msg := msg || ' | faculty differs ' || jsonb_array_length(o->'changes') || ' changes, kept '
+               || coalesce((SELECT string_agg((k->>'field') || ':' || (k->>'reason'), ',') FROM jsonb_array_elements(o->'kept') k), '-');
+    -- a faculty the roll states against the department's on the register: reported, not written
+    o := hrm.roll_apply(pbad, 'P997628', jsonb_build_object('home_department', dept, 'home_unit', NULL, 'home_faculty', fac2, 'category', 'ACADEMIC'));
+    msg := msg || ' | faculty not the department''s ' || jsonb_array_length(o->'changes') || ' changes, kept '
+               || coalesce((SELECT string_agg((k->>'field') || ':' || (k->>'reason') || ':' || (k->>'onRecord' = (SELECT f.name FROM ref.faculty f WHERE f.code = fac))::text, ',')
+                              FROM jsonb_array_elements(o->'kept') k), '-')
+               || ' record ' || (SELECT coalesce(r.home_faculty, '-') FROM hrm.staff_record r WHERE r.person_id = pbad);
+    -- the teaching-staff list with a department not on the portal, leaving its faculty alone: no other place — the faculty the
+    -- record lacked (the department's) filled, nothing reported
+    o := hrm.roll_apply(pfo, 'P997629', jsonb_build_object('home_faculty', fac, 'category', 'ACADEMIC'));
+    msg := msg || ' | faculty alone on the roll ' || coalesce((SELECT string_agg(c->>'field', ',') FROM jsonb_array_elements(o->'changes') c), '-')
+               || ' kept ' || jsonb_array_length(o->'kept');
+    -- a note in place of the last promotion's date: the roll's date kept out, the note shown as what the record holds
+    o := hrm.roll_apply(pnote, 'P997624', jsonb_build_object('date_of_last_promotion', '2024-10-01', 'promotion_note', NULL));
+    msg := msg || ' | note ' || coalesce((SELECT string_agg(c->>'field', ',') FROM jsonb_array_elements(o->'changes') c), '-')
+               || ' kept ' || coalesce((SELECT string_agg((k->>'field') || '=' || (k->>'onRecord') || '<' || (k->>'onRoll'), ',') FROM jsonb_array_elements(o->'kept') k), '-');
+    -- placed elsewhere: one report of the posting, by the names of the places
+    o := hrm.roll_apply(pelse, 'P997625', jsonb_build_object('home_department', dept2, 'home_unit', NULL, 'home_faculty', fac2, 'category', 'ACADEMIC'));
+    SELECT string_agg((k->>'field') || '=' || ((k->>'onRecord') = (SELECT d.name FROM ref.department d WHERE d.code = dept))::text
+                      || '<' || ((k->>'onRoll') = (SELECT d.name FROM ref.department d WHERE d.code = dept2))::text, ',')
+      INTO shown_out FROM jsonb_array_elements(o->'kept') k;
+    msg := msg || ' | elsewhere ' || jsonb_array_length(o->'changes') || ' changes, kept ' || coalesce(shown_out, '-')
+               || ' record ' || (SELECT concat_ws('/', r.home_department = dept, r.home_faculty = fac) FROM hrm.staff_record r WHERE r.person_id = pelse);
+    -- the grade: another scale on record kept and reported once; a step filled on the same scale; a step alone on record not given
+    -- a scale whose step the roll does not state
+    o := hrm.roll_apply(pg1, 'P997632', jsonb_build_object('salary_scale', 'CONTISS', 'contiss_step', 7));
+    msg := msg || ' | grade ' || jsonb_array_length(o->'changes') || ' changes, kept '
+               || coalesce((SELECT string_agg((k->>'field') || '=' || (k->>'onRecord') || '<' || (k->>'onRoll'), ',') FROM jsonb_array_elements(o->'kept') k), '-');
+    o := hrm.roll_apply(pg2, 'P997633', jsonb_build_object('salary_scale', 'CONTISS', 'contiss_step', 7));
+    msg := msg || ' / ' || coalesce((SELECT string_agg(c->>'field', ',') FROM jsonb_array_elements(o->'changes') c), '-') || ' kept ' || jsonb_array_length(o->'kept')
+               || ' now ' || (SELECT concat_ws(' ', r.salary_scale, r.contiss_step) FROM hrm.staff_record r WHERE r.person_id = pg2);
+    o := hrm.roll_apply(pg3, 'P997634', jsonb_build_object('salary_scale', 'CONSOLIDATED', 'contiss_step', NULL));
+    msg := msg || ' / ' || jsonb_array_length(o->'changes') || ' changes, kept '
+               || coalesce((SELECT string_agg((k->>'field') || '=' || (k->>'onRecord') || '<' || (k->>'onRoll'), ',') FROM jsonb_array_elements(o->'kept') k), '-')
+               || ' now ' || (SELECT concat_ws(' ', coalesce(r.salary_scale, '-'), r.contiss_step) FROM hrm.staff_record r WHERE r.person_id = pg3);
+    -- the teaching list's CONUASS column states the CONUASS scale: a step missing beside that scale is filled; beside a CONTISS
+    -- grade it is another grade, kept and reported
+    o := hrm.roll_apply(pg4, 'P997636', jsonb_build_object('conuass_step', 5, 'category', 'ACADEMIC'));
+    msg := msg || ' | conuass ' || coalesce((SELECT string_agg(c->>'field', ',') FROM jsonb_array_elements(o->'changes') c), '-') || ' kept ' || jsonb_array_length(o->'kept');
+    o := hrm.roll_apply(pg5, 'P997637', jsonb_build_object('conuass_step', 7, 'category', 'ACADEMIC'));
+    msg := msg || ' / ' || jsonb_array_length(o->'changes') || ' changes, kept '
+               || coalesce((SELECT string_agg((k->>'field') || '=' || (k->>'onRecord') || '<' || (k->>'onRoll'), ',') FROM jsonb_array_elements(o->'kept') k), '-');
+    -- the teaching list has no unit: a unit on record beside the roll's department is the same place, the missing faculty filled
+    o := hrm.roll_apply(pun, 'P997638', jsonb_build_object('home_department', dept, 'home_unit', NULL, 'home_faculty', fac, 'category', 'ACADEMIC'));
+    msg := msg || ' | unit beside ' || coalesce((SELECT string_agg(c->>'field', ',') FROM jsonb_array_elements(o->'changes') c), '-') || ' kept ' || jsonb_array_length(o->'kept')
+               || ' unit ' || (SELECT (r.home_unit = unit)::text FROM hrm.staff_record r WHERE r.person_id = pun);
+    -- the given names kept: the roll's own cells reported, not a name made from them and the record
+    o := hrm.roll_apply(pgn, 'P997635', jsonb_build_object('first_name', 'NKECHI'));
+    msg := msg || ' | given ' || coalesce((SELECT string_agg((k->>'field') || '=' || (k->>'onRoll'), ',') FROM jsonb_array_elements(o->'kept') k), '-');
+    RAISE EXCEPTION 'the V761 gaps check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V761 gaps check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V761: NA on record is filled; the posting is one place (missing parts filled in the same place, a teaching faculty alone taking a department of it, a non-teaching faculty office kept, elsewhere reported once, a faculty against the record''s or the department''s reported); the scale and step one detail; a note keeps its date out; kept given names as the roll writes them',
+      coalesce(msg = 'na lga,present_rank,state_of_origin kept 0 | faculty-only home_department kept 0 now t/t'
+                     || ' | faculty office 0 changes, kept posting=true record -/t | faculty filled home_faculty kept 0'
+                     || ' | faculty differs 0 changes, kept home_faculty:DIFFERS'
+                     || ' | faculty not the department''s 0 changes, kept home_faculty:NOT_THE_DEPARTMENTS:true record -'
+                     || ' | faculty alone on the roll home_faculty kept 0'
+                     || ' | note - kept date_of_last_promotion=(Transfer of Service) Another University<2024-10-01'
+                     || ' | elsewhere 0 changes, kept posting=true<true record t/t'
+                     || ' | grade 0 changes, kept grade=CONSOLIDATED<CONTISS step 7 / contiss_step kept 0 now CONTISS 7'
+                     || ' / 0 changes, kept grade=step 7<CONSOLIDATED now - 7'
+                     || ' | conuass conuass_step kept 0 / 0 changes, kept grade=CONTISS step 7<CONUASS step 7'
+                     || ' | unit beside home_faculty kept 0 unit true'
+                     || ' | given given_names=NKECHI', false), msg);
+END $$;
+
+
+-- ── V761: the teaching-staff upload touches no office. A made-up lecturer on record with a lecturer office in one department and
+--          no establishment record is given another department by the roll: the department is filled, the lecturer office stays
+--          where it is and is reported (OFFICE_KEPT), by the dry run and the upload alike; the Edit form still moves it. The block
+--          undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); pl uuid := gen_random_uuid(); dept text; dept2 text; dept2_name text; l1 record; l2 record; msg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'CHECK V761', true);
+    SELECT d.code INTO dept FROM ref.department d WHERE d.ended_on IS NULL ORDER BY d.code LIMIT 1;
+    SELECT d.code, d.name INTO dept2, dept2_name FROM ref.department d WHERE d.ended_on IS NULL AND d.code <> dept ORDER BY d.code LIMIT 1;
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (pl, 'P997631', 'ZZOFFICE', 'Kept Where');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+    VALUES (gen_random_uuid(), pl, 'lecturer', 'department', dept, 'check V761', who, current_date - 30);
+    SELECT * INTO l1 FROM iam.import_lecturers(jsonb_build_array(jsonb_build_object('sheet_row', 2, 'pno', '997631', 'first_name', 'Kept',
+                          'middle_name', 'Where', 'last_name', 'ZZOFFICE', 'department', dept2_name)), true);
+    SELECT * INTO l2 FROM iam.import_lecturers(jsonb_build_array(jsonb_build_object('sheet_row', 2, 'pno', '997631', 'first_name', 'Kept',
+                          'middle_name', 'Where', 'last_name', 'ZZOFFICE', 'department', dept2_name)), false);
+    msg := concat_ws(' | ',
+        (SELECT 'dry ' || (x->>'action') || ':' || coalesce((SELECT string_agg(k->>'field' || '=' || (k->>'reason'), ',') FROM jsonb_array_elements(x->'kept') k), '-')
+           FROM jsonb_array_elements(l1.results) x),
+        (SELECT 'upload ' || (x->>'action') || ':' || coalesce((SELECT string_agg(c->>'field', ',' ORDER BY c->>'field') FROM jsonb_array_elements(x->'changes') c), '-')
+                || ':' || coalesce((SELECT string_agg(k->>'field' || '=' || (k->>'reason'), ',') FROM jsonb_array_elements(x->'kept') k), '-')
+           FROM jsonb_array_elements(l2.results) x),
+        'record in ' || (SELECT CASE r.home_department WHEN dept2 THEN 'B' WHEN dept THEN 'A' ELSE '?' END FROM hrm.staff_record r WHERE r.person_id = pl),
+        'offices ' || (SELECT string_agg(CASE a.scope_id WHEN dept THEN 'A' WHEN dept2 THEN 'B' ELSE '?' END || ':' || CASE WHEN a.valid_to IS NULL THEN 'open' ELSE 'ended' END, ',')
+                         FROM iam.office_assignment a WHERE a.person_id = pl AND a.office_code = 'lecturer'));
+    RAISE EXCEPTION 'the V761 office check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'the V761 office check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V761: the teaching-staff upload touches no office — a department it fills beside a lecturer office in another department leaves the office there, reported',
+      coalesce(msg = 'dry UPDATED:lecturer_office=OFFICE_KEPT | upload UPDATED:category,home_department,pno:lecturer_office=OFFICE_KEPT'
+                     || ' | record in B | offices A:open', false), msg);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
