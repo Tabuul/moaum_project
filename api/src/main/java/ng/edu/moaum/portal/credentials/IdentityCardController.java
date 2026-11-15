@@ -455,7 +455,7 @@ class IdentityCardController {
     private static final String STAFF_CARD_ROWS = """
             SELECT c.id, c.card_no, c.issued_at, c.valid_to, c.state, c.ended_at, c.ended_reason, c.issued_office,
                    p.id AS person_id, p.staff_number, p.surname, p.given_names, credentials.staff_card_department(p.id) AS department,
-                   credentials.staff_blood_group(p.id) AS blood_group
+                   credentials.staff_blood_group(p.id) AS blood_group, credentials.staff_in_service(p.id) AS in_service
               FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
             """;
 
@@ -484,6 +484,12 @@ class IdentityCardController {
                 .orElseThrow(() -> new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARD_NONE", "No staff identity card is in force for this person.",
                         new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("Issue the card on the card desk first; the print carries its number.", "Security Unit")));
         Map<String, Object> m = new java.util.LinkedHashMap<>(row);
+        // V765: valid while its holder is in service — a leaver's card is not printed again (the check answers LEFT for it)
+        if (Boolean.FALSE.equals(row.get("in_service"))) {
+            throw new ng.edu.moaum.portal.shared.DomainRuleViolation("STAFF_CARD_LEFT",
+                    "This member of staff is no longer in service, so their card is no longer valid and is not printed.",
+                    new ng.edu.moaum.portal.shared.DomainRuleViolation.Remedy("If they are still in service, HR or the Registry puts their record right first.", "Human Resources"));
+        }
         m.put("verify_path", staffVerifyPath(String.valueOf(row.get("card_no"))));
         // what the card shows, and nothing more of the HR record: the desk prints from the register
         m.put("face", jdbc.sql(STAFF_FACE + " WHERE pe.id = :p").param("p", personId).query().listOfRows().stream().findFirst().orElse(Map.of()));

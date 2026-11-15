@@ -20,6 +20,7 @@ export const printAllHref = (f: Partial<StaffCardFilters>) => `/credentials/idca
 export const REFUSAL_WORDS: Record<string, string> = {
   STAFF_CARD_NO_NUMBER: "no staff number on record",
   STAFF_CARD_ENDED: "has left the University",
+  STAFF_CARD_LEFT: "is out of service in HR",
   STAFF_CARD_NO_OFFICE: "holds no office and is not on the HR staff register",
   STAFF_CARD_NO_PERSON: "no such member of staff",
 };

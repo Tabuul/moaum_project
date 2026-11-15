@@ -18,7 +18,7 @@ export interface StaffFace {
 }
 /** a card in force, with what it prints */
 export interface LiveStaffCard {
-  card_no: string; valid_to: string; verify_path: string; face: StaffFace; offices: { office_code: string; office: string }[];
+  card_no: string; valid_to: string | null; verify_path: string; face: StaffFace; offices: { office_code: string; office: string }[];
   person_id?: string;
 }
 

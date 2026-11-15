@@ -197,6 +197,29 @@ class PortalAuditIT {
         Map<?, ?> genuine = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
         assertThat(genuine.get("genuine")).isEqualTo(true);
         assertThat(genuine.get("staff_number")).isEqualTo(staffNo);
+        // V765: valid while its holder is in service — no end date; a holder who has left carries a card no longer in force
+        assertThat(genuine.get("valid_to")).isNull();
+        it.db(() -> jdbc.sql("UPDATE iam.person SET ended_on = current_date, ended_reason = 'integration test (V765)' WHERE id = :p").param("p", person).update());
+        try {
+            Map<?, ?> left = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
+            assertThat(left.get("genuine")).isEqualTo(false);
+            assertThat(left.get("state")).isEqualTo("LEFT");
+        } finally {
+            it.db(() -> jdbc.sql("UPDATE iam.person SET ended_on = NULL, ended_reason = NULL WHERE id = :p").param("p", person).update());
+        }
+        // and out of service in HR — every employment ended by an exit instrument — the card is no longer in force either
+        it.db(() -> jdbc.sql("""
+                INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status, ended_on, ended_reason)
+                SELECT :p, :n, g.grade, g.step, 'ACADEMIC', date '2010-01-01', 'ENDED', current_date, 'RETIREMENT'
+                  FROM hrm.grade g ORDER BY g.grade, g.step LIMIT 1
+                """).param("p", person).param("n", "ZZ-V765-" + staffNo).update());
+        try {
+            Map<?, ?> retired = it.get(any, u -> u.path("/api/v1/verify/staffcard").queryParam("no", "{n}").queryParam("c", "{c}").build(cardNo, code)).getBody();
+            assertThat(retired.get("genuine")).isEqualTo(false);
+            assertThat(retired.get("state")).isEqualTo("LEFT");
+        } finally {
+            it.db(() -> jdbc.sql("DELETE FROM hrm.employment WHERE person_id = :p AND staff_no = :n").param("p", person).param("n", "ZZ-V765-" + staffNo).update());
+        }
         // V754: the department as the card prints it — with no HR record, the department of the office held (a lecturer in MTC)
         String mtc = jdbc.sql("SELECT name FROM ref.department WHERE code = 'MTC'").query(String.class).single();
         assertThat(genuine.get("department")).isEqualTo(mtc);

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 624
+\set EXPECTED 625
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -12064,8 +12064,8 @@ BEGIN
                q1, told_a, told_b, subj_a, q2, told_b_chk, told_a_chk, done_b, left(r_state, 20), left(r_channel, 22), again_state, again_to, again_from = e_fail, left(r_done, 19), n_msgs, n_resent, n_manual, ed_major, ed_minor));
 END $$;
 -- ── V439: the staff identity card register ──
--- An invented member of staff with a staff number and a live office is issued a card (MOAUM/SID/YY/NNNNN, valid to 31 December three
--- years on); issued again, the first card is replaced and one card stays live; reported lost, none is. A person with no staff number is
+-- An invented member of staff with a staff number and a live office is issued a card (MOAUM/SID/YY/NNNNN, valid while they are in
+-- service — V765: no end date); issued again, the first card is replaced and one card stays live; reported lost, none is. A person with no staff number is
 -- refused (STAFF_CARD_NO_NUMBER), and so is one holding no office (STAFF_CARD_NO_OFFICE). The block undoes its writes.
 DO $$
 DECLARE who uuid := gen_random_uuid(); p uuid := gen_random_uuid(); q uuid := gen_random_uuid(); r uuid := gen_random_uuid();
@@ -12096,9 +12096,9 @@ BEGIN
         GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
         IF msg <> 'the V439 check undoes its writes' THEN RAISE; END IF;
     END;
-    PERFORM pg_temp.assert('V439: a staff identity card is issued on the staff number to a member of staff in office, one live at a time (the old one replaced), valid to 31 December three years on, and ended when reported lost; no staff number or no office, no card',
+    PERFORM pg_temp.assert('V439, V765: a staff identity card is issued on the staff number to a member of staff in office, one live at a time (the old one replaced), valid while they are in service (no end date), and ended when reported lost; no staff number or no office, no card',
         coalesce(a ~ '^MOAUM/SID/[0-9]{2}/[0-9]{5}$' AND b <> a AND live_after = 1 AND replaced = 'REPLACED'
-                 AND valid = make_date(extract(year FROM current_date)::int + 3, 12, 31) AND lost = 1 AND live_lost = 0
+                 AND valid IS NULL AND lost = 1 AND live_lost = 0
                  AND no_number = 'STAFF_CARD_NO_NUMBER' AND no_office = 'STAFF_CARD_NO_OFFICE', false),
         format('cards %s then %s, live %s, first %s, valid %s, lost %s (live after %s), no number %s, no office %s', a, b, live_after, replaced, valid, lost, live_lost, no_number, no_office));
 END $$;
@@ -37891,6 +37891,65 @@ BEGIN
                      || ' || D2=JUPEB/MET/Biology A/B3/B3,D1=A_LEVEL/MET/Chemistry A/B3/C4,D10=JUPEB/MET/Biology B/B3/C4,D7=A_LEVEL/MET/Biology B/B3/A1'
                      || ',D8=A_LEVEL/MET/Chemistry A*/B3/B2,D4=A_LEVEL/MET/Chemistry C/B3/F9,D3=HND/MET/Chemistry Distinction/B3/C6,D6=ND/SHORT/Mathematics Credit/B3/B2'
                      || ' || grades 5,4,3,3,4,3,2,1,-,0,0,0,0,0', false), msg);
+END $$;
+
+-- ── V765: a staff identity card is valid while its holder is in service. A made-up member of staff in office is issued a card: it
+--          carries no end date, the check address's reading of an expired card (valid_to before today) does not hold for it, and
+--          the bulk issue gives none either; an ended card keeps the date it was issued with; the column takes no date for a live
+--          card only by the issue functions — a date written by hand still stands as history. The block undoes its writes ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); p uuid := gen_random_uuid(); q uuid := gen_random_uuid(); a text; b text; msg text; v_err text;
+        h1 uuid := gen_random_uuid(); h2 uuid := gen_random_uuid(); h3 uuid := gen_random_uuid(); h4 uuid := gen_random_uuid(); h5 uuid := gen_random_uuid(); gg text; gs int; refused text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'security', true);
+        PERFORM set_config('moaum.reason', 'check V765', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-ISSUER-765', 'ZZISSUER', 'Card Desk'),
+               (p, 'P7650001', 'ZZSTAFFCARD', 'In Service'), (q, 'P7650002', 'ZZSTAFFCARD', 'Bulk');
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from)
+        VALUES (gen_random_uuid(), p, 'lecturer', 'department', 'MTC', 'check V765', who, current_date),
+               (gen_random_uuid(), q, 'lecturer', 'department', 'MTC', 'check V765', who, current_date);
+        -- an old card of p's, ended, with the date V439 gave it
+        INSERT INTO credentials.staff_identity_card (person_id, card_no, issued_by, issued_office, valid_to, state, ended_at, ended_reason)
+        VALUES (p, 'MOAUM/SID/23/97650', who, 'security', date '2026-12-31', 'REPLACED', now() - interval '1 day', 'replaced');
+        a := credentials.issue_staff_card(p, NULL);
+        PERFORM credentials.issue_staff_cards(ARRAY[q], NULL);
+        SELECT c.card_no INTO b FROM credentials.staff_identity_card c WHERE c.person_id = q AND c.state = 'ISSUED';
+        -- in service: HR employment in force; every employment ended (an exit instrument); ended and taken on again; deactivated on the
+        -- portal; no HR record at all (p, a lecturer by office alone)
+        INSERT INTO iam.person (id, staff_number, surname, given_names, ended_on, ended_reason) VALUES
+            (h1, 'P7650011', 'ZZINSERVICE', 'Active', NULL, NULL), (h2, 'P7650012', 'ZZINSERVICE', 'Retired', NULL, NULL),
+            (h3, 'P7650013', 'ZZINSERVICE', 'Taken Back', NULL, NULL), (h4, 'P7650014', 'ZZINSERVICE', 'Deactivated', current_date, 'check V765'),
+            (h5, 'P7650015', 'ZZINSERVICE', 'Suspended', NULL, NULL);
+        SELECT g.grade, g.step INTO gg, gs FROM hrm.grade g ORDER BY g.grade, g.step LIMIT 1;
+        INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status, ended_on, ended_reason) VALUES
+            (h1, 'P7650011', gg, gs, 'NON_ACADEMIC', date '2015-01-01', 'ACTIVE', NULL, NULL),
+            (h2, 'P7650012', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '2026-01-01', 'RETIREMENT'),
+            (h3, 'ZZ7650013A', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '2020-01-01', 'RESIGNATION'),
+            (h3, 'P7650013', gg, gs, 'NON_ACADEMIC', date '2022-01-01', 'ACTIVE', NULL, NULL),
+            (h5, 'P7650015', gg, gs, 'NON_ACADEMIC', date '2015-01-01', 'SUSPENDED', NULL, NULL);
+        -- on the HR staff register, both: the roster lists the one in service, and a card is refused the one out of service in HR
+        INSERT INTO hrm.staff_record (person_id, pno, category) VALUES (h1, '7650011', 'NON_ACADEMIC'), (h2, '7650012', 'NON_ACADEMIC');
+        BEGIN PERFORM credentials.issue_staff_card(h2, NULL); refused := 'ISSUED';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1); END;
+        msg := concat_ws(' | ',
+            'in service ' || concat_ws(',', credentials.staff_in_service(h1), credentials.staff_in_service(h2), credentials.staff_in_service(h3),
+                                       credentials.staff_in_service(h4), credentials.staff_in_service(p), credentials.staff_in_service(h5)),
+            'retired ' || refused || ' roster ' || (SELECT count(*) FROM credentials.staff_card_roster(NULL, NULL, 'P765001') r WHERE r.person_id IN (h1, h2))
+                || ':' || coalesce((SELECT string_agg(r.staff_number, ',') FROM credentials.staff_card_roster(NULL, NULL, 'P765001') r WHERE r.person_id IN (h1, h2)), '-'),
+            (SELECT 'live ' || coalesce(c.valid_to::text, 'no end date') || ' expired ' || coalesce((c.valid_to < current_date)::text, 'no')
+               FROM credentials.staff_identity_card c WHERE c.card_no = a),
+            (SELECT 'bulk ' || coalesce(c.valid_to::text, 'no end date') FROM credentials.staff_identity_card c WHERE c.card_no = b),
+            (SELECT 'roster ' || coalesce(r.valid_to::text, 'no end date') FROM credentials.staff_card_roster(NULL, NULL, 'P7650001') r WHERE r.person_id = p),
+            (SELECT 'ended ' || c.valid_to::text FROM credentials.staff_identity_card c WHERE c.card_no = 'MOAUM/SID/23/97650'));
+        RAISE EXCEPTION 'the V765 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+        IF v_err <> 'the V765 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V765: a staff identity card is valid while its holder is in service (not deactivated, and not out of service in HR — every employment ended; a suspension is in service), no card issued to nor listed for one who is not, — issued one by one or in bulk it carries no end date and never reads as expired; an ended card keeps the date it was issued with',
+        coalesce(msg = 'in service t,f,t,f,t,t | retired STAFF_CARD_LEFT roster 1:P7650011 | live no end date expired no | bulk no end date | roster no end date | ended 2026-12-31', false), msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

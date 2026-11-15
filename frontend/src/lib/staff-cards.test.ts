@@ -13,10 +13,12 @@ test("V698: the desk and its print keep the narrowing; the print takes every car
 test("V698: a bulk issue says what it did", () => {
   assert.equal(issueWords({ ISSUED: 312, HAS_CARD: 4, STAFF_CARD_NO_NUMBER: 2 }), "312 cards issued; 4 already had one; 2 refused (2 no staff number on record)");
   assert.equal(issueWords({ ISSUED: 1 }), "1 card issued");
+  // V765: someone out of service in HR is refused a card
+  assert.equal(issueWords({ ISSUED: 2, STAFF_CARD_LEFT: 1 }), "2 cards issued; 1 refused (1 is out of service in HR)");
 });
 
 const card = (face: Partial<LiveStaffCard["face"]>, offices: LiveStaffCard["offices"] = []): LiveStaffCard => ({
-  card_no: "MOAUM/SID/26/00001", valid_to: "2029-12-31", verify_path: "/verify/staffcard?no=x", offices,
+  card_no: "MOAUM/SID/26/00001", valid_to: null, verify_path: "/verify/staffcard?no=x", offices,
   face: { staff_number: "P1234", surname: "ADA", given_names: "Bem", rank: null, department: null, faculty: null, category: null,
           date_first_appointment: null, appointment_date: null, has_photo: false, ...face },
 });

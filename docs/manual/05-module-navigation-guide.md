@@ -2566,7 +2566,7 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 |---|---|
 | Purpose | "Who am I on this portal and under what instrument" (`/staff/me`), the member of staff's own academic profile (CV) and photograph, the establishment list, the department staff list, the staff register and the staff identity card PDF. |
 | Users / roles | `/staff/me`, `/staff/profile` any authenticated (actor = token subject); `/payroll/staff` payroll readers; `/hod/staff` hod; staff register readers (§3.54). |
-| Navigation | Me → Leave & Payslip `/me` (record, offices held, "My ID card (PDF)"); My Profile `/me/profile` (lecturer menu; linked from `/me`); Staff → Staff Records `/staff`; Department Staff `/hod/staff`; Reports → Staff Register `/reports/staff`; `/staff/idcard/pdf[?id=]`. |
+| Navigation | Me → Leave & Payslip `/me` (record, offices held; the staff card is printed by the card desk, V439, V698); My Profile `/me/profile` (lecturer menu; linked from `/me`); Staff → Staff Records `/staff`; Department Staff `/hod/staff`; Reports → Staff Register `/reports/staff`; `/staff/idcard/pdf[?id=]`. |
 | Dashboard | `/me` tiles Leave taken / Leave remaining / Last payslip / Appraisal ("—"); `/staff` tiles On the roll / Academic / Non-academic / Monthly gross; department tiles Staff on the establishment / Hold a teaching office / Professors. |
 | Main features | Profile panels Photograph, Who you are, Research, Research output, Engagement and recognition; "Save profile"; offices held with instrument; staff record pop-up from lists. |
 | Create | None. |
@@ -2581,13 +2581,13 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Approval workflow | None. |
 | Statuses | Employment status; offices live flag. |
 | Validation rules | Photo type and size; list fields must be JSON arrays; email regex in the DB; no format check on ORCID/URL. |
-| Security | The staff card's serial `STF-…-{year}` and "Valid to" are computed at print; nothing is stored; a PNG photo prints blank. |
+| Security | The staff card is the one in the register (V439, V698): its number `MOAUM/SID/YY/NNNNN`, valid while its holder is in service (V765: no end date, none printed); a PNG photo prints blank. |
 | Audit trail | `hrm.staff_profile` attached. |
 | Related modules | HRM (§3.45); Identity (§3.5); Reports (§3.54). |
 | Common errors | "You are signed in, but the Registry has no record of you yet"; 409 "No staff number" on the card. |
 | Troubleshooting | The Registry creates the person with a staff number. |
 
-**Status:** IMPLEMENTED — record, profile, photo, lists, register, card PDF (stateless); PLACEHOLDER — the `/me` Appraisal/Appointment/Next increment tiles and a stale header comment; NOT IMPLEMENTED — a staff card register.
+**Status:** IMPLEMENTED — record, profile, photo, lists, register, the staff card register (V439, V698; valid while its holder is in service, V765) and its PDF; PLACEHOLDER — the `/me` Appraisal/Appointment/Next increment tiles and a stale header comment.
 
 ### 3.47 Hostel accommodation
 
@@ -3089,7 +3089,7 @@ Staff → Upload Non-Academic Staff → /people/staff
 ```text
 Me → Leave & Payslip → /me
 ```
-**URL** `/me` · **Purpose** You as an employee: record, offices held, payslips, leave. · **Who** Every staff office; `/staff/me`, `/me/payslips`, `/me/leave` any authenticated. · **Layout** Tiles Leave taken (30 − balance; hard-coded 30) / Leave remaining / Last payslip / Appraisal ("—", "Staff module, not yet on the portal"); panel "My record" (Staff number, Office, Unit, Appointment "—", Grade, Next increment "—"; buttons "My ID card (PDF)", "Edit my profile"); "Payslips" (Month, Gross, Pension, PAYE, Net, Stage); "Offices held" (Office, Scope, Instrument, From, Until); "Leave" panel.
+**URL** `/me` · **Purpose** You as an employee: record, offices held, payslips, leave. · **Who** Every staff office; `/staff/me`, `/me/payslips`, `/me/leave` any authenticated. · **Layout** Tiles Leave taken (30 − balance; hard-coded 30) / Leave remaining / Last payslip / Appraisal ("—", "Staff module, not yet on the portal"); panel "My record" (Staff number, Office, Unit, Appointment "—", Grade, Next increment "—"; button "Edit my profile" — the staff identity card is printed by the card desk, V439, V698); "Payslips" (Month, Gross, Pension, PAYE, Net, Stage); "Offices held" (Office, Scope, Instrument, From, Until); "Leave" panel.
 
 | Field | Description | Required | Validation |
 |---|---|---|---|
@@ -3102,7 +3102,7 @@ Me → Leave & Payslip → /me
 |---|---|---|
 | Request leave | Opens a REQUESTED request | `POST /me/leave` |
 | Cancel | Cancels a REQUESTED/APPROVED request (confirm) | `POST /me/leave/{id}/cancel` |
-| My ID card (PDF) | Opens the staff card | `/staff/idcard/pdf` |
+| Staff card (the card desk) | Prints the card in force — not from `/me` (V439, V698); valid while its holder is in service (V765) | `/staff/idcard/pdf?id=` |
 
 **Messages** "Your leave request is with your office."; "Leave is for serving staff"; "You are signed in, but the Registry has no record of you yet"; "No payslip yet". · **Security** Only APPROVED/PAID runs show.
 
@@ -5788,7 +5788,7 @@ All PDFs are drawn by Next.js route handlers with `frontend/src/lib/pdf-write.ts
 | Result broadsheet (student) | `/student/broadsheet/pdf` | Student | Any published semester (409 "Withheld") | Per semester COURSE/TITLE/UNIT/CA/EXAM/TOTAL/GRADE/PT and the summary line | None | None | — |
 | Payment receipt | `/student/receipt/{reference}/pdf` | Student | Reference confirmed (409 "Not confirmed") | "Official Payment Receipt · Bursary Department", passport, receipt no, date, payer block, BEING PAYMENT FOR/AMOUNT, TOTAL RECEIVED, channel, teller ref, microtext band, "SCAN TO VERIFY" | `/verify/receipt/{ref}?c=` (first 12 hex of SHA-256(reference‖receiptNo)) | None | Token-gated |
 | Student identity card (printable copy) | `/student/idcard/pdf` | Student | A card ISSUED (409 "No identity card issued") | FRONT: name, matric, STUDENT tag, Faculty, Level, Programme, Blood group "—", Admitted, Graduates "—", session, valid to, serial; BACK: Code-128 barcode of the matric number, conditions, QR text `MOAUM ID {serial}`, emergency phone, "Registrar" | **None** | Card number | Not a verification URL |
-| Staff identity card | `/staff/idcard/pdf[?id=]` | Staff member (own) or an office for another | Person has a staff number (409 "No staff number") | Name, staff number, Rank, Category, Department/Unit, Faculty, Appointed, Office, "Valid to" (31 Dec + 3 years, computed), serial `STF-…-{year}` (computed), JPEG photo only | None | **Nothing stored** | — |
+| Staff identity card | `/staff/idcard/pdf[?id=]` | The card desk (a person never prints their own card) | A card in force on the staff number (V439, V698) | The card face as V748 lays it out, the card's number from the register and its QR; no validity printed (V765: valid while its holder is in service) | QR + check code → `/verify/staffcard` (LEFT once the holder is deactivated or out of service in HR, V765) | The card issued (`credentials.staff_identity_card`, no end date since V765) | — |
 | Deferment approval letter | `/student/deferment/letter/{id}`; `/deferments/{id}/letter` | Student (own); desk within bound | APPROVED / ACTIVE / COMPLETED (409 "The letter is issued once the deferment is approved.") | Crest, "P.M.B 102119, Makurdi", REF/DATE, "DEFERMENT APPROVAL LETTER", student block, period, effective from, expected return, approved on/by, remarks, four notes, "Registrar" | QR/URL `/verify/deferment/{reference}` — **route does not exist** | None | Dead verification link |
 | Inter-departmental transfer approval letter | `/student/transfer/letter/{id}` (printable page) | Student | After EFFECTED | Letter citing Senate/SAIC and a **hard-coded ₦10,000**, signed "Deputy Registrar, Academic Office for: Registrar" | None | None | Wording does not match the pipeline path |
 | Transfer memo | `/transfers/memo?type=` | Office | Any time | "Recommended List of Inter-Departmental Transfer Candidates" / "Non-Recommended / Withdrawn…" for the DVC (Academic) / Chairman, SAIC | None | None | — |

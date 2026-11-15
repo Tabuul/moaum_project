@@ -24,7 +24,8 @@ export interface CardDesk {
 }
 /** V439: the staff cards in the register */
 export interface StaffDesk {
-  cards: { id: string; card_no: string; issued_at: string; valid_to: string; state: string; ended_reason: string | null; person_id: string; staff_number: string | null; surname: string; given_names: string; department: string | null; verify_path: string; blood_group?: string | null }[];
+  // V765: a live staff card has no end date — valid while its holder is in service
+  cards: { id: string; card_no: string; issued_at: string; valid_to: string | null; state: string; ended_reason: string | null; person_id: string; in_service?: boolean; staff_number: string | null; surname: string; given_names: string; department: string | null; verify_path: string; blood_group?: string | null }[];
 }
 
 export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staff: StaffDesk | null; q: string; actingOffice: string | null }) {
@@ -121,9 +122,10 @@ export function IdCards({ desk, staff, q, actingOffice }: { desk: CardDesk; staf
               <span key="b" className="row row--inline row--tight"><b className="tnum">{c.blood_group ?? "—"}</b>
                 {may ? <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => setBlood({ person: c.person_id, group: c.blood_group ?? "" })}>{c.blood_group ? "Change" : "Add"}</Btn> : null}</span>
             ),
-            <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{new Date(c.valid_to).toLocaleDateString("en-GB")}</span>,
-            c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
-            c.state === "ISSUED" ? <span key="l" className="row row--tight">{may ? <a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(c.person_id)}`} target="_blank" rel="noopener">Print</a> : null}{may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`slost-${c.id}`, `/staff/${c.person_id}/lost`, { reason }, `Staff identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : null}</span> : <span key="l" />,
+            <span className="sub2 tnum" key="i">{new Date(c.issued_at).toLocaleDateString("en-GB")}</span>, <span className="sub2 tnum" key="v">{c.valid_to ? new Date(c.valid_to).toLocaleDateString("en-GB") : c.state !== "ISSUED" ? "—" : c.in_service === false ? "Holder left — no longer valid" : "While in service"}</span>,
+            c.state === "ISSUED" && c.in_service === false ? <Pil kind="warn" key="t">Holder left</Pil>
+              : c.state === "ISSUED" ? <Pil kind="ok" key="t">Live</Pil> : <Pil kind="grey" key="t">{c.state.charAt(0) + c.state.slice(1).toLowerCase()}{c.ended_reason ? ` · ${c.ended_reason}` : ""}</Pil>,
+            c.state === "ISSUED" ? <span key="l" className="row row--tight">{may && c.in_service !== false ? <a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(c.person_id)}`} target="_blank" rel="noopener">Print</a> : null}{may ? <Btn kind="ghost" disabled={busy !== null} onClick={() => { const reason = window.prompt("What happened to the card? This goes on the record."); if (!reason) return; void act(`slost-${c.id}`, `/staff/${c.person_id}/lost`, { reason }, `Staff identity card ${c.card_no} reported lost: ${reason}`); }}>Report lost</Btn> : null}</span> : <span key="l" />,
           ])} texts={staff.cards.map((c) => `${c.card_no} ${c.surname} ${c.given_names} ${c.staff_number ?? ""}`)} />
           {!staff.cards.length ? <PBody><div className="sub2">No staff card has been issued yet. A card is issued on the staff number to a member of staff in office; its QR carries the address the public check answers.</div></PBody> : null}
         </Panel>

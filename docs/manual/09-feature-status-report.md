@@ -808,7 +808,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Own record and offices | IMPLEMENTED | `StaffController.java:37` | |
 | Profile (CV) and photo | IMPLEMENTED | `db/V107`; `StaffProfileIT` | Tested |
 | College tier read | IMPLEMENTED | `StaffService.java:203` | |
-| Staff ID card PDF | IMPLEMENTED | `staff/idcard/pdf/route.ts` | Stateless: nothing stored; validity computed at print |
+| Staff ID card PDF | IMPLEMENTED | `staff/idcard/pdf/route.ts` | The card in the register (V439, V698), valid while its holder is in service (V765: no end date) |
 ### 3.44 Hostel accommodation (dossier G1)
 
 | Feature | Status | Evidence | Notes |
@@ -904,7 +904,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Identity card issue / report lost (Library, Security) | IMPLEMENTED | `IdentityCardController.java` | No collection record; card `RETURNED` state never set |
 | Identity card verification ("Verify a Card") | PLACEHOLDER | menus `t/idverify`, no URL | No endpoint or page |
 | Student card PDF | IMPLEMENTED | `student/idcard/pdf/route.ts` | Blood group / graduates print as "—"; no QR |
-| Staff card PDF | IMPLEMENTED | `staff/idcard/pdf/route.ts` | Stateless |
+| Staff card PDF | IMPLEMENTED | `staff/idcard/pdf/route.ts` | The card in the register; valid while in service (V765) |
 | `/student/transcript` | IMPLEMENTED | `student/transcript/page.tsx` | A redirect to My Documents |
 | Documents office figures, revenue, processing time | IMPLEMENTED | `Office.tsx` | |
 | End-to-end tests | IMPLEMENTED | `DocumentsIT.java`, `CredentialsIT.java` | |

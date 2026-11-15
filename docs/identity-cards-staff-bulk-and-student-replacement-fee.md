@@ -16,7 +16,9 @@ The University's word of 29 October 2026:
 
 Before V698 only the first counted. On the copy of 21 October 2026, 870 of the 1,541 staff in service were on the register with no
 office, and none of them could be issued a card. A staff number is still needed and someone who has left gets no card
-(STAFF_CARD_NO_NUMBER, STAFF_CARD_ENDED). Someone neither in office nor on the register is refused (STAFF_CARD_NO_OFFICE).
+(STAFF_CARD_NO_NUMBER, STAFF_CARD_ENDED), and since V765 nor does someone out of service in HR — every employment ended
+(STAFF_CARD_LEFT). Someone neither in office nor on the register is refused (STAFF_CARD_NO_OFFICE). Since V765 a staff card has no end
+date: it is valid while its holder is in service.
 
 **The desk.** The Chief Security Officer's menu has **Staff ID Cards** under Services (`/credentials/idcards/staff`, `t/staffidcards`).
 * **The list.** Every member of staff in service, with the rank, category, department or unit, faculty, whether a photograph is on

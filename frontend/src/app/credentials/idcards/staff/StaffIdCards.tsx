@@ -61,7 +61,7 @@ export function StaffIdCards({ roster, filters, actingOffice }: { roster: StaffR
   }
 
   async function issueAll() {
-    if (!window.confirm(`Issue a staff identity card to each of the ${c.withoutCard} member${c.withoutCard === 1 ? "" : "s"} of staff in ${what} with none in force? Each card is numbered and valid to 31 December three years on.`)) return;
+    if (!window.confirm(`Issue a staff identity card to each of the ${c.withoutCard} member${c.withoutCard === 1 ? "" : "s"} of staff in ${what} with none in force? Each card is numbered and valid while its holder is in service.`)) return;
     const j = await post("all", "/staff/issue-all", { faculty: filters.faculty, unit: filters.unit, q: filters.q, reason: `Staff identity cards issued in bulk — ${what}` },
       `Staff identity cards issued in bulk — ${what}`);
     if (!j) return;
@@ -85,8 +85,10 @@ export function StaffIdCards({ roster, filters, actingOffice }: { roster: StaffR
         ["Without a photograph", String(c.withoutPhoto), c.withoutPhoto ? "var(--chrome)" : null, "Printed with a blank frame"],
       ]} />
       <Note kind="info" title="A staff card is issued on the staff number to a member of staff in service">
-        In service means holding an office on the portal today, or being on the HR staff register (the non-teaching staff). A card is
-        numbered and valid to 31 December three years on; the print carries its QR, which the public check answers. A lost or
+        In service means holding an office on the portal today, or being on the HR staff register (the non-teaching staff), and not
+        deactivated or out of service in HR (every employment ended) — someone who has left is not listed. A card is
+        numbered and valid while its holder is in service — it ends when replaced, reported lost, or they leave; the print carries its
+        QR, which the public check answers. A lost or
         damaged card is replaced on the Student ID Card desk&rsquo;s staff list.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
@@ -137,7 +139,7 @@ export function StaffIdCards({ roster, filters, actingOffice }: { roster: StaffR
               <span key="r" className="sub2">{rankCase(r.rank) || "—"}</span>,
               <Two key="u" a={r.unit ?? "—"} b={r.faculty ?? ""} />,
               r.has_photo ? <Pil key="p" kind="ok">On file</Pil> : <Pil key="p" kind="grey">None</Pil>,
-              r.card_no ? <Two key="c" a={r.card_no} b={`Valid to ${dayOf(r.valid_to)}`} /> : <Pil key="c" kind="warn">No card</Pil>,
+              r.card_no ? <Two key="c" a={r.card_no} b={r.valid_to ? `Valid to ${dayOf(r.valid_to)}` : "Valid while in service"} /> : <Pil key="c" kind="warn">No card</Pil>,
               <span key="a" className="row row--inline row--tight" style={{ flexWrap: "nowrap", justifyContent: "flex-end" }}>
                 {may && r.card_no ? <a className="btn btn--ghost btn--sm" href={`/staff/idcard/pdf?id=${encodeURIComponent(r.person_id)}`} target="_blank" rel="noopener">Print</a> : null}
                 {may && !r.card_no ? <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => void issueOne(r)}>{busy === `one-${r.person_id}` ? "Issuing…" : "Issue"}</Btn> : null}

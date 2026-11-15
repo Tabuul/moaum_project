@@ -776,7 +776,8 @@ class VerifyController {
         // V754: the department as the card prints it (the HR record, else the office held, else the office's unit)
         List<Map<String, Object>> rows = jdbc.sql("""
                 SELECT c.card_no, c.state, c.issued_at, c.valid_to, c.ended_at, c.valid_to < current_date AS expired, p.id AS person_id,
-                       p.surname || ', ' || p.given_names AS staff_name, p.staff_number, credentials.staff_card_department(p.id) AS department, p.ended_on
+                       p.surname || ', ' || p.given_names AS staff_name, p.staff_number, credentials.staff_card_department(p.id) AS department,
+                       NOT credentials.staff_in_service(p.id) AS left_service
                   FROM credentials.staff_identity_card c JOIN iam.person p ON p.id = c.person_id
                  WHERE c.card_no = :n
                 """).param("n", no).query().listOfRows();
@@ -785,7 +786,8 @@ class VerifyController {
             return out;
         }
         Map<String, Object> row = rows.get(0);
-        boolean left = row.get("ended_on") != null;
+        // V765: a staff card is valid while its holder is in service — deactivated on the portal or out of service in HR, it is not
+        boolean left = Boolean.TRUE.equals(row.get("left_service"));
         if (!"ISSUED".equals(row.get("state")) || Boolean.TRUE.equals(row.get("expired")) || left) {
             out.put("genuine", false);
             out.put("card_no", row.get("card_no"));
