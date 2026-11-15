@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { ME_CORE } from "@/lib/student-portal";
 import { ManualReader } from "@/components/manual/ManualReader";
 import { readerLabel, readerMenus, type ManualView } from "@/lib/manual";
 
@@ -11,7 +12,7 @@ export async function readerMenu(me: Me | null): Promise<string | null> {
   if (!me) return null;
   if (me.menu) return me.menu;
   if (me.activeOffice === "student") {
-    const mine = await api<{ entryMode?: string | null }>("/api/v1/me");
+    const mine = await api<{ entryMode?: string | null }>(ME_CORE);
     if (mine.ok && mine.data.entryMode === "POSTGRADUATE") return "pgstudent";
   }
   return null;

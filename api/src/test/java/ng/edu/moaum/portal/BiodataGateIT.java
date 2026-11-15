@@ -101,6 +101,9 @@ class BiodataGateIT {
             ResponseEntity<Map> me = it.get(student, "/api/v1/me");
             assertThat(status(me)).isEqualTo(200);
             assertThat(me.getHeaders().getFirst("X-Biodata-Gate")).isEqualTo("REQUIRED");
+            // the record as the other screens read it (without the dashboard's panels), and the e-mails and SMS sent, are open too
+            assertThat(status(it.get(student, "/api/v1/me?view=core"))).isEqualTo(200);
+            assertThat(it.getList(student, "/api/v1/me/notifications/sent").getStatusCode().value()).isEqualTo(200);
             assertThat(status(it.get(student, "/api/v1/me/biodata"))).isEqualTo(200);
             Map<String, Object> c = it.get(student, "/api/v1/me/biodata/completion").getBody();
             assertThat(c.get("gate")).isEqualTo("REQUIRED");

@@ -205,6 +205,11 @@ class PortalFeeGateIT {
         ResponseEntity<Map> stillMe = it.get(student, "/api/v1/me");
         assertThat(stillMe.getStatusCode().value()).isEqualTo(200);
         assertThat(stillMe.getHeaders().getFirst("X-Portal-Access")).isEqualTo("HELD_FEES_UNPAID");
+        // the record as every screen but the dashboard reads it says where the record stands too: the portal sends the student on
+        ResponseEntity<Map> core = it.get(student, "/api/v1/me?view=core");
+        assertThat(core.getStatusCode().value()).isEqualTo(200);
+        assertThat(core.getBody().get("portalAccess")).isEqualTo("HELD_FEES_UNPAID");
+        assertThat(core.getBody()).doesNotContainKey("fees");
         assertThat(it.get(student, "/api/v1/me/fees").getStatusCode().value()).isEqualTo(200);
         // an exception from the Bursary (not the Academic Office) lets the student through until it is revoked
         Map<String, Object> exc = Map.of("admissionNo", a.admissionNo(), "basis", "INSTALMENT_POLICY", "reason", "PortalFeeGateIT: the Bursar's instalment arrangement",

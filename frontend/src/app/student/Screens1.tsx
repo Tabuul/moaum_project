@@ -8,7 +8,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import type { GstView, Me } from "@/lib/student-portal";
+import type { GstView, Me, MeCore } from "@/lib/student-portal";
 import { semesterName } from "@/lib/student-portal";
 import { num as owedNum, type OutstandingFees } from "@/lib/outstanding-fees";
 import { OutstandingFeesCard } from "./OutstandingFees";
@@ -406,7 +406,7 @@ export function Dashboard({ s, gst = null, outstanding = null, transfer = null }
 }
 
 
-export function Profile({ s, change }: { s: Me; change: boolean }) {
+export function Profile({ s, change }: { s: MeCore; change: boolean }) {
   const { act, busy, problem } = useAct();
   const [phone, setPhone] = useState(s.contact.phone ?? s.contact.reach_phone ?? "");
   const [email, setEmail] = useState(s.contact.email ?? s.contact.reach_email ?? "");

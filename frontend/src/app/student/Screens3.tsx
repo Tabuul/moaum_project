@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Me, RegistrationView } from "@/lib/student-portal";
+import type { MeCore, RegistrationView } from "@/lib/student-portal";
 import { semesterName, semesterText } from "@/lib/student-portal";
 import { Btn, Ico, LinkBtn, Note, Panel, PBody, Pil, Tick } from "@/components/proto/ui";
 import { Gate, Gates, Modal, Passport, Row } from "@/components/proto/blocks";
@@ -63,7 +63,7 @@ function byOrder<T extends Categorised>(rows: T[]): T[] {
   return inUniversityOrder(rows);
 }
 
-export function Register({ s, v, siwes = null }: { s: Me; v: RegistrationView;
+export function Register({ s, v, siwes = null }: { s: MeCore; v: RegistrationView;
   /** V752: the student's SIWES (GET /me/siwes), read for a Second Semester */
   siwes?: MySiwes | null }) {
   // V602: a graduated record registers nothing — the server sends no menu and says why; the registration of the semester, if any, is history
@@ -85,7 +85,7 @@ export function Register({ s, v, siwes = null }: { s: Me; v: RegistrationView;
  *  by the reset when the reset door allows it, which clears the courses, carry-overs and deferred courses alike; otherwise the Academic
  *  Office or ICT Support removes them. Carry-overs and deferred courses are listed apart: they wait for a later semester. The SIWES
  *  course is the one registered once registered, whatever the programme is mapped to since. */
-function SiwesSemesterNote({ s, v, siwes }: { s: Me; v: RegistrationView; siwes: MySiwes }) {
+function SiwesSemesterNote({ s, v, siwes }: { s: MeCore; v: RegistrationView; siwes: MySiwes }) {
   const { act, busy, problem } = useAct();
   const [askReset, setAskReset] = useState(false);
   const others = otherCoursesOf(siwes);
@@ -151,7 +151,7 @@ function SiwesSemesterNote({ s, v, siwes }: { s: Me; v: RegistrationView; siwes:
  *  registration it is — every course a spillover student added (V682); in a SIWES Second Semester (K11) the courses, carry-overs and
  *  deferred courses, which wait for a later semester; otherwise the student's courses, the carry-overs the published results state
  *  staying. A refusal shows in the modal with its remedy. */
-function ResetModal({ s, v, kind, count, units, onClose }: { s: Me; v: RegistrationView; kind: "siwes" | "carryOnly" | "ordinary"; count: number; units: number; onClose: () => void }) {
+function ResetModal({ s, v, kind, count, units, onClose }: { s: MeCore; v: RegistrationView; kind: "siwes" | "carryOnly" | "ordinary"; count: number; units: number; onClose: () => void }) {
   const { act, busy, problem } = useAct();
   const siwes = kind === "siwes";
   return (
@@ -204,7 +204,7 @@ function RegisterClosed({ v }: { v: RegistrationView }) {
   );
 }
 
-function RegisterForm({ s, v, siwesSemester = null }: { s: Me; v: RegistrationView;
+function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: RegistrationView;
   /** V752: the Second Semester the SIWES rule binds, and the student's SIWES course (the one registered, once registered) */
   siwesSemester?: { course: string | null } | null }) {
   const { act, busy, problem } = useAct();
@@ -807,7 +807,7 @@ function printPdf(url: string) {
   document.body.appendChild(f);
 }
 
-export function Form({ s, v, siwes = null }: { s: Me; v: RegistrationView;
+export function Form({ s, v, siwes = null }: { s: MeCore; v: RegistrationView;
   /** V752: the student's SIWES for the session: a Second Semester registration that is the SIWES one prints as the SIWES course form */
   siwes?: MySiwes | null }) {
   const reg = v.registration;

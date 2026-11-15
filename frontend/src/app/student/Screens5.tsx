@@ -10,7 +10,7 @@
  * issued, the transcript request staged as the Registry stages it.
  */
 import { useState } from "react";
-import type { Card, Docket, Me, Queries, RegistrationView, Results, Timetable, Transcripts } from "@/lib/student-portal";
+import type { Card, Docket, MeCore, Queries, RegistrationView, Results, Timetable, Transcripts } from "@/lib/student-portal";
 import { STAGE_LABEL, WEEKDAY, semesterName } from "@/lib/student-portal";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -134,7 +134,7 @@ export function Carryover({ r, history = null }: { r: Results; history?: CarryHi
 
 /* ── examinations (the examination card) ── */
 
-export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: Me; current?: RegistrationView | null; permits?: PermitState[]; cards?: ExamCardState[] }) {
+export function Exams({ d, permits = [], cards = [] }: { d: Docket; s: MeCore; current?: RegistrationView | null; permits?: PermitState[]; cards?: ExamCardState[] }) {
   const withPapers = d.examSessions.filter((x) => x.papers.length);
   // V501, V567: the examination card — the University's full examination permit — is the server's answer for each semester shown:
   // every student who has registered courses and paid school fees for the session has it, with every registered course; nothing
@@ -292,7 +292,7 @@ function RegisterAttendance({ t }: { t: Timetable }) {
 
 /* ── identity card ── */
 
-export function IdCard({ c, s }: { c: Card; s: Me }) {
+export function IdCard({ c, s }: { c: Card; s: MeCore }) {
   const { act, busy, problem } = useAct();
   const [now] = useState(() => Date.now());
   const live = c.cards.find((x) => x.state === "ISSUED" || x.state === "PRINTED") ?? null;   // V605: printed and awaiting collection, or in force
@@ -368,7 +368,7 @@ export function IdCard({ c, s }: { c: Card; s: Me }) {
 
 /* ── transcript ── */
 
-export function Transcript({ t, s }: { t: Transcripts; s: Me }) {
+export function Transcript({ t, s }: { t: Transcripts; s: MeCore }) {
   const { act, busy, problem } = useAct();
   const [dest, setDest] = useState("INSTITUTION");
   const [name, setName] = useState("");

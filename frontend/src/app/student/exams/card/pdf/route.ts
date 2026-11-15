@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { api, API_URL } from "@/lib/api";
 import { publicOrigin } from "@/lib/public-origin";
 import { sessionToken } from "@/lib/session";
-import type { Me, Docket } from "@/lib/student-portal";
+import { ME_CORE, type MeCore, type Docket } from "@/lib/student-portal";
 import type { ExamCardState } from "@/lib/exam-card";
 import { A4, jpegSize } from "@/lib/pdf-write";
 import { examVerifyPath, studentCheckCodeResult } from "@/lib/qr";
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   await loadInstitution();
   const q = request.nextUrl.searchParams;
-  const me = await api<Me>("/api/v1/me");
+  const me = await api<MeCore>(ME_CORE);
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   const s = me.data;
   const session = /^\d{4}\/\d{4}$/.test(q.get("session") ?? "") ? (q.get("session") as string) : s.session;

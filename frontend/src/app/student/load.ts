@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api";
 import type { Me as ShellMe } from "@/components/proto/Shell";
-import type { Me } from "@/lib/student-portal";
+import { ME_CORE, type Me, type MeCore } from "@/lib/student-portal";
 import type { StudentGate } from "@/lib/biodata-gate";
 import { SUPPORT_RETURN_COOKIE } from "@/lib/support-view";
 
@@ -11,11 +11,17 @@ import { SUPPORT_RETURN_COOKIE } from "@/lib/support-view";
  *  owed, the school fees not yet stated, or not paid as the gate asks */
 const HELD_AT_THE_FEE_GATE = ["HELD_ACCEPTANCE_BALANCE", "HELD_FEES_UNPAID", "HELD_FEES_NOT_AVAILABLE"];
 
+type Loaded<T> = { me: ShellMe; student: T; gate: StudentGate | null } | { me: ShellMe | null; student: null; problem: import("@/lib/api").Problem; gate: StudentGate | null };
+
 /** The student's record, read once per screen, and the shell's idea of who is signed in built from it. V423: while the
  *  biodata gate holds the student, every screen but the few that complete it (gateOpen) sends them to the biodata page,
- *  and the sidebar is the gate's — the API refuses the rest whatever happens here. */
-export async function loadStudent(opts: { gateOpen?: boolean } = {}): Promise<{ me: ShellMe; student: Me; gate: StudentGate | null } | { me: ShellMe | null; student: null; problem: import("@/lib/api").Problem; gate: StudentGate | null }> {
-  const [who, mine, gateRead] = await Promise.all([api<ShellMe>("/api/v1/iam/me"), api<Me>("/api/v1/me"), api<StudentGate>("/api/v1/me/biodata/completion")]);
+ *  and the sidebar is the gate's — the API refuses the rest whatever happens here. The record comes without the dashboard's
+ *  panels (the fees, the results, the registration…: GET /me?view=core) unless the screen shows one (full). */
+export async function loadStudent(opts: { gateOpen?: boolean; full: true }): Promise<Loaded<Me>>;
+export async function loadStudent(opts?: { gateOpen?: boolean; full?: false }): Promise<Loaded<MeCore>>;
+export async function loadStudent(opts: { gateOpen?: boolean; full?: boolean } = {}): Promise<Loaded<MeCore>> {
+  const [who, mine, gateRead] = await Promise.all([api<ShellMe>("/api/v1/iam/me"), api<MeCore>(opts.full ? "/api/v1/me" : ME_CORE),
+    api<StudentGate>("/api/v1/me/biodata/completion")]);
   /* V485: a student whose password must change reaches only the change; the API refuses the rest whatever the address */
   if (!mine.ok && mine.problem.code === "PASSWORD_CHANGE_REQUIRED") redirect("/student/password");
   /* V724: a fresh admit the student portal's fee gate holds (the acceptance fee's balance owed, the school fees not yet stated, or not
@@ -24,7 +30,7 @@ export async function loadStudent(opts: { gateOpen?: boolean } = {}): Promise<{ 
      the sign-in, which opens the applicant dashboard on the JAMB or application number — the fees, and the acceptance balance, are
      paid there. proxy.ts does the same on a page navigation from the X-Portal-Access header, clearing the student cookies; this
      catches a client-side navigation it let through. ICT Support viewing the portal read-only (V521) pays nothing and is never sent. */
-  const access = mine.ok ? (mine.data as Me & { portalAccess?: string | null }).portalAccess : null;
+  const access = mine.ok ? mine.data.portalAccess : null;
   if (access && HELD_AT_THE_FEE_GATE.includes(access) && !(await cookies()).get(SUPPORT_RETURN_COOKIE)?.value) {
     redirect("/login?next=%2Fapplicant%2Fadmission%23fees&reason=held-fees");
   }

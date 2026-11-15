@@ -2,6 +2,7 @@ import { Shell } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { Panel, PBody } from "@/components/proto/ui";
 import { api } from "@/lib/api";
+import type { Notice } from "@/lib/student-portal";
 import { loadStudent } from "../load";
 import { NotificationsList, type PortalNotice } from "./NotificationsList";
 import { Preferences, type Prefs } from "./Preferences";
@@ -16,13 +17,15 @@ function when(iso: string): string {
 /** s/notifications — the portal's own notices (V425: delivered here the moment they are queued, read marks kept), every
  *  e-mail and SMS the portal sent, and how it reaches you */
 export default async function Page() {
-  const [loaded, portal, prefs] = await Promise.all([
+  const [loaded, portal, prefs, mailed] = await Promise.all([
     loadStudent({ gateOpen: true }),
     api<{ unread: number; notices: PortalNotice[] }>("/api/v1/me/notifications?limit=100"),
     api<Prefs>("/api/v1/me/notifications/preferences"),
+    api<Notice[]>("/api/v1/me/notifications/sent"),
   ]);
   const s = loaded.student;
-  const sent = s ? s.notices.filter((n) => n.channel !== "PORTAL") : [];
+  // the notices filed about the student, every channel: the e-mails and SMS among them (the portal's are the list above)
+  const sent = s && mailed.ok ? mailed.data.filter((n) => n.channel !== "PORTAL") : [];
   return (
     <Shell route="s/notifications" me={loaded.me}>
       {!s ? <ProblemNotice problem={loaded.problem} /> : (
@@ -39,7 +42,7 @@ export default async function Page() {
                   </div>
                 ))}
               </div>
-            ) : <PBody><div className="sub2">Nothing sent to you yet.</div></PBody>}
+            ) : mailed.ok ? <PBody><div className="sub2">Nothing sent to you yet.</div></PBody> : <PBody><ProblemNotice problem={mailed.problem} /></PBody>}
           </Panel>
           <Preferences prefs={prefs.ok ? prefs.data : { email: true, sms: true }} email={s.contact.email ?? s.contact.reach_email ?? null} phone={s.contact.phone ?? s.contact.reach_phone ?? null} />
         </>

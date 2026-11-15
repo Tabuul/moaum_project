@@ -9,7 +9,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { type Fees, type Me, type Receipt, receiptPurpose, semesterName } from "@/lib/student-portal";
+import { type Fees, type MeCore, type Receipt, receiptPurpose, semesterName } from "@/lib/student-portal";
 import { type StudentOverpayment, overpaymentWords, refundAccountWords } from "@/lib/overpayment";
 import { type BankAccountValue, accountDigits, accountProblem, bankToSend, valueFromAccount } from "@/lib/banks";
 import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFields";
@@ -67,7 +67,7 @@ function PayFromHistory({ reference, amount, purpose }: { reference: string; amo
   );
 }
 
-export function FeesScreen({ s, fees, paid }: { s: Me; fees: Fees; paid: string | null }) {
+export function FeesScreen({ s, fees, paid }: { s: MeCore; fees: Fees; paid: string | null }) {
   const { act, busy, problem } = useAct();
   const [now] = useState(() => new Date().getTime());
   const [sel, setSel] = useState<number>(fees.balance);

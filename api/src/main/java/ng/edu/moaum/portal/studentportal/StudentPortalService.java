@@ -240,6 +240,17 @@ public class StudentPortalService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> me(UUID id) {
+        return me(id, true);
+    }
+
+    /**
+     * The student's record. {@code full} adds the dashboard's panels — the school fees, the portal's windows, the results and the
+     * standing, the carry-overs, the registration, the notices, the graduation and the pre-resumption steps — which only the
+     * dashboard shows; every other student screen reads the record without them (GET /me?view=core), and the fees are the most of
+     * what the database does for a student's page (performance audit §Z).
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> me(UUID id, boolean full) {
         StudentPortalRepository.Student s = student(id);
         // a record closed by voluntary withdrawal (V247) is refused at the portal, with the reason
         if ("VOLUNTARY_WITHDRAWAL".equals(s.status())) {
@@ -300,6 +311,9 @@ public class StudentPortalService {
         v.put("contact", repo.contact(id));
         v.put("passportDocumentId", repo.passportDocument(s.candidateId()).orElse(null));
         v.put("hasPhoto", repo.hasPassport(id));
+        if (!full) {
+            return v;
+        }
         v.put("fees", fees(id, session));
         // V288: the portal's windows as the dashboard shows them: school fees payment for the session, course registration for the open semester
         Map<String, Object> windows = new LinkedHashMap<>();
@@ -319,6 +333,12 @@ public class StudentPortalService {
         v.put("graduation", repo.graduation(id));
         v.put("academic", academic(id, s, String.valueOf(v.get("lifecycle")), (Map<String, Object>) v.get("fees")));
         return v;
+    }
+
+    /** the notices filed about the student (the latest 30, every channel, none carrying a secret), as the full record's notices */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> notices(UUID id) {
+        return repo.notices(id);
     }
 
     /**

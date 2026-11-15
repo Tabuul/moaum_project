@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { api } from "@/lib/api";
+import { ME_CORE } from "@/lib/student-portal";
 import { sessionToken } from "@/lib/session";
 import { SIGN_IN_TITLE, ssoOption } from "./login/options";
 import { SignIn } from "./login/SignIn";
@@ -62,7 +63,7 @@ export default async function DashboardPage() {
     /* V603: the student's dashboard as the API resolves it from the programme on the record — the College's own student area
        for a programme the College runs (MBBS) from 200 Level; every other student, College of Health Sciences or not, keeps
        the University's student portal */
-    const sme = await api<{ dashboard?: string }>("/api/v1/me");
+    const sme = await api<{ dashboard?: string }>(ME_CORE);
     if (sme.ok && sme.data.dashboard === "COLLEGE") redirect("/college/student");
     redirect("/student");
   }

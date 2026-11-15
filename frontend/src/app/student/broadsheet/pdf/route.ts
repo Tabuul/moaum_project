@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
 import type { Results, ResultRow, Semester } from "@/lib/student-portal";
-import { isSummer, semesterName } from "@/lib/student-portal";
+import { ME_CORE, isSummer, semesterName } from "@/lib/student-portal";
 import {A4, Page} from "@/lib/pdf-write";
 import { brandHeader } from "@/lib/pdf-crest";
 
@@ -19,7 +19,7 @@ const scoreOf = (c: ResultRow) => c.outcome === "GRADED" ? (c.total == null ? "-
 /** the student's result broadsheet as a PDF: each published semester's courses and its summary line */
 export async function GET() {
   await loadInstitution();
-  const [me, res] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string | null; programme: string; level: number }>("/api/v1/me"), api<Results>("/api/v1/me/results")]);
+  const [me, res] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string | null; programme: string; level: number }>(ME_CORE), api<Results>("/api/v1/me/results")]);
   if (!me.ok) return NextResponse.json(me.problem, { status: me.problem.status });
   if (!res.ok) return NextResponse.json(res.problem, { status: res.problem.status });
   const s = me.data, r = res.data;

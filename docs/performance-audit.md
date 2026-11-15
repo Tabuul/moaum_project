@@ -827,3 +827,40 @@ sum of every request, not the slowest screen, so this section measures the reque
   screen, which the student shell reads only for the name, number, entry mode and menu flags. A slimmer `me` for the shell is the
   next step; the staff dashboards that read the whole University (§S, the HOD's fees and results pipeline, the registration
   approval cards) are the step after.
+
+## Z. The student's record without the dashboard's panels (15 November 2026)
+
+§Y left `fees()` as about 31% of the database's time from page traffic, more than half of it from `GET /api/v1/me`: every student
+screen read the student's whole record through `loadStudent` (app/student/load.ts), and the record carried the dashboard's panels —
+the school fees (`fees()`: `finance.position`, `charges`, `semester_cleared`, `spillover_panel`, `fee_unstated_semesters`,
+`due_for_semester`), the portal's windows, the results and the standing, the carry-overs, the registration, the notices, the
+graduation and the pre-resumption steps — which only the dashboard shows.
+
+- **The change.** `GET /api/v1/me?view=core` gives the record without the panels: the same fields as the full record, in the same
+  order and with the same values, the panels left out (`StudentPortalService.me(id, full)`). `loadStudent` reads it unless the page
+  asks for the full record (`loadStudent({ full: true })`: the dashboard, and the postgraduate progress page, whose eligibility
+  reads the school fees); the sign-in's landing (app/page.tsx), the manual and the five PDF routes that print the student's name
+  and number read it too. The TypeScript types say which is which (`MeCore`, `Me extends MeCore`): a screen that loads the record
+  through `loadStudent` and reads a panel without `full` does not compile; a direct `api<…>(ME_CORE)` read names its own type,
+  which the compiler does not tie to the view, so it must read only the record's own fields. The notifications page, which listed the e-mails and SMS from the record's notices,
+  reads them at `GET /api/v1/me/notifications/sent` (under both gates' open paths, as `/me/notifications` is). The same path keeps
+  the biodata and fee gates' rule (they match the path, not the query): a held student still reads the record and its
+  `portalAccess`. The offices' views of a student's portal (`/students/{id}/portal`, ICT Support's profile and payments) keep the
+  full record.
+- **Each call alone** (`endpoint-cost.sh`, 400 students, twice): the full record 51 statements, 28–43 ms and about 2,200 pages of
+  the database's a call; the core 20 statements, 1.2–1.4 ms and about 106 pages; the sent list 0.35 ms.
+- **The replay** (§Y's 3,000 page loads, the page mix as the frontend now calls): of the students' 2,335 reads of the record, 1,660
+  take the core and 675 (the dashboard's) the full record; `finance.position` and `charges` run 2,531 times instead of 4,191,
+  `semester_cleared` 2,904 instead of 4,564; the statements fall from 391,900 to 340,600 and the pages read from 17.7–19.5 million
+  to 14.6–16.0 million. The database time, on a machine other work shared, ran 271–378 s for main and 233–295 s with the change;
+  the switch saves about 40–70 s of it (44–70 s by the per-call costs, about 40–60 s by the replays' own statement figures),
+  some 15% of main's run.
+- **The answers.** For each of the 400 students, the core record is the full record less the panels (the fields, their order,
+  their values), the sent list is the full record's notices, and the full record is the same byte for byte from main's API and
+  the new one; the one student of the copy with a notice about them (a portal one) gives the same. `StudentRecordCoreIT` holds the
+  same for an invented student with an e-mail, an SMS, a portal notice and a confirmation code (filed, never listed), and the
+  gates' tests read the core record of a held student. The notifications page says so when the list cannot be read, rather than
+  that nothing was sent.
+- **What remains**: the dashboard reads the full record and `/me/outstanding-fees`, both working out the session's fees; the
+  historical fees read twice per dashboard and fees page (§Y); `admissions.admission_tracker`; the staff dashboards that read the
+  whole University.

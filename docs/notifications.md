@@ -59,6 +59,7 @@ the same address checks. The Registry's edit of another person stays on `/person
 | POST | `/api/v1/notices/biodata-reminders/run` | the weekly reminder, now |
 | GET | `/api/v1/platform/notices?channel=&state=&kind=&q=&from=&to=` | the outbox searched; `byChannel` the picture per channel |
 | GET | `/api/v1/me/notifications`, `/unread`; POST `/{id}/read`, `/read-all` | the student's portal notices |
+| GET | `/api/v1/me/notifications/sent` | the notices filed about the student, as the full record's: the latest 30 on every channel, none carrying a secret for its mailbox alone (`platform.notice_carries_secret`); the notifications page lists the e-mails and SMS among them |
 | GET | `/api/v1/me/notices/unread`; POST `/{id}/read`, `/read-all` | a staff member's |
 | GET | `/api/v1/me/biodata-status`; POST `/api/v1/me/biodata/confirm` | the student's biodata status and confirmation |
 | GET / PUT | `/api/v1/staff/contact` | a staff member's own e-mail and phone |

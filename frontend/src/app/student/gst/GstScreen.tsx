@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import type { GstView, Me } from "@/lib/student-portal";
+import type { GstView, MeCore } from "@/lib/student-portal";
 import { COURSE_STATUS_WORD, SOURCE_WORD, reasonWord } from "@/lib/gst";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
@@ -22,7 +22,7 @@ const STATE: Record<string, [string, "ok" | "bad" | "warn" | "grey" | "info"]> =
   EXEMPT: ["NO FEE FOR YOU", "info"],
 };
 
-export function GstScreen({ s, gst, paid = null }: { s: Me; gst: GstView; paid?: string | null }) {
+export function GstScreen({ s, gst, paid = null }: { s: MeCore; gst: GstView; paid?: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);

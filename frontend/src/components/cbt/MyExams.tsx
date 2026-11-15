@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import type { Me } from "@/lib/student-portal";
+import type { MeCore } from "@/lib/student-portal";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -17,7 +17,7 @@ export const tokenKey = (attemptId: string) => `cbt-token:${attemptId}`;
 
 /** the candidate who acknowledges the instructions: a University student (s) or, from V365, a JUPEB student (who) — and the door their examinations are behind */
 export function MyExams({ data, s, who, apiBase = "/api/bff/api/v1/me/cbt", roomBase = "/student/cbt/room", feesHref = "/student/fees" }: {
-  data: Data; s?: Me; who?: { name: string; number: string }; apiBase?: string; roomBase?: string; feesHref?: string;
+  data: Data; s?: MeCore; who?: { name: string; number: string }; apiBase?: string; roomBase?: string; feesHref?: string;
 }) {
   const person = who ?? { name: s ? `${s.surname} ${s.otherNames}` : "", number: s ? s.matricNo ?? s.admissionNo ?? "" : "" };
   const router = useRouter();

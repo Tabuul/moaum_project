@@ -70,9 +70,19 @@ class MeController {
         this.portal = portal;
     }
 
+    /** the student's record; ?view=core leaves out the dashboard's panels (the fees, the windows, the results, the carry-overs, the
+     *  registration, the notices, the graduation, the pre-resumption steps) — what every student screen but the dashboard reads */
     @GetMapping
-    Map<String, Object> me(Authentication auth) {
-        return portal.me(id(auth));
+    Map<String, Object> me(Authentication auth, @RequestParam(required = false) String view) {
+        return portal.me(id(auth), !"core".equals(view));
+    }
+
+    /** the notices filed about the student, as the full record's notices: the latest 30 on every channel (e-mail, SMS, portal),
+     *  none that carries a secret for its mailbox alone (platform.notice_carries_secret: a confirmation code, a sign-in or reset
+     *  link). The notifications page lists the e-mails and SMS among them, read here now that its record comes without the panels */
+    @GetMapping("/notifications/sent")
+    List<Map<String, Object>> sent(Authentication auth) {
+        return portal.notices(id(auth));
     }
 
     @PutMapping("/contact")

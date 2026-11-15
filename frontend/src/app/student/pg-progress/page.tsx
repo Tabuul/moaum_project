@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** s/pgprogress — the postgraduate student's academic progress and graduation eligibility, read from the record */
 export default async function Page() {
-  const loaded = await loadStudent();
+  const loaded = await loadStudent({ full: true });   // the eligibility reads the school fees
   if (!loaded.student) return <Shell route="s/pgprogress" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   if (loaded.student.entryMode !== "POSTGRADUATE") {
     return <Shell route="s/pgprogress" me={loaded.me}><Note kind="info" title="Postgraduate progress">This page is for postgraduate students.</Note></Shell>;

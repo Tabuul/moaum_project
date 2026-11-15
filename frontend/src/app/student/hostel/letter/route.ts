@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { ME_CORE } from "@/lib/student-portal";
 import { publicOrigin } from "@/lib/public-origin";
 import type { StudentHostelFull } from "@/lib/hostel";
 import { hostelVerifyPath } from "@/lib/hostel";
@@ -15,7 +16,7 @@ const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/
 /** the hostel allocation letter as a PDF (V261): the crest, the student, the placing, the stay, the rules, and a QR the porter verifies */
 export async function GET(request: Request) {
   const session = new URL(request.url).searchParams.get("session") ?? "";
-  const [me, h] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string; programme: string | null; department: string | null; faculty: string | null; level: number }>("/api/v1/me"), api<StudentHostelFull>(`/api/v1/me/hostel/full${session ? `?session=${encodeURIComponent(session)}` : ""}`)]);
+  const [me, h] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string; programme: string | null; department: string | null; faculty: string | null; level: number }>(ME_CORE), api<StudentHostelFull>(`/api/v1/me/hostel/full${session ? `?session=${encodeURIComponent(session)}` : ""}`)]);
   if (!h.ok) return NextResponse.json(h.problem, { status: h.problem.status });
   const v = h.data.view;
   if (!v.allocation_ref || !v.allocation_state || ["HELD", "LAPSED", "DECLINED", "CANCELLED"].includes(v.allocation_state)) {

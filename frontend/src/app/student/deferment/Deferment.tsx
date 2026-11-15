@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
-import type { Me } from "@/lib/student-portal";
+import type { MeCore } from "@/lib/student-portal";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, KvGrid, LinkBtn, Note, PageHead, Panel, PBody, Pil } from "@/components/proto/ui";
@@ -18,7 +18,7 @@ import { PayByCard } from "../common";
 import { ACTION_WORD, ApprovalTimeline, COURSE_STATE, DOC_KIND, FeePil, IN_REVIEW, LIVE, OFFICE_OF, OPEN, SEM, STATE, StatePil, ReturnPil, dayOf, effectPairs, naira, periodOf, readBase64, returnOf, whenAt, type Deferment as Row, type DefermentFull, type MyDeferments, type Reason } from "@/lib/deferments";
 import { DocViewer } from "@/lib/deferment-viewer";
 
-export function Deferment({ s, data }: { s: Me; data: MyDeferments }) {
+export function Deferment({ s, data }: { s: MeCore; data: MyDeferments }) {
   const router = useRouter();
   const live = data.requests.find((r) => LIVE.has(r.state) || OPEN.has(r.state)) ?? null;
   const [problem, setProblem] = useState<Problem | null>(null);

@@ -14,11 +14,11 @@ import { notify, notifyProblem } from "@/components/proto/Toast";
 import { reasonHeader } from "@/lib/reason";
 import type { Problem } from "@/lib/api";
 import type { StudentGate } from "@/lib/biodata-gate";
-import type { Me } from "@/lib/student-portal";
+import type { MeCore } from "@/lib/student-portal";
 
 const MAX = 2 * 1024 * 1024;
 
-export function BiodataGatePanel({ gate, student }: { gate: StudentGate; student: Me }) {
+export function BiodataGatePanel({ gate, student }: { gate: StudentGate; student: MeCore }) {
   const router = useRouter();
   const [file, setFile] = useState<{ url: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);

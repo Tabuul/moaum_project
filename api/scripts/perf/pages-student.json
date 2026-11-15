@@ -32,7 +32,7 @@
     "GET /api/v1/ref/sessions"
    ],
    [
-    "GET /api/v1/me"
+    "GET /api/v1/me?view=core"
    ],
    [
     "GET /api/v1/iam/session"
@@ -64,7 +64,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
@@ -84,7 +84,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
@@ -100,7 +100,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
@@ -116,7 +116,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
@@ -133,7 +133,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
@@ -152,7 +152,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
@@ -168,12 +168,13 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [
     "GET /api/v1/me/notifications?limit=100",
-    "GET /api/v1/me/notifications/preferences"
+    "GET /api/v1/me/notifications/preferences",
+    "GET /api/v1/me/notifications/sent"
    ],
    [
     "GET /api/v1/manual/context?route=s/notifications"
@@ -185,7 +186,7 @@
   "stages": [
    [
     "GET /api/v1/iam/me",
-    "GET /api/v1/me",
+    "GET /api/v1/me?view=core",
     "GET /api/v1/me/biodata/completion"
    ],
    [

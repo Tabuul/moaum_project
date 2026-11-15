@@ -1,6 +1,8 @@
 student|GET /api/v1/iam/session
 student|GET /api/v1/iam/me
 student|GET /api/v1/me
+student|GET /api/v1/me?view=core
+student|GET /api/v1/me/notifications/sent
 student|GET /api/v1/me/biodata/completion
 student|GET /api/v1/manual/context?route=s/dashboard
 student|GET /api/v1/me/biodata-status

@@ -208,7 +208,11 @@ export interface AcademicContext {
   route?: string | null; studyMode?: string | null; centre?: string | null; cceSession?: string | null; undergraduateSession?: string | null;
   durationYears?: number | null; expectedCompletion?: string | null;
 }
-export interface Me {
+/** GET /me without the dashboard's panels: the record every student screen but the dashboard reads */
+export const ME_CORE = "/api/v1/me?view=core";
+/** The student's record as every student screen reads it (GET /api/v1/me?view=core): who they are, the programme, the level and the
+ *  session they stand in, the menu's flags — without the dashboard's panels, which the full record (Me) adds. */
+export interface MeCore {
   id: string; name: string; surname: string; otherNames: string; matricNo: string | null; admissionNo: string | null;
   programmeCode: string; programme: string; faculty: string; department: string; entryMode: string; entrySession: string;
   entryLevel: number; level: number; status: string; curriculumVersion: string | null; session: string;
@@ -228,6 +232,12 @@ export interface Me {
   passportDocumentId: string | null;
   /** whether a passport photo exists in any store (document, or JAMB/attachment) — use with /api/v1/me/passport */
   hasPhoto?: boolean;
+  /** V724: where the record stands at the student portal's fee gate (finance.portal_access_state) */
+  portalAccess?: string | null;
+}
+/** The full record (GET /api/v1/me): the dashboard's panels besides — the school fees, the portal's windows, the results, the
+ *  carry-overs, the registration, the notices, the graduation and the pre-resumption steps. Read it only where a panel is shown. */
+export interface Me extends MeCore {
   fees: Fees; gpa: Semester[]; cgpa: number | null; standing: string | null; carryovers: Carryover[];
   /** V288: the dashboard's indicators */
   windows?: { schoolFees: PortalWindow; courseRegistration: PortalWindow };

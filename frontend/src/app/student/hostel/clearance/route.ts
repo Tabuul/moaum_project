@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { api } from "@/lib/api";
+import { ME_CORE } from "@/lib/student-portal";
 import { publicOrigin } from "@/lib/public-origin";
 import type { StudentHostelFull } from "@/lib/hostel";
 import { hostelVerifyPath } from "@/lib/hostel";
@@ -15,7 +16,7 @@ const clean = (s: string | null | undefined) => (s ?? "").replace(/[^\x20-\x7E]/
 /** the hostel clearance certificate as a PDF (V261): issued once every requirement is cleared, waived or not applicable */
 export async function GET(request: Request) {
   const session = new URL(request.url).searchParams.get("session") ?? "";
-  const [me, h] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string; programme: string | null }>("/api/v1/me"), api<StudentHostelFull>(`/api/v1/me/hostel/full${session ? `?session=${encodeURIComponent(session)}` : ""}`)]);
+  const [me, h] = await Promise.all([api<{ name: string; matricNo: string | null; admissionNo: string; programme: string | null }>(ME_CORE), api<StudentHostelFull>(`/api/v1/me/hostel/full${session ? `?session=${encodeURIComponent(session)}` : ""}`)]);
   if (!h.ok) return NextResponse.json(h.problem, { status: h.problem.status });
   const v = h.data.view;
   if (v.clearance_state !== "CLEARED" || !v.clearance_ref) return NextResponse.json({ status: 409, title: "No clearance certificate", detail: "The certificate is issued when the hostel clearance is complete." }, { status: 409 });

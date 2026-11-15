@@ -19,7 +19,7 @@ import type { MySiwes } from "@/lib/siwes";
 /** s/dashboard — the student's own record, as the register holds it. A postgraduate gets their own
  *  home (V202), not a continuation of the undergraduate one. */
 export default async function Page() {
-  const loaded = await loadStudent();
+  const loaded = await loadStudent({ full: true });   // the dashboard shows the panels: the fees, the results, the registration…
   if (!loaded.student) {
     return <Shell route="s/dashboard" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   }
