@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 628
+\set EXPECTED 629
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -38154,6 +38154,101 @@ BEGIN
   PERFORM pg_temp.assert('V769: a candidate''s programme is the NAME JAMB''s list gives — each offer and acceptance counted on the merit row of the programme it names (a code as itself, a name no programme carries on none, the rows summing to the cards less it), a student admitted elsewhere by name flagged and named and not one on the programme admitted to, the original admission in the programme history, an applicant''s programme named by the transfer lookup',
       coalesce(msg = 'merit C00019:3/2,C00023:2/1 | rows 5/3 | cards 6/3 | mismatch Elsewhere:POSSIBLE:C00023:true'
                      || ' | history C00019:true,C00019:true,C00023:true | lookup C00023:true,ZZ NOT A PROGRAMME OF V769:true', false), msg);
+END $$;
+
+-- ── V770: payroll, leave and HR's staff lists read the employment in force. In a pay run for July 9071: A in post; B retiring on 20
+--          July (paid the whole month); C retired on 1 July (not paid); D suspended (not paid); E retired in June (not paid); F retiring
+--          in August and already taken on again (paid once, from the ACTIVE employment). Leave: G, retiring in ten days, may take five
+--          days' leave but not twelve, and a request made before an exit entered later cannot be approved past it; H, retired yesterday,
+--          may not request leave. The staff with no employment record leave out G (retiring) and list H; the promotion list keeps G and
+--          leaves out H, and lists F once. I, suspended and then dismissed with effect from 20 July, is not paid, shows SUSPENDED and may
+--          not request leave; J, appointed in August, is not paid for July. The block undoes its writes ──
+DO $$
+DECLARE
+    who uuid := gen_random_uuid(); hr uuid := gen_random_uuid();
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    e uuid := gen_random_uuid(); f uuid := gen_random_uuid(); g uuid := gen_random_uuid(); h uuid := gen_random_uuid();
+    i uuid := gen_random_uuid(); j uuid := gen_random_uuid(); i_emp uuid := gen_random_uuid(); i_leave text; i_status text;
+    gg text; gs int; run uuid; today date := (now() AT TIME ZONE 'Africa/Lagos')::date; req uuid; v_emp uuid;
+    paid text; leave_ok text; leave_long text; leave_left text; approve_past text; without text; promo text; msg text; v_err text; plan text; ln text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'hrm', true);
+    PERFORM set_config('moaum.reason', 'check V770', true);
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (who, 'ZZ-PAY-770', 'ZZPAYROLL', 'Officer'), (hr, 'ZZ-HR-770', 'ZZHR', 'Approver'),
+        (a, 'P7700001', 'ZZ770', 'A In Post'), (b, 'P7700002', 'ZZ770', 'B Retiring'), (c, 'P7700003', 'ZZ770', 'C Retired First'),
+        (d, 'P7700004', 'ZZ770', 'D Suspended'), (e, 'P7700005', 'ZZ770', 'E Retired June'), (f, 'P7700006', 'ZZ770', 'F Taken Back'),
+        (g, 'P7700007', 'ZZ770', 'G Leaving Soon'), (h, 'P7700008', 'ZZ770', 'H Left'),
+        (i, 'P7700009', 'ZZ770', 'I Suspended Then Dismissed'), (j, 'P7700010', 'ZZ770', 'J Appointed August');
+    SELECT x.grade, x.step INTO gg, gs FROM hrm.grade x ORDER BY x.grade, x.step LIMIT 1;
+    INSERT INTO hrm.employment (person_id, staff_no, grade, step, category, appointment_date, status, ended_on, ended_reason) VALUES
+        (a, 'P7700001', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ACTIVE', NULL, NULL),
+        (b, 'P7700002', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '9071-07-20', 'Retirement'),
+        (c, 'P7700003', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '9071-07-01', 'Retirement'),
+        (d, 'P7700004', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'SUSPENDED', NULL, NULL),
+        (e, 'P7700005', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '9071-06-15', 'Retirement'),
+        (f, 'ZZ7700006A', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '9071-08-01', 'Resignation'),
+        (f, 'P7700006', gg, gs, 'NON_ACADEMIC', date '9071-05-01', 'ACTIVE', NULL, NULL),
+        (g, 'P7700007', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', today + 10, 'Retirement'),
+        (h, 'P7700008', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', today - 1, 'Retirement'),
+        (j, 'P7700010', gg, gs, 'NON_ACADEMIC', date '9071-08-05', 'ACTIVE', NULL, NULL);
+    -- I: suspended by an instrument, then a dismissal entered with a date still to come (the exit overwrites the status)
+    INSERT INTO hrm.employment (id, person_id, staff_no, grade, step, category, appointment_date, status, ended_on, ended_reason)
+    VALUES (i_emp, i, 'P7700009', gg, gs, 'NON_ACADEMIC', date '2000-01-01', 'ENDED', date '9071-07-20', 'Dismissal');
+    INSERT INTO hrm.movement (employment_id, person_id, kind, effective_date, what_changes, state, requested_by, approved_by, implemented_at) VALUES
+        (i_emp, i, 'SUSPENSION', date '9071-05-01', 'suspended pending an inquiry', 'IMPLEMENTED', who, hr, now() - interval '2 days'),
+        (i_emp, i, 'DISMISSAL', date '9071-07-20', 'dismissed', 'IMPLEMENTED', who, hr, now() - interval '1 day');
+    i_status := hrm.staff_status(i);
+
+    -- the pay run for July 9071
+    SELECT r.run_id INTO run FROM hrm.build_pay_run(date '9071-07-01', 'check V770') r;
+    SELECT string_agg(split_part(ps.name, ', ', 2) || ' ' || count_one.n, ',' ORDER BY ps.staff_no) INTO paid
+      FROM hrm.payslip ps
+      CROSS JOIN LATERAL (SELECT count(*) AS n FROM hrm.payslip q WHERE q.run_id = run AND q.person_id = ps.person_id) count_one
+     WHERE ps.run_id = run AND ps.person_id IN (a, b, c, d, e, f, i, j);
+
+    -- leave for G, retiring in ten days, and H, retired yesterday (each signed in as themselves)
+    PERFORM set_config('moaum.actor_id', g::text, true);
+    BEGIN PERFORM hrm.request_leave(g, 'CASUAL', today + 1, today + 12, NULL, 'check V770'); leave_long := 'REQUESTED';
+    EXCEPTION WHEN check_violation THEN leave_long := left(SQLERRM, 45); END;
+    BEGIN req := hrm.request_leave(g, 'CASUAL', today + 1, today + 5, NULL, 'check V770'); leave_ok := 'REQUESTED';
+    EXCEPTION WHEN check_violation THEN leave_ok := SQLERRM; END;
+    PERFORM set_config('moaum.actor_id', h::text, true);
+    BEGIN PERFORM hrm.request_leave(h, 'CASUAL', today + 1, today + 2, NULL, 'check V770'); leave_left := 'REQUESTED';
+    EXCEPTION WHEN check_violation THEN leave_left := SQLERRM; END;
+    PERFORM set_config('moaum.actor_id', i::text, true);
+    BEGIN PERFORM hrm.request_leave(i, 'CASUAL', today + 1, today + 2, NULL, 'check V770'); i_leave := 'REQUESTED';
+    EXCEPTION WHEN check_violation THEN i_leave := SQLERRM; END;
+    -- an exit entered after G's request, taking effect before its end: the request cannot be approved
+    PERFORM set_config('moaum.actor_id', hr::text, true);
+    UPDATE hrm.employment SET ended_on = today + 3 WHERE person_id = g;
+    BEGIN PERFORM hrm.decide_leave(req, true, NULL); approve_past := 'APPROVED';
+    EXCEPTION WHEN check_violation THEN approve_past := left(SQLERRM, 45); END;
+
+    SELECT string_agg(w.staff_no, ',' ORDER BY w.staff_no) INTO without FROM hrm.staff_without_employment() w WHERE w.staff_no IN ('P7700007', 'P7700008');
+    SELECT string_agg(v.staff_no, ',' ORDER BY v.staff_no) INTO promo FROM hrm.promotion_view('9071') v WHERE v.staff_no IN ('P7700006', 'ZZ7700006A', 'P7700007', 'P7700008');
+    -- the rule inlines into a read (one plain expression): no function call a row, the movement lookup only for an exit to come
+    FOR ln IN EXECUTE format('EXPLAIN (COSTS OFF) SELECT count(*) FROM hrm.employment e WHERE hrm.employment_serving_on(e, %L::date)', today) LOOP
+        plan := concat(plan, ln, ' ');
+    END LOOP;
+    msg := concat_ws(' | ', 'paid ' || coalesce(paid, '-'), 'leave long ' || leave_long, 'short ' || leave_ok, 'left ' || leave_left,
+                     'approve past exit ' || approve_past, 'without employment ' || coalesce(without, '-'), 'promotion list ' || coalesce(promo, '-'),
+                     'suspended then dismissed ' || i_status || ' leave ' || i_leave,
+                     'inlined ' || (position('employment_serving_on' in plan) = 0)::text);
+    RAISE EXCEPTION 'the V770 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V770 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V770: a pay run pays everyone serving on a day of its month (the exit month whole, a suspension not, one person once); leave only while serving and never past the last day of service; HR''s lists read the employment in force',
+      coalesce(msg = 'paid A In Post 1,B Retiring 1,F Taken Back 1'
+                     || ' | leave long the leave runs past the last day of service ('
+                     || ' | short REQUESTED | left only a serving member of staff may request leave'
+                     || ' | approve past exit the leave runs past the last day of service: '
+                     || ' | without employment P7700008 | promotion list P7700006,P7700007'
+                     || ' | suspended then dismissed SUSPENDED leave only a serving member of staff may request leave'
+                     || ' | inlined true', false), msg);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

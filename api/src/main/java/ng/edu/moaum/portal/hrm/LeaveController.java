@@ -68,7 +68,7 @@ class LeaveController {
         UUID p = me(auth);
         List<Map<String, Object>> rows = jdbc.sql("SELECT * FROM hrm.leave_list(NULL) WHERE person_id = :p ORDER BY requested_at DESC").param("p", p).query().listOfRows();
         List<Map<String, Object>> types = jdbc.sql("SELECT code, name, max_days, paid FROM hrm.leave_type ORDER BY (code = 'ANNUAL') DESC, name").query().listOfRows();
-        boolean isStaff = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM hrm.employment WHERE person_id = :p AND status = 'ACTIVE')").param("p", p).query(Boolean.class).single());
+        boolean isStaff = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS (SELECT 1 FROM hrm.employment e WHERE e.person_id = :p AND hrm.employment_serving_on(e, (now() AT TIME ZONE 'Africa/Lagos')::date))").param("p", p).query(Boolean.class).single());
         Integer balance = isStaff ? jdbc.sql("SELECT hrm.leave_balance(:p)").param("p", p).query(Integer.class).single() : null;
         return Map.of("requests", rows, "types", types, "balance", balance == null ? "" : balance, "isStaff", isStaff);
     }

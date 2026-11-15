@@ -2551,11 +2551,11 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 | Notifications | None. |
 | Approval workflow | Run DRAFT → APPROVED (different person) → PAID / CANCELLED; leave REQUESTED → APPROVED / DECLINED / CANCELLED; movement REQUESTED → APPROVED → IMPLEMENTED / DECLINED (RETURNED unused). |
 | Statuses | Employment ACTIVE / SUSPENDED / ENDED; vacancy OPEN / SHORTLISTING / INTERVIEW / OFFER / CLOSED / CANCELLED; applicant APPLIED / SHORTLISTED / RESERVE / REJECTED / INVITED / OFFERED / DECLINED / APPOINTED; appraisal SELF / SUPERVISOR / MODERATED. |
-| Validation rules | "the officer who built a pay run does not approve it"; one run per month; only ACTIVE employments paid; one pending leave per person; days ≤ the type's max ("ANNUAL allows at most 30 day(s)"); annual balance; a movement needs an existing employment ("no employment on record for this person"); grade/step from the seeded 18 rows. |
+| Validation rules | "the officer who built a pay run does not approve it"; one run per month; every employment serving on a day of the month is paid (V770: ACTIVE, or ended by an exit taking effect after the month's first day — the exit's month in full; not one suspended, nor one suspended before its exit was entered; nobody for a month before their appointment; one payslip a person); one pending leave per person; days ≤ the type's max ("ANNUAL allows at most 30 day(s)"); annual balance; a movement needs an existing employment ("no employment on record for this person"); grade/step from the seeded 18 rows. |
 | Security | HOD scoping depends on `staff_record.home_department`; vacancy state and assess accept any string satisfying the CHECK. |
 | Audit trail | `hrm.*` attached; `staff_photo` exempt. |
 | Related modules | Identity (§3.5 — importers write `staff_record`); Staff directory (§3.46); Expenditure (§3.44). |
-| Common errors | "only a serving member of staff may request leave" (no ACTIVE employment); "a pay run for <Month> already exists"; HOD sees no leave (no home department). |
+| Common errors | "only a serving member of staff may request leave" (no employment serving today — ACTIVE, or ending on a date still to come; not suspended, nor suspended before its exit was entered, V770); "the leave runs past the last day of service (…): an exit takes effect on …"; "a pay run for <Month> already exists"; HOD sees no leave (no home department). |
 | Troubleshooting | Real staff are not on the establishment unless seeded — **nothing in the API or migrations inserts `hrm.employment`** except `demo.sql`. |
 
 **Status:** IMPLEMENTED (engine) but PARTIALLY IMPLEMENTED as payroll — no way to add staff to the establishment, set bank details or grades from the portal, no other deductions, no payslip PDF; PARTIALLY IMPLEMENTED — recruitment (free-form states, no link to employment; only Shortlist is a button); PLACEHOLDER — `/me` Appraisal / Appointment / Next increment tiles; wrong titles on `/audit/staff` and the HR home ("Staff movements").
@@ -3314,7 +3314,7 @@ Administration → Cloud Readiness → /cloud ; Release Pipeline → /release ; 
 ```text
 Finance → Revenue & Student Income → /audit/revenue ; Staff → Staff Movements → /audit/staff ; Finance → Assets Register → /audit/assets
 ```
-**URLs** `/audit/revenue?session=`, `/audit/staff`, `/audit/assets` · **Purpose** The Internal Audit directorate's read-only desks. · **Who** audit (menu); the pages read `/finance/bursary`, `/reports/revenue`, `/payroll/staff`, `/payroll/runs`, `/stores/assets`. · **Layout** Revenue: tiles Fees collected / Confirmed today / Still owed / Open exceptions and "Revenue by category" (default session hard-coded 2026/2027). Staff: note "The roll and the payroll, read together"; tiles On the establishment / Academic / Monthly gross / Last payroll paid; panels "Pay runs" (Month, Staff, Gross, Deductions, Net, Stage, Approved by) and "Establishment" — titled "Staff movements", which does not match its content. Assets: headline note on assets not verified within a year; tiles Assets on the register / Book value / Never verified / Overdue verification; "Fixed-asset register" (Tag, Asset, Location, Cost, Condition, Last verified). · **Actions** None (the verify endpoint exists but this page has no button).
+**URLs** `/audit/revenue?session=`, `/audit/staff`, `/audit/assets` · **Purpose** The Internal Audit directorate's read-only desks. · **Who** audit (menu); the pages read `/finance/bursary`, `/reports/revenue`, `/payroll/staff`, `/payroll/runs`, `/stores/assets`. · **Layout** Revenue: tiles Fees collected / Confirmed today / Still owed / Open exceptions and "Revenue by category" (default session hard-coded 2026/2027). Staff: note "The roll and the payroll, read together"; tiles On the establishment / Academic / Monthly gross / Last payroll paid; panels "Pay runs" (Month, Staff, Gross, Deductions, Net, Stage, Approved by) and "Establishment" (Status is today's (V770: Active while serving — an exit still to come shows "Active · leaving <date>", the exit's effective date —, Suspended while in service but not serving, Ended once out)) — titled "Staff movements", which does not match its content. Assets: headline note on assets not verified within a year; tiles Assets on the register / Book value / Never verified / Overdue verification; "Fixed-asset register" (Tag, Asset, Location, Cost, Condition, Last verified). · **Actions** None (the verify endpoint exists but this page has no button).
 
 > **Screenshot Required:** Assets Register — `/audit/assets` — the register with a "Never" in red.
 
@@ -4870,7 +4870,7 @@ Services → Stores & Assets / Stock & Acquisitions → /stores
 ```text
 Finance → Payroll → /payroll
 ```
-**URL** `/payroll?run=` · **Purpose** Build, approve, pay and cancel monthly runs. · **Who** bursar, hrm (menu); `may` hrm, super. · **Layout** RoleLine; intro note; tiles Runs / Awaiting approval / Approved, to pay / Last net paid; "Build a run" (Month, Note); "Pay runs" (Month, Staff, Gross, Deductions, Net, Stage, Action); run detail "Payslips · {Month}" (tiles; Staff, Grade, Basic, Allowances, Gross, Pension, PAYE, Net). · **Actions** Build the run → `POST /payroll/runs`; Approve (not your own) → `…/{id}/approve`; Mark paid (confirm) → `…/{id}/pay`; Cancel (prompt) → `…/{id}/cancel`. · **Messages** "{n} payslips built — gross ₦x, net ₦y"; "A month is run once…"; "This run has no payslips — no staff were active on the establishment when it was built."
+**URL** `/payroll?run=` · **Purpose** Build, approve, pay and cancel monthly runs. · **Who** bursar, hrm (menu); `may` hrm, super. · **Layout** RoleLine; intro note; tiles Runs / Awaiting approval / Approved, to pay / Last net paid; "Build a run" (Month, Note; "Over everyone serving on the establishment during the month"); "Pay runs" (Month, Staff, Gross, Deductions, Net, Stage, Action); run detail "Payslips · {Month}" (tiles; Staff, Grade, Basic, Allowances, Gross, Pension, PAYE, Net). · **Actions** Build the run → `POST /payroll/runs`; Approve (not your own) → `…/{id}/approve`; Mark paid (confirm) → `…/{id}/pay`; Cancel (prompt) → `…/{id}/cancel`. · **Messages** "{n} payslips built — gross ₦x, net ₦y"; "A month is run once…"; "This run has no payslips — no staff were serving on the establishment in that month when it was built."
 
 > **Screenshot Required:** Payroll — `/payroll` — the runs table and a run's payslips.
 
@@ -4888,7 +4888,7 @@ Finance → Payroll Variance → /payroll/variance
 ```text
 Staff → Staff Records → /staff
 ```
-**URL** `/staff` · **Purpose** The establishment roll. · **Who** hrm (works); registrar, housing (menu, refused); payroll readers. · **Layout** Tiles On the roll / Academic / Non-academic / Monthly gross; "Establishment" (Staff, Grade, Category, Monthly gross, Bank ····last4, Status); note "The payroll is built over this roll". · **Actions** Name opens the staff record modal.
+**URL** `/staff` · **Purpose** The establishment roll. · **Who** hrm (works); registrar, housing (menu, refused); payroll readers. · **Layout** Tiles On the roll / Academic / Non-academic / Monthly gross; "Establishment" (Staff, Grade, Category, Monthly gross, Bank ····last4, Status); Status is today's (V770: Active while serving — an exit still to come shows "Active · leaving <date>", the exit's effective date —, Suspended while in service but not serving, Ended once out); note "The payroll is built over this roll" (a run pays everyone serving on a day of its month, the exit's month in full; a suspended employment not). · **Actions** Name opens the staff record modal.
 
 > **Screenshot Required:** Staff Records — `/staff` — tiles and the roll.
 
@@ -5579,7 +5579,7 @@ Every tile is computed on request from the modules' own tables (a *read model*);
 | HOD | Lecturers' loads; allocation history | per lecturer | `hod/dashboard`, `allocation/history?scope=department` | hod |
 | Dean | Registration by department; result pipeline; unallocated offerings; at-risk students | faculty-scoped counts | `GET /dean/dashboard` | dean, facultyofficer |
 | Exams | Sheets at VERIFICATION and the monitor | scope counts | `results` reads | exams, facultyexams |
-| HR | Staff on the establishment | ACTIVE employments | `GET /hr/dashboard` | hrm |
+| HR | Staff on the establishment | employments serving today (V770: ACTIVE, or ending by an exit still to take effect, not suspended) | `GET /hr/dashboard` | hrm |
 | HR | Leave to decide | REQUESTED leave | `hr/dashboard` | hrm |
 | HR | Instruments to issue | APPROVED movements | `hr/dashboard` | hrm |
 | HR | Open vacancies (n shortlisted) | OPEN vacancies | `hr/dashboard` | hrm |

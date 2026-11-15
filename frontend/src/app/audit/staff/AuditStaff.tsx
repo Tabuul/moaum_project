@@ -7,7 +7,10 @@ import { money } from "@/lib/format";
 import { Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 
-export interface StaffRow { staff_no: string; grade: string; step: number; category: string; status: string; name: string; gross: number | null }
+/** V770: today's status (Lagos today) by the pay run's rule — ACTIVE while serving, an exit still to come included; the run itself
+ *  reads its month's first day. ended_on the exit's effective date */
+export interface StaffRow { staff_no: string; grade: string; step: number; category: string; status: string; name: string; gross: number | null; ended_on?: string | null }
+const leaving = (d: string | null | undefined) => (d ? ` · leaving ${new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}` : "");
 export interface Run { id: string; period: string; state: string; staff_count: number; gross_total: number; deduction_total: number; net_total: number; approved_by_name: string | null; built_by_name: string | null }
 
 const RUNSTATE: Record<string, ["ok" | "info" | "bad" | "grey" | "warn", string]> = {
@@ -54,7 +57,7 @@ export function AuditStaff({ staff, runs }: { staff: StaffRow[]; runs: Run[] }) 
             <span className="sub2" key="g">{s.grade} · {s.step}</span>,
             <span className="sub2" key="c">{s.category === "ACADEMIC" ? "Academic" : "Non-academic"}</span>,
             <span className="tnum" key="gr">{s.gross == null ? "—" : money(Number(s.gross))}</span>,
-            <Pil kind={s.status === "ACTIVE" ? "ok" : "grey"} key="st">{s.status === "ACTIVE" ? "Active" : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</Pil>,
+            <Pil kind={s.status === "ACTIVE" ? "ok" : "grey"} key="st">{s.status === "ACTIVE" ? `Active${leaving(s.ended_on)}` : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</Pil>,
           ])} texts={staff.map((s) => `${s.name} ${s.staff_no} ${s.grade} ${s.status}`)} />
         ) : <PBody><div className="sub2">No staff are on the establishment yet.</div></PBody>}
       </Panel>

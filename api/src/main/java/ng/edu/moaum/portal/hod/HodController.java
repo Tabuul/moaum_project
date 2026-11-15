@@ -251,7 +251,7 @@ class HodController {
         out.put("deptName", jdbc.sql("SELECT name FROM ref.department WHERE code = :d").param("d", dept).query(String.class).optional().orElse(dept));
         out.put("staff", jdbc.sql("""
                 SELECT p.surname || ', ' || p.given_names AS name, sr.pno, sr.present_rank, sr.sex,
-                       (SELECT status FROM hrm.employment e WHERE e.person_id = sr.person_id ORDER BY (status = 'ACTIVE') DESC LIMIT 1) AS employment,
+                       CASE WHEN EXISTS (SELECT 1 FROM hrm.employment e WHERE e.person_id = sr.person_id) THEN hrm.staff_status(sr.person_id) END AS employment,
                        EXISTS (SELECT 1 FROM iam.office_assignment a WHERE a.person_id = sr.person_id AND a.office_code = 'lecturer'
                                 AND (a.valid_to IS NULL OR a.valid_to > current_date)) AS teaches
                   FROM hrm.staff_record sr JOIN iam.person p ON p.id = sr.person_id

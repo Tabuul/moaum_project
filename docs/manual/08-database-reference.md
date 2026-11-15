@@ -362,7 +362,7 @@ The most important functions:
 | `platform.next_number(kind, scope, session)` | Every reference series (§1.7.2) |
 | `college.register_level` / `register_semester` / `decide` / `apply_provisional` / `confirm_decisions` / `grant_appeal` | The MB;BS year: fee-gated registration, provisional decisions after every result, Board confirmation on a minute |
 | `helpdesk.submit` / `transition` / `resolve` / `auto_close` | Ticket lifecycle with SLA timestamps |
-| `hrm.build_pay_run` / `approve_pay_run` / `pay_pay_run` | Payroll with maker–checker |
+| `hrm.build_pay_run` / `approve_pay_run` / `pay_pay_run` | Payroll with maker–checker; a run pays every employment serving on a day of its month and appointed by its end, one payslip a person (V770, `hrm.employment_serving_on`: ACTIVE, or ENDED by an exit taking effect after the month's first day and not suspended when it was entered, `hrm.employment_suspended_at_exit`) |
 | `expenditure.raise_voucher` / `advance_voucher` / `pay_voucher` | Voucher chain with BR-006 |
 
 ## 1.10 Triggers

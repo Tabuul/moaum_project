@@ -54,13 +54,17 @@ class PayrollController {
     @Transactional(readOnly = true)
     List<Map<String, Object>> establishment() {
         return jdbc.sql("""
-                SELECT em.id, p.id AS person_id, em.staff_no, em.grade, em.step, em.category, em.status, em.appointment_date,
+                SELECT em.id, p.id AS person_id, em.staff_no, em.grade, em.step, em.category, em.appointment_date, em.ended_on,
+                       -- V770: today's status by the pay run's rule (the run itself reads its month's first day) — ACTIVE while
+                       -- serving (an exit not yet in effect), SUSPENDED, ENDED
+                       CASE WHEN hrm.employment_serving_on(em, (now() AT TIME ZONE 'Africa/Lagos')::date) THEN 'ACTIVE'
+                            WHEN hrm.employment_in_force(em.status, em.ended_on) THEN 'SUSPENDED' ELSE 'ENDED' END AS status,
                        p.surname || ', ' || p.given_names AS name, em.bank_name, em.account_last4,
                        gr.basic + gr.housing + gr.transport + gr.other_allowances AS gross
                   FROM hrm.employment em
                   JOIN iam.person p ON p.id = em.person_id
                   LEFT JOIN hrm.grade gr ON gr.grade = em.grade AND gr.step = em.step
-                 ORDER BY (em.status = 'ACTIVE') DESC, em.staff_no
+                 ORDER BY hrm.employment_serving_on(em, (now() AT TIME ZONE 'Africa/Lagos')::date) DESC, em.staff_no
                 """).query().listOfRows();
     }
 

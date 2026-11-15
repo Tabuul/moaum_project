@@ -81,14 +81,14 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
       ]} />
 
       {may ? (
-        <Panel title="Build a run" right="Over everyone active on the establishment">
+        <Panel title="Build a run" right="Over everyone serving on the establishment during the month">
           <PBody>
             <div className="grid grid--3">
               <Field id="pr-period" label="Month"><input id="pr-period" className="ctl" type="month" value={period} onChange={(e) => setPeriod(e.target.value)} /></Field>
               <Field id="pr-note" label="Note" hint="Optional"><input id="pr-note" className="ctl" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Regular monthly salary" /></Field>
             </div>
             <div><Btn kind="primary" disabled={busy || !period} onClick={async () => { const j = await send("/runs", { period, note: note || null }, `Build payroll for ${period}`); if (j) { setSaid(`${j.staff_count} payslips built — gross ${money(Number(j.gross_total))}, net ${money(Number(j.net_total))}`); setPeriod(""); setNote(""); } }}>Build the run</Btn></div>
-            <div className="sub2 mt-2">A month is run once. If the establishment changes after a run is built, cancel it and build again.</div>
+            <div className="sub2 mt-2">A month is run once. It pays everyone in service for at least one day of the month: an exit taking effect after the month&apos;s first day is paid the whole month (one dated the 1st, and every month after it, is not paid); nobody is paid for a month before their appointment; a suspended employment is not paid. If the establishment changes after a run is built, cancel it and build again.</div>
           </PBody>
         </Panel>
       ) : null}
@@ -134,7 +134,7 @@ export function Payroll({ runs, detail, actingOffice }: { runs: PayRun[]; detail
               <span className="tnum sub2" key="pa">{money(Number(s.paye))}</span>,
               <b className="tnum" key="n">{money(Number(s.net))}</b>,
             ])} texts={d.payslips.map((s) => `${s.name} ${s.staff_no} ${s.grade}`)} />
-          ) : <PBody><div className="sub2">This run has no payslips — no staff were active on the establishment when it was built.</div></PBody>}
+          ) : <PBody><div className="sub2">This run has no payslips — no staff were serving on the establishment in that month when it was built.</div></PBody>}
         </Panel>
       ) : null}
     </>

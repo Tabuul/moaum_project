@@ -793,7 +793,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Other payroll deductions | NOT IMPLEMENTED | `db/V069` | CRA and PAYE only |
 | Payslip PDF | NOT IMPLEMENTED | None | Payslip is a screen snapshot |
 | Establishment list | IMPLEMENTED | `PayrollController.java:52` | Read; demo data only |
-| Leave (self-service and office decision, HOD scope) | IMPLEMENTED | `db/V071`; `LeaveController.java` | Needs an ACTIVE employment; HOD scope depends on `staff_record.home_department` |
+| Leave (self-service and office decision, HOD scope) | IMPLEMENTED | `db/V071`; `LeaveController.java` | Needs an employment serving today (V770: ACTIVE, or ending by an exit still to take effect; not suspended, nor suspended before its exit was entered), never past the last day of service; HOD scope depends on `staff_record.home_department` |
 | Movements (raise / approve / decline / issue) | IMPLEMENTED | `db/V072` | APPOINTMENT cannot create an employee; `RETURNED` unused; no letter |
 | Movement letters | NOT IMPLEMENTED | None | |
 | Recruitment | PARTIALLY IMPLEMENTED | `RecruitmentController.java` | States free-form; no link to employment |

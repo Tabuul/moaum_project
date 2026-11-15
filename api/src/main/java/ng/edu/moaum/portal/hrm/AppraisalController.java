@@ -68,7 +68,9 @@ class AppraisalController {
     Map<String, Object> record(@Valid @RequestBody Record body) {
         UUID emp = jdbc.sql("""
                 SELECT e.id FROM hrm.employment e JOIN iam.person p ON p.id = e.person_id
-                 WHERE (upper(e.staff_no) = upper(:n) OR upper(coalesce(p.staff_number, '')) = upper(:n)) AND e.status = 'ACTIVE' LIMIT 1
+                 WHERE (upper(e.staff_no) = upper(:n) OR upper(coalesce(p.staff_number, '')) = upper(:n))
+                   AND hrm.employment_serving_on(e, (now() AT TIME ZONE 'Africa/Lagos')::date)   -- V770: serving today, as the promotion list reads it
+                 ORDER BY (e.status = 'ACTIVE') DESC, e.appointment_date DESC LIMIT 1
                 """).param("n", body.number().trim()).query().listOfRows().stream().findFirst()
                 .map(r -> (UUID) r.get("id")).orElseThrow(() -> new NotFound("staff", body.number()));
         UUID person = jdbc.sql("SELECT person_id FROM hrm.employment WHERE id = :e").param("e", emp).query(UUID.class).single();

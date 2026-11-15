@@ -33,7 +33,7 @@ class HrController {
                 .query(String.class).optional().orElseGet(Sessions::byDate);
         out.put("cycle", cycle);
 
-        out.put("staffActive", jdbc.sql("SELECT count(*) FROM hrm.employment WHERE status = 'ACTIVE'").query(Long.class).single());
+        out.put("staffActive", jdbc.sql("SELECT count(*) FROM hrm.employment e WHERE hrm.employment_serving_on(e, (now() AT TIME ZONE 'Africa/Lagos')::date)").query(Long.class).single());
         out.put("leavePending", jdbc.sql("SELECT count(*) FROM hrm.leave_list('REQUESTED')").query(Long.class).single());
         out.put("onLeaveToday", jdbc.sql("""
                 SELECT count(*) FROM hrm.leave_list('APPROVED')

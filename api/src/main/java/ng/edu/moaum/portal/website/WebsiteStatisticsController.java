@@ -65,8 +65,8 @@ class WebsiteStatisticsController {
                       FROM people.student s JOIN ref.programme p ON p.code = s.programme_code
                      WHERE s.status IN ('ACTIVE', 'PROBATION', 'DEFERRED')),
                 staff AS (
-                    SELECT category, count(*) AS n FROM hrm.employment
-                     WHERE status = 'ACTIVE' AND ended_on IS NULL GROUP BY category)
+                    SELECT e.category, count(*) AS n FROM hrm.employment e
+                     WHERE hrm.employment_serving_on(e, (now() AT TIME ZONE 'Africa/Lagos')::date) GROUP BY e.category)
                 SELECT (SELECT count(*) FROM ref.faculty)                                                  AS faculties,
                        (SELECT count(*) FROM ref.college)                                                  AS colleges,
                        (SELECT count(*) FROM ref.department)                                               AS departments,

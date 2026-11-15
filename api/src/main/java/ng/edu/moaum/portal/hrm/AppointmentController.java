@@ -59,18 +59,22 @@ class AppointmentController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("grades", jdbc.sql("""
                 SELECT grade, step, category, basic, housing, transport, other_allowances, basic + housing + transport + other_allowances AS monthly,
-                       (SELECT count(*) FROM hrm.employment e WHERE e.grade = g.grade AND e.step = g.step AND e.status <> 'ENDED') AS staff
+                       (SELECT count(*) FROM hrm.employment e WHERE e.grade = g.grade AND e.step = g.step AND hrm.employment_in_force(e.status, e.ended_on)) AS staff
                   FROM hrm.grade g ORDER BY category, grade, step
                 """).query().listOfRows());
         out.put("counts", jdbc.sql("""
-                SELECT count(*) FILTER (WHERE status = 'ACTIVE') AS active, count(*) FILTER (WHERE status = 'SUSPENDED') AS suspended,
-                       count(*) FILTER (WHERE status = 'ENDED') AS ended,
+                SELECT count(*) FILTER (WHERE hrm.employment_serving_on(em, (now() AT TIME ZONE 'Africa/Lagos')::date)) AS active,
+                       count(*) FILTER (WHERE hrm.employment_in_force(em.status, em.ended_on) AND NOT hrm.employment_serving_on(em, (now() AT TIME ZONE 'Africa/Lagos')::date)) AS suspended,
+                       count(*) FILTER (WHERE NOT hrm.employment_in_force(em.status, em.ended_on)) AS ended,
                        (SELECT count(*) FROM iam.person p WHERE p.staff_number IS NOT NULL AND p.ended_on IS NULL
-                          AND NOT EXISTS (SELECT 1 FROM hrm.employment x WHERE x.person_id = p.id AND x.status <> 'ENDED')) AS without_employment
-                  FROM hrm.employment
+                          AND NOT EXISTS (SELECT 1 FROM hrm.employment x WHERE x.person_id = p.id AND hrm.employment_in_force(x.status, x.ended_on))) AS without_employment
+                  FROM hrm.employment em
                 """).query().singleRow());
         out.put("recent", jdbc.sql("""
-                SELECT e.id, e.staff_no, upper(btrim(p.surname)) || ', ' || btrim(p.given_names) AS name, e.category, e.grade, e.step, e.appointment_date, e.status,
+                SELECT e.id, e.staff_no, upper(btrim(p.surname)) || ', ' || btrim(p.given_names) AS name, e.category, e.grade, e.step, e.appointment_date,
+                       -- V770: the status as served — ACTIVE while serving (an exit not yet in effect), SUSPENDED, ENDED once out
+                       CASE WHEN hrm.employment_serving_on(e, (now() AT TIME ZONE 'Africa/Lagos')::date) THEN 'ACTIVE'
+                            WHEN hrm.employment_in_force(e.status, e.ended_on) THEN 'SUSPENDED' ELSE 'ENDED' END AS status, e.ended_on,
                        sr.home_department, d.name AS department, sr.home_unit, u.name AS unit, sr.present_rank
                   FROM hrm.employment e JOIN iam.person p ON p.id = e.person_id
                   LEFT JOIN hrm.staff_record sr ON sr.person_id = p.id
