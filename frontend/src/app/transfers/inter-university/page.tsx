@@ -8,8 +8,11 @@ export const dynamic = "force-dynamic";
 
 /** t/iut — V588: inter-university transfer — students coming from another university and students leaving for one, from a
  *  spreadsheet: each row checked (the student found first, so no one is placed twice), previewed, prepared as a batch (IUT/…) for
- *  another officer to decide; the list of universities kept here. */
-export default async function UniversityTransferPage() {
+ *  another officer to decide; the list of universities kept here. V763: ?batch= opens a batch (the form's "Open the transfer"),
+ *  ?tab= a tab. */
+export default async function UniversityTransferPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const p = await searchParams;
+  const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : null);
   const [me, structure, batches, universities] = await Promise.all([
     api<Me>("/api/v1/iam/me"),
     api<Structure>("/api/v1/programme-swaps/structure"),
@@ -20,7 +23,7 @@ export default async function UniversityTransferPage() {
     <Shell route="t/iut" me={me.ok ? me.data : null}>
       {batches.ok
         ? <UniversityTransfer structure={structure.ok ? structure.data : { faculties: [] }} batches={batches.data} universities={universities.ok ? universities.data : []}
-            office={me.ok ? me.data.activeOffice : null} me={me.ok ? me.data.actorId : null} />
+            office={me.ok ? me.data.activeOffice : null} me={me.ok ? me.data.actorId : null} initialBatch={one(p.batch)} initialTab={one(p.tab)} />
         : <ProblemNotice problem={batches.problem} />}
     </Shell>
   );

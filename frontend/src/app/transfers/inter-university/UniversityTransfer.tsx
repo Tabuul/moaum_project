@@ -5,20 +5,22 @@
  *  comes back and every row is checked — the student found first by the matriculation or JAMB number, so no one is placed twice; an
  *  outgoing row against the record, an incoming one against its target — previewed, with an error report to correct and upload again;
  *  the valid rows are prepared as one batch (IUT/YYYY/NNNNNN) that another officer of the Academic Office or the Registry decides on
- *  this screen, transfer by transfer or all at once. Nothing on a record changes until then. The list of universities is kept here. */
+ *  this screen, transfer by transfer or all at once. Nothing on a record changes until then. The list of universities is kept here.
+ *  V763: one student is registered on the form (/transfers/inter-university/form) as a batch of one, decided here like any other;
+ *  a batch says whether a file or the form made it, a transfer shows the particulars the form gives, and ?batch= opens one. */
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { Btn, KvGrid, Note, Panel, PBody, Pil, Tabs, Tiles } from "@/components/proto/ui";
+import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tabs, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal } from "@/components/proto/blocks";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { csvRows, xlsxRows } from "@/lib/xlsx";
 import type { Structure } from "../bulk/TransferBulk";
 import {
-  ACTION, COLUMNS, DIRECTION, STATUS, TRANSFER, errorReportRows, outcome, outgoingRows, readUniversitySheet, reportRows, rowWords,
+  ACTION, COLUMNS, DIRECTION, STATUS, TRANSFER, cgpaWords, documentWords, errorReportRows, outcome, outgoingRows, readUniversitySheet, reportRows, rowWords,
   type CheckedRow, type TemplateStudent, type Transfer, type Validation,
 } from "@/lib/university-transfer";
 
@@ -30,7 +32,7 @@ export interface University { code: string; name: string; country: string; activ
 export interface Batch {
   id: string; ref: string; effective_session: string; filename: string | null; reason: string; approval_ref: string | null; total: number; prepared: number;
   left_out: number; incoming: number; outgoing: number; pending: number; completed: number; rejected: number; prepared_by: string; prepared_by_name: string | null;
-  prepared_office: string; prepared_at: string; status: string;
+  prepared_office: string; prepared_at: string; status: string; source?: "FILE" | "FORM";
 }
 type BatchDetail = Batch & { transfers: Transfer[]; leftOut: { row_no: number; uploaded: Record<string, string>; messages: { code: string; text?: string }[] }[] };
 
@@ -45,10 +47,20 @@ async function answer(r: Response) {
   return j;
 }
 
-export function UniversityTransfer({ structure, batches, universities, office, me }: { structure: Structure; batches: Batch[]; universities: University[]; office: string | null; me: string | null }) {
+type Tab = "upload" | "batches" | "transfers" | "universities";
+const TABS: Tab[] = ["upload", "batches", "transfers", "universities"];
+
+/** where the other university's particulars are said: the matriculation number there, the CGPA and the session entered */
+function thereWords(t: Transfer): string {
+  return [t.other_matric_no, t.other_cgpa !== null && t.other_cgpa !== undefined ? `CGPA ${cgpaWords(t.other_cgpa, t.other_cgpa_scale)}` : null,
+    t.other_entry_session ? `entered ${t.other_entry_session}` : null].filter(Boolean).join(" · ");
+}
+
+export function UniversityTransfer({ structure, batches, universities, office, me, initialBatch, initialTab }: { structure: Structure; batches: Batch[]; universities: University[];
+  office: string | null; me: string | null; initialBatch?: string | null; initialTab?: string | null }) {
   const router = useRouter();
   const mayKeep = KEEPERS.includes(office ?? "");
-  const [tab, setTab] = useState<"upload" | "batches" | "transfers" | "universities">("upload");
+  const [tab, setTab] = useState<Tab>(initialBatch ? "batches" : TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "upload");
   // the templates
   const [fac, setFac] = useState("");
   const [dept, setDept] = useState("");
@@ -75,6 +87,11 @@ export function UniversityTransfer({ structure, batches, universities, office, m
   // the universities
   const [uni, setUni] = useState<{ code: string; name: string; country: string; active: boolean; editing: boolean }>({ code: "", name: "", country: "Nigeria", active: true, editing: false });
 
+  // V763: a batch named in the address (the form's "Open the transfer") opened once
+  useEffect(() => {
+    if (initialBatch && /^[0-9a-f-]{36}$/i.test(initialBatch)) void openBatch(initialBatch);
+  }, [initialBatch]);
+
   async function outgoingTemplate() {
     if (!fac && !dept && !prog) { notifyProblem({ status: 400, title: "Choose a faculty, department or programme", detail: "The outgoing template lists the students of the department chosen." }); return; }
     const p = new URLSearchParams();
@@ -89,7 +106,7 @@ export function UniversityTransfer({ structure, batches, universities, office, m
 
   async function incomingTemplate() {
     downloadBlob(await brandedXlsx("Inter-University Transfer: Incoming", COLUMNS.map(([, l]) => l), [], {
-      serial: docSerial("IUT"), sub: `Generated ${new Date().toLocaleDateString("en-GB")}. One row a student: Transfer Direction INCOMING, the JAMB Number (required: it is how the student is found, so no one is placed twice), the name as SURNAME, Other names, the Faculty, Department and Programme codes and the Level the student comes into, the previous university's code from the list of universities, and the programme and level there. Sex is M or F; the date of birth is written YYYY-MM-DD.`,
+      serial: docSerial("IUT"), sub: `Generated ${new Date().toLocaleDateString("en-GB")}. One row a student: Transfer Direction INCOMING, the JAMB Number (required: it is how the student is found, so no one is placed twice), the name as SURNAME, Other names, the Faculty, Department and Programme codes and the Level the student comes into, the previous university's code from the list of universities, and the programme and level there; the matriculation number there, the session entered there (2022/2023), the CGPA there and its scale (4 or 5) when known, and the documents seen (TRANSCRIPT, RELEASE_LETTER, JAMB_ADMISSION_LETTER, OLEVEL_RESULT, separated by commas). Sex is M or F; the date of birth is written YYYY-MM-DD. One student at a time is registered on the Inter-University Transfer Form.`,
     }), `iut-incoming-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
@@ -164,7 +181,8 @@ export function UniversityTransfer({ structure, batches, universities, office, m
   async function report() {
     if (!found) return;
     downloadBlob(await brandedXlsx("Inter-University Transfers", ["S/N", "Batch", "Direction", "Student", "Matric number", "JAMB number", "Other university",
-      "Programme there", "Level there", "Programme here", "Level here", "Session", "Outcome", "Decided by", "Decided on"], reportRows(found),
+      "Programme there", "Level there", "Matric number there", "CGPA there", "Programme here", "Level here", "Session", "Registered from", "Outcome", "Decided by",
+      "Decided on"], reportRows(found),
       { serial: docSerial("IUR"), sub: `${found.length} transfer${found.length === 1 ? "" : "s"}${q.trim() ? ` matching “${q.trim()}”` : ""}${direction ? ` · ${DIRECTION[direction as "INCOMING"]}` : ""} · generated ${new Date().toLocaleDateString("en-GB")}` }),
       `iut-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
@@ -184,7 +202,8 @@ export function UniversityTransfer({ structure, batches, universities, office, m
   const pendingMine = open ? open.prepared_by === me : false;
   return (
     <>
-      <Note kind="info" title="Students who come from, or leave for, another university">
+      <Note kind="info" title="Students who come from, or leave for, another university"
+        action={mayKeep ? <LinkBtn kind="primary" href="/transfers/inter-university/form">Register one student on the form</LinkBtn> : undefined}>
         The student is looked for first by the matriculation or JAMB number, so no one is placed twice: a student already on the register is that record, an applicant
         under the JAMB number is linked, and only otherwise is a record made — admitted by transfer, at the level the row states, its matriculation number to follow
         under Matriculation Management. A student going out keeps the record and its history; the status becomes Transferred out. Every row is decided by another
@@ -308,7 +327,7 @@ export function UniversityTransfer({ structure, batches, universities, office, m
           {batches.length ? (
             <DTable cols={["S/N|num", "Batch", "Session", "Incoming|num", "Outgoing|num", "Waiting|num", "Completed|num", "Status", "By", "Prepared", "|num"]} rows={batches.map((b, i) => [
               <span key="n" className="tnum sub2">{i + 1}</span>,
-              <span key="r" className="tnum b600">{b.ref}</span>,
+              <span key="r"><span className="tnum b600">{b.ref}</span><div className="sub2">{b.source === "FORM" ? "Registered on the form" : b.filename ?? "From a file"}</div></span>,
               <span key="s" className="tnum">{b.effective_session}</span>,
               <span key="i" className="tnum">{b.incoming}</span>,
               <span key="o" className="tnum">{b.outgoing}</span>,
@@ -344,7 +363,8 @@ export function UniversityTransfer({ structure, batches, universities, office, m
               <span key="d">{DIRECTION[t.direction]}</span>,
               <span key="s">{t.student_id ? <Link className="lnk" href={`/students/${t.student_id}`}>{t.student ?? "—"}</Link> : (t.student ?? "—")}</span>,
               <span key="m" className="tnum">{t.matric_no ?? t.jamb_reg_no ?? "—"}</span>,
-              <span key="u">{t.university}{t.other_programme ? <div className="sub2">{t.other_programme}{t.other_level ? ` · ${t.other_level}` : ""}</div> : null}</span>,
+              <span key="u">{t.university}{t.other_programme ? <div className="sub2">{t.other_programme}{t.other_level ? ` · ${t.other_level}` : ""}</div> : null}
+                {thereWords(t) ? <div className="sub2 tnum">{thereWords(t)}</div> : null}</span>,
               <span key="h" className="tnum">{t.programme_code ? `${t.programme_code} · ${t.level ?? "—"}` : "—"}</span>,
               <Pil key="o" kind={TRANSFER[t.status][1]}>{outcome(t)}</Pil>,
               <span key="w" className="sub2">{t.decided_at ? `${t.decided_by_name ?? ""}, ${when(t.decided_at)}` : "—"}</span>,
@@ -385,7 +405,7 @@ export function UniversityTransfer({ structure, batches, universities, office, m
         </Panel>
       )}
       {open ? (
-        <Modal wide title={`${open.ref} · ${BATCH[open.status]?.[0] ?? open.status}`} sub={`${open.effective_session} · ${open.filename ?? "no file name"} · prepared by ${open.prepared_by_name ?? open.prepared_office}, ${when(open.prepared_at)}`}
+        <Modal wide title={`${open.ref} · ${BATCH[open.status]?.[0] ?? open.status}`} sub={`${open.effective_session} · ${open.source === "FORM" ? "registered on the form" : open.filename ?? "no file name"} · prepared by ${open.prepared_by_name ?? open.prepared_office}, ${when(open.prepared_at)}`}
           onClose={() => setOpen(null)}
           foot={<>
             {open.pending && mayKeep ? (
@@ -408,7 +428,10 @@ export function UniversityTransfer({ structure, batches, universities, office, m
             <span key="d">{DIRECTION[t.direction]}</span>,
             <span key="s">{t.student_id ? <Link className="lnk" href={`/students/${t.student_id}`}>{t.student ?? "—"}</Link> : (t.student ?? "—")}</span>,
             <span key="m" className="tnum">{t.matric_no ?? t.jamb_reg_no ?? "—"}</span>,
-            <span key="u">{t.university}{t.other_programme ? <div className="sub2">{t.other_programme}{t.other_level ? ` · ${t.other_level}` : ""}</div> : null}</span>,
+            <span key="u">{t.university}{t.other_programme ? <div className="sub2">{t.other_programme}{t.other_level ? ` · ${t.other_level}` : ""}</div> : null}
+              {thereWords(t) ? <div className="sub2 tnum">{thereWords(t)}</div> : null}
+              {t.documents?.length ? <div className="sub2">Seen: {documentWords(t.documents)}</div> : null}
+              {t.remarks ? <div className="sub2">{t.remarks}</div> : null}</span>,
             <span key="h" className="tnum">{t.programme_code ? `${t.programme_code} · ${t.level ?? "—"}` : "—"}</span>,
             <span key="o"><Pil kind={TRANSFER[t.status][1]}>{outcome(t)}</Pil>{t.decision_note ? <div className="sub2">{t.decision_note}</div> : null}</span>,
             t.status === "PENDING_APPROVAL" && mayKeep && !pendingMine ? (

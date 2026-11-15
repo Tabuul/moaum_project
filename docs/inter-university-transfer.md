@@ -4,6 +4,10 @@
 the University from another university (**incoming**) and students who leave for one (**outgoing**), many at a time from a
 spreadsheet. Such transfers are approved by the Senate under the University's transfer policy.
 
+*Nov 2026 (V763).* One student at a time is registered on **Inter-University Transfer Form**
+(`/transfers/inter-university/form`), under the same rules and the same decision by another officer; see
+[The form](#the-form).
+
 The student is always looked for first, so no one is placed twice. An incoming student who is already on the register is that
 record; an applicant under the JAMB number is linked to the new record; only otherwise is a record made. An outgoing student
 keeps the record and every row of its history; only the status changes.
@@ -24,8 +28,10 @@ University is not on it: it is this University's own former name.
 
    The columns are Transfer Direction, Student Matriculation Number, JAMB Number, Student Name, Sex, Date of Birth, Email, Phone,
    Faculty Code, Department Code, Programme Code, Level, University Code, Other University Programme, Other University Level,
+   Other University Matriculation Number, Other University Entry Session, Other University CGPA, CGPA Scale, Documents Seen,
    Effective Session, Reason, Approval Reference and Remarks. For an outgoing row, the faculty, department, programme and level
-   are the student's own; for an incoming one, they are where the student comes in.
+   are the student's own; for an incoming one, they are where the student comes in. The columns V763 added are optional on a
+   file (see [The form's particulars](#the-forms-particulars)).
 2. **Upload.** Upload the filled file (Excel or CSV). Every row is checked (`people.university_transfer_check`) and previewed:
    - the counts: total (incoming and outgoing), valid, valid with points to look at, invalid, and the new records the decision
      would make;
@@ -42,6 +48,73 @@ University is not on it: it is this University's own former name.
    or one transfer at a time. A rejection needs a note. Each transfer is checked again on the records as they stand. One that is
    refused now (because a record changed since) is said with the reason and left waiting; the others are decided. **Nothing on
    any record changes before this.**
+
+## The form
+
+Academic Office → **Inter-University Transfer Form** (also **Register one student on the form** on the Inter-University
+Transfer page). The Academic Office, the Registrar, the Deputy Registrar and the Super Administrator register; Records does not.
+
+1. **The transfer.** *Coming in from another university* or *Going out to another university*.
+2. **The student.** Give the number and press **Find** (`people.university_transfer_lookup`, told the direction). The form is
+   checked only once the number as it stands has been looked up. A transfer of the student already waiting is named.
+   - *Coming in* (the JAMB number alone, as the check reads an incoming form; directly or through the applicant): a student
+     already on the register is that record. Their placement is shown and fixed, and the transfer is recorded on the record. An
+     applicant under the number is linked to the new record; the name and sex the application holds fill the form where it had
+     none. Otherwise the surname, other names, sex and date of birth are given (the e-mail and phone are optional).
+   - *Going out* (the matriculation number, a former one, or the JAMB number): the student must be found and live. The faculty,
+     department, programme and level are read from the record, never typed. An applicant is not looked for.
+
+   Another number undoes what the last Find filled in, wherever the officer left it as it was.
+   An answer to an earlier Find is dropped.
+3. **The other university.** The university, from the list. **Not on the list? Add it** adds one there and then: the code,
+   the name and the country. It is chosen, and the form keeps what is filled in. Then the programme
+   there. For a student coming in, also the level reached there and the matriculation number there; the session entered there
+   and the CGPA with its scale (5-point or 4-point) are optional. For a student going out, the level and matriculation number
+   there are optional.
+4. **Where the student comes in.** The faculty, the department, an undergraduate programme and one of its own levels, each
+   chosen once the one before it is. A postgraduate programme is not offered; the School of Postgraduate Studies admits those
+   students. For a student going out, and for a student coming in whom the register holds, this is the record's placement,
+   shown.
+5. **Documents seen.** Coming in: the transcript, the letter of release, the JAMB admission letter, the O'Level result. Going out:
+   the student's written application, the receiving university's letter of acceptance.
+6. **The approval.** The effective session (blank: the current one), the reason (ten characters or more), the approval reference,
+   and remarks.
+
+**Check the form** (`people.university_transfer_form_check`) shows whom it is about, the status, what the decision would do,
+the problems to put right and the points for the officer who decides it. A name that does not carry the surname of the record
+the number finds is a point to look at (`NAME_DIFFERS`), on a form (its surname and other names) as on a file. **Register the transfer** is open only once the form as it stands has been
+checked with no problem. The form is checked again as it is registered (`people.register_university_transfer`): a batch of one,
+`IUT/YYYY/NNNNNN` with source FORM, awaiting another officer's decision. **Open the transfer** opens it on the Inter-University
+Transfer page (`?batch=`). There it is decided like any other; nothing on a record changes before then.
+
+### The form's particulars
+
+Besides a row's rules (below), the form must give:
+
+| Code | When the form is refused |
+|---|---|
+| `OTHER_MATRIC_MISSING`, `OTHER_PROGRAMME_MISSING`, `OTHER_LEVEL_MISSING` | coming in: the matriculation number, programme or level at the previous university is not given |
+| `SEX_MISSING`, `DATE_OF_BIRTH_MISSING` | coming in, a new record: the sex or the date of birth is not given |
+| `OTHER_PROGRAMME_MISSING` | going out: the programme at the receiving university is not given |
+
+The particulars are checked on a form and on a file's row alike, whenever they are given:
+
+| Code | When the row is refused |
+|---|---|
+| `OTHER_MATRIC` | the matriculation number there is not letters, digits and `/ . - _`, up to 40 |
+| `ENTRY_SESSION` | the session entered there is not written 2022/2023, or is after the transfer's session |
+| `CGPA`, `CGPA_SCALE` | the CGPA is not a number with up to two decimals, or is above its scale; the scale is not 4 or 5; a scale with no CGPA |
+| `OUTGOING_PARTICULARS` | a student going out is given a session entered or a CGPA (they are a student coming in's) |
+| `DOCUMENTS` | a document is not on the form's list, or is the other direction's |
+
+Points to look at: `CGPA_SCALE_ASSUMED` (a file's CGPA with no scale, read on the 5-point scale), and, when the documents seen
+are stated, `TRANSCRIPT_NOT_SEEN` and `RELEASE_LETTER_NOT_SEEN` (coming in) or `ACCEPTANCE_LETTER_NOT_SEEN` (going out). On a
+file, Documents Seen lists the codes (TRANSCRIPT, RELEASE_LETTER, JAMB_ADMISSION_LETTER, OLEVEL_RESULT, STUDENT_APPLICATION,
+ACCEPTANCE_LETTER) separated by commas.
+
+The transfer keeps the particulars (`other_matric_no`, `other_entry_session`, `other_cgpa` with `other_cgpa_scale`, `documents`,
+`remarks`). The remarks of the transfers prepared before V763, kept with the row as uploaded, were carried into `remarks`. The batches say whether a file or the form made them (`people.university_transfer_batch.source`). The transfers are
+found by the matriculation number at the other university too, and the report carries it with the CGPA and the source.
 
 ## What a row must be
 
@@ -99,5 +172,13 @@ Points to look at: `APPLICANT_LINKED` (an applicant under the JAMB number become
 | `POST /{id}/decide {approve, note}` | decide every waiting transfer of a batch |
 | `POST /transfers/{id}/decide {approve, note}` | decide one transfer |
 | `GET /transfers?q=&direction=&student=` | the transfers by search, direction or student (the report) |
+| `GET /lookup?number=&direction=` | V763: who a number finds for the direction — the student (coming in: by the JAMB number alone), the applicant under a JAMB number (coming in), a transfer already waiting |
+| `POST /form/check {form, session}` | V763: the form checked |
+| `POST /form {form, session, reason, approvalRef}` | V763: the form registered as a batch of one |
+
+The form's fields: `direction`, `matricNo`, `jambRegNo`, `surname`, `otherNames`, `sex`, `dateOfBirth`, `email`, `phone`,
+`faculty`, `dept`, `programme`, `level`, `universityCode`, `otherProgramme`, `otherLevel`, `otherMatricNo`, `otherEntrySession`,
+`otherCgpa`, `otherCgpaScale`, `documents`, `remarks`. The lookup, the check and the registration are the Academic Office's and the
+Registry's (not Records').
 
 A file takes up to 1,000 rows. `people.university_transfer.programme_code` is classed KEEP for the V574 programme merge.

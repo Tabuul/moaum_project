@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 619
+\set EXPECTED 620
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -37456,6 +37456,111 @@ BEGIN
   END;
   PERFORM pg_temp.assert('V760: a reversal re-links to the live row of a re-uploaded JAMB list, and brings back the programme offered after JAMB''s course was followed',
       coalesce(msg = 'moved true | listed APP/60/760001=programme 1,APP/60/760002=programme 1 | A live row | B REVERSED on programme 1 restored true', false), msg);
+END $$;
+-- ── V763. An inter-university transfer registered on a form, one student at a time. Made-up students only. A file's rows read the
+--          form's particulars when given (a CGPA with no scale read on 5 points and said; above its scale, a session entered not
+--          written 2022/2023, a going-out row with a CGPA, a document of the other direction: refused; documents named with the
+--          transcript and the letter of release left out: valid, the points said); a thin form told what a form must give besides;
+--          the Bursary refused; the full form registered as a batch of one (source FORM) with its particulars, refused again while
+--          it waits and named by the lookup; another officer approves it: the record made with the sex and date of birth the form
+--          gave; a student going out found by the lookup on the record's placement; the transfers found by the number at the other
+--          university; a CGPA above its scale refused by the table too; the lookup told the direction (coming in, a matriculation
+--          number finds no one and the applicant is named; going out, no applicant); a form naming someone else for a number on the
+--          register recorded on that record with the point that the name differs. The block undoes its writes ──
+DO $$
+DECLARE p_to text; fac_to text; dept_to text; p_here text; fac_here text; dept_here text;
+        a uuid := gen_random_uuid(); off1 uuid := '00000000-0000-0000-0000-0000000763a1'; off2 uuid := '00000000-0000-0000-0000-0000000763b2';
+        v_full jsonb; file_codes text; thin text; bursary text; made jsonb; batch text; kept text; twice text; pending text; decided text; record text;
+        found_out text; searched int; table_cgpa text; by_direction text; differs text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V763', true);
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_here, fac_here, dept_here FROM ref.programme p WHERE p.code = 'C00023';
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_to, fac_to, dept_to FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND 200 = ANY (people.programme_levels(p.code)) ORDER BY p.code LIMIT 1;
+        INSERT INTO people.student (id, matric_no, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (a, 'MOAU/ZQ/IUF/88/76301', 'MOAUM/ADM/88/763001', 'ZQ76300001AA', 'CHECKIUFA', 'Alpha', p_here, 'UTME', '2020/2021', 100, 200, 'ACTIVE', now());
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (gen_random_uuid(), '2020/2021', 'ZQ76300031AA', 'CHECKIUFG', 'Golf', (SELECT p.name FROM ref.programme p WHERE p.code = p_to), 'UTME', 100, 'PROPOSED');
+        -- the lookup told the direction: coming in, the JAMB number alone (a matriculation number finds no one) and the applicant
+        -- named; going out, the record by its matriculation number and no applicant
+        by_direction := coalesce(people.university_transfer_lookup('MOAU/ZQ/IUF/88/76301', 'INCOMING')->>'student', 'none') || ':'
+                        || coalesce(people.university_transfer_lookup('MOAU/ZQ/IUF/88/76301', 'OUTGOING')->>'matchedBy', '-') || ':'
+                        || coalesce(people.university_transfer_lookup('zq76300031aa', 'INCOMING')->'applicant'->>'surname', '-') || ':'
+                        || coalesce(people.university_transfer_lookup('ZQ76300031AA', 'OUTGOING')->>'applicant', 'none');
+        -- a form naming someone else for a JAMB number the register holds: that record, with the point that the name differs
+        differs := (SELECT c->>'action' || ':' || (SELECT string_agg(pr->>'code', '+' ORDER BY pr->>'code') FROM jsonb_array_elements(c->'warnings') pr)
+                      FROM people.university_transfer_form_check(jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ76300001AA', 'surname', 'ZZNOTTHEM',
+                           'other_names', 'Someone', 'faculty', fac_here, 'dept', dept_here, 'programme', p_here, 'level', '200', 'university_code', 'UNIJOS',
+                           'other_programme', 'B.Sc. Physics', 'other_level', '200', 'other_matric_no', 'UJ/2022/SC/76399'), NULL) c);
+        -- a file's rows with the form's particulars
+        file_codes := (SELECT string_agg(x->>'row' || ':' || (x->>'status') || ':'
+                                         || coalesce((SELECT string_agg(pr->>'code', '+' ORDER BY pr->>'code') FROM jsonb_array_elements(x->'problems') pr), '') || ':'
+                                         || coalesce((SELECT string_agg(pr->>'code', '+' ORDER BY pr->>'code') FROM jsonb_array_elements(x->'warnings') pr), '') || ':'
+                                         || coalesce(x->>'otherCgpa', '-') || '/' || coalesce(x->>'otherCgpaScale', '-'), ',' ORDER BY (x->>'row')::int)
+                         FROM jsonb_array_elements(people.university_transfer_check(jsonb_build_array(
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ76300011AA', 'student', 'CHECKIUFB, Bravo', 'faculty', fac_to, 'dept', dept_to, 'programme', p_to,
+                               'level', '200', 'university_code', 'UNIJOS', 'other_cgpa', '3.1', 'other_matric_no', 'uj/2021/0101'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ76300012AA', 'student', 'CHECKIUFC, Charlie', 'faculty', fac_to, 'dept', dept_to, 'programme', p_to,
+                               'level', '200', 'university_code', 'UNIJOS', 'other_cgpa', '4.5', 'other_cgpa_scale', '4', 'other_entry_session', '2021/2023'),
+            jsonb_build_object('direction', 'OUTGOING', 'matric_no', 'MOAU/ZQ/IUF/88/76301', 'faculty', fac_here, 'dept', dept_here, 'programme', p_here, 'level', '200',
+                               'university_code', 'UNIJOS', 'other_cgpa', '3.0', 'documents', 'TRANSCRIPT'),
+            jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ76300014AA', 'student', 'CHECKIUFD, Delta', 'faculty', fac_to, 'dept', dept_to, 'programme', p_to,
+                               'level', '200', 'university_code', 'UNIJOS', 'documents', 'jamb_admission_letter; olevel_result')), NULL)) x);
+        -- a thin form: what a form must give besides
+        thin := (SELECT c->>'status' || ':' || (SELECT string_agg(pr->>'code', '+' ORDER BY pr->>'code') FROM jsonb_array_elements(c->'problems') pr)
+                   FROM people.university_transfer_form_check(jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ76300021AA', 'surname', 'CHECKIUFE',
+                        'other_names', 'Echo', 'faculty', fac_to, 'dept', dept_to, 'programme', p_to, 'level', '200', 'university_code', 'UNIJOS',
+                        'documents', '[]'::jsonb), NULL) c);
+        v_full := jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ76300021AA', 'surname', 'CHECKIUFE', 'other_names', 'Echo', 'sex', 'F',
+                        'date_of_birth', '2004-05-06', 'faculty', fac_to, 'dept', dept_to, 'programme', p_to, 'level', '200', 'university_code', 'UNIJOS',
+                        'other_programme', 'B.Sc. Physics', 'other_level', '200', 'other_matric_no', 'UJ/2022/SC/76321', 'other_entry_session', '2022/2023',
+                        'other_cgpa', '3.45', 'other_cgpa_scale', '5', 'documents', '["RELEASE_LETTER", "TRANSCRIPT"]'::jsonb, 'remarks', 'In good standing');
+        -- the Bursary does not register one
+        PERFORM set_config('moaum.actor_office', 'bursary', true);
+        BEGIN PERFORM people.register_university_transfer(v_full, NULL, 'The Senate approved the transfer', 'SEN/763/1');
+        EXCEPTION WHEN insufficient_privilege THEN bursary := split_part(SQLERRM, ':', 1); END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        made := people.register_university_transfer(v_full, NULL, 'The Senate approved the transfer', 'SEN/763/1');
+        batch := (SELECT x.source || ':' || x.status || ':' || x.total || ':' || x.prepared || ':' || coalesce(x.filename, '-') FROM people.university_transfer_batches(50) x
+                   WHERE x.id = (made->>'id')::uuid);
+        kept := (SELECT t.other_matric_no || ':' || t.other_entry_session || ':' || t.other_cgpa || ':' || t.other_cgpa_scale || ':' || array_to_string(t.documents, '+')
+                        || ':' || t.remarks || ':' || (t.id = (made->>'transferId')::uuid)
+                   FROM people.university_transfer t WHERE t.batch_id = (made->>'id')::uuid);
+        BEGIN PERFORM people.register_university_transfer(v_full, NULL, 'The Senate approved the transfer', NULL);
+        EXCEPTION WHEN check_violation THEN twice := split_part(SQLERRM, ':', 1); END;
+        pending := people.university_transfer_lookup(' zq76300021aa ', 'INCOMING')->>'pendingRef';
+        -- another officer decides: the record made with the sex and date of birth the form gave
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        decided := people.decide_university_transfer((made->>'transferId')::uuid, true, 'Checked against the Senate minutes')->>'action';
+        record := (SELECT s.entry_mode || ':' || s.status || ':' || s.current_level || ':' || s.sex || ':' || s.date_of_birth FROM people.student s WHERE upper(s.jamb_reg_no) = 'ZQ76300021AA');
+        -- a student going out found by the lookup on the record's placement; the transfers found by the number there
+        found_out := (SELECT l->>'matchedBy' || ':' || (l->'student'->>'programme') || ':' || (l->'student'->>'level') || ':' || (l->'student'->>'live')
+                        FROM people.university_transfer_lookup('moau/zq/iuf/88/76301', 'OUTGOING') l);
+        searched := (SELECT count(*) FROM people.university_transfers(NULL, NULL, 'UJ/2022/SC/76321', NULL) x);
+        -- the table refuses a CGPA above its scale too
+        BEGIN UPDATE people.university_transfer SET other_cgpa = 4.50, other_cgpa_scale = 4 WHERE batch_id = (made->>'id')::uuid;
+        EXCEPTION WHEN check_violation THEN table_cgpa := 'refused'; END;
+        RAISE EXCEPTION 'the V763 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V763 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V763: an inter-university transfer registered on the form — the particulars checked on a file''s rows too, what a form must give, a batch of one for another officer, the lookup',
+        coalesce(file_codes = '1:WARNING::CGPA_SCALE_ASSUMED:3.1/5,2:INVALID:CGPA+ENTRY_SESSION::-/-,3:INVALID:DOCUMENTS+OUTGOING_PARTICULARS:ACCEPTANCE_LETTER_NOT_SEEN:-/-,'
+                          || '4:WARNING::RELEASE_LETTER_NOT_SEEN+TRANSCRIPT_NOT_SEEN:-/-'
+                 AND thin = 'INVALID:DATE_OF_BIRTH_MISSING+OTHER_LEVEL_MISSING+OTHER_MATRIC_MISSING+OTHER_PROGRAMME_MISSING+SEX_MISSING'
+                 AND bursary = 'UNIVERSITY_TRANSFER_OFFICE' AND made->>'ref' ~ '^IUT/\d{4}/\d{6}$' AND batch = 'FORM:PENDING_APPROVAL:1:1:-'
+                 AND kept = 'UJ/2022/SC/76321:2022/2023:3.45:5:TRANSCRIPT+RELEASE_LETTER:In good standing:true'
+                 AND twice = 'UNIVERSITY_TRANSFER_FORM_INVALID' AND pending = made->>'ref' AND decided = 'CREATE' AND record = 'TRANSFER:ADMITTED:200:F:2004-05-06'
+                 AND found_out = 'MATRIC:' || p_here || ':200:true' AND searched = 1 AND table_cgpa = 'refused'
+                 AND by_direction = 'none:MATRIC:CHECKIUFG:none' AND differs = 'RECORD_ON_EXISTING:NAME_DIFFERS+STUDENT_EXISTS', false),
+        format('file %s | thin %s | bursary %s | made %s | batch %s | kept %s | twice %s | pending %s | decided %s | record %s | out %s | searched %s | table %s | direction %s | differs %s',
+               file_codes, thin, bursary, made->>'ref', batch, kept, twice, pending, decided, record, found_out, searched, table_cgpa, by_direction, differs));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
