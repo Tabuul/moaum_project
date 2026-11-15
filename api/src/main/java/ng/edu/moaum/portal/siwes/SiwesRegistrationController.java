@@ -20,6 +20,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.NotFound;
 import ng.edu.moaum.portal.shared.OfficeScope;
 
@@ -27,7 +28,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -72,10 +75,15 @@ class SiwesRegistrationController {
 
     private final JdbcClient jdbc;
     private final OfficeScope scope;
+    /** V762's review (d62-1): the student's SIWES registration and the Bursar's settling or reopening of a credit take the student's SIWES
+     *  lock before a payment's row; a write that locks the row first (the old fees reset, an upload, a gateway confirmation) can meet one in
+     *  a deadlock, which PostgreSQL ends whole — the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    SiwesRegistrationController(JdbcClient jdbc, OfficeScope scope) {
+    SiwesRegistrationController(JdbcClient jdbc, OfficeScope scope, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.scope = scope;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     private static UUID me(Authentication auth) {
@@ -158,9 +166,9 @@ class SiwesRegistrationController {
      *  whose programme's course has ended or is unmapped waits on the Academic Office (422 SIWES_COURSE_MISSING) */
     @PostMapping("/api/v1/me/siwes/register")
     @PreAuthorize("hasAuthority('OFFICE_student')")
-    @Transactional
     Map<String, Object> register(Authentication auth) {
-        return json(jdbc.sql("SELECT registration.siwes_register(:st)::text").param("st", me(auth)).query(String.class).single());
+        UUID st = me(auth);
+        return DeadlockRetry.inTransaction(tx, () -> json(jdbc.sql("SELECT registration.siwes_register(:st)::text").param("st", st).query(String.class).single()));
     }
 
     /* ── the Academic Office's desk ── */
@@ -502,7 +510,9 @@ class SiwesRegistrationController {
      *  a standing SIWES registration was made on (SIWES_CREDIT_SETTLES); and an old-portal payment that may be a bank double charge until
      *  the Bursary's bank check finds it received (SIWES_CREDIT_CHECK_BANK). The refund desk refuses the other way round
      *  (REFUND_SIWES_CREDIT_SETTLED), so one payment is never given back twice, refunds a SIWES payment whole or not at all
-     *  (REFUND_SIWES_PART, on raising and on approval: the fee is all or nothing) and refunds neither payment of a possible bank double
+     *  (REFUND_SIWES_PART, on raising and on approval: the fee is all or nothing) and once (REFUND_SIWES_GIVEN_BACK, V762: a second refund
+     *  raised or approved on it, or more than is left on it — the desk and this hand refund wait on the student's SIWES lock, so two at one
+     *  moment, a double submit or two officers, are decided one after the other) and refunds neither payment of a possible bank double
      *  charge before that check (REFUND_SIWES_CHECK_BANK) — nor does the payment correction desk move one (REALLOC_SIWES_CHECK_BANK) —
      *  and a check that found a record of the day never received holds every SIWES payment of that day until the record is withdrawn.
      *  The withdrawal of a SIWES payment as never received is refused while a standing SIWES registration rests on it alone
@@ -512,10 +522,9 @@ class SiwesRegistrationController {
      *  "CODE: words" refusal of the database does */
     @PostMapping("/api/v1/finance/siwes/credits/{id}/settle")
     @PreAuthorize(FEE_PUBLISHERS)
-    @Transactional
     Map<String, Object> settle(@PathVariable UUID id, @Valid @RequestBody Settle body) {
-        return json(jdbc.sql("SELECT finance.siwes_credit_settle(:id, :st, :n)::text").param("id", id).param("st", body.state()).param("n", body.note().trim())
-                .query(String.class).single());
+        return DeadlockRetry.inTransaction(tx, () -> json(jdbc.sql("SELECT finance.siwes_credit_settle(:id, :st, :n)::text").param("id", id)
+                .param("st", body.state()).param("n", body.note().trim()).query(String.class).single()));
     }
 
     public record Reopen(@NotBlank @Size(min = 10, max = 600) String reason) {
@@ -529,10 +538,9 @@ class SiwesRegistrationController {
      *  database's names: state OPEN, or APPLIED with settled_kind SETTLES — never a fee paid by an open credit offered for refund */
     @PostMapping("/api/v1/finance/siwes/credits/{id}/reopen")
     @PreAuthorize(FEE_PUBLISHERS)
-    @Transactional
     Map<String, Object> reopen(@PathVariable UUID id, @Valid @RequestBody Reopen body) {
-        return json(jdbc.sql("SELECT finance.siwes_credit_reopen(:id, :r)::text").param("id", id).param("r", body.reason().trim())
-                .query(String.class).single());
+        return DeadlockRetry.inTransaction(tx, () -> json(jdbc.sql("SELECT finance.siwes_credit_reopen(:id, :r)::text").param("id", id)
+                .param("r", body.reason().trim()).query(String.class).single()));
     }
 
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();

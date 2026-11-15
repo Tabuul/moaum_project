@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 629
+\set EXPECTED 630
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -38251,6 +38251,291 @@ BEGIN
                      || ' | inlined true', false), msg);
 END $$;
 
+-- ── V762: the last review of V752. In 9762/9763 (current; 9761/9762 before it) C97621 takes part in SIWES (ZZV 302 its course), the period
+--          open and the fee published. A pays on the portal: a second refund of A's payment raised is refused, and one raised beside the
+--          first (as a double submit left two) is refused at approval once the first is approved (REFUND_SIWES_GIVEN_BACK), ₦4,000 given back.
+--          B pays on the portal, a refund is raised, B registers SIWES: the approval is refused, by the desk and when written bare (the
+--          trigger reads it again under the student's SIWES lock). C's two old-portal payments of two days: S2 (C's open credit) archived,
+--          S1 (which settled) refunded on the desk, S2 restored: S2 settles the fee. D's two old-portal payments of one day and amount under
+--          two payment numbers: the bank check finds -PAYD2 never received, its withdrawal is rejected, and an upload without payment numbers
+--          names D's plain record on another day: the record keeps its day and its hold, and the refund desk still refuses it; the old fees
+--          reset of the session keeps both records (and C's, which the desk and the archive hold). The refund desk, the withdrawal desk, the
+--          archive desk and the correction desk take the student's SIWES lock before the payment's row or any refusal, after the student's
+--          row (FOR KEY SHARE: finance.siwes_lock takes it first, whoever takes the lock), as the student's SIWES registration takes them;
+--          the bank check of a SIWES item and the old fees upload's re-dating take it before the record's day is read or decided (V762's
+--          review; its races are db-test 10's R13-R16). The Bursary's bank list of two days: E's pair of one day both on it (RECEIVED),
+--          F's pair of the other one on it (NOT_RECEIVED, F's other record raised for withdrawal), approved by another officer; the list
+--          takes the SIWES locks of its groups' students before it reads them, and the decision of its withdrawals, whichever it is (an
+--          approval, a rejection, a cancellation), takes them before it decides one, after the rows of the withdrawals that wait, locked in
+--          their numbers' order, neither under a condition (V762's fourth review). K42: a deadlock (40P01), a serialization failure (40001)
+--          or a lock not had in time (55P03), raised in turn by a trigger of the block's own on finance.payment_not_received, inside the
+--          list's loop and inside the decision's, ends the whole call with its SQLSTATE, while any other error is still a group or a
+--          withdrawal recorded refused (V762's second and third reviews; their races are db-test 10's R17-R19). The block undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9761/9762'; S text := '9762/9763'; who uuid := gen_random_uuid(); other uuid := gen_random_uuid(); dept text; fac text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    e uuid := gen_random_uuid(); f uuid := gen_random_uuid();
+    pa text; pb text; rf1 text; rf2 uuid; rfb text; arc uuid; k record; t timestamptz;
+    lc1 text := 'MOAUM-LEG-MOAUZSV987623-9762-9763-S1-SIWES'; lc2 text := 'MOAUM-LEG-MOAUZSV987623-9762-9763-S2-SIWES';
+    ld1 text := 'MOAUM-LEG-MOAUZSV987624-9762-9763-S2-SIWES'; ld2 text := 'MOAUM-LEG-MOAUZSV987624-9762-9763-S2-SIWES-PAYD2';
+    le1 text := 'MOAUM-LEG-MOAUZSV987625-9762-9763-S2-SIWES'; le2 text := 'MOAUM-LEG-MOAUZSV987625-9762-9763-S2-SIWES-PAYE2';
+    lf1 text := 'MOAUM-LEG-MOAUZSV987626-9762-9763-S2-SIWES'; lf2 text := 'MOAUM-LEG-MOAUZSV987626-9762-9763-S2-SIWES-PAYF2';
+    k36 text; k37 text; k38 text; k39 text; k40 text; k41 text; k42 text; locks text; msg text; v_err text; v text; p1 int; p2 int;
+    p3 int; p4 int; fault text; st text; m text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V762', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9761-10-01', DATE '9762-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9762-10-01', DATE '9763-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9762/762' WHERE name = S;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97621', 'B.Sc. SIWES V762 Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
+        ('ZZV 302', 'SIWES V762 check training', 6, 2, 300, dept, 'Core', 'LIVE', true);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZV 302', 'C97621', 300, 'Core');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/98/976201', 'MOAU/ZSV/98/7621', 'ZZSIWES', 'A', 'C97621', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/98/976202', 'MOAU/ZSV/98/7622', 'ZZSIWES', 'B', 'C97621', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/98/976203', 'MOAU/ZSV/98/7623', 'ZZSIWES', 'C', 'C97621', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/98/976204', 'MOAU/ZSV/98/7624', 'ZZSIWES', 'D', 'C97621', 'UTME', S0, 100, 300, 'ACTIVE', now());
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (S, 'School fees (check V762)', 100000, 300, 'C97621');
+    PERFORM registration.siwes_add_programme(S, 'C97621');
+    PERFORM registration.siwes_set_course('C97621', NULL, 'ZZV 302');
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V762');
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    PERFORM finance.siwes_fee_state(S, 4000, 'check V762');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.siwes_fee_publish(S);
+    PERFORM finance.confirm_payment(finance.new_reference(a, S, 100000, NULL), 'Bank transfer', 'check V762');
+    PERFORM finance.confirm_payment(finance.new_reference(b, S, 100000, NULL), 'Bank transfer', 'check V762');
+    -- A and B pay the SIWES fee on the portal
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', a::text, true);
+    pa := finance.siwes_reference(a) ->> 'reference';
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    pb := finance.siwes_reference(b) ->> 'reference';
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.confirm_payment(pa, 'Paystack', 'check V762');
+    PERFORM finance.confirm_payment(pb, 'Paystack', 'check V762');
+
+    -- K36: A's payment refunded once
+    rf1 := finance.propose_refund(a, 'ZZSIWES A', 'check V762', 4000, 'Bank', 'ZZSIWES A', '1234', pa);
+    BEGIN PERFORM finance.propose_refund(a, 'ZZSIWES A', 'check V762', 4000, 'Bank', 'ZZSIWES A', '1234', pa); k36 := 'raised';
+    EXCEPTION WHEN check_violation THEN k36 := split_part(SQLERRM, ':', 1); END;
+    INSERT INTO finance.refund (reference, student_id, payer, reason, amount, bank_name, account_name, account_last4, proposed_by, source_reference)
+    VALUES ('RF-9762-CHK2', a, 'ZZSIWES A', 'check V762: raised beside the first', 4000, 'Bank', 'ZZSIWES A', '1234', who, pa) RETURNING id INTO rf2;
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    BEGIN PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rf1)); k36 := k36 || '/ok';
+    EXCEPTION WHEN check_violation THEN k36 := k36 || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.approve_refund(rf2); k36 := k36 || '/ok';
+    EXCEPTION WHEN check_violation THEN k36 := k36 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    k36 := k36 || '/' || finance.gst_refunded(pa);
+
+    -- K37: B registers SIWES on a payment a refund was raised on: the approval is refused, on the desk and written bare
+    rfb := finance.propose_refund(b, 'ZZSIWES B', 'check V762', 4000, 'Bank', 'ZZSIWES B', '1234', pb);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', b::text, true);
+    k37 := registration.siwes_register(b) ->> 'status';
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', other::text, true);
+    BEGIN PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rfb)); k37 := k37 || '/approved';
+    EXCEPTION WHEN check_violation THEN k37 := k37 || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN UPDATE finance.refund SET state = 'APPROVED', approved_by = other, approved_at = now() WHERE reference = rfb; k37 := k37 || '/approved';
+    EXCEPTION WHEN check_violation THEN k37 := k37 || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', who::text, true);
+
+    -- K38: C's S2 (an open credit) archived; S1, which settled, refunded on the desk; S2 restored: S2 settles the fee
+    t := (current_date - 60)::timestamp AT TIME ZONE 'Africa/Lagos';
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (c, S, lc1, 'SIWES (legacy) · semester 1', 4000, t, t, who, 'Legacy', 'LEG-' || lc1, 'Imported from the old portal');
+    t := (current_date - 20)::timestamp AT TIME ZONE 'Africa/Lagos';
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (c, S, lc2, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || lc2, 'Imported from the old portal');
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true);
+    arc := finance.archive_payment((SELECT id FROM finance.payment_reference WHERE reference = lc2), 'UNVERIFIED_PAYMENT', NULL,
+                                   'check V762: archived for review while it is checked', true);
+    SELECT id INTO arc FROM finance.payment_archive WHERE payment_id = (SELECT id FROM finance.payment_reference WHERE reference = lc2) ORDER BY archived_at DESC LIMIT 1;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    rf1 := finance.propose_refund(c, 'ZZSIWES C', 'check V762', 4000, 'Bank', 'ZZSIWES C', '1234', lc1);
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    PERFORM finance.approve_refund((SELECT id FROM finance.refund WHERE reference = rf1));
+    PERFORM set_config('moaum.actor_office', 'studentaccounts', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.payment_archive_propose(arc, 'RESTORE', NULL, 'check V762: the bank statement shows the payment is genuine',
+                                            '[{"kind":"GATEWAY_REFERENCE","value":"bank reference 976203 of the day"}]'::jsonb, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', other::text, true);
+    PERFORM finance.payment_archive_decide(arc, 'APPROVE', 'check V762: approved on the bank statement', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    k38 := coalesce((SELECT x.state || ':' || coalesce(x.settled_kind, '-') FROM finance.siwes_credit x JOIN finance.payment_reference r ON r.id = x.reference_id WHERE r.reference = lc2), 'none')
+           || '/' || coalesce((SELECT p.reference = lc2 FROM finance.siwes_paid(c, S) p), false);
+
+    -- K39: D's pair, -PAYD2 found never received and its withdrawal rejected; an upload without payment numbers names D's plain record
+    -- on another day: the day and the hold kept, the refund desk still refusing it
+    t := (current_date - 25)::timestamp AT TIME ZONE 'Africa/Lagos';
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (d, S, ld1, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || ld1, 'Imported from the old portal');
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (d, S, ld2, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || ld2, 'Imported from the old portal');
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PAYD1', ld1, 4000), ('PAYD2', ld2, 4000);
+    PERFORM finance.check_double_charge(d, S, 'SIWES (legacy) · semester 2', current_date - 25, 4000, 'NOT_RECEIVED', 'check V762: the bank statement', NULL, ARRAY[ld2]);
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    k39 := finance.decide_not_received((SELECT w.request_ref FROM finance.payment_not_received w WHERE w.reference = ld2 AND w.state = 'PROPOSED'), false,
+                                       'check V762: not on this statement');
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    SELECT * INTO k FROM finance.import_legacy_payments(jsonb_build_array(jsonb_build_object('matric', 'MOAU/ZSV/98/7624', 'session', S, 'semester', '2',
+                         'purpose', 'SIWES', 'amount', '4000', 'paidOn', to_char(current_date - 24, 'DD/MM/YYYY'))));
+    k39 := k39 || '/' || k.corrected || '/' || k.duplicates;
+    k39 := k39 || '/' || ((SELECT (confirmed_at AT TIME ZONE 'Africa/Lagos')::date FROM finance.payment_reference WHERE reference = ld1) - current_date)
+           || '/' || coalesce((SELECT h.state FROM finance.siwes_bank_hold((SELECT id FROM finance.payment_reference WHERE reference = ld1)) h), 'none');
+    BEGIN PERFORM finance.propose_refund(d, 'ZZSIWES D', 'check V762', 4000, 'Bank', 'ZZSIWES D', '1234', ld1); k39 := k39 || '/raised';
+    EXCEPTION WHEN check_violation THEN k39 := k39 || '/' || split_part(SQLERRM, ':', 1); END;
+
+    -- K40: the old fees reset of the session keeps D's pair (and C's two payments, held by the refund desk and the archive)
+    SELECT * INTO k FROM finance.reset_legacy_payments(S, 'RESET', 5000);
+    k40 := k.deleted || '/' || k.kept_in_use || '/' || (SELECT count(*) FROM finance.payment_reference r JOIN finance.legacy_payref p ON p.reference = r.reference
+                                                          WHERE r.reference IN (ld1, ld2) AND p.payref IN ('PAYD1', 'PAYD2'));
+
+    -- K41 (V762's second review): the Bursary's bank list of two days, E's pair both on it, one of F's; F's withdrawal approved by another
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (e, 'MOAUM/ADM/98/976205', 'MOAU/ZSV/98/7625', 'ZZSIWES', 'E', 'C97621', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (f, 'MOAUM/ADM/98/976206', 'MOAU/ZSV/98/7626', 'ZZSIWES', 'F', 'C97621', 'UTME', S0, 100, 300, 'ACTIVE', now());
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    t := (current_date - 40)::timestamp AT TIME ZONE 'Africa/Lagos';
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (e, S, le1, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || le1, 'Imported from the old portal'),
+           (e, S, le2, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || le2, 'Imported from the old portal');
+    t := (current_date - 41)::timestamp AT TIME ZONE 'Africa/Lagos';
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (f, S, lf1, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || lf1, 'Imported from the old portal'),
+           (f, S, lf2, 'SIWES (legacy) · semester 2', 4000, t, t, who, 'Legacy', 'LEG-' || lf2, 'Imported from the old portal');
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PAYE1', le1, 4000), ('PAYE2', le2, 4000), ('PAYF1', lf1, 4000), ('PAYF2', lf2, 4000);
+
+    -- K42 (V762's third review): the same list recorded, each time undone, while a trigger of the block's own raises a passing clash
+    -- (40P01, 40001, 55P03) or a refusal (P0001, 23514) as F's withdrawal is raised inside the list's loop: a clash ends the whole list
+    -- with its SQLSTATE, a refusal is F's group recorded refused. The trigger and its function are the block's, undone with it.
+    CREATE FUNCTION pg_temp.v762_fault() RETURNS trigger LANGUAGE plpgsql AS $f$
+    BEGIN
+        IF coalesce(current_setting('v762check.fault', true), '') <> '' THEN
+            RAISE EXCEPTION 'V762_CHECK_FAULT: %', current_setting('v762check.fault') USING ERRCODE = current_setting('v762check.fault');
+        END IF;
+        RETURN NEW;
+    END $f$;
+    CREATE TRIGGER trg_v762_check_fault BEFORE INSERT ON finance.payment_not_received FOR EACH ROW EXECUTE FUNCTION pg_temp.v762_fault();
+    FOREACH fault IN ARRAY ARRAY['40P01', '40001', '55P03', 'P0001', '23514'] LOOP
+        BEGIN
+            PERFORM set_config('v762check.fault', fault, true);
+            v := finance.bank_list_apply(S, current_date - 41, current_date - 40, '["PAYE1", {"n": "payE2", "a": "4,000"}, "PAYF1"]'::jsonb,
+                                         'check V762: the bank statement of the fees account', NULL);
+            m := (SELECT string_agg(g.outcome, '+' ORDER BY g.outcome) FROM finance.bank_list_group g JOIN finance.bank_list_check l ON l.id = g.list_id
+                   WHERE l.list_ref = v);
+            RAISE EXCEPTION USING ERRCODE = 'ZZ762', MESSAGE = 'the V762 check undoes this list';
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS st = RETURNED_SQLSTATE;
+            k42 := coalesce(k42 || ',', 'list ') || fault || ':' || CASE WHEN st = 'ZZ762' THEN m ELSE st END;
+        END;
+    END LOOP;
+    PERFORM set_config('v762check.fault', '', true);
+    DROP TRIGGER trg_v762_check_fault ON finance.payment_not_received;
+
+    v := finance.bank_list_apply(S, current_date - 41, current_date - 40, '["PAYE1", {"n": "payE2", "a": "4,000"}, "PAYF1"]'::jsonb,
+                                 'check V762: the bank statement of the fees account', NULL);
+    k41 := (SELECT string_agg(g.outcome || ':' || array_to_string(g.found, '+') || ':' || array_to_string(g.missing, '+'), ',' ORDER BY g.outcome)
+              FROM finance.bank_list_group g JOIN finance.bank_list_check l ON l.id = g.list_id WHERE l.list_ref = v)
+           || '/' || coalesce((SELECT string_agg(w.state || ':' || (w.paid_on - current_date) || ':' || w.kept_reference, ',') FROM finance.payment_not_received w
+                                WHERE w.reference = lf2), 'none');
+    -- K42: its withdrawal decided, each time undone, while the trigger raises as F's withdrawal is written inside the decision's loop:
+    -- approved (by another officer), rejected (by another) or cancelled (by the one who recorded the list), a clash ends the whole
+    -- decision with its SQLSTATE; a refusal is the withdrawal recorded refused
+    CREATE TRIGGER trg_v762_check_fault BEFORE UPDATE ON finance.payment_not_received FOR EACH ROW EXECUTE FUNCTION pg_temp.v762_fault();
+    FOREACH fault IN ARRAY ARRAY['APPROVE 40P01', 'APPROVE 40001', 'APPROVE 55P03', 'APPROVE P0001', 'APPROVE 23514', 'REJECT 40001', 'CANCEL 55P03'] LOOP
+        BEGIN
+            PERFORM set_config('v762check.fault', split_part(fault, ' ', 2), true);
+            PERFORM set_config('moaum.actor_id', CASE WHEN fault LIKE 'CANCEL%' THEN who ELSE other END::text, true);
+            SELECT * INTO k FROM finance.decide_bank_list(v, split_part(fault, ' ', 1), 'check V762: the statement seen');
+            m := k.done || '/' || k.refused;
+            RAISE EXCEPTION USING ERRCODE = 'ZZ762', MESSAGE = 'the V762 check undoes this decision';
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS st = RETURNED_SQLSTATE;
+            k42 := k42 || CASE WHEN fault = 'APPROVE 40P01' THEN ' decision ' ELSE ',' END || fault || ':' || CASE WHEN st = 'ZZ762' THEN m ELSE st END;
+        END;
+    END LOOP;
+    PERFORM set_config('v762check.fault', '', true);
+    DROP TRIGGER trg_v762_check_fault ON finance.payment_not_received;
+    DROP FUNCTION pg_temp.v762_fault();
+    k42 := k42 || ' left ' || ((SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_v762_check_fault') + (SELECT count(*) FROM pg_proc WHERE proname = 'v762_fault'))
+           || '/' || (SELECT string_agg(w.state, ',') FROM finance.payment_not_received w WHERE w.reference = lf2);
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    SELECT * INTO k FROM finance.decide_bank_list(v, 'APPROVE', 'check V762: the statement seen');
+    k41 := k41 || '/' || k.done || '/' || k.refused || '/' || (SELECT archived_at IS NOT NULL FROM finance.payment_reference WHERE reference = lf2);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+
+    -- the lock order of the doors that act on one SIWES payment: the student's SIWES lock before the payment's row and every refusal
+    SELECT string_agg((position('siwes_lock_payment' IN x.def) > 0 AND position('siwes_lock_payment' IN x.def) < position(x.mark IN x.def))::text, ',' ORDER BY x.n) INTO locks
+      FROM (VALUES (1, pg_get_functiondef('finance.propose_refund(uuid,text,text,numeric,text,text,text,text)'::regprocedure), 'siwes_refund_refusal'),
+                   (2, pg_get_functiondef('finance.approve_refund(uuid)'::regprocedure), 'FOR UPDATE'),
+                   (3, pg_get_functiondef('finance.propose_not_received(text,text,text,uuid,text)'::regprocedure), 'FOR UPDATE'),
+                   (4, pg_get_functiondef('finance.decide_not_received(text,boolean,text)'::regprocedure), 'FROM finance.payment_reference WHERE id = q.payment_id FOR UPDATE'),
+                   (5, pg_get_functiondef('finance.archive_payment(uuid,text,uuid,text,boolean)'::regprocedure), 'FOR UPDATE'),
+                   (6, pg_get_functiondef('finance.payment_archive_decide(uuid,text,text,boolean)'::regprocedure), 'FROM finance.payment_reference WHERE id = a.payment_id FOR UPDATE'),
+                   (7, pg_get_functiondef('finance.decide_payment_reallocation(uuid,text,text,boolean)'::regprocedure), 'FROM finance.payment_reference WHERE id = x.payment_id FOR UPDATE')) x(n, def, mark);
+    -- and that lock after the student's row, as the registration takes them (its row, its SIWES lock, the payment's row): finance.siwes_lock
+    -- takes the student's row FOR KEY SHARE first, whoever takes it (the review's d62-3: the gateway's confirmation writing a credit)
+    v := pg_get_functiondef('finance.siwes_lock(uuid,text)'::regprocedure);
+    locks := locks || ',' || (position('FROM people.student s WHERE s.id = p_student FOR KEY SHARE' IN v) > 0
+                              AND position('FROM people.student s WHERE s.id = p_student FOR KEY SHARE' IN v) < position('pg_advisory_xact_lock' IN v))::text;
+    -- d62-2: the bank check of a SIWES item takes the student's SIWES lock before it reads the possible double charges; the old fees upload
+    -- takes it before it decides a SIWES record's day, in both re-dating branches (with a payment number, before the number is attached)
+    v := pg_get_functiondef('finance.check_double_charge(uuid,text,text,date,numeric,text,text,text,text[])'::regprocedure);
+    locks := locks || ',' || (position('PERFORM finance.siwes_lock(p_student' IN v) > 0
+                              AND position('PERFORM finance.siwes_lock(p_student' IN v) < position('FROM finance.possible_double_charges(p_session)' IN v))::text;
+    v := pg_get_functiondef('finance.import_legacy_payments(jsonb)'::regprocedure);
+    p1 := position('PERFORM finance.siwes_lock_payment(ex.id)' IN v);
+    p2 := CASE WHEN p1 > 0 AND position('PERFORM finance.siwes_lock_payment(ex.id)' IN substr(v, p1 + 1)) > 0
+               THEN p1 + position('PERFORM finance.siwes_lock_payment(ex.id)' IN substr(v, p1 + 1)) ELSE 0 END;
+    locks := locks || ',' || (p1 > 0 AND p1 < position('INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES (v_payref, ex.reference' IN v))::text
+             || ',' || (p2 > position('INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES (v_payref, ex.reference' IN v)
+                        AND p2 < position('AND NOT finance.siwes_group_kept(ex.id) THEN' IN v))::text;
+    -- d62b-1: the bank list takes its SIWES groups' students' SIWES locks before it reads the possible double charges (the read it acts
+    -- on, never one made before them); d62c-1 and d62d-1: the decision of its withdrawals, whichever it is (an approval, a rejection, a
+    -- cancellation), locks the rows of the withdrawals that wait, in their numbers' order — the order a withdrawal decided or cancelled
+    -- alone takes them (its row, then the lock) — and then takes their students' SIWES locks, both before the loop that decides them
+    -- begins and neither under a condition: read in the function's code (its comments taken out), no IF is open where the rows are
+    -- locked, and from there to the loop no IF, CASE, WHEN, EXIT, RETURN or CONTINUE, nor the action. (What a clash inside either loop
+    -- does is K42's, above.)
+    v := pg_get_functiondef('finance.bank_list_apply(text,date,date,jsonb,text,text,text,integer)'::regprocedure);
+    locks := locks || ',' || (position('PERFORM finance.siwes_lock(v762_l.student_id, v762_l.session)' IN v) > 0
+                              AND position('PERFORM finance.siwes_lock(v762_l.student_id, v762_l.session)' IN v) < position('FROM finance.bank_list_match(v_ses' IN v)
+                              AND position('FOR g IN SELECT * FROM finance.bank_list_match' IN v) = 0)::text;
+    v := regexp_replace(pg_get_functiondef('finance.decide_bank_list(text,text,text)'::regprocedure), '--[^\n]*', '', 'g');
+    p1 := position('PERFORM 1 FROM finance.payment_not_received q' IN v);
+    p2 := position('ORDER BY q.request_ref FOR UPDATE OF q;' IN v);
+    p3 := position('PERFORM finance.siwes_lock(v762_l.student_id, v762_l.session)' IN v);
+    p4 := position('FOR w IN SELECT q.request_ref FROM finance.payment_not_received q' IN v);
+    locks := locks || ',' || (p1 > 0 AND p1 < p2 AND p2 < p3 AND p3 < p4
+                              AND (SELECT count(*) FROM regexp_matches(left(v, p1), '\mIF\M', 'g')) = 2 * (SELECT count(*) FROM regexp_matches(left(v, p1), '\mEND IF\M', 'g'))
+                              AND substr(v, p1, greatest(p4 - p1, 0)) !~ '\m(IF|CASE|WHEN|EXIT|RETURN|CONTINUE)\M|v_action')::text;
+
+    msg := 'K36 ' || coalesce(k36, '-') || ' | K37 ' || coalesce(k37, '-') || ' | K38 ' || coalesce(k38, '-') || ' | K39 ' || coalesce(k39, '-')
+           || ' | K40 ' || coalesce(k40, '-') || ' | K41 ' || coalesce(k41, '-') || ' | K42 ' || coalesce(k42, '-') || ' | locks ' || coalesce(locks, '-');
+    RAISE EXCEPTION 'the V762 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V762 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V762: the last review of V752 — one SIWES payment refunded once (a second refund raised or approved refused), a refund approved never left on a payment a SIWES registration stands on, an open credit restored settling the fee where nothing else does, an old fees upload keeping the day and hold of a record the bank check holds, the old fees reset keeping its group, the refund, withdrawal, archive and correction desks taking the student''s SIWES lock before the payment''s row, after the student''s row (whoever takes that lock), the bank check and the old fees upload taking it before a SIWES record''s day is read or decided, the bank list taking it before it reads its groups and the decision of its withdrawals, whichever it is, before it decides one (after the withdrawals'' rows, in their numbers'' order), and a deadlock, a serialization failure or a lock not had in time inside the list''s loop or the decision''s ending the whole call with its SQLSTATE, never taken for a refusal',
+      coalesce(msg = 'K36 REFUND_SIWES_GIVEN_BACK/ok/REFUND_SIWES_GIVEN_BACK/4000.00 | K37 APPROVED/REFUND_SIWES_REGISTERED/REFUND_SIWES_REGISTERED'
+                     || ' | K38 APPLIED:SETTLES/true | K39 REJECTED/0/1/-25/NOT_RECEIVED_WAITING/REFUND_SIWES_CHECK_BANK | K40 0/4/2'
+                     || ' | K41 NOT_RECEIVED:' || lf1 || ':' || lf2 || ',RECEIVED:' || le1 || '+' || le2 || ':/PROPOSED:-41:' || lf1 || '/1/0/true'
+                     || ' | K42 list 40P01:40P01,40001:40001,55P03:55P03,P0001:RECEIVED+REFUSED,23514:RECEIVED+REFUSED'
+                     || ' decision APPROVE 40P01:40P01,APPROVE 40001:40001,APPROVE 55P03:55P03,APPROVE P0001:0/1,APPROVE 23514:0/1,REJECT 40001:40001,CANCEL 55P03:55P03'
+                     || ' left 0/PROPOSED'
+                     || ' | locks true,true,true,true,true,true,true,true,true,true,true,true,true', false),
+      msg);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

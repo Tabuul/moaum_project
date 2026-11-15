@@ -10,11 +10,14 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,10 +54,15 @@ class LegacyFeeUploadController {
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    /** V762's review (d62-1): the import an approval runs (and its check, run and undone) locks payments' rows and takes a student's SIWES
+     *  lock after one, in the payment's trigger, while the SIWES desks take the lock first; meeting a desk on one SIWES payment at one
+     *  instant, PostgreSQL ends one of the two whole — the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    LegacyFeeUploadController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    LegacyFeeUploadController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.json = json;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     private Map<String, Object> shaped(Map<String, Object> r) {
@@ -162,22 +170,20 @@ class LegacyFeeUploadController {
     /** what approving would do — the import run on the parts given and undone; nothing is written */
     @PostMapping("/{id}/check")
     @PreAuthorize(BURSAR)
-    @Transactional
     Map<String, Object> check(@PathVariable UUID id, @RequestBody Batch body) {
-        Map<String, Object> r = jdbc.sql("SELECT checked_parts, totals::text AS totals FROM finance.legacy_upload_check(:id, :f, :n)")
+        Map<String, Object> r = DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT checked_parts, totals::text AS totals FROM finance.legacy_upload_check(:id, :f, :n)")
                 .param("id", id).param("f", body.fromPart() == null ? 1 : body.fromPart()).param("n", body.parts() == null ? 2 : body.parts())
-                .query().singleRow();
+                .query().singleRow());
         return Map.of("checkedParts", r.get("checked_parts"), "totals", json.readValue(r.get("totals").toString(), Map.class));
     }
 
     /** the Bursar approves: the item codes set, then a few parts loaded (the screen asks again until none is left) */
     @PostMapping("/{id}/approve")
     @PreAuthorize(BURSAR)
-    @Transactional
     Map<String, Object> approve(@PathVariable UUID id, @Valid @RequestBody Batch body) {
-        Map<String, Object> r = jdbc.sql("SELECT state, parts, applied_parts, remaining, result::text AS result FROM finance.legacy_upload_approve(:id, :note, :n)")
+        Map<String, Object> r = DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT state, parts, applied_parts, remaining, result::text AS result FROM finance.legacy_upload_approve(:id, :note, :n)")
                 .param("id", id).param("note", body.note(), Types.VARCHAR).param("n", body.parts() == null ? 2 : body.parts())
-                .query().singleRow();
+                .query().singleRow());
         Map<String, Object> out = new LinkedHashMap<>(r);
         out.put("result", r.get("result") == null ? null : json.readValue(r.get("result").toString(), Map.class));
         return out;

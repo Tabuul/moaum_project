@@ -17,6 +17,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -26,7 +27,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -87,10 +90,15 @@ class PaymentReallocationController {
 
     private final JdbcClient jdbc;
     private final FileObjects files;
+    /** V762's review (d62-1): a correction of a SIWES payment, decided, takes the student's SIWES lock before the payment's row; a write that
+     *  locks the row first (the old fees reset, an upload, a gateway confirmation) can meet it in a deadlock, which PostgreSQL ends whole —
+     *  the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    PaymentReallocationController(JdbcClient jdbc, FileObjects files) {
+    PaymentReallocationController(JdbcClient jdbc, FileObjects files, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.files = files;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     @SuppressWarnings("unchecked")
@@ -294,14 +302,15 @@ class PaymentReallocationController {
     /** decided by another officer: returned for correction, rejected, or approved and executed at once */
     @PostMapping("/{id}/decide")
     @PreAuthorize(DECIDERS)
-    @Transactional
     Map<String, Object> decide(@PathVariable UUID id, @Valid @RequestBody DecideIn body) {
-        Map<String, Object> result = json(jdbc.sql("SELECT finance.decide_payment_reallocation(:x, :d, :n, :c)::text").param("x", id)
-                .param("d", body.decision().trim().toUpperCase()).param("n", body.note(), Types.VARCHAR).param("c", Boolean.TRUE.equals(body.confirmed()))
-                .query(String.class).single());
-        Map<String, Object> out = new LinkedHashMap<>(detail(id));
-        out.put("result", result);
-        return out;
+        return DeadlockRetry.inTransaction(tx, () -> {
+            Map<String, Object> result = json(jdbc.sql("SELECT finance.decide_payment_reallocation(:x, :d, :n, :c)::text").param("x", id)
+                    .param("d", body.decision().trim().toUpperCase()).param("n", body.note(), Types.VARCHAR).param("c", Boolean.TRUE.equals(body.confirmed()))
+                    .query(String.class).single());
+            Map<String, Object> out = new LinkedHashMap<>(detail(id));
+            out.put("result", result);
+            return out;
+        });
     }
 
     @PostMapping("/{id}/cancel")

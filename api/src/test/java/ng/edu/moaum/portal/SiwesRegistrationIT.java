@@ -67,10 +67,15 @@ import org.springframework.web.client.RestClient;
  * database's code beside its words, on the credits list and the payments report alike — UNCHECKED, PROPOSED, NOT_RECEIVED on the record
  * the bank never received and NOT_RECEIVED_WAITING on the one it did (bankCheckState, K31); the SIWES menu item kept while a payment of
  * a session SIWES bound the student in stands, and gone once that SIWES is wholly undone (siwesArea, K30). The seventh round's: a
- * record the bank check found never received stays so when the old portal's export, loaded again on Old Fees History without payment
- * numbers, puts its day right — held, refused on the refund desk, the other record's credit settling the fee as before (K32); a credit
+ * record the bank check found never received stays so when the old portal's export is loaded again on Old Fees History without payment
+ * numbers with another day — held, refused on the refund desk, the other record's credit settling the fee as before (K32; since V762,
+ * K39, the upload keeps the day of a record of a group the bank check holds, the row counted among the duplicates); a credit
  * the Bursar reopens while nothing else settles the fee settles it, the answer saying so (APPLIED, SETTLES — K33); and a payment given
- * back, its credit refunded or itself refunded on the refund desk, shows no bank-check hold on the payments report (K35). The test
+ * back, its credit refunded or itself refunded on the refund desk, shows no bank-check hold on the payments report (K35). V762's (the
+ * last review of V752): one SIWES payment refunded once, whatever arrives at the same moment — two refunds of one credit raised at one
+ * moment (a double submit), one raised and the other refused; two approvals at one moment (two officers), one approved and the other
+ * refused; a third refund of the payment given back whole refused; each REFUND_SIWES_GIVEN_BACK, a 422 with the database's words and
+ * remedy; and a hand refund of a credit racing a refund raised on the desk for it, one of the two and never both (K36). The test
  * makes its session CURRENT (an IT database has none of its own) and puts the calendar, the fee lines, the approval rule and the gateway
  * key back, and the course it ended live again.
  */
@@ -193,6 +198,37 @@ class SiwesRegistrationIT {
         assertThat(status(approved)).as(String.valueOf(approved.getBody())).isEqualTo(200);
     }
 
+    /** two calls sent at one moment (a double submit, or two officers): each on its own thread, released together; the answers in order */
+    private static List<ResponseEntity<Map>> atOnce(java.util.function.Supplier<ResponseEntity<Map>> first, java.util.function.Supplier<ResponseEntity<Map>> second) {
+        java.util.concurrent.CyclicBarrier together = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Future<ResponseEntity<Map>> a = pool.submit(() -> {
+                together.await(30, java.util.concurrent.TimeUnit.SECONDS);
+                return first.get();
+            });
+            java.util.concurrent.Future<ResponseEntity<Map>> b = pool.submit(() -> {
+                together.await(30, java.util.concurrent.TimeUnit.SECONDS);
+                return second.get();
+            });
+            return List.of(a.get(120, java.util.concurrent.TimeUnit.SECONDS), b.get(120, java.util.concurrent.TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            throw new IllegalStateException("two calls at one moment did not both answer", e);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /** of two answers, the one with the status given (exactly one) */
+    private static ResponseEntity<Map> theOne(List<ResponseEntity<Map>> answers, int status) {
+        List<ResponseEntity<Map>> found = answers.stream().filter(r -> status(r) == status).toList();
+        assertThat(found).as(answers.stream().map(r -> status(r) + " " + r.getBody()).toList().toString()).hasSize(1);
+        return found.get(0);
+    }
+
     /** a payment archived for review on the Archived payments desk; returns the archive's id */
     private UUID archive(String accounts, String reference) {
         UUID payment = jdbc.sql("SELECT id FROM finance.payment_reference WHERE reference = :r").param("r", reference).query(UUID.class).single();
@@ -231,8 +267,8 @@ class SiwesRegistrationIT {
         String missing = px + " 308";
         String yy = String.format("%02d", y % 100);
         // J and L are made at the end, for the fourth round's cases alone (K15, K17), N for the fifth round's (K20), and O and W for the
-        // seventh round's (K32; K33, K35): reserved here, out of every count before
-        String[] who = {"A", "B", "G", "K", "F", "C", "D", "H", "E", "J", "L", "N", "O", "W"};
+        // seventh round's (K32; K33, K35), V for V762's (K36): reserved here, out of every count before
+        String[] who = {"A", "B", "G", "K", "F", "C", "D", "H", "E", "J", "L", "N", "O", "W", "V"};
         int n = it.freeDraw(1000, 8000, k -> {
             List<String> ids = new java.util.ArrayList<>();
             for (int i = 0; i < who.length; i++) {
@@ -1449,9 +1485,11 @@ class SiwesRegistrationIT {
 
             // ── K32 (d6-1): O's two old-portal SIWES payments of one day and amount, loaded by the Bursary's Old Fees History upload under
             //    two payment numbers (V561's possible bank double charge). The bank check finds the first — the one settling O's fee —
-            //    never received, and its withdrawal is rejected. The old portal's export loaded again without payment numbers puts that
-            //    record's day right (a day later): the finding follows the record, not its day — still never received and held, refused on
-            //    the refund desk, the other's credit settling the fee as before, nothing for the Bursar to refund by hand ──
+            //    never received, and its withdrawal is rejected. The old portal's export loaded again without payment numbers gives that
+            //    record another day (a day later); since V762 (K39) the upload keeps the day of a record of a group the bank check holds, so
+            //    the group stays together and the day can be checked with the bank again — the row is counted among the duplicates; the
+            //    record still never received and held, refused on the refund desk, the other's credit settling the fee as before, nothing
+            //    for the Bursar to refund by hand ──
             UUID O = it.student("ZZSIWESO" + n, P, null, matric.get("O"), 300);
             it.db(() -> jdbc.sql("UPDATE people.student SET entry_session = :e WHERE id = :s").param("e", before).param("s", O).update());
             LocalDate paidOnO = today.minusDays(25);
@@ -1474,7 +1512,7 @@ class SiwesRegistrationIT {
             ResponseEntity<Map> rejectedO = it.call(checker, HttpMethod.POST, "/api/v1/finance/payments-not-received/" + raisedO.get(0).substring("PNR/".length()) + "/decide",
                     Map.of("approve", false, "note", "The statement line was read against the wrong day"));
             assertThat(status(rejectedO)).as(String.valueOf(rejectedO.getBody())).isEqualTo(200);
-            // the picture before the day is put right, and the same after it: what the record found never received shows, by the API
+            // the picture before the export is loaded again, and the same after it: what the record found never received shows, by the API
             java.util.function.Supplier<String> pictureO = () -> {
                 Map<String, Map<String, Object>> pay = paymentsOf(bursar, session, P, legO1, legO2);
                 Map<String, Object> c1 = creditOf(bursar, session, legO1), c2 = creditOf(bursar, session, legO2);
@@ -1485,13 +1523,18 @@ class SiwesRegistrationIT {
             };
             String expectedO = "NOT_RECEIVED/false | NOT_RECEIVED_WAITING/true/APPLIED | not listed | APPLIED:SETTLES/true/false/NOT_RECEIVED_WAITING | paid by " + legO2;
             assertThat(pictureO.get()).as("found never received, the withdrawal rejected").isEqualTo(expectedO);
-            // the export loaded again, without payment numbers: the record's day put right, a day later
+            // the export loaded again, without payment numbers, a day later: V762 (K39) keeps the record's day (the bank check holds its
+            // group), the row counted among the duplicates, nothing corrected
             ResponseEntity<Map> reloadedO = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees", Map.of("rows", List.of(
                     oldFeesRow(matric.get("O"), session, paidOnO.plusDays(1), null))));
             assertThat(status(reloadedO)).as(String.valueOf(reloadedO.getBody())).isEqualTo(200);
-            assertThat(jdbc.sql("SELECT (confirmed_at AT TIME ZONE 'Africa/Lagos')::date FROM finance.payment_reference WHERE reference = :r").param("r", legO1)
-                    .query(LocalDate.class).single()).as("the upload put the day right").isEqualTo(paidOnO.plusDays(1));
-            assertThat(pictureO.get()).as("the finding follows the record, whatever its day").isEqualTo(expectedO);
+            assertThat(reloadedO.getBody()).as(String.valueOf(reloadedO.getBody())).containsEntry("duplicates", 1).containsEntry("corrected", 0);
+            assertThat(jdbc.sql("""
+                    SELECT string_agg(to_char((confirmed_at AT TIME ZONE 'Africa/Lagos')::date, 'YYYY-MM-DD'), ',' ORDER BY reference) FROM finance.payment_reference
+                     WHERE reference IN (:r1, :r2)
+                    """).param("r1", legO1).param("r2", legO2).query(String.class).single())
+                    .as("the held group keeps its day (V762, K39)").isEqualTo(paidOnO + "," + paidOnO);
+            assertThat(pictureO.get()).as("the finding stands, the group together").isEqualTo(expectedO);
             // never refunded though the bank never received it, nor the one received while the other stands (V561); nothing open to refund
             for (String source : List.of(legO1, legO2)) {
                 ResponseEntity<Map> deskO = it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds", Map.of("student", O, "payer", "ZZSIWESO" + n + ", Invented",
@@ -1559,6 +1602,92 @@ class SiwesRegistrationIT {
             Map<String, Map<String, Object>> heldW = paymentsOf(bursar, session, P, legW1, legW2);
             assertThat(heldW.get(legW2)).as(String.valueOf(heldW)).containsEntry("bankCheckState", "PROPOSED");
             assertThat(List.of("bankCheck", "bankCheckState")).as("given back on the desk: no hold").allSatisfy(k -> assertThat(heldW.get(legW1).get(k)).as(k).isNull());
+
+            // ── K36 (d7-3, V762): one SIWES payment is refunded once, whatever arrives at the same moment. V's stale reference, paid at the
+            //    bank after the old portal's payment settled V's fee, is a credit. Two refunds of it raised at one moment (a double submit):
+            //    one is raised, the other refused (REFUND_SIWES_GIVEN_BACK). Two approvals at one moment (two officers; the second refund one
+            //    raised before V762): one approved, the other refused. A third refund of the payment given back whole is refused, with its
+            //    code, the database's words and its remedy, and the payments report reads the payment given back once, never twice. Then a hand refund
+            //    of V's second credit racing a refund raised on the desk for it: one of the two, never both ──
+            UUID V = it.student("ZZSIWESV" + n, P, null, matric.get("V"), 300);
+            it.db(() -> jdbc.sql("UPDATE people.student SET entry_session = :e WHERE id = :s").param("e", before).param("s", V).update());
+            String refV = String.valueOf(it.call(student(V), HttpMethod.POST, "/api/v1/me/siwes/reference", Map.of()).getBody().get("reference"));
+            oldPortalSiwes(V, session, String.valueOf(n) + "V");
+            confirm(refV);
+            assertThat(creditOf(bursar, session, refV)).as("V's stale reference paid: a credit").containsEntry("state", "OPEN").containsEntry("canRefund", true);
+            // the payment whole, at the fee in force when V drew the reference (the test restated the fee before)
+            BigDecimal paidV = jdbc.sql("SELECT amount FROM finance.payment_reference WHERE reference = :r").param("r", refV).query(BigDecimal.class).single();
+            String payerV = "ZZSIWESV" + n + ", Invented";
+            Map<String, Object> raiseV = Map.of("student", V, "payer", payerV, "reason", "SiwesRegistrationIT: the SIWES credit given back", "amount", paidV,
+                    "source", refV);
+            List<ResponseEntity<Map>> raisedTwiceV = atOnce(() -> it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds", raiseV),
+                    () -> it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds", raiseV));
+            String refundV = String.valueOf(theOne(raisedTwiceV, 200).getBody().get("reference"));
+            ResponseEntity<Map> raisedSecondV = theOne(raisedTwiceV, 422);
+            assertThat(code(raisedSecondV)).isEqualTo("REFUND_SIWES_GIVEN_BACK");
+            assertThat(String.valueOf(raisedSecondV.getBody().get("detail"))).contains(refV).contains(refundV).contains("a SIWES payment is refunded once, whole");
+            assertThat((Map<String, Object>) raisedSecondV.getBody().get("remedy"))
+                    .containsEntry("message", "Approve or reject the refund raised on the refund desk; a second is not raised beside it.");
+            assertThat(jdbc.sql("SELECT count(*) FROM finance.refund WHERE source_reference = :r AND state <> 'REJECTED'").param("r", refV).query(Integer.class).single())
+                    .as("one refund raised on V's credit").isEqualTo(1);
+            // a second refund of it raised before V762 (beside the first, as the desk let one be raised then): approved at the same moment as
+            // the first by another officer — one approved, the other refused
+            UUID idV = jdbc.sql("SELECT id FROM finance.refund WHERE reference = :r").param("r", refundV).query(UUID.class).single();
+            UUID beforeV = UUID.randomUUID();
+            it.db(() -> jdbc.sql("""
+                    INSERT INTO finance.refund (id, reference, student_id, payer, reason, amount, proposed_by, source_reference)
+                    VALUES (:id, 'RF-IT762-' || :t, :s, :p, 'SiwesRegistrationIT: a second refund raised before V762', :a, gen_random_uuid(), :r)
+                    """).param("id", beforeV).param("t", String.valueOf(n) + "V").param("s", V).param("p", payerV).param("a", paidV).param("r", refV).update());
+            String checker2 = TestTokens.token(UUID.randomUUID(), List.of("bursar"));
+            List<ResponseEntity<Map>> approvedTwiceV = atOnce(() -> it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + idV + "/approve", Map.of()),
+                    () -> it.call(checker2, HttpMethod.POST, "/api/v1/finance/refunds/" + beforeV + "/approve", Map.of()));
+            UUID approvedV = UUID.fromString(String.valueOf(theOne(approvedTwiceV, 200).getBody().get("id")));
+            ResponseEntity<Map> approvedSecondV = theOne(approvedTwiceV, 422);
+            assertThat(code(approvedSecondV)).isEqualTo("REFUND_SIWES_GIVEN_BACK");
+            assertThat(String.valueOf(approvedSecondV.getBody().get("detail"))).contains(refV).contains("would give back more than was paid");
+            assertThat((Map<String, Object>) approvedSecondV.getBody().get("remedy")).containsEntry("message", "A SIWES payment is refunded once, whole: reject this refund.");
+            UUID refusedV = approvedV.equals(idV) ? beforeV : idV;
+            assertThat(jdbc.sql("SELECT state FROM finance.refund WHERE id = :id").param("id", refusedV).query(String.class).single()).isEqualTo("PROPOSED");
+            assertThat(status(it.call(checker, HttpMethod.POST, "/api/v1/finance/refunds/" + refusedV + "/reject",
+                    Map.of("why", "A SIWES payment is refunded once: the other refund was approved")))).isEqualTo(200);
+            // given back whole: a third refund of it refused, raised with the code, the words and the remedy
+            ResponseEntity<Map> againV = it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds", raiseV);
+            assertThat(status(againV)).as(String.valueOf(againV.getBody())).isEqualTo(422);
+            assertThat(code(againV)).isEqualTo("REFUND_SIWES_GIVEN_BACK");
+            assertThat(String.valueOf(againV.getBody().get("detail"))).contains(refV).contains("would give back more than was paid");
+            assertThat((Map<String, Object>) againV.getBody().get("remedy")).containsEntry("message", "A SIWES payment is refunded once, whole: reject this refund.");
+            assertThat(jdbc.sql("SELECT coalesce(sum(amount), 0) FROM finance.refund WHERE source_reference = :r AND state IN ('APPROVED', 'PAID')").param("r", refV)
+                    .query(BigDecimal.class).single()).isEqualByComparingTo(paidV);
+            assertThat(money(paymentsOf(bursar, session, P, refV).get(refV).get("refunded"))).as("given back once").isEqualByComparingTo(paidV);
+            assertThat(creditOf(bursar, session, refV)).containsEntry("state", "REFUNDED").containsEntry("settledKind", "DESK_REFUND").containsEntry("canReopen", false);
+            // V's second credit, an old-portal record of another day: the Bursar's hand refund and a refund raised on the desk at one moment
+            String legV2 = "MOAUM-LEG-IT762-" + n + "V2";
+            it.db(() -> jdbc.sql("""
+                    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by,
+                                                           channel, note, receipt_no)
+                    VALUES (:s, :ses, :r, 'SIWES (legacy) · semester 2', 4000, now() - interval '12 days', now() - interval '12 days', now() - interval '12 days',
+                            gen_random_uuid(), 'Legacy', 'Imported from the old portal', 'RCT-' || :r)
+                    """).param("s", V).param("ses", session).param("r", legV2).update());
+            Map<String, Object> creditV2 = creditOf(bursar, session, legV2);
+            assertThat(creditV2).as(String.valueOf(creditV2)).containsEntry("state", "OPEN").containsEntry("canRefund", true);
+            List<ResponseEntity<Map>> handOrDeskV = atOnce(() -> it.call(bursar, HttpMethod.POST, "/api/v1/finance/siwes/credits/" + creditV2.get("id") + "/settle",
+                            Map.of("state", "REFUNDED", "note", "Refunded to the student's account")),
+                    () -> it.call(maker, HttpMethod.POST, "/api/v1/finance/refunds", Map.of("student", V, "payer", payerV,
+                            "reason", "SiwesRegistrationIT: the second SIWES credit given back", "amount", 4000, "source", legV2)));
+            ResponseEntity<Map> handV = handOrDeskV.get(0), deskV = handOrDeskV.get(1);
+            int desksV = jdbc.sql("SELECT count(*) FROM finance.refund WHERE source_reference = :r AND state <> 'REJECTED'").param("r", legV2).query(Integer.class).single();
+            if (status(handV) == 200) {
+                assertThat(status(deskV)).as(String.valueOf(deskV.getBody())).isEqualTo(422);
+                assertThat(code(deskV)).isEqualTo("REFUND_SIWES_CREDIT_SETTLED");
+                assertThat(desksV).as("refunded by hand: nothing raised on the desk").isZero();
+                assertThat(creditOf(bursar, session, legV2)).containsEntry("state", "REFUNDED").containsEntry("settledKind", "HAND_REFUND");
+            } else {
+                assertThat(status(deskV)).as("one of the two: " + handV.getBody() + " / " + deskV.getBody()).isEqualTo(200);
+                assertThat(status(handV)).isEqualTo(422);
+                assertThat(code(handV)).isEqualTo("SIWES_CREDIT_REFUND_DESK");
+                assertThat(desksV).as("raised on the desk: the credit waits for it").isEqualTo(1);
+                assertThat(creditOf(bursar, session, legV2)).containsEntry("state", "OPEN").containsEntry("canRefund", false);
+            }
 
             // ── K17: a SIWES course entered on a Second Semester registration an office had approved is stamped approved on the fee (AUTO,
             //    now, by nobody), the status unchanged: L's ordinary course was approved by a Head while L read 200 Level, before SIWES bound

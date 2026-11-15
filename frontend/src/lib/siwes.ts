@@ -793,11 +793,13 @@ export const FEE_STATE_WORD: Record<string, [string, "grey" | "ok" | "warn"]> = 
 const given = (m: Money) => m != null && m !== "";
 
 /** K13: the refund desk refunds a SIWES payment whole or not at all (a smaller proposal is refused REFUND_SIWES_PART, the fee being all
- *  or nothing): what the proposal form says beside the amount, for a payment whose purpose is SIWES; part when the amount typed differs */
+ *  or nothing), and once (V762, K36: more than is left on it is refused REFUND_SIWES_GIVEN_BACK): what the proposal form says beside the
+ *  amount, for a payment whose purpose is SIWES; part (shown as a fault) when the amount typed differs, in the words of the refusal it meets */
 export function siwesRefundHint(purpose: string | null | undefined, paid: Money, typed: Money): { words: string; part: boolean } | null {
   if (!isSiwesPurpose(purpose) || !given(paid)) return null;
   const part = given(typed) && num(typed) !== num(paid);
-  return { part, words: `A SIWES registration fee is refunded whole or not at all: the whole ${naira(paid)} of the payment${part ? "; a part is refused" : ""}.` };
+  const why = !part ? "" : num(typed) > num(paid) ? "; more than was paid is refused" : "; a part is refused";
+  return { part, words: `A SIWES registration fee is refunded once, whole or not at all: the whole ${naira(paid)} of the payment${why}.` };
 }
 
 /** the fee in force (published: what students pay) and the restatement waiting for the Bursar, apart. A fee never published is its

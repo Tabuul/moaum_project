@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -79,36 +81,18 @@ class RegistrationController {
         return service.submit(id);
     }
 
+    /** A deadlock (e.g. this approval colliding with a bulk import over the shared audit spine) is transient: the service's
+     *  transaction rolls back cleanly, so it is run again a few times with a short pause (shared.DeadlockRetry). */
     @PostMapping("/course-registrations/{id}/approve")
     @PreAuthorize(HOD_APPROVES)
     Map<String, Object> approve(@PathVariable UUID id) {
-        return withDeadlockRetry(() -> service.approve(id));
+        return DeadlockRetry.run(() -> service.approve(id));
     }
 
     @PostMapping("/course-registrations/{id}/return")
     @PreAuthorize(HOD_APPROVES)
     Map<String, Object> giveBack(@PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
-        return withDeadlockRetry(() -> service.giveBack(id, body == null ? null : body.get("comment")));
-    }
-
-    /** A deadlock (e.g. this approval colliding with a bulk import over the shared audit spine) is transient:
-     *  the transaction rolls back cleanly, so re-running it a few times with a short backoff resolves it. */
-    private <T> T withDeadlockRetry(java.util.function.Supplier<T> op) {
-        org.springframework.dao.TransientDataAccessException last = null;
-        for (int attempt = 1; attempt <= 4; attempt++) {
-            try {
-                return op.get();
-            } catch (org.springframework.dao.TransientDataAccessException e) {   // deadlock / serialization / lock timeout
-                last = e;
-                try {
-                    Thread.sleep(60L * attempt);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-        }
-        throw last;
+        return DeadlockRetry.run(() -> service.giveBack(id, body == null ? null : body.get("comment")));
     }
 
     /** V482: the prerequisite rule at registration (ADVISORY or ENFORCED) — read by any signed-in office, set by the Academic Office with a reason */

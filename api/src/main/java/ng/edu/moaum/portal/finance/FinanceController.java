@@ -16,12 +16,15 @@ import jakarta.validation.constraints.Size;
 
 import ng.edu.moaum.portal.shared.AuditContext;
 import ng.edu.moaum.portal.shared.AuditContextHolder;
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -108,11 +111,17 @@ class FinanceController {
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
     private final ng.edu.moaum.portal.shared.OfficeScope scope;
+    /** V762's review (d62-1): the old fees upload, the reset and the withdrawals of old-portal records lock a payment's row and take the
+     *  student's SIWES lock after it, in the payment's trigger, while the SIWES desks take the lock first; meeting a desk on one SIWES payment
+     *  at one instant, PostgreSQL ends one of the two whole — the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    FinanceController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope) {
+    FinanceController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, ng.edu.moaum.portal.shared.OfficeScope scope,
+                      PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.json = json;
         this.scope = scope;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     /** bulk-load past students' confirmed payment (school-fees) history from the old portal (V120); retired by V498 — the
@@ -178,14 +187,14 @@ class FinanceController {
      *  still logged, gathered into one upload while the parts keep coming. */
     @PostMapping("/legacy-fees")
     @PreAuthorize(BURSARY)   // V607: the Students Account Officer's upload waits for the Bursar's approval
-    @Transactional
     Map<String, Object> importLegacyFees(@Valid @RequestBody FeeRows body) {
         if (body.rows() == null || body.rows().isEmpty()) {
             throw new DomainRuleViolation("FEE_ROWS", "The file has no rows to read.",
                     new DomainRuleViolation.Remedy("Upload the old-portal fees export.", "Bursary"));
         }
-        return effect(jdbc.sql("SELECT finance.legacy_load_part(NULL, NULL, :j::jsonb)::text")
-                .param("j", json.writeValueAsString(body.rows())).query(String.class).single());
+        String rows = json.writeValueAsString(body.rows());
+        return DeadlockRetry.inTransaction(tx, () -> effect(jdbc.sql("SELECT finance.legacy_load_part(NULL, NULL, :j::jsonb)::text")
+                .param("j", rows).query(String.class).single()));
     }
 
     /** what the old-portal fees import has loaded (all sessions, or one) — shown before a reset */
@@ -228,10 +237,10 @@ class FinanceController {
      *  that stands for it); one a deferment fee, a refund or the GST reconciliation points at is left */
     @PostMapping("/legacy-fees/doubles/withdraw")
     @PreAuthorize(OLD_FEES_DESK)
-    @Transactional
     Map<String, Object> withdrawPaymentHistoryDoubles(@Valid @RequestBody WithdrawDoubles body) {
         int n = body.limit() == null ? 5000 : Math.max(1, Math.min(body.limit(), 20_000));
-        return jdbc.sql("SELECT * FROM finance.withdraw_old_payment_doubles(:r, :n)").param("r", body.reason().trim()).param("n", n).query().singleRow();
+        return DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT * FROM finance.withdraw_old_payment_doubles(:r, :n)").param("r", body.reason().trim())
+                .param("n", n).query().singleRow());
     }
 
     /** V498: the old portal's payment-item codes (the export's payment_type sheet: pcode, description, school), kept so the import
@@ -272,10 +281,10 @@ class FinanceController {
      *  withdrawn where the same payment is on record under its item; each kept on its register with the reason */
     @PostMapping("/legacy-fees/mislabelled/put-right")
     @PreAuthorize(OLD_FEES_DESK)
-    @Transactional
     Map<String, Object> putRightLegacyItems(@Valid @RequestBody WithdrawDoubles body) {
         int n = body.limit() == null ? 5000 : Math.max(1, Math.min(body.limit(), 20_000));
-        return jdbc.sql("SELECT * FROM finance.put_right_legacy_items(:r, :n)").param("r", body.reason().trim()).param("n", n).query().singleRow();
+        return DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT * FROM finance.put_right_legacy_items(:r, :n)").param("r", body.reason().trim())
+                .param("n", n).query().singleRow());
     }
 
     /** V502: what the retired Payment History Upload recorded that nothing has matched (not taken over by Old Fees History, not a
@@ -401,11 +410,10 @@ class FinanceController {
     /** start the old-portal fees import over: deletes only the import's own records, and only on the word RESET */
     @PostMapping("/legacy-fees/reset")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> resetLegacyFees(@RequestBody ResetLegacy body) {
-        return jdbc.sql("SELECT * FROM finance.reset_legacy_payments((:s)::text, (:c)::text)")
+        return DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT * FROM finance.reset_legacy_payments((:s)::text, (:c)::text)")
                 .param("s", body.session() == null || body.session().isBlank() ? null : body.session())
-                .param("c", body.confirm()).query().singleRow();
+                .param("c", body.confirm()).query().singleRow());
     }
 
     /* ── the schedule ── */

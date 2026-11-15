@@ -217,7 +217,8 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
           <Field id="rf-payer" label="Paid to" hint="The student or sponsor the money is owed to"><input id="rf-payer" className="ctl" value={f.payer} onChange={(e) => setF({ ...f, payer: e.target.value })} autoComplete="off" /></Field>
           <div className="grid grid--2">
             <Field id="rf-reason" label="Reason"><input id="rf-reason" className="ctl" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} placeholder="Duplicate payment — timeout retry" autoComplete="off" /></Field>
-            {/* V752 (K13): a SIWES payment is refunded whole or not at all — a smaller amount is refused REFUND_SIWES_PART */}
+            {/* V752 (K13), V762 (K36): a SIWES payment is refunded once, whole or not at all — a smaller amount is refused REFUND_SIWES_PART, a
+                larger one or a second refund REFUND_SIWES_GIVEN_BACK (shown in the database's words above) */}
             <Field id="rf-amount" label="Amount (₦)" hint={siwesHint ? <span className={siwesHint.part ? "ink-red" : undefined}>{siwesHint.words}</span> : undefined}>
               <input id="rf-amount" className="ctl tnum" value={f.amount} inputMode="decimal" onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
           </div>

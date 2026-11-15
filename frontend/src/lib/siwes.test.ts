@@ -501,14 +501,17 @@ test("the courses in the way of the SIWES course: Remove only while add and drop
   assert.match(SIWES_RESET_WORDS, /the courses, carry-overs and deferred courses are cleared; carry-overs and deferred courses wait for a later semester\./);
 });
 
-test("the refund desk refunds a SIWES payment whole: the hint beside the amount, for a SIWES purpose only (K13)", () => {
+test("the refund desk refunds a SIWES payment once, whole: the hint beside the amount, for a SIWES purpose only (K13, K36)", () => {
   assert.equal(siwesRefundHint("School fees 2025/2026", 100000, 50000), null);
   assert.equal(siwesRefundHint(null, 4000, 4000), null);
   assert.equal(siwesRefundHint("SIWES registration fee 2025/2026", null, 4000), null);
   assert.deepEqual(siwesRefundHint("SIWES registration fee 2025/2026", 4000, "4000"),
-    { part: false, words: "A SIWES registration fee is refunded whole or not at all: the whole ₦4,000 of the payment." });
+    { part: false, words: "A SIWES registration fee is refunded once, whole or not at all: the whole ₦4,000 of the payment." });
   assert.deepEqual(siwesRefundHint("SIWES (legacy)", "4000.00", "1000"),
-    { part: true, words: "A SIWES registration fee is refunded whole or not at all: the whole ₦4,000 of the payment; a part is refused." });
+    { part: true, words: "A SIWES registration fee is refunded once, whole or not at all: the whole ₦4,000 of the payment; a part is refused." });
+  // V762 (K36): more than the payment is refused as more than was paid (REFUND_SIWES_GIVEN_BACK), never called a part
+  assert.deepEqual(siwesRefundHint("SIWES registration fee 2025/2026", 4000, "8000"),
+    { part: true, words: "A SIWES registration fee is refunded once, whole or not at all: the whole ₦4,000 of the payment; more than was paid is refused." });
   assert.equal(siwesRefundHint("SIWES (legacy)", 4000, "")?.part, false);
 });
 

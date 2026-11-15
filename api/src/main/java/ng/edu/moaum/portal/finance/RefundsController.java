@@ -15,9 +15,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,10 +41,15 @@ class RefundsController {
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    /** V762's review (d62-1): a refund raised, approved, rejected or paid on a SIWES payment takes the student's SIWES lock before the
+     *  payment's row; a write that locks the row first (the old fees reset, an upload, a gateway confirmation) can meet it in a deadlock,
+     *  which PostgreSQL ends whole — the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    RefundsController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    RefundsController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.json = json;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     /** V545: one line of an uploaded bank statement, read on the screen from the bank's CSV or Excel file */
@@ -147,22 +156,23 @@ class RefundsController {
 
     @PostMapping
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> propose(@Valid @RequestBody Propose body) {
         // V533: with the full account, the refund is raised bare and the account recorded on it (checked against the bank)
         boolean full = body.accountNumber() != null && !body.accountNumber().isBlank();
-        String ref = jdbc.sql("SELECT finance.propose_refund(:s, :p, :r, :a, :b, :an, :l, :src)")
-                .param("s", body.student(), Types.OTHER).param("p", body.payer()).param("r", body.reason()).param("a", body.amount())
-                .param("b", full ? null : body.bank(), Types.VARCHAR).param("an", full ? null : body.accountName(), Types.VARCHAR)
-                .param("l", full ? null : body.accountLast4(), Types.VARCHAR)
-                .param("src", body.source(), Types.VARCHAR)
-                .query(String.class).single();
-        if (full) {
-            jdbc.sql("SELECT finance.desk_refund_account((SELECT id FROM finance.refund WHERE reference = :ref), :b, :n, :a)")
-                    .param("ref", ref).param("b", body.bank(), Types.VARCHAR).param("n", body.accountName(), Types.VARCHAR)
-                    .param("a", body.accountNumber()).query().singleRow();
-        }
-        return Map.of("reference", ref, "state", "PROPOSED");
+        return DeadlockRetry.inTransaction(tx, () -> {
+            String ref = jdbc.sql("SELECT finance.propose_refund(:s, :p, :r, :a, :b, :an, :l, :src)")
+                    .param("s", body.student(), Types.OTHER).param("p", body.payer()).param("r", body.reason()).param("a", body.amount())
+                    .param("b", full ? null : body.bank(), Types.VARCHAR).param("an", full ? null : body.accountName(), Types.VARCHAR)
+                    .param("l", full ? null : body.accountLast4(), Types.VARCHAR)
+                    .param("src", body.source(), Types.VARCHAR)
+                    .query(String.class).single();
+            if (full) {
+                jdbc.sql("SELECT finance.desk_refund_account((SELECT id FROM finance.refund WHERE reference = :ref), :b, :n, :a)")
+                        .param("ref", ref).param("b", body.bank(), Types.VARCHAR).param("n", body.accountName(), Types.VARCHAR)
+                        .param("a", body.accountNumber()).query().singleRow();
+            }
+            return Map.<String, Object>of("reference", ref, "state", "PROPOSED");
+        });
     }
 
     /** V533: the desk records (or changes) the account a refund is paid into; on an approved refund it goes back for another
@@ -311,26 +321,29 @@ class RefundsController {
 
     @PostMapping("/{id}/approve")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> approve(@PathVariable UUID id) {
-        jdbc.sql("SELECT finance.approve_refund(:id)").param("id", id).query().singleRow();
-        return Map.of("id", id, "state", "APPROVED");
+        return DeadlockRetry.inTransaction(tx, () -> {
+            jdbc.sql("SELECT finance.approve_refund(:id)").param("id", id).query().singleRow();
+            return Map.<String, Object>of("id", id, "state", "APPROVED");
+        });
     }
 
     @PostMapping("/{id}/reject")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> reject(@PathVariable UUID id, @Valid @RequestBody Why body) {
-        jdbc.sql("SELECT finance.reject_refund(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();
-        return Map.of("id", id, "state", "REJECTED");
+        return DeadlockRetry.inTransaction(tx, () -> {
+            jdbc.sql("SELECT finance.reject_refund(:id, :w)").param("id", id).param("w", body.why()).query().singleRow();
+            return Map.<String, Object>of("id", id, "state", "REJECTED");
+        });
     }
 
     @PostMapping("/{id}/pay")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> pay(@PathVariable UUID id, @Valid @RequestBody Paid body) {
-        jdbc.sql("SELECT finance.pay_refund(:id, :r, :d)").param("id", id).param("r", body.reference()).param("d", body.paidOn())
-                .query().singleRow();
-        return Map.of("id", id, "state", "PAID");
+        return DeadlockRetry.inTransaction(tx, () -> {
+            jdbc.sql("SELECT finance.pay_refund(:id, :r, :d)").param("id", id).param("r", body.reference()).param("d", body.paidOn())
+                    .query().singleRow();
+            return Map.<String, Object>of("id", id, "state", "PAID");
+        });
     }
 }

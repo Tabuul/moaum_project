@@ -15,6 +15,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.FileObjects;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -24,7 +25,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -84,10 +87,15 @@ class PaymentArchiveController {
 
     private final JdbcClient jdbc;
     private final FileObjects files;
+    /** V762's review (d62-1): archiving a SIWES payment and deciding its archive take the student's SIWES lock before the payment's row; a
+     *  write that locks the row first (the old fees reset, an upload, a gateway confirmation) can meet one in a deadlock, which PostgreSQL
+     *  ends whole — the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    PaymentArchiveController(JdbcClient jdbc, FileObjects files) {
+    PaymentArchiveController(JdbcClient jdbc, FileObjects files, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.files = files;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     private static Object json(Object text) {
@@ -226,12 +234,13 @@ class PaymentArchiveController {
     /** archived: the payment kept as it stood and counted nowhere until the Bursary settles it */
     @PostMapping
     @PreAuthorize(INITIATORS)
-    @Transactional
     Map<String, Object> archive(@Valid @RequestBody ArchiveIn body) {
-        UUID id = jdbc.sql("SELECT finance.archive_payment(:p, :r, :rel, :n, :ok)").param("p", body.payment()).param("r", body.reason().trim().toUpperCase())
-                .param("rel", body.related(), Types.OTHER).param("n", body.note()).param("ok", Boolean.TRUE.equals(body.confirmed()))
-                .query(UUID.class).single();
-        return detail(id);
+        return DeadlockRetry.inTransaction(tx, () -> {
+            UUID id = jdbc.sql("SELECT finance.archive_payment(:p, :r, :rel, :n, :ok)").param("p", body.payment()).param("r", body.reason().trim().toUpperCase())
+                    .param("rel", body.related(), Types.OTHER).param("n", body.note()).param("ok", Boolean.TRUE.equals(body.confirmed()))
+                    .query(UUID.class).single();
+            return detail(id);
+        });
     }
 
     /** the investigation recorded: a note and evidence items, each strong or supporting */
@@ -308,14 +317,15 @@ class PaymentArchiveController {
     /** decided by a Bursar officer other than the proposer: returned, rejected, or approved and executed at once */
     @PostMapping("/{id}/decision")
     @PreAuthorize(DECIDERS)
-    @Transactional
     Map<String, Object> decide(@PathVariable UUID id, @Valid @RequestBody DecisionIn body) {
-        Object result = json(jdbc.sql("SELECT finance.payment_archive_decide(:x, :d, :n, :c)::text").param("x", id)
-                .param("d", body.decision().trim().toUpperCase()).param("n", blank(body.note()), Types.VARCHAR).param("c", Boolean.TRUE.equals(body.confirmed()))
-                .query(String.class).single());
-        Map<String, Object> out = new LinkedHashMap<>(detail(id));
-        out.put("result", result);
-        return out;
+        return DeadlockRetry.inTransaction(tx, () -> {
+            Object result = json(jdbc.sql("SELECT finance.payment_archive_decide(:x, :d, :n, :c)::text").param("x", id)
+                    .param("d", body.decision().trim().toUpperCase()).param("n", blank(body.note()), Types.VARCHAR).param("c", Boolean.TRUE.equals(body.confirmed()))
+                    .query(String.class).single());
+            Map<String, Object> out = new LinkedHashMap<>(detail(id));
+            out.put("result", result);
+            return out;
+        });
     }
 
     private Map<String, Object> row(UUID id) {

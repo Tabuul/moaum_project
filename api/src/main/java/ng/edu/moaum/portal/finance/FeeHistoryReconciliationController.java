@@ -10,12 +10,15 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,9 +46,14 @@ class FeeHistoryReconciliationController {
     private static final tools.jackson.databind.ObjectMapper JSON = new tools.jackson.databind.ObjectMapper();
 
     private final JdbcClient jdbc;
+    /** V762's review (d62-1): a batch approved runs the old fees import, which locks payments' rows and takes a student's SIWES lock after
+     *  one, in the payment's trigger, while the SIWES desks take the lock first; meeting a desk on one SIWES payment at one instant,
+     *  PostgreSQL ends one of the two whole — the decision runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    FeeHistoryReconciliationController(JdbcClient jdbc) {
+    FeeHistoryReconciliationController(JdbcClient jdbc, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     private static String blank(String s) {
@@ -168,13 +176,14 @@ class FeeHistoryReconciliationController {
 
     @PostMapping("/batches/{year}/{seq}/decide")
     @PreAuthorize(DECIDERS)
-    @Transactional
     Map<String, Object> decide(@PathVariable String year, @PathVariable String seq, @Valid @RequestBody Decision body) {
         String ref = "PAY-RECON/" + year + "/" + seq;
-        Map<String, Object> out = new LinkedHashMap<>(json(jdbc.sql("SELECT finance.fee_history_decide(:r, :a, :n)::text")
-                .param("r", ref).param("a", Boolean.TRUE.equals(body.approve())).param("n", blank(body.note()), Types.VARCHAR).query(String.class).single()));
-        out.put("batch", batch(ref));
-        return out;
+        return DeadlockRetry.inTransaction(tx, () -> {
+            Map<String, Object> out = new LinkedHashMap<>(json(jdbc.sql("SELECT finance.fee_history_decide(:r, :a, :n)::text")
+                    .param("r", ref).param("a", Boolean.TRUE.equals(body.approve())).param("n", blank(body.note()), Types.VARCHAR).query(String.class).single()));
+            out.put("batch", batch(ref));
+            return out;
+        });
     }
 
     public record Withdrawal(@Size(max = 2000) String reason) {

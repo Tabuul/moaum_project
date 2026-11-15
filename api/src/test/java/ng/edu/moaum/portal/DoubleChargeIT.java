@@ -41,6 +41,8 @@ class DoubleChargeIT {
     JdbcClient jdbc;
     @Autowired
     PlatformTransactionManager transactions;
+    @Autowired
+    javax.sql.DataSource dataSource;
 
     ItSupport it;
     String a;
@@ -323,5 +325,199 @@ class DoubleChargeIT {
         ResponseEntity<Map> nothing = it.call(deputy, HttpMethod.POST, path + "/decide", Map.of("action", "APPROVE"));
         assertThat(nothing.getStatusCode().value()).isEqualTo(422);
         assertThat(nothing.getBody()).containsEntry("code", "BANK_LIST_NOTHING_WAITING");
+    }
+
+    /** V762's second review: two old-portal SIWES records of ₦4,000 for the second semester on a day already past, two payment numbers */
+    private List<String> siwesOn(UUID student, String number, String day, String payrefA, String payrefB) {
+        String first = "MOAUM-LEG-" + number.replaceAll("[^0-9A-Z]", "") + "-" + a.replace("/", "-") + "-S2-SIWES";
+        String second = first + "-" + payrefB;
+        it.db(() -> {
+            for (String[] r : new String[][] {{first, payrefA}, {second, payrefB}}) {
+                jdbc.sql("""
+                        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+                        VALUES (:s, :ses, :r, 'SIWES (legacy) · semester 2', 4000, CAST(:d AS timestamptz), CAST(:d AS timestamptz), :by, 'Legacy', 'LEG-' || :r,
+                                'Imported from the old portal · old ref ' || :p)
+                        """).param("s", student).param("ses", a).param("r", r[0]).param("d", day + " 09:00:00+01").param("p", r[1]).param("by", UUID.randomUUID()).update();
+                jdbc.sql("INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES (:p, :r, 4000)").param("p", r[1]).param("r", r[0]).update();
+            }
+            return null;
+        });
+        return List.of(first, second);
+    }
+
+    /**
+     * The door called while a connection of the test's own holds {@code reference}'s row, as a write that locks a SIWES payment's row
+     * first does (the old fees reset, an upload). Once the door waits on that row, the connection takes {@code student}'s SIWES lock of
+     * the session, which the door holds already: a deadlock. PostgreSQL ends the door's transaction, which waited first (where the role
+     * may, the holder's deadlock_timeout is set long, so it is never the one ended); the connection then has the lock — proof that the
+     * door's transaction was ended under it — and lets go. Returns the door's answer.
+     */
+    private ResponseEntity<Map> deadlocked(java.util.function.Supplier<ResponseEntity<Map>> door, String reference, UUID student) throws Exception {
+        return clash(door, holder -> {
+            try (java.sql.PreparedStatement p = holder.prepareStatement("SELECT 1 FROM finance.payment_reference WHERE reference = ? FOR UPDATE")) {
+                p.setString(1, reference);
+                p.executeQuery().close();
+            }
+        }, holder -> {
+            try (java.sql.PreparedStatement p = holder.prepareStatement("SELECT finance.siwes_lock(?, ?)")) {
+                p.setObject(1, student);
+                p.setString(2, a);
+                p.executeQuery().close();
+            }
+        });
+    }
+
+    /** one statement of the holder's, on its own connection */
+    @FunctionalInterface
+    private interface Hold {
+        void on(java.sql.Connection holder) throws java.sql.SQLException;
+    }
+
+    /**
+     * The door called while a connection of the test's own has done {@code first}; once the door waits on what that holds, the
+     * connection does {@code then}, which waits on what the door holds already: a deadlock. PostgreSQL ends the door's transaction,
+     * which waited first (where the role may, the holder's deadlock_timeout is set long, so it is never the one ended); the connection's
+     * {@code then} goes through only once the door's transaction is ended under it, and the connection lets go. Returns the door's answer.
+     */
+    private ResponseEntity<Map> clash(java.util.function.Supplier<ResponseEntity<Map>> door, Hold first, Hold then) throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try (java.sql.Connection holder = dataSource.getConnection()) {
+            holder.setAutoCommit(false);
+            try {
+                int pid;
+                try (java.sql.Statement s = holder.createStatement()) {
+                    s.execute("SELECT set_config('deadlock_timeout', '60s', true) FROM pg_roles WHERE rolname = current_user AND rolsuper");
+                    try (java.sql.ResultSet r = s.executeQuery("SELECT pg_backend_pid()")) {
+                        r.next();
+                        pid = r.getInt(1);
+                    }
+                }
+                first.on(holder);
+                java.util.concurrent.Future<ResponseEntity<Map>> answer = pool.submit(door::get);
+                boolean waiting = false;
+                for (int i = 0; i < 1200 && !waiting; i++) {   // up to a minute
+                    waiting = jdbc.sql("SELECT EXISTS (SELECT 1 FROM pg_locks l WHERE NOT l.granted AND CAST(:pid AS int) = ANY (pg_blocking_pids(l.pid)))")
+                            .param("pid", pid).query(Boolean.class).single();
+                    if (!waiting) Thread.sleep(50);
+                }
+                assertThat(waiting).as("the door waits on what the connection holds").isTrue();
+                java.util.concurrent.Future<Object> closed = pool.submit(() -> {
+                    then.on(holder);
+                    holder.rollback();
+                    return null;
+                });
+                closed.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                return answer.get(120, java.util.concurrent.TimeUnit.SECONDS);
+            } finally {
+                holder.rollback();
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void aDeadlockInTheBankListOrInTheDecisionOfItsWithdrawalsIsRunAgainNeverRecordedAsARefusal() throws Exception {
+        Random random = new Random();
+        int year = it.freeYear(3181, 3199, 0, 1);
+        a = year + "/" + (year + 1);
+        it.session(a, year);
+        java.time.LocalDate day = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).minusDays(12);
+        String numR = it.freeNumber("MOAUM/BLD/86/", 6);
+        String numN = it.freeNumber("MOAUM/BLS/86/", 6);
+        UUID received = it.student(it.freeSurname("ZZBLDR"), "C00023", null, numR, 300);
+        UUID notReceived = it.student(it.freeSurname("ZZBLDS"), "C00023", null, numN, 300);
+        String tag = String.format("%07d", random.nextInt(10_000_000));
+        String pR1 = "PD" + year + "R" + tag + "1", pR2 = "PD" + year + "R" + tag + "2", pN1 = "PD" + year + "S" + tag + "1", pN2 = "PD" + year + "S" + tag + "2";
+        chargedOn(received, numR, day.toString(), pR1, pR2);
+        List<String> recN = siwesOn(notReceived, numN, day.toString(), pN1, pN2);
+        String bursar = ItSupport.token("bursar");
+        String deputy = ItSupport.token("bursar");
+
+        Map<String, Object> list = new LinkedHashMap<>();
+        list.put("session", a);
+        list.put("from", day.minusDays(1).toString());
+        list.put("to", day.plusDays(1).toString());
+        list.put("numbers", List.of(Map.of("n", pR1), Map.of("n", pR2), Map.of("n", pN1)));
+        list.put("evidence", "Bank statement of the fees account (deadlock)");
+        long before = jdbc.sql("SELECT CASE WHEN is_called THEN last_value ELSE last_value - 1 END FROM finance.bank_list_check_seq").query(Long.class).single();
+
+        // the list meets a deadlock raising the withdrawal of the SIWES record not on it: ended whole and run again by its door
+        ResponseEntity<Map> recorded = deadlocked(() -> it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/double-charges/bank-list", list),
+                recN.get(1), notReceived);
+        assertThat(recorded.getStatusCode().value()).as(String.valueOf(recorded.getBody())).isEqualTo(200);
+        assertThat((Map<String, Object>) recorded.getBody().get("outcomes")).containsEntry("RECEIVED", 1).containsEntry("NOT_RECEIVED", 1).containsEntry("raised", 1)
+                .doesNotContainKey("REFUSED");
+        String ref = (String) recorded.getBody().get("listRef");
+        assertThat(Long.parseLong(ref.substring(ref.lastIndexOf('/') + 1))).as("the first try's list number spent: the door ran it again")
+                .isGreaterThanOrEqualTo(before + 2);
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.bank_list_group WHERE student_id = :s AND outcome = 'REFUSED'").param("s", notReceived)
+                .query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_not_received WHERE reference = :r").param("r", recN.get(1)).query(String.class).list())
+                .containsExactly("PROPOSED");
+
+        // its withdrawal approved by another officer meets the same deadlock: ended whole and run again, never refused
+        String path = "/api/v1/finance/legacy-fees/bank-lists/" + ref.substring("BLC/".length());
+        ResponseEntity<Map> approved = deadlocked(() -> it.call(deputy, HttpMethod.POST, path + "/decide", Map.of("action", "APPROVE", "note", "Statement seen")),
+                recN.get(1), notReceived);
+        assertThat(approved.getStatusCode().value()).as(String.valueOf(approved.getBody())).isEqualTo(200);
+        assertThat(approved.getBody()).containsEntry("done", 1).containsEntry("refused", 0);
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_not_received WHERE reference = :r").param("r", recN.get(1)).query(String.class).single())
+                .isEqualTo("APPROVED");
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_archive WHERE reference = :r").param("r", recN.get(1)).query(String.class).single())
+                .isEqualTo("NOT_RECEIVED");
+    }
+
+    /**
+     * V762's third review (d62c-1): a SIWES withdrawal cancelled by the officer who raised it locks the withdrawal's row, then releases
+     * the record under the student's SIWES lock (the withdrawal's trigger). Here the test's own connection holds that lock and, once the
+     * cancellation waits on it, asks for the withdrawal's row: a deadlock, which ended the cancellation with an error the officer saw
+     * while its door was not run again. Now the door runs it again and the withdrawal is cancelled.
+     */
+    @Test
+    void aDeadlockCancellingAWithdrawalIsRunAgain() throws Exception {
+        Random random = new Random();
+        int year = it.freeYear(3181, 3199, 0, 1);
+        a = year + "/" + (year + 1);
+        it.session(a, year);
+        java.time.LocalDate day = java.time.LocalDate.now(java.time.ZoneId.of("Africa/Lagos")).minusDays(12);
+        String numN = it.freeNumber("MOAUM/BLX/86/", 6);
+        UUID notReceived = it.student(it.freeSurname("ZZBLXS"), "C00023", null, numN, 300);
+        String tag = String.format("%07d", random.nextInt(10_000_000));
+        String pN1 = "PD" + year + "X" + tag + "1", pN2 = "PD" + year + "X" + tag + "2";
+        List<String> recN = siwesOn(notReceived, numN, day.toString(), pN1, pN2);
+        String bursar = ItSupport.token("bursar");
+
+        Map<String, Object> list = new LinkedHashMap<>();
+        list.put("session", a);
+        list.put("from", day.minusDays(1).toString());
+        list.put("to", day.plusDays(1).toString());
+        list.put("numbers", List.of(Map.of("n", pN1)));
+        list.put("evidence", "Bank statement of the fees account (cancel)");
+        ResponseEntity<Map> recorded = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/double-charges/bank-list", list);
+        assertThat(recorded.getStatusCode().value()).as(String.valueOf(recorded.getBody())).isEqualTo(200);
+        assertThat((Map<String, Object>) recorded.getBody().get("outcomes")).containsEntry("NOT_RECEIVED", 1).containsEntry("raised", 1);
+        String request = jdbc.sql("SELECT request_ref FROM finance.payment_not_received WHERE reference = :r AND state = 'PROPOSED'")
+                .param("r", recN.get(1)).query(String.class).single();
+
+        // the officer who recorded the list cancels the withdrawal it raised while the student's SIWES lock is held and the holder then
+        // asks for the withdrawal's row: the cancellation is ended whole and run again by its door
+        ResponseEntity<Map> cancelled = clash(() -> it.call(bursar, HttpMethod.POST, "/api/v1/finance/payments-not-received/" + request.substring("PNR/".length()) + "/cancel", Map.of()),
+                holder -> {
+                    try (java.sql.PreparedStatement p = holder.prepareStatement("SELECT finance.siwes_lock(?, ?)")) {
+                        p.setObject(1, notReceived);
+                        p.setString(2, a);
+                        p.executeQuery().close();
+                    }
+                }, holder -> {
+                    try (java.sql.PreparedStatement p = holder.prepareStatement("SELECT 1 FROM finance.payment_not_received WHERE request_ref = ? FOR UPDATE")) {
+                        p.setString(1, request);
+                        p.executeQuery().close();
+                    }
+                });
+        assertThat(cancelled.getStatusCode().value()).as(String.valueOf(cancelled.getBody())).isEqualTo(200);
+        assertThat(cancelled.getBody()).containsEntry("requestRef", request).containsEntry("state", "CANCELLED");
+        assertThat(jdbc.sql("SELECT state FROM finance.payment_not_received WHERE request_ref = :r").param("r", request).query(String.class).single())
+                .isEqualTo("CANCELLED");
     }
 }

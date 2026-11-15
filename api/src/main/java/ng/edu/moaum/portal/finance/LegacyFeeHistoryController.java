@@ -13,12 +13,15 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.NotFound;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,10 +67,15 @@ class LegacyFeeHistoryController {
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    /** V762's review (d62-1): a part of the old fees file locks payments' rows and takes a student's SIWES lock after one, in the payment's
+     *  trigger, while the SIWES desks take the lock first; meeting a desk on one SIWES payment at one instant, PostgreSQL ends one of the two
+     *  whole — the part is loaded again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    LegacyFeeHistoryController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    LegacyFeeHistoryController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.json = json;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     private static String blank(String s) {
@@ -114,11 +122,11 @@ class LegacyFeeHistoryController {
     /** a part loaded: what the import did (as the direct door answers) with the upload's reference and how far it is */
     @PostMapping("/loads/{id}/rows")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> part(@PathVariable UUID id, @Valid @RequestBody Part body) {
-        return map(jdbc.sql("SELECT finance.legacy_load_part(:id, :from, :j::jsonb)::text")
-                .param("id", id).param("from", body.from(), Types.INTEGER).param("j", json.writeValueAsString(body.rows()))
-                .query(String.class).single());
+        String rows = json.writeValueAsString(body.rows());
+        return DeadlockRetry.inTransaction(tx, () -> map(jdbc.sql("SELECT finance.legacy_load_part(:id, :from, :j::jsonb)::text")
+                .param("id", id).param("from", body.from(), Types.INTEGER).param("j", rows)
+                .query(String.class).single()));
     }
 
     // ── the history ──────────────────────────────────────────────────────────────────────────────────────────────────────

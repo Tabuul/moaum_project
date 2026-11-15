@@ -13,9 +13,13 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,10 +44,19 @@ class DoubleChargeController {
 
     private final JdbcClient jdbc;
     private final tools.jackson.databind.ObjectMapper json;
+    /** V762's reviews (d62-1, d62-2, d62b-1, d62b-2, d62c-1, d62d-1): the bank check of a SIWES item, the Bursary's bank list and the
+     *  decision of its withdrawals, and the withdrawal of a SIWES payment, raised, decided or cancelled, take the student's SIWES lock
+     *  before the payment's row (a withdrawal decided or cancelled: after the withdrawal's row; a list's decision, whichever it is, locks
+     *  all its withdrawals' rows first, in their numbers' order, then their students' SIWES locks, by student, as the list does when it
+     *  is recorded); a write that locks the payment's row first (the old fees reset, an upload, a gateway
+     *  confirmation), or takes several students' locks in another order (an upload), can meet one in a deadlock, which PostgreSQL ends
+     *  whole — the door runs again in a fresh transaction (DeadlockRetry) */
+    private final TransactionTemplate tx;
 
-    DoubleChargeController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json) {
+    DoubleChargeController(JdbcClient jdbc, tools.jackson.databind.ObjectMapper json, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.json = json;
+        this.tx = new TransactionTemplate(transactions);
     }
 
     private Map<String, Object> read(String text) {
@@ -93,16 +106,17 @@ class DoubleChargeController {
      *  then raised for withdrawal on the same evidence */
     @PostMapping("/legacy-fees/double-charges/check")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> check(@Valid @RequestBody Check body) {
         String[] list = body.notReceived() == null ? new String[0] : body.notReceived().toArray(String[]::new);
-        UUID id = jdbc.sql("SELECT finance.check_double_charge(:st, :s, :p, :d, :a, :v, :e, :n, CAST(:l AS text[]))")
-                .param("st", body.studentId()).param("s", body.session()).param("p", body.purpose()).param("d", body.paidOn())
-                .param("a", body.amount()).param("v", body.verdict()).param("e", body.evidence().trim()).param("n", body.note(), Types.VARCHAR)
-                .param("l", list, Types.ARRAY).query(UUID.class).single();
-        List<String> raised = jdbc.sql("SELECT request_ref FROM finance.payment_not_received WHERE check_id = :c AND state = 'PROPOSED' ORDER BY request_ref")
-                .param("c", id).query(String.class).list();
-        return Map.of("id", id, "verdict", body.verdict(), "raised", raised);
+        return DeadlockRetry.inTransaction(tx, () -> {
+            UUID id = jdbc.sql("SELECT finance.check_double_charge(:st, :s, :p, :d, :a, :v, :e, :n, CAST(:l AS text[]))")
+                    .param("st", body.studentId()).param("s", body.session()).param("p", body.purpose()).param("d", body.paidOn())
+                    .param("a", body.amount()).param("v", body.verdict()).param("e", body.evidence().trim()).param("n", body.note(), Types.VARCHAR)
+                    .param("l", list, Types.ARRAY).query(UUID.class).single();
+            List<String> raised = jdbc.sql("SELECT request_ref FROM finance.payment_not_received WHERE check_id = :c AND state = 'PROPOSED' ORDER BY request_ref")
+                    .param("c", id).query(String.class).list();
+            return Map.<String, Object>of("id", id, "verdict", body.verdict(), "raised", raised);
+        });
     }
 
     /** the withdrawals of payments the bank never received — waiting first, then the latest — with whether the reader raised each */
@@ -137,10 +151,9 @@ class DoubleChargeController {
     /** an old-portal payment record the bank shows never arrived, raised for withdrawal; another Bursary officer approves it */
     @PostMapping("/payments-not-received")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> raise(@Valid @RequestBody Raise body) {
-        String ref = jdbc.sql("SELECT finance.propose_not_received(:r, :e, :w, NULL, NULL)")
-                .param("r", body.reference().trim()).param("e", body.evidence().trim()).param("w", body.reason().trim()).query(String.class).single();
+        String ref = DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT finance.propose_not_received(:r, :e, :w, NULL, NULL)")
+                .param("r", body.reference().trim()).param("e", body.evidence().trim()).param("w", body.reason().trim()).query(String.class).single());
         return Map.of("requestRef", ref, "state", "PROPOSED");
     }
 
@@ -148,20 +161,20 @@ class DoubleChargeController {
 
     @PostMapping("/payments-not-received/{year}/{seq}/decide")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> decide(@PathVariable String year, @PathVariable String seq, @Valid @RequestBody Decide body) {
         String ref = "PNR/" + year + "/" + seq;
-        String state = jdbc.sql("SELECT finance.decide_not_received(:r, :a, :n)").param("r", ref).param("a", body.approve())
-                .param("n", body.note(), Types.VARCHAR).query(String.class).single();
+        String state = DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT finance.decide_not_received(:r, :a, :n)").param("r", ref)
+                .param("a", body.approve()).param("n", body.note(), Types.VARCHAR).query(String.class).single());
         return Map.of("requestRef", ref, "state", state);
     }
 
+    /** V762's third review (d62c-1): a SIWES withdrawal cancelled releases its record under the student's SIWES lock, taken after the
+     *  withdrawal's row; a clash met there is run again here, as the withdrawal's other doors are, never shown to the officer */
     @PostMapping("/payments-not-received/{year}/{seq}/cancel")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> cancel(@PathVariable String year, @PathVariable String seq) {
         String ref = "PNR/" + year + "/" + seq;
-        String state = jdbc.sql("SELECT finance.cancel_not_received(:r)").param("r", ref).query(String.class).single();
+        String state = DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT finance.cancel_not_received(:r)").param("r", ref).query(String.class).single());
         return Map.of("requestRef", ref, "state", state);
     }
 
@@ -204,14 +217,18 @@ class DoubleChargeController {
      *  another Bursary officer to approve; the rest left for a check by hand */
     @PostMapping("/legacy-fees/double-charges/bank-list")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> bankListRecord(@Valid @RequestBody BankList body) {
-        String ref = jdbc.sql("SELECT finance.bank_list_apply(:s, :f, :t, CAST(:j AS jsonb), :e, :n, :fn, :rr)")
-                .param("s", sessionOf(body.session()), Types.VARCHAR).param("f", body.from()).param("t", body.to()).param("j", numbersJson(body))
-                .param("e", body.evidence() == null ? "" : body.evidence().trim()).param("n", body.note(), Types.VARCHAR)
-                .param("fn", body.fileName(), Types.VARCHAR).param("rr", body.rowsRead(), Types.INTEGER).query(String.class).single();
-        String outcomes = jdbc.sql("SELECT outcomes::text FROM finance.bank_list_check WHERE list_ref = :r").param("r", ref).query(String.class).single();
-        return Map.of("listRef", ref, "outcomes", read(outcomes));
+        String numbers = numbersJson(body);
+        // V762's second review (d62b-1, d62b-2): the list takes its SIWES groups' students' SIWES locks before it reads them; a deadlock
+        // met there or in its loop ends the whole list, run again here in a fresh transaction, never a group recorded refused for it
+        return DeadlockRetry.inTransaction(tx, () -> {
+            String ref = jdbc.sql("SELECT finance.bank_list_apply(:s, :f, :t, CAST(:j AS jsonb), :e, :n, :fn, :rr)")
+                    .param("s", sessionOf(body.session()), Types.VARCHAR).param("f", body.from()).param("t", body.to()).param("j", numbers)
+                    .param("e", body.evidence() == null ? "" : body.evidence().trim()).param("n", body.note(), Types.VARCHAR)
+                    .param("fn", body.fileName(), Types.VARCHAR).param("rr", body.rowsRead(), Types.INTEGER).query(String.class).single();
+            String outcomes = jdbc.sql("SELECT outcomes::text FROM finance.bank_list_check WHERE list_ref = :r").param("r", ref).query(String.class).single();
+            return Map.<String, Object>of("listRef", ref, "outcomes", read(outcomes));
+        });
     }
 
     /** the bank lists recorded, the latest first, with what each judged and where its withdrawals stand */
@@ -263,13 +280,13 @@ class DoubleChargeController {
      *  who recorded the list — each through the withdrawal's own decision */
     @PostMapping("/legacy-fees/bank-lists/{year}/{seq}/decide")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> bankListDecide(@PathVariable String year, @PathVariable String seq, @Valid @RequestBody BankListDecision body) {
         String ref = "BLC/" + year + "/" + seq;
-        return jdbc.sql("SELECT done, refused, refusals FROM finance.decide_bank_list(:r, :a, :n)")
+        // V762's second review (d62b-2): a deadlock met deciding a withdrawal ends the whole decision, run again here, never a refusal
+        return DeadlockRetry.inTransaction(tx, () -> jdbc.sql("SELECT done, refused, refusals FROM finance.decide_bank_list(:r, :a, :n)")
                 .param("r", ref).param("a", body.action()).param("n", body.note(), Types.VARCHAR)
                 .query((rs, i) -> Map.<String, Object>of("listRef", ref, "action", body.action(), "done", rs.getInt("done"), "refused", rs.getInt("refused"),
                         "refusals", List.of((String[]) rs.getArray("refusals").getArray())))
-                .single();
+                .single());
     }
 }
