@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_FILTER, attemptWord, attemptsWords, carrySummary, filterRows, groupRows, historyByCourse, levelsOf, openingView, outcomeWords, RESULT_WORD, selection, type CarryRow, type HistoryRow } from "./carry-over.ts";
+import { NO_FILTER, attemptCode, attemptWord, attemptsWords, carrySummary, filterRows, groupRows, historyByCourse, levelsOf, openingView, outcomeWords, RESULT_WORD, selection, type CarryRow, type HistoryRow } from "./carry-over.ts";
 
 const row = (code: string, level: number, sem: number, status: CarryRow["status"], extra: Partial<CarryRow> = {}): CarryRow => ({
   course_id: `id-${code}`, course_code: code, shown_code: code, title: `Title ${code}`, units: 3, level, course_semester: sem, both_semesters: false,
@@ -82,4 +82,27 @@ test("V666: the history by course — every attempt kept, a course owed or clear
   assert.deepEqual(g[0].attempts.map(attemptWord), ["2024/2025 semester 1 — F", "2025/2026 semester 1 — F", "2026/2027 semester 1 — Registered, no result yet"]);
   assert.equal(attemptWord(g[1].attempts[1]), "2025/2026 semester 2 — C");
   assert.equal(RESULT_WORD.AWAITED, "Result awaited");
+});
+
+test("V771: an attempt is shown under the code it was taken under; one under the course's own code reads as before", () => {
+  const taken: HistoryRow[] = [
+    { course_code: "CSC 301", code_as_taken: "CMP 301", title: "Data Structures", session: "2023/2024", semester: 1, grade: "F", result: "FAILED", owed: true },
+    { course_code: "CSC 301", code_as_taken: "CSC 301", title: "Database Systems", session: "2024/2025", semester: 1, grade: "F", result: "FAILED", owed: true },
+    { course_code: "CSC 401 BMAS", code_as_taken: null, title: "Compilers", session: "2024/2025", semester: 2, grade: "E", result: "PASSED", owed: false },
+  ];
+  assert.deepEqual(taken.map(attemptCode), ["CMP 301", "CSC 301", "CSC 401"]);
+  assert.deepEqual(historyByCourse(taken)[0].attempts.map(attemptWord), ["2023/2024 semester 1 as CMP 301 — F", "2024/2025 semester 1 — F"]);
+  assert.equal(attemptWord(taken[2]), "2024/2025 semester 2 — E");
+});
+
+test("V771: a course's attempts sit under the course as the catalogue holds it now; each attempt keeps its own title", () => {
+  const taken: HistoryRow[] = [
+    { course_code: "CSC 301", code_as_taken: "CMP 301", title: "Data Structures", course_title: "Database Systems", session: "2023/2024", semester: 1, grade: "F", result: "FAILED", owed: true },
+    { course_code: "CSC 301", code_as_taken: "CSC 301", title: "Database Systems", course_title: "Database Systems", session: "2024/2025", semester: 1, grade: "F", result: "FAILED", owed: true },
+    // an answer from before the heading was given: the first attempt's title heads it
+    { course_code: "MTH 302", title: "Real Analysis I", session: "2024/2025", semester: 2, grade: "F", result: "FAILED", owed: true },
+  ];
+  const g = historyByCourse(taken);
+  assert.deepEqual(g.map((c) => [c.course_code, c.title]), [["CSC 301", "Database Systems"], ["MTH 302", "Real Analysis I"]]);
+  assert.deepEqual(g[0].attempts.map((a) => a.title), ["Data Structures", "Database Systems"]);
 });

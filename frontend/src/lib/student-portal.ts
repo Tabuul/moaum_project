@@ -66,7 +66,10 @@ export interface Carryover { course_code: string; title: string; units: number; 
 export interface Entry { offeringId: string; courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; basis?: string; lecturer?: string | null; courseSemester?: number;
   /** V504: the category the University orders by (registration.entry_category), what a course the student added beside the
    *  recommended list was added as, and whether the student added it */
-  category?: import("./course-order").CourseCategory; addedAs?: string | null; studentAdded?: boolean }
+  category?: import("./course-order").CourseCategory; addedAs?: string | null; studentAdded?: boolean;
+  /** the code the course was taken under, where the record keeps the class as taken (the title arrives as taken); missing on an
+   *  older answer */
+  codeAsTaken?: string | null }
 export interface Registration { id: string; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[]; returned_comment?: string | null;
   /** V491: how it was approved — HOD, AUTO (by the rule), or null for an earlier approval */
   approval_mode?: "HOD" | "AUTO" | null;
@@ -188,6 +191,9 @@ export interface ResultRow {
   level?: number;
   /** V667: its marks withheld (redacted on the server) until the fees up to its semester are paid */
   withheld?: boolean;
+  /** the code the course was taken under, where the record keeps the class as taken (course_code stays the catalogue's key; the title
+   *  arrives as taken); missing on an older answer */
+  code_as_taken?: string | null;
 }
 export interface Results {
   name: string; matricNo: string; programme: string; level: number; rows: ResultRow[]; semesters: Semester[];

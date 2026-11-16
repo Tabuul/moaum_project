@@ -2,7 +2,7 @@
  *  values are shown in, and the tables the print and the downloads take. Every figure is the one a module holds: nothing here
  *  computes a level, a result or a payment the record does not carry, and a missing result is never a zero. */
 
-import { RESULT_WORD, type HistoryRow } from "./carry-over.ts";
+import { RESULT_WORD, attemptCode, type HistoryRow } from "./carry-over.ts";
 
 export type Section = "overview" | "admission" | "progression" | "registrations" | "results" | "finance" | "hostel" | "clearance" | "documents"
   | "support" | "audit";
@@ -101,7 +101,9 @@ export function timeline(p: Progression): TimelineEvent[] {
 }
 
 export interface ResultRow { session: string; semester: number; course_code: string; title: string; units: number; entry_type: string | null; stage: string; published: boolean;
-  published_at: string | null; ca: number | null; exam: number | null; total: number | null; grade: string | null; points: number | null; outcome: string | null }
+  published_at: string | null; ca: number | null; exam: number | null; total: number | null; grade: string | null; points: number | null; outcome: string | null;
+  /** the code the course was taken under, where the record keeps the class as taken (the title arrives as taken) */
+  code_as_taken?: string | null }
 
 /** a result as the results engine holds it: the grade when published; otherwise where the sheet is — never a zero, never a fail */
 export function resultWord(r: Pick<ResultRow, "published" | "stage" | "grade" | "outcome">): string {
@@ -162,7 +164,7 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
       return [
         { title: "Course registrations", headers: ["S/N", "Session", "Semester", "Level", "Status", "Units", "Courses", "Submitted", "Approved"],
           rows: n(a("registrations").map((r) => [String(r.session), semWord(r.semester, r.session, ss), Number(r.level ?? 0) || "", words(r.status), Number(r.units ?? 0),
-            ((r.courses ?? []) as Row[]).map((c) => `${c.course_code} (${c.units})`).join(", "), day(r.submitted_at), day(r.approved_at)])) },
+            ((r.courses ?? []) as Row[]).map((c) => `${c.codeAsTaken ?? c.course_code} (${c.units})`).join(", "), day(r.submitted_at), day(r.approved_at)])) },
         { title: "Registrations reset (each version kept)", headers: ["S/N", "Session", "Semester", "Level", "Was", "Courses", "Units", "Reset on", "By", "Reason"],
           rows: n(a("resets").map((z) => [String(z.session), semWord(z.semester, z.session, ss), Number(z.level ?? 0) || "", words(z.previous_status), Number(z.course_count ?? 0),
             Number(z.units ?? 0), day(z.reset_at), String(z.reset_by ?? z.reset_office ?? ""), String(z.reason ?? "")])) },
@@ -170,7 +172,7 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
     case "results":
       return [
         { title: "Results", headers: ["S/N", "Session", "Semester", "Course", "Title", "Units", "CA", "Exam", "Total", "Grade or state"],
-          rows: n((a("results") as unknown as ResultRow[]).map((r) => [r.session, semWord(r.semester, r.session, ss), r.course_code, r.title, r.units,
+          rows: n((a("results") as unknown as ResultRow[]).map((r) => [r.session, semWord(r.semester, r.session, ss), r.code_as_taken ?? r.course_code, r.title, r.units,
             r.published && r.ca != null ? r.ca : "", r.published && r.exam != null ? r.exam : "", r.published && r.total != null ? r.total : "", resultWord(r)])) },
         { title: "Grade point averages", headers: ["S/N", "Session", "Semester", "Units", "GPA", "CGPA", "Published", "Registered"],
           rows: n(a("semesters").map((g) => [String(g.session), semWord(g.semester, g.session, ss), Number(g.units ?? 0), g.gpa == null ? "" : Number(g.gpa).toFixed(2),
@@ -180,7 +182,7 @@ export function sectionTables(section: Section, d: Record<string, unknown> | nul
           rows: n(a("owed").map((c) => [String(c.course_code), String(c.title ?? ""), Number(c.units ?? 0), String(c.failed_in ?? ""),
             Number(c.attempts ?? 1), String(c.first_failed_in ?? c.failed_in ?? "")])) },
         { title: "Carry-over history", headers: ["S/N", "Course", "Title", "Session", "Semester", "Grade", "Result", "Now"],
-          rows: n((a("carryHistory") as unknown as HistoryRow[]).map((h) => [h.course_code, h.title, h.session, semWord(h.semester, h.session, ss), h.grade ?? "",
+          rows: n((a("carryHistory") as unknown as HistoryRow[]).map((h) => [attemptCode(h), h.title, h.session, semWord(h.semester, h.session, ss), h.grade ?? "",
             RESULT_WORD[h.result] ?? h.result, h.owed ? "Carry-over" : "Cleared"])) },
       ];
     case "finance":

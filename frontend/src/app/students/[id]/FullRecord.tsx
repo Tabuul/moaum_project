@@ -25,6 +25,7 @@ import { logExport } from "@/lib/export-log";
 import { PgHistoryPanel } from "@/components/pg/PgHistory";
 import { HistoricalFeesPanel } from "@/components/finance/HistoricalFeesPanel";
 import { RESULT_KIND, attemptWord, attemptsWords, historyByCourse, type HistoryRow, type OwedCourse } from "@/lib/carry-over";
+import { shownCode } from "@/lib/course-code";
 import {
   PAYMENT_WORDS, TAB_LABELS, day, levelHistory, naira, printBody, purposeOnly, resultWord, sectionTables, semesterOf, tabOf, tabsFor, timeline, words,
   type Payment, type Progression, type ResultRow, type Section, type Tab, type Table,
@@ -350,7 +351,7 @@ export function RegistrationsTab({ d, name, file }: { d: Data; name: string; fil
               </div>
               {r.returned_comment ? <div className="sub2 ink-red">Returned: {s(r.returned_comment)}</div> : null}
               {courses.length ? <DTable pageSize={0} cols={["Course", "Title", "Units|num", "Type", "Status"]}
-                rows={courses.map((c) => [<span key="c" className="tnum">{s(c.course_code)}</span>, s(c.title), s(c.units), words(c.added_as ?? c.entry_type), words(c.status)])} />
+                rows={courses.map((c) => [<span key="c" className="tnum">{s(c.codeAsTaken ?? c.course_code)}</span>, s(c.title), s(c.units), words(c.added_as ?? c.entry_type), words(c.status)])} />
                 : <div className="sub2">No course on this registration.</div>}
             </PBody>
           );
@@ -385,7 +386,7 @@ function ResultsTab({ d, name, file }: { d: Data; name: string; file: string }) 
               <div className="row row--between"><b className="tnum">{ses} · {semWord(Number(sem), ses, d)}</b>
                 <span className="sub2 tnum">{g ? `GPA ${g.gpa == null ? "—" : Number(g.gpa).toFixed(2)} · CGPA ${g.cgpa == null ? "—" : Number(g.cgpa).toFixed(2)} · ${s(g.published_count)} of ${s(g.registered_count)} published` : "Not yet published"}</span></div>
               <DTable pageSize={0} cols={["Course", "Title", "Units|num", "CA|num", "Exam|num", "Total|num", "Grade or state"]}
-                rows={rows.map((r) => [<span key="c" className="tnum">{r.course_code}</span>, r.title, String(r.units), r.published && r.ca != null ? String(r.ca) : "—",
+                rows={rows.map((r) => [<span key="c" className="tnum">{r.code_as_taken ?? r.course_code}</span>, r.title, String(r.units), r.published && r.ca != null ? String(r.ca) : "—",
                   r.published && r.exam != null ? String(r.exam) : "—", r.published && r.total != null ? String(r.total) : "—",
                   <Pil key="g" kind={r.published ? (r.grade === "F" || r.outcome === "ABSENT" ? "bad" : "ok") : "grey"}>{resultWord(r)}</Pil>])} />
             </PBody>
@@ -402,7 +403,7 @@ function ResultsTab({ d, name, file }: { d: Data; name: string; file: string }) 
       <Panel title="Carry-over history" right={<ExcelBtn table={t[3]} name={name} file={file} />}>
         {history.length ? historyByCourse(history).map((c) => (
           <PBody key={c.course_code}>
-            <div className="row row--between"><span><b className="tnum">{c.course_code}</b> <span className="sub2">{c.title}</span></span>
+            <div className="row row--between"><span><b className="tnum">{shownCode(c.course_code)}</b> <span className="sub2">{c.title}</span></span>
               <Pil kind={c.owed ? "bad" : "ok"}>{c.owed ? "CARRY-OVER" : "CLEARED"}</Pil></div>
             <div className="row mt-1" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>
               {c.attempts.map((h) => <Pil key={`${h.session}|${h.semester}`} kind={RESULT_KIND[h.result]}>{attemptWord(h)}</Pil>)}

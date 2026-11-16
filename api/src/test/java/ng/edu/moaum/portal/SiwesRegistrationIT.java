@@ -744,18 +744,27 @@ class SiwesRegistrationIT {
             assertThat(pastConfig).as(String.valueOf(pastConfig)).containsEntry("setOffice", "academic").doesNotContainKey("setBy");
             assertThat(String.valueOf(pastConfig.get("setByName"))).startsWith("ZZSIWESACA");
             assertThat(status(it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", before, "programmeCode", P)))).isEqualTo(200);
+            // the old portal's registration loads under its confirmed upload, each row stating the course as taken (15 Nov 2026)
+            ResponseEntity<Map> confirmed = it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads", Map.of("kind", "REGISTRATION", "fileName", "siwes-history.xlsx",
+                    "rows", 3, "reason", "SiwesRegistrationIT: the old portal's registration of the SIWES programme"));
+            assertThat(status(confirmed)).as(String.valueOf(confirmed.getBody())).isEqualTo(200);
+            String uploadId = String.valueOf(confirmed.getBody().get("id"));
             ResponseEntity<Map> history = it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/registration", Map.of("session", before, "semester", 2,
-                    "rows", List.of(Map.of("line", "2", "matric", matric.get("B"), "course", elective, "level", "300"))));
+                    "rows", List.of(Map.of("line", "2", "matric", matric.get("B"), "course", elective, "title", "SIWES IT " + elective, "creditUnits", "3",
+                                           "category", "Elective", "level", "300")), "uploadId", uploadId));
             assertThat(status(history)).as(String.valueOf(history.getBody())).isEqualTo(200);
             assertThat(((Number) history.getBody().get("entries")).intValue()).isEqualTo(1);
             assertThat(jdbc.sql("SELECT registration.siwes_applies(:s, :ses)").param("s", B).param("ses", before).query(Boolean.class).single())
                     .as("SIWES binds that past semester, and its history loaded all the same").isTrue();
             // (6) the upload is an office's path into a registration that stands, too: A's approved SIWES registration takes nothing else
             ResponseEntity<Map> current = it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/registration", Map.of("session", session, "semester", 2,
-                    "rows", List.of(Map.of("line", "2", "matric", matric.get("G"), "course", elective, "level", "300"),
-                                    Map.of("line", "3", "matric", matric.get("A"), "course", elective, "level", "300"))));
+                    "rows", List.of(Map.of("line", "2", "matric", matric.get("G"), "course", elective, "title", "SIWES IT " + elective, "creditUnits", "3",
+                                           "category", "Elective", "level", "300"),
+                                    Map.of("line", "3", "matric", matric.get("A"), "course", elective, "title", "SIWES IT " + elective, "creditUnits", "3",
+                                           "category", "Elective", "level", "300")), "uploadId", uploadId));
             assertThat(status(current)).as(String.valueOf(current.getBody())).isEqualTo(200);
             assertThat(((Number) current.getBody().get("entries")).intValue()).isZero();
+            assertThat(status(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + uploadId + "/finish", Map.of("complete", true)))).isEqualTo(200);
             for (String line : List.of("2", "3")) {
                 assertThat((List<Map<String, Object>>) current.getBody().get("lines")).anySatisfy(l -> {
                     assertThat(String.valueOf(l.get("line"))).isEqualTo(line);

@@ -80,12 +80,16 @@ class GraduationRepository {
                 .query(UUID.class).optional().orElse(null);
     }
 
+    /** a graduand the Senate approved keeps the CGPA, the award and the audit's word it was approved on: a corrected old-portal
+     *  template that changes the units on their record (the University's decision of 15 November 2026) lists them for the Registry
+     *  and never moves the approved CGPA or class of degree; one not yet approved is audited afresh */
     void upsert(UUID student, String session, BigDecimal cgpa, String award, String unmet) {
         jdbc.sql("""
                 INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet)
                 VALUES (gen_random_uuid(), :s, :sess, :cgpa, :award, :unmet)
                 ON CONFLICT (student_id, session) DO UPDATE SET
-                        cgpa = EXCLUDED.cgpa, award = EXCLUDED.award,
+                        cgpa = CASE WHEN records.graduand.senate_state = 'APPROVED' THEN records.graduand.cgpa ELSE EXCLUDED.cgpa END,
+                        award = CASE WHEN records.graduand.senate_state = 'APPROVED' THEN records.graduand.award ELSE EXCLUDED.award END,
                         unmet = CASE WHEN records.graduand.senate_state = 'APPROVED' THEN records.graduand.unmet ELSE EXCLUDED.unmet END
                 """).param("s", student).param("sess", session).param("cgpa", cgpa, Types.NUMERIC).param("award", award)
                 .param("unmet", unmet, Types.VARCHAR).update();

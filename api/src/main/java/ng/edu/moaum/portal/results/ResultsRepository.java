@@ -643,12 +643,14 @@ class ResultsRepository {
 
     /* ── the broadsheet: computed from the sheets, by programme and level (proto/part26 tBroadsheet) ── */
 
-    /** V381: the broadsheet of one stream — the full-time students' (REGULAR) or the Centre's (CCE) — never the two mixed */
+    /** V381: the broadsheet of one stream — the full-time students' (REGULAR) or the Centre's (CCE) — never the two mixed. Each
+     *  course as the student took it: the title and code an old-portal file stated (catalogue.course_as_taken), the units always the
+     *  student's own (registration.entry.units) */
     List<Sheets.BroadsheetCell> broadsheet(String prog, int level, String session, int sem, String stream) {
         return jdbc.sql("""
                 SELECT st.id AS student_id, coalesce(st.matric_no, st.admission_no) AS number, st.surname, st.other_names, st.entry_mode,
-                       o.course_code, coalesce(o.title, c.title) AS title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
-                       cf.sheet_id,
+                       o.course_code, coalesce(at.title, o.title, c.title) AS title, e.units, coalesce(c.kind, 'Core') AS kind, c.level AS course_level, coalesce(cf.stage, 'NO_SHEET') AS stage, cf.total, cf.grade, cf.points, cf.outcome,
+                       cf.sheet_id, at.code_as_taken,
                        -- 21 Oct 2026: the course is the programme's — registered under the programme's basis (V620: the binding as it
                        -- stood when the student registered, so a binding removed later never takes it off), or bound to it now at any
                        -- level (a carry-over; its BSU-/MOAU- twin counts), or a general course (GST, EPS) every programme takes
@@ -663,6 +665,7 @@ class ResultsRepository {
                   JOIN registration.entry e ON e.registration_id = r.id AND e.status = 'APPROVED'
                   JOIN catalogue.offering o ON o.id = e.offering_id
                   JOIN catalogue.course c ON c.code = o.course_code
+                  LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
                   LEFT JOIN LATERAL assessment.course_final(st.id, o.id) cf ON true
                  WHERE st.programme_code = :prog AND r.level = :level AND r.session = :session AND r.semester = :sem
                    AND r.status IN ('APPROVED','LOCKED') AND o.stream = :stream
@@ -873,11 +876,130 @@ class ResultsRepository {
     }
 
     /** V472: the past semester's registration (and results) loaded — or, with preview, loaded and undone — as JSON text: the
-     *  counts and each row's status (every row on a preview; on an import, the rows not loaded or left as they were) */
-    String loadLegacy(String session, int semester, String rowsJson, boolean withResults, boolean preview) {
-        return jdbc.sql("SELECT assessment.legacy_semester_load(:s, :sem, :j::jsonb, :wr, :pv)::text")
-                .param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).param("pv", preview)
+     *  counts and each row's status (every row on a preview; on an import, the rows not loaded or left as they were). Always as
+     *  taken: each row's course title, credit units and category are required and recorded on the student's registration; an
+     *  import names its confirmed upload, whose ledger keeps every change (a preview names none) */
+    String loadLegacy(String session, int semester, String rowsJson, boolean withResults, boolean preview, UUID upload) {
+        return jdbc.sql("""
+                SELECT assessment.legacy_semester_load(:s, :sem, :j::jsonb, :wr, :pv, p_upload => CAST(:u AS uuid), p_as_taken => true)::text
+                """).param("s", session).param("sem", semester).param("j", rowsJson).param("wr", withResults).param("pv", preview)
+                .param("u", upload, Types.OTHER).query(String.class).single();
+    }
+
+    /* ── an old-portal upload confirmed: begun, finished, listed, reported, rolled back ── */
+
+    /** an upload as the screens read it (the people by name; createdBy so the screen knows its own upload), as JSON */
+    private static final String UPLOAD_JSON = """
+            jsonb_build_object('id', u.id, 'ref', u.ref, 'kind', u.kind, 'fileName', u.file_name, 'rows', u.rows, 'reason', u.reason,
+                               'state', u.state, 'counts', u.counts, 'createdAt', u.created_at, 'createdBy', u.created_by,
+                               'createdByName', helpdesk.person_name(u.created_by), 'createdOffice', u.created_office, 'finishedAt', u.finished_at,
+                               'revertedAt', u.reverted_at, 'revertedByName', helpdesk.person_name(u.reverted_by), 'revertReason', u.revert_reason,
+                               'revertCounts', u.revert_counts)
+            """;
+
+    /** an upload opened (RUNNING) with its reason, under the acting person and office, as JSON text */
+    String beginUpload(String kind, String fileName, int rows, String reason) {
+        return jdbc.sql("SELECT " + UPLOAD_JSON + "::text FROM assessment.past_upload_begin(:k, :f, :n, :r) u")
+                .param("k", kind).param("f", fileName, Types.VARCHAR).param("n", rows).param("r", reason, Types.VARCHAR)
                 .query(String.class).single();
+    }
+
+    /** an upload closed COMPLETE or INCOMPLETE by the person who opened it, its counts from its ledger, as JSON text */
+    String finishUpload(UUID upload, boolean complete) {
+        return jdbc.sql("SELECT " + UPLOAD_JSON + "::text FROM assessment.past_upload_finish(:id, :c) u")
+                .param("id", upload).param("c", complete).query(String.class).single();
+    }
+
+    /** a closed upload rolled back from its ledger, newest change first, with the reason — what was undone, and each change left as
+     *  it is because the record has moved on since (the database's rules: LEGACY_REVERT_OFFICE, LEGACY_UPLOAD_REASON,
+     *  LEGACY_UPLOAD_STATE), as JSON text */
+    String revertUpload(UUID upload, String reason) {
+        return jdbc.sql("SELECT assessment.revert_past_upload(:id, :r)::text")
+                .param("id", upload).param("r", reason, Types.VARCHAR).query(String.class).single();
+    }
+
+    /** the uploads, newest first, as a JSON array */
+    String uploads(int limit) {
+        return jdbc.sql("""
+                SELECT coalesce(jsonb_agg(x.j ORDER BY x.created_at DESC, x.ref DESC), '[]'::jsonb)::text
+                  FROM (SELECT u.created_at, u.ref, """ + UPLOAD_JSON + """
+                         AS j FROM assessment.past_upload u ORDER BY u.created_at DESC, u.ref DESC LIMIT :n) x
+                """).param("n", limit).query(String.class).single();
+    }
+
+    /** one upload's report as JSON text, or null when there is none: the upload, its changes counted by kind, every student it
+     *  changed with the CGPA and units counted before its first change and after its last (Senate-approved graduates first, kept
+     *  apart for the Registry), its changes in order (the first 5,000, with the total; a rolled-back change with when, a change left
+     *  as it was with why), and the file's rows that were not a plain load — refused, corrected or left as on record — by session,
+     *  semester and line (the first 5,000, with their total), with every row counted by status, and by what became of its entry
+     *  where that differs from its status */
+    String uploadReport(UUID upload) {
+        return jdbc.sql("""
+                WITH st AS (
+                    SELECT s.student_id, coalesce(x.matric_no, x.admission_no) AS matric, x.surname || ', ' || x.other_names AS name,
+                           coalesce(p.name, x.programme_code) AS programme, s.cgpa_before, s.cgpa_after, s.tcr_before, s.tcr_after, s.graduate, s.changes
+                      FROM assessment.past_upload_student s
+                      JOIN people.student x ON x.id = s.student_id
+                      LEFT JOIN ref.programme p ON p.code = x.programme_code
+                     WHERE s.upload_id = :id),
+                sj AS (
+                    SELECT st.graduate, st.matric,
+                           jsonb_build_object('studentId', st.student_id, 'matric', st.matric, 'name', st.name, 'programme', st.programme,
+                                              'cgpaBefore', st.cgpa_before, 'cgpaAfter', st.cgpa_after, 'tcrBefore', st.tcr_before, 'tcrAfter', st.tcr_after,
+                                              'graduate', st.graduate, 'changes', st.changes) AS j
+                      FROM st),
+                -- the rows that were not a plain load (a course registered, a result posted, as the file gave it): refused, corrected,
+                -- left as on record — by session, semester and line (a numbered line in number order); a result posted on an entry
+                -- that was kept as on the portal or corrected is one of them (its status says the result, facts.entryStatus the entry)
+                rw AS (
+                    SELECT row_number() OVER (ORDER BY w.session, w.semester, CASE WHEN w.line ~ '^[0-9]{1,9}$' THEN w.line::int END NULLS LAST,
+                                                       w.line, w.matric, w.course) AS n,
+                           jsonb_build_object('session', w.session, 'semester', w.semester, 'line', w.line, 'matric', w.matric, 'course', w.course,
+                                              'status', w.status, 'detail', w.detail, 'facts', w.facts) AS j
+                      FROM assessment.past_upload_row w
+                     WHERE w.upload_id = :id
+                       AND (w.status NOT IN ('ADDED', 'ALREADY_ON_RECORD', 'RESULT_POSTED', 'RESULT_ALREADY_ON_RECORD', 'ADDED_TO_OPEN_REGISTRATION')
+                            OR coalesce(w.facts->>'entryStatus', 'ADDED') NOT IN ('ADDED', 'ADDED_TO_OPEN_REGISTRATION', 'ALREADY_ON_RECORD')))
+                SELECT jsonb_build_object(
+                    'upload', """ + UPLOAD_JSON + """
+                    ,
+                    'byKind', coalesce((SELECT jsonb_object_agg(k.kind, k.n) FROM (SELECT c.kind, count(*) AS n FROM assessment.past_upload_change c
+                                                                                   WHERE c.upload_id = u.id GROUP BY c.kind) k), '{}'::jsonb),
+                    'students', coalesce((SELECT jsonb_agg(sj.j ORDER BY sj.graduate DESC, sj.matric) FROM sj), '[]'::jsonb),
+                    'graduates', coalesce((SELECT jsonb_agg(sj.j ORDER BY sj.matric) FROM sj WHERE sj.graduate), '[]'::jsonb),
+                    'changes', coalesce((SELECT jsonb_agg(z.j ORDER BY z.seq) FROM (
+                        SELECT c.seq, jsonb_build_object('seq', c.seq, 'kind', c.kind, 'matric', coalesce(x.matric_no, x.admission_no), 'courseCode', c.course_code,
+                                                         'session', c.session, 'semester', c.semester, 'line', c.line, 'wasUnits', c.was_units, 'nowUnits', c.now_units,
+                                                         'wasCode', c.was_code, 'nowCode', c.now_code, 'wasTitle', c.was_title, 'nowTitle', c.now_title,
+                                                         'wasEntryType', c.was_entry_type, 'nowEntryType', c.now_entry_type, 'wasStatus', c.was_status,
+                                                         'nowStatus', c.now_status, 'level', c.level, 'graduate', c.graduate, 'changedAt', c.changed_at,
+                                                         'revertedAt', c.reverted_at, 'revertNote', c.revert_note)
+                                         -- the category as the record reads it (the programme's basis first, a GST course always GST): an
+                                         -- entry's type alone misses a correction that moved only the basis. Wherever the change carries
+                                         -- the entry (a result row too); the course's kind as the ledger kept it, else through the class
+                                         -- (its code follows a rename), else by the code the ledger kept
+                                         || jsonb_build_object(
+                                                'wasCategory', CASE WHEN c.was_entry_type IS NOT NULL
+                                                                    THEN registration.entry_category(c.was_entry_type, coalesce(c.course_kind, k.kind), c.was_basis) END,
+                                                'nowCategory', CASE WHEN c.now_entry_type IS NOT NULL
+                                                                    THEN registration.entry_category(c.now_entry_type, coalesce(c.course_kind, k.kind), c.now_basis) END) AS j
+                          FROM assessment.past_upload_change c LEFT JOIN people.student x ON x.id = c.student_id
+                          LEFT JOIN catalogue.offering ko ON ko.id = c.offering_id
+                          LEFT JOIN catalogue.course k ON k.code = coalesce(ko.course_code, c.course_code)
+                         WHERE c.upload_id = u.id ORDER BY c.seq LIMIT 5000) z), '[]'::jsonb),
+                    'changesTotal', (SELECT count(*) FROM assessment.past_upload_change c WHERE c.upload_id = u.id),
+                    'rows', coalesce((SELECT jsonb_agg(z.j ORDER BY z.n) FROM (SELECT rw.n, rw.j FROM rw ORDER BY rw.n LIMIT 5000) z), '[]'::jsonb),
+                    'rowsTotal', (SELECT count(*) FROM rw),
+                    'byStatus', coalesce((SELECT jsonb_object_agg(k.status, k.n) FROM (SELECT w.status, count(*) AS n FROM assessment.past_upload_row w
+                                                                                     WHERE w.upload_id = u.id GROUP BY w.status) k), '{}'::jsonb),
+                    -- what became of the entry where it is not what the row's status says (a result posted on an entry kept as on the portal)
+                    'byEntryStatus', coalesce((SELECT jsonb_object_agg(k.es, k.n) FROM (SELECT w.facts->>'entryStatus' AS es, count(*) AS n
+                                                                                          FROM assessment.past_upload_row w
+                                                                                         WHERE w.upload_id = u.id AND w.facts->>'entryStatus' IS NOT NULL
+                                                                                           AND w.facts->>'entryStatus' <> w.status
+                                                                                         GROUP BY 1) k), '{}'::jsonb))::text
+                  FROM assessment.past_upload u WHERE u.id = :id
+                """).param("id", upload).query(String.class).optional().orElse(null);
     }
 
     java.util.Map<String, Object> importLegacyPg(String session, int semester, String rowsJson, boolean withResults) {

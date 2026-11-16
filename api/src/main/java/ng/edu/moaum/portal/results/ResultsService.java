@@ -67,8 +67,24 @@ public class ResultsService {
         }
     }
 
+    /** uploadId: the confirmed upload a registration or past results import loads under (POST /legacy/uploads); a check, and the
+     *  postgraduate uploads, name none */
     public record MigrationIn(@NotBlank String session, @NotNull @Min(1) @Max(3) Integer semester,
-                              @NotNull List<Map<String, Object>> rows) {
+                              @NotNull List<Map<String, Object>> rows, UUID uploadId) {
+    }
+
+    /** an old-portal upload confirmed: RESULTS (Past results) or REGISTRATION (Course registration), the file's name and rows, and
+     *  why it is loaded (ten characters or more — the database says so; a longer file name is cut to 200) */
+    public record UploadIn(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "RESULTS|REGISTRATION") String kind,
+                           String fileName, @NotNull @Min(0) Integer rows, String reason) {
+    }
+
+    /** complete: every batch loaded; false — stopped part way (what loaded stands, in the upload's ledger) */
+    public record FinishIn(@NotNull Boolean complete) {
+    }
+
+    /** why a closed upload is rolled back (ten characters or more — the database says so: LEGACY_UPLOAD_REASON) */
+    public record RevertIn(@jakarta.validation.constraints.Size(max = 2000) String reason) {
     }
 
     public record StudentsIn(@NotNull List<Map<String, Object>> rows) {
@@ -139,32 +155,81 @@ public class ResultsService {
     }
 
     /** V472: the course registration of a past semester; what is on record keeps its units and status, and every row not
-     *  loaded or left as it was comes back with its reason */
+     *  loaded or left as it was comes back with its reason. The rows state each course as the student took it (title, credit
+     *  units, category) and load under their confirmed upload, whose ledger keeps every change */
     @Transactional
-    public Map<String, Object> importRegistration(String session, int semester, List<Map<String, Object>> rows) {
+    public Map<String, Object> importRegistration(String session, int semester, List<Map<String, Object>> rows, UUID upload) {
         requireRows(rows);
-        return loadLegacy(session, semester, rows, false, false);
+        return loadLegacy(session, semester, rows, false, false, upload);
     }
 
     @Transactional
-    public Map<String, Object> importResults(String session, int semester, List<Map<String, Object>> rows) {
+    public Map<String, Object> importResults(String session, int semester, List<Map<String, Object>> rows, UUID upload) {
         requireRows(rows);
-        return loadLegacy(session, semester, rows, true, false);
+        return loadLegacy(session, semester, rows, true, false, upload);
     }
 
     /** V472: what a registration (or results) upload would do, row by row — the load run and undone; nothing stays */
     @Transactional
     public Map<String, Object> previewLegacy(String session, int semester, List<Map<String, Object>> rows, boolean withResults) {
         requireRows(rows);
-        Map<String, Object> out = loadLegacy(session, semester, rows, withResults, true);
+        Map<String, Object> out = loadLegacy(session, semester, rows, withResults, true, null);
         // the load undoes itself; the transaction is rolled back as well, so a preview can never leave a trace
         org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
         return out;
     }
 
-    private Map<String, Object> loadLegacy(String session, int semester, List<Map<String, Object>> rows, boolean withResults, boolean preview) {
-        return json.readValue(repo.loadLegacy(session, semester, json.writeValueAsString(rows), withResults, preview),
+    private Map<String, Object> loadLegacy(String session, int semester, List<Map<String, Object>> rows, boolean withResults, boolean preview, UUID upload) {
+        return json.readValue(repo.loadLegacy(session, semester, json.writeValueAsString(rows), withResults, preview, upload),
                 new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    /* ── an old-portal upload confirmed: its record, under which its batches load (the backup and the reconciliation) ── */
+
+    private Map<String, Object> jsonObject(String text) {
+        return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    /** the upload opened (RUNNING) with its reason, under the acting person and office — the database refuses a reason under ten
+     *  characters (LEGACY_UPLOAD_REASON) and past results from an office outside the Directorate of ICT's (PAST_RESULTS_OFFICE) */
+    @Transactional
+    public Map<String, Object> beginUpload(UploadIn in) {
+        return jsonObject(repo.beginUpload(in.kind(), in.fileName() == null || in.fileName().isBlank() ? null : in.fileName().trim(), in.rows(),
+                in.reason() == null ? null : in.reason().trim()));
+    }
+
+    /** the upload closed by the person who opened it: COMPLETE, or INCOMPLETE when it stopped part way */
+    @Transactional
+    public Map<String, Object> finishUpload(UUID upload, boolean complete) {
+        return jsonObject(repo.finishUpload(upload, complete));
+    }
+
+    /** a closed upload (COMPLETE or INCOMPLETE) rolled back from its ledger, newest change first, only where the record still holds
+     *  what the upload put: {ref, state REVERTED, undone, left, heldDropped, earlierUndone (what an earlier rollback had to leave
+     *  because of this upload, undone now), leftChanges}. The database checks the office (the Directorate of ICT,
+     *  or a Database Operator granted over the University: LEGACY_REVERT_OFFICE), the reason (LEGACY_UPLOAD_REASON) and the state —
+     *  a running upload is closed first, and one rolled back is not rolled back again (LEGACY_UPLOAD_STATE) */
+    @Transactional
+    public Map<String, Object> revertUpload(UUID upload, String reason) {
+        return jsonObject(repo.revertUpload(upload, reason == null ? null : reason.trim()));
+    }
+
+    /** the uploads, newest first (1 to 500; 50 unless asked) */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> uploads(Integer limit) {
+        int n = limit == null ? 50 : Math.max(1, Math.min(limit, 500));
+        return json.readValue(repo.uploads(n), new tools.jackson.core.type.TypeReference<List<Map<String, Object>>>() { });
+    }
+
+    /** one upload's report: what it changed, and each student's CGPA before and after — the Senate-approved graduates apart, for
+     *  the Registry (their approved CGPA and class of degree stand) */
+    @Transactional(readOnly = true)
+    public Map<String, Object> uploadReport(UUID upload) {
+        String report = repo.uploadReport(upload);
+        if (report == null) {
+            throw new NotFound("old-portal upload", upload);
+        }
+        return jsonObject(report);
     }
 
     /** the postgraduate course registration of a past session/semester, into the postgraduate module (V214) */
@@ -910,6 +975,20 @@ public class ResultsService {
         return Map.of("course", course, "omitted", false);
     }
 
+    /** the value seen most often — the first seen of those seen equally often — or the fallback when none was */
+    private static <T> T mostCommon(Map<T, Integer> seen, T fallback) {
+        if (seen == null || seen.isEmpty()) return fallback;
+        T best = fallback;
+        int most = 0;
+        for (Map.Entry<T, Integer> e : seen.entrySet()) {
+            if (e.getValue() > most) {
+                best = e.getKey();
+                most = e.getValue();
+            }
+        }
+        return best;
+    }
+
     public Sheets.Broadsheet broadsheet(String prog, int level, String session, int sem, String stream) {
         // V754, V756: a semester 3 is the Summer only on a regular (undergraduate) sheet of a session that had a Summer Semester; a CCE
         // or postgraduate sheet's semester 3 is their own third semester — read before the standing, which it decides
@@ -937,12 +1016,28 @@ public class ResultsService {
         Map<String, Integer> courseLevel = new LinkedHashMap<>();
         Map<String, String> courseTitle = new LinkedHashMap<>();
         Map<UUID, List<Sheets.BroadsheetCell>> byStudent = new LinkedHashMap<>();
+        /* a column's head is the course as most of its students took it — the units, the title and the code an old-portal file stated
+           (the course code where none did) — never the first student's: a student who took it at other units is shown at their own
+           (each mark carries them) and counted at them, as the student's own record counts them */
+        Map<String, Map<Integer, Integer>> unitsSeen = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> titleSeen = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> codeSeen = new LinkedHashMap<>();
         for (Sheets.BroadsheetCell c : cells) {
             courses.putIfAbsent(c.courseCode(), c.units());
             courseKind.putIfAbsent(c.courseCode(), c.kind());
             courseLevel.putIfAbsent(c.courseCode(), c.courseLevel());
             courseTitle.putIfAbsent(c.courseCode(), c.title());
+            unitsSeen.computeIfAbsent(c.courseCode(), k -> new LinkedHashMap<>()).merge(c.units(), 1, Integer::sum);
+            if (c.title() != null) titleSeen.computeIfAbsent(c.courseCode(), k -> new LinkedHashMap<>()).merge(c.title(), 1, Integer::sum);
+            codeSeen.computeIfAbsent(c.courseCode(), k -> new LinkedHashMap<>())
+                    .merge(c.codeAsTaken() == null ? c.courseCode() : c.codeAsTaken(), 1, Integer::sum);
             byStudent.computeIfAbsent(c.studentId(), k -> new ArrayList<>()).add(c);
+        }
+        Map<String, String> courseCodeAsTaken = new LinkedHashMap<>();
+        for (String code : courses.keySet()) {
+            courses.put(code, mostCommon(unitsSeen.get(code), courses.get(code)));
+            courseTitle.put(code, mostCommon(titleSeen.get(code), courseTitle.get(code)));
+            courseCodeAsTaken.put(code, mostCommon(codeSeen.get(code), code));
         }
         List<Sheets.ClassBand> classes = repo.classBands();
         List<Sheets.BroadsheetRow> rows = new ArrayList<>();
@@ -979,7 +1074,7 @@ public class ResultsService {
             for (String code : courses.keySet()) {
                 Sheets.BroadsheetCell c = e.getValue().stream().filter(x -> x.courseCode().equals(code)).findFirst().orElse(null);
                 if (c == null) {
-                    marks.add(new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false));
+                    marks.add(new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false, null));
                     continue;
                 }
                 cur += c.units();   // registered: the student has a cell for this course
@@ -1029,12 +1124,12 @@ public class ResultsService {
                 }
                 // a score still in the chain is carried with its figures so the sheet can show it as not yet counted
                 if (noResult) {
-                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, "NO_RESULT", false));
+                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, "NO_RESULT", false, c.units()));
                 } else if (held || exempted) {
-                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, c.outcome(), false));
+                    marks.add(new Sheets.BroadsheetMark(code, c.stage(), null, null, null, c.outcome(), false, c.units()));
                 } else {
                     marks.add(new Sheets.BroadsheetMark(code, c.stage(), absent ? null : c.total(), absent ? "F" : c.grade(),
-                            absent ? BigDecimal.ZERO : c.points(), absent ? "ABSENT" : c.outcome(), counted || absent));
+                            absent ? BigDecimal.ZERO : c.points(), absent ? "ABSENT" : c.outcome(), counted || absent, c.units()));
                 }
             }
             BigDecimal gpa = units == 0 ? null : points.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP);
@@ -1115,7 +1210,7 @@ public class ResultsService {
         for (ResultsRepository.ClassMember m : repo.unregistered(prog, level, session, sem, stream)) {
             if (byStudent.containsKey(m.studentId())) continue;
             List<Sheets.BroadsheetMark> marks = courses.keySet().stream()
-                    .map(code -> new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false)).toList();
+                    .map(code -> new Sheets.BroadsheetMark(code, "NOT_REGISTERED", null, null, null, null, false, null)).toList();
             Sheets.Cumulative cum = repo.cumulative(m.studentId(), session, sem);
             rows.add(new Sheets.BroadsheetRow(m.studentId(), m.number(), m.surname() + ", " + m.otherNames(), marks, 0, 0, 0, BigDecimal.ZERO, null, 0,
                     "Not registered", cum.tcr(), cum.tce(), cum.twgp(), cum.cgpa(), cum.prevCgpa(), List.of(), "DID NOT REGISTER FOR THIS SEMESTER", m.entryMode(),
@@ -1124,7 +1219,7 @@ public class ResultsService {
         rows.sort(java.util.Comparator.comparing(Sheets.BroadsheetRow::name, String.CASE_INSENSITIVE_ORDER));
         BigDecimal mean = withGpa == 0 ? null : gpaSum.divide(BigDecimal.valueOf(withGpa), 2, RoundingMode.HALF_UP);
         List<Sheets.BroadsheetCourse> cs = courses.entrySet().stream().map(x -> new Sheets.BroadsheetCourse(x.getKey(), courseTitle.get(x.getKey()), x.getValue(), courseKind.get(x.getKey()), courseLevel.getOrDefault(x.getKey(), level),
-                inProgramme.contains(x.getKey()))).toList();
+                inProgramme.contains(x.getKey()), courseCodeAsTaken.get(x.getKey()), unitsSeen.get(x.getKey()).size() > 1)).toList();
         long cellsAll = cells.size();
         long cellsIn = cells.stream().filter(c -> c.outcome() != null).count();
         List<Sheets.BroadsheetCourseCoverage> courseCoverage = courseCov.entrySet().stream()

@@ -259,6 +259,8 @@ Academic
  → Upload or Create Departments → /structure/departments
  → Upload or Create Courses → /catalogue/upload
  → Migrate from Old Portal → /records/migration
+ → Old Portal Uploads → /records/migration/uploads  (V771)
+ → Course Registration Correction → /registration/corrections  (V772)
 Students
  → Student Records → /students
 Admissions
@@ -372,11 +374,13 @@ Overview
 Academic
  → College of Health Sciences → /college
  → Senate Business → /results/approvals
+ → Course Registration Correction → /registration/corrections  (V772: decide removals held for a result)
  → External Examiners → /examiners
  → Examiner Appointments → /examiners/appointments
  → Project Assignments → /examiners/projects
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
+ → Old Portal Uploads → /records/migration/uploads  (V771)
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
@@ -429,6 +433,7 @@ Academic
  → Result Pipeline → /results/pipeline
  → Approval Chain → /results/chain
  → Broadsheets → /results/broadsheet
+ → Old Portal Uploads → /records/migration/uploads  (V771)
  → External Examiners → /examiners
  → Examiner Appointments → /examiners/appointments
  → Project Assignments → /examiners/projects
@@ -444,6 +449,7 @@ Students
  → Records & Queries → /records
  → Documents Office → /credentials/documents
  → Transcripts → /credentials/transcripts
+ → Course Registration Correction → /registration/corrections  (V772: decide removals held for a result)
 Reports
  → Reports & Returns → /reports
  → Student Register → /reports/students
@@ -473,6 +479,7 @@ Academic
  → Project Assignments → /examiners/projects
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
+ → Old Portal Uploads → /records/migration/uploads  (V771)
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
@@ -526,6 +533,7 @@ Academic
  → Result Pipeline → /results/pipeline
  → College of Health Sciences → /college
  → Migrate from Old Portal → /records/migration
+ → Old Portal Uploads → /records/migration/uploads  (V771)
  → Broadsheets → /results/broadsheet
  → Senate Schedule → /results/senate
  → Publication → /results/publish
@@ -2908,29 +2916,29 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 
 | Point | Content |
 |---|---|
-| Purpose | Bring the old portal's record over: student biography or core students, postgraduate students, course registration, past results (final under a legacy minute), PG registration/results/research, JAMB numbers, passport photos, and the migrated students' clearance. |
-| Users / roles | The results controller's `MIGRATE` guard; the screen names "the ICT Directorate, the Examinations Officer, HODs and Records". |
-| Navigation | Academic → Migrate from Old Portal → `/records/migration` (ict, records). |
-| Dashboard | Result tiles per upload kind (created, updated, no student, skipped…). |
-| Main features | Eleven segmented tabs (1 · Student biography (full), 1 · Students (core only), 1 · Postgraduate students, 2 · Course registration, 3 · Past results, PG · registration, PG · results, PG · research, 4 · JAMB numbers, 5 · Passport photos, 6 · Clearance); Download template; Session (fallback) and Semester (fallback); batch upload with progress; skipped rows download; passport upload matched by JAMB number in the filename; the migrated-clearance panel. |
-| Create | `POST /api/v1/results/legacy/*`, `/student/students/migrated/clear`. |
-| View | Counters and notes. |
-| Edit / Delete | None; re-uploading updates rather than duplicates. |
-| Search | None. |
+| Purpose | Bring the old portal's record over: student biography or core students, postgraduate students, course registration, past results (final under a legacy minute), PG registration/results/research, JAMB numbers, passport photos, and the migrated students' clearance. Since V771 (15 November 2026) the undergraduate registration and results record each course as the student took it — the file's code, Course Title, Credit Units and Category — under a confirmed upload with its own record, ledger and report. |
+| Users / roles | The results controller's `MIGRATE` guard (with a Database Operator granted over the University); past results `PAST_RESULTS` (ict, dbops, super); the screen names "the ICT Directorate, the Examinations Officer, HODs and Records". Only the Directorate of ICT's offices (ict, super, dbops over the University) correct a course already on record; the others add what is missing. The uploads' reports: ict, dbops, super, records, academic, registrar, dregistrar. |
+| Navigation | Academic → Migrate from Old Portal → `/records/migration` (ict, records, dbops); Old Portal Uploads → `/records/migration/uploads` (ict, dbops, records, academic, registrar, dregistrar). |
+| Dashboard | Result tiles per upload kind (created, updated, no student, skipped…); for registration and results also units, codes or titles and categories corrected, courses as taken recorded, and what was left as on record. |
+| Main features | Eleven segmented tabs (1 · Student biography (full), 1 · Students (core only), 1 · Postgraduate students, 2 · Course registration, 3 · Past results, PG · registration, PG · results, PG · research, 4 · JAMB numbers, 5 · Passport photos, 6 · Clearance); Download template; Session (fallback) and Semester (fallback); batch upload with progress; skipped rows download; passport upload matched by JAMB number in the filename; the migrated-clearance panel. Registration and results: the header read first (a bare Units column, the old portal's status code, stops the file; Course Code, Course Title, Credit Units and Category required); the check against the record before anything goes up; the confirmation with a reason; one upload `PRU-YYYY-NNNNN` closed complete or incomplete; Resume or Stop after a failed batch. |
+| Create | `POST /api/v1/results/legacy/*`, `/student/students/migrated/clear`; `POST /legacy/uploads` (open) and `/legacy/uploads/{id}/finish` (close). |
+| View | Counters and notes; Old Portal Uploads: every confirmed upload and one upload's report. |
+| Edit / Delete | None; re-uploading updates rather than duplicates. A registration or results file corrects a course already on record (units, code or title, category) when the Directorate of ICT uploads it — never over a result entered on the portal, a Senate units amendment or a course taken off the registration. |
+| Search | Old Portal Uploads: the tables' own search. |
 | Filters | None. |
-| Reports | None. |
-| Export | Templates; "Download the skipped rows" / "Download the skipped numbers". |
+| Reports | The upload's report: changes by kind and in order with what was there before, each student's CGPA and units counted before and after, the Senate-approved graduates for the Registry. |
+| Export | Templates; "Download the skipped rows" / "Download the skipped numbers"; "Download every row's status" (the check) and "Download these rows" (after the upload); the upload's changes to branded Excel (serial PRU). |
 | Notifications | None. |
-| Approval workflow | None. |
-| Statuses | None. |
-| Validation rules | A matriculation number must be the University's own or a legacy old-portal number; order Students → Registration → Results; a result import creates the missing registration entry. |
-| Security | Migrated students sign in with their number as both username and password and must choose a real one at first sign-in. |
-| Audit trail | Every import is the officer's act; bulk clearance inserts run with the audit trigger disabled. |
-| Related modules | Student records (§3.23); Results (§3.30); PG coursework/research (§3.20–21); Legacy fees (§3.40). |
-| Common errors | "N rows had no valid matriculation number and were not uploaded"; "Your office may not migrate records." |
-| Troubleshooting | Fix the numbers at source and re-upload (idempotent). |
+| Approval workflow | None; a registration or results file goes up only after its check and a confirmation with a reason (ten characters or more) and, where a code's title is new to its course, those titles ticked. |
+| Statuses | Upload: RUNNING · COMPLETE · INCOMPLETE. Each row: ADDED, ALREADY_ON_RECORD, UNITS_CORRECTED, AS_TAKEN_CORRECTED, CATEGORY_CORRECTED, AS_TAKEN_LINKED, UNITS_ON_PORTAL, UNITS_BY_AMENDMENT, AS_TAKEN_DIFFERS, REMOVED_ON_RECORD, REMOVAL_PENDING, COURSE_ON_RECORD_ELSEWHERE, AS_TAKEN_MISSING, AS_TAKEN_INVALID, COURSE_AMBIGUOUS, DUPLICATE_CONFLICT and the earlier ones (see `docs/past-results-upload.md`). |
+| Validation rules | A matriculation number must be the University's own or a legacy old-portal number; order Students → Registration → Results; a result import creates the missing registration entry. Credit units 0–12 from a Credit Units (or CU) column only; Category Core, Elective, GST or Carry-over (2, 3, 1, 0); a course identified by its code and title, never the code alone (`COURSE_AMBIGUOUS`). |
+| Security | Migrated students sign in with their number as both username and password and must choose a real one at first sign-in. An upload is loaded and closed only by the officer who opened it (`LEGACY_UPLOAD_OWN`). |
+| Audit trail | Every import is the officer's act; bulk clearance inserts run with the audit trigger disabled. Each confirmed upload is audited (`assessment.past_upload`) with its ledger of every change and what was there before (`past_upload_change`) and each student's CGPA before and after (`past_upload_student`). |
+| Related modules | Student records (§3.23); Results (§3.30); PG coursework/research (§3.20–21); Legacy fees (§3.40); Course Registration Correction (§4.6.5). |
+| Common errors | "N rows had no valid matriculation number and were not uploaded"; "Your office may not migrate records."; "The file's Units column is not credit units."; "The file has no Course Title column."; `LEGACY_UPLOAD_REQUIRED`, `LEGACY_UPLOAD_STATE`, `LEGACY_UPLOAD_REASON`. |
+| Troubleshooting | Fix the numbers at source and re-upload (idempotent). A row left as on record says what to do; a course held by more than one course is written under its own code. |
 
-**Status:** IMPLEMENTED (Migrations screen note about a legacy migration console remains a placeholder).
+**Status:** IMPLEMENTED (Migrations screen note about a legacy migration console remains a placeholder); the course as taken, the confirmed uploads and their reports (V771) IMPLEMENTED.
 
 ---
 
@@ -3556,6 +3564,35 @@ Students → SIWES Supervision → /siwes
 **URL** `/siwes?session&sem&offering` · **Purpose** Assign supervisors and record the practical mark. · **Who** hod, siwes (menu); `ASSIGNERS`. · **Layout** Session, Semester, SIWES course pickers; tiles Students / Supervisors assigned / Score sheet / Course; table Matric, Name, Programme, Supervisor (searchable select), Assessment /40, Practical /60 (input + Save), Total; inputs disabled unless the sheet is at ENTRY. · **Actions** Assign → `PUT /siwes/offerings/{o}/students/{s}/supervisor`; Save → `PUT …/practical` (a change prompts "Why is X's practical mark changing…"). · **Messages** "No SIWES course this session and semester"; `SIWES_NO_SHEET`.
 
 > **Screenshot Required:** SIWES Supervision — `/siwes` — the table with supervisors assigned.
+
+#### 4.6.5 Course Registration Correction
+
+```text
+Academic → Course Registration Correction → /registration/corrections   (Director of ICT, Registrar)
+Students → Course Registration Correction → /registration/corrections   (Deputy Registrar)
+```
+**URL** `/registration/corrections[?matric=]` · **Purpose** The Director of ICT takes one student's wrongly counted course off one registration, with a reason (V772, `docs/course-registration-correction.md`); a course with a result is held for the Registrar or the Deputy Registrar, who confirm or decline it on the same page. · **Who** ict (Academic group), registrar (Academic group), dregistrar (Students group) (menu); API readers ict, super, registrar, dregistrar; take off, cancel and undo ict, super; decide registrar, dregistrar, super — never the officer who asked. · **Layout** Note "One student's course, taken off one registration"; tabs **Find a student** and **Waiting for the Registry** (with its count; the Registry opens on it). Find a student: panel "Find the student" (Matriculation number, Search); the student's panel (Matriculation number, Programme, Level, Status; the note "Senate-approved graduate — the approved CGPA stays"; "Session and semester", the student's registrations newest first with level, status and courses counted); a note "Correction RCR-… recorded" after a request; panel "Courses on the registration · {session} · {semester}" (n counted of m) with Course (the code as taken, today's beneath where it differs), Title, Units, Status, Category (Elective pill), How it came, Result, Removal (reference and state), Remove; panel "Corrections of this student" with Reference, Course, Session, Was, How it came, Result, State, Asked, Decided or undone, Reason, Undo. Waiting for the Registry: Reference, Student (Senate-approved graduate pill), Course (title, units, how it came), Session, Result, Reason, Asked, and Confirm / Decline / Open / Undo.
+
+| Field (Take off) | Description | Required | Validation |
+|---|---|---|---|
+| Student Name, Matriculation Number, Programme, Level, Academic Session, Semester, Course Code, Course Title, Course Unit, Registration Status, How it came, Result | The summary shown before the course is taken off | — | — |
+| The same course on the student's other registrations | Tick to take it off under the same reason (a carry-over the result gave rise to); one not counted, or with a removal standing, cannot be ticked | No | Counted, no live removal |
+| Why the course is taken off | Placeholder "e.g. An elective the student never chose, registered by the old-portal upload" | Yes | Ten characters or more (`RCR_REASON`) |
+| Note on the decision / Why it is declined | Confirm: optional; Decline: required | Decline | Ten characters or more (`RCR_NOTE`) |
+| Why it is undone | Undo (cancel a held removal, put an applied one back) | Yes | Ten characters or more |
+
+| Action | What it does | Endpoint |
+|---|---|---|
+| Search | The student and their registrations | `GET /api/v1/registration/corrections/student?matric=` |
+| Choose the session and semester | The registration's courses | `GET …/entries?student&session&semester` |
+| Take it off / Take them off / Ask the Registry | Without a result: withdrawn at once (APPLIED); with a result: held (PENDING) | `POST /api/v1/registration/corrections` |
+| Confirm the removal / Decline it | APPLIED (withdrawn, the mark kept on its sheet) or DECLINED | `POST …/{id}/decide` |
+| Cancel it / Put it back | CANCELLED (held) or UNDONE (applied; the entry back as it stood) | `POST …/{id}/undo` |
+| (lists) | The student's corrections; the Registry's queue | `GET …?student=`, `GET …?state=PENDING` |
+
+**Messages** "No student found"; "{groupRef}: held for the Registrar or the Deputy Registrar."; "{groupRef}: taken off {name}'s registration."; "{ref} confirmed: … is withdrawn from …'s registration; the mark stays on its sheet."; "{ref} declined: … keeps counting."; "{ref} cancelled: … keeps counting."; "{ref} undone: … is back on the registration as it stood."; refusals `RCR_OFFICE`, `RCR_DECIDER`, `RCR_REASON`, `RCR_NOT_COUNTED`, `RCR_OPEN`, `RCR_USE_DUPLICATES`, `RCR_SAME_PERSON`, `RCR_STALE`, `RCR_NOTE`, `RCR_STATE`. · **Security** The database re-checks the acting office; the officer who asked never decides (`RCR_SAME_PERSON`, whatever office they hold); a removal sticks — only its undo puts the course back (`RCR_REMOVED`).
+
+> **Screenshot Required:** Course Registration Correction — `/registration/corrections` — a student's registration with the Remove action and the take-off confirmation.
 
 ### 4.7 Undergraduate admissions
 
@@ -4260,9 +4297,24 @@ Students → Records & Queries → /records
 ```text
 Academic → Migrate from Old Portal → /records/migration
 ```
-**URL** `/records/migration` · **Purpose** Bring students, registration, results, PG records, JAMB numbers, passports and clearance over (§3.57). · **Who** ict, records (menu); `MIGRATE`. · **Layout** Info note "Bring the record over from the old portal"; eleven segmented tabs; per tab a panel with Session (fallback), Semester (fallback), Download template, the upload button with progress ("Reading the file", "Preparing the rows", "Importing n of m"); result tiles and "Imported" note; "N rows had no valid matriculation number and were not uploaded" with "Download the skipped rows"; passports panel "Upload passport photos"; notes "Order matters, and re-uploading is safe" and "How migrated students sign in — no password reset needed"; the clearance tab's migrated panel. · **Actions** `POST /api/v1/results/legacy/{kind}` per batch; passports → legacy passports endpoint; Clear migrated. · **Messages** "This desk is for the ICT Directorate, the Examinations Officer, HODs and Records".
+**URL** `/records/migration` · **Purpose** Bring students, registration, results, PG records, JAMB numbers, passports and clearance over (§3.57). · **Who** ict, records, dbops (menu); `MIGRATE`; the 3 · Past results and PG · results tabs only for `PAST_RESULTS` (ict, dbops, super). · **Layout** Info note "Bring the record over from the old portal"; eleven segmented tabs; per tab a panel with Session (fallback), Semester (fallback), Download template, the upload button with progress ("Reading the file", "Preparing the rows", "Checking the file against the record", "Importing n of m"); result tiles and "Imported" note; "N rows had no valid matriculation number and were not uploaded" with "Download the skipped rows"; passports panel "Upload passport photos"; notes "Order matters, and re-uploading is safe" and "How migrated students sign in — no password reset needed"; the clearance tab's migrated panel.
+
+The 2 · Course registration and 3 · Past results tabs record each course as the student took it (V771, `docs/past-results-upload.md`):
+
+| Part | What it shows |
+|---|---|
+| Templates | 2 · Course registration: Matriculation Number, Course Code, Course Title, Credit Units, Category, Level, Session, Semester. 3 · Past results: the same, then CA, Exam, Total, Outcome. The PG tabs keep their Units column |
+| Header read first | A units column with no Credit Units (or CU) column stops the file: "The file's Units column is not credit units." (the old portal's Units is a status code: 1 GST, 2 core, 3 elective, 0 carry-over). A file without a Course Code, Course Title, Credit Units or Category column stops: "The file has no … column(s)." |
+| Before this file goes up (the check) | Tiles: rows read; new results or courses to add; existing updated or already on record; units, titles or codes, and categories corrected; courses as taken new / on record; units differing from the catalogue; students whose CGPA changes; Senate-approved graduates; invalid, missing or ambiguous; repeated in the file; will not load; registration discrepancies; left as on record; held (results). Notes on courses going onto a registration open on the portal, on codes whose title is new to the course, on the graduates in the file, and "What the file corrects, and what it leaves". Tables: Rows to look at (row in the file, the code, title, units and category uploaded, status, detail and what to do); The courses as the file has them (code as taken, title in the file, current title, units in the file, current units, units applied, session, semester, students, version, match); Students whose GPA or CGPA changes (CGPA and units counted before → after, the semesters whose GPA moves). Buttons: Upload it (or "Upload it — the rows that will not load are set aside"), Download every row's status, Cancel |
+| The confirmation | Modal "Upload the past results" / "Upload the course registration": the file and rows, "one upload on the record"; the courses named by a code whose title is new to it (Code, Title in the file, Current title, Rows) with the tick "I have checked these titles"; "Why this file is loaded" (ten characters or more; on the upload's record with your name); Cancel, Upload it |
+| After the upload | Tiles including Units corrected, Code or title corrected, Category corrected, Courses as taken recorded, Portal result stands — left, Senate's units — left, On record differently — left, Taken off — not brought back, Removal awaits the Registry, On record under another code, and the rows refused; the note "Recorded as upload PRU-YYYY-NNNNN" with **Open the upload's report** (→ `/records/migration/uploads?id=`); "N rows were not loaded, left as on record or corrected" with "Download these rows" |
+| A failed batch | "Stopped at n of m rows" with **Resume from the failed batch** and **Stop here and close the upload** (closed incomplete; what loaded stands) |
+
+**Actions** Check → `POST /api/v1/results/legacy/{registration|results}/preview` per batch (nothing written); Upload it → `POST /legacy/uploads {kind, fileName, rows, reason}`, then `POST /legacy/{registration|results} {session, semester, rows, uploadId}` per batch, then `POST /legacy/uploads/{id}/finish {complete}`; other tabs `POST /api/v1/results/legacy/{kind}` per batch; passports → legacy passports endpoint; Clear migrated. · **Messages** "This desk is for the ICT Directorate, the Examinations Officer, HODs and Records"; "Past results are uploaded by the Directorate of ICT or a Database Operator"; `LEGACY_UPLOAD_REQUIRED`, `LEGACY_UPLOAD_OWN`, `LEGACY_UPLOAD_STATE`, `LEGACY_UPLOAD_REASON`. · **Security** Only the Directorate of ICT's offices correct a course already on record; another office's file adds what is missing and lists the rest (`AS_TAKEN_DIFFERS`).
 
 > **Screenshot Required:** Migrate from Old Portal — `/records/migration` — the tab strip and a result note.
+
+> **Screenshot Required:** Migrate from Old Portal — `/records/migration` (3 · Past results) — the check "Before this file goes up" with its tiles and The courses as the file has them.
 
 #### 4.11.6 Matriculation
 
@@ -4371,6 +4423,15 @@ Staff → Department Staff → /hod/staff
 **URL** `/hod/staff` · **Purpose** The department's staff from HR records. · **Who** hod. · **Layout** Tiles Staff on the establishment / Hold a teaching office / Professors; table Name, Rank, No., Sex, Teaching, Status. · **Messages** "Your Head-of-Department office is not tied to a department yet".
 
 > **Screenshot Required:** Department Staff — `/hod/staff` — tiles and the table.
+
+#### 4.11.15 Old Portal Uploads
+
+```text
+Academic → Old Portal Uploads → /records/migration/uploads → an upload → /records/migration/uploads?id={id}
+```
+**URL** `/records/migration/uploads[?id=]` · **Purpose** The confirmed old-portal uploads of course registration and past results (V771), and one upload's report: every change it made with what was there before, the students whose CGPA moved, and the Senate-approved graduates for the Registry. · **Who** ict, dbops, records, academic, registrar, dregistrar (menu, next to Migrate from Old Portal where the office has it); API `UPLOAD_READERS` (the same and super; a Database Operator granted over the University). · **Layout** List: note "Each confirmed file is one upload on the record"; panel "Confirmed uploads" (the latest, newest first; Migrate from the old portal) with Upload (the PRU reference, a link), What (Past results / Course registration), File, Rows, State (Complete / Stopped part way / Running), Changes, Students, Graduates, Reason, Loaded by (name and office), Started, Finished; "No upload yet" when none. Report: All uploads and Migrate from the old portal; panel "Upload PRU-YYYY-NNNNN" with its state pill and What, File, Rows, Loaded by, Started, Finished, Reason (a note when it is still running or stopped part way); tiles Changes, Students (n whose CGPA moved), Senate-approved graduates ("approved CGPA kept — for the Registry") and one per kind of change (Course added, Units corrected, Code or title corrected, Recorded as taken, Category corrected, Approved again, Result posted, Result replaced, Class heading corrected); panel "Senate-approved graduates" (for the Registry; note "Their approved CGPA and class of degree stay as approved"): Matriculation number, Name, Programme, CGPA before, CGPA from the record now, Changes; panel "Students" (graduates first): Matriculation number, Name (Senate-approved graduate pill), Programme, CGPA before → after, Units counted before → after, Changes; panel "Changes" (the first 5,000 in order, with a note when there are more): #, Change, Matriculation number, Course, Session, Semester, Row, Was, Now. · **Actions** List → `GET /api/v1/results/legacy/uploads?limit=50`; report → `GET /legacy/uploads/{id}`; Excel → the changes as a branded workbook (serial PRU; the upload's reference, what, file, reason, loader and state at the head; Change, Matriculation number, Course, Session, Semester, Row in the file, Units was/now, Code was/now, Title was/now, Category was/now, Status was/now, Senate-approved graduate, When). · **Messages** "Unable to load the uploads"; "No such upload" (404); "This upload is still running"; "This upload stopped part way". · **Security** Read only; the uploads are opened and closed on Migrate from Old Portal by the officer who loads them.
+
+> **Screenshot Required:** Old Portal Uploads — `/records/migration/uploads?id=` — an upload's tiles, the Senate-approved graduates and the Changes table.
 
 ### 4.12 Results, examinations and the question bank
 
@@ -5307,7 +5368,7 @@ Academic → Course Registration → /student/register
 | Submit for approval | Fee gate, unit range, deferment gate → SUBMITTED | `POST /me/registration/submit` |
 | Add / Drop | Within the window | `POST /me/registration/add|drop` |
 
-**Messages** "the first semester school fees for … are not fully paid"; "the registration carries N units; at 100 level the range is 18 to 24"; "add and drop is not open for …"; "a carryover cannot be dropped; it must be repeated".
+**Messages** "the first semester school fees for … are not fully paid"; "the registration carries N units; at 100 level the range is 18 to 24"; "add and drop is not open for …"; "a carryover cannot be dropped; it must be repeated". A course dropped, or taken off the registration by the Director of ICT (V772), starts unticked, so a later save never puts it back; one taken off is shown disabled with the pill Removed, its units struck through, and "Taken off your registration by the Directorate of ICT" — never ticked, never counted, not offered again in Add or drop. A past course shows the code it was taken under (V771).
 
 > **Screenshot Required:** Course Registration — `/student/register` — the pick lists and the units meter.
 

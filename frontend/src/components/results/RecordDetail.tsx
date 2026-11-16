@@ -29,12 +29,17 @@ export interface CorrectionRequest {
   amendmentRef: string | null; amendmentStage: string | null; resolvedVersion: N; closedAt: string | null; closedOffice: string | null;
   closedNote: string | null; closedBy: string | null;
 }
+/** the class as this student took it — the code, title and credit units an old-portal file stated (kept when the course is later
+ *  renamed) and where the record of it came from; all missing where no file stated it, or on an older answer */
+interface AsTaken { asTakenCode?: string | null; asTakenTitle?: string | null; asTakenUnits?: number | null; asTakenSource?: string | null }
 interface Detail {
   student: { id: string; number: string | null; jamb: string | null; surname: string; otherNames: string; status: string; currentLevel: number;
     programmeCode: string; programme: string | null; department: string | null; faculty: string | null };
-  course: { id: string; courseCode: string; title: string; courseUnits: number; kind: string; caMax: number; courseLevel: number; department: string | null;
-    session: string; semester: number; stream: string; lecturer: string | null };
-  registration: { level: number; status: string; approvedAt: string | null; units: number; entryType: string; entryStatus: string; basis: string | null } | null;
+  course: AsTaken & { id: string; courseCode: string; title: string; courseUnits: number; kind: string; caMax: number; courseLevel: number; department: string | null;
+    session: string; semester: number; stream: string; lecturer: string | null;
+    /** the reference of the upload that stated the class as taken */
+    asTakenUpload?: string | null };
+  registration: (AsTaken & { level: number; status: string; approvedAt: string | null; units: number; entryType: string; entryStatus: string; basis: string | null }) | null;
   result: (Mark & { sheet_id: string | null; stage: string | null; published_at: string | null; senate_minute: string | null; sitting: string | null }) | null;
   sittings: (Mark & { sheetId: string; sitting: string; stage: string; submittedAt: string | null; publishedAt: string | null; senateMinute: string | null; version: N })[];
   versions: (Mark & { sheetId: string; sitting: string; version: number; reason: string | null; imported: boolean; enteredAt: string; enteredOffice: string | null;
@@ -48,6 +53,8 @@ interface Detail {
 
 const when = (s: string | null | undefined) => (s ? new Date(s).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const EMPTY: Proposal = { reasonKind: "", note: "", ca: "", exam: "", outcome: "" };
+/** where the record of the class as taken came from */
+const SOURCE_WORD: Record<string, string> = { UPLOAD: "An old-portal upload", AMENDMENT: "A credit units amendment", MOVED: "Moved with the class", CHANGED: "Units changed on the registration" };
 
 export function RecordDetail({ offeringId, studentId, onClose, onChanged }: {
   offeringId: string; studentId: string; onClose: () => void; onChanged?: () => void;
@@ -97,7 +104,9 @@ export function RecordDetail({ offeringId, studentId, onClose, onChanged }: {
     } finally { setBusy(false); }
   }
 
-  const title = d ? `${d.course.courseCode} — ${d.student.surname.toUpperCase()}, ${d.student.otherNames}` : "Result details";
+  // the class as taken, from the student's entry (the course's answer carries the same, with the upload's reference)
+  const taken: AsTaken | null = d ? (d.registration?.asTakenCode ? d.registration : d.course.asTakenCode ? d.course : null) : null;
+  const title = d ? `${taken?.asTakenCode ?? d.course.courseCode} — ${d.student.surname.toUpperCase()}, ${d.student.otherNames}` : "Result details";
   const proposedTotal = ask && ask.ca !== "" && ask.exam !== "" ? Number(ask.ca) + Number(ask.exam) : null;
 
   return (
@@ -124,6 +133,10 @@ export function RecordDetail({ offeringId, studentId, onClose, onChanged }: {
             ["Course type", `${d.course.kind}${d.registration ? ` · ${d.registration.entryType.toLowerCase()}${d.registration.basis ? ` (${d.registration.basis})` : ""}` : ""}`],
             ["Owned by", d.course.department ?? "—"], ["Lecturer", d.course.lecturer ?? "—"],
             ["Registration", d.registration ? `${d.registration.status.toLowerCase()} · course ${d.registration.entryStatus.toLowerCase()}` : "No registration of this course"],
+            ...(taken ? [
+              ["As taken", `${taken.asTakenCode}${taken.asTakenTitle ? ` — ${taken.asTakenTitle}` : ""}${taken.asTakenUnits != null ? ` · ${taken.asTakenUnits} unit${taken.asTakenUnits === 1 ? "" : "s"}` : ""}`],
+              ["Recorded from", `${SOURCE_WORD[taken.asTakenSource ?? ""] ?? taken.asTakenSource ?? "—"}${d.course.asTakenUpload ? ` (${d.course.asTakenUpload})` : ""}`],
+            ] as [string, string][] : []),
           ]} />
           {!d.registration ? <Note kind="bad" title="No registration of this course">The student has a result for a course their registration does not carry — see Result exceptions.</Note> : null}
           <h4>Result</h4>

@@ -55,6 +55,8 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 5.5 GPA, CGPA, standing and broadsheets
    - 5.6 The College of Health Sciences variant
    - 5.7 What is not implemented
+   - 5.8 Old-portal results re-uploaded with the course as taken (V771)
+   - 5.9 A wrongly counted course taken off a registration (V772)
 6. [Finance workflow](#6-finance-workflow)
    - 6.1 Fee schedule to charges
    - 6.2 Reference, payment, confirmation, receipt
@@ -712,6 +714,58 @@ Seeded rules: CPE (200; no resit; attendance 75 %), PE1 (300; resit; no resit if
 | CBT examinations (paper assembly, delivery, scoring) — the question bank `/exams/question-bank` is a bank only | NOT IMPLEMENTED |
 | Editing exam / subject / posting configuration of the College; `college.carry_over`, `college.project`; Provost dashboard endpoint screen | NOT IMPLEMENTED / CONFIGURED BUT UNUSED |
 | "Withheld set" wording on the Senate screen; "Print the Senate schedule" | NOT IMPLEMENTED |
+
+### 5.8 Old-portal results re-uploaded with the course as taken (V771)
+
+The old portal's course registration and past results are recorded as the student took each course: the file's code, Course Title, Credit Units and Category on every row, never today's catalogue (the University's decisions of 15 November 2026; `docs/past-results-upload.md`). A course is identified by its code and title. A re-upload corrects a course already on record only when the Directorate of ICT uploads it, and never over a result entered on the portal, units a Senate amendment set, or a course taken off the registration.
+
+```text
+Download template → fill (Course Title, Credit Units, Category on every row) → Upload
+ → header read (a bare Units column stops the file) → rows set aside (no number, session/semester, repeats)
+ → the check (each batch run and undone; nothing written) → Before this file goes up
+ → Upload it → reason (+ titles new to their code ticked) → past_upload RUNNING (PRU-YYYY-NNNNN)
+ → batches loaded under it → COMPLETE | (a failed batch → Resume | Stop → INCOMPLETE)
+ → Old Portal Uploads → the report (ledger, CGPA before/after, Senate-approved graduates for the Registry)
+```
+
+| Stage | Who starts / acts | Precondition / validation | Data created / changed | Status change | Notification | On refusal |
+|---|---|---|---|---|---|---|
+| Read the file | The office on Migrate from Old Portal `/records/migration` (2 · Course registration: `MIGRATE`; 3 · Past results: ict, dbops, super) | a Units column with no Credit Units column: "The file's Units column is not credit units."; Course Code, Course Title, Credit Units and Category columns required | none | — | none | the file is stopped before any row is read |
+| Check | The same (`POST /legacy/{registration\|results}/preview`) | per row: title, credit units (0–12) and category (Core, Elective, GST, Carry-over; 2, 3, 1, 0) present and readable (`AS_TAKEN_MISSING`, `AS_TAKEN_INVALID`); the course by code and title (`COURSE_AMBIGUOUS`, `NO_COURSE`); the same student and course with other values (`DUPLICATE_CONFLICT`) | nothing (each batch undone) | — | none | the rows are listed with what to do |
+| Confirm | The same: **Upload it** (`POST /legacy/uploads`) | a reason of ten characters or more (`LEGACY_UPLOAD_REASON`); a results upload by ict, dbops or super only (`PAST_RESULTS_OFFICE`); the titles new to their code ticked on the screen | `assessment.past_upload` (ref, kind, file, rows, reason, officer, office) | RUNNING | none | nothing is loaded |
+| Load | The officer who opened the upload (`POST /legacy/{registration\|results}` with `uploadId`) | the upload named (`LEGACY_UPLOAD_REQUIRED`), the officer's own (`LEGACY_UPLOAD_OWN`), running and of its kind (`LEGACY_UPLOAD_STATE`). A course on record that differs is corrected only by the Directorate of ICT's offices (`AS_TAKEN_DIFFERS` otherwise); never over a portal result (`UNITS_ON_PORTAL`), a Senate units amendment (`UNITS_BY_AMENDMENT`) or a removal (`REMOVED_ON_RECORD`, `REMOVAL_PENDING`); never a second entry when the record holds the course under another code (`COURSE_ON_RECORD_ELSEWHERE`) | `catalogue.course_as_taken` (a version found or made, never overwritten); `registration.entry` (units, `as_taken_id`, entry type, basis); `assessment.score` (results on the main sitting); `assessment.past_upload_change` (every change, with what was there before); `assessment.past_upload_student` (CGPA before and after); a class's heading set where all its students took one version | entries added, corrected or re-approved; results posted or replaced | none | a refused row is set aside and listed; the batch goes on |
+| Close | The same officer (`POST /legacy/uploads/{id}/finish`) | the upload running (`LEGACY_UPLOAD_STATE`) | counts from the ledger (changes, students, by kind, graduates) | RUNNING → COMPLETE (every batch) or INCOMPLETE (stopped part way; what loaded stands) | none | — |
+| Read the report | ict, dbops, super, records, academic, registrar, dregistrar on Old Portal Uploads `/records/migration/uploads` | — | none | — | none | 403 for other offices; 404 for no such upload |
+
+A Senate-approved graduate is still corrected as the file has them, but the CGPA, class of degree and award the Senate approved stay. The graduation audit keeps an approved graduand's figures, and the report lists them for the Registry (D3). A row held for a student not yet loaded posts later under its upload, the same way. Issued transcripts and statements are flagged for review when a course's printed code, title or units change. Tested by `HistoricalCourseAsTakenIT`, `lib/legacy-columns.test.ts` and `lib/legacy-merge.test.ts`.
+
+### 5.9 A wrongly counted course taken off a registration (V772)
+
+The Director of ICT takes one student's course off one registration, with a reason. The course, the curriculum and every other student's registration are untouched (`docs/course-registration-correction.md`). A course carrying a result is held for the Registrar or the Deputy Registrar, never the officer who asked (D4).
+
+```text
+Find the student → choose the session and semester → Remove (a counted course) → reason
+ ├─ no result  → APPLIED (entry WITHDRAWN) ──── Director's undo ──→ UNDONE (entry back as it stood)
+ └─ a result   → PENDING (still counting) ─┬─ Registrar / Deputy Registrar confirm → APPLIED (WITHDRAWN; mark kept on its sheet)
+                                           ├─ Registrar / Deputy Registrar decline (note) → DECLINED
+                                           └─ Director's undo → CANCELLED
+```
+
+| Stage | Who starts / acts | Precondition / validation | Data created / changed | Status change | Notification | On refusal |
+|---|---|---|---|---|---|---|
+| Find and read | Director of ICT (`ict`), super; the Registry reads (Course Registration Correction `/registration/corrections`) | the student by matriculation number (`RCR_NOT_FOUND`); session YYYY/YYYY, semester 1–3 | none | — | none | 403 for other offices |
+| Take off | Director of ICT, super (`registration.request_entry_removal`) | the acting office ict or super (`RCR_OFFICE`); a reason of ten characters or more (`RCR_REASON`); a course named (`RCR_NONE`) on this student's registration (`RCR_NOT_FOUND`), counted (`RCR_NOT_COUNTED`), with no removal standing (`RCR_OPEN`); two classes of one course both marked go to Duplicate Results (`RCR_USE_DUPLICATES`) | `registration.entry_removal` (`RCR-YYYY-NNNNN`, the entry's snapshot, how it came, the result, the reason); with no result the entry → WITHDRAWN and examined classes flag issued transcripts | PENDING (a result) or APPLIED (none) | none | nothing written |
+| Confirm | Registrar, Deputy Registrar, super (`registration.decide_entry_removal`) | the office (`RCR_DECIDER`); PENDING (`RCR_STATE`); not the officer who asked (`RCR_SAME_PERSON`); the course unchanged since it was asked for (`RCR_STALE`) | decided by, office, at, note; entry → WITHDRAWN; transcripts flagged | PENDING → APPLIED | none | the removal stays PENDING |
+| Decline | Registrar, Deputy Registrar, super | as Confirm, and a note of ten characters or more (`RCR_NOTE`) | decided by, office, at, note | PENDING → DECLINED | none | — |
+| Cancel / undo | Director of ICT, super (`registration.undo_entry_removal`) | the office (`RCR_OFFICE`); a reason (`RCR_REASON`); PENDING or APPLIED (`RCR_STATE`) | undone by, office, at, reason; an applied removal's entry back to its status before; transcripts flagged | PENDING → CANCELLED; APPLIED → UNDONE | none | — |
+
+A removal sticks. While it is APPLIED, nothing puts the course back but the undo (`RCR_REMOVED`):
+
+- the student's registration screen shows the course "Removed";
+- an old-portal upload reports it `REMOVED_ON_RECORD` (`REMOVAL_PENDING` while held);
+- Duplicate Results does not decide its class (`DUP_REMOVAL`).
+
+A course taken off no longer counts on the transcript, the CGPA, the broadsheet, the GST/EPS fee readers or the ICT result monitor's exceptions. The student's change history on Student Edit lists every removal. Tested by `RegistrationCorrectionIT` and `lib/registration-corrections.test.ts`.
 
 ---
 

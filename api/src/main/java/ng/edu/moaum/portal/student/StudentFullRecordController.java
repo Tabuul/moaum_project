@@ -293,10 +293,13 @@ class StudentFullRecordController {
                         SELECT r.id, r.session, r.semester, r.level, r.status, r.submitted_at, r.approved_at, r.approval_mode, r.returned_comment,
                                helpdesk.person_name(r.approved_by) AS approved_by,
                                (SELECT coalesce(sum(e.units), 0) FROM registration.entry e WHERE e.registration_id = r.id AND e.status IN ('REGISTERED','APPROVED')) AS units,
+                               -- a past course as the student took it: the code and title an old-portal file stated (codeAsTaken null where none did)
                                (SELECT coalesce(json_agg(c ORDER BY c.course_code), '[]'::json) FROM (
-                                   SELECT o.course_code, coalesce(o.title, cc.title) AS title, e.units, e.entry_type, e.status, e.added_as
+                                   SELECT o.course_code, at.code_as_taken AS "codeAsTaken", coalesce(at.title, o.title, cc.title) AS title, e.units, e.entry_type,
+                                          e.status, e.added_as
                                      FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id
                                      LEFT JOIN catalogue.course cc ON cc.code = o.course_code
+                                     LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
                                     WHERE e.registration_id = r.id) c) AS courses
                           FROM registration.course_registration r WHERE r.student_id = :s) x),
                     'resets', (SELECT coalesce(json_agg(x ORDER BY x.reset_at DESC), '[]'::json) FROM (

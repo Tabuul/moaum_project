@@ -202,6 +202,21 @@ EXCEPTION_READERS: the MONITORS, the Database Operators, and the department and 
   series under the same two digits. Both issued MOAUM/ADM/84/000001: AdmissionLifecycleIT's duplicate key in CI.
   `people.next_admission_no` passes over a number already held. Intake and the postgraduate admission use it.
 
+## Courses taken off, and the course as taken (15 November 2026)
+
+The exceptions pass over a class the Director of ICT took off a student's registration on Course Registration Correction (V772,
+[course-registration-correction.md](course-registration-correction.md)): its kept mark is neither a result without a registration
+nor a duplicate result. The duplicates list shows that class as withdrawn, and a class with a removal pending or applied is not
+decided there (`DUP_REMOVAL`). They pass over, the same way, a mark that is only the history of a rolled-back old-portal upload
+(V771, `assessment.result_rolled_back`): the first result the upload posted on that sheet, taken back with its course, with
+nothing marked since and the course not put back on the registration since. A mark that was there before the upload is judged as
+it was before: a mark with no registration is an exception again once the course a file added for it is rolled back. A
+rolled-back upload's mark counts again when a corrected file with the same mark puts the course back: two classes of one course
+both marked are then duplicate results again. The Result Viewer and a result's details show the course as the student took it (V771,
+[past-results-upload.md](past-results-upload.md)). The viewer gives the code as taken, with today's code beneath where it differs.
+The details add the code, title and units as taken, and where they were recorded from (an old-portal upload with its PRU
+reference, a credit units amendment, a move with the class, or a change of units on the registration).
+
 ## Tests
 
 | Test | What it covers |

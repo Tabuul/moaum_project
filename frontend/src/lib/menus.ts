@@ -666,6 +666,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
+          { "id": "t/legacyuploads", "icon": "upload", "label": "Old Portal Uploads" },
           { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
           { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
@@ -1034,6 +1035,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
+          { "id": "t/legacyuploads", "icon": "upload", "label": "Old Portal Uploads" },
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "t/prelimmigration", "icon": "box", "label": "Preliminary Applicant Data Migration" },
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
@@ -1255,6 +1257,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/pipeline", "icon": "swap", "label": "Result Pipeline" },
           { "id": "t/college", "icon": "swap", "label": "College of Health Sciences" },
           { "id": "t/legacy", "icon": "swap", "label": "Migrate from Old Portal" },
+          { "id": "t/legacyuploads", "icon": "upload", "label": "Old Portal Uploads" },
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
@@ -1339,6 +1342,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/broadsheet", "icon": "chart", "label": "Broadsheets" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
+          { "id": "t/legacyuploads", "icon": "upload", "label": "Old Portal Uploads" },
           { "id": "t/cbtcourses", "icon": "book", "label": "CBT Courses" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
@@ -1386,7 +1390,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regapproval", "icon": "check", "label": "Course Registration Approval" },
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
-          { "id": "t/latereg", "icon": "check", "label": "Late Registration" }
+          { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
+          { "id": "t/regcorrection", "icon": "check", "label": "Course Registration Correction" }
         ]
       },
       {
@@ -1657,6 +1662,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/regoptions", "icon": "check", "label": "Course Registration Options" },
           { "id": "t/overloads", "icon": "check", "label": "Overload Requests" },
           { "id": "t/latereg", "icon": "check", "label": "Late Registration" },
+          { "id": "t/regcorrection", "icon": "check", "label": "Course Registration Correction" },
           { "id": "t/extexaminers", "icon": "user", "label": "External Examiners" },
           { "id": "t/extappointments", "icon": "cal", "label": "Examiner Appointments" },
           { "id": "t/extassignments", "icon": "doc", "label": "Project Assignments" },
@@ -1665,6 +1671,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/partnerships", "icon": "swap", "label": "Partnerships" },
           { "id": "t/resultexceptions", "icon": "shield", "label": "Result Exceptions" },
           { "id": "t/resultduplicates", "icon": "swap", "label": "Duplicate Results" },
+          { "id": "t/legacyuploads", "icon": "upload", "label": "Old Portal Uploads" },
           { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
           { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
@@ -1810,11 +1817,13 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/courseupload", "icon": "doc", "label": "Upload or Create Courses" },
           { "id": "t/allocation", "icon": "user", "label": "Course Allocation" },
           { "id": "t/legacy", "icon": "box", "label": "Migrate from Old Portal" },
+          { "id": "t/legacyuploads", "icon": "upload", "label": "Old Portal Uploads" },
           { "id": "t/pgmigration", "icon": "box", "label": "PG Legacy Migration" },
           { "id": "jupeb/import", "icon": "upload", "label": "JUPEB Old-Portal Students" },
           { "id": "jupeb/oldpayments", "icon": "card", "label": "JUPEB Old-Portal Payments" },
           { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
-          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
+          { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" },
+          { "id": "t/regcorrection", "icon": "check", "label": "Course Registration Correction" }
         ]
       },
       {

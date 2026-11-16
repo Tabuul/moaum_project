@@ -39,6 +39,12 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
   const elec = sheet ? sheet.courses.filter((c) => !isCarryCourse(c) && c.kind === "Elective") : [];
   const bands: [string, typeof core][] = ([["CARRYOVER COURSES", carryC], ["CORE COURSES", [...gst, ...core]], ["ELECTIVE COURSES", elec]] as [string, typeof core][]).filter((b) => b[1].length > 0);
   const markOf = (r: Broadsheet["rows"][number], code: string) => r.marks.find((m) => m.courseCode === code);
+  /** a column headed as its students took it: the code most of them took it under, and its units — marked (*) where the students'
+   *  own units differ, each cell then showing a student's own units where they are not the column's */
+  type Col = Broadsheet["courses"][number];
+  const colCode = (c: Col) => c.codeAsTaken || c.courseCode;
+  const colUnits = (c: Col) => `${c.units}${c.unitsVary ? "*" : ""}`;
+  const ownUnits = (m: ReturnType<typeof markOf>, c: Col) => (m && m.stage !== "NOT_REGISTERED" && m.units != null && m.units !== c.units ? m.units : null);
   const fx = (n: number | null) => (n === null || n === undefined ? "—" : Number(n).toFixed(2));
   /** the grade carries its weight: A5, B4, C3, D2, E1, F0 */
   const gw = (grade: string | null | undefined, points: number | null | undefined) =>
@@ -156,6 +162,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
       ["ABS", "Absent, graded F"], ["NR", "No Result (not counted, not owed)"],
       ["WIT · INC · MAL", "Withheld, Incomplete, Malpractice: held for the Senate (not counted, not owed)"], ["EXE", "Exempted (not counted, not owed)"],
     ];
+    if (sheet.courses.some((c) => c.unitsVary)) KEY.push(["*", "Credit units differ among the course's students: a mark shows the student's own where they are not the column's"]);
     return { facName: fac?.name ?? "—", deptName: dept?.name ?? "—", degree: programme?.name ?? sheet.programme, SUM, KEY };
   })() : null;
 
@@ -169,7 +176,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
   };
   const bsRow = (r: Broadsheet["rows"][number], i: number): Cell[] => [i + 1, serialOf(r.number), nameLines(r.name).join("\n"),
     ...(hideCarryover ? [] : [r.carryovers.join(" ")]),
-    ...orderCols.map((c) => markText(markOf(r, c.courseCode))),
+    ...orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const own = ownUnits(m, c); return t && own != null ? `${t}\n(${own} units)` : t; }),
     r.cur, r.cue, r.points, r.gpa ?? "", ...(hideCum ? [] : [r.tcr, r.tce, r.twgp, r.lcgpa ?? "", r.cgpa ?? ""]), r.remarks];
 
   async function exportExcel() {
@@ -185,7 +192,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
       ["Level", sheet.level], ["Semester", semester], ["Session", sheet.session], [],
       ["Summary of results", "", "%"], ...cov.SUM.map((s) => [s[0], s[1], s[2]] as Cell[]), [],
       ["Key", ""], ...cov.KEY.map((k) => [k[0], k[1]] as Cell[]), [],
-      ["Courses", "", ""], ["Code", "Title", "Units"], ...orderCols.map((c) => [c.courseCode, c.title, c.units] as Cell[])];
+      ["Courses", "", ""], ["Code", "Title", "Units"], ...orderCols.map((c) => [colCode(c), c.title, c.unitsVary ? colUnits(c) : c.units] as Cell[])];
     /* the heading as it stands on screen: two rows — S/N, MATRIC NO. (with the class's prefix), NAME OF CANDIDATE and
        REMARKS spanning both; the course bands and CURRENT and CUMULATIVE DATE over their columns; each course's code
        over its units — with the ranges merged. The heading is repeated for each list, with its own merges. */
@@ -200,7 +207,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
       const sub: Cell[] = ["", "", ""];
       let c = 3;
       const span = (label: string, n: number) => { if (!n) return; top.push(label); for (let k = 1; k < n; k++) top.push(""); if (n > 1) merges.push(`${colName(c)}${r1 + 1}:${colName(c + n - 1)}${r1 + 1}`); c += n; };
-      for (const [label, list] of bands) { span(label, list.length); for (const co of list) sub.push(`${co.courseCode}\n${co.units}`); }
+      for (const [label, list] of bands) { span(label, list.length); for (const co of list) sub.push(`${colCode(co)}\n${colUnits(co)}`); }
       span("CURRENT", nCur); sub.push("CUR", "CUE", "WGP", "GPA");
       if (!hideCum) { span("CUMULATIVE DATE", nCum); sub.push("TCR", "TCE", "TWGP", "LCGPA", "CGPA"); }
       top.push("REMARKS"); sub.push("");
@@ -228,16 +235,16 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
     const keyRows = cov.KEY.map((k) => `<tr><td class="ab">${k[0]}</td><td>${escd(k[1])}</td></tr>`).join("");
     const courseCells = (list: typeof sheet.courses) =>
       `<tr><td class="ab ch">Course Code</td><td class="ch">Course Title</td><td class="u ch">Credit Units</td></tr>`
-      + list.map((c) => `<tr><td class="ab">${escd(c.courseCode)}</td><td>${escd(c.title)}</td><td class="u">${c.units}</td></tr>`).join("");
+      + list.map((c) => `<tr><td class="ab">${escd(colCode(c))}</td><td>${escd(c.title)}</td><td class="u">${colUnits(c)}</td></tr>`).join("");
     const half = Math.ceil(orderCols.length / 2);
     const courseTwoCol = `<div class="cols2"><table class="t"><tbody>${courseCells(orderCols.slice(0, half))}</tbody></table>`
       + `<table class="t"><tbody>${courseCells(orderCols.slice(half))}</tbody></table></div>`;
     const gh = `<tr><th rowspan="2">S/N</th><th rowspan="2" style="width:1%"><span style="white-space:nowrap">MATRIC NO.</span>${matricPrefix ? `<br><span style="font-weight:400;text-transform:none;font-size:9px;word-break:break-all">${escd(matricPrefix)}</span>` : ""}</th><th rowspan="2" style="width:1%">NAME OF CANDIDATE</th>${hideCarryover ? "" : `<th rowspan="2">CARRYOVER</th>`}`
       + bands.map((b) => `<th colspan="${b[1].length}">${b[0]}</th>`).join("")
       + `<th colspan="4">CURRENT</th>${hideCum ? "" : `<th colspan="5">CUMULATIVE DATE</th>`}<th rowspan="2">REMARKS</th></tr>`
-      + `<tr>${orderCols.map((c) => `<th>${escd(c.courseCode)}<br>${c.units}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
+      + `<tr>${orderCols.map((c) => `<th>${escd(colCode(c))}<br>${colUnits(c)}</th>`).join("")}<th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>${hideCum ? "" : `<th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th>`}</tr>`;
     const bodyOf = (list: Broadsheet["rows"]) => list.map((r, i) => `<tr><td>${i + 1}</td><td class="mt">${escd(serialOf(r.number))}</td><td class="nm">${nameLines(r.name).map(escd).join("<br>")}</td>${hideCarryover ? "" : `<td class="co">${escd(r.carryovers.join(", ") || "—")}</td>`}`
-      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const v = !t ? "" : t === "ABS\nF0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}</td>`; }).join("")
+      + orderCols.map((c) => { const m = markOf(r, c.courseCode); const t = markText(m); const own = ownUnits(m, c); const v = !t ? "" : t === "ABS\nF0" ? "<b>ABS</b><br><b>F0</b>" : m!.counted ? `${m!.total}<br><b>${escd(gw(m!.grade, m!.points))}</b>` : t.includes("(not yet counted)") ? `<span style="color:#777">${m!.total}<br>${escd(gw(m!.grade, m!.points))}</span>` : escd(t); return `<td>${v}${v && own != null ? `<br><small>${own} units</small>` : ""}</td>`; }).join("")
       + `<td>${r.cur}</td><td>${r.cue}</td><td>${r.points}</td><td class="b">${fx(r.gpa)}</td>${hideCum ? "" : `<td>${r.tcr}</td><td>${r.tce}</td><td>${r.twgp}</td><td>${fx(r.lcgpa)}</td><td class="b">${fx(r.cgpa)}</td>`}<td class="co">${escd(r.remarks)}</td></tr>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escd(fileName(cov.degree, sheet.level, sheet.session))}</title><style>
       body{font:12px system-ui,Arial,sans-serif;color:#111;padding:22px}
@@ -365,7 +372,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
                   </div>
                   <div className="ers__h mt-4">Courses</div>
                   <table className="ers__t ers__courses"><tbody>
-                    {orderCols.map((c) => <tr key={c.courseCode}><td className="tnum ab">{c.courseCode}</td><td>{c.title}</td><td className="tnum">{c.units} units</td></tr>)}
+                    {orderCols.map((c) => <tr key={c.courseCode}><td className="tnum ab">{colCode(c)}</td><td>{c.title}</td><td className="tnum">{colUnits(c)} units</td></tr>)}
                   </tbody></table>
                   <div className="ers__sign">
                     <div><div className="role">Dean of Faculty</div><div className="ln">Name</div><div className="ln">Sign</div><div className="ln">Date</div></div>
@@ -394,7 +401,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
                       <th rowSpan={2} className="l">REMARKS</th>
                     </tr>
                     <tr className="sub">
-                      {orderCols.map((c) => <th key={c.courseCode} className="course"><span className="mono">{c.courseCode}</span><span className="u">{c.units}</span></th>)}
+                      {orderCols.map((c) => <th key={c.courseCode} className="course" title={c.unitsVary ? "The students took this course at different credit units; a mark shows its own where they differ" : undefined}><span className="mono">{colCode(c)}</span><span className="u">{colUnits(c)}</span></th>)}
                       <th>CUR</th><th>CUE</th><th>WGP</th><th>GPA</th>
                       {hideCum ? null : <><th>TCR</th><th>TCE</th><th>TWGP</th><th>LCGPA</th><th>CGPA</th></>}
                     </tr>
@@ -406,7 +413,11 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
                         <td className="l tnum mt" title={r.number}>{serialOf(r.number)}</td>
                         <td className="l nm">{nameLines(r.name).map((ln, k) => k === 0 ? <span key={k}>{ln}</span> : <div className="nm2" key={k}>{ln}</div>)}</td>
                         {hideCarryover ? null : <td className="co sub2">{r.carryovers.length ? r.carryovers.join(", ") : "—"}</td>}
-                        {orderCols.map((c) => <td key={c.courseCode} className="mk">{cell(markOf(r, c.courseCode))}</td>)}
+                        {orderCols.map((c) => {
+                          const m = markOf(r, c.courseCode);
+                          const own = ownUnits(m, c);
+                          return <td key={c.courseCode} className="mk">{cell(m)}{own != null ? <div className="own" title={`Taken at ${own} credit units; the column's are ${c.units}`}>{own} units</div> : null}</td>;
+                        })}
                         <td className="tnum">{r.cur}</td>
                         <td className="tnum">{r.cue}</td>
                         <td className="tnum">{Number(r.points)}</td>
@@ -442,6 +453,7 @@ export function BroadsheetScreen({ scope, structure, sessions, sheet, stream = "
             .bsheet th.course .mono{display:block;font-family:var(--mono);font-weight:700}
             .bsheet th.course .u{display:block;font-size:10px;color:var(--chrome-dim)}
             .bsheet td.mk{min-width:44px}
+            .bsheet td.mk .own{font-size:10px;color:var(--chrome-dim);white-space:nowrap}
             .bsheet td.b{font-weight:700}
             .bsheet td.co{text-align:left;min-width:110px;max-width:200px;white-space:normal}
             .bsheet td.rm{text-align:left;min-width:190px;white-space:normal;font-size:var(--t-xs)}

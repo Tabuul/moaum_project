@@ -28,6 +28,11 @@ import {
   type EditPage, type HistoryRow, type Permission,
 } from "@/lib/student-edit";
 import { SIWES_OFFICE_ADD_WORDS, SIWES_OFFICE_NO_ADD, siwesDroppedWords } from "@/lib/siwes";
+import { onRecord, takenOff } from "@/lib/registration-corrections";
+
+/** V772: a course the Director of ICT took off the registration (withdrawn) — only that removal's undo, on Course Registration
+ *  Correction, puts it back, so nothing here removes, restores or adds it */
+const TAKEN_OFF_WORDS = "Taken off by the Director of ICT";
 
 type Section = "identity" | "admission" | "placement" | "level" | "postgraduate" | "status" | "matriculation" | "registration" | "graduation" | "finance" | "history";
 const SECTIONS: [Section, string][] = [
@@ -724,7 +729,9 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
     } finally { setBusy(false); }
   }
 
-  const live = reg?.current.courses.filter((c) => c.status !== "DROPPED") ?? [];
+  // the courses on the registration: neither dropped nor taken off by the Director of ICT (withdrawn)
+  const live = reg?.current.courses.filter(onRecord) ?? [];
+  const removedIds = new Set((reg?.current.courses ?? []).filter(takenOff).map((c) => c.offering_id));
   const canManage = may("EDIT_STUDENT_REGISTRATION");
   // V752: the Second Semester the SIWES rule binds (the registration view's window.siwes) is registered on the student's SIWES page and
   // approved as it is made: the office does not submit it (a standing SIWES registration never goes back to SUBMITTED: REG_STATUS_SIWES)
@@ -759,8 +766,9 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
             <div className="eyebrow mt-3">Current courses</div>
             {reg.current.courses.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "Status|mid", "|num"]} rows={reg.current.courses.map((c) => [
               <b key="c" className="tnum">{c.course_code}</b>, <Two key="t" a={c.title} b={c.support_override_at ? `Override: ${c.support_override_reason ?? ""}` : ""} />, c.units, words(c.basis),
-              <Pil key="s" kind={c.status === "DROPPED" ? "grey" : "ok"}>{words(c.status)}</Pil>,
-              canManage ? (c.status === "DROPPED"
+              <Pil key="s" kind={!onRecord(c) ? "grey" : "ok"}>{words(c.status)}</Pil>,
+              takenOff(c) ? <span key="a" className="sub2">{TAKEN_OFF_WORDS}</span>
+              : canManage ? (c.status === "DROPPED"
                 // v4-1: in the SIWES semester the database refuses every restore, override or not (support_add_checks' SIWES rule): why, not Restore
                 ? siwesSem ? <span key="a" className="sub2">{siwesDroppedWords(c.entry_type)}</span>
                 : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("restore", c.offering_id, c.course_code, c.title)}>Restore</Btn>
@@ -775,6 +783,8 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
                 {reg.view.menu.length ? <DTable pageSize={10} noPrint cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "|num"]} rows={reg.view.menu.map((m) => [
                   <b key="c" className="tnum">{m.course_code}</b>, m.title, m.units, words(m.basis),
                   live.some((e) => e.offering_id === m.offering_id) ? <span key="a" className="sub2">Registered</span>
+                    // a menu course taken off the registration by the Director of ICT is shown removed, with nothing to add
+                    : removedIds.has(m.offering_id) ? <span key="a" className="sub2">{TAKEN_OFF_WORDS}</span>
                     // V752: in the SIWES semester the database refuses every add, override or not (support_add_checks' SIWES rule)
                     : siwesSem ? <span key="a" className="sub2">{SIWES_OFFICE_ADD_WORDS}</span>
                     : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
@@ -790,7 +800,8 @@ function RegistrationSection({ page, may }: { page: EditPage; may: May }) {
                       }}>Find</Btn>
                     </div>
                     {found.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "|num"]} rows={found.map((m) => [
-                      <b key="c" className="tnum">{m.course_code}</b>, m.title, m.units, <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
+                      <b key="c" className="tnum">{m.course_code}</b>, m.title, m.units, removedIds.has(m.offering_id) ? <span key="a" className="sub2">{TAKEN_OFF_WORDS}</span>
+                        : <Btn key="a" kind="ghost" size="sm" onClick={() => void open("add", m.offering_id, m.course_code, m.title)}>Add course</Btn>,
                     ])} /> : null}
                   </>
                 )}

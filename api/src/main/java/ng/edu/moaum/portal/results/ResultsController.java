@@ -145,12 +145,82 @@ class ResultsController {
         return service.reconcileHolding();
     }
 
-    /** the course registration of a past semester, from the old portal */
+    /** the offices that upload past results (PAST_RESULTS), by their codes */
+    private static final java.util.Set<String> PAST_RESULT_OFFICES = java.util.Set.of("ict", "dbops", "super");
+
+    /** who reads the old-portal uploads and their reports: the offices that load them, and the Registry and the Academic Office the
+     *  graduates whose units a corrected template changed are listed for */
+    private static final String UPLOAD_READERS =
+            "hasAnyAuthority('OFFICE_ict','OFFICE_dbops','OFFICE_super','OFFICE_records','OFFICE_academic','OFFICE_registrar','OFFICE_dregistrar')";
+
+    /** an import names the confirmed upload it loads under; without one it is refused before anything is read */
+    private static void requireUpload(ResultsService.MigrationIn body) {
+        if (body.uploadId() == null) {
+            org.springframework.http.ProblemDetail p = org.springframework.http.ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                    "A file is loaded under its confirmed upload, and none was named.");
+            p.setTitle("The upload is not named");
+            p.setProperty("code", "LEGACY_UPLOAD_REQUIRED");
+            p.setProperty("remedy", Map.of("message", "Confirm the upload with its reason, then load the file under it.", "office", "You"));
+            throw new org.springframework.web.ErrorResponseException(HttpStatus.BAD_REQUEST, p, null);
+        }
+    }
+
+    /** an old-portal upload confirmed with its reason (Past results or Course registration): its batches then load under it, and
+     *  its ledger keeps every change with what was there before. Past results are the Directorate of ICT's to load (PAST_RESULTS;
+     *  the database checks it too), a registration the migration desk's */
+    @PostMapping("/legacy/uploads")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> beginUpload(@Valid @RequestBody ResultsService.UploadIn body) {
+        scope.requireUniversityOperator("The old-portal migration");
+        String office = ng.edu.moaum.portal.shared.AuditContextHolder.current().map(ng.edu.moaum.portal.shared.AuditContext::actorOffice).orElse("");
+        if ("RESULTS".equals(body.kind()) && !PAST_RESULT_OFFICES.contains(office)) {
+            throw new org.springframework.security.access.AccessDeniedException("Past results are uploaded by the Directorate of ICT.");
+        }
+        return service.beginUpload(body);
+    }
+
+    /** the upload closed by the person who opened it: complete (every batch loaded) or not (stopped part way) */
+    @PostMapping("/legacy/uploads/{id}/finish")
+    @PreAuthorize(MIGRATE)
+    Map<String, Object> finishUpload(@PathVariable UUID id, @Valid @RequestBody ResultsService.FinishIn body) {
+        scope.requireUniversityOperator("The old-portal migration");
+        return service.finishUpload(id, body.complete());
+    }
+
+    /** a closed upload rolled back from its ledger, with the reason — by the offices that load past results (the database checks it
+     *  too: LEGACY_REVERT_OFFICE); what the record has since moved on from is left as it is and listed */
+    @PostMapping("/legacy/uploads/{id}/revert")
+    @PreAuthorize(PAST_RESULTS)
+    @org.springframework.transaction.annotation.Transactional
+    Map<String, Object> revertUpload(@PathVariable UUID id, @Valid @RequestBody ResultsService.RevertIn body) {
+        scope.requireUniversityOperator("The old-portal migration");
+        return service.revertUpload(id, body.reason());
+    }
+
+    /** the old-portal uploads, newest first */
+    @GetMapping("/legacy/uploads")
+    @PreAuthorize(UPLOAD_READERS)
+    List<Map<String, Object>> uploads(@RequestParam(required = false) Integer limit) {
+        scope.requireUniversityOperator("The old-portal migration");
+        return service.uploads(limit);
+    }
+
+    /** one upload's report: its changes by kind and in order, and each student's CGPA before and after — the Senate-approved
+     *  graduates listed apart for the Registry */
+    @GetMapping("/legacy/uploads/{id}")
+    @PreAuthorize(UPLOAD_READERS)
+    Map<String, Object> upload(@PathVariable UUID id) {
+        scope.requireUniversityOperator("The old-portal migration");
+        return service.uploadReport(id);
+    }
+
+    /** the course registration of a past semester, from the old portal, under its confirmed upload */
     @PostMapping("/legacy/registration")
     @PreAuthorize(MIGRATE)
     Map<String, Object> importRegistration(@Valid @RequestBody ResultsService.MigrationIn body) {
         scope.requireUniversityOperator("The old-portal migration");   // V662
-        return service.importRegistration(body.session(), body.semester(), body.rows());
+        requireUpload(body);
+        return service.importRegistration(body.session(), body.semester(), body.rows(), body.uploadId());
     }
 
     /** V472: what a course registration upload would do, row by row, before it does it — nothing is written */
@@ -169,12 +239,13 @@ class ResultsController {
         return service.previewLegacy(body.session(), body.semester(), body.rows(), true);
     }
 
-    /** the past results of a semester, imported as final under a legacy minute */
+    /** the past results of a semester, imported as final under a legacy minute, under their confirmed upload */
     @PostMapping("/legacy/results")
     @PreAuthorize(PAST_RESULTS)
     Map<String, Object> importResults(@Valid @RequestBody ResultsService.MigrationIn body) {
         scope.requireUniversityOperator("The old-portal migration");   // V662
-        return service.importResults(body.session(), body.semester(), body.rows());
+        requireUpload(body);
+        return service.importResults(body.session(), body.semester(), body.rows(), body.uploadId());
     }
 
     /** the postgraduate course registration of a past session/semester, into the postgraduate module (V214) */

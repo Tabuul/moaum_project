@@ -233,7 +233,7 @@ class ResultMonitorController {
               FROM assessment.result_records(:s, :m, CAST(:f AS text), CAST(:d AS text), CAST(:p AS text), CAST(:l AS int), CAST(:c AS text)) r
               LEFT JOIN iam.person lp ON lp.id = r.lecturer_id
              WHERE (CAST(:q AS text) IS NULL OR r.surname ILIKE :q OR r.other_names ILIKE :q OR (r.surname || ' ' || r.other_names) ILIKE :q
-                    OR r.number ILIKE :q OR r.jamb_reg_no ILIKE :q OR r.course_code ILIKE :q OR r.course_title ILIKE :q
+                    OR r.number ILIKE :q OR r.jamb_reg_no ILIKE :q OR r.course_code ILIKE :q OR r.code_as_taken ILIKE :q OR r.course_title ILIKE :q
                     OR (lp.surname || ' ' || lp.given_names) ILIKE :q)
             """;
 
@@ -277,7 +277,8 @@ class ResultMonitorController {
         List<Map<String, Object>> rows = base("""
                 SELECT b.student_id AS "studentId", b.offering_id AS "offeringId", b.number, b.jamb_reg_no AS jamb, b.surname, b.other_names AS "otherNames",
                        b.programme_code AS "programmeCode", pr.name AS programme, d.name AS department, f.name AS faculty, b.level,
-                       b.course_code AS "courseCode", b.course_title AS "courseTitle", b.units, b.entry_type AS "entryType", b.state, b.lecturer,
+                       b.course_code AS "courseCode", b.code_as_taken AS "codeAsTaken", b.course_title AS "courseTitle", b.units, b.entry_type AS "entryType",
+                       b.state, b.lecturer,
                        cf.sheet_id AS "sheetId", coalesce(cf.stage, b.stage) AS stage, cf.ca, cf.exam, cf.total, cf.grade, cf.points,
                        CASE WHEN cf.points IS NULL THEN NULL ELSE round(cf.points * b.units, 2) END AS "qualityPoints", cf.outcome, cf.sitting,
                        cf.published_at AS "publishedAt", v.versions, v.first_at AS "uploadedAt", v.last_at AS "lastModified", v.imported,
@@ -338,18 +339,31 @@ class ResultMonitorController {
                  WHERE s.id = :id
                 """).param("id", student).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("student", student));
         scope.bound((String) st.get("facultyCode"), (String) st.get("deptCode"), (String) st.get("programmeCode"));
+        // the class as this student took it: the version their entry points at — the code, title and credit units an old-portal file
+        // stated (kept when the course is later renamed), where it came from (UPLOAD, AMENDMENT, MOVED, CHANGED) and the upload's
+        // reference; all null where no file stated it
         Map<String, Object> course = jdbc.sql("""
                 SELECT o.id, o.course_code AS "courseCode", coalesce(o.title, c.title) AS title, c.units AS "courseUnits", coalesce(c.kind, 'Core') AS kind,
                        coalesce(c.ca_max, 40) AS "caMax",
                        c.level AS "courseLevel", c.dept_code AS "deptCode", d.name AS department, o.session, o.semester, o.stream,
-                       CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END AS lecturer
+                       CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END AS lecturer,
+                       at.code_as_taken AS "asTakenCode", at.title AS "asTakenTitle", at.units AS "asTakenUnits", at.source AS "asTakenSource",
+                       at.upload_ref AS "asTakenUpload"
                   FROM catalogue.offering o JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN ref.department d ON d.code = c.dept_code LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
+                  LEFT JOIN LATERAL (SELECT a.code_as_taken, a.title, a.units, a.source, pu.ref AS upload_ref
+                                       FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id
+                                       JOIN catalogue.course_as_taken a ON a.id = e.as_taken_id
+                                       LEFT JOIN assessment.past_upload pu ON pu.id = a.upload_id
+                                      WHERE r.student_id = :st AND e.offering_id = o.id
+                                      ORDER BY (e.status = 'APPROVED') DESC LIMIT 1) at ON true
                  WHERE o.id = :id
-                """).param("id", offering).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("class", offering));
+                """).param("id", offering).param("st", student).query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("class", offering));
         Map<String, Object> registration = jdbc.sql("""
-                SELECT r.level, r.status, r.approved_at AS "approvedAt", e.units, e.entry_type AS "entryType", e.status AS "entryStatus", e.basis
+                SELECT r.level, r.status, r.approved_at AS "approvedAt", e.units, e.entry_type AS "entryType", e.status AS "entryStatus", e.basis,
+                       at.code_as_taken AS "asTakenCode", at.title AS "asTakenTitle", at.units AS "asTakenUnits", at.source AS "asTakenSource"
                   FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id
+                  LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
                  WHERE r.student_id = :st AND e.offering_id = :o
                  ORDER BY (e.status = 'APPROVED') DESC LIMIT 1
                 """).param("st", student).param("o", offering).query().listOfRows().stream().findFirst().orElse(null);

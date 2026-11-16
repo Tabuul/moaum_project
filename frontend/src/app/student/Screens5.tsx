@@ -110,7 +110,7 @@ export function Carryover({ r, history = null }: { r: Results; history?: CarryHi
         <DTable cols={["Course", "Units|mid", "Failed", "Previous attempts"]} rows={owed.map((c) => {
           const tried = byCourse.find((x) => x.course_code === c.course_code)?.attempts ?? [];
           return [
-            <Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>,
+            <Two key="c" a={<span className="tnum">{shownCode(c.course_code)}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>,
             <span className="sub2 tnum" key="f">{attemptsWords(c)}</span>,
             tried.length ? <span key="n" className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>{tried.map((h) => <Pil key={`${h.session}|${h.semester}`} kind={RESULT_KIND[h.result]}>{attemptWord(h)}</Pil>)}</span>
               : <span className="sub2" key="n">Every attempt appears on the transcript</span>,
@@ -120,7 +120,7 @@ export function Carryover({ r, history = null }: { r: Results; history?: CarryHi
       {byCourse.some((c) => !c.owed) ? (
         <Panel title="Cleared since" right="Failed before, passed since: no longer a carry-over">
           <DTable cols={["Course", "Attempts"]} rows={byCourse.filter((c) => !c.owed).map((c) => [
-            <Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />,
+            <Two key="c" a={<span className="tnum">{shownCode(c.course_code)}</span>} b={c.title} />,
             <span key="a" className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)" }}>{c.attempts.map((h) => <Pil key={`${h.session}|${h.semester}`} kind={RESULT_KIND[h.result]}>{attemptWord(h)}</Pil>)}</span>,
           ])} />
         </Panel>

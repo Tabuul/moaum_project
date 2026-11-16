@@ -310,7 +310,9 @@ export interface RollRow {
 }
 export interface GradeBand { grade: string; low: number; high: number; points: number }
 export interface ClassBand { clazz: string; low: number; high: number; ord: number }
-export interface BroadsheetMark { courseCode: string; stage: string; total: number | null; grade: string | null; points: number | null; outcome: string | null; counted: boolean }
+export interface BroadsheetMark { courseCode: string; stage: string; total: number | null; grade: string | null; points: number | null; outcome: string | null; counted: boolean;
+  /** the student's own credit units for the course (null when not registered), which may differ from the column's */
+  units?: number | null }
 export interface BroadsheetRow { studentId: string; number: string; name: string; marks: BroadsheetMark[]; units: number; cur: number; cue: number; points: number; gpa: number | null; pending: number; standing: string; tcr: number; tce: number; twgp: number; cgpa: number | null; lcgpa: number | null; carryovers: string[]; remarks: string; entryMode: string; received?: number; missing?: number }
 /** V318: how far one course column of the broadsheet is */
 export interface BroadsheetCourseCoverage { courseCode: string; title: string; sheetId?: string | null; stage: string; expected: number; received: number; missing: number }
@@ -322,7 +324,11 @@ export interface BroadsheetCoverage {
 export interface Broadsheet {
   /** V754, V756: semester 3 of a regular sheet of a session that had a Summer Semester — the sheet names it Summer */
   summer?: boolean;
-  programme: string; level: number; session: string; semester: number; courses: { courseCode: string; title: string; units: number; kind: string; level: number; inProgramme?: boolean }[]; rows: BroadsheetRow[];
+  programme: string; level: number; session: string; semester: number;
+  /** each column as its students took it: the title, the units and the code most of them took it under (codeAsTaken), unitsVary when
+   *  their own units differ (each mark then carries its own) */
+  courses: { courseCode: string; title: string; units: number; kind: string; level: number; inProgramme?: boolean; codeAsTaken?: string | null; unitsVary?: boolean }[];
+  rows: BroadsheetRow[];
   meanGpa: number | null; passed: number; carrying: number; pendingSets: number; bands: GradeBand[]; classes: ClassBand[]; gradingInstrument: string | null;
   coverage?: BroadsheetCoverage;
   /** V624: courses the department took off this sheet — with who carries them, the reason, who and when */

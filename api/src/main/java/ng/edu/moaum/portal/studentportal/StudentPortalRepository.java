@@ -897,7 +897,9 @@ class StudentPortalRepository {
                 SELECT r.id, r.status, r.level, r.submitted_at, r.approved_at, r.returned_comment, r.approval_mode, registration.units_of(r.id) AS units,
                        -- V756: the student's Summer semester (a CCE or postgraduate semester 3 is their own third semester)
                        (r.semester = 3 AND registration.is_summer_for(r.student_id, r.session, r.semester)) AS summer,
-                       (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
+                       -- a past course as the student took it: the title and the code an old-portal file stated (codeAsTaken null where none did)
+                       (SELECT json_agg(json_build_object('offeringId', e.offering_id, 'courseCode', c.code, 'codeAsTaken', at.code_as_taken,
+                               'title', coalesce(at.title, o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE e.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status,
@@ -907,6 +909,7 @@ class StudentPortalRepository {
                                'studentAdded', e.student_added_at IS NOT NULL)
                                ORDER BY registration.entry_rank(e.entry_type, c.kind, e.basis), e.entry_type = 'DEFERRED', c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                          LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                          WHERE e.registration_id = r.id) AS entries
                   FROM registration.course_registration r JOIN people.student st ON st.id = r.student_id
@@ -926,7 +929,8 @@ class StudentPortalRepository {
                                  JOIN registration.entry se ON se.registration_id = sr.course_registration_id AND se.offering_id = sr.offering_id
                                                            AND se.status NOT IN ('DROPPED', 'WITHDRAWN')
                                 WHERE sr.course_registration_id = r.id) AS siwes,
-                       (SELECT json_agg(json_build_object('courseCode', c.code, 'title', coalesce(o.title, c.title), 'units', e.units,
+                       -- a past course as the student took it: the title and the code an old-portal file stated (codeAsTaken null where none did)
+                       (SELECT json_agg(json_build_object('courseCode', c.code, 'codeAsTaken', at.code_as_taken, 'title', coalesce(at.title, o.title, c.title), 'units', e.units,
                                'kind', c.kind, 'basis', CASE WHEN e.entry_type = 'CARRYOVER' THEN 'Carryover' WHEN e.entry_type = 'DEFERRED' THEN 'Deferred' ELSE e.basis END, 'courseSemester', c.semester,
                                'lecturer', CASE WHEN lp.id IS NULL THEN NULL ELSE lp.surname || ', ' || lp.given_names END,
                                'entryType', e.entry_type, 'status', e.status,
@@ -936,6 +940,7 @@ class StudentPortalRepository {
                                'studentAdded', e.student_added_at IS NOT NULL)
                                ORDER BY registration.entry_rank(e.entry_type, c.kind, e.basis), e.entry_type = 'DEFERRED', c.code)::text
                           FROM registration.entry e JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                          LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
                           LEFT JOIN iam.person lp ON lp.id = o.lecturer_id
                          WHERE e.registration_id = r.id) AS entries
                   FROM registration.course_registration r JOIN people.student st ON st.id = r.student_id

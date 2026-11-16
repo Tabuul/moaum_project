@@ -501,6 +501,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Course / offer / offering direct upserts (`/registration/courses…`) | PARTIALLY IMPLEMENTED | `RegistrationController.java:40-62` | Backend only; the catalogue and allocation screens use other modules |
 | `LOCKED` registration status | CONFIGURED BUT UNUSED | Only checks in V139 / V195; no writer | Every "APPROVED/LOCKED" test is effectively APPROVED |
 | Notifications on approve / return | NOT IMPLEMENTED | No `queue_notice` | |
+| Course Registration Correction: the Director of ICT takes one student's wrongly counted course off one registration with a reason; a course with a result held for the Registrar or Deputy Registrar, never the officer who asked; cancel and undo; the removal sticks (V772, 15 November 2026) | IMPLEMENTED | `db/V772__the_director_of_ict_removes_a_wrongly_counted_course_registration.sql` (`registration.request_entry_removal`, `decide_entry_removal`, `undo_entry_removal`, `entry_removal_holds`); `RegistrationCorrectionController.java`; `registration/corrections/Corrections.tsx`; `RegistrationCorrectionIT`, `lib/registration-corrections.test.ts` | Menus: ict and registrar (Academic), dregistrar (Students). A removed course counts nowhere (transcripts, CGPA, broadsheet, GST/EPS fee readers, the result monitor's exceptions); the mark kept on its sheet; issued transcripts flagged; the student's change history lists it. The registration screen shows it Removed and never ticks it again. No notice to the student. See `docs/course-registration-correction.md` |
 
 ### 3.21 Deferments (dossier D5; revised by V264 and V265 on 26 September 2026)
 
@@ -635,6 +636,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Re-sit / special sittings | IMPLEMENTED | `sheet_candidates`, `course_final` | A passed re-sit is recorded at the pass mark (40, "E") |
 | Second examiner acting at VERIFICATION | PARTIALLY IMPLEMENTED | `Sheets.DESK` maps VERIFICATION to `exams`; the second examiner gains read access only | UI text says "It goes to the second examiner" |
 | Legacy results migration desk (`/results/legacy/*`) | IMPLEMENTED | `ResultsController.java:45-47` (`MIGRATE`) | |
+| Old-portal registration and past results recorded as taken: Course Title, Credit Units (never the old portal's Units status code) and Category on every row; the course identified by code and title; a course on record corrected by the Directorate of ICT only, never over a portal result, a Senate units amendment or a removal; the check, the confirmation with a reason, one upload `PRU-…` with its ledger and CGPA before/after; Old Portal Uploads and the report; Senate-approved graduates keep the approved CGPA (V771, 15 November 2026) | IMPLEMENTED | `db/V771__a_past_result_keeps_the_course_as_taken.sql` (`catalogue.course_as_taken`, `assessment.legacy_semester_load`, `past_upload_begin`/`_finish`); `ResultsController` `/legacy/uploads`; `GraduationRepository.upsert`; `records/migration/Migration.tsx`, `records/migration/uploads/Uploads.tsx`, `lib/legacy-columns.ts`, `lib/legacy-merge.ts`; `HistoricalCourseAsTakenIT` | The catalogue never touched; transcripts, statements, the broadsheet (units per student where they vary), the course form, the result viewer and the full record print the course as taken; an issued transcript flagged when a printed code or title changes. See `docs/past-results-upload.md` |
 
 ### 3.31 Held scripts (dossier E-C)
 
@@ -952,7 +954,7 @@ Objects in the schema (or endpoints in the API) that nothing in the application 
 | `people.search_log` | table | written, never read | No reader | D1 |
 | Legacy transcript request (V027: `/me/transcripts`, `Screens5.Transcript`) | endpoints, screen | CONFIGURED BUT UNUSED | Superseded by V262; the screen is unrouted | D2 |
 | `policy.level_limit.probation_max_units` | column | CONFIGURED BUT UNUSED | NULL for every level; the ceiling logic in `student_submit` never fires | D4, E-E |
-| `registration.course_registration.status = LOCKED`; `registration.entry.status = WITHDRAWN` | states | CONFIGURED BUT UNUSED | Only refusal checks (V139, V195) mention LOCKED; no UPDATE sets either | D4 |
+| `registration.course_registration.status = LOCKED` | state | CONFIGURED BUT UNUSED | Only refusal checks (V139, V195) mention LOCKED; no UPDATE sets it. (`registration.entry.status = WITHDRAWN`, listed here before, is set since V702 by a duplicate resolution and since V772 by Course Registration Correction.) | D4 |
 | `people.deferment_document.verified_at / verified_by` | columns | CONFIGURED BUT UNUSED | Nothing sets them | D5 |
 | `people.deferment_setting`, `people.deferment_reason` administration | tables | no screen | Rows by migration only | D5 |
 | `people.student.status = TRANSFERRED_OUT` | state | CONFIGURED BUT UNUSED | The transfer pipeline keeps the student ACTIVE on the new programme | D6 |

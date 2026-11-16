@@ -188,10 +188,11 @@ public final class Sheets {
     public record ClassBand(String clazz, BigDecimal low, BigDecimal high, int ord) {
     }
 
-    /** one candidate, one course, on the broadsheet */
+    /** one candidate, one course, on the broadsheet — the title, the units and (codeAsTaken) the code as the student took it, where an
+     *  old-portal file stated them; codeAsTaken null where none did */
     public record BroadsheetCell(UUID studentId, String number, String surname, String otherNames, String courseCode,
                                  String title, int units, String kind, String stage, Integer total, String grade, BigDecimal points, String outcome,
-                                 String entryMode, int courseLevel, UUID sheetId, boolean inProgramme) {
+                                 String entryMode, int courseLevel, UUID sheetId, boolean inProgramme, String codeAsTaken) {
     }
 
     /** V624: a course the department took off this broadsheet — not a column of it, nor counted in it — listed under it with the
@@ -215,11 +216,16 @@ public final class Sheets {
     }
 
     /** inProgramme (V624): registered under the programme's basis, bound to the programme, or a general course — false flags a
-     *  course outside the programme the department may take off the sheet */
-    public record BroadsheetCourse(String courseCode, String title, int units, String kind, int level, boolean inProgramme) {
+     *  course outside the programme the department may take off the sheet. The title, units and codeAsTaken are the column's as its
+     *  students took it — the most common among them (codeAsTaken the course code where no file stated one); unitsVary when the
+     *  students' own units differ, each mark then carrying its own */
+    public record BroadsheetCourse(String courseCode, String title, int units, String kind, int level, boolean inProgramme,
+                                   String codeAsTaken, boolean unitsVary) {
     }
 
-    public record BroadsheetMark(String courseCode, String stage, Integer total, String grade, BigDecimal points, String outcome, boolean counted) {
+    /** units: the student's own units for the course (null when not registered), which may differ from the column's */
+    public record BroadsheetMark(String courseCode, String stage, Integer total, String grade, BigDecimal points, String outcome, boolean counted,
+                                 Integer units) {
     }
 
     public record Cumulative(int tcr, int tce, BigDecimal twgp, BigDecimal cgpa, BigDecimal prevCgpa) {

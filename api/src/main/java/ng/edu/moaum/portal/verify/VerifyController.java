@@ -453,10 +453,12 @@ class VerifyController {
             return out;
         }
         java.util.UUID rid = (java.util.UUID) row.get("id");
+        // a past course as the student took it: the title (and the code) an old-portal file stated, never today's catalogue
         List<Map<String, Object>> courses = jdbc.sql("""
-                SELECT c.code AS course_code, c.title, e.units, e.entry_type, c.kind
+                SELECT c.code AS course_code, at.code_as_taken AS "codeAsTaken", coalesce(at.title, o.title, c.title) AS title, e.units, e.entry_type, c.kind
                   FROM registration.entry e
                   JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
+                  LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
                  WHERE e.registration_id = :r AND e.status IN ('REGISTERED','APPROVED')
                  ORDER BY (e.entry_type = 'CARRYOVER') DESC, c.code
                 """).param("r", rid).query().listOfRows();
@@ -507,7 +509,7 @@ class VerifyController {
         }
         java.util.UUID sid = (java.util.UUID) s.get("id");
         List<Map<String, Object>> rows = jdbc.sql("""
-                SELECT course_code, title, units, total, grade, points, outcome, published_at, senate_minute
+                SELECT course_code, code_as_taken, title, units, total, grade, points, outcome, published_at, senate_minute
                   FROM assessment.student_results(:s)
                  WHERE session = :session AND semester = :sem AND published
                  ORDER BY course_code

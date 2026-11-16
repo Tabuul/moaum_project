@@ -65,6 +65,7 @@ export const ROUTES: Record<string, string> = {
   "t/regoptions": "/registration/options",   // V504
   "t/overloads": "/registration/overloads",   // V508
   "t/latereg": "/registration/late",   // V516
+  "t/regcorrection": "/registration/corrections",
   "t/regsettings": "/registration/settings",
   "t/allocationtemplates": "/allocation/templates",
   "t/structureprogrammes": "/catalogue/structure/programmes",
@@ -396,6 +397,7 @@ export const ROUTES: Record<string, string> = {
   "t/review": "/results/chain",
   "t/pipeline": "/results/pipeline",
   "t/legacy": "/records/migration",
+  "t/legacyuploads": "/records/migration/uploads",
   "t/broadsheet": "/results/broadsheet",
   "t/senate": "/results/senate",
   "t/publish": "/results/publish",
@@ -550,6 +552,8 @@ const OVERRIDES: Record<string, string> = {
   "t/oldtransfers": "Old-portal transfers",
   "t/iut": "Inter-university transfer",
   "t/iutform": "Inter-university transfer form",
+  "t/regcorrection": "Course registration correction",
+  "t/legacyuploads": "Old portal uploads",
   "t/legacywallet": "Old e-wallet balances",
   "t/legacyrecon": "Legacy financial reconciliation",
   "t/feehistoryrecon": "School fees history reconciliation",

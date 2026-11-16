@@ -159,7 +159,9 @@ final class QueryEngine {
                 new Field("semester", "Semester", Type.INT, "r.semester", List.of("1", "2", "3"), false),
                 new Field("reg_status", "Registration status", Type.ENUM, "r.status", REG_STATUSES, false),
                 new Field("course_code", "Course code", Type.TEXT, "o.course_code"),
-                new Field("course_title", "Course title", Type.TEXT, "cr.title"),
+                // the code as the old portal's file wrote it (kept when the course is later renamed), and the title as taken
+                new Field("code_as_taken", "Course code as taken", Type.TEXT, "at.code_as_taken"),
+                new Field("course_title", "Course title", Type.TEXT, "coalesce(at.title, o.title, cr.title)"),
                 new Field("course_units", "Credit units", Type.INT, "e.units"),
                 new Field("course_department", "Course department", Type.ENUM, "cr.dept_code", List.of("@department"), false),
                 new Field("course_level", "Course level", Type.INT, "cr.level"),
@@ -167,7 +169,8 @@ final class QueryEngine {
                 new Field("entry_status", "Course status", Type.ENUM, "e.status", List.of("REGISTERED", "APPROVED", "DEFERRED", "DROPPED", "WITHDRAWN"), false)));
         SOURCES.put("COURSE_REGISTRATIONS", new Source("COURSE_REGISTRATIONS", "Courses registered", "Each course on each student's registration.",
                 "registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id "
-                        + "JOIN catalogue.course cr ON cr.code = o.course_code JOIN (" + STUDENT_FROM + ") ON s.id = r.student_id",
+                        + "JOIN catalogue.course cr ON cr.code = o.course_code LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id "
+                        + "JOIN (" + STUDENT_FROM + ") ON s.id = r.student_id",
                 "s.duplicate_of IS NULL", "p.faculty_code", "p.dept_code", "p.code", entryFields,
                 List.of("name", "matric_no", "programme_name", "level", "session", "semester", "course_code", "course_title", "course_units", "entry_type", "reg_status"),
                 "name", "asc", false, READERS_ALL, "REG", null));
@@ -288,6 +291,8 @@ final class QueryEngine {
                 new Field("session", "Session", Type.TEXT, "rs.session", List.of("@session"), false),
                 new Field("semester", "Semester", Type.INT, "rs.semester", List.of("1", "2", "3"), false),
                 new Field("course_code", "Course code", Type.TEXT, "rs.course_code"),
+                // the code as the old portal's file wrote it (kept when the course is later renamed); the title is already as taken
+                new Field("code_as_taken", "Course code as taken", Type.TEXT, "rs.code_as_taken"),
                 new Field("course_title", "Course title", Type.TEXT, "rs.title"),
                 new Field("units", "Credit units", Type.INT, "rs.units"),
                 new Field("registered_as", "Registered as", Type.TEXT, "rs.entry_type"),

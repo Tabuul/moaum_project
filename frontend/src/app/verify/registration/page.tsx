@@ -5,7 +5,9 @@ import { LegacyNote } from "../LegacyNote";
 
 export const dynamic = "force-dynamic";
 
-interface Course { course_code: string; title: string; units: number; entry_type: string; kind?: string }
+interface Course { course_code: string; title: string; units: number; entry_type: string; kind?: string;
+  /** the code the course was taken under, as the course form prints it (the title arrives as taken); missing on an older answer */
+  codeAsTaken?: string | null }
 interface RegVerify {
   genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; status?: string; approvedOn?: string | null; units?: number; courses?: Course[];
@@ -76,7 +78,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                     <tbody>
                       {(v.courses ?? []).map((co, i) => (
                         <tr key={i}>
-                          <td className="b600" style={{ whiteSpace: "nowrap" }}>{co.course_code}</td>
+                          <td className="b600" style={{ whiteSpace: "nowrap" }}>{co.codeAsTaken ?? co.course_code}</td>
                           <td>{co.title}</td>
                           <td className="ink-muted" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{co.units}u</td>
                           <td className="ink-muted" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{courseType(co)}</td>

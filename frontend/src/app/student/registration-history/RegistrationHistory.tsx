@@ -7,8 +7,11 @@ import { useMemo, useState } from "react";
 import { Btn, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { registrationSummer, semesterName } from "@/lib/student-portal";
+import { shownCode } from "@/lib/course-code";
 
-interface Entry { courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number }
+interface Entry { courseCode: string; title: string; units: number; entryType: string; status: string; kind?: string; lecturer?: string | null; courseSemester?: number;
+  /** the code the course was taken under, where the record keeps the class as taken (the title arrives as taken) */
+  codeAsTaken?: string | null }
 interface Reg { id: string; session: string; semester: number; status: string; level: number; submitted_at: string | null; approved_at: string | null; units: number; entries: Entry[];
   /** V756: semester 3 was this student's Summer Semester (registration.is_summer_for); missing is not the Summer */
   summer?: boolean
@@ -73,7 +76,7 @@ function RegPanel({ r }: { r: Reg }) {
         <DTable cols={["Course code", "Course title", "Lecturer", "Unit|mid", "Type|mid", "Status|mid"]} rows={[...r.entries].sort((a, b) => orderRank(a) - orderRank(b) || a.courseCode.localeCompare(b.courseCode)).map((e) => {
           const co = e.entryType === "CARRYOVER";
           return [
-            <b className="tnum" key="c">{e.courseCode}</b>,
+            <b className="tnum" key="c">{shownCode(e.codeAsTaken ?? e.courseCode)}</b>,
             <span key="t">{e.title}</span>,
             <span className="sub2" key="l">{e.lecturer ?? "—"}</span>,
             <span className="tnum" key="u">{e.units}</span>,

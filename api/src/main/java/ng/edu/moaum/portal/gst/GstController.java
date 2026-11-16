@@ -326,7 +326,7 @@ class GstController {
                AND (:pay::text IS NULL OR x.pay_state = :pay)
                AND (:reg::text IS NULL OR (:reg = 'REGISTERED') = x.registered)
                AND (:course::text IS NULL OR EXISTS (SELECT 1 FROM registration.course_registration cr
-                                                        JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
+                                                        JOIN registration.entry e ON e.registration_id = cr.id AND e.status NOT IN ('DROPPED', 'WITHDRAWN')
                                                         JOIN catalogue.offering o ON o.id = e.offering_id
                                                        WHERE cr.student_id = x.student_id AND cr.session = :s AND o.course_code = :course
                                                          AND (:sem::int IS NULL OR cr.semester = :sem)))
@@ -485,11 +485,11 @@ class GstController {
                        r.gst_registered, r.eps_registered, r.gst_courses, r.eps_courses, r.registered_at, r.pay_source,
                        r.office_required, r.office_reason, r.office_carryover, r.office_completed, r.office_owed, r.review, r.gst_reason, r.eps_reason,
                        (SELECT string_agg(o.course_code, ', ' ORDER BY o.course_code)
-                          FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
+                          FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status NOT IN ('DROPPED', 'WITHDRAWN')
                           JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code AND c.general_office = :office
                          WHERE cr.student_id = r.student_id AND cr.session = :s AND (:sem::int IS NULL OR cr.semester = :sem)) AS registered_courses,
                        (SELECT string_agg(DISTINCT sh.stage, ', ')
-                          FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status <> 'DROPPED'
+                          FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status NOT IN ('DROPPED', 'WITHDRAWN')
                           JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code AND c.general_office = :office
                           JOIN assessment.score_sheet sh ON sh.offering_id = o.id
                          WHERE cr.student_id = r.student_id AND cr.session = :s AND (:sem::int IS NULL OR cr.semester = :sem)) AS result_stages

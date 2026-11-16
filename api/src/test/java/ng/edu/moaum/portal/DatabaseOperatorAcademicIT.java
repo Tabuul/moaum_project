@@ -20,9 +20,10 @@ import org.springframework.transaction.PlatformTransactionManager;
  * V662: the Database Operators work the Academic menu the Director of ICT works — Upload or Create Faculties, Departments,
  * Programmes and Courses, Course Allocation and Migrate from Old Portal — each held to its grant. An operator granted over the
  * whole University creates (and removes) a faculty, uploads a programme's course structure, reaches every class on the allocation
- * desk and checks past results (the database's own rule, assessment.past_results_office, admits it). An operator held to one
- * department uploads its own programme's structure, is refused another department's, reaches its department on the desk, and is
- * refused the University's register and the old-portal migration (SCOPE_UNIVERSITY). A lecturer is refused all of it.
+ * desk, checks past results (the database's own rule, assessment.past_results_office, admits it) and confirms a past results upload
+ * (15 Nov 2026: each row states the course as taken). An operator held to one department uploads its own programme's structure, is
+ * refused another department's, reaches its department on the desk, and is refused the University's register and the old-portal
+ * migration, its uploads among it (SCOPE_UNIVERSITY). A lecturer is refused all of it.
  * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -75,7 +76,10 @@ class DatabaseOperatorAcademicIT {
                 List.of(Map.of("code", "ZOP " + n, "title", "Operator Upload Check", "units", "2", "level", "100", "semester", "1", "status", "C")));
         String session = jdbc.sql("SELECT policy.university_current_session()").query(String.class).single();
         Map<String, Object> pastResult = Map.of("session", session, "semester", 1,
-                "rows", List.of(Map.of("line", "2", "matric", "NO/SUCH/" + n, "course", "ZOP " + n, "total", "50")));
+                "rows", List.of(Map.of("line", "2", "matric", "NO/SUCH/" + n, "course", "ZOP " + n, "title", "Operator Upload Check", "creditUnits", "2",
+                                       "category", "Core", "total", "50")));
+        Map<String, Object> confirm = Map.of("kind", "RESULTS", "fileName", "operator-check.xlsx", "rows", 1,
+                "reason", "DatabaseOperatorAcademicIT: the operator's past results check");
         String faculty = "ZQ" + n;
 
         // ── the operator granted over the whole University: what the Director of ICT does ──
@@ -90,6 +94,11 @@ class DatabaseOperatorAcademicIT {
         assertThat((List<String>) desk.getBody().get("capabilities")).contains("VIEW_ALLOCATIONS", "ALLOCATE_COURSES", "BULK_ALLOCATE");
         ResponseEntity<Map> checked = it.call(uni, HttpMethod.POST, "/api/v1/results/legacy/results/preview", pastResult);
         assertThat(checked.getStatusCode().value()).as(String.valueOf(checked.getBody())).isEqualTo(200);   // the database's past-results rule admits it
+        // and confirms a past results upload of its own, closed as it was left, and reads the uploads
+        ResponseEntity<Map> confirmed = it.call(uni, HttpMethod.POST, "/api/v1/results/legacy/uploads", confirm);
+        ok(confirmed);
+        ok(it.call(uni, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + confirmed.getBody().get("id") + "/finish", Map.of("complete", false)));
+        assertThat(it.getList(uni, "/api/v1/results/legacy/uploads").getStatusCode().value()).isEqualTo(200);
 
         // ── the operator held to one department: its own programmes' structures and classes, nothing of the University's ──
         ok(it.call(held, HttpMethod.POST, "/api/v1/catalogue/import", structure));
@@ -97,6 +106,7 @@ class DatabaseOperatorAcademicIT {
         refused(it.call(held, HttpMethod.POST, "/api/v1/catalogue/faculties", Map.of("code", faculty, "name", "Not Mine")), "SCOPE_UNIVERSITY");
         refused(it.call(held, HttpMethod.POST, "/api/v1/catalogue/programmes/import", Map.of("rows", List.of())), "SCOPE_UNIVERSITY");
         refused(it.call(held, HttpMethod.POST, "/api/v1/results/legacy/results/preview", pastResult), "SCOPE_UNIVERSITY");
+        refused(it.call(held, HttpMethod.POST, "/api/v1/results/legacy/uploads", confirm), "SCOPE_UNIVERSITY");
         refused(it.call(held, HttpMethod.POST, "/api/v1/results/legacy/students/preview", Map.of("rows", List.of())), "SCOPE_UNIVERSITY");
         ResponseEntity<Map> heldDesk = it.get(held, "/api/v1/allocation/desk/options");
         ok(heldDesk);

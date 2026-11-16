@@ -1,11 +1,13 @@
 import { api } from "@/lib/api";
 import { semesterName } from "@/lib/student-portal";
+import { shownCode } from "@/lib/course-code";
 import { Note } from "@/components/proto/ui";
 import { LegacyNote } from "../LegacyNote";
 
 export const dynamic = "force-dynamic";
 
-interface Row { course_code: string; title: string; units: number; total: number | null; grade: string | null; points: number | null; outcome: string | null }
+/** a published grade; code_as_taken is the code the course was taken under where the record keeps one (V771), the title already as taken */
+interface Row { course_code: string; code_as_taken?: string | null; title: string; units: number; total: number | null; grade: string | null; points: number | null; outcome: string | null }
 interface ResultVerify {
   genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; gpa?: number | null; cgpa?: number | null; standing?: string | null;
@@ -69,7 +71,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                     <tbody>
                       {(v.rows ?? []).map((row, i) => (
                         <tr key={i}>
-                          <td className="b600" style={{ whiteSpace: "nowrap" }}>{row.course_code}</td>
+                          <td className="b600" style={{ whiteSpace: "nowrap" }}>{shownCode(row.code_as_taken ?? row.course_code)}</td>
                           <td>{row.title}</td>
                           <td className="ink-muted" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{row.units}u</td>
                           <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{scoreOf(row)}</td>

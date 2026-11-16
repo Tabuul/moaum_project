@@ -147,6 +147,9 @@ export interface RecordRow {
   points: number | null; qualityPoints: number | null; outcome: string | null; sitting: string | null; publishedAt: string | null;
   versions: number; uploadedAt: string | null; lastModified: string | null; imported: boolean | null;
   openRequest: string | null; openAmendment: string | null;
+  /** the code the course was taken under, where the record keeps the class as taken (courseTitle arrives as taken); missing on an
+   *  older answer */
+  codeAsTaken?: string | null;
 }
 
 export const RECORD_HEADERS = [
@@ -160,7 +163,7 @@ const day = (s: string | null | undefined) => (s ? s.slice(0, 10) : "");
 export function recordCells(r: RecordRow): (string | number | null)[] {
   return [
     `${r.surname.toUpperCase()}, ${r.otherNames}`, r.number ?? "", r.jamb ?? "", r.faculty ?? "", r.department ?? "", r.programme ?? r.programmeCode,
-    r.level, r.courseCode, r.courseTitle ?? "", r.units, r.ca, r.exam, r.total, r.grade ?? (r.outcome && r.outcome !== "GRADED" ? OUTCOME_WORD[r.outcome] ?? r.outcome : ""),
+    r.level, r.codeAsTaken ?? r.courseCode, r.courseTitle ?? "", r.units, r.ca, r.exam, r.total, r.grade ?? (r.outcome && r.outcome !== "GRADED" ? OUTCOME_WORD[r.outcome] ?? r.outcome : ""),
     r.points, r.qualityPoints, STATE_WORD[r.state] ?? r.state, stageWord(r.stage), r.lecturer ?? "", day(r.uploadedAt), day(r.lastModified),
   ];
 }

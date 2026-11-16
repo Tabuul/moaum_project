@@ -195,7 +195,7 @@ export function ResultViewer({ scope, structure, sessions, ceiling, initialState
               rows={records.rows.map((r, i) => [
                 (records.page - 1) * records.size + i + 1,
                 `${r.surname.toUpperCase()}, ${r.otherNames}`, <span className="tnum" key="m">{r.number ?? "—"}</span>, r.programme ?? r.programmeCode, r.level,
-                <span key="c" title={r.courseTitle ?? ""}>{r.courseCode}</span>, r.units, r.ca ?? "—", r.exam ?? "—", <b key="t" className="tnum">{r.total ?? "—"}</b>,
+                <span key="c" title={r.courseTitle ?? ""}>{r.codeAsTaken ?? r.courseCode}{r.codeAsTaken && r.codeAsTaken !== r.courseCode ? <div className="sub2">now {r.courseCode}</div> : null}</span>, r.units, r.ca ?? "—", r.exam ?? "—", <b key="t" className="tnum">{r.total ?? "—"}</b>,
                 r.grade ?? (r.outcome && r.outcome !== "GRADED" ? OUTCOME_WORD[r.outcome] ?? r.outcome : "—"), r.points ?? "—", r.qualityPoints ?? "—",
                 <span key="s"><Pil kind={STATE_TONE[r.state] ?? "grey"}>{STATE_WORD[r.state] ?? r.state}</Pil>{r.openRequest ? <> <Pil kind="info" title="A correction request is open">{r.openRequest.split(" ")[0]}</Pil></> : null}{r.openAmendment ? <> <Pil kind="info" title="An amendment is open">{r.openAmendment.split(" ")[0]}</Pil></> : null}</span>,
                 stageWord(r.stage), r.lecturer ?? "—",

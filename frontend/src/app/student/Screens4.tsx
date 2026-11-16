@@ -77,12 +77,12 @@ export function ResultsScreen({ r }: { r: Results }) {
               <DTable cols={["Course", "Units|mid", "Score|mid", "Grade|mid", "Points|mid", "Where it is", "Taught by"]} rows={latest.rows.map((c) => {
                 const st = STAGE_LABEL[c.stage] ?? [c.stage, ""];
                 const taught = <span className="sub2" key="h">{c.lecturer || "—"}</span>;
-                if (!c.published) return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="info" key="w">{st[0]}</Pil>, taught];
+                if (!c.published) return [<Two key="c" a={<span className="tnum">{shownCode(c.code_as_taken ?? c.course_code)}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="info" key="w">{st[0]}</Pil>, taught];
                 // V667: published, but withheld until the semester's fees are paid
-                if (c.withheld) return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="bad" key="w">Withheld · fees</Pil>, taught];
+                if (c.withheld) return [<Two key="c" a={<span className="tnum">{shownCode(c.code_as_taken ?? c.course_code)}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <span className="sub2" key="s">—</span>, <span className="sub2" key="g">—</span>, <span className="sub2" key="p">—</span>, <Pil kind="bad" key="w">Withheld · fees</Pil>, taught];
                 // V422: an absence is an F; withheld, incomplete and malpractice are held for the Senate (not counted, not owed); an exemption is neither
-                if (c.outcome !== "GRADED") return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <Pil kind={c.outcome === "ABSENT" ? "bad" : c.outcome === "EXEMPTED" ? "grey" : "warn"} key="s">{OUTCOME_WORD[c.outcome ?? ""] ?? c.outcome}</Pil>, <b key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] ?? "var(--ink)" : undefined }}>{c.grade ?? "—"}</b>, <span className="tnum" key="p">{c.points ?? "—"}</span>, HELD_OUTCOMES.includes(c.outcome ?? "") ? <Pil kind="warn" key="w">Held for the Senate</Pil> : <Pil kind="ok" key="w">Published</Pil>, taught];
-                return [<Two key="c" a={<span className="tnum">{c.course_code}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <b className="tnum" key="s">{c.total}</b>, <b key="g" style={{ color: GRADE_COLOUR[c.grade ?? ""] ?? "var(--ink)" }}>{c.grade}</b>, <span className="tnum" key="p">{c.points}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
+                if (c.outcome !== "GRADED") return [<Two key="c" a={<span className="tnum">{shownCode(c.code_as_taken ?? c.course_code)}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <Pil kind={c.outcome === "ABSENT" ? "bad" : c.outcome === "EXEMPTED" ? "grey" : "warn"} key="s">{OUTCOME_WORD[c.outcome ?? ""] ?? c.outcome}</Pil>, <b key="g" style={{ color: c.grade ? GRADE_COLOUR[c.grade] ?? "var(--ink)" : undefined }}>{c.grade ?? "—"}</b>, <span className="tnum" key="p">{c.points ?? "—"}</span>, HELD_OUTCOMES.includes(c.outcome ?? "") ? <Pil kind="warn" key="w">Held for the Senate</Pil> : <Pil kind="ok" key="w">Published</Pil>, taught];
+                return [<Two key="c" a={<span className="tnum">{shownCode(c.code_as_taken ?? c.course_code)}</span>} b={c.title} />, <span className="tnum" key="u">{c.units}</span>, <b className="tnum" key="s">{c.total}</b>, <b key="g" style={{ color: GRADE_COLOUR[c.grade ?? ""] ?? "var(--ink)" }}>{c.grade}</b>, <span className="tnum" key="p">{c.points}</span>, <Pil kind="ok" key="w">Published</Pil>, taught];
               })} />
               <div className="row" style={{ padding: "0 var(--s-4) var(--s-4)" }}>
                 {live.length && !latestHeld ? <LinkBtn kind="primary" size="md" href={`/student/results/${encodeURIComponent(latest.session)}/${latest.semester}`}>Semester Results</LinkBtn> : null}
@@ -140,7 +140,7 @@ export function Slip({ r, session, semester }: { r: Results; session: string; se
       <div className="card"><div className="tablewrap" tabIndex={0}><table className="tbl--data">
         <thead><tr><th>Course</th><th className="mid">Unit</th><th className="mid">Score</th><th className="mid">Grade</th></tr></thead>
         <tbody>
-          {rows.map((x) => <tr key={x.course_code}><td><strong className="tnum">{x.course_code}</strong><div className="sub2">{x.title}</div></td><td className="mid tnum">{x.units}</td><td className="mid tnum">{x.outcome === "GRADED" ? x.total : x.outcome}</td><td className="mid b700" style={{ color: GRADE_COLOUR[x.grade ?? ""] ?? "var(--ink)" }}>{x.grade ?? "—"}</td></tr>)}
+          {rows.map((x) => <tr key={x.course_code}><td><strong className="tnum">{shownCode(x.code_as_taken ?? x.course_code)}</strong><div className="sub2">{x.title}</div></td><td className="mid tnum">{x.units}</td><td className="mid tnum">{x.outcome === "GRADED" ? x.total : x.outcome}</td><td className="mid b700" style={{ color: GRADE_COLOUR[x.grade ?? ""] ?? "var(--ink)" }}>{x.grade ?? "—"}</td></tr>)}
           <tr><td className="b700">Units registered {registered} · passed {passed}</td><td colSpan={3} className="num b700 ink-muted">GP {gp.toFixed(1)}</td></tr>
         </tbody>
       </table></div></div>
@@ -191,7 +191,7 @@ export function Broadsheet({ r }: { r: Results }) {
               <tbody>
                 {g.rows.map((c) => (
                   <tr key={c.course_code}>
-                    <td className="tnum b600">{shownCode(c.course_code)}</td>
+                    <td className="tnum b600">{shownCode(c.code_as_taken ?? c.course_code)}</td>
                     <td>{c.title}</td>
                     <td className="mid tnum">{c.units}</td>
                     <td className="mid tnum">{c.outcome === "GRADED" ? (c.ca ?? "—") : "—"}</td>

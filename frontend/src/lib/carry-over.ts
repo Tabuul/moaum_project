@@ -3,6 +3,7 @@
  *  add answered. The server decides every course; the screen only shows. */
 
 import type { SpilloverQuote } from "./spillover";
+import { shownCode } from "./course-code.ts";
 
 export type CarryStatus = "OUTSTANDING" | "NO_RESULT" | "NO_RECORD" | "AWAITED" | "CLEARED" | "ALREADY_REGISTERED" | "NOT_OWED";
 
@@ -121,8 +122,17 @@ export interface OwedCourse { course_code: string; title: string; units: number;
 
 export type AttemptResult = "PASSED" | "FAILED" | "AWAITED" | "NO_RESULT" | "REGISTERED";
 
-/** one attempt of a course the student has failed on a published result (registration.carryover_history) */
-export interface HistoryRow { course_code: string; title: string; session: string; semester: number; grade: string | null; result: AttemptResult; owed: boolean }
+/** one attempt of a course the student has failed on a published result (registration.carryover_history); course_code is the
+ *  catalogue's key the attempts are grouped under, code_as_taken the code that attempt was taken under where the record keeps one
+ *  (V771), title the attempt's own title as taken, course_title the course as the catalogue holds it now (the heading its attempts
+ *  sit under, V771) */
+export interface HistoryRow {
+  course_code: string; title: string; session: string; semester: number; grade: string | null; result: AttemptResult; owed: boolean;
+  code_as_taken?: string | null; course_title?: string | null;
+}
+
+/** the code an attempt is shown under: the code it was taken under where the record keeps one, else the course's own */
+export const attemptCode = (h: Pick<HistoryRow, "course_code" | "code_as_taken">) => shownCode(h.code_as_taken ?? h.course_code);
 
 /** what GET /api/v1/me/carryovers/history answers */
 export interface CarryHistory { owed: OwedCourse[]; history: HistoryRow[] }
@@ -142,16 +152,19 @@ export function attemptsWords(c: OwedCourse): string {
   return `Failed ${n} times: first ${c.first_failed_in}, last ${c.failed_in}`;
 }
 
-/** an attempt in a few words: "2024/2025 semester 1 — F" or "2026/2027 semester 1 — Registered, no result yet" */
+/** an attempt in a few words: "2024/2025 semester 1 — F" or "2026/2027 semester 1 — Registered, no result yet"; an attempt taken
+ *  under another code than the course is shown under says it: "2023/2024 semester 1 as CMP 301 — F" */
 export function attemptWord(h: HistoryRow): string {
-  return `${h.session} semester ${h.semester} — ${h.result === "FAILED" || h.result === "PASSED" ? (h.grade ?? RESULT_WORD[h.result]) : RESULT_WORD[h.result]}`;
+  const code = attemptCode(h);
+  return `${h.session} semester ${h.semester}${code !== shownCode(h.course_code) ? ` as ${code}` : ""} — ${h.result === "FAILED" || h.result === "PASSED" ? (h.grade ?? RESULT_WORD[h.result]) : RESULT_WORD[h.result]}`;
 }
 
-/** the history by course, in the order given: each course with every attempt, owed now or cleared */
+/** the history by course, in the order given: each course with every attempt, owed now or cleared — headed by the course as the
+ *  catalogue holds it now (an older reader without course_title gives the first attempt's title); each attempt keeps its own */
 export function historyByCourse(rows: HistoryRow[]): { course_code: string; title: string; owed: boolean; attempts: HistoryRow[] }[] {
   const out = new Map<string, { course_code: string; title: string; owed: boolean; attempts: HistoryRow[] }>();
   for (const r of rows) {
-    const c = out.get(r.course_code) ?? { course_code: r.course_code, title: r.title, owed: r.owed, attempts: [] };
+    const c = out.get(r.course_code) ?? { course_code: r.course_code, title: r.course_title ?? r.title, owed: r.owed, attempts: [] };
     c.attempts.push(r);
     c.owed = c.owed || r.owed;
     out.set(r.course_code, c);

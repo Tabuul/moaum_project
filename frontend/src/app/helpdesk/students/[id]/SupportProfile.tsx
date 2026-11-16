@@ -29,6 +29,11 @@ import { PasswordReset } from "@/components/support/PasswordReset";
 import { LevelManagement } from "@/components/support/LevelManagement";
 import { OpenStudentPortal } from "@/components/support/OpenStudentPortal";
 import { SIWES_OFFICE_ADD_WORDS, SIWES_OFFICE_NO_ADD, siwesDroppedWords } from "@/lib/siwes";
+import { onRecord, takenOff } from "@/lib/registration-corrections";
+
+/** V772: a course the Director of ICT took off the registration (withdrawn) — only that removal's undo, on Course Registration
+ *  Correction, puts it back, so nothing here drops, restores or adds it */
+const TAKEN_OFF_WORDS = "Taken off by the Director of ICT";
 
 type Tab = "profile" | "registration" | "payments" | "documents" | "clearance" | "history" | "tickets";
 const TABS: Tab[] = ["profile", "registration", "payments", "documents", "clearance", "history", "tickets"];
@@ -239,7 +244,9 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
   const mayEdit = (b: { tier: string; section: string; field: string }) => { const c = capabilityFor(b.tier, b.section, b.field); return c ? caps.has(c) : false; };
   const asksRegistry = (b: { tier: string; field: string }) => b.tier === "approval" || SENSITIVE.has(b.field);
   const history: HistoryRow[] = reg ? (Array.isArray(reg.history) ? reg.history : reg.history.history ?? []) : [];
-  const live = reg?.current.courses.filter((c) => c.status !== "DROPPED") ?? [];
+  // the courses on the registration: neither dropped nor taken off by the Director of ICT (withdrawn)
+  const live = reg?.current.courses.filter(onRecord) ?? [];
+  const removedIds = new Set((reg?.current.courses ?? []).filter(takenOff).map((c) => c.offering_id));
   const regStatus = reg?.current.registration?.status ?? null;
   // V752 (K12, K14): the Second Semester is the student's SIWES semester (registration.siwes_applies, as the registration view reads it):
   // it holds the SIWES course alone, so a carry-over or deferred course on it waits for a later semester and the office drop takes it
@@ -379,9 +386,10 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                   <span key="t">{c.title}{c.support_override_at ? <div><Pil kind="warn">Support override</Pil> <span className="sub2">{c.support_override_reason}</span></div> : null}{c.marked ? <div className="sub2">A mark is recorded — examination history</div> : null}</span>,
                   <span key="u" className="tnum">{c.units}</span>, <span key="ty" className="sub2">{c.entry_type.toLowerCase()}</span>, <span key="k" className="sub2">{c.basis}</span>,
                   <span key="l" className="tnum">{c.level}</span>, <span key="s" className="sub2">{sem(c.semester)}</span>,
-                  <Pil key="st" kind={c.status === "DROPPED" ? "grey" : c.status === "APPROVED" ? "ok" : "info"}>{c.status.toLowerCase()}</Pil>,
+                  <Pil key="st" kind={!onRecord(c) ? "grey" : c.status === "APPROVED" ? "ok" : "info"}>{c.status.toLowerCase()}</Pil>,
                   <span key="d" className="sub2">{day(c.registered_at)}</span>,
-                  reg.manage ? (c.status === "DROPPED"
+                  takenOff(c) ? <span key="a" className="sub2">{TAKEN_OFF_WORDS}</span>
+                  : reg.manage ? (c.status === "DROPPED"
                     // v4-1: in the SIWES semester the database refuses every restore, override or not (support_add_checks' SIWES rule): why, not Restore
                     ? siwesSem ? <span key="a" className="sub2">{siwesDroppedWords(c.entry_type)}</span>
                     : <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void openCourse("restore", c.offering_id, c.course_code, c.title, c.units)}>Restore</Btn>
@@ -398,11 +406,13 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                 <div className="eyebrow">Eligible courses — the engine&rsquo;s own menu for this student</div>
                 {reg.view.menu.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "Basis|mid", "Owner", "Note", "|num"]} rows={reg.view.menu.map((m) => {
                   const on = live.some((e) => e.offering_id === m.offering_id);
+                  // a menu course taken off the registration by the Director of ICT is shown removed, with nothing to add
+                  const off = !on && removedIds.has(m.offering_id);
                   return [
                     <b key="c" className="tnum">{m.course_code}</b>, <span key="t">{m.title}</span>, <span key="u" className="tnum">{m.units}</span>, <span key="b" className="sub2">{m.basis}</span>, <span key="o" className="sub2">{m.owner_dept}</span>,
-                    <span key="n" className="sub2">{on ? "Already registered" : siwesSem ? SIWES_OFFICE_ADD_WORDS : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : m.prerequisiteLocked ? `Prerequisite not passed: ${m.prerequisitesUnmet} — the override sets it aside` : m.prerequisitesUnmet ? `Eligible · prerequisite not yet passed: ${m.prerequisitesUnmet}` : "Eligible"}</span>,
+                    <span key="n" className="sub2">{on ? "Already registered" : off ? TAKEN_OFF_WORDS : siwesSem ? SIWES_OFFICE_ADD_WORDS : m.gstLocked ? `GST fee: ${m.gstGate ?? "not paid"}` : m.carryover ? `Carry-over (failed in ${m.failed_in ?? "—"})` : m.deferred ? "Deferred course" : m.prerequisiteLocked ? `Prerequisite not passed: ${m.prerequisitesUnmet} — the override sets it aside` : m.prerequisitesUnmet ? `Eligible · prerequisite not yet passed: ${m.prerequisitesUnmet}` : "Eligible"}</span>,
                     // V752: in the SIWES semester the database refuses every add, override or not (support_add_checks' SIWES rule)
-                    reg.manage && !on && !siwesSem ? <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void openCourse("add", m.offering_id, m.course_code, m.title, m.units)}>Add course</Btn> : <span key="a" />,
+                    reg.manage && !on && !off && !siwesSem ? <Btn key="a" kind="primary" size="sm" disabled={busy} onClick={() => void openCourse("add", m.offering_id, m.course_code, m.title, m.units)}>Add course</Btn> : <span key="a" />,
                   ];
                 })} /> : <div className="sub2">No course is offered for this student this semester.</div>}
               </PBody>
@@ -416,7 +426,8 @@ export function SupportProfile({ id, data, tab, clearance }: { id: string; data:
                   {find?.rows.length ? <DTable pageSize={0} noPrint cols={["Code|mid", "Title", "Units|mid", "Level|mid", "Kind|mid", "Department", "|num"]} rows={find.rows.map((o) => [
                     <b key="c" className="tnum">{o.course_code}</b>, <span key="t">{o.title}</span>, <span key="u" className="tnum">{o.units}</span>, <span key="l" className="tnum">{o.level}</span>,
                     <span key="k" className="sub2">{o.kind}</span>, <span key="d" className="sub2">{o.department ?? ""}</span>,
-                    <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void openCourse("add", o.offering_id, o.course_code, o.title, o.units)}>Check and add</Btn>,
+                    removedIds.has(o.offering_id) ? <span key="a" className="sub2">{TAKEN_OFF_WORDS}</span>
+                      : <Btn key="a" kind="ghost" size="sm" disabled={busy} onClick={() => void openCourse("add", o.offering_id, o.course_code, o.title, o.units)}>Check and add</Btn>,
                   ])} /> : null}
                 </PBody>
               ) : null}

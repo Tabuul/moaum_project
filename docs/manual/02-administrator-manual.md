@@ -736,7 +736,7 @@ Each subsection opens with the office's dashboard and what its figures compute, 
 
 > **Screenshot Required:** Registrar dashboard — `/` (acting as Registrar) — the tiles and the "Registry business" table.
 
-**Queues to watch.** Deferments forwarded to the DVC (`/deferments`, status filter WAITING DVC ACTION; the DVC's approval is final); transfers at the Registrar desk (`/transfers` tab Registrar); documents awaiting release (`/credentials/documents` tile "Awaiting release"); results waiting at SENATE (`/results/senate` for the DR(AA); `/results/approvals` "Senate Business" for the Registrar); faculty lists not confirmed (`/matriculation`); the returns due register (`/reports`).
+**Queues to watch.** Deferments forwarded to the DVC (`/deferments`, status filter WAITING DVC ACTION; the DVC's approval is final); transfers at the Registrar desk (`/transfers` tab Registrar); documents awaiting release (`/credentials/documents` tile "Awaiting release"); results waiting at SENATE (`/results/senate` for the DR(AA); `/results/approvals` "Senate Business" for the Registrar); faculty lists not confirmed (`/matriculation`); course registration removals held for a result (`/registration/corrections`, Waiting for the Registry, §3.1.10); the returns due register (`/reports`).
 
 **3.1.1 Matriculation — run and single issue.** Status: IMPLEMENTED. Runners `academic, registrar, dregistrar`.
 
@@ -784,6 +784,20 @@ Students
 **3.1.8 Statistics and returns.** Student Statistics — `/stats` (money figures for MONEY offices including the Registrar); Reports & Returns — `/reports` where the Registrar owns admissions, enrolment and registration returns (due 31 December and 31 March/31 August) and keeps, files and emails copies (§4.8, §7).
 
 **3.1.9 Also the Registrar's.** People console (§2.3); Data Governance (§2.19); the printed certificate register (`/credentials/certificates`, §3.10.6); Post-UTME CBT Schedule and Admissions read screens; Staff Records and Recruitment (with HRM, §3.6); Senate Business (`/results/approvals`) where the Registrar records the minute that publishes result sets (§3.3.4).
+
+**3.1.10 Course registration corrections held for a result, and old-portal uploads (V771, V772).** Status: IMPLEMENTED. When the Director of ICT takes a wrongly counted course off a student's registration and the course carries a result (any mark, F or ABS included), the removal waits for the Registrar or the Deputy Registrar (the University's decision of 15 November 2026). The officer who asked never decides it, whatever office they hold (`RCR_SAME_PERSON`).
+
+```text
+Academic (Registrar) / Students (Deputy Registrar)
+ → Course Registration Correction   (/registration/corrections → Waiting for the Registry)
+Academic
+ → Old Portal Uploads               (/records/migration/uploads)
+```
+
+- **Waiting for the Registry** lists each held removal: the reference, the student (a Senate-approved graduate marked), the course with its units and how it came onto the registration, the session, the result, the reason, and who asked and when. **Open** shows the student's registration.
+- **Confirm** (a note optional): the course is withdrawn from the registration, its mark stays on its sheet as history, and issued transcripts are flagged for review. Refused when the course has changed since it was asked for (`RCR_STALE`): decline and let the Director ask again.
+- **Decline** (a note of ten characters or more, `RCR_NOTE`): the course keeps counting; the request stays on the record with the note.
+- **Old Portal Uploads** lists every confirmed upload of the old portal's course registration and past results. Its report names the **Senate-approved graduates** whose units a corrected file changed. Their approved CGPA and class of degree stay as approved: the graduation audit keeps an approved graduand's CGPA. The report shows the CGPA from the record now beside the one before, for the Registry to consider.
 
 ### 3.2 Academic Office
 
@@ -868,7 +882,7 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 
 **3.3.7 Documents office.** Exams and Records works validation, generation, quality check, deliveries and completion in the V262 pipeline (§3.10) but is not a signer (no release, no certificate issue).
 
-**3.3.8 Migrate from Old Portal — `/records/migration`** (records, ict). Legacy uploads of students, registrations, results and postgraduate records belong to the results module's `MIGRATE` guard; the "cleared on arrival" panel is the register's. Migrated sheets carry the minute "Migrated from the legacy portal". Details in *06 Workflows*.
+**3.3.8 Migrate from Old Portal — `/records/migration`** (records, ict). Legacy uploads of students, registrations, results and postgraduate records belong to the results module's `MIGRATE` guard; the "cleared on arrival" panel is the register's. Migrated sheets carry the minute "Migrated from the legacy portal". Details in *06 Workflows*. Since V771 a course registration file goes up only after its check and a confirmation with a reason, as one upload (`PRU-…`) with its report on Old Portal Uploads (`/records/migration/uploads`, which Exams and Records reads). An upload by Exams and Records adds what is missing and leaves a course on record that differs as it is (`AS_TAKEN_DIFFERS`); the Directorate of ICT uploads the correction (§3.11.5).
 
 ### 3.4 Bursary
 
@@ -1079,7 +1093,7 @@ The student is emailed and texted at each turn; the desk is emailed for a free n
 
 ### 3.11 ICT Directorate
 
-The Director of ICT (`ict`) and ICT Support Agents (`ictagent`) work two things: the help desk, and the platform itself. `ict` also holds Portal Management — Session & Semester Setup (§2.4), Payment & Registration Windows, Admission Status Checking (§3.11.9) and Examination Sessions (§3.3.1) — the structure uploads (§2.5–2.6), the People console (§2.3), gateway keys (§2.9), mail and SMS (§2.10), Post-UTME check-in (DOOR) and the migration desk.
+The Director of ICT (`ict`) and ICT Support Agents (`ictagent`) work two things: the help desk, and the platform itself. `ict` also holds Portal Management — Session & Semester Setup (§2.4), Payment & Registration Windows, Admission Status Checking (§3.11.9) and Examination Sessions (§3.3.1) — the structure uploads (§2.5–2.6), the People console (§2.3), gateway keys (§2.9), mail and SMS (§2.10), Post-UTME check-in (DOOR), the migration desk with its confirmed uploads (§3.11.5) and Course Registration Correction (§3.11.10).
 
 **Dashboard — `/` (PlatformDashboard for `ict` and `super`).** Student statistics; course-structure upload coverage (tiles and two panels from `/catalogue/upload-coverage`); "People and access" (people on record, with a sign-in, live grants, grants ending within 30 days; **+ New person**, **+ Grant an office**, **Open the people console**); tiles **The service** (up/down, commit), **The database** (reachable, migrations applied, latest), **2025/2026 admission settings** (a hard-coded label from the prototype health check), **Acting as**; "What is actually true" (Service, Started, Latest migration, Actor, Acting office, Offices held, `API_URL`); "The outbox" (email/SMS provider wired?, waiting / sent / failed / sent in the last day, the recent 50); "Danger zone — reset uploaded data"; a closing note "How attribution works".
 
@@ -1119,6 +1133,37 @@ The ticket history is written once. The auto-closer closes RESOLVED tickets afte
 
 **3.11.5 Structure uploads and legacy migration.** §2.5–2.6; Migrate from Old Portal — `/records/migration` (ict, records).
 
+Since V771 (15 November 2026) the old portal's course registration and past results are recorded as the student took each course
+(`docs/past-results-upload.md`). Only the Directorate of ICT's offices (ict, super, a Database Operator granted over the University)
+correct what is already on record from a file; another migrating office's file adds only what is missing.
+
+```text
+Academic
+ → Migrate from Old Portal   (/records/migration)          2 · Course registration, 3 · Past results
+ → Old Portal Uploads        (/records/migration/uploads)  every confirmed upload and its report
+```
+
+1. **Download template** and fill it from the old portal's export. Course registration: Matriculation Number, Course Code,
+   **Course Title**, **Credit Units**, **Category**, Level, Session, Semester; Past results adds CA, Exam, Total, Outcome. Credit
+   units come only from a Credit Units (or CU) column: the old portal's own Units column is a status code (1 GST, 2 core, 3
+   elective, 0 carry-over), and a file that carries it without credit units is stopped. Category is Core, Elective, GST or
+   Carry-over (2, 3, 1, 0 are read too). A row missing its title, credit units or category is refused and listed; nothing is taken
+   from today's catalogue.
+2. **Upload** the file. It is checked against the record first and nothing is written. Read **Before this file goes up**: what
+   will be added, corrected or left as on record; the courses as the file has them against today's catalogue; the students whose
+   CGPA changes; and the Senate-approved graduates in the file. Rows to look at say what to do. A code shared by more than one
+   course is identified by its title, and a code whose title is new to its course is listed.
+3. **Upload it**, give the reason (ten characters or more) and, where listed, tick **I have checked these titles**. The upload
+   opens as `PRU-YYYY-NNNNN`, every batch loads under it, and it closes COMPLETE. After a failed batch, **Resume** carries on under
+   the same upload; **Stop here and close the upload** closes it INCOMPLETE, and what loaded stands.
+4. **Open the upload's report** (Old Portal Uploads). It holds every change with what was there before, each student's CGPA and
+   units counted before and after, and the Senate-approved graduates, whose approved CGPA and class of degree stay as approved, for
+   the Registry (§3.1.10). Export the changes to Excel.
+
+A re-upload never puts the file's course over a result entered on the portal (`UNITS_ON_PORTAL`), over units a Senate amendment
+set (`UNITS_BY_AMENDMENT`), or back onto a registration a course was taken off (`REMOVED_ON_RECORD`, `REMOVAL_PENDING`). The
+catalogue is never changed by an upload.
+
 **3.11.6 Data reset and demo removal.** Status: IMPLEMENTED (single officer, typed word, reason). On the platform dashboard, "Danger zone — reset uploaded data" (`super`, `ict`): **Remove demo courses only…** and **Remove demo data only…** (type `REMOVE DEMO`), **Reset ALL uploaded data…** (type `RESET` and a reason). `platform.reset_operational_data` attributes every deletion to the actor; there is no second approver and no undo.
 
 **3.11.7 Release, Disaster Recovery and Cloud pages — their true status.**
@@ -1143,6 +1188,31 @@ Portal Management
 - **The refusals** the applicant (and the API) meets: `ADMISSION_CHECKING_NOT_ELIGIBLE` (no valid application), `ADMISSION_CHECKING_CLOSED`, `ADMISSION_CHECKING_FEE_UNPAID`; before an offer is checked and read, the acceptance fee, the undertaking and the decline are refused alike (`ADMISSION_STATUS_NOT_CHECKED`), so no refusal says whether there is an offer, and nothing the applicant reads (status, tracker, documents, offer state) shows the decision.
 - **The status** comes from the released decision as before — Admitted (congratulated by email and SMS on the first reading, then the acceptance workflow), Waiting list, Not admitted, or Pending (no decision released yet). Every check is kept in `admissions.status_check` with the result it returned. An applicant who has read an offer and started the acceptance continues whatever the window.
 - **The page**: tiles Status, Checking fee, Eligible applicants, Paid, Checked, Admitted (with not admitted, waiting and pending), Revenue and Last act; the window card with **Open now / Close now / Reopen now**, **Schedule**, **Extend**, **Shorten**, **Edit window** (a closing asks "Are you sure you want to close admission status checking for …?"); the **Report** — every application of the session with its applicant, programme, faculty and department, checking fee (PAID / NOT PAID / NOT ELIGIBLE), paid on and reference, checks and last checked, and the authoritative admission status — filtered by faculty, department, programme, gender, payment status, admission status, checked or not and a date range (paid or checked), exported to Excel or PDF; and the **History** (exported to Excel). The confirmed checking fees are also in Financial Analytics (the CHECKING kind) with every other payment.
+
+**3.11.10 Course Registration Correction.** Status: IMPLEMENTED (V772, 15 November 2026; `docs/course-registration-correction.md`). The Director of ICT takes one student's wrongly counted course off one registration, with a reason: an elective the student never chose, registered by an old-portal upload, say. The course, the curriculum and every other student's registration are untouched. Only `ict` and `super` take a course off, cancel or undo; the database checks the acting office again (`RCR_OFFICE`).
+
+```text
+Academic
+ → Course Registration Correction   (/registration/corrections)
+```
+
+1. **Find the student** by matriculation number; choose the **session and semester** from their registrations.
+2. Read the registration's courses: each with the code as taken, its units, status, category (electives marked), **how it came**
+   (chosen by the student, added by an office, late registration by the Registry, old portal upload, carry-over the results state,
+   deferred course, or not recorded — read from the record), its result and any removal.
+3. **Remove** a counted course. The confirmation shows the student, programme, level, session, semester, course code, title and
+   units, the registration status, how it came and the result. Tick the same course on the student's other registrations to take
+   it off under the same reason (a carry-over its result gave rise to). Give the reason: ten characters or more.
+4. **Take it off** (no result): withdrawn at once (APPLIED). **Ask the Registry** (a result of any kind, F or ABS included): held
+   (PENDING), still counting, until the Registrar or the Deputy Registrar confirms or declines it (§3.1.10). Two classes of one
+   course both marked are decided on Duplicate Results instead (`RCR_USE_DUPLICATES`).
+5. **Undo** on *Corrections of this student*: cancels a held removal (CANCELLED) or puts an applied one back as it stood (UNDONE).
+   Nothing else puts the course back. A student's save and an old-portal upload are refused (`RCR_REMOVED`, `REMOVED_ON_RECORD`).
+
+A course taken off no longer counts on the transcript, the CGPA, the broadsheet, the GST/EPS fee lists or the result monitor's
+exceptions; the mark stays on its sheet as history. Issued transcripts and statements are flagged for review when the class was
+examined, and the student's change history on Student Edit lists every removal. For a Senate-approved graduate the approved CGPA
+and class of degree stay.
 
 ### 3.12 Super Administrator and System Administrator
 

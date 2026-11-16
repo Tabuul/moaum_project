@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 630
+\set EXPECTED 644
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -38535,6 +38535,702 @@ BEGIN
                      || ' left 0/PROPOSED'
                      || ' | locks true,true,true,true,true,true,true,true,true,true,true,true,true', false),
       msg);
+END $$;
+-- ── V771: a past result keeps the course as it was taken — the template's code, title, credit units and category — whatever the
+--          catalogue says now. Made-up courses ZQH 101 (now "Communication Skills", 2 units), ZQH 102 (3 units), ZQH 401 and ZQH 401 BMAS
+--          (one code, two courses), ZQH 103; students A, B, G (a Senate-approved graduate) in one programme, C in another, H not yet on the
+--          register; sessions 9771/9772 to 9774/9775. The block undoes its writes ──
+DO $$
+DECLARE
+    v_prog text; v_prog2 text; v_dept text; s1 text := '9771/9772'; s2 text := '9772/9773'; s3 text := '9773/9774'; s4 text := '9774/9775';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); g uuid := gen_random_uuid(); h uuid := gen_random_uuid();
+    ict uuid := gen_random_uuid(); other uuid := gen_random_uuid();
+    up1 uuid; up2 uuid; up3 uuid; up4 uuid; up5 uuid; rows1 jsonb; pv jsonb; imp jsonb; again jsonb; corr jsonb; pv2 jsonb; reg jsonb; res jsonb;
+    e_before bigint; at_before bigint; s_before bigint; e_after bigint; at_after bigint; s_after bigint;
+    statuses text; again_st text; corr_st text; reg_st text; v_err text; v_own text; v_req text; v_loaders int;
+    a1_units int; a1_title text; a1_code text; b2_units int; b401_course text; b401_code text; b401_title text;
+    a_titles text; a_units text; n_versions_101 int; cat_ok boolean; stmt jsonb; stmt_titles text;
+    elective_ok boolean; carry_ok boolean; ledger text; g_cgpa_before numeric; g_cgpa_after numeric; grad_list text; pus text;
+    a_gpa text; a_after_units int; a_entries int; scores_before bigint; scores_after bigint;
+    elsewhere_st text; amend_st text; amend_units int; amend_src text; portal_st text; portal_units int;
+    renamed_code text; renamed_as text; reflect_units int; header_title text; header_units int; header_n int;
+    moved_code text; moved_src text; held_units int; held_title text; held_ledger int; differs_st text; differs_units int;
+    msg1 text; msg2 text; msg3 text; msg4 text; msg5 text; msg6 text; up6 uuid; up7 uuid; var_st text; made_fact text; reg_gpa int; link_after text;
+    kept_rows text; rep_title text; hist_code text; rv jsonb; rv_units int; rv2 jsonb; rv_status text; rv_exc int; rv_state text;
+    s5 text := '9775/9776'; s6 text := '9776/9777'; upa uuid; upb uuid; rva jsonb; later_st text; rvc jsonb; gone text; again_add text;
+    rve jsonb; held_after int; rvg jsonb; reap_st text; reap_exc int; drop_var text; resend text; search_n int; heading text; msg7 text; kk int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V771', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    SELECT p.code INTO v_prog2 FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND p.code <> v_prog ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZQH 101', 'Communication Skills', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQH 102', 'Check V771 Algebra', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQH 103', 'Check V771 Physics', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQH 401', 'Computer Networks', 3, 1, 400, v_dept, 'Core', 'LIVE'),
+        ('ZQH 401 BMAS', 'Advanced Computer Systems', 2, 1, 400, v_dept, 'Core', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (a, 'MOAUM/ADM/71/771001', 'MOAUM/ZQH/71/0001', 'ZZ771', 'Ada', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (b, 'MOAUM/ADM/71/771002', 'MOAUM/ZQH/71/0002', 'ZZ771', 'Bala', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (c, 'MOAUM/ADM/71/771003', 'MOAUM/ZQH/71/0003', 'ZZ771', 'Chidi', v_prog2, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (g, 'MOAUM/ADM/71/771004', 'MOAUM/ZQH/71/0004', 'ZZ771', 'Grace', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute)
+    VALUES (gen_random_uuid(), g, s1, 3.50, 'B.Sc.', 'APPROVED', 'SEN/CHECK/771');
+    SELECT count(*) INTO v_loaders FROM pg_proc WHERE oid::regprocedure::text LIKE 'assessment.legacy_semester_load(%';
+
+    rows1 := jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core', 'total', '65'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'zqh102', 'title', 'Check V771 Algebra', 'creditUnits', '3', 'category', 'Elective', 'total', '30'),
+        jsonb_build_object('line', '4', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH 102', 'title', 'Check V771 Algebra', 'creditUnits', '2', 'category', '2', 'total', '55'),
+        jsonb_build_object('line', '5', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 101', 'title', 'English for Science', 'creditUnits', '3', 'category', 'Core', 'total', '70'),
+        jsonb_build_object('line', '6', 'matric', 'MOAUM/ZQH/71/0004', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core', 'total', '60'),
+        jsonb_build_object('line', '7', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 401', 'title', 'Some Other Title', 'creditUnits', '3', 'category', 'Core', 'total', '50'),
+        jsonb_build_object('line', '8', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH 401', 'title', 'Advanced Computer Systems', 'creditUnits', '2', 'category', 'Core', 'total', '58'),
+        jsonb_build_object('line', '9', 'matric', 'MOAUM/ZQH/71/0009', 'course', 'ZQH 101', 'title', '', 'creditUnits', '3', 'category', 'Core', 'total', '50'),
+        jsonb_build_object('line', '10', 'matric', 'MOAUM/ZQH/71/0009', 'course', 'ZQH 102', 'title', 'Check V771 Algebra', 'creditUnits', 'x', 'category', 'Optional', 'total', '50'),
+        jsonb_build_object('line', '11', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core', 'total', '40'),
+        jsonb_build_object('line', '12', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH101', 'title', 'Use of English', 'creditUnits', '2', 'category', 'Core', 'total', '40'),
+        jsonb_build_object('line', '13', 'matric', 'MOAUM/ZQH/71/0008', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core', 'total', '66'));
+
+    -- the check runs the load and undoes it; then the confirmed upload
+    SELECT count(*) INTO e_before FROM registration.entry;
+    SELECT count(*) INTO at_before FROM catalogue.course_as_taken;
+    pv := assessment.legacy_semester_load(s1, 1, rows1, true, true, NULL, true);
+    SELECT count(*) INTO e_after FROM registration.entry;
+    SELECT count(*) INTO at_after FROM catalogue.course_as_taken;
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')::int) INTO statuses FROM jsonb_array_elements(pv->'lines') l;
+    up1 := (assessment.past_upload_begin('RESULTS', 'check.xlsx', 12, 'check V771 corrected template')).id;
+    imp := assessment.legacy_semester_load(s1, 1, rows1, true, false, up1, true);
+    PERFORM assessment.legacy_semester_load(s2, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Communication Skills', 'creditUnits', '2', 'category', 'Core', 'total', '72')),
+        true, false, up1, true);
+    PERFORM assessment.legacy_semester_load(s3, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Communication in English', 'creditUnits', '3', 'category', 'Core', 'total', '68')),
+        true, false, up1, true);
+    PERFORM assessment.past_upload_finish(up1, true);
+
+    SELECT e.units, at.title, at.code_as_taken INTO a1_units, a1_title, a1_code
+      FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+      JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
+     WHERE r.student_id = a AND r.session = s1 AND o.course_code = 'ZQH 101';
+    SELECT e.units INTO b2_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = b AND r.session = s1 AND o.course_code = 'ZQH 102';
+    SELECT x.course_code, x.code_as_taken, x.title INTO b401_course, b401_code, b401_title FROM assessment.student_results(b) x WHERE x.course_code LIKE 'ZQH 401%';
+    SELECT string_agg(x.title, ' / ' ORDER BY x.session), string_agg(x.units::text, '/' ORDER BY x.session) INTO a_titles, a_units
+      FROM assessment.student_results(a) x WHERE x.course_code = 'ZQH 101';
+    SELECT count(*) INTO n_versions_101 FROM catalogue.course_as_taken at JOIN catalogue.offering o ON o.id = at.offering_id WHERE o.course_code = 'ZQH 101';
+    cat_ok := (SELECT c.units = 2 AND c.title = 'Communication Skills' FROM catalogue.course c WHERE c.code = 'ZQH 101')
+          AND (SELECT c.units = 3 FROM catalogue.course c WHERE c.code = 'ZQH 102')
+          AND NOT EXISTS (SELECT 1 FROM catalogue.course_offer co WHERE co.course_code LIKE 'ZQH %');
+    stmt := credentials.build_statement(a, 'TRANSCRIPT', NULL, NULL);
+    SELECT string_agg(cr->>'code' || ' ' || (cr->>'title') || ' ' || (cr->>'units'), ' / ' ORDER BY se->>'session') INTO stmt_titles
+      FROM jsonb_array_elements(stmt->'sessions') se, jsonb_array_elements(se->'semesters') sm, jsonb_array_elements(sm->'courses') cr
+     WHERE cr->>'code' = 'ZQH 101';
+    elective_ok := registration.is_elective_for(a, 'ZQH 102');
+    carry_ok := NOT EXISTS (SELECT 1 FROM registration.carryovers(a) co WHERE co.course_code = 'ZQH 102');
+    msg1 := concat_ws(' | ', 'loaders ' || v_loaders, 'check ' || statuses, 'check wrote ' || (e_after - e_before) || '/' || (at_after - at_before),
+                      'A 101 ' || a1_code || ' ' || a1_title || ' ' || a1_units, 'B 102 units ' || b2_units,
+                      'B 401 ' || b401_course || ' as ' || b401_code || ' ' || b401_title, 'A sessions ' || a_titles || ' at ' || a_units,
+                      '101 versions ' || n_versions_101, 'catalogue kept ' || cat_ok, 'transcript ' || stmt_titles,
+                      'elective ' || elective_ok || ' not owed ' || carry_ok);
+
+    -- the same file again changes nothing; a corrected one corrects, with the before kept
+    SELECT count(*) INTO scores_before FROM assessment.score sc JOIN people.student st ON st.id = sc.student_id WHERE st.surname = 'ZZ771';
+    up2 := (assessment.past_upload_begin('RESULTS', 'check-again.xlsx', 12, 'check V771 the same file again')).id;
+    again := assessment.legacy_semester_load(s1, 1, rows1, true, false, up2, true);
+    SELECT count(*) INTO scores_after FROM assessment.score sc JOIN people.student st ON st.id = sc.student_id WHERE st.surname = 'ZZ771';
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')::int) INTO again_st
+      FROM jsonb_array_elements(again->'lines') l WHERE (l->>'line')::int IN (2, 3, 4, 5, 6, 8);
+    pv2 := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '2', 'category', 'Core', 'total', '65')),
+        true, true, NULL, true);
+    corr := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '2', 'category', 'Core', 'total', '65'),
+        jsonb_build_object('line', '6', 'matric', 'MOAUM/ZQH/71/0004', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '2', 'category', 'Core', 'total', '60')),
+        true, false, up2, true);
+    PERFORM assessment.past_upload_finish(up2, true);
+    SELECT string_agg((l->>'line') || ':' || (l->>'status'), ',' ORDER BY (l->>'line')::int) INTO corr_st FROM jsonb_array_elements(corr->'lines') l;
+    SELECT count(*), max(e.units) INTO a_entries, a_after_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+      JOIN catalogue.offering o ON o.id = e.offering_id WHERE r.student_id = a AND r.session = s1 AND o.course_code = 'ZQH 101';
+    SELECT string_agg(ch.kind || ' ' || coalesce(ch.was_units::text, '-') || '>' || coalesce(ch.now_units::text, '-'), ',' ORDER BY ch.seq) INTO ledger
+      FROM assessment.past_upload_change ch WHERE ch.upload_id = up2;
+    SELECT cgpa INTO g_cgpa_after FROM records.graduand WHERE student_id = g;
+    SELECT string_agg(k, ',') INTO grad_list FROM jsonb_array_elements_text(corr->'graduates') k;
+    SELECT string_agg(st.matric_no || ' ' || coalesce(ps.tcr_before::text, '-') || '>' || coalesce(ps.tcr_after::text, '-') || CASE WHEN ps.graduate THEN ' graduate' ELSE '' END, ',' ORDER BY st.matric_no)
+      INTO pus FROM assessment.past_upload_student ps JOIN people.student st ON st.id = ps.student_id WHERE ps.upload_id = up2;
+    SELECT (x->'before'->>'tcr') || '>' || (x->'after'->>'tcr') INTO a_gpa FROM jsonb_array_elements(pv2->'gpa') x WHERE x->>'matric' = 'MOAUM/ZQH/71/0001';
+    msg2 := concat_ws(' | ', 'again ' || again_st, 'again made ' || (again->>'versions_made') || ' scores +' || (scores_after - scores_before),
+                      'check gpa A ' || coalesce(a_gpa, '-'), 'corrected ' || corr_st, 'A entries ' || a_entries || ' at ' || a_after_units,
+                      'ledger ' || ledger, 'graduate cgpa ' || g_cgpa_after || ' listed ' || coalesce(grad_list, '-'), 'students ' || pus);
+
+    -- refused, row by row; an upload is its officer's own; an office outside the Directorate adds only what is missing
+    PERFORM set_config('moaum.actor_id', other::text, true);
+    BEGIN PERFORM assessment.legacy_semester_load(s1, 1, rows1, true, false, up1, true); v_own := 'loaded';
+    EXCEPTION WHEN OTHERS THEN v_own := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM assessment.legacy_semester_load(s1, 1, rows1, true, false, NULL, true); v_req := 'loaded';
+    EXCEPTION WHEN OTHERS THEN v_req := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    up3 := (assessment.past_upload_begin('REGISTRATION', 'check-reg.xlsx', 1, 'check V771 a records registration file')).id;
+    reg := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core')),
+        false, false, up3, true);
+    SELECT l->>'status' INTO differs_st FROM jsonb_array_elements(reg->'lines') l;
+    SELECT e.units INTO differs_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = a AND r.session = s1 AND o.course_code = 'ZQH 101';
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    -- the record holds ZQH 401 for C (an old upload read the code alone); the file's title is ZQH 401 BMAS's
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 401', 'total', '61')), true, false);
+    up3 := (assessment.past_upload_begin('RESULTS', 'check-401.xlsx', 1, 'check V771 the other course under one code')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 401', 'title', 'Advanced Computer Systems', 'creditUnits', '2', 'category', 'Core', 'total', '61')),
+        true, false, up3, true);
+    SELECT l->>'status' INTO elsewhere_st FROM jsonb_array_elements(res->'lines') l;
+    msg3 := concat_ws(' | ', 'other officer ' || v_own, 'no upload ' || v_req, 'records ' || differs_st || ' kept at ' || differs_units, 'elsewhere ' || elsewhere_st);
+
+    -- the Senate's units, a result entered on the portal, a rename, a units change in the catalogue, a class's header, a move
+    PERFORM set_config('moaum.units_source', 'AMENDMENT:AMD-CHECK-771', true);
+    UPDATE registration.entry e SET units = 4 FROM registration.course_registration r, catalogue.offering o
+     WHERE e.registration_id = r.id AND o.id = e.offering_id AND r.student_id = b AND r.session = s1 AND o.course_code = 'ZQH 102';
+    PERFORM set_config('moaum.units_source', '', true);
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '4', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH 102', 'title', 'Check V771 Algebra', 'creditUnits', '2', 'category', 'Core', 'total', '55')),
+        true, false, up3, true);
+    SELECT l->>'status' INTO amend_st FROM jsonb_array_elements(res->'lines') l;
+    SELECT e.units, at.source INTO amend_units, amend_src FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+      JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
+     WHERE r.student_id = b AND r.session = s1 AND o.course_code = 'ZQH 102';
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason)
+    SELECT sh.id, c, (SELECT max(version) + 1 FROM assessment.score WHERE sheet_id = sh.id AND student_id = c), 20, 40, 'GRADED', false, 'check V771: entered on the portal'
+      FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZQH 101' AND o.session = s1;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '5', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 101', 'title', 'English for Science', 'creditUnits', '2', 'category', 'Core', 'total', '70')),
+        true, false, up3, true);
+    SELECT (l->>'status') || ' ' || (res->>'units_on_portal') INTO portal_st FROM jsonb_array_elements(res->'lines') l;
+    SELECT e.units INTO portal_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = c AND r.session = s1 AND o.course_code = 'ZQH 101';
+    PERFORM catalogue.rename_course('ZQH 102', 'ZQH 112');
+    SELECT x2.course_code, x2.code_as_taken INTO renamed_code, renamed_as FROM assessment.student_results(b) x2 WHERE x2.course_code IN ('ZQH 102', 'ZQH 112');
+    -- a registration-only history in a session still open: a units change in the catalogue leaves the course as taken alone
+    PERFORM assessment.ensure_session(s4);
+    UPDATE policy.academic_session SET state = 'PLANNED' WHERE name = s4;
+    up4 := (assessment.past_upload_begin('REGISTRATION', 'check-s4.xlsx', 1, 'check V771 a registration-only history')).id;
+    PERFORM assessment.legacy_semester_load(s4, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH 103', 'title', 'Check V771 Physics', 'creditUnits', '4', 'category', 'Core')),
+        false, false, up4, true);
+    UPDATE catalogue.course SET units = 5 WHERE code = 'ZQH 103';
+    SELECT e.units INTO reflect_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = b AND r.session = s4 AND o.course_code = 'ZQH 103';
+    -- a class an old upload made at the catalogue's title: once all its students are stated as taken, its header reads as taken
+    PERFORM assessment.legacy_semester_load(s4, 2, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 103', 'total', '50')), true, false);
+    up5 := (assessment.past_upload_begin('RESULTS', 'check-s4-2.xlsx', 1, 'check V771 a class made at the catalogue title')).id;
+    res := assessment.legacy_semester_load(s4, 2, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 103', 'title', 'Introductory Physics', 'creditUnits', '3', 'category', 'Core', 'total', '50')),
+        true, false, up5, true);
+    SELECT o.title, o.units INTO header_title, header_units FROM catalogue.offering o WHERE o.course_code = 'ZQH 103' AND o.session = s4 AND o.semester = 2;
+    header_n := (res->>'classes_corrected')::int;
+    -- an unexamined entry moved to another class follows with that class's code (registration.entry_as_taken_follows)
+    UPDATE registration.entry e SET offering_id = (SELECT o2.id FROM catalogue.offering o2 WHERE o2.course_code = 'ZQH 101' AND o2.session = s1 AND o2.semester = 1 AND o2.stream = 'REGULAR')
+      FROM registration.course_registration r, catalogue.offering o
+     WHERE e.registration_id = r.id AND o.id = e.offering_id AND r.student_id = b AND r.session = s4 AND o.course_code = 'ZQH 103';
+    SELECT at.code_as_taken, at.source INTO moved_code, moved_src FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+      JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id WHERE r.student_id = b AND r.session = s4;
+    msg4 := concat_ws(' | ', 'senate ' || amend_st || ' kept at ' || amend_units || ' ' || amend_src, 'portal ' || portal_st || ' kept at ' || portal_units,
+                      'renamed ' || renamed_code || ' as ' || renamed_as, 'catalogue change kept ' || reflect_units,
+                      'header ' || header_title || ' ' || header_units || ' (' || header_n || ')', 'moved ' || moved_code || ' ' || moved_src);
+
+    -- a result held for a student not yet on the register posts as taken, under the earliest upload still standing that held it (the
+    -- same file loaded again finds it on record, as for a student on the register)
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (h, 'MOAUM/ADM/71/771008', 'MOAUM/ZQH/71/0008', 'ZZ771', 'Hauwa', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+    PERFORM assessment.reconcile_legacy_holding();
+    SELECT e.units, at.title INTO held_units, held_title FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+      JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id WHERE r.student_id = h;
+    SELECT count(*) INTO held_ledger FROM assessment.past_upload_change ch WHERE ch.upload_id = up1 AND ch.student_id = h AND ch.kind = 'ENTRY_ADDED';
+    msg5 := 'held ' || coalesce(held_units::text, '-') || ' ' || coalesce(held_title, '-') || ' ledger ' || held_ledger || ' again '
+            || (SELECT w.status || ' ' || (SELECT count(*) FROM assessment.past_upload_change ch WHERE ch.upload_id = up2 AND ch.student_id = h)
+                  FROM assessment.past_upload_row w WHERE w.upload_id = up2 AND w.session = s1 AND w.line = '13');
+
+    -- a variant written in full is not added beside its sibling on record; a version made in a call counts once; a registration-only
+    -- semester moves no CGPA; every changed student has after-figures; every row is kept under its upload; the readers show as taken
+    up6 := (assessment.past_upload_begin('RESULTS', 'check-variant.xlsx', 1, 'check V771 a variant written in full')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 401 BMAS', 'title', 'Advanced Computer Systems', 'creditUnits', '2', 'category', 'Core', 'total', '61')),
+        true, false, up6, true);
+    SELECT l->>'status' INTO var_st FROM jsonb_array_elements(res->'lines') l;
+    SELECT string_agg(concat_ws(':', c2->>'title', c2->>'made', c2->>'existed', jsonb_array_length(c2->'matrics')), ',') INTO made_fact
+      FROM jsonb_array_elements(pv->'courses') c2 WHERE c2->>'codeAsTaken' = 'ZQH 101' AND c2->>'title' = 'Use of English';
+    up7 := (assessment.past_upload_begin('REGISTRATION', 'check-reg-only.xlsx', 1, 'check V771 a registration-only semester')).id;
+    res := assessment.legacy_semester_load(s3, 2, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 102', 'title', 'Check V771 Algebra', 'creditUnits', '3', 'category', 'Core')),
+        false, false, up7, true);
+    reg_gpa := jsonb_array_length(res->'gpa');
+    SELECT coalesce(ps.cgpa_after::text, 'null') || '/' || coalesce(ps.tcr_after::text, 'null') INTO link_after
+      FROM assessment.past_upload_student ps WHERE ps.upload_id = up7 AND ps.student_id = a;
+    SELECT string_agg(w.line || ':' || w.status, ',' ORDER BY w.line::int) INTO kept_rows FROM assessment.past_upload_row w
+     WHERE w.upload_id = up1 AND w.session = s1 AND w.line::int IN (7, 9, 10, 11, 13);
+    SELECT cr.course_title INTO rep_title FROM reporting.course_registration_rows(s1, 1, '{}'::jsonb) cr WHERE cr.student_id = a AND cr.course_code = 'ZQH 101';
+    SELECT ch.code_as_taken INTO hist_code FROM registration.carryover_history(a) ch WHERE ch.course_code IN ('ZQH 102', 'ZQH 112') AND ch.session = s1;
+    -- an upload rolled back: its corrections put back (and the held result it posted, its entry withdrawn), an entry it added withdrawn
+    -- (its mark kept, the monitor not flagging it)
+    rv := assessment.revert_past_upload(up2, 'check V771 roll back the corrected template');
+    SELECT e.units INTO rv_units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = a AND r.session = s1 AND o.course_code = 'ZQH 101';
+    up6 := (assessment.past_upload_begin('RESULTS', 'check-revert.xlsx', 1, 'check V771 an upload to roll back')).id;
+    PERFORM assessment.legacy_semester_load(s3, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0002', 'course', 'ZQH 102', 'title', 'Check V771 Algebra', 'creditUnits', '3', 'category', 'Core', 'total', '48')),
+        true, false, up6, true);
+    PERFORM assessment.past_upload_finish(up6, true);
+    rv2 := assessment.revert_past_upload(up6, 'check V771 the wrong file was loaded');
+    SELECT e.status INTO rv_status FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = b AND r.session = s3 AND o.course_code IN ('ZQH 102', 'ZQH 112');
+    SELECT count(*) INTO rv_exc FROM assessment.result_exceptions(s3, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = b AND x.kind = 'RESULT_WITHOUT_REGISTRATION';
+    BEGIN PERFORM assessment.revert_past_upload(up6, 'check V771 a second time'); rv_state := 'again';
+    EXCEPTION WHEN OTHERS THEN rv_state := split_part(SQLERRM, ':', 1); END;
+    -- a later upload's result keeps the earlier upload's course; a wrong session's upload rolls back to nothing and the same row loads
+    -- afresh; held rows go with their upload; a course approved again goes back with its result; a dropped variant is not counted beside
+    -- its sibling; a resent batch keeps what each row did; the report finds the code as taken; the carry-over heading is today's course
+    upa := (assessment.past_upload_begin('REGISTRATION', 'check-a.xlsx', 1, 'check V771 a registration upload')).id;
+    PERFORM assessment.legacy_semester_load(s5, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 103', 'title', 'Check V771 Physics', 'creditUnits', '2', 'category', 'Core')), false, false, upa, true);
+    PERFORM assessment.past_upload_finish(upa, true);
+    upb := (assessment.past_upload_begin('RESULTS', 'check-b.xlsx', 1, 'check V771 its results later')).id;
+    PERFORM assessment.legacy_semester_load(s5, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 103', 'title', 'Check V771 Physics', 'creditUnits', '2', 'category', 'Core', 'total', '70')), true, false, upb, true);
+    PERFORM assessment.past_upload_finish(upb, true);
+    rva := assessment.revert_past_upload(upa, 'check V771 the earlier registration file');
+    SELECT e.status INTO later_st FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+     WHERE r.student_id = c AND r.session = s5;
+    upa := (assessment.past_upload_begin('REGISTRATION', 'check-c.xlsx', 1, 'check V771 a file under the wrong session')).id;
+    PERFORM assessment.legacy_semester_load(s6, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 103', 'title', 'Check V771 Physics', 'creditUnits', '2', 'category', 'Core')), false, false, upa, true);
+    PERFORM assessment.past_upload_finish(upa, true);
+    rvc := assessment.revert_past_upload(upa, 'check V771 the session was the wrong one');
+    gone := (SELECT count(*) FROM registration.course_registration r WHERE r.student_id = c AND r.session = s6) || '/'
+         || (SELECT count(*) FROM people.enrolment x WHERE x.student_id = c AND x.session = s6);
+    upa := (assessment.past_upload_begin('REGISTRATION', 'check-c2.xlsx', 1, 'check V771 the same row again')).id;
+    res := assessment.legacy_semester_load(s6, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 103', 'title', 'Check V771 Physics', 'creditUnits', '2', 'category', 'Core')), false, false, upa, true);
+    again_add := res->>'entries';
+    PERFORM assessment.past_upload_finish(upa, true);
+    upa := (assessment.past_upload_begin('RESULTS', 'check-e.xlsx', 1, 'check V771 a held result rolled back')).id;
+    PERFORM assessment.legacy_semester_load(s5, 2, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0007', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core', 'total', '60')), true, false, upa, true);
+    PERFORM assessment.past_upload_finish(upa, true);
+    rve := assessment.revert_past_upload(upa, 'check V771 the held row goes with it');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (gen_random_uuid(), 'MOAUM/ADM/71/771007', 'MOAUM/ZQH/71/0007', 'ZZ771', 'Ifeoma', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+    PERFORM assessment.reconcile_legacy_holding();
+    SELECT count(*) INTO held_after FROM registration.course_registration r JOIN people.student st ON st.id = r.student_id WHERE st.matric_no = 'MOAUM/ZQH/71/0007';
+    upa := (assessment.past_upload_begin('REGISTRATION', 'check-f.xlsx', 1, 'check V771 a registration later dropped')).id;
+    PERFORM assessment.legacy_semester_load(s6, 2, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0004', 'course', 'ZQH 112', 'title', 'Check V771 Algebra', 'creditUnits', '3', 'category', 'Core')), false, false, upa, true);
+    PERFORM assessment.past_upload_finish(upa, true);
+    UPDATE registration.entry e SET status = 'DROPPED' FROM registration.course_registration r
+     WHERE e.registration_id = r.id AND r.student_id = g AND r.session = s6 AND r.semester = 2;
+    upb := (assessment.past_upload_begin('RESULTS', 'check-g.xlsx', 1, 'check V771 a result approves it again')).id;
+    PERFORM assessment.legacy_semester_load(s6, 2, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0004', 'course', 'ZQH 112', 'title', 'Check V771 Algebra', 'creditUnits', '3', 'category', 'Core', 'total', '58')), true, false, upb, true);
+    PERFORM assessment.past_upload_finish(upb, true);
+    rvg := assessment.revert_past_upload(upb, 'check V771 the result file was wrong');
+    SELECT e.status INTO reap_st FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id WHERE r.student_id = g AND r.session = s6 AND r.semester = 2;
+    SELECT count(*) INTO reap_exc FROM assessment.result_exceptions(s6, 2, NULL, NULL, NULL, NULL) x WHERE x.student_id = g AND x.kind = 'RESULT_WITHOUT_REGISTRATION';
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 401 BMAS')), false, false);
+    UPDATE registration.entry e SET status = 'DROPPED' FROM registration.course_registration r, catalogue.offering o
+     WHERE e.registration_id = r.id AND o.id = e.offering_id AND r.student_id = c AND r.session = s1 AND o.course_code = 'ZQH 401 BMAS';
+    upb := (assessment.past_upload_begin('RESULTS', 'check-h.xlsx', 1, 'check V771 the dropped variant')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0003', 'course', 'ZQH 401 BMAS', 'title', 'Advanced Computer Systems', 'creditUnits', '2', 'category', 'Core', 'total', '61')),
+        true, false, upb, true);
+    SELECT l->>'status' INTO drop_var FROM jsonb_array_elements(res->'lines') l;
+    PERFORM assessment.past_upload_finish(upb, true);
+    upb := (assessment.past_upload_begin('RESULTS', 'check-i.xlsx', 1, 'check V771 a batch sent twice')).id;
+    FOR kk IN 1 .. 2 LOOP
+        PERFORM assessment.legacy_semester_load(s5, 2, jsonb_build_array(
+            jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQH/71/0001', 'course', 'ZQH 101', 'title', 'Use of English', 'creditUnits', '3', 'category', 'Core', 'total', '77')),
+            true, false, upb, true);
+    END LOOP;
+    SELECT string_agg(w.status, ',') INTO resend FROM assessment.past_upload_row w WHERE w.upload_id = upb;
+    SELECT count(*) INTO search_n FROM reporting.course_registration_rows(s1, 1, '{"q": "ZQH 102"}'::jsonb) cr WHERE cr.student_id = b;
+    UPDATE catalogue.course SET title = 'Linear Algebra I' WHERE code = 'ZQH 112';
+    SELECT string_agg(DISTINCT ch.course_title || ' / ' || ch.title, ',') INTO heading FROM registration.carryover_history(a) ch WHERE ch.course_code = 'ZQH 112';
+    msg7 := concat_ws(' | ', 'later ' || later_st || ' ' || (rva->>'undone') || '/' || (rva->>'left'), 'wrong session ' || (rvc->>'undone') || '/' || (rvc->>'left') || ' left ' || gone,
+                      'again ' || again_add, 'held dropped ' || (rve->>'heldDropped') || ' posted ' || held_after,
+                      'approved again ' || (rvg->>'undone') || '/' || (rvg->>'left') || ' ' || reap_st || ' exceptions ' || reap_exc,
+                      'dropped variant ' || drop_var, 'resent ' || resend, 'search ' || search_n, 'heading ' || heading);
+    msg6 := concat_ws(' | ', 'variant ' || var_st, 'made once ' || made_fact, 'registration-only gpa ' || reg_gpa, 'link after ' || link_after,
+                      'kept ' || kept_rows, 'report ' || rep_title, 'history ' || hist_code,
+                      'revert ' || (rv->>'undone') || '/' || (rv->>'left') || ' units ' || rv_units,
+                      'revert added ' || (rv2->>'undone') || ' ' || coalesce(rv_status, 'deleted') || ' exceptions ' || rv_exc || ' again ' || rv_state);
+
+    RAISE EXCEPTION 'the V771 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V771 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V771: an upload keeps the course as taken — the template''s code, title, credit units and category, by session and programme; the catalogue is untouched; the transcript prints each version',
+      coalesce(msg1 = concat_ws(' | ', 'loaders 1',
+                 'check 2:RESULT_POSTED,3:RESULT_POSTED,4:RESULT_POSTED,5:RESULT_POSTED,6:RESULT_POSTED,7:COURSE_AMBIGUOUS,8:RESULT_POSTED,9:AS_TAKEN_MISSING,10:AS_TAKEN_INVALID,11:DUPLICATE_CONFLICT,12:DUPLICATE_CONFLICT,13:HELD',
+                 'check wrote 0/0', 'A 101 ZQH 101 Use of English 3', 'B 102 units 2', 'B 401 ZQH 401 BMAS as ZQH 401 Advanced Computer Systems',
+                 'A sessions Use of English / Communication Skills / Communication in English at 3/2/3', '101 versions 4', 'catalogue kept true',
+                 'transcript ZQH 101 Use of English 3 / ZQH 101 Communication Skills 2 / ZQH 101 Communication in English 3', 'elective true not owed true'), false), msg1);
+  PERFORM pg_temp.assert('V771: the same file again changes nothing; a corrected one corrects the units, once, with the before kept and each student''s CGPA before and after; a Senate-approved graduate keeps the approved CGPA and is listed',
+      coalesce(msg2 = concat_ws(' | ', 'again 2:RESULT_ALREADY_ON_RECORD,3:RESULT_ALREADY_ON_RECORD,4:RESULT_ALREADY_ON_RECORD,5:RESULT_ALREADY_ON_RECORD,6:RESULT_ALREADY_ON_RECORD,8:RESULT_ALREADY_ON_RECORD',
+                 'again made 0 scores +0', 'check gpa A 11>10', 'corrected 2:UNITS_CORRECTED,6:UNITS_CORRECTED', 'A entries 1 at 2',
+                 'ledger UNITS_CORRECTED 3>2,UNITS_CORRECTED 3>2', 'graduate cgpa 3.50 listed MOAUM/ZQH/71/0004',
+                 'students MOAUM/ZQH/71/0001 11>10,MOAUM/ZQH/71/0004 3>2 graduate'), false), msg2);
+  PERFORM pg_temp.assert('V771: a confirmed upload is its officer''s own and required; an office outside the Directorate adds only what is missing; a course held under another of its code''s courses is not added twice',
+      coalesce(msg3 = 'other officer LEGACY_UPLOAD_OWN | no upload LEGACY_UPLOAD_REQUIRED | records AS_TAKEN_DIFFERS kept at 2 | elsewhere COURSE_ON_RECORD_ELSEWHERE', false), msg3);
+  PERFORM pg_temp.assert('V771: the Senate''s units and a result entered on the portal stand over a file; a rename keeps the code as taken; a catalogue units change leaves a course as taken alone; a class''s header follows its one version; a moved entry follows its class',
+      coalesce(msg4 = 'senate UNITS_BY_AMENDMENT kept at 4 AMENDMENT | portal RESULT_ON_PORTAL 1 kept at 3 | renamed ZQH 112 as ZQH 102 | catalogue change kept 4 | header Introductory Physics 3 (1) | moved ZQH 101 MOVED', false), msg4);
+  PERFORM pg_temp.assert('V771: a variant written in full is not counted twice; versions, students and rows are told right; the reports show as taken; an upload rolls back from its ledger',
+      coalesce(msg6 = concat_ws(' | ', 'variant COURSE_ON_RECORD_ELSEWHERE', 'made once Use of English:true:false:2', 'registration-only gpa 0', 'link after 3.00/13',
+                                 'kept 7:COURSE_AMBIGUOUS,9:AS_TAKEN_MISSING,10:AS_TAKEN_INVALID,11:DUPLICATE_CONFLICT,13:RESULT_POSTED', 'report Use of English', 'history ZQH 102',
+                                 'revert 2/0 units 3', 'revert added 4 deleted exceptions 0 again LEGACY_UPLOAD_STATE'), false), msg6);
+  PERFORM pg_temp.assert('V771: a rollback undoes only what nothing has touched since — a later result keeps the course; a wrong session leaves nothing; held rows go with it; a course approved again goes back with its result',
+      coalesce(msg7 = concat_ws(' | ', 'later APPROVED 0/3', 'wrong session 3/0 left 0/0', 'again 1', 'held dropped 1 posted 0',
+                                 'approved again 2/0 DROPPED exceptions 0', 'dropped variant COURSE_ON_RECORD_ELSEWHERE', 'resent RESULT_POSTED', 'search 1',
+                                 'heading Linear Algebra I / Check V771 Algebra'), false), msg7);
+  PERFORM pg_temp.assert('V771: a result held for a student not yet on the register posts as taken, into the ledger of the earliest upload still standing that held it; the same file loaded again finds it on record',
+      coalesce(msg5 = 'held 3 Use of English ledger 1 again RESULT_ALREADY_ON_RECORD 0', false), msg5);
+END $$;
+-- ── V771 (the rollback and the loader, further): uploads rolled back in any order end the same; a registration acted on since is never
+--          deleted; the cached position follows; the result monitor passes over only a first result its rollback took back; the
+--          Senate's units outlive a programme change on an entry with no version; a course approved again keeps its units under a
+--          portal result; a GST course stays GST; a hold a later upload took over is not "dropped". Made-up courses ZQV 101–106,
+--          students MOAUM/ZQV/73/0001–0010, session 9785/9786. The block undoes its writes ──
+CREATE OR REPLACE FUNCTION pg_temp.zqv_row(p_matric text, p_course text, p_title text, p_units int, p_cat text, p_total int)
+RETURNS jsonb LANGUAGE sql AS $f$
+    SELECT jsonb_strip_nulls(jsonb_build_object('line', '2', 'matric', p_matric, 'course', p_course, 'title', p_title,
+                                                'creditUnits', p_units::text, 'category', p_cat, 'total', p_total::text))
+$f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqv_load(p_kind text, p_session text, p_row jsonb, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE u uuid;
+BEGIN
+    u := (assessment.past_upload_begin(p_kind, 'check-zqv.xlsx', 1, p_why)).id;
+    PERFORM assessment.legacy_semester_load(p_session, 1, jsonb_build_array(p_row), p_kind = 'RESULTS', false, u, true);
+    PERFORM assessment.past_upload_finish(u, true);
+    RETURN u;
+END $f$;
+-- registrations / courses / enrolments a student holds in a session
+CREATE OR REPLACE FUNCTION pg_temp.zqv_state(p_student uuid, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT (SELECT count(*) FROM registration.course_registration r WHERE r.student_id = p_student AND r.session = p_session) || '/'
+        || (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+             WHERE r.student_id = p_student AND r.session = p_session) || '/'
+        || (SELECT count(*) FROM people.enrolment x WHERE x.student_id = p_student AND x.session = p_session)
+$f$;
+DO $$
+DECLARE
+    v_prog text; v_prog2 text; v_dept text; s1 text := '9785/9786'; ict uuid := gen_random_uuid(); v_err text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid();
+    f uuid := gen_random_uuid(); g uuid := gen_random_uuid(); h uuid := gen_random_uuid(); i uuid := gen_random_uuid(); j uuid := gen_random_uuid();
+    u0 uuid; u1 uuid; u2 uuid; r0 jsonb; r1 jsonb; r2 jsonb; res jsonb; v_reg uuid; v_off uuid; v_sheet uuid;
+    pos_loaded text; pos_ok boolean; chain text; three text; oldest text; counts1 text; residue text; residue_ledger text;
+    acted text; acted_before boolean; acted_after boolean; decisions int; exc_before int; exc_between int; exc_after int;
+    senate text; senate_units text; reap text; reap_units int; reap_ledger text; held text; held_row text; held_left int;
+    gst text; gst_entry text; gst_corr int; gst_note boolean; mark_final text; msg8 text; msg9 text; msg10 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V771 rollback', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    SELECT p.code INTO v_prog2 FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND p.code <> v_prog ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZQV 101', 'Check Rollback One', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQV 102', 'Check Rollback Two', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQV 104', 'Check Rollback Senate', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQV 105', 'Check Rollback Portal', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQV 106', 'Check Rollback General Studies', 2, 1, 100, v_dept, 'GST', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (a, 'MOAUM/ADM/73/773001', 'MOAUM/ZQV/73/0001', 'ZZ773', 'Ada', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (b, 'MOAUM/ADM/73/773002', 'MOAUM/ZQV/73/0002', 'ZZ773', 'Bala', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (c, 'MOAUM/ADM/73/773003', 'MOAUM/ZQV/73/0003', 'ZZ773', 'Chidi', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (d, 'MOAUM/ADM/73/773004', 'MOAUM/ZQV/73/0004', 'ZZ773', 'Dayo', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (e, 'MOAUM/ADM/73/773005', 'MOAUM/ZQV/73/0005', 'ZZ773', 'Efe', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (f, 'MOAUM/ADM/73/773006', 'MOAUM/ZQV/73/0006', 'ZZ773', 'Femi', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (g, 'MOAUM/ADM/73/773007', 'MOAUM/ZQV/73/0007', 'ZZ773', 'Gbenga', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (h, 'MOAUM/ADM/73/773008', 'MOAUM/ZQV/73/0008', 'ZZ773', 'Hauwa', v_prog2, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (i, 'MOAUM/ADM/73/773009', 'MOAUM/ZQV/73/0009', 'ZZ773', 'Ife', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (j, 'MOAUM/ADM/73/773010', 'MOAUM/ZQV/73/0010', 'ZZ773', 'Jide', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+
+    -- A: a result, then a later file's corrected result; the later upload rolled back first, then the earlier — nothing is left, and the
+    -- cached position no longer says the student was in the session
+    u1 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0001', 'ZQV 101', 'Check Rollback One', 2, 'Core', 50), 'check V771 the first file');
+    SELECT p.last_session INTO pos_loaded FROM people.academic_position p WHERE p.student_id = a;
+    u2 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0001', 'ZQV 101', 'Check Rollback One', 2, 'Core', 60), 'check V771 its corrected mark');
+    r2 := assessment.revert_past_upload(u2, 'check V771 the later file first');
+    r1 := assessment.revert_past_upload(u1, 'check V771 then the earlier file');
+    chain := (r2->>'undone') || '/' || (r2->>'left') || ' ' || (r1->>'undone') || '/' || (r1->>'left') || ' left ' || pg_temp.zqv_state(a, s1);
+    SELECT (SELECT row(p.last_session, p.registered_current, p.enrolled_current, p.issues) FROM people.academic_position p WHERE p.student_id = a)
+           IS NOT DISTINCT FROM (SELECT row(q.last_session, q.registered_current, q.enrolled_current, q.issues) FROM people.academic_position_rows(a) q)
+           AND (SELECT p.last_session FROM people.academic_position p WHERE p.student_id = a) IS DISTINCT FROM s1
+      INTO pos_ok;
+    -- B: three files, each replacing the last one's mark, rolled back newest first
+    u0 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0002', 'ZQV 101', 'Check Rollback One', 2, 'Core', 50), 'check V771 file one of three');
+    u1 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0002', 'ZQV 101', 'Check Rollback One', 2, 'Core', 60), 'check V771 file two of three');
+    u2 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0002', 'ZQV 101', 'Check Rollback One', 2, 'Core', 70), 'check V771 file three of three');
+    r2 := assessment.revert_past_upload(u2, 'check V771 three, newest first');
+    r1 := assessment.revert_past_upload(u1, 'check V771 three, the middle one');
+    r0 := assessment.revert_past_upload(u0, 'check V771 three, the first one');
+    three := (r2->>'undone') || '/' || (r2->>'left') || ' ' || (r1->>'undone') || '/' || (r1->>'left') || ' ' || (r0->>'undone') || '/' || (r0->>'left')
+             || ' left ' || pg_temp.zqv_state(b, s1);
+    -- C: the same two files rolled back oldest first — the earlier one is left while the later stands, then settled with it
+    u1 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0003', 'ZQV 101', 'Check Rollback One', 2, 'Core', 50), 'check V771 the first file again');
+    u2 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0003', 'ZQV 101', 'Check Rollback One', 2, 'Core', 60), 'check V771 its corrected mark again');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the earlier file first');
+    r2 := assessment.revert_past_upload(u2, 'check V771 then the later file');
+    SELECT (pu.revert_counts->>'undone') || '/' || (pu.revert_counts->>'left') INTO counts1 FROM assessment.past_upload pu WHERE pu.id = u1;
+    oldest := (r1->>'undone') || '/' || (r1->>'left') || ' then ' || (r2->>'undone') || '/' || (r2->>'left') || ' earlier ' || (r2->>'earlierUndone')
+              || ' left ' || pg_temp.zqv_state(c, s1) || ' counts ' || counts1;
+    -- D: two registration files on one registration, rolled back oldest first — the empty registration and its enrolment go with the second
+    u1 := pg_temp.zqv_load('REGISTRATION', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0004', 'ZQV 101', 'Check Rollback One', 2, 'Core', NULL), 'check V771 a registration file');
+    u2 := pg_temp.zqv_load('REGISTRATION', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0004', 'ZQV 102', 'Check Rollback Two', 3, 'Core', NULL), 'check V771 a second course on it');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the first registration file');
+    r2 := assessment.revert_past_upload(u2, 'check V771 the second registration file');
+    SELECT string_agg(ch.kind || CASE WHEN ch.reverted_at IS NOT NULL THEN ':undone' ELSE ':left' END, ',' ORDER BY ch.seq) INTO residue_ledger
+      FROM assessment.past_upload_change ch WHERE ch.upload_id = u1;
+    residue := (r1->>'undone') || '/' || (r1->>'left') || ' then ' || (r2->>'undone') || '/' || (r2->>'left') || ' earlier ' || (r2->>'earlierUndone')
+               || ' left ' || pg_temp.zqv_state(d, s1);
+    msg8 := concat_ws(' | ', 'position ' || coalesce(pos_loaded, 'none') || ' ' || pos_ok, 'chain ' || chain, 'three ' || three, 'oldest first ' || oldest,
+                      'one registration ' || residue, residue_ledger);
+
+    -- E: a registration the Academic Office has decided on since is not deleted with its upload, nor is the decision
+    u1 := pg_temp.zqv_load('REGISTRATION', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0005', 'ZQV 101', 'Check Rollback One', 2, 'Core', NULL), 'check V771 a registration decided on');
+    SELECT r.id INTO v_reg FROM registration.course_registration r WHERE r.student_id = e AND r.session = s1;
+    acted_before := registration.registration_acted_on(v_reg);
+    INSERT INTO registration.load_decision (registration_id, decision, units, min_units, reason) VALUES (v_reg, 'ACCEPTED', 2, 15, 'check V771: accepted below the minimum');
+    acted_after := registration.registration_acted_on(v_reg);
+    r1 := assessment.revert_past_upload(u1, 'check V771 the decided registration');
+    SELECT count(*) INTO decisions FROM registration.load_decision x WHERE x.registration_id = v_reg;
+    acted := acted_before || '>' || acted_after || ' ' || (r1->>'undone') || '/' || (r1->>'left') || ' left ' || pg_temp.zqv_state(e, s1) || ' decisions ' || decisions;
+    -- F: a mark with no registration is an exception; a registration file adds the course (no exception); rolled back, it is one again
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQV/73/0006', 'course', 'ZQV 102', 'total', '55')), true, false);
+    DELETE FROM registration.entry en USING registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = f AND r.session = s1;
+    SELECT count(*) INTO exc_before FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = f AND x.kind = 'RESULT_WITHOUT_REGISTRATION';
+    u1 := pg_temp.zqv_load('REGISTRATION', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0006', 'ZQV 102', 'Check Rollback Two', 3, 'Core', NULL), 'check V771 the course for a mark');
+    SELECT count(*) INTO exc_between FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = f AND x.kind = 'RESULT_WITHOUT_REGISTRATION';
+    r1 := assessment.revert_past_upload(u1, 'check V771 the wrong registration file');
+    SELECT count(*) INTO exc_after FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = f AND x.kind = 'RESULT_WITHOUT_REGISTRATION';
+    -- A again: the mark the two rolled-back uploads left on the sheet is history, not an exception
+    SELECT count(*)::text INTO mark_final FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id IN (a, b, c);
+    msg9 := concat_ws(' | ', 'acted on ' || acted, 'orphan mark ' || exc_before || '>' || exc_between || '>' || exc_after, 'rolled-back marks ' || mark_final);
+
+    -- G (in the first programme when the Senate set 4 units, then moved to the second) and H (always in the second, at 4 units by
+    -- another writer): entries with no version; a file at 3 units leaves the Senate's and corrects the other
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/ZQV/73/0007', 'course', 'ZQV 104', 'total', '55'),
+        jsonb_build_object('matric', 'MOAUM/ZQV/73/0008', 'course', 'ZQV 104', 'total', '61')), true, false);
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQV 104' AND o.session = s1;
+    SELECT sh.id INTO v_sheet FROM assessment.score_sheet sh WHERE sh.offering_id = v_off LIMIT 1;
+    INSERT INTO assessment.amendment (ref, sheet_id, reason, stage, applied_at, kind, programme_code, units, was_units, senate_minute)
+    VALUES ('AMD-9785-00001', v_sheet, 'check V771: the Senate set four units', 'APPLIED', now(), 'UNITS', v_prog, 4, 3, 'SEN/CHECK/773');
+    PERFORM set_config('moaum.units_source', 'AMENDMENT:AMD-9785-00001', true);
+    UPDATE registration.entry en SET units = 4 FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = g AND en.offering_id = v_off;
+    PERFORM set_config('moaum.units_source', '', true);
+    UPDATE registration.entry en SET units = 4 FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = h AND en.offering_id = v_off;
+    UPDATE people.student SET programme_code = v_prog2 WHERE id = g;
+    u1 := (assessment.past_upload_begin('RESULTS', 'check-zqv.xlsx', 2, 'check V771 the Senate after a programme change')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQV/73/0007', 'course', 'ZQV 104', 'title', 'Check Rollback Senate', 'creditUnits', '3', 'category', 'Core', 'total', '55'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZQV/73/0008', 'course', 'ZQV 104', 'title', 'Check Rollback Senate', 'creditUnits', '3', 'category', 'Core', 'total', '61')),
+        true, false, u1, true);
+    PERFORM assessment.past_upload_finish(u1, true);
+    SELECT string_agg(coalesce(l->>'entryStatus', l->>'status'), ',' ORDER BY (l->>'line')::int) INTO senate FROM jsonb_array_elements(res->'lines') l;
+    SELECT string_agg(en.units::text, ',' ORDER BY st.matric_no) INTO senate_units FROM registration.entry en JOIN registration.course_registration r ON r.id = en.registration_id
+      JOIN people.student st ON st.id = r.student_id WHERE en.offering_id = v_off;
+    -- I: a course registered at 2 units, a result entered on the portal, then dropped; a results file at 3 units approves it again as it is
+    u1 := pg_temp.zqv_load('REGISTRATION', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0009', 'ZQV 105', 'Check Rollback Portal', 2, 'Core', NULL), 'check V771 a course for a portal mark');
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQV 105' AND o.session = s1;
+    v_sheet := gen_random_uuid();
+    INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at) VALUES (v_sheet, v_off, 'PUBLISHED', 'SEN/CHECK/773', now());
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason) VALUES (v_sheet, i, 1, 20, 40, 'GRADED', false, 'check V771: entered on the portal');
+    UPDATE registration.entry en SET status = 'DROPPED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = i AND en.offering_id = v_off;
+    u2 := (assessment.past_upload_begin('RESULTS', 'check-zqv.xlsx', 1, 'check V771 a result over a portal mark')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(pg_temp.zqv_row('MOAUM/ZQV/73/0009', 'ZQV 105', 'Check Rollback Portal', 3, 'Core', 70)), true, false, u2, true);
+    PERFORM assessment.past_upload_finish(u2, true);
+    SELECT (l->>'status') || '/' || (l->>'entryStatus') INTO reap FROM jsonb_array_elements(res->'lines') l;
+    SELECT en.units INTO reap_units FROM registration.entry en JOIN registration.course_registration r ON r.id = en.registration_id WHERE r.student_id = i AND en.offering_id = v_off AND en.status = 'APPROVED';
+    SELECT string_agg(ch.kind || ' ' || ch.was_units || '>' || ch.now_units, ',' ORDER BY ch.seq) INTO reap_ledger FROM assessment.past_upload_change ch WHERE ch.upload_id = u2;
+    -- a row held under one upload and held again under a later one is the later upload's: the first one's rollback drops nothing
+    u1 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0099', 'ZQV 101', 'Check Rollback One', 2, 'Core', 50), 'check V771 a held row');
+    u2 := pg_temp.zqv_load('RESULTS', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0099', 'ZQV 101', 'Check Rollback One', 2, 'Core', 50), 'check V771 the held row again');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the first holder');
+    SELECT w.status INTO held_row FROM assessment.past_upload_row w WHERE w.upload_id = u1;
+    SELECT count(*) INTO held_left FROM assessment.legacy_result_holding x WHERE x.matric = 'MOAUM/ZQV/73/0099' AND x.upload_id = u2;
+    held := (r1->>'heldDropped') || ' ' || held_row || ' held under the second ' || held_left;
+    -- J: a GST course filed as Core stays GST, and the file is told so, with no correction recorded
+    u1 := pg_temp.zqv_load('REGISTRATION', s1, pg_temp.zqv_row('MOAUM/ZQV/73/0010', 'ZQV 106', 'Check Rollback General Studies', 2, 'GST', NULL), 'check V771 a GST course');
+    u2 := (assessment.past_upload_begin('REGISTRATION', 'check-zqv.xlsx', 1, 'check V771 the GST course filed as core')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(pg_temp.zqv_row('MOAUM/ZQV/73/0010', 'ZQV 106', 'Check Rollback General Studies', 2, 'Core', NULL)), false, false, u2, true);
+    PERFORM assessment.past_upload_finish(u2, true);
+    SELECT w.status, w.detail LIKE '%a GST course counts as GST%' INTO gst, gst_note FROM assessment.past_upload_row w WHERE w.upload_id = u2;
+    SELECT en.entry_type || '/' || en.basis INTO gst_entry FROM registration.entry en JOIN registration.course_registration r ON r.id = en.registration_id
+      JOIN catalogue.offering o ON o.id = en.offering_id WHERE r.student_id = j AND o.course_code = 'ZQV 106';
+    SELECT count(*) INTO gst_corr FROM assessment.past_upload_change ch WHERE ch.upload_id = u2;
+    msg10 := concat_ws(' | ', 'senate ' || senate || ' units ' || senate_units, 'approved again ' || reap || ' at ' || reap_units || ' ' || reap_ledger,
+                       'held ' || held, 'gst ' || gst || ' ' || gst_entry || ' changes ' || gst_corr || ' told ' || gst_note);
+
+    RAISE EXCEPTION 'the V771 rollback check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V771 rollback check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V771: uploads rolled back in any order end the same — a later upload since rolled back is no change since, what an earlier rollback had to leave is settled with the later one, and the cached position follows',
+      coalesce(msg8 = concat_ws(' | ', 'position 9785/9786 true', 'chain 1/0 4/0 left 0/0/0', 'three 1/0 1/0 4/0 left 0/0/0',
+                                 'oldest first 0/4 then 1/0 earlier 4 left 0/0/0 counts 4/0', 'one registration 1/2 then 1/0 earlier 2 left 0/0/0',
+                                 'ENROLMENT_ADDED:undone,REGISTRATION_ADDED:undone,ENTRY_ADDED:undone'), false), msg8);
+  PERFORM pg_temp.assert('V771: a rollback never deletes a registration acted on since; the result monitor passes over only a first result its rollback took back — a mark that was there before is an exception again',
+      coalesce(msg9 = 'acted on false>true 1/2 left 1/0/1 decisions 1 | orphan mark 1>0>1 | rolled-back marks 0', false), msg9);
+  PERFORM pg_temp.assert('V771: the Senate''s units outlive a programme change on an entry with no version; a course approved again keeps its units under a portal result; a hold a later upload took over is not dropped; a GST course stays GST',
+      coalesce(msg10 = concat_ws(' | ', 'senate UNITS_BY_AMENDMENT,UNITS_CORRECTED units 4,3', 'approved again RESULT_ON_PORTAL/UNITS_ON_PORTAL at 2 ENTRY_REAPPROVED 2>2',
+                                  'held 0 HELD held under the second 1', 'gst ALREADY_ON_RECORD GST/GST changes 0 told true'), false), msg10);
+END $$;
+-- ── V772: the Director of ICT takes one student's wrongly counted course off one registration: made-up courses ZQR 101, ZQR 102
+--          (an elective), ZQR 103 (a GST course), ZQR 104 (an elective counted as core, failed, then carried over); students A and B in
+--          one programme, sessions 9781/9782 and 9782/9783. The block undoes its writes ──
+DO $$
+DECLARE
+    v_prog text; v_dept text; s1 text := '9781/9782'; s2 text := '9782/9783';
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); ict uuid := gen_random_uuid(); reg1 uuid := gen_random_uuid(); reg2 uuid := gen_random_uuid();
+    ra1 uuid; ra2 uuid; rb1 uuid; o102 uuid; o104 uuid; o104b uuid; o101 uuid; o103 uuid; res jsonb; up uuid; v_err text;
+    came text; came101 text; elsewhere int; st_a102 text; st_b102 text; course_kept boolean; r1 jsonb; r2 jsonb; p104 text; p104b text;
+    st104 text; d_office text; d_same text; d_ok text; st104_after text; mark_kept int; exc int; sticky text; load_removed text;
+    pend_ref text; load_pending text; cancelled text; undone text; st_back text; ref_office text; ref_reason text; ref_counted text; ref_open text;
+    gst_before bigint; gst_after bigint; hist int; msg1 text; msg2 text; msg3 text; msg4 text; drop_rule text; held_before int; held_kept int; rec record;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'Legacy results imported for the V772 check', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    PERFORM assessment.ensure_session(s2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, general_office) VALUES
+        ('ZQR 101', 'Check V772 Core', 3, 1, 100, v_dept, 'Core', 'LIVE', NULL),
+        ('ZQR 102', 'Check V772 Elective', 2, 1, 100, v_dept, 'Elective', 'LIVE', NULL),
+        ('ZQR 103', 'Check V772 General Studies', 2, 1, 100, v_dept, 'GST', 'LIVE', 'GST'),
+        ('ZQR 104', 'Check V772 Second Elective', 2, 1, 100, v_dept, 'Core', 'LIVE', NULL);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (a, 'MOAUM/ADM/81/772001', 'MOAUM/ZQR/81/0001', 'ZZ772', 'Ada', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (b, 'MOAUM/ADM/81/772002', 'MOAUM/ZQR/81/0002', 'ZZ772', 'Bala', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+    -- the old portal's records: A's 101 and 104 with results, 102 and 103 registered; B's 102 and 103 registered; A's 104 carried into s2
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 101', 'total', '61'),
+        jsonb_build_object('matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 104', 'total', '30')), true, false);
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 102'), jsonb_build_object('matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 103'),
+        jsonb_build_object('matric', 'MOAUM/ZQR/81/0002', 'course', 'ZQR 102'), jsonb_build_object('matric', 'MOAUM/ZQR/81/0002', 'course', 'ZQR 103')), false, false);
+    PERFORM assessment.legacy_semester_load(s2, 1, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 104')), false, false);
+    PERFORM set_config('moaum.reason', 'check V772', true);
+    SELECT id INTO ra1 FROM registration.course_registration WHERE student_id = a AND session = s1 AND semester = 1;
+    SELECT id INTO ra2 FROM registration.course_registration WHERE student_id = a AND session = s2 AND semester = 1;
+    SELECT id INTO rb1 FROM registration.course_registration WHERE student_id = b AND session = s1 AND semester = 1;
+    SELECT id INTO o101 FROM catalogue.offering WHERE course_code = 'ZQR 101' AND session = s1;
+    SELECT id INTO o102 FROM catalogue.offering WHERE course_code = 'ZQR 102' AND session = s1;
+    SELECT id INTO o103 FROM catalogue.offering WHERE course_code = 'ZQR 103' AND session = s1;
+    SELECT id INTO o104 FROM catalogue.offering WHERE course_code = 'ZQR 104' AND session = s1;
+    SELECT id INTO o104b FROM catalogue.offering WHERE course_code = 'ZQR 104' AND session = s2;
+    UPDATE registration.entry SET entry_type = 'CARRYOVER' WHERE registration_id = ra2 AND offering_id = o104b;
+
+    -- what the Director reads: how each came on, the same course elsewhere
+    SELECT x.came, jsonb_array_length(x.elsewhere) INTO came, elsewhere FROM registration.correction_entries(a, s1, 1) x WHERE x.course_code = 'ZQR 104';
+    SELECT x.came INTO came101 FROM registration.correction_entries(a, s1, 1) x WHERE x.course_code = 'ZQR 101';
+    SELECT registered INTO gst_before FROM finance.gst_course_stats(s1, 1, 'GST') WHERE course_code = 'ZQR 103';
+
+    -- an elective never chosen, no result: off at once; the other student's and the course stand
+    r1 := registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o102),
+                                                                   jsonb_build_object('registrationId', ra1, 'offeringId', o103)), 'Never chosen by the student; the old portal listed it');
+    SELECT status INTO st_a102 FROM registration.entry WHERE registration_id = ra1 AND offering_id = o102;
+    SELECT status INTO st_b102 FROM registration.entry WHERE registration_id = rb1 AND offering_id = o102;
+    course_kept := EXISTS (SELECT 1 FROM catalogue.course WHERE code = 'ZQR 102') AND EXISTS (SELECT 1 FROM catalogue.offering WHERE id = o102);
+    SELECT registered INTO gst_after FROM finance.gst_course_stats(s1, 1, 'GST') WHERE course_code = 'ZQR 103';
+    -- a failed elective and its carry-over: the one with a result held for the Registry, the carry-over off at once
+    r2 := registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o104),
+                                                                   jsonb_build_object('registrationId', ra2, 'offeringId', o104b)), 'An elective counted as core and carried over');
+    SELECT string_agg(x->>'state', ',' ORDER BY x->>'session') INTO p104 FROM jsonb_array_elements(r2->'removals') x;
+    SELECT status INTO st104 FROM registration.entry WHERE registration_id = ra1 AND offering_id = o104;
+    -- the Registry decides, never the one who asked
+    BEGIN PERFORM registration.decide_entry_removal((SELECT id FROM registration.entry_removal WHERE offering_id = o104), true, NULL); d_office := 'decided';
+    EXCEPTION WHEN OTHERS THEN d_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    BEGIN PERFORM registration.decide_entry_removal((SELECT id FROM registration.entry_removal WHERE offering_id = o104), true, NULL); d_same := 'decided';
+    EXCEPTION WHEN OTHERS THEN d_same := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_id', reg1::text, true);
+    d_ok := registration.decide_entry_removal((SELECT id FROM registration.entry_removal WHERE offering_id = o104), true, 'Confirmed on the student''s file');
+    SELECT status INTO st104_after FROM registration.entry WHERE registration_id = ra1 AND offering_id = o104;
+    SELECT count(*) INTO mark_kept FROM assessment.score sc JOIN assessment.score_sheet sh ON sh.id = sc.sheet_id WHERE sh.offering_id = o104 AND sc.student_id = a;
+    SELECT count(*) INTO exc FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = a AND x.offering_id = o104;
+    msg1 := concat_ws(' | ', 'came ' || came || ' / ' || came101 || ' elsewhere ' || elsewhere, 'A 102 ' || st_a102 || ', B 102 ' || st_b102 || ', course kept ' || course_kept,
+                      'GST registered ' || gst_before || '>' || gst_after, '104 ' || p104 || ' entry ' || st104,
+                      'decided by ict ' || d_office || ', by the asker ' || d_same || ', by the Registry ' || d_ok || ' entry ' || st104_after,
+                      'mark kept ' || mark_kept || ' exceptions ' || exc);
+
+    -- a removal sticks; an upload does not bring it back, nor touch one awaiting the Registry
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN UPDATE registration.entry SET status = 'APPROVED' WHERE registration_id = ra1 AND offering_id = o102; sticky := 'back';
+    EXCEPTION WHEN OTHERS THEN sticky := split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o101)), 'Check the hold of an upload');
+    SELECT ref INTO pend_ref FROM registration.entry_removal WHERE offering_id = o101 AND state = 'PENDING';
+    up := (assessment.past_upload_begin('RESULTS', 'check-772.xlsx', 2, 'check V772 a corrected template')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('line', '2', 'matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 102', 'title', 'Check V772 Elective', 'creditUnits', '2', 'category', 'Elective', 'total', '55'),
+        jsonb_build_object('line', '3', 'matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 101', 'title', 'Check V772 Core', 'creditUnits', '2', 'category', 'Core', 'total', '61')),
+        true, false, up, true);
+    SELECT string_agg(l->>'status', ',' ORDER BY (l->>'line')::int) INTO load_removed FROM jsonb_array_elements(res->'lines') l;
+    cancelled := registration.undo_entry_removal((SELECT id FROM registration.entry_removal WHERE offering_id = o101 AND state = 'PENDING'), 'Asked for by mistake on this row');
+    undone := registration.undo_entry_removal((SELECT id FROM registration.entry_removal WHERE offering_id = o102 AND registration_id = ra1), 'The student did choose it after all');
+    SELECT status INTO st_back FROM registration.entry WHERE registration_id = ra1 AND offering_id = o102;
+    msg2 := concat_ws(' | ', 'sticky ' || sticky, 'upload ' || load_removed, 'pending ' || (pend_ref IS NOT NULL), 'cancel ' || cancelled, 'undo ' || undone || ' back ' || st_back);
+
+    -- the support desk reads a course taken off as not on the registration; a held result of it is neither posted nor counted as held
+    SELECT k.passed::text INTO drop_rule FROM registration.support_drop_checks(a, s1, 1, o103) k WHERE k.rule = 'ON_REGISTRATION';
+    SELECT count(*) INTO held_before FROM assessment.legacy_result_holding;
+    INSERT INTO assessment.legacy_result_holding (session, semester, matric, course_code, raw)
+    VALUES (s1, 1, 'MOAUM/ZQR/81/0001', 'ZQR 103', jsonb_build_object('matric', 'MOAUM/ZQR/81/0001', 'course', 'ZQR 103', 'total', '64'));
+    SELECT * INTO rec FROM assessment.reconcile_legacy_holding();
+    SELECT count(*) INTO held_kept FROM assessment.legacy_result_holding WHERE matric = 'MOAUM/ZQR/81/0001' AND course_code = 'ZQR 103';
+    msg4 := concat_ws(' | ', 'drop on registration ' || drop_rule, 'held kept ' || held_kept || ' counted ' || (rec.still_held - held_before),
+                      'entry ' || (SELECT status FROM registration.entry WHERE registration_id = ra1 AND offering_id = o103));
+
+    -- refused
+    PERFORM set_config('moaum.actor_office', 'records', true);
+    BEGIN PERFORM registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o102)), 'Records tries to take it off'); ref_office := 'done';
+    EXCEPTION WHEN OTHERS THEN ref_office := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o102)), 'short'); ref_reason := 'done';
+    EXCEPTION WHEN OTHERS THEN ref_reason := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o103)), 'Already off the registration'); ref_counted := 'done';
+    EXCEPTION WHEN OTHERS THEN ref_counted := split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o101)), 'Held for the Registry again');
+    BEGIN PERFORM registration.request_entry_removal(a, jsonb_build_array(jsonb_build_object('registrationId', ra1, 'offeringId', o101)), 'A second request on the same row'); ref_open := 'done';
+    EXCEPTION WHEN OTHERS THEN ref_open := split_part(SQLERRM, ':', 1); END;
+    SELECT count(*) INTO hist FROM people.student_edit_history(a) h WHERE h.source = 'Course Registration Correction';
+    msg3 := concat_ws(' | ', 'office ' || ref_office, 'reason ' || ref_reason, 'not counted ' || ref_counted, 'open ' || ref_open, 'history ' || hist);
+
+    RAISE EXCEPTION 'the V772 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V772 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V772: the Director of ICT takes one student''s course off one registration — at once without a result, held for the Registry with one; the course and every other student''s registration stand; the removed course counts nowhere',
+      coalesce(msg1 = concat_ws(' | ', 'came OLD_PORTAL / OLD_PORTAL elsewhere 1', 'A 102 WITHDRAWN, B 102 APPROVED, course kept true', 'GST registered 2>1',
+                                 '104 PENDING,APPLIED entry APPROVED', 'decided by ict RCR_DECIDER, by the asker RCR_SAME_PERSON, by the Registry APPLIED entry WITHDRAWN',
+                                 'mark kept 1 exceptions 0'), false), msg1);
+  PERFORM pg_temp.assert('V772: a removal sticks — nothing but the Director''s undo puts the course back; an upload reports it, and leaves one awaiting the Registry alone',
+      coalesce(msg2 = 'sticky RCR_REMOVED | upload REMOVED_ON_RECORD,REMOVAL_PENDING | pending true | cancel CANCELLED | undo UNDONE back APPROVED', false), msg2);
+  PERFORM pg_temp.assert('V772: a course taken off is not on the registration for the support desk, and a held result of it waits without being counted',
+      coalesce(msg4 = 'drop on registration false | held kept 1 counted 0 | entry WITHDRAWN', false), msg4);
+  PERFORM pg_temp.assert('V772: only the Director of ICT removes, with a reason, a counted course, one removal at a time; the student''s history lists every correction',
+      coalesce(msg3 = 'office RCR_OFFICE | reason RCR_REASON | not counted RCR_NOT_COUNTED | open RCR_OPEN | history 6', false), msg3);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

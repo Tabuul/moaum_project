@@ -28,10 +28,14 @@ import { SEMESTER_STATUS_WORDS, registeringWords, semesterWord as spilloverSemes
 import { unpaidGstRegistered } from "@/lib/gst-payable";
 import { OverloadRequest } from "./OverloadRequest";
 import { codeVariant, courseLabel, shownCode } from "@/lib/course-code";
+import { codeTaken, onRecord, takenOff } from "@/lib/registration-corrections";
 import {
   dropOthersWords, isSiwesRegistration, otherCoursesOf, schoolFeesOwed, siwesApplies, siwesClearing, siwesCourseOf, siwesFormRows, siwesInTheWay, siwesSemesterWords,
   waitsWords, FEES_PAGE, SIWES_RESET_WORDS, type MySiwes,
 } from "@/lib/siwes";
+
+/** a course the Directorate of ICT took off the registration (withdrawn), as the student reads it */
+const REMOVED_WORDS = "Taken off your registration by the Directorate of ICT";
 
 /** V655: a course under a shared code named by its curriculum, as courseLabel names it ("ITN 201" + " (BMAS)") */
 const curriculumMark = (code: string) => { const v = codeVariant(code)?.replace(/\d$/, ""); return v && v !== "V" ? ` (${v})` : ""; };
@@ -140,7 +144,7 @@ function SiwesSemesterNote({ s, v, siwes }: { s: MeCore; v: RegistrationView; si
         </Panel>
       ) : null}
       {askReset && v.registration ? (
-        <ResetModal s={s} v={v} kind="siwes" count={(v.registration.entries ?? []).filter((e) => e.status !== "DROPPED").length} units={v.registration.units}
+        <ResetModal s={s} v={v} kind="siwes" count={(v.registration.entries ?? []).filter(onRecord).length} units={v.registration.units}
           onClose={() => setAskReset(false)} />
       ) : null}
     </>
@@ -195,8 +199,8 @@ function RegisterClosed({ v }: { v: RegistrationView }) {
       </Note>
       {reg ? (
         <Panel title={`Your registration for ${v.session}, ${v.semester === 1 ? "first" : v.semester === 2 ? "second" : "third"} semester`} right={`${reg.status} · ${reg.units} CU`}>
-          <DTable cols={["Course code", "Course title", "Units|num", "Type"]} rows={(reg.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => [
-            <b key="c">{e.courseCode}</b>, <span key="t">{e.title}</span>, <span key="u" className="tnum">{e.units}</span>, <span key="k">{e.entryType}</span>,
+          <DTable cols={["Course code", "Course title", "Units|num", "Type"]} rows={(reg.entries ?? []).filter(onRecord).map((e) => [
+            <b key="c">{codeTaken(e.courseCode, e.codeAsTaken)}</b>, <span key="t">{e.title}</span>, <span key="u" className="tnum">{e.units}</span>, <span key="k">{e.entryType}</span>,
           ])} />
         </Panel>
       ) : null}
@@ -248,9 +252,14 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   const locked = !!reg && (reg.status === "SUBMITTED" || reg.status === "APPROVED" || reg.status === "LOCKED");
   // the carry-overs and deferred courses the menu puts on are not the student's choice; a carry-over the student added (V611: one
   // declared, its result not on the portal) is
-  const chosenNow = new Set((reg?.entries ?? []).filter((e) => carryOnly ? e.status !== "DROPPED" && e.status !== "WITHDRAWN"
-    : (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED") || e.studentAdded || e.addedAs === "CARRY_OVER_DECLARED").map((e) => e.offeringId));
+  // a course dropped, or taken off the registration by the Directorate of ICT (withdrawn), starts unticked — in spillover or not — so
+  // that a save never puts it back
+  const chosenNow = new Set((reg?.entries ?? []).filter((e) => onRecord(e) && (carryOnly
+    || (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED") || e.studentAdded || e.addedAs === "CARRY_OVER_DECLARED")).map((e) => e.offeringId));
   const [chosen, setChosen] = useState<Set<string>>(chosenNow);
+  // a menu course whose entry was taken off the registration is shown removed: never ticked, never counted
+  const removedIds = new Set((reg?.entries ?? []).filter(takenOff).map((e) => e.offeringId));
+  const removed = (m: RegistrationView["menu"][number]) => removedIds.has(m.offering_id);
   const carry = menu.filter((m) => m.carryover && !m.deferred);
   const deferredCourses = menu.filter((m) => m.deferred);
   // Group by the PER-PROGRAMME offer basis, not the course's global kind: a course can be Core for
@@ -258,7 +267,7 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   // V504: GST, core and elective in the University's order, each from the programme's own setup (registration.entry_category)
   // V620: a course already on the registration is read as registered — its category (the programme's basis for it at the time)
   // and its units — never as the menu reads its binding today; one not yet chosen as the menu reads it
-  const entryOf = new Map((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => [e.offeringId, e] as const));
+  const entryOf = new Map((reg?.entries ?? []).filter(onRecord).map((e) => [e.offeringId, e] as const));
   const menuCategory = (m: RegistrationView["menu"][number]) => { const e = entryOf.get(m.offering_id); return e ? courseCategory(e) : courseCategory({ basis: m.basis, kind: m.kind }); };
   const menuUnits = (m: RegistrationView["menu"][number]) => entryOf.get(m.offering_id)?.units ?? m.units;
   // V389: a postgraduate programme's research and deficiency courses are neither core nor electives
@@ -270,7 +279,7 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   const menuIds = new Set(menu.map((m) => m.offering_id));
   // V620: and a course registered under a binding since changed or removed — on no menu now, kept as registered
   // V682: a spillover student's every course is one they added
-  const extras = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && e.status !== "WITHDRAWN" && !menuIds.has(e.offeringId)
+  const extras = byOrder((reg?.entries ?? []).filter((e) => onRecord(e) && !menuIds.has(e.offeringId)
     && (carryOnly || e.studentAdded || e.addedAs === "CARRY_OVER_DECLARED" || (e.entryType !== "CARRYOVER" && e.entryType !== "DEFERRED"))));
   // a course on the registration, in words: how it came on (V504, V611), or — a spillover student's (V682) — the carry-over the results state
   const addedWords = (e: (typeof extras)[number]) => addedAsLabel(e.addedAs)
@@ -278,16 +287,18 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   // V504: the carry-overs the published results state that are not on this semester's list, and why (V682: a spillover student finds them
   // in the picker)
   const away = carryOnly ? [] : (v.outstanding ?? []).filter((o) => !menu.some((m) => m.carryover && m.course_code === o.course_code));
-  const chosenMenu = menu.filter((m) => !m.carryover && chosen.has(m.offering_id));
+  const chosenMenu = menu.filter((m) => !m.carryover && chosen.has(m.offering_id) && !removed(m));
   const chosenExtras = extras.filter((e) => chosen.has(e.offeringId));
   // V512: a GST/EPS carry-over the GST fee holds is not on the registration until the fee is paid: listed, not counted
-  const onReg = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
+  const onReg = new Set((reg?.entries ?? []).filter(onRecord).map((e) => e.offeringId));
   const heldCarry = (m: RegistrationView["menu"][number]) => !!m.gstLocked && !onReg.has(m.offering_id);
-  const chosenTotal = carry.filter((m) => !heldCarry(m)).reduce((n, m) => n + menuUnits(m), 0) + deferredCourses.filter((m) => !heldCarry(m)).reduce((n, m) => n + menuUnits(m), 0)
+  // a carry-over or deferred course the menu puts on counts unless the GST fee holds it or it was taken off the registration
+  const carryCounts = (m: RegistrationView["menu"][number]) => !heldCarry(m) && !removed(m);
+  const chosenTotal = carry.filter(carryCounts).reduce((n, m) => n + menuUnits(m), 0) + deferredCourses.filter(carryCounts).reduce((n, m) => n + menuUnits(m), 0)
     + chosenMenu.reduce((n, m) => n + menuUnits(m), 0) + chosenExtras.reduce((n, e) => n + e.units, 0);
   // V504: the selection as it will be registered, in the University's order, numbered on
   const selected = byOrder<{ key: string; code: string; title: string; units: number; category: string; note: string | null }>([
-    ...menu.filter((m) => (m.carryover && !heldCarry(m)) || chosen.has(m.offering_id)).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: menuUnits(m),
+    ...menu.filter((m) => !removed(m) && ((m.carryover && !heldCarry(m)) || chosen.has(m.offering_id))).map((m) => ({ key: m.offering_id, code: m.course_code, title: m.title, units: menuUnits(m),
       category: m.carryover ? courseCategory({ basis: m.deferred ? "Deferred" : "Carryover", kind: m.kind }) : menuCategory(m),
       note: m.deferred ? "Deferred" : m.carryover ? (m.kind === "GST" ? `Carry-over · ${gstOffice(m.course_code)}` : "Carry-over") : null })),
     ...chosenExtras.map((e) => ({ key: e.offeringId, code: e.courseCode, title: e.title, units: e.units, category: courseCategory(e), note: addedWords(e) })),
@@ -310,7 +321,7 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   // a registration submitted or approved is read from itself, not from today's menu: a course whose binding changed after
   // approval, or one added on the student's behalf, is not on the menu, and the page then showed nothing ticked and
   // "0 units · Below minimum" under "Approved · 15 units"
-  const registered = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED"));
+  const registered = byOrder((reg?.entries ?? []).filter(onRecord));
   const total = locked ? Number(reg!.units) : chosenTotal;
   const min = v.limit.min_units;
   const max = v.limit.max_units;
@@ -322,13 +333,13 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   // the same at submission, registration.load_kind)
   const isCarry = (t: string | null | undefined) => t === "CARRYOVER" || t === "DEFERRED" || t === "REPEAT";
   const carryUnits = locked ? registered.filter((e) => isCarry(e.entryType)).reduce((n, e) => n + e.units, 0)
-    : carry.filter((m) => !heldCarry(m)).reduce((n, m) => n + menuUnits(m), 0) + deferredCourses.filter((m) => !heldCarry(m)).reduce((n, m) => n + menuUnits(m), 0)
+    : carry.filter(carryCounts).reduce((n, m) => n + menuUnits(m), 0) + deferredCourses.filter(carryCounts).reduce((n, m) => n + menuUnits(m), 0)
       + chosenExtras.filter((e) => isCarry(e.entryType)).reduce((n, e) => n + e.units, 0);
   const currentUnits = total - carryUnits;
   // V663: the carry-overs on the selection, for the carry-over summary — those the results place and those the student added
   const levelOf = (code: string) => { const m = /(\d)\d\d/.exec(code); return m ? Number(m[1]) * 100 : null; };
   const carryOn = carrySummary([
-    ...carry.filter((m) => !heldCarry(m)).map((m) => ({ units: menuUnits(m), level: levelOf(m.course_code) })),
+    ...carry.filter(carryCounts).map((m) => ({ units: menuUnits(m), level: levelOf(m.course_code) })),
     ...chosenExtras.filter((e) => isCarry(e.entryType)).map((e) => ({ units: e.units, level: levelOf(e.courseCode) })),
   ]);
   const kind: LoadKind = locked && v.loadKind ? v.loadKind
@@ -435,7 +446,16 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
     );
   }
 
-  const pick = (m: RegistrationView["menu"][number], fixed: boolean, on: boolean, red = false) => (
+  // a course taken off the registration by the Directorate of ICT is shown removed: disabled, never ticked, never counted
+  const pick = (m: RegistrationView["menu"][number], fixed: boolean, on: boolean, red = false) => removed(m) ? (
+    <div key={m.offering_id} className="pick" data-on={0} aria-disabled="true" title={REMOVED_WORDS} style={{ cursor: "default", opacity: 0.7 }}>
+      <div className="pick__box" />
+      <div className="grow"><div className="pick__t tnum">{courseLabel(m.course_code, m.title)}</div>
+        <div className="pick__s">{REMOVED_WORDS}</div></div>
+      <Pil kind="grey">Removed</Pil>
+      <div className="tnum b700" style={{ color: "var(--muted)", textDecoration: "line-through" }}>{m.units}</div>
+    </div>
+  ) : (
     <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked || !!m.gstLocked || (!!m.prerequisiteLocked && !on)}
       style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : m.gstLocked || (m.prerequisiteLocked && !on) ? { borderColor: "var(--red-line)", opacity: 0.75 } : undefined}
       title={m.gstLocked ? "Locked until the GST fee is paid" : m.prerequisiteLocked ? `Pass ${m.prerequisitesUnmet} first` : m.prerequisitesUnmet ? `Prerequisite not yet passed: ${m.prerequisitesUnmet}` : undefined}
@@ -451,8 +471,9 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
     </button>
   );
 
-  // V512: a carry-over or deferred course: held on the GST fee (a GST/EPS course), to register (not yet on the registration), or on it
-  const carryRow = (m: RegistrationView["menu"][number], red: boolean) => heldCarry(m) ? (
+  // V512: a carry-over or deferred course: held on the GST fee (a GST/EPS course), to register (not yet on the registration), or on it;
+  // one taken off the registration by the Directorate of ICT shown removed, with nothing to register
+  const carryRow = (m: RegistrationView["menu"][number], red: boolean) => removed(m) ? pick(m, true, false) : heldCarry(m) ? (
     // V512: a GST/EPS carry-over waits for the GST fee — being a carry-over does not pass it
     <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>
       <div className="pick__box" />
@@ -574,10 +595,11 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
       ) : null}
 
       {locked && v.addDropOpen ? (() => {
+        // a course taken off the registration (withdrawn) is not offered again here: only its undo by the Directorate of ICT puts it back
         const activeIds = new Set((reg?.entries ?? []).filter((e) => e.status !== "DROPPED").map((e) => e.offeringId));
         // V611: a carry-over the student declared is dropped as it was added; one the results state is repeated
         // V752: in a SIWES Second Semester the SIWES course is never dropped here (a carry-over there is removed in the note above)
-        const droppable = byOrder((reg?.entries ?? []).filter((e) => e.status !== "DROPPED" && (e.entryType !== "CARRYOVER" || e.addedAs === "CARRY_OVER_DECLARED") && e.entryType !== "DEFERRED"
+        const droppable = byOrder((reg?.entries ?? []).filter((e) => onRecord(e) && (e.entryType !== "CARRYOVER" || e.addedAs === "CARRY_OVER_DECLARED") && e.entryType !== "DEFERRED"
           && !isSiwesCourse(e.courseCode)));
         // V752: and nothing is added to it: the SIWES course is registered on the SIWES page
         const addable = siwesSem ? [] : menu.filter((m) => !m.carryover && !activeIds.has(m.offering_id));
@@ -855,10 +877,10 @@ export function Form({ s, v, siwes = null }: { s: MeCore; v: RegistrationView;
             <th className="num" style={{ background: "var(--chrome)", color: "var(--surface)" }}>Type</th>
           </tr></thead>
           <tbody>
-            {byOrder(reg.entries.filter((e) => e.status !== "DROPPED" && e.status !== "WITHDRAWN")).map((e, i) => { const co = e.entryType === "CARRYOVER" || e.entryType === "DEFERRED"; return (
+            {byOrder(reg.entries.filter(onRecord)).map((e, i) => { const co = e.entryType === "CARRYOVER" || e.entryType === "DEFERRED"; return (
               <tr key={e.offeringId}>
                 <td className="tnum sub2">{i + 1}</td>
-                <td className="tnum b600">{shownCode(e.courseCode)}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
+                <td className="tnum b600">{codeTaken(e.courseCode, e.codeAsTaken)}{co ? <span className="ink-red b700"> · C/O</span> : null}</td>
                 <td>{e.title}</td>
                 <td className="sub2">{e.lecturer ?? "—"}</td>
                 <td className="mid tnum">{e.units}</td>
