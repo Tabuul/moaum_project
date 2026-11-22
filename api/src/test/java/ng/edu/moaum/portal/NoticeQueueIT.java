@@ -199,20 +199,31 @@ class NoticeQueueIT {
         }
     }
 
+    /** The portal's own jobs scheduler (platform.run_notice_job, every 30 s in every app instance the suite keeps alive, all on one
+     *  database) ends a window job with no audience in a single pass, and the outbox lists only jobs still queued or running: a job
+     *  made here can be finished by it between the insert and the read, or between the read and the cancel. That is the portal behaving
+     *  as designed, so the scenario is run again on a fresh job when the scheduler got there first, and only a run that kept its job
+     *  up to the cancel is judged — by exactly the assertions it always had. */
     @SuppressWarnings("unchecked")
     @Test
     void aJobStillRunningIsEndedSoItDoesNotRefillTheQueue() {
-        UUID job = it.db(() -> jdbc.sql("INSERT INTO platform.notice_job (kind, payload, created_by, created_office) VALUES ('WINDOW', '{\"type\":\"COURSE_REGISTRATION\",\"action\":\"OPENED\",\"session\":\"2099/2100\"}'::jsonb, :p, 'ict') RETURNING id")
-                .param("p", ictPerson).query(UUID.class).single());
-        Map<String, Object> outbox = body(it.get(ict, "/api/v1/platform/notices"));
-        assertThat(((List<Map<String, Object>>) outbox.get("jobs")).stream().map(j -> String.valueOf(j.get("id")))).contains(job.toString());
-        Map<String, Object> cancelled = body(it.call(ict, HttpMethod.POST, "/api/v1/platform/notices/jobs/" + job + "/cancel", Map.of("reason", "IT: the window's messages are not wanted")));
-        assertThat(cancelled.get("kind")).isEqualTo("WINDOW");
-        assertThat(((List<Map<String, Object>>) cancelled.get("jobs")).stream().map(j -> String.valueOf(j.get("id")))).doesNotContain(job.toString());
-        assertThat(it.db(() -> jdbc.sql("SELECT state FROM platform.notice_job WHERE id = :id").param("id", job).query(String.class).single())).isEqualTo("CANCELLED");
-        assertThat(code(it.call(ict, HttpMethod.POST, "/api/v1/platform/notices/jobs/" + job + "/cancel", Map.of("reason", "again")))).isEqualTo("NOTICE_JOB_FINISHED");
-        // the scheduler's next pass leaves it where it is
-        it.db(() -> jdbc.sql("SELECT count(*) FROM platform.run_notice_job(NULL)").query(Integer.class).single());
-        assertThat(it.db(() -> jdbc.sql("SELECT state FROM platform.notice_job WHERE id = :id").param("id", job).query(String.class).single())).isEqualTo("CANCELLED");
+        for (int attempt = 1; attempt <= 8; attempt++) {
+            UUID job = it.db(() -> jdbc.sql("INSERT INTO platform.notice_job (kind, payload, created_by, created_office) VALUES ('WINDOW', '{\"type\":\"COURSE_REGISTRATION\",\"action\":\"OPENED\",\"session\":\"2099/2100\"}'::jsonb, :p, 'ict') RETURNING id")
+                    .param("p", ictPerson).query(UUID.class).single());
+            Map<String, Object> outbox = body(it.get(ict, "/api/v1/platform/notices"));
+            if (!((List<Map<String, Object>>) outbox.get("jobs")).stream().anyMatch(j -> job.toString().equals(String.valueOf(j.get("id"))))) continue; // finished by the scheduler before it was read
+            ResponseEntity<Map> cancel = it.call(ict, HttpMethod.POST, "/api/v1/platform/notices/jobs/" + job + "/cancel", Map.of("reason", "IT: the window's messages are not wanted"));
+            if (cancel.getStatusCode().value() == 422 && "NOTICE_JOB_FINISHED".equals(String.valueOf(cancel.getBody().get("code")))) continue; // finished between the read and the cancel
+            Map<String, Object> cancelled = body(cancel);
+            assertThat(cancelled.get("kind")).isEqualTo("WINDOW");
+            assertThat(((List<Map<String, Object>>) cancelled.get("jobs")).stream().map(j -> String.valueOf(j.get("id")))).doesNotContain(job.toString());
+            assertThat(it.db(() -> jdbc.sql("SELECT state FROM platform.notice_job WHERE id = :id").param("id", job).query(String.class).single())).isEqualTo("CANCELLED");
+            assertThat(code(it.call(ict, HttpMethod.POST, "/api/v1/platform/notices/jobs/" + job + "/cancel", Map.of("reason", "again")))).isEqualTo("NOTICE_JOB_FINISHED");
+            // the scheduler's next pass leaves it where it is
+            it.db(() -> jdbc.sql("SELECT count(*) FROM platform.run_notice_job(NULL)").query(Integer.class).single());
+            assertThat(it.db(() -> jdbc.sql("SELECT state FROM platform.notice_job WHERE id = :id").param("id", job).query(String.class).single())).isEqualTo("CANCELLED");
+            return;
+        }
+        throw new AssertionError("the scheduler finished each of 8 fresh jobs before the test could cancel it");
     }
 }
