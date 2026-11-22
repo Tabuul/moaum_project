@@ -65,7 +65,24 @@ jobs:
       url: ${{ vars.PORTAL_URL }}
 
     steps:
+      # AWS is not set up until the University cuts over (docs/aws-deployment.md). Without the deploy role this run deploys
+      # nothing and ends green, saying so, instead of failing at the credentials every time CI passes on main; Railway keeps
+      # deploying from CI as before. With AWS_DEPLOY_ROLE_ARN set in the production environment, every step runs as it did.
+      - name: Is AWS set up?
+        id: gate
+        env:
+          ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -n "$ROLE" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=AWS is not set up::No AWS_DEPLOY_ROLE_ARN in the production environment, so nothing was built or deployed to AWS. Railway deploys from CI as before."
+            echo "## AWS is not set up: nothing deployed to AWS (Railway deploys from CI as before)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Which commit
+        if: steps.gate.outputs.ready == 'true'
         id: which
         run: |
           sha="${{ inputs.sha }}"
@@ -74,15 +91,18 @@ jobs:
           echo "short=${sha:0:12}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.ready == 'true'
         with:
           ref: ${{ steps.which.outputs.sha }}
 
       - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.gate.outputs.ready == 'true'
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
+        if: steps.gate.outputs.ready == 'true'
         id: ecr
 
       # On 11 Nov 2026 the GitHub runners' resolver stopped naming ubuntu.com (archive, security and the
@@ -90,6 +110,7 @@ jobs:
       # When the runner cannot name Ubuntu's archive, it asks public resolvers instead and the image builds
       # use its network (BUILD_NETWORK); otherwise nothing changes. The Dockerfiles are untouched.
       - name: Name Ubuntu's archive through public resolvers when the runner's fails
+        if: steps.gate.outputs.ready == 'true'
         run: |
           if getent hosts archive.ubuntu.com >/dev/null && getent hosts security.ubuntu.com >/dev/null; then
             echo "The runner names Ubuntu's archive."; exit 0
@@ -102,6 +123,7 @@ jobs:
           echo "BUILD_NETWORK=--network=host" >> "$GITHUB_ENV"
 
       - name: Images for this commit (built unless they already exist)
+        if: steps.gate.outputs.ready == 'true'
         id: images
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -121,6 +143,7 @@ jobs:
           done
 
       - name: Register the migrate task for this image
+        if: steps.gate.outputs.ready == 'true'
         id: migrate-def
         env:
           IMAGE: ${{ steps.images.outputs.api }}
@@ -136,6 +159,7 @@ jobs:
           echo "arn=$arn" >> "$GITHUB_OUTPUT"
 
       - name: Run the migrations (bash db/migrate.sh); nothing deploys if they fail
+        if: steps.gate.outputs.ready == 'true'
         env:
           TASK_DEF: ${{ steps.migrate-def.outputs.arn }}
         run: |
@@ -159,6 +183,7 @@ jobs:
           [ "$code" = "0" ] || { echo "::error::db/migrate.sh exited with $code ($reason). Nothing was deployed."; exit 1; }
 
       - name: Render the API task definition
+        if: steps.gate.outputs.ready == 'true'
         id: api-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -167,6 +192,7 @@ jobs:
           image: ${{ steps.images.outputs.api }}
 
       - name: Roll the API and wait until it is stable
+        if: steps.gate.outputs.ready == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.api-def.outputs.task-definition }}
@@ -177,6 +203,7 @@ jobs:
           wait-for-minutes: 20
 
       - name: Render the frontend task definition
+        if: steps.gate.outputs.ready == 'true'
         id: web-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -185,6 +212,7 @@ jobs:
           image: ${{ steps.images.outputs.frontend }}
 
       - name: Roll the frontend and wait until it is stable
+        if: steps.gate.outputs.ready == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.web-def.outputs.task-definition }}
@@ -195,6 +223,7 @@ jobs:
           wait-for-minutes: 15
 
       - name: The portal answers
+        if: steps.gate.outputs.ready == 'true'
         env:
           URL: ${{ vars.PORTAL_URL }}
         run: |
@@ -212,7 +241,7 @@ jobs:
           echo "GET $URL/ → 200"
 
       - name: Summary
-        if: always()
+        if: always() && steps.gate.outputs.ready == 'true'
         run: |
           {
             echo "## ${{ job.status }}: ${{ steps.which.outputs.short }}"

@@ -118,6 +118,10 @@ GitHub (Settings → Environments → `production` → Variables, not secrets):
 | `PORTAL_URL` | the public URL, same as `portal_url` |
 | `ECS_DESIRED_COUNT` | `1` (see §1, jobs) |
 
+Until `AWS_DEPLOY_ROLE_ARN` is set, *Deploy to AWS (production)* builds and deploys nothing: its first step finds no role,
+says so on the run ("AWS is not set up") and every other step is skipped, so the run ends green, not red, each time CI
+passes on main. Railway deploys from CI as before. Setting the variable is what turns the AWS deployment on.
+
 ## 4. First deployment, from an empty account
 
 Prerequisites: an AWS account with a user or role able to create the resources
