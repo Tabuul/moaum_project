@@ -88,7 +88,9 @@ jobs:
   db:
     name: "Database — migrations apply, 63 properties hold"
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 25, not 15: by November 2026 the job took 14 minutes on a fast runner (the property suite 6–8 of them, the demo accounts 3–4)
+    # and a slow one passed 15 with nothing failing (2f453237: the suite 609 s against 471 s the run before)
+    timeout-minutes: 25
 
     services:
       postgres:
