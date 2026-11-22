@@ -137,12 +137,17 @@ class ResultsController {
     }
 
     /** post every past result held for a student who was not on the register when the results were
-     *  uploaded, but has since been loaded — run after a student/biography upload (V204) */
+     *  uploaded, but has since been loaded — run after a student/biography upload (V204).
+     *
+     *  <p>V775: the reconcile takes the held rows before it reads them and then each holding upload's row; a results batch takes its
+     *  own upload's row and then the held rows of its students, and a rollback its upload's row and then its holds. Two of them
+     *  meeting on the same rows at one instant, PostgreSQL ends one whole — this door, the results import, its check and the
+     *  rollback are run again in a fresh transaction (DeadlockRetry) */
     @PostMapping("/legacy/reconcile-results")
     @PreAuthorize(MIGRATE)
     Map<String, Object> reconcileResults() {
         scope.requireUniversityOperator("The old-portal migration");   // V662
-        return service.reconcileHolding();
+        return ng.edu.moaum.portal.shared.DeadlockRetry.run(service::reconcileHolding);
     }
 
     /** the offices that upload past results (PAST_RESULTS), by their codes */
@@ -191,10 +196,10 @@ class ResultsController {
      *  too: LEGACY_REVERT_OFFICE); what the record has since moved on from is left as it is and listed */
     @PostMapping("/legacy/uploads/{id}/revert")
     @PreAuthorize(PAST_RESULTS)
-    @org.springframework.transaction.annotation.Transactional
     Map<String, Object> revertUpload(@PathVariable UUID id, @Valid @RequestBody ResultsService.RevertIn body) {
         scope.requireUniversityOperator("The old-portal migration");
-        return service.revertUpload(id, body.reason());
+        // V775: in the service's own transaction, run again on a passing clash with a reconcile of its held rows (see reconcileResults)
+        return ng.edu.moaum.portal.shared.DeadlockRetry.run(() -> service.revertUpload(id, body.reason()));
     }
 
     /** the old-portal uploads, newest first */
@@ -236,7 +241,7 @@ class ResultsController {
     @PreAuthorize(PAST_RESULTS)
     Map<String, Object> previewResults(@Valid @RequestBody ResultsService.MigrationIn body) {
         scope.requireUniversityOperator("The old-portal migration");   // V662
-        return service.previewLegacy(body.session(), body.semester(), body.rows(), true);
+        return ng.edu.moaum.portal.shared.DeadlockRetry.run(() -> service.previewLegacy(body.session(), body.semester(), body.rows(), true));   // V775
     }
 
     /** the past results of a semester, imported as final under a legacy minute, under their confirmed upload */
@@ -245,7 +250,8 @@ class ResultsController {
     Map<String, Object> importResults(@Valid @RequestBody ResultsService.MigrationIn body) {
         scope.requireUniversityOperator("The old-portal migration");   // V662
         requireUpload(body);
-        return service.importResults(body.session(), body.semester(), body.rows(), body.uploadId());
+        return ng.edu.moaum.portal.shared.DeadlockRetry.run(   // V775: a batch that loses a passing clash keeps nothing and is loaded again
+                () -> service.importResults(body.session(), body.semester(), body.rows(), body.uploadId()));
     }
 
     /** the postgraduate course registration of a past session/semester, into the postgraduate module (V214) */

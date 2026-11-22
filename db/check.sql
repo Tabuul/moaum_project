@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 650
+\set EXPECTED 675
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -39091,7 +39091,7 @@ BEGIN
       coalesce(msg9 = 'acted on false>true 1/2 left 1/0/1 decisions 1 | orphan mark 1>0>1 | rolled-back marks 0', false), msg9);
   PERFORM pg_temp.assert('V771: the Senate''s units outlive a programme change on an entry with no version; a course approved again keeps its units under a portal result; a hold a later upload took over is not dropped; a GST course stays GST',
       coalesce(msg10 = concat_ws(' | ', 'senate UNITS_BY_AMENDMENT,UNITS_CORRECTED units 4,3', 'approved again RESULT_ON_PORTAL/UNITS_ON_PORTAL at 2 ENTRY_REAPPROVED 2>2',
-                                  'held 0 HELD held under the second 1', 'gst ALREADY_ON_RECORD GST/GST changes 0 told true'), false), msg10);
+                                  'held 0 HELD_ROLLED_BACK held under the second 1', 'gst ALREADY_ON_RECORD GST/GST changes 0 told true'), false), msg10);
 END $$;
 -- ── V772: the Director of ICT takes one student's wrongly counted course off one registration: made-up courses ZQR 101, ZQR 102
 --          (an elective), ZQR 103 (a GST course), ZQR 104 (an elective counted as core, failed, then carried over); students A and B in
@@ -39823,6 +39823,1579 @@ BEGIN
                      || ' || again 5:UNCHANGED 6:UNCHANGED 7:UNCHANGED 8:UNCHANGED 9:UNCHANGED 10:UNCHANGED 11:UNCHANGED 12:UNCHANGED 13:SKIPPED 14:SKIPPED 15:SKIPPED 16:SKIPPED 17:SKIPPED 18:REPEATED upload none, uploads 2 -> 2, audit 0 more', false), msg);
 END $$;
 
+-- ── V771 (the rollback on one rule, and what came with it): a Course registration file and then its Past results file rolled back in
+--          either order leave nothing; a first result stays where its course stays; a correction waits for the later upload that stands
+--          on it and is settled with it, never by an unrelated rollback; the Senate's units at the upload's own figure are not written
+--          over, and are the student's fact whatever version the entry points at; a held result goes back to the upload that held it
+--          before; a category kept under a portal result is told; the ledger keeps the course's kind; a rolled-back result is history
+--          only until the course is put back. Made-up courses ZQW 101–108, students MOAUM/ZQW/74/0001–0013 and 0099, session
+--          9787/9788. The block undoes its writes ──
+CREATE OR REPLACE FUNCTION pg_temp.zqw_row(p_matric text, p_course text, p_title text, p_units int, p_cat text, p_total int, p_line text DEFAULT '2')
+RETURNS jsonb LANGUAGE sql AS $f$
+    SELECT jsonb_strip_nulls(jsonb_build_object('line', p_line, 'matric', p_matric, 'course', p_course, 'title', p_title,
+                                                'creditUnits', p_units::text, 'category', p_cat, 'total', p_total::text))
+$f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqw_load(p_kind text, p_session text, p_semester int, p_row jsonb, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE u uuid;
+BEGIN
+    u := (assessment.past_upload_begin(p_kind, 'check-zqw.xlsx', 1, p_why)).id;
+    PERFORM assessment.legacy_semester_load(p_session, p_semester, jsonb_build_array(p_row), p_kind = 'RESULTS', false, u, true);
+    PERFORM assessment.past_upload_finish(u, true);
+    RETURN u;
+END $f$;
+-- what a rollback answered: undone/left+earlierUndone
+CREATE OR REPLACE FUNCTION pg_temp.zqw_said(p_answer jsonb)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT (p_answer->>'undone') || '/' || (p_answer->>'left') || '+' || (p_answer->>'earlierUndone')
+$f$;
+-- why a rollback left a change of this kind, as it listed it
+CREATE OR REPLACE FUNCTION pg_temp.zqw_left(p_answer jsonb, p_kind text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT x->>'note' FROM jsonb_array_elements(p_answer->'leftChanges') x WHERE x->>'kind' = p_kind LIMIT 1
+$f$;
+-- an upload's revert_counts (undone/left), and whether its ledger reads the same
+CREATE OR REPLACE FUNCTION pg_temp.zqw_counts(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(pu.revert_counts->>'undone', '-') || '/' || coalesce(pu.revert_counts->>'left', '-')
+        || CASE WHEN (pu.revert_counts->>'undone')::int = g.undone AND (pu.revert_counts->>'left')::int = g.kept THEN '=ledger'
+                ELSE '<>ledger ' || g.undone || '/' || g.kept END
+      FROM assessment.past_upload pu,
+           LATERAL (SELECT count(*) FILTER (WHERE ch.reverted_at IS NOT NULL) AS undone, count(*) FILTER (WHERE ch.reverted_at IS NULL) AS kept
+                      FROM assessment.past_upload_change ch WHERE ch.upload_id = pu.id) g
+     WHERE pu.id = p_upload
+$f$;
+-- an upload's ledger, change by change: undone by a rollback, left by one, or (no word) standing
+CREATE OR REPLACE FUNCTION pg_temp.zqw_ledger(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(ch.kind || CASE WHEN ch.reverted_at IS NOT NULL THEN ':undone' WHEN ch.revert_note IS NOT NULL THEN ':left' ELSE '' END,
+                               ',' ORDER BY ch.seq), 'none')
+      FROM assessment.past_upload_change ch WHERE ch.upload_id = p_upload
+$f$;
+-- registrations / courses / enrolments a student holds in a session
+CREATE OR REPLACE FUNCTION pg_temp.zqw_state(p_student uuid, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT (SELECT count(*) FROM registration.course_registration r WHERE r.student_id = p_student AND r.session = p_session) || '/'
+        || (SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+             WHERE r.student_id = p_student AND r.session = p_session) || '/'
+        || (SELECT count(*) FROM people.enrolment x WHERE x.student_id = p_student AND x.session = p_session)
+$f$;
+-- a student's course: the units it counts at, and the units its class heading reads
+CREATE OR REPLACE FUNCTION pg_temp.zqw_units(p_student uuid, p_course text, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT 'units ' || e.units || ' heading ' || coalesce(o.units::text, 'none')
+                       FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                       JOIN catalogue.offering o ON o.id = e.offering_id
+                      WHERE r.student_id = p_student AND r.session = p_session AND o.course_code = p_course AND e.status = 'APPROVED'), 'not counted')
+$f$;
+-- a class: whether its students are all on one version of the course, and the units each counts it at (by matriculation number)
+CREATE OR REPLACE FUNCTION pg_temp.zqw_class(p_offering uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT CASE WHEN count(DISTINCT e.as_taken_id) = 1 AND count(e.as_taken_id) = count(*) THEN 'one version' ELSE 'versions apart' END
+        || ' units ' || string_agg(e.units::text, ',' ORDER BY s.matric_no)
+      FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN people.student s ON s.id = r.student_id
+     WHERE e.offering_id = p_offering
+$f$;
+-- the cached academic position's last session, marked when the cache is not what is computed now
+CREATE OR REPLACE FUNCTION pg_temp.zqw_position(p_student uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT p.last_session FROM people.academic_position p WHERE p.student_id = p_student), 'none')
+        || CASE WHEN (SELECT row(p.last_session, p.registered_current, p.enrolled_current, p.issues) FROM people.academic_position p WHERE p.student_id = p_student)
+                     IS NOT DISTINCT FROM (SELECT row(q.last_session, q.registered_current, q.enrolled_current, q.issues) FROM people.academic_position_rows(p_student) q)
+                THEN '' ELSE ' (stale)' END
+$f$;
+DO $$
+DECLARE
+    v_prog text; v_prog2 text; v_dept text; s1 text := '9787/9788'; ict uuid := gen_random_uuid(); v_err text;
+    ada uuid := gen_random_uuid(); bala uuid := gen_random_uuid(); chidi uuid := gen_random_uuid(); dayo uuid := gen_random_uuid();
+    efe uuid := gen_random_uuid(); femi uuid := gen_random_uuid(); gbenga uuid := gen_random_uuid(); hauwa uuid := gen_random_uuid();
+    ife uuid := gen_random_uuid(); jide uuid := gen_random_uuid(); kemi uuid := gen_random_uuid(); lola uuid := gen_random_uuid();
+    musa uuid := gen_random_uuid(); zainab uuid := gen_random_uuid();
+    u0 uuid; u1 uuid; u2 uuid; r0 jsonb; r1 jsonb; r2 jsonb; res jsonb; v_off uuid; v_sheet uuid; gpa0 jsonb; pos_loaded text;
+    results_first text; registration_first text; own_course text; portal_mark text; counter text; chain text; unrelated text; begun text;
+    senate_same text; senate_other text; senate_moved text; held_back text; arrived text; category text; kinds text; history text;
+    msg1 text; msg2 text; msg3 text; msg4 text; msg5 text; msg6 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V771 rollback round four', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    SELECT p.code INTO v_prog2 FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived AND p.code <> v_prog ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZQW 101', 'Check Order One', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 102', 'Check Order Two', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 103', 'Check Order Three', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 104', 'Check Order Four', 2, 2, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 105', 'Check Order Senate', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 106', 'Check Order Shared', 3, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 107', 'Check Order Portal', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQW 108', 'Check Order General Studies', 2, 1, 100, v_dept, 'GST', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (ada, 'MOAUM/ADM/74/774001', 'MOAUM/ZQW/74/0001', 'ZZ774', 'Ada', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (bala, 'MOAUM/ADM/74/774002', 'MOAUM/ZQW/74/0002', 'ZZ774', 'Bala', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (chidi, 'MOAUM/ADM/74/774003', 'MOAUM/ZQW/74/0003', 'ZZ774', 'Chidi', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (dayo, 'MOAUM/ADM/74/774004', 'MOAUM/ZQW/74/0004', 'ZZ774', 'Dayo', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (efe, 'MOAUM/ADM/74/774005', 'MOAUM/ZQW/74/0005', 'ZZ774', 'Efe', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (femi, 'MOAUM/ADM/74/774006', 'MOAUM/ZQW/74/0006', 'ZZ774', 'Femi', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (gbenga, 'MOAUM/ADM/74/774007', 'MOAUM/ZQW/74/0007', 'ZZ774', 'Gbenga', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (hauwa, 'MOAUM/ADM/74/774008', 'MOAUM/ZQW/74/0008', 'ZZ774', 'Hauwa', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (ife, 'MOAUM/ADM/74/774009', 'MOAUM/ZQW/74/0009', 'ZZ774', 'Ife', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (jide, 'MOAUM/ADM/74/774010', 'MOAUM/ZQW/74/0010', 'ZZ774', 'Jide', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (kemi, 'MOAUM/ADM/74/774011', 'MOAUM/ZQW/74/0011', 'ZZ774', 'Kemi', v_prog2, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (lola, 'MOAUM/ADM/74/774012', 'MOAUM/ZQW/74/0012', 'ZZ774', 'Lola', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (musa, 'MOAUM/ADM/74/774013', 'MOAUM/ZQW/74/0013', 'ZZ774', 'Musa', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+
+    -- Ada: the Course registration file, then its Past results file; the results file rolled back first (its first result waits for
+    -- the course), then the registration file — the result goes with the course, nothing is left
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0001', 'ZQW 101', 'Check Order One', 2, 'Core', NULL), 'check V771 the registration file');
+    u2 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0001', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 its results file');
+    pos_loaded := pg_temp.zqw_position(ada);
+    r2 := assessment.revert_past_upload(u2, 'check V771 the results file first');
+    r1 := assessment.revert_past_upload(u1, 'check V771 then the registration file');
+    results_first := pg_temp.zqw_said(r2) || ' then ' || pg_temp.zqw_said(r1) || ' left ' || pg_temp.zqw_state(ada, s1)
+                     || ' counts ' || pg_temp.zqw_counts(u1) || ' ' || pg_temp.zqw_counts(u2)
+                     || ' monitor ' || (SELECT count(*) FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = ada)
+                     || ' gpa rows ' || (SELECT count(*) FROM assessment.student_gpa(ada))
+                     || ' position ' || pos_loaded || '>' || pg_temp.zqw_position(ada);
+    -- Bala: the same pair, the registration file rolled back first (left while the result stands), then the results file, which settles it
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0002', 'ZQW 101', 'Check Order One', 2, 'Core', NULL), 'check V771 the registration file again');
+    u2 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0002', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 its results file again');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the registration file first');
+    r2 := assessment.revert_past_upload(u2, 'check V771 then the results file');
+    registration_first := pg_temp.zqw_said(r1) || ' then ' || pg_temp.zqw_said(r2) || ' left ' || pg_temp.zqw_state(bala, s1)
+                          || ' counts ' || pg_temp.zqw_counts(u1) || ' ' || pg_temp.zqw_counts(u2)
+                          || ' monitor ' || (SELECT count(*) FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = bala)
+                          || ' gpa rows ' || (SELECT count(*) FROM assessment.student_gpa(bala))
+                          || ' position ' || pg_temp.zqw_position(bala);
+    msg1 := concat_ws(' | ', 'results file first ' || results_first, 'registration file first ' || registration_first);
+
+    -- Chidi: the course is on record by no upload; a results file posts its first result and is rolled back — the result is left
+    -- (Result amendments), the course stays
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQW/74/0003', 'course', 'ZQW 101')), false, false);
+    u1 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0003', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 a result on a course on record');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the results file alone');
+    own_course := pg_temp.zqw_said(r1) || ' ' || pg_temp.zqw_ledger(u1) || ' left ' || pg_temp.zqw_state(chidi, s1)
+                  || ' result ' || (SELECT coalesce(string_agg(x.total::text, ','), 'none') FROM assessment.student_results(chidi) x)
+                  || ' told ' || coalesce(pg_temp.zqw_left(r1, 'RESULT_POSTED') LIKE 'a first result on a course already on record is not taken back here%', false);
+    -- Dayo: the pair again; the registration file rolled back, a mark entered on the portal, then the results file rolled back — the
+    -- portal's mark stands on the course, so the course, its registration and the enrolment stay
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0004', 'ZQW 101', 'Check Order One', 2, 'Core', NULL), 'check V771 a registration file kept');
+    u2 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0004', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 a results file kept');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the registration file, then a portal mark');
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason)
+    SELECT s.sheet_id, dayo, 2, 25, 40, 'GRADED', false, 'check V771: entered on the portal' FROM assessment.score s WHERE s.student_id = dayo;
+    r2 := assessment.revert_past_upload(u2, 'check V771 the results file after the mark');
+    portal_mark := pg_temp.zqw_said(r1) || ' then ' || pg_temp.zqw_said(r2) || ' left ' || pg_temp.zqw_state(dayo, s1)
+                   || ' counts ' || pg_temp.zqw_counts(u1) || ' ' || pg_temp.zqw_counts(u2);
+    msg2 := concat_ws(' | ', 'no upload''s course ' || own_course, 'portal mark between ' || portal_mark);
+
+    -- Efe: a course at 2 units; a file corrects it to 3, the next puts 2 back; rolled back oldest first — the first is left while the
+    -- second stands on it, then both are undone: the units from before either, the class heading with them
+    u0 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0005', 'ZQW 102', 'Check Order Two', 2, 'Core', 50), 'check V771 a course at two units');
+    gpa0 := assessment.gpa_snapshot(efe);
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0005', 'ZQW 102', 'Check Order Two', 3, 'Core', NULL), 'check V771 a correction to three');
+    u2 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0005', 'ZQW 102', 'Check Order Two', 2, 'Core', NULL), 'check V771 the counter-correction');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the correction first');
+    r2 := assessment.revert_past_upload(u2, 'check V771 then the counter-correction');
+    counter := pg_temp.zqw_said(r1) || ' then ' || pg_temp.zqw_said(r2) || ' ' || pg_temp.zqw_units(efe, 'ZQW 102', s1)
+               || ' gpa as before ' || (assessment.gpa_snapshot(efe) IS NOT DISTINCT FROM gpa0);
+    -- Femi: 2 units corrected to 3, then 3 to 4; the first upload rolled back alone — the later upload's 4 units stand, and are listed
+    u0 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0006', 'ZQW 103', 'Check Order Three', 2, 'Core', NULL), 'check V771 another course at two');
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0006', 'ZQW 103', 'Check Order Three', 3, 'Core', NULL), 'check V771 two units to three');
+    u2 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0006', 'ZQW 103', 'Check Order Three', 4, 'Core', NULL), 'check V771 three units to four');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the first of a chain alone');
+    chain := pg_temp.zqw_said(r1) || ' ' || pg_temp.zqw_units(femi, 'ZQW 103', s1)
+             || ' listed ' || coalesce(pg_temp.zqw_left(r1, 'UNITS_CORRECTED') LIKE 'a later upload has changed this course%', false);
+    -- Gbenga: a course an upload added is dropped by a person, so the upload's rollback leaves it; the course is restored; a results
+    -- file of another course in the second semester is then rolled back — it settles nothing of the first: the course is still there
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0007', 'ZQW 101', 'Check Order One', 2, 'Core', NULL), 'check V771 a course later dropped');
+    UPDATE registration.entry en SET status = 'DROPPED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = gbenga;
+    r1 := assessment.revert_past_upload(u1, 'check V771 the file of a dropped course');
+    UPDATE registration.entry en SET status = 'APPROVED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = gbenga;
+    u2 := pg_temp.zqw_load('RESULTS', s1, 2, pg_temp.zqw_row('MOAUM/ZQW/74/0007', 'ZQW 104', 'Check Order Four', 2, 'Core', 55), 'check V771 another course, second semester');
+    r2 := assessment.revert_past_upload(u2, 'check V771 the unrelated file');
+    unrelated := pg_temp.zqw_said(r1) || ' then ' || pg_temp.zqw_said(r2) || ' left ' || pg_temp.zqw_state(gbenga, s1) || ' ' || pg_temp.zqw_units(gbenga, 'ZQW 101', s1)
+                 || ' counts ' || pg_temp.zqw_counts(u1);
+    -- Hauwa: an upload begun first but loaded second (it replaces the mark of the one begun after it), then a third; rolled back in
+    -- the order they loaded — the last rollback settles both earlier ones, whichever was begun first
+    u1 := (assessment.past_upload_begin('RESULTS', 'check-zqw.xlsx', 1, 'check V771 begun first, loaded second')).id;
+    u0 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0008', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 begun second, loaded first');
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(pg_temp.zqw_row('MOAUM/ZQW/74/0008', 'ZQW 101', 'Check Order One', 2, 'Core', 60)), true, false, u1, true);
+    PERFORM assessment.past_upload_finish(u1, true);
+    u2 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0008', 'ZQW 101', 'Check Order One', 2, 'Core', 70), 'check V771 the last of the three');
+    r0 := assessment.revert_past_upload(u0, 'check V771 loaded first, rolled back first');
+    r1 := assessment.revert_past_upload(u1, 'check V771 begun first, rolled back second');
+    r2 := assessment.revert_past_upload(u2, 'check V771 the last one settles them');
+    begun := pg_temp.zqw_said(r0) || ' ' || pg_temp.zqw_said(r1) || ' ' || pg_temp.zqw_said(r2) || ' left ' || pg_temp.zqw_state(hauwa, s1)
+             || ' counts ' || pg_temp.zqw_counts(u0) || ' ' || pg_temp.zqw_counts(u1);
+    msg3 := concat_ws(' | ', 'counter-correction ' || counter, 'chain ' || chain, 'unrelated ' || unrelated, 'begun first ' || begun);
+
+    -- Ife: on record at 3 units; a file states 2; the Senate then sets 2 units for the programme (an amendment applied at the very
+    -- units the upload had put moves nothing on the entry); the upload rolled back — the Senate's units stay, the heading with them
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZQW/74/0009', 'course', 'ZQW 105', 'total', '55')), true, false);
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0009', 'ZQW 105', 'Check Order Senate', 2, 'Core', NULL), 'check V771 the file states two units');
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQW 105' AND o.session = s1;
+    SELECT sh.id INTO v_sheet FROM assessment.score_sheet sh WHERE sh.offering_id = v_off LIMIT 1;
+    INSERT INTO assessment.amendment (ref, sheet_id, reason, stage, applied_at, kind, programme_code, units, was_units, senate_minute)
+    VALUES ('AMD-9787-00001', v_sheet, 'check V771: the Senate set two units', 'APPLIED', now(), 'UNITS', v_prog, 2, 3, 'SEN/CHECK/774');
+    r1 := assessment.revert_past_upload(u1, 'check V771 the file the Senate confirmed');
+    senate_same := pg_temp.zqw_said(r1) || ' ' || pg_temp.zqw_units(ife, 'ZQW 105', s1)
+                   || ' told ' || coalesce(pg_temp.zqw_left(r1, 'UNITS_CORRECTED') LIKE 'the Senate set these units (AMD-9787-00001%', false)
+                   || ' heading kept ' || coalesce(pg_temp.zqw_left(r1, 'CLASS_HEADER_CORRECTED') LIKE 'courses of this class that the upload put as the heading reads were left%', false);
+    -- Kemi, of another programme, is put on the same course at the same 2 units — the version Ife's programme first took; her
+    -- corrected file at 3 units is taken: the Senate's amendment was never for a programme she has been in
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0011', 'ZQW 105', 'Check Order Senate', 2, 'Core', NULL), 'check V771 another programme at two');
+    senate_other := pg_temp.zqw_class(v_off);
+    u2 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0011', 'ZQW 105', 'Check Order Senate', 3, 'Core', NULL), 'check V771 another programme at three');
+    senate_other := senate_other || ' then ' || (SELECT w.status FROM assessment.past_upload_row w WHERE w.upload_id = u2) || ' ' || pg_temp.zqw_class(v_off);
+    -- Jide (in the first programme when the Senate set 4 units) and Kemi (always in the second): a file at 4 units puts both on one
+    -- version, first taken under Kemi's programme; Jide then changes programme; a file at 3 units leaves the Senate's 4 and corrects Kemi
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAUM/ZQW/74/0010', 'course', 'ZQW 106', 'total', '55'),
+        jsonb_build_object('matric', 'MOAUM/ZQW/74/0011', 'course', 'ZQW 106', 'total', '61')), true, false);
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQW 106' AND o.session = s1;
+    SELECT sh.id INTO v_sheet FROM assessment.score_sheet sh WHERE sh.offering_id = v_off LIMIT 1;
+    INSERT INTO assessment.amendment (ref, sheet_id, reason, stage, applied_at, kind, programme_code, units, was_units, senate_minute)
+    VALUES ('AMD-9787-00002', v_sheet, 'check V771: the Senate set four units', 'APPLIED', now(), 'UNITS', v_prog, 4, 3, 'SEN/CHECK/774');
+    PERFORM set_config('moaum.units_source', 'AMENDMENT:AMD-9787-00002', true);
+    UPDATE registration.entry en SET units = 4 FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = jide AND en.offering_id = v_off;
+    PERFORM set_config('moaum.units_source', '', true);
+    u1 := (assessment.past_upload_begin('REGISTRATION', 'check-zqw.xlsx', 2, 'check V771 both at four units as taken')).id;
+    PERFORM assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        pg_temp.zqw_row('MOAUM/ZQW/74/0011', 'ZQW 106', 'Check Order Shared', 4, 'Core', NULL, '2'),
+        pg_temp.zqw_row('MOAUM/ZQW/74/0010', 'ZQW 106', 'Check Order Shared', 4, 'Core', NULL, '3')), false, false, u1, true);
+    PERFORM assessment.past_upload_finish(u1, true);
+    SELECT pg_temp.zqw_class(v_off) || ' first taken under ' || CASE v.programme_code WHEN v_prog2 THEN 'the other programme' WHEN v_prog THEN 'the amended programme'
+                                                                                    ELSE 'neither' END || ' (' || v.source || ')'
+      INTO senate_moved FROM catalogue.course_as_taken v WHERE v.offering_id = v_off AND v.units = 4;
+    UPDATE people.student SET programme_code = v_prog2 WHERE id = jide;
+    u2 := (assessment.past_upload_begin('REGISTRATION', 'check-zqw.xlsx', 2, 'check V771 a file at three units after')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(
+        pg_temp.zqw_row('MOAUM/ZQW/74/0010', 'ZQW 106', 'Check Order Shared', 3, 'Core', NULL, '2'),
+        pg_temp.zqw_row('MOAUM/ZQW/74/0011', 'ZQW 106', 'Check Order Shared', 3, 'Core', NULL, '3')), false, false, u2, true);
+    PERFORM assessment.past_upload_finish(u2, true);
+    senate_moved := senate_moved || ' then ' || (SELECT string_agg(coalesce(x->>'entryStatus', x->>'status'), ',' ORDER BY (x->>'line')::int) FROM jsonb_array_elements(res->'lines') x)
+                    || ' ' || pg_temp.zqw_class(v_off);
+    msg4 := concat_ws(' | ', 'the Senate at the upload''s units ' || senate_same, 'another programme on that version ' || senate_other,
+                      'after a programme change ' || senate_moved);
+
+    -- a student not yet on the register: the same file loaded twice (the second upload takes the hold over), the second rolled back —
+    -- the hold goes back to the first upload, which still stands; when the student arrives the result posts under the first upload
+    u1 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0099', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 a held result');
+    u2 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0099', 'ZQW 101', 'Check Order One', 2, 'Core', 50), 'check V771 the same file again');
+    SELECT 'taken over ' || count(*) FILTER (WHERE x.upload_id = u2 AND (x.prior->>'upload_id')::uuid = u1) INTO held_back
+      FROM assessment.legacy_result_holding x WHERE x.matric = 'MOAUM/ZQW/74/0099';
+    r2 := assessment.revert_past_upload(u2, 'check V771 the second load was a mistake');
+    held_back := held_back || ' heldDropped ' || (r2->>'heldDropped')
+                 || ' held under the first ' || (SELECT count(*) FROM assessment.legacy_result_holding x WHERE x.matric = 'MOAUM/ZQW/74/0099' AND x.upload_id = u1)
+                 || ' under the second ' || (SELECT count(*) FROM assessment.legacy_result_holding x WHERE x.matric = 'MOAUM/ZQW/74/0099' AND x.upload_id = u2)
+                 || ' rows ' || (SELECT string_agg(w.status, ',') FROM assessment.past_upload_row w WHERE w.upload_id = u1)
+                 || ' ' || (SELECT string_agg(w.status, ',') FROM assessment.past_upload_row w WHERE w.upload_id = u2)
+                 || ' told ' || coalesce((SELECT bool_and(w.detail LIKE '%, which held it before') FROM assessment.past_upload_row w WHERE w.upload_id = u2), false);
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (zainab, 'MOAUM/ADM/74/774099', 'MOAUM/ZQW/74/0099', 'ZZ774', 'Zainab', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+    PERFORM assessment.reconcile_legacy_holding();
+    arrived := pg_temp.zqw_state(zainab, s1) || ' result ' || (SELECT coalesce(string_agg(x.total::text, ','), 'none') FROM assessment.student_results(zainab) x)
+               || ' still held ' || (SELECT count(*) FROM assessment.legacy_result_holding x WHERE x.matric = 'MOAUM/ZQW/74/0099')
+               || ' first ' || pg_temp.zqw_ledger(u1) || ' second ' || pg_temp.zqw_ledger(u2)
+               || ' rows ' || (SELECT string_agg(w.status, ',') FROM assessment.past_upload_row w WHERE w.upload_id = u1)
+               || ' ' || (SELECT string_agg(w.status, ',') FROM assessment.past_upload_row w WHERE w.upload_id = u2);
+    msg5 := concat_ws(' | ', held_back, 'arrived ' || arrived);
+
+    -- Lola: a course at 2 units, core, a result entered on the portal, then dropped; a results file with the same units and mark but
+    -- filed as elective approves it again as on record, and says the category was not taken
+    u1 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0012', 'ZQW 107', 'Check Order Portal', 2, 'Core', NULL), 'check V771 a course for a portal mark');
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQW 107' AND o.session = s1;
+    v_sheet := gen_random_uuid();
+    INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at) VALUES (v_sheet, v_off, 'PUBLISHED', 'SEN/CHECK/774', now());
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason) VALUES (v_sheet, lola, 1, 20, 40, 'GRADED', false, 'check V771: entered on the portal');
+    UPDATE registration.entry en SET status = 'DROPPED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = lola AND en.offering_id = v_off;
+    u2 := (assessment.past_upload_begin('RESULTS', 'check-zqw.xlsx', 1, 'check V771 the category alone differs')).id;
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(pg_temp.zqw_row('MOAUM/ZQW/74/0012', 'ZQW 107', 'Check Order Portal', 2, 'Elective', 60)), true, false, u2, true);
+    PERFORM assessment.past_upload_finish(u2, true);
+    SELECT coalesce(string_agg((x->>'status') || '/' || (x->>'entryStatus') || ' told '
+                               || coalesce(x->>'detail' LIKE '%kept as on record (2 units, core)%2 units, elective is not put over it%', false), ','), 'not listed')
+      INTO category FROM jsonb_array_elements(res->'lines') x;
+    category := category || ' kept ' || (SELECT en.status || ' ' || en.units || ' ' || en.entry_type || '/' || en.basis FROM registration.entry en
+                                           JOIN registration.course_registration r ON r.id = en.registration_id WHERE r.student_id = lola AND en.offering_id = v_off)
+                || ' ' || (SELECT string_agg(ch.kind || ' ' || ch.was_units || '>' || ch.now_units, ',' ORDER BY ch.seq) FROM assessment.past_upload_change ch WHERE ch.upload_id = u2);
+    -- Musa: a results file of a General Studies course — the ledger keeps the course's kind beside each change to the course; rolled
+    -- back, its mark is only history (the monitor passes over it); a registration file puts the course back and the mark counts again
+    u1 := pg_temp.zqw_load('RESULTS', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0013', 'ZQW 108', 'Check Order General Studies', 2, 'GST', 55), 'check V771 a general studies result');
+    SELECT string_agg(ch.kind || ' ' || coalesce(ch.course_kind, '-'), ',' ORDER BY ch.seq) INTO kinds FROM assessment.past_upload_change ch WHERE ch.upload_id = u1;
+    SELECT s.sheet_id INTO v_sheet FROM assessment.score s WHERE s.student_id = musa;
+    history := assessment.result_rolled_back(v_sheet, musa)::text;
+    r1 := assessment.revert_past_upload(u1, 'check V771 the general studies file');
+    history := history || '>' || assessment.result_rolled_back(v_sheet, musa) || ' (results ' || (SELECT count(*) FROM assessment.student_results(musa)) || ')';
+    u2 := pg_temp.zqw_load('REGISTRATION', s1, 1, pg_temp.zqw_row('MOAUM/ZQW/74/0013', 'ZQW 108', 'Check Order General Studies', 2, 'GST', NULL), 'check V771 the course put back');
+    history := history || '>' || assessment.result_rolled_back(v_sheet, musa) || ' (results ' || (SELECT count(*) FROM assessment.student_results(musa)) || ')';
+    msg6 := concat_ws(' | ', 'category alone ' || category, 'kind ' || kinds, 'history only ' || history);
+
+    RAISE EXCEPTION 'the V771 round-four check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V771 round-four check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V775: a Course registration file and then its Past results file, rolled back in either order, leave nothing in the session — no registration, course or enrolment, both uploads undone in full and counted as their ledgers read, the result monitor quiet, the cached position as computed',
+      coalesce(msg1 = concat_ws(' | ', 'results file first 0/1+0 then 3/0+1 left 0/0/0 counts 3/0=ledger 1/0=ledger monitor 0 gpa rows 0 position 9787/9788>none',
+                                 'registration file first 0/3+0 then 1/0+3 left 0/0/0 counts 3/0=ledger 1/0=ledger monitor 0 gpa rows 0 position none'), false), msg1);
+  PERFORM pg_temp.assert('V775: a first result goes only with a course a rollback takes off — on a course no upload put there it is left for Result amendments and the course stays; a mark entered on the portal between the two rollbacks keeps the course',
+      coalesce(msg2 = concat_ws(' | ', 'no upload''s course 1/1+0 AS_TAKEN_LINKED:undone,RESULT_POSTED:left left 1/1/1 result 50 told true',
+                                 'portal mark between 0/3+0 then 0/1+0 left 1/1/1 counts 0/3=ledger 0/1=ledger'), false), msg2);
+  PERFORM pg_temp.assert('V775: a correction and its counter-correction rolled back oldest first end at the units from before either; the first of a chain rolled back alone leaves the later upload''s units; an unrelated rollback settles nothing an earlier one had to leave; an upload begun first but loaded later still settles',
+      coalesce(msg3 = concat_ws(' | ', 'counter-correction 0/2+0 then 2/0+2 units 2 heading 2 gpa as before true', 'chain 0/2+0 units 4 heading 4 listed true',
+                                 'unrelated 0/3+0 then 3/0+0 left 1/1/1 units 2 heading 2 counts 0/3=ledger',
+                                 'begun first 0/4+0 0/1+0 1/0+5 left 0/0/0 counts 4/0=ledger 1/0=ledger'), false), msg3);
+  PERFORM pg_temp.assert('V775: a rollback leaves the Senate''s units when the amendment set the very units the upload had put; the Senate''s units are the student''s own — they outlive a programme change on a course with a version, and a student never in the amended programme is corrected on that same version',
+      coalesce(msg4 = concat_ws(' | ', 'the Senate at the upload''s units 0/2+0 units 2 heading 2 told true heading kept true',
+                                 'another programme on that version one version units 2,2 then UNITS_CORRECTED versions apart units 2,3',
+                                 'after a programme change one version units 4,4 first taken under the other programme (UPLOAD) then UNITS_BY_AMENDMENT,UNITS_CORRECTED versions apart units 4,3'), false), msg4);
+  PERFORM pg_temp.assert('V775: the same file loaded twice for a student not yet on the register and the second upload rolled back — the held result goes back to the first upload and posts under it when the student arrives',
+      coalesce(msg5 = concat_ws(' | ', 'taken over 1 heldDropped 1 held under the first 1 under the second 0 rows HELD HELD_ROLLED_BACK told true',
+                                 'arrived 1/1/1 result 50 still held 0 first ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED second none rows RESULT_POSTED HELD_ROLLED_BACK'), false), msg5);
+  PERFORM pg_temp.assert('V775: a course approved again under a portal result is told when only the category differs; the ledger keeps the course''s kind; a rolled-back result is history only until a registration file puts the course back',
+      coalesce(msg6 = concat_ws(' | ', 'category alone UNITS_ON_PORTAL/UNITS_ON_PORTAL told true kept APPROVED 2 CURRENT/Core ENTRY_REAPPROVED 2>2',
+                                 'kind ENROLMENT_ADDED -,REGISTRATION_ADDED -,ENTRY_ADDED GST,RESULT_POSTED GST', 'history only false>true (results 0)>false (results 1)'), false), msg6);
+END $$;
+-- ── V772 (Course Registration Correction beside the rollback and the duplicates): a correction recorded on a course since an upload
+--          put it there keeps the course when the upload is rolled back; beside a twin class whose first result was rolled back the
+--          Director takes the counted class off; the Duplicate results page and the result monitor read that twin as withdrawn until
+--          a corrected file puts it back. Made-up courses ZQX 201, its twin class BSU-ZQX 201 and ZQX 202; students
+--          MOAUM/ZQX/75/0001–0009; sessions 9789/9790 and 9790/9791. The block undoes its writes ──
+CREATE OR REPLACE FUNCTION pg_temp.zqx_load(p_kind text, p_session text, p_matric text, p_course text, p_title text, p_units int, p_total int, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE u uuid;
+BEGIN
+    u := (assessment.past_upload_begin(p_kind, 'check-zqx.xlsx', 1, p_why)).id;
+    PERFORM assessment.legacy_semester_load(p_session, 1, jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+                'line', '2', 'matric', p_matric, 'course', p_course, 'title', p_title, 'creditUnits', p_units::text, 'category', 'Core', 'total', p_total::text))),
+            p_kind = 'RESULTS', false, u, true);
+    PERFORM assessment.past_upload_finish(u, true);
+    RETURN u;
+END $f$;
+-- the courses on a student's registrations of a session: status and units
+CREATE OR REPLACE FUNCTION pg_temp.zqx_courses(p_student uuid, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(o.course_code || ' ' || e.status || ' ' || e.units, ', ' ORDER BY o.course_code), 'none')
+      FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = p_student AND r.session = p_session
+$f$;
+-- the Director of ICT asks for a course off a registration: the removal and its state, or the refusal's code
+CREATE OR REPLACE FUNCTION pg_temp.zqx_take(p_student uuid, p_session text, p_course text, p_why text, OUT state text, OUT id uuid)
+LANGUAGE plpgsql AS $f$
+DECLARE v_reg uuid; v_off uuid; res jsonb;
+BEGIN
+    SELECT r.id, o.id INTO v_reg, v_off
+      FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = p_student AND r.session = p_session AND o.course_code = p_course;
+    res := registration.request_entry_removal(p_student, jsonb_build_array(jsonb_build_object('registrationId', v_reg, 'offeringId', v_off)), p_why);
+    state := res->'removals'->0->>'state'; id := (res->'removals'->0->>'id')::uuid;
+EXCEPTION WHEN OTHERS THEN
+    state := split_part(SQLERRM, ':', 1); id := NULL;
+END $f$;
+-- the Registry (another officer) confirms a removal held for a result; the Director of ICT acts again afterwards
+CREATE OR REPLACE FUNCTION pg_temp.zqx_confirm(p_removal uuid, p_registry uuid, p_ict uuid)
+RETURNS text LANGUAGE plpgsql AS $f$
+DECLARE m text;
+BEGIN
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM set_config('moaum.actor_id', p_registry::text, true);
+    m := registration.decide_entry_removal(p_removal, true, 'check V772: confirmed on the student''s file');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.actor_id', p_ict::text, true);
+    RETURN m;
+END $f$;
+-- what became of the course an upload added when a rollback reached it: undone, or why it was left (the note's first clause)
+CREATE OR REPLACE FUNCTION pg_temp.zqx_left(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT CASE WHEN ch.reverted_at IS NOT NULL THEN 'undone' ELSE coalesce(split_part(ch.revert_note, ';', 1), 'no note') END
+                       FROM assessment.past_upload_change ch WHERE ch.upload_id = p_upload AND ch.kind = 'ENTRY_ADDED'), 'no course added')
+$f$;
+-- the Duplicate results page's rows for a student — each class standing or withdrawn, and how many stand — and the monitor's exceptions
+CREATE OR REPLACE FUNCTION pg_temp.zqx_dups(p_student uuid, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(d.course_code || ' ' || lower(coalesce(d.decision, 'standing')), ', ' ORDER BY d.course_code)
+                    || ' (' || min(d.standing) || ' standing)', 'not listed')
+      FROM assessment.result_duplicates(p_session, 1, NULL, NULL, NULL) d WHERE d.student_id = p_student
+$f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqx_exc(p_student uuid, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(x.kind || ' ' || x.course_code, ', ' ORDER BY x.kind, x.course_code), 'none')
+      FROM assessment.result_exceptions(p_session, 1, NULL, NULL, NULL, NULL) x WHERE x.student_id = p_student
+$f$;
+DO $$
+DECLARE
+    v_prog text; v_dept text; s1 text := '9789/9790'; s2 text := '9790/9791'; ict uuid := gen_random_uuid(); reg uuid := gen_random_uuid(); v_err text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); e uuid := gen_random_uuid();
+    f uuid := gen_random_uuid(); g uuid := gen_random_uuid(); h uuid := gen_random_uuid(); i uuid := gen_random_uuid();
+    u1 uuid; u2 uuid; u3 uuid; r1 jsonb; r2 jsonb; t record; t2 record; m text; one text := 'Check Correction One'; two text := 'Check Correction Two';
+    put_back text; awaiting text; same_course text; other_session text; other_result text; beside text; taken_off text; two_live text; back_on text;
+    live text; rolled text; again text; msg1 text; msg2 text; msg3 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V772 corrections beside the rollback', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    PERFORM assessment.ensure_session(s2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZQX 201', one, 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('BSU-ZQX 201', one, 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQX 202', two, 3, 1, 100, v_dept, 'Core', 'LIVE');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (a, 'MOAUM/ADM/75/775001', 'MOAUM/ZQX/75/0001', 'ZZ775', 'Ada', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (b, 'MOAUM/ADM/75/775002', 'MOAUM/ZQX/75/0002', 'ZZ775', 'Bala', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (c, 'MOAUM/ADM/75/775003', 'MOAUM/ZQX/75/0003', 'ZZ775', 'Chidi', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (d, 'MOAUM/ADM/75/775004', 'MOAUM/ZQX/75/0004', 'ZZ775', 'Dayo', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (e, 'MOAUM/ADM/75/775005', 'MOAUM/ZQX/75/0005', 'ZZ775', 'Efe', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (f, 'MOAUM/ADM/75/775006', 'MOAUM/ZQX/75/0006', 'ZZ775', 'Femi', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (g, 'MOAUM/ADM/75/775007', 'MOAUM/ZQX/75/0007', 'ZZ775', 'Gbenga', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (h, 'MOAUM/ADM/75/775008', 'MOAUM/ZQX/75/0008', 'ZZ775', 'Hauwa', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now()),
+           (i, 'MOAUM/ADM/75/775009', 'MOAUM/ZQX/75/0009', 'ZZ775', 'Ife', v_prog, 'UTME', s1, 100, 100, 'ACTIVE', now());
+
+    -- A: a registration file adds a course; the Director takes it off and puts it back ("the student did choose it after all"); the
+    -- upload is then rolled back — the course reads exactly as the upload left it, and stays: a person has acted on it
+    u1 := pg_temp.zqx_load('REGISTRATION', s1, 'MOAUM/ZQX/75/0001', 'ZQX 201', one, 2, NULL, 'check V772 a course taken off and put back');
+    SELECT * INTO t FROM pg_temp.zqx_take(a, s1, 'ZQX 201', 'check V772: never chosen by the student');
+    m := registration.undo_entry_removal(t.id, 'check V772: the student did choose it after all');
+    r1 := assessment.revert_past_upload(u1, 'check V772 rolled back after the course was put back');
+    put_back := t.state || '>' || m || ' ' || (r1->>'undone') || '/' || (r1->>'left') || ' ' || pg_temp.zqx_courses(a, s1) || ' — ' || pg_temp.zqx_left(u1);
+    -- B: a results file adds a course with a mark; the Director asks for it off (held for the Registry); the upload is rolled back
+    -- while the Registry decides — the course, its mark and the removal stay
+    u1 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0002', 'ZQX 201', one, 2, 55, 'check V772 a course awaiting the Registry');
+    SELECT * INTO t FROM pg_temp.zqx_take(b, s1, 'ZQX 201', 'check V772: an elective never chosen');
+    r1 := assessment.revert_past_upload(u1, 'check V772 rolled back while the Registry decides');
+    awaiting := t.state || ' ' || (r1->>'undone') || '/' || (r1->>'left') || ' ' || pg_temp.zqx_courses(b, s1) || ' — ' || pg_temp.zqx_left(u1);
+    -- C: one file adds the course, a later one corrects its units; the Director takes it off; the first upload is rolled back while
+    -- it is off (left), the Director puts it back, and the later upload is rolled back: its correction is left too (the Director has
+    -- acted on the course since it was made), so the course stays as the Director put it back
+    u1 := pg_temp.zqx_load('REGISTRATION', s1, 'MOAUM/ZQX/75/0003', 'ZQX 201', one, 2, NULL, 'check V772 the course the Director takes off');
+    u2 := pg_temp.zqx_load('REGISTRATION', s1, 'MOAUM/ZQX/75/0003', 'ZQX 201', one, 3, NULL, 'check V772 the same course at three units');
+    SELECT * INTO t FROM pg_temp.zqx_take(c, s1, 'ZQX 201', 'check V772: never chosen by the student');
+    r1 := assessment.revert_past_upload(u1, 'check V772 rolled back while the course is off');
+    m := registration.undo_entry_removal(t.id, 'check V772: the student did choose it after all');
+    r2 := assessment.revert_past_upload(u2, 'check V772 the units file rolled back');
+    same_course := (r1->>'undone') || '/' || (r1->>'left') || ' then ' || (r2->>'undone') || '/' || (r2->>'left') || ' earlier ' || (r2->>'earlierUndone')
+                   || ' ' || pg_temp.zqx_courses(c, s1) || ' — ' || pg_temp.zqx_left(u1);
+    -- D: the same without the later correction, and another session's file of the student rolled back afterwards: nothing of it
+    -- stood on the course, so the course the Director put back is not looked at again
+    u1 := pg_temp.zqx_load('REGISTRATION', s1, 'MOAUM/ZQX/75/0004', 'ZQX 201', one, 2, NULL, 'check V772 the course the Director takes off');
+    u2 := pg_temp.zqx_load('REGISTRATION', s2, 'MOAUM/ZQX/75/0004', 'ZQX 202', two, 3, NULL, 'check V772 another session''s file');
+    SELECT * INTO t FROM pg_temp.zqx_take(d, s1, 'ZQX 201', 'check V772: never chosen by the student');
+    r1 := assessment.revert_past_upload(u1, 'check V772 rolled back while the course is off');
+    m := registration.undo_entry_removal(t.id, 'check V772: the student did choose it after all');
+    r2 := assessment.revert_past_upload(u2, 'check V772 the other session''s file rolled back');
+    other_session := (r1->>'undone') || '/' || (r1->>'left') || ' then ' || (r2->>'undone') || '/' || (r2->>'left') || ' earlier ' || (r2->>'earlierUndone')
+                     || ' ' || pg_temp.zqx_courses(d, s1) || ' and ' || pg_temp.zqx_courses(d, s2);
+    -- I: the same with a result — the Registry confirms the removal, the upload is rolled back, the Director puts the course back,
+    -- another session's file is rolled back: the course and its result still count
+    u1 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0009', 'ZQX 201', one, 2, 62, 'check V772 a course with a result taken off');
+    u2 := pg_temp.zqx_load('REGISTRATION', s2, 'MOAUM/ZQX/75/0009', 'ZQX 202', two, 3, NULL, 'check V772 another session''s file');
+    SELECT * INTO t FROM pg_temp.zqx_take(i, s1, 'ZQX 201', 'check V772: an elective never chosen');
+    m := pg_temp.zqx_confirm(t.id, reg, ict);
+    r1 := assessment.revert_past_upload(u1, 'check V772 rolled back after an applied removal');
+    m := t.state || '>' || m || '>' || registration.undo_entry_removal(t.id, 'check V772: the student did take it after all');
+    r2 := assessment.revert_past_upload(u2, 'check V772 the other session''s file rolled back');
+    other_result := m || ' ' || (r1->>'undone') || '/' || (r1->>'left') || ' then ' || (r2->>'undone') || '/' || (r2->>'left') || ' earlier ' || (r2->>'earlierUndone')
+                    || ' ' || pg_temp.zqx_courses(i, s1) || ' result '
+                    || coalesce((SELECT string_agg(x.total::text, ',') FROM assessment.student_results(i) x
+                                  WHERE x.session = s1 AND x.course_code = 'ZQX 201' AND x.published), 'not counted')
+                    || ' exceptions ' || pg_temp.zqx_exc(i, s1);
+    msg1 := concat_ws(' | ', 'put back ' || put_back, 'awaiting the Registry ' || awaiting, 'the same course ' || same_course,
+                      'another session ' || other_session, 'another session, with a result ' || other_result);
+
+    -- E: two classes of one course, each with a first result; class A's upload is rolled back (its mark kept on the sheet as history);
+    -- the Director takes the counted class B off — held for the Registry, as it has a result
+    u1 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0005', 'ZQX 201', one, 2, 44, 'check V772 class A, to be rolled back');
+    u2 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0005', 'BSU-ZQX 201', one, 2, 30, 'check V772 class B stands');
+    r1 := assessment.revert_past_upload(u1, 'check V772 class A rolled back');
+    SELECT * INTO t FROM pg_temp.zqx_take(e, s1, 'BSU-ZQX 201', 'check V772: the twin class was never taken');
+    beside := (r1->>'undone') || '/' || (r1->>'left') || ' ' || pg_temp.zqx_courses(e, s1) || ' taken off ' || t.state;
+    -- F: class A with a result taken off by the Director and confirmed by the Registry; a results file then marks class B; the
+    -- Director takes class B off too
+    u1 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0006', 'ZQX 201', one, 2, 44, 'check V772 class A with a result');
+    u2 := pg_temp.zqx_load('REGISTRATION', s1, 'MOAUM/ZQX/75/0006', 'BSU-ZQX 201', one, 2, NULL, 'check V772 class B registered');
+    SELECT * INTO t FROM pg_temp.zqx_take(f, s1, 'ZQX 201', 'check V772: class A was never taken');
+    m := pg_temp.zqx_confirm(t.id, reg, ict);
+    u3 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0006', 'BSU-ZQX 201', one, 2, 30, 'check V772 class B marked later');
+    SELECT * INTO t2 FROM pg_temp.zqx_take(f, s1, 'BSU-ZQX 201', 'check V772: class B was never taken either');
+    taken_off := t.state || '>' || m || ' ' || pg_temp.zqx_courses(f, s1) || ' taken off ' || t2.state;
+    -- G: two classes both marked and standing are decided on the Duplicate results page, never here
+    u1 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0007', 'ZQX 201', one, 2, 44, 'check V772 class A stands');
+    u2 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0007', 'BSU-ZQX 201', one, 2, 30, 'check V772 class B stands');
+    SELECT x.state INTO two_live FROM pg_temp.zqx_take(g, s1, 'ZQX 201', 'check V772: class A was never taken') x;
+    SELECT two_live || ',' || x.state INTO two_live FROM pg_temp.zqx_take(g, s1, 'BSU-ZQX 201', 'check V772: class B was never taken') x;
+
+    -- H: the Duplicate results page and the monitor — two live classes, class A's upload rolled back, then a corrected file putting
+    -- class A back with the same mark (nothing new is posted: the mark on the sheet counts again, and the two classes are once more
+    -- for the Duplicate results page, not for the Director)
+    u1 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0008', 'ZQX 201', one, 2, 50, 'check V772 class A first result');
+    u2 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0008', 'BSU-ZQX 201', one, 2, 62, 'check V772 class B first result');
+    live := pg_temp.zqx_dups(h, s1) || ' exceptions ' || pg_temp.zqx_exc(h, s1);
+    r1 := assessment.revert_past_upload(u1, 'check V772 class A rolled back');
+    rolled := pg_temp.zqx_dups(h, s1) || ' exceptions ' || pg_temp.zqx_exc(h, s1);
+    u3 := pg_temp.zqx_load('RESULTS', s1, 'MOAUM/ZQX/75/0008', 'ZQX 201', one, 2, 50, 'check V772 class A corrected file, same mark');
+    SELECT w.status INTO m FROM assessment.past_upload_row w WHERE w.upload_id = u3;
+    again := m || ': ' || pg_temp.zqx_dups(h, s1) || ' exceptions ' || pg_temp.zqx_exc(h, s1);
+    SELECT x.state INTO back_on FROM pg_temp.zqx_take(h, s1, 'ZQX 201', 'check V772: class A was never taken') x;
+    SELECT back_on || ',' || x.state INTO back_on FROM pg_temp.zqx_take(h, s1, 'BSU-ZQX 201', 'check V772: class B was never taken') x;
+    msg2 := concat_ws(' | ', 'beside a rolled-back first result ' || beside, 'beside a class taken off ' || taken_off, 'two live classes ' || two_live,
+                      'the rolled-back class put back ' || back_on);
+    msg3 := concat_ws(' | ', 'both live ' || live, 'class A rolled back ' || rolled, 'put back ' || again);
+
+    RAISE EXCEPTION 'the V772 rollback and duplicates check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V772 rollback and duplicates check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V775: a Course Registration Correction recorded on a course since an upload put it there keeps the course when the upload is rolled back — put back by the Director, awaiting the Registry, or freed by a later upload''s rollback; another session''s rollback leaves it too, with its result',
+      coalesce(msg1 = concat_ws(' | ', 'put back APPLIED>UNDONE 0/3 ZQX 201 APPROVED 2 — a Course Registration Correction has been recorded on this course since the upload',
+                                 'awaiting the Registry PENDING 0/4 ZQX 201 APPROVED 2 — a Course Registration Correction has been recorded on this course since the upload',
+                                 'the same course 0/3 then 0/1 earlier 0 ZQX 201 APPROVED 3 — a later upload has changed this course since and its change has not been undone',
+                                 'another session 0/3 then 3/0 earlier 0 ZQX 201 APPROVED 2 and none',
+                                 'another session, with a result PENDING>APPLIED>UNDONE 0/4 then 3/0 earlier 0 ZQX 201 APPROVED 2 result 62 exceptions none'), false), msg1);
+  PERFORM pg_temp.assert('V775: beside a twin class whose first result was rolled back, or one the Director has taken off, the counted class is taken off (held for the Registry); two classes marked and standing — live, or put back by a corrected file — are decided on the Duplicate results page',
+      coalesce(msg2 = concat_ws(' | ', 'beside a rolled-back first result 2/2 BSU-ZQX 201 APPROVED 2 taken off PENDING',
+                                 'beside a class taken off PENDING>APPLIED BSU-ZQX 201 APPROVED 2, ZQX 201 WITHDRAWN 2 taken off PENDING',
+                                 'two live classes RCR_USE_DUPLICATES,RCR_USE_DUPLICATES',
+                                 'the rolled-back class put back RCR_USE_DUPLICATES,RCR_USE_DUPLICATES'), false), msg2);
+  PERFORM pg_temp.assert('V775: the Duplicate results page and the result monitor read a twin class whose upload was rolled back as withdrawn, and both classes as standing again once a corrected file puts it back with the same mark',
+      coalesce(msg3 = concat_ws(' | ', 'both live BSU-ZQX 201 standing, ZQX 201 standing (2 standing) exceptions DUPLICATE_RESULT BSU-ZQX 201, DUPLICATE_RESULT ZQX 201',
+                                 'class A rolled back BSU-ZQX 201 standing, ZQX 201 withdrawn (1 standing) exceptions none',
+                                 'put back RESULT_ALREADY_ON_RECORD: BSU-ZQX 201 standing, ZQX 201 standing (2 standing) exceptions DUPLICATE_RESULT BSU-ZQX 201, DUPLICATE_RESULT ZQX 201'), false), msg3);
+END $$;
+-- ── V775 (the last review of V771 and V772): a results file for a student put on the register since posts the held result first, under
+--          the upload that held it; holders post in the order they held the row; a rollback never hands a hold back to the upload being
+--          rolled back and closes every row it still held; an upload's stored counts follow its ledger; one upload's two corrections
+--          with another upload's between them are two changes; a correction waits for a Course Registration Correction; a rolled-back
+--          mark is no duplicate, and a class chosen to stand stays; the ledger's code and title are the record's; a first result left
+--          with its course is told why. Made-up courses ZQY 301–311 and the twin class BSU-ZQY 308, students MOAUM/ZQY/76/0001–0020
+--          (0006 and 0010 never on the register), sessions 9791/9792 and 9792/9793, amendment AMD-9791-00001. The block undoes its
+--          writes ──
+CREATE OR REPLACE FUNCTION pg_temp.zqy_m(p_n int)
+RETURNS text LANGUAGE sql AS $f$ SELECT 'MOAUM/ZQY/76/' || lpad(p_n::text, 4, '0') $f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqy_row(p_n int, p_course text, p_title text, p_units int, p_total int, p_line text DEFAULT '2')
+RETURNS jsonb LANGUAGE sql AS $f$
+    SELECT jsonb_strip_nulls(jsonb_build_object('line', p_line, 'matric', pg_temp.zqy_m(p_n), 'course', p_course, 'title', p_title,
+                                                'creditUnits', p_units::text, 'category', 'Core', 'total', p_total::text))
+$f$;
+-- a student put on the register (no reconcile is run for them)
+CREATE OR REPLACE FUNCTION pg_temp.zqy_student(p_n int, p_name text, p_programme text, p_session text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE v uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (v, 'MOAUM/ADM/76/776' || lpad(p_n::text, 3, '0'), pg_temp.zqy_m(p_n), 'ZZ776', p_name, p_programme, 'UTME', p_session, 100, 100, 'ACTIVE', now());
+    RETURN v;
+END $f$;
+-- an upload begun and left running; one batch of its file (first semester); the upload closed
+CREATE OR REPLACE FUNCTION pg_temp.zqy_begin(p_kind text, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+BEGIN
+    RETURN (assessment.past_upload_begin(p_kind, 'check-zqy.xlsx', 1, p_why)).id;
+END $f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqy_batch(p_upload uuid, p_session text, p_rows jsonb)
+RETURNS jsonb LANGUAGE sql AS $f$
+    SELECT assessment.legacy_semester_load(p_session, 1, p_rows, u.kind = 'RESULTS', false, u.id, true) FROM assessment.past_upload u WHERE u.id = p_upload
+$f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqy_close(p_upload uuid)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM assessment.past_upload_finish(p_upload, true);
+END $f$;
+-- a whole file: begun, loaded in one batch and closed
+CREATE OR REPLACE FUNCTION pg_temp.zqy_load(p_kind text, p_session text, p_rows jsonb, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE u uuid := pg_temp.zqy_begin(p_kind, p_why);
+BEGIN
+    PERFORM pg_temp.zqy_batch(u, p_session, p_rows);
+    PERFORM pg_temp.zqy_close(u);
+    RETURN u;
+END $f$;
+-- an upload rolled back; every rollback of the block is counted, with the rows of the block's rolled-back uploads that still read HELD
+-- after it (a row promises a posting only while its upload stands)
+CREATE OR REPLACE FUNCTION pg_temp.zqy_rb(p_upload uuid, p_why text)
+RETURNS jsonb LANGUAGE plpgsql AS $f$
+DECLARE r jsonb;
+BEGIN
+    r := assessment.revert_past_upload(p_upload, p_why);
+    PERFORM set_config('zqy.rollbacks', (coalesce(nullif(current_setting('zqy.rollbacks', true), ''), '0')::int + 1)::text, true);
+    PERFORM set_config('zqy.promised', (coalesce(nullif(current_setting('zqy.promised', true), ''), '0')::int
+                + (SELECT count(*) FROM assessment.past_upload_row w JOIN assessment.past_upload pu ON pu.id = w.upload_id
+                    WHERE pu.created_by = (SELECT x.created_by FROM assessment.past_upload x WHERE x.id = p_upload)
+                      AND pu.state = 'REVERTED' AND w.status = 'HELD'))::text, true);
+    RETURN r;
+END $f$;
+-- what a rollback answered: undone/left+earlierUndone
+CREATE OR REPLACE FUNCTION pg_temp.zqy_said(p_answer jsonb)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT (p_answer->>'undone') || '/' || (p_answer->>'left') || '+' || (p_answer->>'earlierUndone')
+$f$;
+-- a note or a row's detail with the uploads' references taken out (they differ from run to run): one upload named for what it was,
+-- the others PRU-…
+CREATE OR REPLACE FUNCTION pg_temp.zqy_words(p_text text, p_named uuid DEFAULT NULL, p_as text DEFAULT NULL)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT regexp_replace(CASE WHEN p_named IS NULL THEN p_text
+                               ELSE replace(p_text, (SELECT pu.ref FROM assessment.past_upload pu WHERE pu.id = p_named), '[' || p_as || ']') END,
+                          'PRU-[0-9]{4}-[0-9]+', 'PRU-…', 'g')
+$f$;
+-- an upload's ledger, change by change: undone by a rollback, left by one, or (no word) standing
+CREATE OR REPLACE FUNCTION pg_temp.zqy_ledger(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(ch.kind || CASE WHEN ch.reverted_at IS NOT NULL THEN ':undone' WHEN ch.revert_note IS NOT NULL THEN ':left' ELSE '' END,
+                               ',' ORDER BY ch.seq), 'none')
+      FROM assessment.past_upload_change ch WHERE ch.upload_id = p_upload
+$f$;
+-- what an upload's ledger says each of its changes was and is now: the code, title and units of the course
+CREATE OR REPLACE FUNCTION pg_temp.zqy_wasnow(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(ch.kind || ' was ' || coalesce(ch.was_code, '-') || ' "' || coalesce(ch.was_title, '-') || '" ' || coalesce(ch.was_units::text, '-')
+                               || ' now ' || coalesce(ch.now_code, '-') || ' "' || coalesce(ch.now_title, '-') || '" ' || coalesce(ch.now_units::text, '-'),
+                               ',' ORDER BY ch.seq), 'none')
+      FROM assessment.past_upload_change ch WHERE ch.upload_id = p_upload
+$f$;
+-- why an upload's change of this kind was left (the note on the ledger now), of one student where one is named
+CREATE OR REPLACE FUNCTION pg_temp.zqy_why(p_upload uuid, p_kind text, p_student uuid DEFAULT NULL, p_named uuid DEFAULT NULL, p_as text DEFAULT NULL)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT string_agg(CASE WHEN ch.reverted_at IS NOT NULL THEN 'undone' ELSE pg_temp.zqy_words(coalesce(ch.revert_note, 'standing'), p_named, p_as) END,
+                                       ' / ' ORDER BY ch.seq)
+                       FROM assessment.past_upload_change ch
+                      WHERE ch.upload_id = p_upload AND ch.kind = p_kind AND (p_student IS NULL OR ch.student_id = p_student)), 'no such change')
+$f$;
+-- the rows of an upload as its report lists them (by number, course and line), and what they are told
+CREATE OR REPLACE FUNCTION pg_temp.zqy_rows(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(w.status, ',' ORDER BY w.matric, w.course, w.line), 'no rows') FROM assessment.past_upload_row w WHERE w.upload_id = p_upload
+$f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqy_told(p_upload uuid, p_named uuid DEFAULT NULL, p_as text DEFAULT NULL)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(pg_temp.zqy_words(w.detail, p_named, p_as), ' / ' ORDER BY w.matric, w.course, w.line), 'no rows')
+      FROM assessment.past_upload_row w WHERE w.upload_id = p_upload
+$f$;
+-- the held results of a number: how many, and how many of them under this upload
+CREATE OR REPLACE FUNCTION pg_temp.zqy_held(p_n int, p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT count(*) || ' (' || count(*) FILTER (WHERE h.upload_id = p_upload) || ' under it)' FROM assessment.legacy_result_holding h WHERE h.matric = pg_temp.zqy_m(p_n)
+$f$;
+-- the results that count for a student
+CREATE OR REPLACE FUNCTION pg_temp.zqy_counted(p_student uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(x.course_code || ' ' || x.total, ', ' ORDER BY x.session, x.course_code), 'nothing') FROM assessment.student_results(p_student) x
+$f$;
+-- the courses on a student's registrations of a session: status and units
+CREATE OR REPLACE FUNCTION pg_temp.zqy_courses(p_student uuid, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(o.course_code || ' ' || e.status || ' ' || e.units, ', ' ORDER BY o.course_code), 'none')
+      FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = p_student AND r.session = p_session
+$f$;
+-- a student's course: the units it counts at, and the units its class heading reads
+CREATE OR REPLACE FUNCTION pg_temp.zqy_units(p_student uuid, p_course text, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT 'units ' || e.units || ' heading ' || coalesce(o.units::text, 'none')
+                       FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                       JOIN catalogue.offering o ON o.id = e.offering_id
+                      WHERE r.student_id = p_student AND r.session = p_session AND o.course_code = p_course AND e.status = 'APPROVED'), 'not counted')
+$f$;
+-- what the Uploads list reads for an upload (its stored counts), and whether its ledger and rows read the same now
+CREATE OR REPLACE FUNCTION pg_temp.zqy_counts(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT 'changes ' || coalesce(pu.counts->>'changes', '-') || ' students ' || coalesce(pu.counts->>'students', '-') || ' rows '
+        || coalesce((SELECT string_agg(k.key || ' ' || k.value, ', ' ORDER BY k.key) FROM jsonb_each_text(pu.counts->'byStatus') k), 'none')
+        || CASE WHEN (pu.counts->>'changes')::int = g.changes AND (pu.counts->>'students')::int = g.students AND pu.counts->'byStatus' = w.by_status
+                THEN ' (as its ledger and rows read)'
+                ELSE ' (its ledger and rows read changes ' || g.changes || ' students ' || g.students || ' rows ' || w.words || ')' END
+      FROM assessment.past_upload pu,
+           LATERAL (SELECT count(*) AS changes, count(DISTINCT ch.student_id) AS students FROM assessment.past_upload_change ch WHERE ch.upload_id = pu.id) g,
+           LATERAL (SELECT coalesce(jsonb_object_agg(k.status, k.n), '{}'::jsonb) AS by_status, coalesce(string_agg(k.status || ' ' || k.n, ', ' ORDER BY k.status), 'none') AS words
+                      FROM (SELECT r.status, count(*) AS n FROM assessment.past_upload_row r WHERE r.upload_id = pu.id GROUP BY r.status) k) w
+     WHERE pu.id = p_upload
+$f$;
+-- the Director of ICT asks for a course off a registration: the removal and its state, or the refusal's code
+CREATE OR REPLACE FUNCTION pg_temp.zqy_take(p_student uuid, p_session text, p_course text, p_why text, OUT state text, OUT id uuid)
+LANGUAGE plpgsql AS $f$
+DECLARE v_reg uuid; v_off uuid; res jsonb;
+BEGIN
+    SELECT r.id, o.id INTO v_reg, v_off
+      FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = p_student AND r.session = p_session AND o.course_code = p_course;
+    res := registration.request_entry_removal(p_student, jsonb_build_array(jsonb_build_object('registrationId', v_reg, 'offeringId', v_off)), p_why);
+    state := res->'removals'->0->>'state'; id := (res->'removals'->0->>'id')::uuid;
+EXCEPTION WHEN OTHERS THEN
+    state := split_part(SQLERRM, ':', 1); id := NULL;
+END $f$;
+-- "Keep this one" on the Duplicate results page: decided, or the refusal up to its first clause
+CREATE OR REPLACE FUNCTION pg_temp.zqy_keep(p_student uuid, p_keep uuid, p_drop uuid)
+RETURNS text LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM assessment.resolve_duplicate(p_student, p_keep, p_drop, 'check V775: this class is the one taken');
+    RETURN 'decided';
+EXCEPTION WHEN OTHERS THEN
+    RETURN split_part(SQLERRM, ';', 1);
+END $f$;
+DO $$
+DECLARE
+    v_prog text; v_dept text; s1 text := '9791/9792'; s2 text := '9792/9793'; ict uuid := gen_random_uuid(); v_err text;
+    held text := 'Check Last Held'; twin text := 'Check Last Twin'; note text := 'Check Last Note';
+    ada uuid; bala uuid; chidi uuid; dayo uuid; efe uuid; gbenga uuid; hauwa uuid; ife uuid; kemi uuid; lola uuid; musa uuid; ngozi uuid;
+    obi uuid; peju uuid; remi uuid; sani uuid; tayo uuid; uche uuid;
+    u0 uuid; u1 uuid; u2 uuid; u3 uuid; ua uuid; ub uuid; uc uuid; r1 jsonb; r2 jsonb; r3 jsonb; res jsonb; t record; m text;
+    v_off uuid; v_offb uuid; v_sheet uuid;
+    checked text; loaded text; rolled text; other text; by_load text; in_order text; crossed text; own text; below text;
+    closed text; posted text; counts_rolled text; first_order text; second_order text; alternating text; corrected text;
+    refused text; chosen text; again text; reapproved text; senate text; versions text; first_note text; waiting text; then_left text; stale_notes text;
+    every_upload text;
+    msg1 text; msg2 text; msg3 text; msg4 text; msg5 text; msg6 text; msg7 text; msg8 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V775 the last review of V771 and V772', true);
+    PERFORM set_config('zqy.rollbacks', '0', true);
+    PERFORM set_config('zqy.promised', '0', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    PERFORM assessment.ensure_session(s2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZQY 301', held, 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 302', 'Check Last Crossed One', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 303', 'Check Last Crossed Two', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 304', 'Check Last Twice', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 305', 'Check Last Twice Again', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 306', 'Check Last Alternating', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 307', 'Check Last Correction', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 308', twin, 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('BSU-ZQY 308', twin, 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 309', 'Check Last Portal', 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 310', note, 2, 1, 100, v_dept, 'Core', 'LIVE'),
+        ('ZQY 311', 'Check Last Senate', 3, 1, 100, v_dept, 'Core', 'LIVE');
+    -- on the register from the start (the others arrive after their results were held)
+    kemi := pg_temp.zqy_student(11, 'Kemi', v_prog, s1); lola := pg_temp.zqy_student(12, 'Lola', v_prog, s1); musa := pg_temp.zqy_student(13, 'Musa', v_prog, s1);
+    ngozi := pg_temp.zqy_student(14, 'Ngozi', v_prog, s1); obi := pg_temp.zqy_student(15, 'Obi', v_prog, s1); peju := pg_temp.zqy_student(16, 'Peju', v_prog, s1);
+    remi := pg_temp.zqy_student(17, 'Remi', v_prog, s1); sani := pg_temp.zqy_student(18, 'Sani', v_prog, s1); tayo := pg_temp.zqy_student(19, 'Tayo', v_prog, s1);
+    uche := pg_temp.zqy_student(20, 'Uche', v_prog, s1);
+
+    -- Ada, Bala (and Chidi, in another session): results held; the students are then put on the register and no reconcile is run; the
+    -- file is checked and loaded again, Bala's mark corrected in it — the held results post first, under the upload that held them,
+    -- and the second upload finds Ada's and replaces Bala's in its own ledger; rolled back, it leaves the first upload's results
+    -- counted. Chidi's held result of the other session, not in the file, is not posted by it
+    u0 := pg_temp.zqy_load('RESULTS', s2, jsonb_build_array(pg_temp.zqy_row(3, 'ZQY 301', held, 2, 44)), 'check V775 another session''s held result');
+    u1 := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(1, 'ZQY 301', held, 2, 50, '2'), pg_temp.zqy_row(2, 'ZQY 301', held, 2, 50, '3')),
+                           'check V775 results held for two students');
+    ada := pg_temp.zqy_student(1, 'Ada', v_prog, s1); bala := pg_temp.zqy_student(2, 'Bala', v_prog, s1); chidi := pg_temp.zqy_student(3, 'Chidi', v_prog, s1);
+    res := assessment.legacy_semester_load(s1, 1, jsonb_build_array(pg_temp.zqy_row(1, 'ZQY 301', held, 2, 50, '2'), pg_temp.zqy_row(2, 'ZQY 301', held, 2, 61, '3')),
+                                           true, true, NULL, true);
+    checked := (SELECT string_agg(x->>'status', ',' ORDER BY (x->>'line')::int) FROM jsonb_array_elements(res->'lines') x)
+               || ' and the check posts nothing: first upload rows ' || pg_temp.zqy_rows(u1) || ' ledger ' || pg_temp.zqy_ledger(u1)
+               || ' held ' || pg_temp.zqy_held(1, u1) || ' ' || pg_temp.zqy_held(2, u1);
+    u2 := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(1, 'ZQY 301', held, 2, 50, '2'), pg_temp.zqy_row(2, 'ZQY 301', held, 2, 61, '3')),
+                           'check V775 the file again, one mark corrected');
+    loaded := 'first upload rows ' || pg_temp.zqy_rows(u1) || ' ledger ' || pg_temp.zqy_ledger(u1)
+              || ' second upload rows ' || pg_temp.zqy_rows(u2) || ' ledger ' || pg_temp.zqy_ledger(u2)
+              || ' counted ' || pg_temp.zqy_counted(ada) || ' and ' || pg_temp.zqy_counted(bala) || ' held ' || pg_temp.zqy_held(1, u1) || ' ' || pg_temp.zqy_held(2, u1);
+    by_load := pg_temp.zqy_counts(u1);
+    r2 := pg_temp.zqy_rb(u2, 'check V775 the second load was a mistake');
+    rolled := pg_temp.zqy_said(r2) || ' counted ' || pg_temp.zqy_counted(ada) || ' and ' || pg_temp.zqy_counted(bala) || ' first upload ledger ' || pg_temp.zqy_ledger(u1);
+    other := 'held ' || pg_temp.zqy_held(3, u0) || ' row ' || pg_temp.zqy_rows(u0) || ' counted ' || pg_temp.zqy_counted(chidi);
+    msg1 := concat_ws(' | ', 'checked ' || checked, 'loaded ' || loaded, 'second upload rolled back ' || rolled, 'another session ' || other);
+
+    -- Dayo: one upload is begun, a second begun after it holds the row at 61 and is closed, the first then holds it at 50 (the last
+    -- word); the student arrives — the results post in the order the row was held, so 50 counts and replaces 61 in the first upload's
+    -- ledger; that upload rolled back gives 61 back
+    ua := pg_temp.zqy_begin('RESULTS', 'check V775 begun first, holds the row last');
+    ub := pg_temp.zqy_begin('RESULTS', 'check V775 begun second, holds the row first');
+    PERFORM pg_temp.zqy_batch(ub, s1, jsonb_build_array(pg_temp.zqy_row(4, 'ZQY 301', held, 2, 61)));
+    PERFORM pg_temp.zqy_close(ub);
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(4, 'ZQY 301', held, 2, 50)));
+    PERFORM pg_temp.zqy_close(ua);
+    dayo := pg_temp.zqy_student(4, 'Dayo', v_prog, s1);
+    PERFORM assessment.reconcile_legacy_holding();
+    in_order := 'counted ' || pg_temp.zqy_counted(dayo) || ' the last to hold it ' || pg_temp.zqy_ledger(ua) || ' the first to hold it ' || pg_temp.zqy_ledger(ub);
+    r1 := pg_temp.zqy_rb(ua, 'check V775 the last holder rolled back');
+    in_order := in_order || ' the last rolled back ' || pg_temp.zqy_said(r1) || ' counted ' || pg_temp.zqy_counted(dayo);
+    -- Efe: two uploads open at once carry two rows in opposite orders (ZQY 302 held at 50 by one, then at 60 by the other; ZQY 303 at
+    -- 50 by the other, then at 60 by the one) — no order of the two uploads is right; each row posts in the order it was held: 60, 60
+    ua := pg_temp.zqy_begin('RESULTS', 'check V775 one of two open at once');
+    ub := pg_temp.zqy_begin('RESULTS', 'check V775 the other of the two');
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(5, 'ZQY 302', 'Check Last Crossed One', 2, 50, '2')));
+    PERFORM pg_temp.zqy_batch(ub, s1, jsonb_build_array(pg_temp.zqy_row(5, 'ZQY 302', 'Check Last Crossed One', 2, 60, '2'),
+                                                       pg_temp.zqy_row(5, 'ZQY 303', 'Check Last Crossed Two', 2, 50, '3')));
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(5, 'ZQY 303', 'Check Last Crossed Two', 2, 60, '3')));
+    PERFORM pg_temp.zqy_close(ua); PERFORM pg_temp.zqy_close(ub);
+    efe := pg_temp.zqy_student(5, 'Efe', v_prog, s1);
+    PERFORM assessment.reconcile_legacy_holding();
+    crossed := 'counted ' || pg_temp.zqy_counted(efe) || ' one upload ' || pg_temp.zqy_ledger(ua) || ' rows ' || pg_temp.zqy_rows(ua)
+               || ' the other ' || pg_temp.zqy_ledger(ub) || ' rows ' || pg_temp.zqy_rows(ub);
+    msg2 := concat_ws(' | ', 'begun first, held last ' || in_order, 'two rows crossed ' || crossed);
+
+    -- number 0006 (never on the register): upload A holds the row, upload B takes it over, A's batch is sent again; B is rolled back,
+    -- then A — the hold is not handed back to A's own earlier hold: nothing stays held, both uploads' rows are closed, the monitor is quiet
+    ua := pg_temp.zqy_begin('RESULTS', 'check V775 upload A, its batch sent twice');
+    ub := pg_temp.zqy_begin('RESULTS', 'check V775 upload B between the two');
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(6, 'ZQY 301', held, 2, 50)));
+    PERFORM pg_temp.zqy_batch(ub, s1, jsonb_build_array(pg_temp.zqy_row(6, 'ZQY 301', held, 2, 61)));
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(6, 'ZQY 301', held, 2, 50)));
+    PERFORM pg_temp.zqy_close(ua); PERFORM pg_temp.zqy_close(ub);
+    r2 := pg_temp.zqy_rb(ub, 'check V775 upload B rolled back');
+    r1 := pg_temp.zqy_rb(ua, 'check V775 upload A rolled back');
+    own := 'heldDropped ' || (r2->>'heldDropped') || ' then ' || (r1->>'heldDropped') || ' held ' || pg_temp.zqy_held(6, ua)
+           || ' rows ' || pg_temp.zqy_rows(ua) || ' ' || pg_temp.zqy_rows(ub)
+           || ' monitor ' || (SELECT count(*) FROM assessment.result_exceptions(s1, 1, NULL, NULL, NULL, NULL) x
+                               WHERE x.kind = 'RESULT_HELD_NO_STUDENT' AND x.detail LIKE '%' || pg_temp.zqy_m(6) || '%')
+           || ' A told "' || pg_temp.zqy_told(ua) || '" B told "' || pg_temp.zqy_told(ub, ua, 'upload A') || '"';
+    -- Gbenga: the same under an earlier upload C that still stands — the hold is C's again, and C posts it when the student arrives
+    uc := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(7, 'ZQY 301', held, 2, 44)), 'check V775 upload C, earlier and standing');
+    ua := pg_temp.zqy_begin('RESULTS', 'check V775 upload A over C, sent twice');
+    ub := pg_temp.zqy_begin('RESULTS', 'check V775 upload B over A, between');
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(7, 'ZQY 301', held, 2, 50)));
+    PERFORM pg_temp.zqy_batch(ub, s1, jsonb_build_array(pg_temp.zqy_row(7, 'ZQY 301', held, 2, 61)));
+    PERFORM pg_temp.zqy_batch(ua, s1, jsonb_build_array(pg_temp.zqy_row(7, 'ZQY 301', held, 2, 50)));
+    PERFORM pg_temp.zqy_close(ua); PERFORM pg_temp.zqy_close(ub);
+    r2 := pg_temp.zqy_rb(ub, 'check V775 upload B over C rolled back');
+    r1 := pg_temp.zqy_rb(ua, 'check V775 upload A over C rolled back');
+    below := 'held ' || pg_temp.zqy_held(7, uc) || ' at ' || (SELECT string_agg(h.raw->>'total', ',') FROM assessment.legacy_result_holding h WHERE h.matric = pg_temp.zqy_m(7))
+             || ' rows C ' || pg_temp.zqy_rows(uc) || ' A ' || pg_temp.zqy_rows(ua) || ' B ' || pg_temp.zqy_rows(ub)
+             || ' A told "' || pg_temp.zqy_told(ua, uc, 'upload C') || '"';
+    gbenga := pg_temp.zqy_student(7, 'Gbenga', v_prog, s1);
+    PERFORM assessment.reconcile_legacy_holding();
+    below := below || ' arrived: counted ' || pg_temp.zqy_counted(gbenga) || ' under C ' || pg_temp.zqy_ledger(uc) || ' row ' || pg_temp.zqy_rows(uc);
+
+    -- Hauwa, Ife and number 0010: one file, three results held, closed; two of the students arrive and their results post under the
+    -- closed upload; it is then rolled back — what the Uploads list reads for it is its ledger and rows each time
+    u3 := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(8, 'ZQY 301', held, 2, 55, '2'), pg_temp.zqy_row(9, 'ZQY 301', held, 2, 66, '3'),
+                                                           pg_temp.zqy_row(10, 'ZQY 301', held, 2, 47, '4')), 'check V775 three results held');
+    closed := pg_temp.zqy_counts(u3);
+    hauwa := pg_temp.zqy_student(8, 'Hauwa', v_prog, s1); ife := pg_temp.zqy_student(9, 'Ife', v_prog, s1);
+    PERFORM assessment.reconcile_legacy_holding();
+    posted := pg_temp.zqy_counts(u3);
+    r1 := pg_temp.zqy_rb(u3, 'check V775 the held file rolled back');
+    counts_rolled := pg_temp.zqy_counts(u3);
+
+    -- Kemi and Lola: a course at 2 units; upload one corrects it to 3, upload two puts 2 back, upload one's batch is sent again (3) —
+    -- two corrections of one upload with another upload's between them; rolled back in either order the course ends at the 2 units
+    -- from before, every change undone. (Between the two rollbacks only the student's course is read for Kemi: what the class
+    -- heading reads while the other upload still stands is not this check's to say)
+    u0 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(11, 'ZQY 304', 'Check Last Twice', 2, NULL)), 'check V775 a course at two units');
+    u1 := pg_temp.zqy_begin('REGISTRATION', 'check V775 a correction to three, sent twice');
+    PERFORM pg_temp.zqy_batch(u1, s1, jsonb_build_array(pg_temp.zqy_row(11, 'ZQY 304', 'Check Last Twice', 3, NULL)));
+    u2 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(11, 'ZQY 304', 'Check Last Twice', 2, NULL)), 'check V775 the counter-correction between');
+    PERFORM pg_temp.zqy_batch(u1, s1, jsonb_build_array(pg_temp.zqy_row(11, 'ZQY 304', 'Check Last Twice', 3, NULL)));
+    PERFORM pg_temp.zqy_close(u1);
+    first_order := pg_temp.zqy_units(kemi, 'ZQY 304', s1);
+    r1 := pg_temp.zqy_rb(u1, 'check V775 the upload sent twice, first');
+    first_order := first_order || ' then the course alone ' || pg_temp.zqy_courses(kemi, s1);   -- the other upload stands: its 2 units count
+    r2 := pg_temp.zqy_rb(u2, 'check V775 then the counter-correction');
+    first_order := first_order || ' then ' || pg_temp.zqy_units(kemi, 'ZQY 304', s1) || ' ' || pg_temp.zqy_ledger(u1) || ' ' || pg_temp.zqy_ledger(u2);
+    u0 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(12, 'ZQY 305', 'Check Last Twice Again', 2, NULL)), 'check V775 another course at two units');
+    u1 := pg_temp.zqy_begin('REGISTRATION', 'check V775 a correction to three, sent twice');
+    PERFORM pg_temp.zqy_batch(u1, s1, jsonb_build_array(pg_temp.zqy_row(12, 'ZQY 305', 'Check Last Twice Again', 3, NULL)));
+    u2 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(12, 'ZQY 305', 'Check Last Twice Again', 2, NULL)), 'check V775 the counter-correction between');
+    PERFORM pg_temp.zqy_batch(u1, s1, jsonb_build_array(pg_temp.zqy_row(12, 'ZQY 305', 'Check Last Twice Again', 3, NULL)));
+    PERFORM pg_temp.zqy_close(u1);
+    second_order := pg_temp.zqy_units(lola, 'ZQY 305', s1);
+    r2 := pg_temp.zqy_rb(u2, 'check V775 the counter-correction, first');
+    m := pg_temp.zqy_units(lola, 'ZQY 305', s1) || ' told "' || pg_temp.zqy_why(u2, 'UNITS_CORRECTED') || '"';   -- left while the upload sent twice stands
+    r1 := pg_temp.zqy_rb(u1, 'check V775 then the upload sent twice');
+    second_order := second_order || ' then ' || pg_temp.zqy_said(r2) || ' ' || m || ' then ' || pg_temp.zqy_said(r1) || ' ' || pg_temp.zqy_units(lola, 'ZQY 305', s1)
+                    || ' ' || pg_temp.zqy_ledger(u1) || ' ' || pg_temp.zqy_ledger(u2);
+    -- Musa: three uploads correct a course in turn (2 to 3, 3 to 2, 2 to 3) and are rolled back oldest first — the last rollback
+    -- settles the two before it, and none of the three keeps a change "left", its class heading included
+    u0 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(13, 'ZQY 306', 'Check Last Alternating', 2, NULL)), 'check V775 a third course at two units');
+    u1 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(13, 'ZQY 306', 'Check Last Alternating', 3, NULL)), 'check V775 alternating: to three');
+    u2 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(13, 'ZQY 306', 'Check Last Alternating', 2, NULL)), 'check V775 alternating: back to two');
+    u3 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(13, 'ZQY 306', 'Check Last Alternating', 3, NULL)), 'check V775 alternating: to three again');
+    r1 := pg_temp.zqy_rb(u1, 'check V775 alternating, the oldest first');
+    r2 := pg_temp.zqy_rb(u2, 'check V775 alternating, the middle one');
+    r3 := pg_temp.zqy_rb(u3, 'check V775 alternating, the newest last');
+    alternating := pg_temp.zqy_said(r1) || ' ' || pg_temp.zqy_said(r2) || ' ' || pg_temp.zqy_said(r3) || ' ' || pg_temp.zqy_units(musa, 'ZQY 306', s1)
+                   || ' left on the three ' || (SELECT count(*) FROM assessment.past_upload_change ch WHERE ch.upload_id IN (u1, u2, u3) AND ch.reverted_at IS NULL)
+                   || ' ' || pg_temp.zqy_ledger(u1) || ' ' || pg_temp.zqy_ledger(u2) || ' ' || pg_temp.zqy_ledger(u3);
+    -- Ngozi: a course at 2 units corrected to 3 by an upload; the Director of ICT takes the course off and puts it back; the upload is
+    -- rolled back — a Course Registration Correction has been recorded on the course since, so the correction stays, and is told why
+    u0 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(14, 'ZQY 307', 'Check Last Correction', 2, NULL)), 'check V775 a fourth course at two units');
+    u1 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(14, 'ZQY 307', 'Check Last Correction', 3, NULL)), 'check V775 the units corrected to three');
+    SELECT * INTO t FROM pg_temp.zqy_take(ngozi, s1, 'ZQY 307', 'check V775: never chosen by the student');
+    m := registration.undo_entry_removal(t.id, 'check V775: the student did choose it after all');
+    r1 := pg_temp.zqy_rb(u1, 'check V775 the units file rolled back');
+    corrected := t.state || '>' || m || ' ' || pg_temp.zqy_said(r1) || ' ' || pg_temp.zqy_units(ngozi, 'ZQY 307', s1) || ' ' || pg_temp.zqy_ledger(u1)
+                 || ' told "' || pg_temp.zqy_why(u1, 'UNITS_CORRECTED') || '"';
+    msg5 := concat_ws(' | ', 'sent twice, rolled back first ' || first_order, 'sent twice, rolled back second ' || second_order,
+                      'three in turn ' || alternating, 'after a Course Registration Correction ' || corrected);
+
+    -- Obi and Peju: two classes of one course, each with a first result. Peju's class A is chosen to stand on the Duplicate results
+    -- page; class A's upload is then rolled back — Peju's course and result stay (a person has acted on it), Obi's class A goes; for
+    -- Obi "Keep this one" is then refused either way: a rolled-back upload's mark is no second result
+    ua := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(15, 'ZQY 308', twin, 2, 44, '2'), pg_temp.zqy_row(16, 'ZQY 308', twin, 2, 47, '3')),
+                           'check V775 class A, to be rolled back');
+    ub := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(15, 'BSU-ZQY 308', twin, 2, 30, '2'), pg_temp.zqy_row(16, 'BSU-ZQY 308', twin, 2, 33, '3')),
+                           'check V775 class B stands');
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQY 308' AND o.session = s1;
+    SELECT o.id INTO v_offb FROM catalogue.offering o WHERE o.course_code = 'BSU-ZQY 308' AND o.session = s1;
+    chosen := pg_temp.zqy_keep(peju, v_off, v_offb);
+    r1 := pg_temp.zqy_rb(ua, 'check V775 class A rolled back');
+    chosen := chosen || ' then ' || pg_temp.zqy_said(r1) || ' ' || pg_temp.zqy_courses(peju, s1) || ' counted ' || pg_temp.zqy_counted(peju)
+              || ' told "' || pg_temp.zqy_why(ua, 'ENTRY_ADDED', peju) || '"';
+    refused := pg_temp.zqy_keep(obi, v_off, v_offb) || ' / ' || pg_temp.zqy_keep(obi, v_offb, v_off)
+               || ' ' || pg_temp.zqy_courses(obi, s1) || ' counted ' || pg_temp.zqy_counted(obi);
+    -- a corrected file puts Obi's class A back with the same mark: two results stand again, and the page decides between them
+    uc := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(15, 'ZQY 308', twin, 2, 44)), 'check V775 a corrected file puts class A back');
+    again := pg_temp.zqy_rows(uc) || ' ' || pg_temp.zqy_ledger(uc) || ' keep A ' || pg_temp.zqy_keep(obi, v_off, v_offb)
+             || ' ' || pg_temp.zqy_courses(obi, s1) || ' counted ' || pg_temp.zqy_counted(obi);
+    msg6 := concat_ws(' | ', 'beside a rolled-back first result, keep A / keep B ' || refused, 'chosen to stand, then its upload rolled back ' || chosen,
+                      'put back by a corrected file ' || again);
+
+    -- Remi: a course registered at 2 units, a result entered on the portal, then dropped; a results file with another title and 3
+    -- units approves it again as on record — the ledger says the course reads now what it read before, not the file's title
+    u1 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(17, 'ZQY 309', 'Check Last Portal', 2, NULL)), 'check V775 a course for a portal mark');
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQY 309' AND o.session = s1;
+    v_sheet := gen_random_uuid();
+    INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at) VALUES (v_sheet, v_off, 'PUBLISHED', 'SEN/CHECK/776', now());
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason) VALUES (v_sheet, remi, 1, 20, 40, 'GRADED', false, 'check V775: entered on the portal');
+    UPDATE registration.entry en SET status = 'DROPPED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = remi AND en.offering_id = v_off;
+    u2 := pg_temp.zqy_begin('RESULTS', 'check V775 another title over a portal mark');
+    res := pg_temp.zqy_batch(u2, s1, jsonb_build_array(pg_temp.zqy_row(17, 'ZQY 309', 'Check Last Portal Retitled', 3, 70)));
+    PERFORM pg_temp.zqy_close(u2);
+    SELECT coalesce(string_agg((x->>'status') || '/' || (x->>'entryStatus'), ','), 'not listed') INTO reapproved FROM jsonb_array_elements(res->'lines') x;
+    reapproved := reapproved || ' ' || pg_temp.zqy_wasnow(u2);
+    -- Uche: a course at 2 units, the Senate's by an amendment; a results file with another title and 3 units posts its first result
+    -- and leaves the course as the Senate has it — the result's change says the title the course carries, not the file's
+    u1 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(20, 'ZQY 311', 'Check Last Senate', 2, NULL)), 'check V775 a course at the Senate''s units');
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = 'ZQY 311' AND o.session = s1;
+    v_sheet := gen_random_uuid();
+    INSERT INTO assessment.score_sheet (id, offering_id, stage, senate_minute, published_at) VALUES (v_sheet, v_off, 'PUBLISHED', 'SEN/CHECK/776', now());
+    INSERT INTO assessment.amendment (ref, sheet_id, reason, stage, applied_at, kind, programme_code, units, was_units, senate_minute)
+    VALUES ('AMD-9791-00001', v_sheet, 'check V775: the Senate set two units', 'APPLIED', now(), 'UNITS', v_prog, 2, 3, 'SEN/CHECK/776');
+    u2 := pg_temp.zqy_begin('RESULTS', 'check V775 another title over the Senate''s units');
+    res := pg_temp.zqy_batch(u2, s1, jsonb_build_array(pg_temp.zqy_row(20, 'ZQY 311', 'Check Last Senate Retitled', 3, 58)));
+    PERFORM pg_temp.zqy_close(u2);
+    SELECT coalesce(string_agg((x->>'status') || '/' || (x->>'entryStatus'), ','), 'not listed') INTO senate FROM jsonb_array_elements(res->'lines') x;
+    senate := senate || ' ' || pg_temp.zqy_wasnow(u2);
+
+    -- Sani: the Course registration file, then its Past results file, then a mark entered on the portal; the registration file is
+    -- rolled back (the course is left: the portal's mark stands on it), then the results file — its first result stays with the
+    -- course and is told why, not that it goes "when PRU-… is rolled back" of an upload already rolled back
+    u1 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(18, 'ZQY 310', note, 2, NULL)), 'check V775 the registration file');
+    u2 := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(18, 'ZQY 310', note, 2, 40)), 'check V775 its results file');
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason)
+    SELECT s.sheet_id, sani, 2, 22, 30, 'GRADED', false, 'check V775: amended on the portal' FROM assessment.score s WHERE s.student_id = sani;
+    r1 := pg_temp.zqy_rb(u1, 'check V775 the registration file, after a portal mark');
+    r2 := pg_temp.zqy_rb(u2, 'check V775 then its results file');
+    first_note := pg_temp.zqy_said(r1) || ' then ' || pg_temp.zqy_said(r2) || ' ' || pg_temp.zqy_courses(sani, s1)
+                  || ' told "' || pg_temp.zqy_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"';
+    -- Tayo: the other order — the results file rolled back while the registration file stands (its result waits for that upload),
+    -- then the portal mark, then the registration file rolled back and has to leave the course: the result is told that it stays
+    u1 := pg_temp.zqy_load('REGISTRATION', s1, jsonb_build_array(pg_temp.zqy_row(19, 'ZQY 310', note, 2, NULL)), 'check V775 the registration file again');
+    u2 := pg_temp.zqy_load('RESULTS', s1, jsonb_build_array(pg_temp.zqy_row(19, 'ZQY 310', note, 2, 40)), 'check V775 its results file again');
+    r2 := pg_temp.zqy_rb(u2, 'check V775 the results file while the other stands');
+    waiting := pg_temp.zqy_said(r2) || ' told "' || pg_temp.zqy_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"';
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason)
+    SELECT s.sheet_id, tayo, 2, 22, 30, 'GRADED', false, 'check V775: amended on the portal' FROM assessment.score s WHERE s.student_id = tayo;
+    r1 := pg_temp.zqy_rb(u1, 'check V775 then the registration file, after a portal mark');
+    then_left := pg_temp.zqy_said(r1) || ' told "' || pg_temp.zqy_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"';
+
+    -- over every upload of the block, at its end:
+    -- no row of a rolled-back upload read HELD after any of the block's rollbacks
+    msg3 := concat_ws(' | ', 'A, B, A again; B then A rolled back ' || own, 'with an earlier upload C below ' || below,
+                      'rows of rolled-back uploads still reading HELD, counted after each of ' || current_setting('zqy.rollbacks', true) || ' rollbacks: '
+                      || current_setting('zqy.promised', true));
+    -- every closed upload of the block reads on the Uploads list as its ledger and rows read
+    SELECT count(*) FILTER (WHERE pg_temp.zqy_counts(pu.id) NOT LIKE '%(as its ledger and rows read)') || ' of ' || count(*) INTO every_upload
+      FROM assessment.past_upload pu WHERE pu.created_by = ict AND pu.state <> 'RUNNING';
+    msg4 := concat_ws(' | ', 'closed with three held ' || closed, 'two students arrive ' || posted, 'rolled back ' || counts_rolled,
+                      'posted by a later file''s load ' || by_load,
+                      'closed uploads of the block whose stored counts are not what their ledger and rows read ' || every_upload);
+    -- every change that carries a course says the code and title of the version it names, before and after
+    SELECT 'of ' || count(*) FILTER (WHERE na.id IS NOT NULL) || ' changes whose course has a version after the row, '
+           || count(*) FILTER (WHERE na.id IS NOT NULL AND (c.now_code, c.now_title) IS DISTINCT FROM (na.code_as_taken, na.title)) || ' say another code or title now; of '
+           || count(*) FILTER (WHERE wa.id IS NOT NULL) || ' with a version before, '
+           || count(*) FILTER (WHERE wa.id IS NOT NULL AND (c.was_code, c.was_title) IS DISTINCT FROM (wa.code_as_taken, wa.title)) || ' say another before; approved again with no code before '
+           || count(*) FILTER (WHERE c.kind = 'ENTRY_REAPPROVED' AND c.was_code IS NULL)
+      INTO versions
+      FROM assessment.past_upload_change c JOIN assessment.past_upload pu ON pu.id = c.upload_id
+      LEFT JOIN catalogue.course_as_taken na ON na.id = c.now_as_taken
+      LEFT JOIN catalogue.course_as_taken wa ON wa.id = c.was_as_taken
+     WHERE pu.created_by = ict AND c.kind NOT IN ('REGISTRATION_ADDED', 'ENROLMENT_ADDED', 'CLASS_HEADER_CORRECTED');
+    msg7 := concat_ws(' | ', 'approved again under a portal result ' || reapproved, 'a result posted under the Senate''s units ' || senate, versions);
+    -- no change left by a rollback is told to wait for the rollback of an upload that is rolled back already
+    SELECT count(*)::text INTO stale_notes
+      FROM assessment.past_upload_change c JOIN assessment.past_upload pu ON pu.id = c.upload_id
+     WHERE pu.created_by = ict AND c.reverted_at IS NULL
+       AND EXISTS (SELECT 1 FROM assessment.past_upload x WHERE x.state = 'REVERTED' AND c.revert_note LIKE '%when ' || x.ref || ' is rolled back%');
+    msg8 := concat_ws(' | ', 'registration file first ' || first_note, 'results file first ' || waiting, 'then the registration file ' || then_left,
+                      'left changes told to wait for an upload already rolled back ' || stale_notes);
+
+    RAISE EXCEPTION 'the V775 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V775 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V775: a results file loaded for a student put on the register after their result was held posts the held result first, under the upload that held it — the check says so and posts nothing, the later file finds or replaces the result in its own ledger, and rolling it back leaves the first upload''s result counted; another student''s held result of another session is not touched',
+      coalesce(msg1 = concat_ws(' | ', 'checked RESULT_ALREADY_ON_RECORD,RESULT_REPLACED and the check posts nothing: first upload rows HELD,HELD ledger none held 1 (1 under it) 1 (1 under it)',
+                                 'loaded first upload rows RESULT_POSTED,RESULT_POSTED ledger ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED,ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED second upload rows RESULT_ALREADY_ON_RECORD,RESULT_REPLACED ledger RESULT_REPLACED counted ZQY 301 50 and ZQY 301 61 held 0 (0 under it) 0 (0 under it)',
+                                 'second upload rolled back 1/0+0 counted ZQY 301 50 and ZQY 301 50 first upload ledger ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED,ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED',
+                                 'another session held 1 (1 under it) row HELD counted nothing'), false), msg1);
+  PERFORM pg_temp.assert('V775: uploads that held the same row post it in the order they held it, not the order they were begun — the last to hold it has the counted mark and replaces the earlier one''s in its own ledger; two rows held in opposite orders by two uploads each end on the mark held last',
+      coalesce(msg2 = concat_ws(' | ', 'begun first, held last counted ZQY 301 50 the last to hold it RESULT_REPLACED the first to hold it ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED the last rolled back 1/0+0 counted ZQY 301 61',
+                                 'two rows crossed counted ZQY 302 60, ZQY 303 60 one upload ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED,RESULT_REPLACED rows RESULT_POSTED,RESULT_REPLACED the other ENTRY_ADDED,RESULT_POSTED,RESULT_REPLACED rows RESULT_REPLACED,RESULT_POSTED'), false), msg2);
+  PERFORM pg_temp.assert('V775: a rollback never hands a held result back to the upload being rolled back — its batch sent twice around another upload''s and both rolled back, nothing stays held and the result monitor is quiet; an earlier upload still standing gets the row back and posts it when the student arrives; no row of a rolled-back upload still reads Held',
+      coalesce(msg3 = concat_ws(' | ', 'A, B, A again; B then A rolled back heldDropped 0 then 1 held 0 (0 under it) rows HELD_ROLLED_BACK HELD_ROLLED_BACK monitor 0 A told "Held for a student not yet on the register; dropped when the upload was rolled back" B told "Held for a student not yet on the register; not posted before the upload was rolled back; [upload A] had taken the row over"',
+                                 'with an earlier upload C below held 1 (1 under it) at 44 rows C HELD A HELD_ROLLED_BACK B HELD_ROLLED_BACK A told "Held for a student not yet on the register; dropped when the upload was rolled back; the row went back to [upload C], which held it before" arrived: counted ZQY 301 44 under C ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED row RESULT_POSTED',
+                                 'rows of rolled-back uploads still reading HELD, counted after each of 20 rollbacks: 0'), false), msg3);
+  PERFORM pg_temp.assert('V775: the changes, students and rows the Uploads list shows for a closed upload are what its ledger and rows read — after its held results post, by the reconcile or by a later file''s load, and after it is rolled back',
+      coalesce(msg4 = concat_ws(' | ', 'closed with three held changes 0 students 0 rows HELD 3 (as its ledger and rows read)',
+                                 'two students arrive changes 8 students 2 rows HELD 1, RESULT_POSTED 2 (as its ledger and rows read)',
+                                 'rolled back changes 8 students 2 rows HELD_ROLLED_BACK 1, RESULT_POSTED 2 (as its ledger and rows read)',
+                                 'posted by a later file''s load changes 8 students 2 rows RESULT_POSTED 2 (as its ledger and rows read)',
+                                 'closed uploads of the block whose stored counts are not what their ledger and rows read 0 of 36'), false), msg4);
+  PERFORM pg_temp.assert('V775: one upload correcting a course twice with another upload''s correction between is two changes — rolled back in either order the course ends at the units from before; three corrections in turn rolled back oldest first leave no change "left", class headings included; a correction stays once a Course Registration Correction has been recorded on the course',
+      coalesce(msg5 = concat_ws(' | ', 'sent twice, rolled back first units 3 heading 3 then the course alone ZQY 304 APPROVED 2 then units 2 heading 2 UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone,UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone',
+                                 'sent twice, rolled back second units 3 heading 3 then 0/2+0 units 3 heading 3 told "a later upload has changed this course since and its change has not been undone; left as it is" then 4/0+2 units 2 heading 2 UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone,UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone',
+                                 'three in turn 0/2+0 0/2+0 2/0+4 units 2 heading 2 left on the three 0 UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone UNITS_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone',
+                                 'after a Course Registration Correction APPLIED>UNDONE 0/2+0 units 3 heading 3 UNITS_CORRECTED:left,CLASS_HEADER_CORRECTED:left told "a Course Registration Correction has been recorded on this course since the upload; left as it is"'), false), msg5);
+  PERFORM pg_temp.assert('V775: on the Duplicate results page a mark that is only the history of a rolled-back upload is no second result — "Keep this one" is refused either way and the counted class stands, until a corrected file puts the class back; a class chosen to stand over its duplicate is left by its upload''s rollback, and told why',
+      coalesce(msg6 = concat_ws(' | ', 'beside a rolled-back first result, keep A / keep B DUP_NOT_DUPLICATE: one of these marks is only the history of an upload since rolled back / DUP_NOT_DUPLICATE: one of these marks is only the history of an upload since rolled back BSU-ZQY 308 APPROVED 2 counted BSU-ZQY 308 30',
+                                 'chosen to stand, then its upload rolled back decided then 2/6+0 BSU-ZQY 308 WITHDRAWN 2, ZQY 308 APPROVED 2 counted ZQY 308 47 told "this class was chosen to stand over its duplicate since the upload (Duplicate results); left as it is"',
+                                 'put back by a corrected file RESULT_ALREADY_ON_RECORD ENTRY_ADDED keep A decided BSU-ZQY 308 WITHDRAWN 2, ZQY 308 APPROVED 2 counted ZQY 308 44'), false), msg6);
+  PERFORM pg_temp.assert('V775: the ledger says the code and title the course reads after the row — the record''s own where the file''s were not taken (a course approved again under a portal result, a result posted under the Senate''s units) — and a course approved again keeps the code and title it had before',
+      coalesce(msg7 = concat_ws(' | ', 'approved again under a portal result RESULT_ON_PORTAL/UNITS_ON_PORTAL ENTRY_REAPPROVED was ZQY 309 "Check Last Portal" 2 now ZQY 309 "Check Last Portal" 2',
+                                 'a result posted under the Senate''s units RESULT_POSTED/UNITS_BY_AMENDMENT RESULT_POSTED was ZQY 311 "Check Last Senate" 2 now ZQY 311 "Check Last Senate" 2',
+                                 'of 53 changes whose course has a version after the row, 0 say another code or title now; of 18 with a version before, 0 say another before; approved again with no code before 0'), false), msg7);
+  PERFORM pg_temp.assert('V775: a first result that stays because its course had to be left is told why, whichever of the two uploads is rolled back first; no change a rollback left is told to wait for the rollback of an upload already rolled back',
+      coalesce(msg8 = concat_ws(' | ', 'registration file first 0/3+0 then 0/1+0 ZQY 310 APPROVED 2 told "a first result on a course [the registration file] put on the registration: [the registration file] is rolled back and had to leave the course (a result has been entered or changed on this course since the upload), so the result stays with it; amend it through Result amendments"',
+                                 'results file first 0/1+0 told "a first result on a course [the registration file] put on the registration: it goes with that course when [the registration file] is rolled back; until then amend it through Result amendments"',
+                                 'then the registration file 0/3+0 told "a first result on a course [the registration file] put on the registration: [the registration file] is rolled back and had to leave the course (a result has been entered or changed on this course since the upload), so the result stays with it; amend it through Result amendments"',
+                                 'left changes told to wait for an upload already rolled back 0'), false), msg8);
+END $$;
+-- ── V775 (the last review, its own review): a class heading follows what its students carry after a rollback — put back where a
+--          student reads otherwise, kept only while every counted student still carries the course as it reads, never "left" on
+--          uploads rolled back in full; a first result left with the course its own upload approved again keeps that course's
+--          reason; the check and the import of a results file say what posts first, and each upload's ledger keeps its own before
+--          and after; a reconcile that posts nothing writes nothing; no rolled-back upload keeps a row reading Held or a hold.
+--          Made-up courses ZQW 301–306, 311–313 and 321–325, students MOAUM/ZQW/77/0001–0016 and 0021–0027 (0028 never on the
+--          register), sessions 9794/9795 and 9795/9796. The block undoes its writes ──
+CREATE OR REPLACE FUNCTION pg_temp.zqw_m(p_n int)
+RETURNS text LANGUAGE sql AS $f$ SELECT 'MOAUM/ZQW/77/' || lpad(p_n::text, 4, '0') $f$;
+-- a row as a file states it (a registration file's row carries no mark)
+CREATE OR REPLACE FUNCTION pg_temp.zqw_stated(p_n int, p_course text, p_title text, p_units int, p_total int, p_line text DEFAULT '2')
+RETURNS jsonb LANGUAGE sql AS $f$
+    SELECT jsonb_strip_nulls(jsonb_build_object('line', p_line, 'matric', pg_temp.zqw_m(p_n), 'course', p_course, 'title', p_title,
+                                                'creditUnits', p_units::text, 'category', 'Core', 'total', p_total::text))
+$f$;
+-- a student put on the register (no reconcile is run for them)
+CREATE OR REPLACE FUNCTION pg_temp.zqw_student(p_n int, p_name text, p_programme text, p_session text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE v uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (v, 'MOAUM/ADM/77/777' || lpad(p_n::text, 3, '0'), pg_temp.zqw_m(p_n), 'ZZ777', p_name, p_programme, 'UTME', p_session, 100, 100, 'ACTIVE', now());
+    RETURN v;
+END $f$;
+-- students put on a class as the loader before V771 put them (first semester): no version of their own, they read the class heading
+CREATE OR REPLACE FUNCTION pg_temp.zqw_on_class(p_session text, p_course text, VARIADIC p_n int[])
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM assessment.legacy_semester_load(p_session, 1, (SELECT jsonb_agg(jsonb_build_object('matric', pg_temp.zqw_m(n), 'course', p_course)) FROM unnest(p_n) n), false, false);
+END $f$;
+-- an upload begun and left running; one batch of its file (first semester); the upload closed
+CREATE OR REPLACE FUNCTION pg_temp.zqw_begin(p_kind text, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+BEGIN
+    RETURN (assessment.past_upload_begin(p_kind, 'check-zqw.xlsx', 1, p_why)).id;
+END $f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqw_batch(p_upload uuid, p_session text, p_rows jsonb)
+RETURNS jsonb LANGUAGE sql AS $f$
+    SELECT assessment.legacy_semester_load(p_session, 1, p_rows, u.kind = 'RESULTS', false, u.id, true) FROM assessment.past_upload u WHERE u.id = p_upload
+$f$;
+CREATE OR REPLACE FUNCTION pg_temp.zqw_close(p_upload uuid)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+    PERFORM assessment.past_upload_finish(p_upload, true);
+END $f$;
+-- a whole file: begun, loaded in one batch and closed
+CREATE OR REPLACE FUNCTION pg_temp.zqw_file(p_kind text, p_session text, p_rows jsonb, p_why text)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE u uuid := pg_temp.zqw_begin(p_kind, p_why);
+BEGIN
+    PERFORM pg_temp.zqw_batch(u, p_session, p_rows);
+    PERFORM pg_temp.zqw_close(u);
+    RETURN u;
+END $f$;
+-- an upload rolled back, and what the rollback answered: undone/left+earlierUndone, and the held results it dropped where it dropped any
+CREATE OR REPLACE FUNCTION pg_temp.zqw_rb(p_upload uuid, p_why text)
+RETURNS text LANGUAGE plpgsql AS $f$
+DECLARE r jsonb;
+BEGIN
+    r := assessment.revert_past_upload(p_upload, p_why);
+    RETURN (r->>'undone') || '/' || (r->>'left') || '+' || (r->>'earlierUndone')
+        || CASE WHEN (r->>'heldDropped')::int > 0 THEN ' held dropped ' || (r->>'heldDropped') ELSE '' END;
+END $f$;
+-- a note with the uploads' references taken out (they differ from run to run): one upload named for what it was, the others PRU-…
+CREATE OR REPLACE FUNCTION pg_temp.zqw_words(p_text text, p_named uuid DEFAULT NULL, p_as text DEFAULT NULL)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT regexp_replace(CASE WHEN p_named IS NULL THEN p_text
+                               ELSE replace(p_text, (SELECT pu.ref FROM assessment.past_upload pu WHERE pu.id = p_named), '[' || p_as || ']') END,
+                          'PRU-[0-9]{4}-[0-9]+', 'PRU-…', 'g')
+$f$;
+-- an upload's ledger, change by change: undone by a rollback, left by one, or (no word) standing
+CREATE OR REPLACE FUNCTION pg_temp.zqw_changes(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(ch.kind || CASE WHEN ch.reverted_at IS NOT NULL THEN ':undone' WHEN ch.revert_note IS NOT NULL THEN ':left' ELSE '' END,
+                               ',' ORDER BY ch.seq), 'none')
+      FROM assessment.past_upload_change ch WHERE ch.upload_id = p_upload
+$f$;
+-- what became of an upload's change of this kind (of one student where one is named): undone, standing, or why a rollback left it
+CREATE OR REPLACE FUNCTION pg_temp.zqw_why(p_upload uuid, p_kind text, p_student uuid DEFAULT NULL, p_named uuid DEFAULT NULL, p_as text DEFAULT NULL)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT string_agg(CASE WHEN ch.reverted_at IS NOT NULL THEN 'undone' ELSE pg_temp.zqw_words(coalesce(ch.revert_note, 'standing'), p_named, p_as) END,
+                                       ' / ' ORDER BY ch.seq)
+                       FROM assessment.past_upload_change ch
+                      WHERE ch.upload_id = p_upload AND ch.kind = p_kind AND (p_student IS NULL OR ch.student_id = p_student)), 'no such change')
+$f$;
+-- a class heading (first semester): the title and units its sheets read
+CREATE OR REPLACE FUNCTION pg_temp.zqw_heading(p_course text, p_session text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT string_agg('"' || coalesce(o.title, k.title) || '" ' || coalesce(o.units, k.units), ',')
+                       FROM catalogue.offering o JOIN catalogue.course k ON k.code = o.course_code
+                      WHERE o.course_code = p_course AND o.session = p_session AND o.semester = 1), 'no class')
+$f$;
+-- what a student's record reads for a course (assessment.student_results), and whose words they are: the class heading's, or the
+-- student's own version's
+CREATE OR REPLACE FUNCTION pg_temp.zqw_reads(p_student uuid, p_course text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce((SELECT string_agg('"' || x.title || '" ' || x.units, ',') FROM assessment.student_results(p_student) x WHERE x.course_code = p_course), 'not counted')
+        || coalesce((SELECT CASE WHEN bool_and(e.as_taken_id IS NULL) THEN ' (the heading)' WHEN bool_and(e.as_taken_id IS NOT NULL) THEN ' (own version)' END
+                       FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id JOIN catalogue.offering o ON o.id = e.offering_id
+                      WHERE r.student_id = p_student AND o.course_code = p_course AND e.status IN ('APPROVED', 'REGISTERED')), '')
+$f$;
+-- a mark entered on the portal on the student's class (first semester): a new version, not imported
+CREATE OR REPLACE FUNCTION pg_temp.zqw_portal(p_student uuid, p_course text, p_session text)
+RETURNS void LANGUAGE plpgsql AS $f$
+DECLARE v_sheet uuid;
+BEGIN
+    SELECT sh.id INTO v_sheet FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id
+     WHERE o.course_code = p_course AND o.session = p_session AND o.semester = 1;
+    INSERT INTO assessment.score (sheet_id, student_id, version, ca, exam, outcome, imported, reason)
+    SELECT v_sheet, p_student, coalesce(max(s.version), 0) + 1, 22, 30, 'GRADED', false, 'check V775: entered on the portal'
+      FROM assessment.score s WHERE s.sheet_id = v_sheet AND s.student_id = p_student;
+END $f$;
+-- the Director of ICT asks for a course off a registration (Course Registration Correction): the state the request is left in
+CREATE OR REPLACE FUNCTION pg_temp.zqw_ask(p_student uuid, p_session text, p_course text, p_why text)
+RETURNS text LANGUAGE plpgsql AS $f$
+DECLARE v_reg uuid; v_off uuid; res jsonb;
+BEGIN
+    SELECT r.id, o.id INTO v_reg, v_off
+      FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id JOIN catalogue.offering o ON o.id = e.offering_id
+     WHERE r.student_id = p_student AND r.session = p_session AND o.course_code = p_course;
+    res := registration.request_entry_removal(p_student, jsonb_build_array(jsonb_build_object('registrationId', v_reg, 'offeringId', v_off)), p_why);
+    RETURN res->'removals'->0->>'state';
+EXCEPTION WHEN OTHERS THEN
+    RETURN split_part(SQLERRM, ':', 1);
+END $f$;
+-- a student's Course Registration Corrections on a course: state and reason
+CREATE OR REPLACE FUNCTION pg_temp.zqw_asked(p_student uuid, p_course text)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(z.state || ' "' || z.reason || '"', ', ' ORDER BY z.requested_at), 'none') FROM registration.entry_removal z
+     WHERE z.student_id = p_student AND z.course_code = p_course
+$f$;
+-- the results that count for a student
+CREATE OR REPLACE FUNCTION pg_temp.zqw_counted(p_student uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(x.course_code || ' ' || x.total, ', ' ORDER BY x.session, x.course_code), 'nothing') FROM assessment.student_results(p_student) x
+$f$;
+-- the held results of some numbers in a semester: how many, and how many of them under this upload
+CREATE OR REPLACE FUNCTION pg_temp.zqw_held(p_session text, p_semester int, p_upload uuid, VARIADIC p_n int[])
+RETURNS text LANGUAGE sql AS $f$
+    SELECT count(*) || ' (' || count(*) FILTER (WHERE h.upload_id = p_upload) || ' under it)' FROM assessment.legacy_result_holding h
+     WHERE h.session = p_session AND h.semester = p_semester AND h.matric IN (SELECT pg_temp.zqw_m(n) FROM unnest(p_n) n)
+$f$;
+-- a student's picture (credit units and CGPA), from a snapshot
+CREATE OR REPLACE FUNCTION pg_temp.zqw_picture(p_snapshot jsonb)
+RETURNS text LANGUAGE sql AS $f$ SELECT coalesce(p_snapshot->>'tcr', '-') || ' units ' || coalesce(p_snapshot->>'cgpa', 'no CGPA') $f$;
+-- what a check or an import answers: its counts, the students and graduates it names, and each student's before and after
+CREATE OR REPLACE FUNCTION pg_temp.zqw_answer(p_answer jsonb)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT 'held_posted_first ' || coalesce(p_answer->>'held_posted_first', '-') || ' results ' || (p_answer->>'results') || ' replaced ' || (p_answer->>'results_replaced')
+        || ' same ' || (p_answer->>'results_same') || ' held ' || (p_answer->>'held')
+        || ' students ' || coalesce((SELECT string_agg(right(k, 4), ',' ORDER BY k) FROM jsonb_array_elements_text(p_answer->'students_affected') k), 'none')
+        || ' graduates ' || coalesce((SELECT string_agg(right(k, 4), ',' ORDER BY k) FROM jsonb_array_elements_text(p_answer->'graduates') k), 'none')
+        || ' CGPA list ' || coalesce((SELECT string_agg(right(g->>'matric', 4) || ' ' || pg_temp.zqw_picture(g->'before') || ' > ' || pg_temp.zqw_picture(g->'after'), ', ' ORDER BY g->>'matric')
+                                        FROM jsonb_array_elements(p_answer->'gpa') g), 'empty')
+$f$;
+-- an upload's own students, as its report lists them: before and after, and the graduates among them
+CREATE OR REPLACE FUNCTION pg_temp.zqw_students(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(right(s.matric_no, 4) || ' ' || coalesce(ps.tcr_before::text, '-') || ' units ' || coalesce(ps.cgpa_before::text, 'no CGPA')
+                               || ' > ' || coalesce(ps.tcr_after::text, '-') || ' units ' || coalesce(ps.cgpa_after::text, 'no CGPA')
+                               || CASE WHEN ps.graduate THEN ' graduate' ELSE '' END, ', ' ORDER BY s.matric_no), 'none')
+      FROM assessment.past_upload_student ps JOIN people.student s ON s.id = ps.student_id WHERE ps.upload_id = p_upload
+$f$;
+-- the rows of an upload as its report lists them (by number, course and line)
+CREATE OR REPLACE FUNCTION pg_temp.zqw_rows(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT coalesce(string_agg(w.status, ',' ORDER BY w.matric, w.course, w.line), 'no rows') FROM assessment.past_upload_row w WHERE w.upload_id = p_upload
+$f$;
+-- the audit trail's entries about an upload's own row
+CREATE OR REPLACE FUNCTION pg_temp.zqw_audited(p_upload uuid)
+RETURNS int LANGUAGE sql AS $f$
+    SELECT count(*)::int FROM audit.entries a WHERE a.subject_type = 'assessment.past_upload' AND a.subject_id = p_upload
+$f$;
+-- everything a check must leave as it found it, of one upload and some students: the holds, the marks, the registrations and
+-- enrolments, the upload's rows, ledger, students, state and stored counts, and the audit trail's entries about the upload
+CREATE OR REPLACE FUNCTION pg_temp.zqw_record(p_upload uuid, p_students uuid[])
+RETURNS text LANGUAGE sql AS $f$
+    SELECT md5(concat_ws('|',
+        (SELECT string_agg(h.session || h.semester || h.matric || h.course_code || h.upload_id || h.raw::text || coalesce(h.prior::text, ''), ','
+                           ORDER BY h.session, h.semester, h.matric, h.course_code)
+           FROM assessment.legacy_result_holding h WHERE h.matric IN (SELECT upper(s.matric_no) FROM people.student s WHERE s.id = ANY (p_students))),
+        (SELECT string_agg(s.sheet_id::text || s.student_id || s.version || coalesce(s.total::text, ''), ',' ORDER BY s.sheet_id, s.student_id, s.version)
+           FROM assessment.score s WHERE s.student_id = ANY (p_students)),
+        (SELECT string_agg(e.registration_id::text || e.offering_id || e.status || e.units || coalesce(e.as_taken_id::text, ''), ',' ORDER BY e.registration_id, e.offering_id)
+           FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id WHERE r.student_id = ANY (p_students)),
+        (SELECT count(*) FROM people.enrolment x WHERE x.student_id = ANY (p_students)),
+        pg_temp.zqw_rows(p_upload), pg_temp.zqw_changes(p_upload), pg_temp.zqw_students(p_upload),
+        (SELECT pu.state || coalesce(pu.counts::text, '') FROM assessment.past_upload pu WHERE pu.id = p_upload),
+        pg_temp.zqw_audited(p_upload)))
+$f$;
+-- what the Uploads list reads for an upload (its stored counts), and whether its ledger and rows read the same now
+CREATE OR REPLACE FUNCTION pg_temp.zqw_stored(p_upload uuid)
+RETURNS text LANGUAGE sql AS $f$
+    SELECT 'changes ' || coalesce(pu.counts->>'changes', '-') || ' by status '
+        || coalesce((SELECT string_agg(k.key || ' ' || k.value, ', ' ORDER BY k.key) FROM jsonb_each_text(pu.counts->'byStatus') k), 'none')
+        || CASE WHEN pu.counts IS NOT DISTINCT FROM assessment.past_upload_counts(pu.id) THEN ' (as its ledger and rows read)' ELSE ' (NOT what its ledger and rows read)' END
+      FROM assessment.past_upload pu WHERE pu.id = p_upload
+$f$;
+DO $$
+DECLARE
+    v_prog text; v_dept text; s1 text := '9794/9795'; s2 text := '9795/9796'; ict uuid := gen_random_uuid(); v_err text;
+    h_old text := 'Check Heading Old'; h_wrong text := 'Check Heading Wrong'; h_right text := 'Check Heading Right';
+    t_result text := 'Check First Result'; t_held text := 'Check Posts First';
+    stays text := 'courses of this class that the upload put as the heading reads were left, and every student of the class still carries the course so; the heading stays with them';
+    ada uuid; bala uuid; chidi uuid; dayo uuid; efe uuid; femi uuid; gbenga uuid; hauwa uuid; ife uuid; jide uuid; kemi uuid; lola uuid;
+    musa uuid; ngozi uuid; obi uuid; peju uuid; queen uuid; remi uuid; sani uuid; tayo uuid; uche uuid; vera uuid; wale uuid;
+    u0 uuid; u1 uuid; u2 uuid; u3 uuid; ua uuid; uh uuid; m text; n text; file jsonb; pv jsonb; res jsonb; stood jsonb; rec0 text; rec1 text;
+    a0 int; a1 int; a2 int; a3 int; a4 int; a5 int;
+    later text; pending text; marked text; alone text; in_full text; freed text; turn text; headings text;
+    results_first text; registration_first text; standing text; another text;
+    before_check text; checked text; behind text; imported text; ledgers text; own text;
+    stuck text; first_reconcile text; nothing text; arrives text;
+    stuck_rolled text; held_rolled text; promised text; under_rolled text; stale text;
+    msg1 text; msg2 text; msg3 text; msg4 text; msg5 text; msg6 text; msg7 text; msg8 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', ict::text, true);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM set_config('moaum.reason', 'check V775 the last review, its own review', true);
+    SELECT p.code, p.dept_code INTO v_prog, v_dept FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    PERFORM assessment.ensure_session(s1);
+    PERFORM assessment.ensure_session(s2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state)
+    SELECT 'ZQW ' || k, h_old, 3, 1, 100, v_dept, 'Core', 'LIVE' FROM generate_series(301, 306) k
+    UNION ALL SELECT 'ZQW ' || k, t_result, 2, 1, 100, v_dept, 'Core', 'LIVE' FROM generate_series(311, 313) k
+    UNION ALL SELECT 'ZQW ' || k, t_held, 2, 1, 100, v_dept, 'Core', 'LIVE' FROM generate_series(321, 325) k;
+    -- on the register from the start (the students of the held results arrive after their results were held)
+    ada := pg_temp.zqw_student(1, 'Ada', v_prog, s1); bala := pg_temp.zqw_student(2, 'Bala', v_prog, s1); chidi := pg_temp.zqw_student(3, 'Chidi', v_prog, s1);
+    dayo := pg_temp.zqw_student(4, 'Dayo', v_prog, s1); efe := pg_temp.zqw_student(5, 'Efe', v_prog, s1); femi := pg_temp.zqw_student(6, 'Femi', v_prog, s1);
+    gbenga := pg_temp.zqw_student(7, 'Gbenga', v_prog, s1); hauwa := pg_temp.zqw_student(8, 'Hauwa', v_prog, s1); ife := pg_temp.zqw_student(9, 'Ife', v_prog, s1);
+    jide := pg_temp.zqw_student(10, 'Jide', v_prog, s1); kemi := pg_temp.zqw_student(11, 'Kemi', v_prog, s1); lola := pg_temp.zqw_student(12, 'Lola', v_prog, s1);
+    musa := pg_temp.zqw_student(13, 'Musa', v_prog, s1); ngozi := pg_temp.zqw_student(14, 'Ngozi', v_prog, s1); obi := pg_temp.zqw_student(15, 'Obi', v_prog, s1);
+    peju := pg_temp.zqw_student(16, 'Peju', v_prog, s1);
+
+    -- ── the class heading after a rollback ──
+    -- Ada, Bala, Chidi: on a class by the old loader (no version: they read the heading). The wrong file states all three under
+    -- another title (the heading is set to it); a later file, standing, states Ada alone under the right title. The wrong file rolled
+    -- back: Bala and Chidi are put back to no version and read the heading, so the heading is put back; Ada keeps the later file's
+    PERFORM pg_temp.zqw_on_class(s1, 'ZQW 301', 1, 2, 3);
+    later := 'on the class heading ' || pg_temp.zqw_heading('ZQW 301', s1) || ' Bala ' || pg_temp.zqw_reads(bala, 'ZQW 301');
+    u1 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(1, 'ZQW 301', h_wrong, 3, 51, '2'), pg_temp.zqw_stated(2, 'ZQW 301', h_wrong, 3, 52, '3'),
+                                                           pg_temp.zqw_stated(3, 'ZQW 301', h_wrong, 3, 53, '4')), 'check V775 the wrong file');
+    later := later || '; the wrong file: heading ' || pg_temp.zqw_heading('ZQW 301', s1) || ' Bala ' || pg_temp.zqw_reads(bala, 'ZQW 301');
+    u2 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(1, 'ZQW 301', h_right, 3, NULL)), 'check V775 one student put right');
+    later := later || '; one student put right: heading ' || pg_temp.zqw_heading('ZQW 301', s1) || ' ' || pg_temp.zqw_changes(u2);
+    m := pg_temp.zqw_rb(u1, 'check V775 the wrong file rolled back');
+    later := later || '; the wrong file rolled back ' || m || ': heading ' || pg_temp.zqw_heading('ZQW 301', s1) || ' Ada ' || pg_temp.zqw_reads(ada, 'ZQW 301')
+             || ' Bala ' || pg_temp.zqw_reads(bala, 'ZQW 301') || ' Chidi ' || pg_temp.zqw_reads(chidi, 'ZQW 301')
+             || ' its heading ' || pg_temp.zqw_why(u1, 'CLASS_HEADER_CORRECTED') || ' Ada''s course told "' || pg_temp.zqw_why(u1, 'AS_TAKEN_CORRECTED', ada) || '"';
+    -- and the later file rolled back too: nothing of either is left on the class but the first results
+    m := pg_temp.zqw_rb(u2, 'check V775 then the right file rolled back');
+    in_full := m || ': heading ' || pg_temp.zqw_heading('ZQW 301', s1) || ' Ada ' || pg_temp.zqw_reads(ada, 'ZQW 301')
+            || ' ' || pg_temp.zqw_changes(u1) || ' ' || pg_temp.zqw_changes(u2);
+    -- Dayo, Efe, Femi: the same, with a Course Registration Correction asked for on Dayo's course instead of a later file (held for
+    -- the Registry: the course carries a result) — the heading is put back, Dayo's course is left with the correction
+    PERFORM pg_temp.zqw_on_class(s1, 'ZQW 302', 4, 5, 6);
+    u1 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(4, 'ZQW 302', h_wrong, 3, 51, '2'), pg_temp.zqw_stated(5, 'ZQW 302', h_wrong, 3, 52, '3'),
+                                                           pg_temp.zqw_stated(6, 'ZQW 302', h_wrong, 3, 53, '4')), 'check V775 the wrong file, a correction after');
+    m := pg_temp.zqw_ask(dayo, s1, 'ZQW 302', 'check V775: asked for after the wrong file');
+    n := pg_temp.zqw_rb(u1, 'check V775 the wrong file rolled back');
+    pending := 'asked ' || m || '; the wrong file rolled back ' || n || ': heading ' || pg_temp.zqw_heading('ZQW 302', s1) || ' Dayo ' || pg_temp.zqw_reads(dayo, 'ZQW 302')
+               || ' Efe ' || pg_temp.zqw_reads(efe, 'ZQW 302') || ' Femi ' || pg_temp.zqw_reads(femi, 'ZQW 302')
+               || ' its heading ' || pg_temp.zqw_why(u1, 'CLASS_HEADER_CORRECTED') || ' Dayo''s course told "' || pg_temp.zqw_why(u1, 'AS_TAKEN_CORRECTED', dayo)
+               || '" the correction ' || pg_temp.zqw_asked(dayo, 'ZQW 302');
+    msg1 := concat_ws(' | ', 'a later file on one student: ' || later, 'a correction on one student: ' || pending);
+
+    -- Gbenga, Hauwa: on a class by the old loader, the course dropped; the wrong file approves it again under its title for both
+    -- (the heading is set) and posts their first results; a mark is entered on the portal for each. Rolled back, both courses are
+    -- left as the file put them, and every counted student of the class carries the course as the heading reads: the heading stays
+    PERFORM pg_temp.zqw_on_class(s1, 'ZQW 303', 7, 8);
+    UPDATE registration.entry en SET status = 'DROPPED' FROM catalogue.offering o WHERE o.id = en.offering_id AND o.course_code = 'ZQW 303' AND o.session = s1;
+    u1 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(7, 'ZQW 303', h_wrong, 3, 51, '2'), pg_temp.zqw_stated(8, 'ZQW 303', h_wrong, 3, 52, '3')),
+                           'check V775 the wrong file, approved again');
+    marked := 'approved again ' || pg_temp.zqw_changes(u1) || ' heading ' || pg_temp.zqw_heading('ZQW 303', s1);
+    PERFORM pg_temp.zqw_portal(gbenga, 'ZQW 303', s1); PERFORM pg_temp.zqw_portal(hauwa, 'ZQW 303', s1);
+    m := pg_temp.zqw_rb(u1, 'check V775 the wrong file rolled back');
+    marked := marked || '; a portal mark on each, rolled back ' || m || ': heading ' || pg_temp.zqw_heading('ZQW 303', s1) || ' Gbenga ' || pg_temp.zqw_reads(gbenga, 'ZQW 303')
+              || ' Hauwa ' || pg_temp.zqw_reads(hauwa, 'ZQW 303') || ' its heading told "' || pg_temp.zqw_why(u1, 'CLASS_HEADER_CORRECTED') || '"';
+    -- Ife: the one student of a class, a Course Registration Correction pending on the course — the heading stays with it
+    PERFORM pg_temp.zqw_on_class(s1, 'ZQW 304', 9);
+    u1 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(9, 'ZQW 304', h_wrong, 3, 51)), 'check V775 the wrong file, a class of one');
+    m := pg_temp.zqw_ask(ife, s1, 'ZQW 304', 'check V775: asked for on the class of one');
+    n := pg_temp.zqw_rb(u1, 'check V775 the wrong file rolled back');
+    alone := 'asked ' || m || '; rolled back ' || n || ': heading ' || pg_temp.zqw_heading('ZQW 304', s1) || ' Ife ' || pg_temp.zqw_reads(ife, 'ZQW 304')
+             || ' its heading told "' || pg_temp.zqw_why(u1, 'CLASS_HEADER_CORRECTED') || '"';
+    msg2 := concat_ws(' | ', 'a portal mark on every student: ' || marked, 'the one student, a correction pending: ' || alone);
+
+    -- Jide: the one student of a class; the wrong file, then a later file changing only the course's category (the same title and
+    -- units). The wrong file rolled back: the heading stays with Jide's course, which the later file stands on; the later file
+    -- rolled back: the course is freed and the heading goes with it — nothing of the wrong file is left but the first result
+    PERFORM pg_temp.zqw_on_class(s1, 'ZQW 305', 10);
+    u1 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(10, 'ZQW 305', h_wrong, 3, 51)), 'check V775 the wrong file, a category after');
+    u2 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(10, 'ZQW 305', h_wrong, 3, NULL) || jsonb_build_object('category', 'Elective')),
+                           'check V775 the course an elective');
+    m := pg_temp.zqw_rb(u1, 'check V775 the wrong file rolled back');
+    freed := 'the wrong file rolled back ' || m || ': heading ' || pg_temp.zqw_heading('ZQW 305', s1) || ' told "' || pg_temp.zqw_why(u1, 'CLASS_HEADER_CORRECTED') || '"';
+    m := pg_temp.zqw_rb(u2, 'check V775 then the category file');
+    freed := freed || '; then the later file ' || m || ': heading ' || pg_temp.zqw_heading('ZQW 305', s1) || ' Jide ' || pg_temp.zqw_reads(jide, 'ZQW 305')
+             || ' ' || pg_temp.zqw_changes(u1);
+    -- Kemi, Lola: three files retitle their class in turn (wrong, right, wrong again) and are rolled back oldest first — the last
+    -- rollback settles the two before it, and none of the three keeps its heading "left"
+    PERFORM pg_temp.zqw_on_class(s1, 'ZQW 306', 11, 12);
+    u1 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(11, 'ZQW 306', h_wrong, 3, NULL, '2'), pg_temp.zqw_stated(12, 'ZQW 306', h_wrong, 3, NULL, '3')),
+                           'check V775 in turn: the wrong title');
+    u2 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(11, 'ZQW 306', h_right, 3, NULL, '2'), pg_temp.zqw_stated(12, 'ZQW 306', h_right, 3, NULL, '3')),
+                           'check V775 in turn: the right title');
+    u3 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(11, 'ZQW 306', h_wrong, 3, NULL, '2'), pg_temp.zqw_stated(12, 'ZQW 306', h_wrong, 3, NULL, '3')),
+                           'check V775 in turn: the wrong title again');
+    turn := 'heading ' || pg_temp.zqw_heading('ZQW 306', s1) || '; rolled back ' || pg_temp.zqw_rb(u1, 'check V775 in turn, the oldest first');
+    turn := turn || ' ' || pg_temp.zqw_rb(u2, 'check V775 in turn, the middle one');
+    turn := turn || ' ' || pg_temp.zqw_rb(u3, 'check V775 in turn, the newest last');
+    turn := turn || ': heading ' || pg_temp.zqw_heading('ZQW 306', s1) || ' Kemi ' || pg_temp.zqw_reads(kemi, 'ZQW 306')
+            || ' ' || pg_temp.zqw_changes(u1) || ' ' || pg_temp.zqw_changes(u2) || ' ' || pg_temp.zqw_changes(u3);
+
+    -- ── a first result left with its course ──
+    -- Musa: the registration file adds the course; it is dropped; the results file approves it again and posts its first result; a
+    -- mark is entered on the portal. The results file rolled back, then the registration file: the result is its own upload's
+    -- course's, and keeps that course's reason — never the reason of the registration file's adding
+    u1 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(13, 'ZQW 311', t_result, 2, NULL)), 'check V775 the registration file');
+    UPDATE registration.entry en SET status = 'DROPPED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = musa;
+    u2 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(13, 'ZQW 311', t_result, 2, 48)), 'check V775 its results file');
+    results_first := pg_temp.zqw_changes(u2);
+    PERFORM pg_temp.zqw_portal(musa, 'ZQW 311', s1);
+    m := pg_temp.zqw_rb(u2, 'check V775 the results file first');
+    n := pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file');
+    results_first := results_first || ' rolled back ' || m || ' then ' || pg_temp.zqw_rb(u1, 'check V775 then the registration file')
+                     || ': the result told "' || pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"'
+                     || CASE WHEN n = pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') THEN ' (as after the first rollback)'
+                             ELSE ' (after the first rollback: "' || n || '")' END
+                     || ' its course told "' || pg_temp.zqw_why(u2, 'ENTRY_REAPPROVED', NULL, u1, 'the registration file') || '" counted ' || pg_temp.zqw_counted(musa);
+    -- Ngozi: the same, the registration file rolled back first
+    u1 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(14, 'ZQW 311', t_result, 2, NULL)), 'check V775 the registration file again');
+    UPDATE registration.entry en SET status = 'DROPPED' FROM registration.course_registration r WHERE en.registration_id = r.id AND r.student_id = ngozi;
+    u2 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(14, 'ZQW 311', t_result, 2, 48)), 'check V775 its results file again');
+    PERFORM pg_temp.zqw_portal(ngozi, 'ZQW 311', s1);
+    m := pg_temp.zqw_rb(u1, 'check V775 the registration file first');
+    registration_first := 'rolled back ' || m || ' (the result ' || pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || ') then '
+                          || pg_temp.zqw_rb(u2, 'check V775 then the results file')
+                          || ': the result told "' || pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"'
+                          || ' its course told "' || pg_temp.zqw_why(u2, 'ENTRY_REAPPROVED', NULL, u1, 'the registration file') || '" counted ' || pg_temp.zqw_counted(ngozi);
+    -- Peju: the registration file adds the course, a results file (standing) posts the first result, a second results file replaces
+    -- it and is rolled back; the registration file rolled back leaves the course — the standing upload's ledger is not written to
+    u1 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(16, 'ZQW 313', t_result, 2, NULL)), 'check V775 one more registration file');
+    u2 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(16, 'ZQW 313', t_result, 2, 48)), 'check V775 a results file that stands');
+    u3 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(16, 'ZQW 313', t_result, 2, 58)), 'check V775 a second results file');
+    standing := 'rolled back ' || pg_temp.zqw_rb(u3, 'check V775 the second results file') || ' then ' || pg_temp.zqw_rb(u1, 'check V775 then the registration file')
+                || ': the result ' || pg_temp.zqw_why(u2, 'RESULT_POSTED') || ', changes of the standing upload written to '
+                || (SELECT count(*) FROM assessment.past_upload_change ch WHERE ch.upload_id = u2 AND (ch.revert_note IS NOT NULL OR ch.reverted_at IS NOT NULL))
+                || ' the course told "' || pg_temp.zqw_why(u1, 'ENTRY_ADDED') || '" counted ' || pg_temp.zqw_counted(peju);
+    -- Obi: a first result on a course the registration file put there; the results file rolled back (the result waits for that
+    -- upload), a portal mark, the registration file rolled back and has to leave the course: the result is told that it stays, and why
+    u1 := pg_temp.zqw_file('REGISTRATION', s1, jsonb_build_array(pg_temp.zqw_stated(15, 'ZQW 312', t_result, 2, NULL)), 'check V775 another registration file');
+    u2 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(15, 'ZQW 312', t_result, 2, 48)), 'check V775 another results file');
+    another := 'results file rolled back ' || pg_temp.zqw_rb(u2, 'check V775 the results file while the other stands')
+               || ' told "' || pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"';
+    PERFORM pg_temp.zqw_portal(obi, 'ZQW 312', s1);
+    another := another || '; a portal mark, then the registration file ' || pg_temp.zqw_rb(u1, 'check V775 then the registration file')
+               || ' told "' || pg_temp.zqw_why(u2, 'RESULT_POSTED', NULL, u1, 'the registration file') || '"';
+    msg4 := concat_ws(' | ', 'approved again by the results file, that file first: ' || results_first, 'the registration file first: ' || registration_first,
+                      'a standing upload''s first result: ' || standing, 'on another upload''s course: ' || another);
+
+    -- ── the check and the import say what posts first ──
+    -- One upload holds, in the first semester, two results for 0021, two for 0022, one for 0023 and one for 0024, and in the second
+    -- semester one for 0021; the four are then put on the register with no reconcile (Remi, 0022, a graduate the Senate approved;
+    -- Queen, 0021, with a result of the session before already on record). The file checked and imported carries 0021 and 0022 as
+    -- held, 0023 with a corrected mark, and not 0024
+    u1 := pg_temp.zqw_begin('RESULTS', 'check V775 the old portal''s file, all held');
+    PERFORM pg_temp.zqw_batch(u1, s2, jsonb_build_array(
+        pg_temp.zqw_stated(21, 'ZQW 321', t_held, 2, 50, '2'), pg_temp.zqw_stated(21, 'ZQW 322', t_held, 2, 60, '3'),
+        pg_temp.zqw_stated(22, 'ZQW 321', t_held, 2, 70, '4'), pg_temp.zqw_stated(22, 'ZQW 322', t_held, 2, 45, '5'),
+        pg_temp.zqw_stated(23, 'ZQW 321', t_held, 2, 50, '6'), pg_temp.zqw_stated(24, 'ZQW 321', t_held, 2, 66, '7')));
+    PERFORM assessment.legacy_semester_load(s2, 2, jsonb_build_array(pg_temp.zqw_stated(21, 'ZQW 323', t_held, 2, 55, '8')), true, false, u1, true);
+    PERFORM pg_temp.zqw_close(u1);
+    queen := pg_temp.zqw_student(21, 'Queen', v_prog, s1); remi := pg_temp.zqw_student(22, 'Remi', v_prog, s1); sani := pg_temp.zqw_student(23, 'Sani', v_prog, s1);
+    tayo := pg_temp.zqw_student(24, 'Tayo', v_prog, s1);
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute, approved_at, approved_by)
+    VALUES (gen_random_uuid(), remi, s2, 4.10, 'B.Sc.', 'APPROVED', 'SEN/CHECK/777', now(), ict);
+    u0 := pg_temp.zqw_file('RESULTS', s1, jsonb_build_array(pg_temp.zqw_stated(21, 'ZQW 324', t_held, 2, 70)), 'check V775 a result of the session before');
+    file := jsonb_build_array(
+        pg_temp.zqw_stated(21, 'ZQW 321', t_held, 2, 50, '2'), pg_temp.zqw_stated(21, 'ZQW 322', t_held, 2, 60, '3'),
+        pg_temp.zqw_stated(22, 'ZQW 321', t_held, 2, 70, '4'), pg_temp.zqw_stated(22, 'ZQW 322', t_held, 2, 45, '5'),
+        pg_temp.zqw_stated(23, 'ZQW 321', t_held, 2, 70, '6'));
+    -- the record as it stands before the check: each student's picture, and everything the check must leave as it found it
+    stood := jsonb_build_object(pg_temp.zqw_m(21), assessment.gpa_snapshot(queen), pg_temp.zqw_m(22), assessment.gpa_snapshot(remi),
+                                pg_temp.zqw_m(23), assessment.gpa_snapshot(sani));
+    before_check := 'held for the file''s students in the semester ' || pg_temp.zqw_held(s2, 1, u1, 21, 22, 23) || ', for 0024 ' || pg_temp.zqw_held(s2, 1, u1, 24)
+                    || ', in the second semester ' || pg_temp.zqw_held(s2, 2, u1, 21) || '; the holder''s rows ' || pg_temp.zqw_rows(u1) || ' ledger ' || pg_temp.zqw_changes(u1);
+    rec0 := pg_temp.zqw_record(u1, ARRAY[queen, remi, sani, tayo]);
+    pv := assessment.legacy_semester_load(s2, 1, file, true, true, NULL, true);
+    rec1 := pg_temp.zqw_record(u1, ARRAY[queen, remi, sani, tayo]);
+    checked := pg_temp.zqw_answer(pv) || ' lines ' || (SELECT string_agg(ln->>'status', ',' ORDER BY (ln->>'line')::int) FROM jsonb_array_elements(pv->'lines') ln)
+               || '; CGPA lines starting from the record as it stood '
+               || (SELECT count(*) FILTER (WHERE g->'before' = stood->(g->>'matric')) || ' of ' || count(*) FROM jsonb_array_elements(pv->'gpa') g);
+    behind := CASE WHEN rec0 = rec1 THEN 'the record as the check found it' ELSE 'THE CHECK MOVED THE RECORD' END
+              || ': held ' || pg_temp.zqw_held(s2, 1, u1, 21, 22, 23) || ', ' || pg_temp.zqw_held(s2, 1, u1, 24) || ', ' || pg_temp.zqw_held(s2, 2, u1, 21)
+              || ' rows ' || pg_temp.zqw_rows(u1) || ' ledger ' || pg_temp.zqw_changes(u1) || ' students ' || pg_temp.zqw_students(u1)
+              || ' stored ' || pg_temp.zqw_stored(u1) || ' counted ' || pg_temp.zqw_counted(queen) || ' / ' || pg_temp.zqw_counted(remi) || ' / ' || pg_temp.zqw_counted(sani);
+    msg5 := concat_ws(' | ', 'before the check ' || before_check, 'the check answers ' || checked, 'after it ' || behind);
+
+    u2 := pg_temp.zqw_begin('RESULTS', 'check V775 the checked file imported');
+    res := pg_temp.zqw_batch(u2, s2, file);
+    PERFORM pg_temp.zqw_close(u2);
+    imported := pg_temp.zqw_answer(res) || CASE WHEN pg_temp.zqw_answer(res) = pg_temp.zqw_answer(pv) THEN ' (as the check said)' ELSE ' (NOT as the check said)' END
+                || '; CGPA lines starting from the record as it stood '
+                || (SELECT count(*) FILTER (WHERE g->'before' = stood->(g->>'matric')) || ' of ' || count(*) FROM jsonb_array_elements(res->'gpa') g)
+                || '; held ' || pg_temp.zqw_held(s2, 1, u1, 21, 22, 23) || ', for 0024 ' || pg_temp.zqw_held(s2, 1, u1, 24)
+                || ', in the second semester ' || pg_temp.zqw_held(s2, 2, u1, 21)
+                || '; counted ' || pg_temp.zqw_counted(queen) || ' / ' || pg_temp.zqw_counted(remi) || ' / ' || pg_temp.zqw_counted(sani) || ' / ' || pg_temp.zqw_counted(tayo);
+    ledgers := 'the holder''s rows ' || pg_temp.zqw_rows(u1) || ' stored ' || pg_temp.zqw_stored(u1) || ' students ' || pg_temp.zqw_students(u1)
+               || '; the import''s rows ' || pg_temp.zqw_rows(u2) || ' ledger ' || pg_temp.zqw_changes(u2) || ' students ' || pg_temp.zqw_students(u2);
+    -- Uche (0025): an upload left running holds the row; the student arrives; the same upload's batch is sent again — its own hold
+    -- posts first, under it, and the batch finds the result on record
+    ua := pg_temp.zqw_begin('RESULTS', 'check V775 its own hold, the batch sent again');
+    res := pg_temp.zqw_batch(ua, s2, jsonb_build_array(pg_temp.zqw_stated(25, 'ZQW 321', t_held, 2, 50)));
+    own := 'first ' || pg_temp.zqw_answer(res) || ' rows ' || pg_temp.zqw_rows(ua);
+    uche := pg_temp.zqw_student(25, 'Uche', v_prog, s1);
+    res := pg_temp.zqw_batch(ua, s2, jsonb_build_array(pg_temp.zqw_stated(25, 'ZQW 321', t_held, 2, 50)));
+    PERFORM pg_temp.zqw_close(ua);
+    own := own || '; the student arrives, sent again ' || pg_temp.zqw_answer(res) || ' rows ' || pg_temp.zqw_rows(ua) || ' ledger ' || pg_temp.zqw_changes(ua)
+           || ' held ' || pg_temp.zqw_held(s2, 1, ua, 25) || ' counted ' || pg_temp.zqw_counted(uche);
+    msg6 := concat_ws(' | ', 'the import answers ' || imported, ledgers, 'its own hold: ' || own);
+
+    -- ── a reconcile that posts nothing writes nothing ──
+    -- One closed upload: 0026 with a result that will post and a row with no mark (it can never post), 0027 with a result. Vera
+    -- (0026) arrives and the reconcile posts what it can; two reconciles more, the check of another course of hers and the upload of
+    -- it offer the stuck row again and write nothing about the upload; Wale (0027) arrives, and the reconcile that posts his result
+    -- takes the upload's stored counts again
+    u1 := pg_temp.zqw_file('RESULTS', s2, jsonb_build_array(pg_temp.zqw_stated(26, 'ZQW 321', t_held, 2, 55, '2'), pg_temp.zqw_stated(26, 'ZQW 322', t_held, 2, NULL, '3'),
+                                                           pg_temp.zqw_stated(27, 'ZQW 321', t_held, 2, 60, '4')), 'check V775 a row that can never post');
+    a0 := pg_temp.zqw_audited(u1);
+    stuck := 'rows ' || pg_temp.zqw_rows(u1) || ' stored ' || pg_temp.zqw_stored(u1);
+    vera := pg_temp.zqw_student(26, 'Vera', v_prog, s1);
+    PERFORM assessment.reconcile_legacy_holding();
+    a1 := pg_temp.zqw_audited(u1);
+    first_reconcile := 'entries about the upload +' || (a1 - a0) || ' rows ' || pg_temp.zqw_rows(u1) || ' stored ' || pg_temp.zqw_stored(u1)
+                       || ' held ' || pg_temp.zqw_held(s2, 1, u1, 26, 27);
+    PERFORM assessment.reconcile_legacy_holding(); PERFORM assessment.reconcile_legacy_holding();
+    a2 := pg_temp.zqw_audited(u1);
+    pv := assessment.legacy_semester_load(s2, 1, jsonb_build_array(pg_temp.zqw_stated(26, 'ZQW 325', t_held, 2, 70)), true, true, NULL, true);
+    a3 := pg_temp.zqw_audited(u1);
+    u3 := pg_temp.zqw_file('RESULTS', s2, jsonb_build_array(pg_temp.zqw_stated(26, 'ZQW 325', t_held, 2, 70)), 'check V775 another course of that student');
+    a4 := pg_temp.zqw_audited(u1);
+    nothing := 'two reconciles more +' || (a2 - a1) || ', the check of another course +' || (a3 - a2) || ', its upload +' || (a4 - a3)
+               || ' (its rows ' || pg_temp.zqw_rows(u3) || '): rows ' || pg_temp.zqw_rows(u1) || ' stored ' || pg_temp.zqw_stored(u1)
+               || ' held ' || pg_temp.zqw_held(s2, 1, u1, 26, 27);
+    wale := pg_temp.zqw_student(27, 'Wale', v_prog, s1);
+    PERFORM assessment.reconcile_legacy_holding();
+    a5 := pg_temp.zqw_audited(u1);
+    arrives := 'entries about the upload +' || (a5 - a4) || ' rows ' || pg_temp.zqw_rows(u1) || ' stored ' || pg_temp.zqw_stored(u1)
+               || ' held ' || pg_temp.zqw_held(s2, 1, u1, 26, 27) || ' counted ' || pg_temp.zqw_counted(wale);
+    msg7 := concat_ws(' | ', 'closed ' || stuck, 'the student arrives, reconcile: ' || first_reconcile, nothing, 'the other student arrives, reconcile: ' || arrives);
+
+    -- ── over every upload of the block, at its end ──
+    -- that upload rolled back: the row that could never post is no longer held under it; and an upload holding two rows for a
+    -- number never on the register, rolled back
+    m := pg_temp.zqw_rb(u1, 'check V775 the file with the stuck row rolled back');
+    stuck_rolled := m || ' rows ' || pg_temp.zqw_rows(u1) || ' held ' || pg_temp.zqw_held(s2, 1, u1, 26, 27);
+    uh := pg_temp.zqw_file('RESULTS', s2, jsonb_build_array(pg_temp.zqw_stated(28, 'ZQW 321', t_held, 2, 50, '2'), pg_temp.zqw_stated(28, 'ZQW 322', t_held, 2, 60, '3')),
+                           'check V775 held for a number never on the register');
+    m := pg_temp.zqw_rb(uh, 'check V775 the held file rolled back');
+    held_rolled := m || ' rows ' || pg_temp.zqw_rows(uh) || ' held ' || pg_temp.zqw_held(s2, 1, uh, 28);
+    SELECT count(w.id) FILTER (WHERE w.status = 'HELD') || ' of ' || count(w.id) || ' rows of ' || count(DISTINCT pu.id) || ' rolled-back uploads' INTO promised
+      FROM assessment.past_upload pu LEFT JOIN assessment.past_upload_row w ON w.upload_id = pu.id
+     WHERE pu.created_by = ict AND pu.state = 'REVERTED';
+    SELECT count(*)::text INTO under_rolled
+      FROM assessment.legacy_result_holding h JOIN assessment.past_upload pu ON pu.id = h.upload_id
+     WHERE pu.created_by = ict AND pu.state = 'REVERTED';
+    SELECT count(*) FILTER (WHERE pu.state <> 'RUNNING' AND pu.counts IS DISTINCT FROM assessment.past_upload_counts(pu.id)) || ' of '
+           || count(*) FILTER (WHERE pu.state <> 'RUNNING') || ' (' || count(*) FILTER (WHERE pu.state = 'RUNNING') || ' left running)' INTO stale
+      FROM assessment.past_upload pu WHERE pu.created_by = ict;
+    msg8 := concat_ws(' | ', 'the upload with the row that could never post rolled back ' || stuck_rolled, 'two rows held for a number never on the register, rolled back ' || held_rolled,
+                      'rows of rolled-back uploads still reading HELD ' || promised, 'held results standing under a rolled-back upload ' || under_rolled,
+                      'closed uploads whose stored counts are not what their ledger and rows read ' || stale);
+    -- no heading of a rolled-back upload of the block is left but beside a course of the class the same upload had to leave, and
+    -- each that stays is told so
+    SELECT count(*) FILTER (WHERE c.reverted_at IS NULL
+                              AND NOT EXISTS (SELECT 1 FROM assessment.past_upload_change p
+                                               WHERE p.upload_id = c.upload_id AND p.offering_id = c.offering_id AND p.reverted_at IS NULL
+                                                 AND p.kind IN ('ENTRY_ADDED', 'ENTRY_REAPPROVED', 'UNITS_CORRECTED', 'AS_TAKEN_CORRECTED', 'AS_TAKEN_LINKED', 'CATEGORY_CORRECTED')))
+           || ' (of ' || count(*) || ' headings set by uploads since rolled back ' || count(*) FILTER (WHERE c.reverted_at IS NULL AND c.revert_note = stays)
+           || ' stay with their students'' courses, ' || count(*) FILTER (WHERE c.reverted_at IS NULL AND c.revert_note IS DISTINCT FROM stays) || ' are left for another reason)'
+      INTO headings
+      FROM assessment.past_upload_change c JOIN assessment.past_upload pu ON pu.id = c.upload_id
+     WHERE pu.created_by = ict AND pu.state = 'REVERTED' AND c.kind = 'CLASS_HEADER_CORRECTED';
+    msg3 := concat_ws(' | ', 'the later file rolled back too ' || in_full,'stayed with a course a later file stood on: ' || freed, 'three files in turn: ' || turn,
+                      'headings left on a rolled-back upload with no course of the class left beside them ' || headings);
+
+    RAISE EXCEPTION 'the V775 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V775 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V775: a class heading follows what its students carry — when the upload that set it is rolled back and a student of the class reads otherwise (the others put back to no version of their own while one keeps a later file''s course, or a Course Registration Correction''s), the heading is put back to what it read before, the students without a version read it again, and the one left keeps their own version and is told why',
+      coalesce(msg1 = concat_ws(' | ', 'a later file on one student: on the class heading "Check Heading Old" 3 Bala "Check Heading Old" 3 (the heading); the wrong file: heading "Check Heading Wrong" 3 Bala "Check Heading Wrong" 3 (own version); one student put right: heading "Check Heading Wrong" 3 AS_TAKEN_CORRECTED; the wrong file rolled back 3/4+0: heading "Check Heading Old" 3 Ada "Check Heading Right" 3 (own version) Bala "Check Heading Old" 3 (the heading) Chidi "Check Heading Old" 3 (the heading) its heading undone Ada''s course told "a later upload has changed this course since and its change has not been undone; left as it is"',
+                                 'a correction on one student: asked PENDING; the wrong file rolled back 3/4+0: heading "Check Heading Old" 3 Dayo "Check Heading Wrong" 3 (own version) Efe "Check Heading Old" 3 (the heading) Femi "Check Heading Old" 3 (the heading) its heading undone Dayo''s course told "a Course Registration Correction has been recorded on this course since the upload; left as it is" the correction PENDING "check V775: asked for after the wrong file"'), false), msg1);
+  PERFORM pg_temp.assert('V775: a class heading stays with the courses its upload had to leave only while every counted student of the class still carries the course as the heading reads — a mark entered on the portal for each of them since, or the one student''s Course Registration Correction pending — and is told so',
+      coalesce(msg2 = concat_ws(' | ', 'a portal mark on every student: approved again ENTRY_REAPPROVED,RESULT_POSTED,ENTRY_REAPPROVED,RESULT_POSTED,CLASS_HEADER_CORRECTED heading "Check Heading Wrong" 3; a portal mark on each, rolled back 0/5+0: heading "Check Heading Wrong" 3 Gbenga "Check Heading Wrong" 3 (own version) Hauwa "Check Heading Wrong" 3 (own version) its heading told "courses of this class that the upload put as the heading reads were left, and every student of the class still carries the course so; the heading stays with them"',
+                                 'the one student, a correction pending: asked PENDING; rolled back 0/3+0: heading "Check Heading Wrong" 3 Ife "Check Heading Wrong" 3 (own version) its heading told "courses of this class that the upload put as the heading reads were left, and every student of the class still carries the course so; the heading stays with them"'), false), msg2);
+  PERFORM pg_temp.assert('V775: uploads rolled back in full leave no class heading "left" — the later file rolled back after the wrong one, a heading that stayed with a course a later file stood on once that file is rolled back too, three files retitling a class in turn rolled back oldest first; no heading of a rolled-back upload is left but beside a course of the class the same upload had to leave',
+      coalesce(msg3 = concat_ws(' | ', 'the later file rolled back too 1/0+1: heading "Check Heading Old" 3 Ada "Check Heading Old" 3 (the heading) AS_TAKEN_CORRECTED:undone,RESULT_POSTED:left,AS_TAKEN_CORRECTED:undone,RESULT_POSTED:left,AS_TAKEN_CORRECTED:undone,RESULT_POSTED:left,CLASS_HEADER_CORRECTED:undone AS_TAKEN_CORRECTED:undone',
+                                 'stayed with a course a later file stood on: the wrong file rolled back 0/3+0: heading "Check Heading Wrong" 3 told "courses of this class that the upload put as the heading reads were left, and every student of the class still carries the course so; the heading stays with them"; then the later file 1/0+2: heading "Check Heading Old" 3 Jide "Check Heading Old" 3 (the heading) AS_TAKEN_CORRECTED:undone,RESULT_POSTED:left,CLASS_HEADER_CORRECTED:undone',
+                                 'three files in turn: heading "Check Heading Wrong" 3; rolled back 0/3+0 0/3+0 3/0+6: heading "Check Heading Old" 3 Kemi "Check Heading Old" 3 (the heading) AS_TAKEN_CORRECTED:undone,AS_TAKEN_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone AS_TAKEN_CORRECTED:undone,AS_TAKEN_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone AS_TAKEN_CORRECTED:undone,AS_TAKEN_CORRECTED:undone,CLASS_HEADER_CORRECTED:undone',
+                                 'headings left on a rolled-back upload with no course of the class left beside them 0 (of 8 headings set by uploads since rolled back 2 stay with their students'' courses, 0 are left for another reason)'), false), msg3);
+  PERFORM pg_temp.assert('V775: a first result left with the course its own upload approved again keeps that course''s reason whichever of the two uploads is rolled back first, never a reason naming the upload that first added the course; a standing upload''s first result is not written to; a first result on a course another upload put there, which that upload had to leave, is still told that it stays and why',
+      coalesce(msg4 = concat_ws(' | ', 'approved again by the results file, that file first: ENTRY_REAPPROVED,RESULT_POSTED rolled back 0/2+0 then 0/3+0: the result told "a result has been entered or changed on this course since the upload; left as it is" (as after the first rollback) its course told "a result has been entered or changed on this course since the upload; left as it is" counted ZQW 311 52',
+                                 'the registration file first: rolled back 0/3+0 (the result standing) then 0/2+0: the result told "a result has been entered or changed on this course since the upload; left as it is" its course told "a result has been entered or changed on this course since the upload; left as it is" counted ZQW 311 52',
+                                 'a standing upload''s first result: rolled back 1/0+0 then 0/3+0: the result standing, changes of the standing upload written to 0 the course told "a result has been entered or changed on this course since the upload; left as it is" counted ZQW 313 48',
+                                 'on another upload''s course: results file rolled back 0/1+0 told "a first result on a course [the registration file] put on the registration: it goes with that course when [the registration file] is rolled back; until then amend it through Result amendments"; a portal mark, then the registration file 0/3+0 told "a first result on a course [the registration file] put on the registration: [the registration file] is rolled back and had to leave the course (a result has been entered or changed on this course since the upload), so the result stays with it; amend it through Result amendments"'), false), msg4);
+  PERFORM pg_temp.assert('V775: the check of a results file whose students had results held before they were put on the register says what posts first — held_posted_first counts the holds of that semester for the file''s students, every one of those students is named, the Senate-approved graduate among them is listed, each CGPA line starts from the record as it stood before the check — and the check leaves nothing behind',
+      coalesce(msg5 = concat_ws(' | ', 'before the check held for the file''s students in the semester 5 (5 under it), for 0024 1 (1 under it), in the second semester 1 (1 under it); the holder''s rows HELD,HELD,HELD,HELD,HELD,HELD,HELD ledger none',
+                                 'the check answers held_posted_first 5 results 1 replaced 1 same 4 held 0 students 0021,0022,0023 graduates 0022 CGPA list 0021 2 units 5.00 > 6 units 4.00, 0022 0 units no CGPA > 4 units 3.50, 0023 0 units no CGPA > 2 units 5.00 lines RESULT_ALREADY_ON_RECORD,RESULT_ALREADY_ON_RECORD,RESULT_ALREADY_ON_RECORD,RESULT_ALREADY_ON_RECORD,RESULT_REPLACED; CGPA lines starting from the record as it stood 3 of 3',
+                                 'after it the record as the check found it: held 5 (5 under it), 1 (1 under it), 1 (1 under it) rows HELD,HELD,HELD,HELD,HELD,HELD,HELD ledger none students none stored changes 0 by status HELD 7 (as its ledger and rows read) counted ZQW 324 70 / nothing / nothing'), false), msg5);
+  PERFORM pg_temp.assert('V775: the import answers what the check said, and each upload''s ledger keeps its own before and after — the holder''s students are read from the record before their held results posted, the importing upload has a line only for the student whose mark it changed, read from the record the holder left; a held result of a student or a semester not in the file is not posted; a batch sent again by the very upload that held the row posts it first and finds it',
+      coalesce(msg6 = concat_ws(' | ', 'the import answers held_posted_first 5 results 1 replaced 1 same 4 held 0 students 0021,0022,0023 graduates 0022 CGPA list 0021 2 units 5.00 > 6 units 4.00, 0022 0 units no CGPA > 4 units 3.50, 0023 0 units no CGPA > 2 units 5.00 (as the check said); CGPA lines starting from the record as it stood 3 of 3; held 0 (0 under it), for 0024 1 (1 under it), in the second semester 1 (1 under it); counted ZQW 324 70, ZQW 321 50, ZQW 322 60 / ZQW 321 70, ZQW 322 45 / ZQW 321 70 / nothing',
+                                 'the holder''s rows RESULT_POSTED,RESULT_POSTED,HELD,RESULT_POSTED,RESULT_POSTED,RESULT_POSTED,HELD stored changes 16 by status HELD 2, RESULT_POSTED 5 (as its ledger and rows read) students 0021 2 units 5.00 > 6 units 4.00, 0022 0 units no CGPA > 4 units 3.50 graduate, 0023 0 units no CGPA > 2 units 3.00; the import''s rows RESULT_ALREADY_ON_RECORD,RESULT_ALREADY_ON_RECORD,RESULT_ALREADY_ON_RECORD,RESULT_ALREADY_ON_RECORD,RESULT_REPLACED ledger RESULT_REPLACED students 0023 2 units 3.00 > 2 units 5.00',
+                                 'its own hold: first held_posted_first 0 results 0 replaced 0 same 0 held 1 students none graduates none CGPA list empty rows HELD; the student arrives, sent again held_posted_first 1 results 0 replaced 0 same 1 held 0 students 0025 graduates none CGPA list 0025 0 units no CGPA > 2 units 3.00 rows RESULT_POSTED ledger ENROLMENT_ADDED,REGISTRATION_ADDED,ENTRY_ADDED,RESULT_POSTED held 0 (0 under it) counted ZQW 321 50'), false), msg6);
+  PERFORM pg_temp.assert('V775: a reconcile that posts nothing writes nothing — a held row that can never post is offered again at every reconcile, check and results batch for its student without one entry in the audit trail about its upload, and a reconcile that does post takes the upload''s stored counts again',
+      coalesce(msg7 = concat_ws(' | ', 'closed rows HELD,HELD,HELD stored changes 0 by status HELD 3 (as its ledger and rows read)',
+                                 'the student arrives, reconcile: entries about the upload +1 rows RESULT_POSTED,NO_MARK,HELD stored changes 5 by status HELD 1, NO_MARK 1, RESULT_POSTED 1 (as its ledger and rows read) held 2 (2 under it)',
+                                 'two reconciles more +0, the check of another course +0, its upload +0 (its rows RESULT_POSTED): rows RESULT_POSTED,NO_MARK,HELD stored changes 5 by status HELD 1, NO_MARK 1, RESULT_POSTED 1 (as its ledger and rows read) held 2 (2 under it)',
+                                 'the other student arrives, reconcile: entries about the upload +1 rows RESULT_POSTED,NO_MARK,RESULT_POSTED stored changes 9 by status NO_MARK 1, RESULT_POSTED 2 (as its ledger and rows read) held 1 (1 under it) counted ZQW 321 60'), false), msg7);
+  PERFORM pg_temp.assert('V775: over every upload of the block at its end — no row of a rolled-back upload reads Held, no held result stands under a rolled-back upload (a row that could never post included), and every closed upload''s stored counts are what its ledger and rows read',
+      coalesce(msg8 = concat_ws(' | ', 'the upload with the row that could never post rolled back 7/2+0 held dropped 1 rows RESULT_POSTED,NO_MARK,RESULT_POSTED held 0 (0 under it)',
+                                 'two rows held for a number never on the register, rolled back 0/0+0 held dropped 2 rows HELD_ROLLED_BACK,HELD_ROLLED_BACK held 0 (0 under it)',
+                                 'rows of rolled-back uploads still reading HELD 0 of 31 rows of 20 rolled-back uploads', 'held results standing under a rolled-back upload 0',
+                                 'closed uploads whose stored counts are not what their ledger and rows read 0 of 26 (0 left running)'), false), msg8);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

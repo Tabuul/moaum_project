@@ -342,8 +342,10 @@ it is still the last word on what it changed (`assessment.revert_change`):
    - the Senate's units: an amendment applied at the very units the upload had put moves nothing on the entry, so the rollback
      asks as the loader does (`assessment.entry_units_by_senate`) and never writes other units over them. A dropped course it
      had approved again is dropped again, keeping the Senate's units;
-   - a Course Registration Correction asked for, decided or undone on the course since the upload put it there
-     (`registration.entry_corrected_since`): the course the Director of ICT put back is not taken off by a rollback;
+   - a Course Registration Correction asked for, decided or undone on the course since the upload put it there or corrected it
+     (`registration.entry_corrected_since`): the course the Director of ICT put back is not taken off by a rollback, nor are its
+     units, code, title or category put back;
+   - a class chosen to stand over its duplicate on the Duplicate results page since the upload put it there (V775);
    - a registration reset, decided on, reviewed, moved to another level (`registration.registration_acted_on`: every table that
      refers to the registration).
 
@@ -354,9 +356,13 @@ Otherwise it is put back as it was:
   afresh;
 - **a dropped course it approved again** goes back as it was;
 - **a correction** (units, code or title, category, the link to the course as taken) is put back; the several corrections one row
-  made are one change, undone together;
+  made are one change, undone together (the same upload, course and snapshot with nothing else done to the course between them
+  in the ledger: a batch sent again after another change is a later change);
 - **a result that replaced an earlier upload's** gives the earlier marks back as a new score version;
-- **a class heading** it set is put back, unless every student of the class still carries the course as the heading reads;
+- **a class heading** it set is put back, unless courses of the class that the same upload put as the heading reads were left
+  and every counted student of the class still carries the course so: the heading then stays with them. Where any student reads
+  otherwise — put back to no version of their own, or on a later upload's — the heading is put back (a student without a version
+  reads the heading), and a course that was left keeps its own version;
 - **a registration it made** (REGISTRATION_ADDED) is taken off when nothing is left on it and nothing has been done to it since;
 - **a session enrolment it made** (ENROLMENT_ADDED) is taken off when the student has no registration left in the session and its
   level stands;
@@ -369,7 +375,10 @@ without the course, so it is listed for Result amendments. But when the course w
 registration file, then the Past results file — and that upload is rolled back too, the result goes with the course: its change
 is marked "taken back with its course when PRU-… was rolled back", in whichever order the two are rolled back. A first result of
 an upload that still stands keeps the course. (A later standing upload that only found the same result already on record wrote
-no change of its own, and does not keep the course.)
+no change of its own, and does not keep the course.) A first result that stays because its course had to be left is told why:
+"PRU-… is rolled back and had to leave the course (…), so the result stays with it; amend it through Result amendments" — said
+only of a course as that upload put it: a result whose own upload approved the course again in between keeps that re-approval's
+reason.
 
 **Anything a rollback leaves is listed with why**, on the upload's report and in the answer.
 
@@ -383,15 +392,25 @@ the answer counts them as `earlierUndone`.
 
 **Held results.** Results the upload was still holding for students not yet on the register never post under it once it is
 rolled back. Each goes back to the nearest earlier upload still standing that held the same row before it (the same file loaded
-twice by mistake: rolling the second back leaves the first's results held, to post when the student is uploaded), or is dropped;
-the upload's own rows read HELD_ROLLED_BACK ("Held, dropped with the rollback"), and `heldDropped` counts them. A row a later
-upload holds now, or has since posted, is that upload's and stays as it is.
+twice by mistake: rolling the second back leaves the first's results held, to post when the student is uploaded) — never to this
+upload's own earlier hold — or is dropped; `heldDropped` counts them. Every row of the upload still reading HELD is closed then
+(HELD_ROLLED_BACK, "Held, closed with the rollback"), in words that say what happened: dropped; gone back to PRU-…, which held
+it before; or not posted before the rollback, PRU-… having taken the row over. No rolled-back upload's row promises a posting. A
+row a later upload holds now, or has since posted, is that upload's and stays as it is.
 
 The rollback answers `{ref, state: REVERTED, undone, left, heldDropped, earlierUndone, leftChanges: [{kind, courseCode, session,
 semester, matric, note}]}`, every figure read from the ledger; the upload keeps who rolled it back, when, why, and `revert_counts
 {undone, left, heldDropped, earlierUndone}`. "Nothing this upload put there is left" is said only when nothing was left. The
 upload stays on the record with its report; the file goes up again only as a new upload. A Senate-approved graduate's approved
 CGPA and class of degree stay as approved.
+
+**A rollback whose answer never comes.** A large rollback can outlast the connection that asked for it. The database completes
+it whole or not at all, so the Uploads screen never calls that a failure: it says the outcome is not known yet and reads the
+upload's report again in the background, at once and then every 12 seconds for up to 15 minutes, until the report shows the
+upload rolled back (the screen then shows what was undone and what was left, from the report) or the time runs out (the officer
+is told the rollback has not gone through, or that the outcome is still not known, and may ask again: an upload already rolled
+back refuses with LEGACY_UPLOAD_STATE). Only the API's own refusal — a problem with a title, or a bare 401 or 403 — is shown as a
+refusal.
 
 The result monitor, the Duplicate results page and Course Registration Correction pass over a mark only when it is the history of
 a rolled-back upload: the first result the upload posted on that sheet, taken back with its course, nothing marked since and the
@@ -412,11 +431,33 @@ courses are recorded as taken. The CGPA, the class of degree and the award the S
 
 A results row whose student is not on the register yet is HELD, as before. It now remembers how it came
 (`assessment.legacy_result_holding.as_taken`, `upload_id`), and — when a later upload carries the same row and takes the hold over
-— the hold it replaced (`prior`). When the student is loaded each upload still standing that held the row posts it in turn,
-earliest first, under its own upload (`assessment.reconcile_legacy_holding`): as taken, corrected only when the upload's office
-was the Directorate of ICT's. The later upload then replaces the earlier one's result, or finds the same result on record, in its
-own ledger, exactly as for a student already on the register — so rolling the later one back gives the earlier result back. A row
-held before V771 posts under the old rule.
+— the hold it replaced (`prior`). When the student is loaded each upload still standing that held the row posts it in turn, in
+the order they held it (the oldest hold first), under its own upload (`assessment.reconcile_legacy_holding`): as taken, corrected
+only when the upload's office was the Directorate of ICT's. The later upload then replaces the earlier one's result, or finds the
+same result on record, in its own ledger, exactly as for a student already on the register — so rolling the later one back gives
+the earlier result back. A row held before V771 posts under the old rule.
+
+The same happens when the student was put on the register by a route that did not run the reconcile and a results file is then
+loaded for them: the loader first posts the held results of its batch's students (`assessment.reconcile_held`, the reconcile for
+one semester's rows of some students), each under the upload that held it, and only then reads the file's rows. The check does
+it too, and undoes it. The answer says so: `held_posted_first` counts the held results posted first (the check shows a note, the
+import's sentence a clause), and its CGPA list, `students_affected` and `graduates` are read against the record as it stood
+before they posted — what confirming the file does to the record the officer sees — so a student or a Senate-approved graduate
+changed only by the held posting is listed too. Each upload's own ledger keeps its own before and after. A closed upload's counts
+on the Uploads list are taken again whenever a held result posts under it (`assessment.past_upload_counts`), and written only
+where they moved.
+
+The reconcile takes the held rows it is about to post before it reads them (one order: session, semester, number, course), so a
+second reconcile of the same rows — another batch carrying the student, or the whole reconcile after a student upload — waits and
+then finds them posted, never posting again what a file has since replaced. Where two of these doors meet in a circle on those
+locks (a batch holds its own upload's row and wants the held rows; the reconcile holds them and wants that upload's row; a
+rollback holds its upload's row and wants its holds), PostgreSQL ends one whole and the API runs it again in a fresh transaction
+(`DeadlockRetry`): the results import, its check, reconcile-results and the rollback.
+
+V775 also put the rows written between V771 and itself under these rules, once: a hold standing under an upload already rolled
+back was handed back to the nearest earlier holder still standing or dropped; every row of a rolled-back upload still reading
+HELD was closed; rows closed with "held before it is held again" were reworded to what happened then; each closed upload's
+stored counts were taken again; and the ledger's code and title of each change were read from the version the change names.
 
 ### Every row's status
 
@@ -443,7 +484,7 @@ held before V771 posts under the old rule.
 | `NO_COURSE` | No such course | no course holds the code, now or before a rename |
 | `NO_STUDENT` | No such student | a registration file's number no student holds |
 | `HELD` | Held — student not loaded yet | a results file's number no student holds yet |
-| `HELD_ROLLED_BACK` | Held, dropped with the rollback | a held result its upload's rollback dropped |
+| `HELD_ROLLED_BACK` | Held, closed with the rollback | a held row its upload's rollback closed: dropped, back with an earlier upload that held it before, or taken over by another upload already — the row's detail says which |
 | `DUPLICATE_IN_FILE` | Repeated in the file | the same student and course earlier in the file, with the same values: the first goes up |
 | `DUPLICATE_CONFLICT` | Repeated in the file with other values | none goes up |
 | `REFUSED` | Refused | the portal's rules refused the row; the detail says why |

@@ -141,8 +141,9 @@ copy of 28 October 2026 there were 2,172 in 2024/2025's first semester, such as 
     the course once;
   - its mark stays on its sheet, as history;
   - the decision is written down (`assessment.duplicate_resolution`, audited) with the reason (ten characters or more).
-- **Refusals:** DUP_NOT_SAME (not one course in one semester), DUP_NOT_DUPLICATE (no mark on both), DUP_RESOLVED (a class already
-  withdrawn for the student).
+- **Refusals:** DUP_NOT_SAME (not one course in one semester), DUP_NOT_DUPLICATE (no mark on both, or one of the marks is only
+  the history of an old-portal upload since rolled back: there is nothing to decide — V775), DUP_RESOLVED (a class already
+  withdrawn for the student). A class chosen to stand is then left by a later rollback of the upload that put it there.
 - **A course on three classes** takes a decision for each class withdrawn.
 - **Putting it back** (`assessment.undo_duplicate_resolution`) restores the withdrawn class's registration as it stood. The decision
   is kept, with who put it back and why.

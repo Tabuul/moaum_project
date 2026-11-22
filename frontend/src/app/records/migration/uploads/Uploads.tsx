@@ -6,13 +6,14 @@
  * before. One upload's report reconciles it — the students whose CGPA moved (before and after), the Senate-approved graduates,
  * whose approved CGPA and class of degree stay as approved, listed for the Registry, and every row of the file that did not load
  * or was left as it was. The officer who opened an upload closes one left running; the Directorate of ICT (or a Database Operator
- * granted over the University) rolls a confirmed upload back from its ledger, with a reason.
+ * granted over the University) rolls a confirmed upload back from its ledger, with a reason. A rollback is one request: when no
+ * answer to it comes back, its outcome is not known, and the report is read again until it shows the upload rolled back.
  */
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useJson } from "@/lib/use-json";
 import { reasonHeader } from "@/lib/reason";
-import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
+import { Btn, Ico, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -58,13 +59,16 @@ interface Report {
    *  the portal or corrected) */
   byEntryStatus: Record<string, number>;
 }
-/** what a rollback answered: the changes undone, those left as they were with why, and the results it was holding that were dropped */
+/** what a rollback answered: the changes undone, those left as they were with why, and the results it was holding, which are no
+ *  longer held under it (heldDropped: each dropped, or handed back to an earlier upload still standing that held the row before) */
 interface Reverted {
   ref: string; state: string; undone: number; left: number; heldDropped: number;
-  /** changes an earlier rollback had to leave because this upload's stood on them, undone now */
+  /** changes of other rolled-back uploads, left until this one was rolled back, undone now */
   earlierUndone: number;
   leftChanges: { kind: string; courseCode: string | null; session: string | null; semester: number | null; matric: string | null; note: string | null }[];
 }
+/** how a wait for a rollback's outcome ran out: the report still showed the upload standing, or could not be read */
+type Lapsed = "standing" | "unread";
 /** who reads the page: the person (an upload's opener closes it) and the acting office (the Directorate of ICT rolls one back) */
 export type Viewer = { actorId: string | null; office: string | null };
 
@@ -83,9 +87,14 @@ const CHANGE_WORD: [string, string][] = [
   ["RESULT_POSTED", "Result posted"], ["RESULT_REPLACED", "Result replaced"], ["CLASS_HEADER_CORRECTED", "Class heading corrected"],
   ["REGISTRATION_ADDED", "Registration made"], ["ENROLMENT_ADDED", "Session enrolment made"],
 ];
-/** "results held … were dropped": the results a rolled-back upload was holding for students not yet on the register */
+/** "N results held … are no longer held under this upload": the results a rolled-back upload was holding for students not yet on
+ *  the register (the rollback's heldDropped). A rolled-back upload never posts one: each is dropped, or goes back to the nearest
+ *  earlier upload still standing that held the row before it (V775) — heldWhich says so, and the row's own detail says which of
+ *  the two */
 const heldWords = (n: number) =>
-  `${n.toLocaleString()} result${n === 1 ? "" : "s"} held for students not yet on the register ${n === 1 ? "was" : "were"} dropped`;
+  `${n.toLocaleString()} result${n === 1 ? "" : "s"} held for ${n === 1 ? "a student" : "students"} not yet on the register ${n === 1 ? "is" : "are"} no longer held under this upload`;
+const heldWhich = (n: number) =>
+  `dropped, or back with an earlier upload that held the row before — ${n === 1 ? "its row" : "each row"} below says which`;
 const changeWord = (k: string) => CHANGE_WORD.find(([x]) => x === k)?.[1] ?? k;
 /** a student's course as its category reads on the record; an older report without it falls back to the entry's type */
 const CATEGORY_WORD: Record<string, string> = {
@@ -97,10 +106,11 @@ const category = (cat: string | null | undefined, type?: string | null) => {
 };
 const wasCategory = (c: Change) => category(c.wasCategory, c.wasEntryType);
 const nowCategory = (c: Change) => category(c.nowCategory, c.nowEntryType);
-/** "N changes of other rolled-back uploads were undone too": what an earlier rollback had to leave because of this upload, and a
- *  first result that went with the course this upload had put there */
+/** "N changes of other rolled-back uploads, left until this one was rolled back, were undone too": true of every change the count
+ *  holds — what an earlier rollback had to leave while this upload's changes stood on it, and a first result that went with the
+ *  course this upload had put there */
 const earlierWords = (n: number) =>
-  `${n.toLocaleString()} change${n === 1 ? "" : "s"} of other rolled-back uploads that stood on this one ${n === 1 ? "was" : "were"} undone too`;
+  `${n.toLocaleString()} change${n === 1 ? "" : "s"} of other rolled-back uploads, left until this one was rolled back, ${n === 1 ? "was" : "were"} undone too`;
 const figure = (v: number | string | null | undefined) => (v == null || v === "" || !Number.isFinite(Number(v)) ? "—" : Number(v).toFixed(2));
 /** a JSON column the API may hand over as text */
 function objectOf<T extends object>(v: T | string | null | undefined): Partial<T> {
@@ -145,8 +155,72 @@ function wasNow(c: Change): [string, string] {
 const revertWords = (c: Change) =>
   (c.revertedAt ? `rolled back ${when(c.revertedAt)}${c.revertNote ? ` (${c.revertNote})` : ""}` : c.revertNote ? `left as it was: ${c.revertNote}` : "");
 
+/* ── a rollback whose answer never came ──
+ * A rollback is one request and one transaction (about 5 ms a change): a gateway may close the connection before the API answers,
+ * while the database goes on and commits. Nothing then says whether the upload was rolled back, so the report is read again in the
+ * background — every POLL_MS, for POLL_FOR_MS — until it shows the upload rolled back. */
+const POLL_MS = 12000;
+const POLL_FOR_MS = 15 * 60 * 1000;
+/** how long the notice of it stays up: four sentences to read (the dialog, or the report, keeps the same words) */
+const NOTICE_MS = 12000;
+const OUTCOME_NOT_KNOWN = "The portal did not answer before the connection closed. The rollback may still be running; it completes whole or not at all. "
+  + "This report shows the upload as rolled back once it has finished. Pressing Roll it back again is safe: it waits for the first and is told the upload is rolled back already.";
+const LAPSED_TITLE: Record<Lapsed, string> = { standing: "The rollback has not gone through", unread: "The outcome of the rollback is still not known" };
+const LAPSED: Record<Lapsed, string> = {
+  standing: "Fifteen minutes on, this report still does not show the upload as rolled back. Roll it back again.",
+  unread: "Fifteen minutes on, the report could not be read. Open it again; if it does not show the upload as rolled back, roll it back again.",
+};
+/** the rollback's own answer: the upload rolled back, with what was undone and what was left */
+const answerOf = (j: unknown): Partial<Reverted> | null =>
+  (j && typeof j === "object" && (j as Partial<Reverted>).state === "REVERTED" ? (j as Partial<Reverted>) : null);
+/** the API's own refusal: a JSON object with a title in words (its 403, its 422 and its own 503 all carry one). A gateway's page, an
+ *  empty body or a dropped connection is no answer at all — the status alone does not tell them apart. The one exception is the
+ *  door's own 401 or 403, which Spring's security layer may send with no such body (a session past its time, another office
+ *  chosen in another tab): either is given before a rollback begins, never while one runs, so it is a refusal too */
+const refusalOf = (status: number, j: unknown): Problem | null =>
+  (j && typeof j === "object" && typeof (j as { title?: unknown }).title === "string" ? (j as Problem)
+    : status === 401 ? { status, title: "The upload was not rolled back", detail: "You are signed out. Sign in again, then roll it back." }
+    : status === 403 ? { status, title: "The upload was not rolled back", detail: "The office you are acting for may not roll an upload back." }
+    : null);
+/** the report read in the background (never the person's activity); null when it could not be read this time */
+async function readReport(id: string, signal: AbortSignal): Promise<Report | null> {
+  try {
+    const r = await fetch(`${BASE}/${encodeURIComponent(id)}`, { cache: "no-store", headers: { "X-Background": "1" }, signal });
+    const j: unknown = r.ok ? await r.json().catch(() => null) : null;
+    return j && typeof j === "object" && (j as Partial<Report>).upload ? (j as Report) : null;
+  } catch { return null; }
+}
+/** what a rollback did, read from the report itself where the rollback's own answer never came: the upload's stored counts, and the
+ *  changes left as they were from each listed change's note, newest first as the answer lists them (the report lists an upload's
+ *  first changes only, so on a very large upload not every change left is among them) */
+function revertedFrom(r: Report): Reverted {
+  const rc = objectOf<RevertCounts>(r.upload.revertCounts);
+  return { ref: r.upload.ref, state: r.upload.state, undone: Number(rc.undone ?? 0), left: Number(rc.left ?? 0), heldDropped: Number(rc.heldDropped ?? 0),
+    earlierUndone: Number(rc.earlierUndone ?? 0),
+    leftChanges: (r.changes ?? []).filter((c) => !c.revertedAt).sort((a, b) => b.seq - a.seq)
+      .map((c) => ({ kind: c.kind, courseCode: c.courseCode, session: c.session, semester: c.semester, matric: c.matric, note: c.revertNote ?? null })) };
+}
+/** a rollback in one line, for the notice */
+const rolledBackWords = (d: Reverted) =>
+  `Upload ${d.ref} rolled back — ${d.undone.toLocaleString()} change${d.undone === 1 ? "" : "s"} undone${d.left ? `, ${d.left.toLocaleString()} left as ${d.left === 1 ? "it was" : "they were"}` : ""}${d.heldDropped ? `, ${d.heldDropped.toLocaleString()} held result${d.heldDropped === 1 ? "" : "s"} no longer held under it` : ""}${d.earlierUndone ? `; ${earlierWords(d.earlierUndone)}` : ""}`;
+
+/** the one warning while a rollback's outcome is not known, and the word when the wait for it ran out: in the dialog, and on the
+ *  report while the dialog is closed */
+function RollbackOutcome({ lapsed }: { lapsed: Lapsed | null }) {
+  return (
+    <div className="notice notice--warn" role="status" style={{ background: "var(--amber-bg)", border: "1px solid var(--amber-line)", borderLeft: "4px solid var(--amber)" }}>
+      <Ico name="alert" size={18} stroke="var(--amber-ink)" w={2} />
+      <div style={{ minWidth: 0 }}>
+        <div className="notice__t">{lapsed ? LAPSED_TITLE[lapsed] : "The outcome of the rollback is not known yet"}</div>
+        <div className="notice__p">{lapsed ? LAPSED[lapsed] : OUTCOME_NOT_KNOWN}</div>
+      </div>
+    </div>
+  );
+}
+
 export function Uploads({ id, viewer }: { id: string | null; viewer: Viewer | null }) {
-  return id ? <UploadReport id={id} viewer={viewer} /> : <UploadList />;
+  // keyed by the upload: another upload's report starts afresh (no rollback of the last one still awaited or shown)
+  return id ? <UploadReport key={id} id={id} viewer={viewer} /> : <UploadList />;
 }
 
 function UploadList() {
@@ -191,9 +265,11 @@ function UploadList() {
 
 /** the confirmation before an upload is rolled back: what a rollback takes back and what it does not, in plain words, and why it is
  *  rolled back (ten characters or more, on the upload's record with the officer's name). Its own state, so typing in it does not
- *  redraw the report behind it. */
-function ConfirmRollback({ upload, changes, busy, problem, onCancel, onConfirm }: {
-  upload: Upload; changes: number; busy: boolean; problem: Problem | null; onCancel: () => void; onConfirm: (reason: string) => void;
+ *  redraw the report behind it. While the outcome of a rollback already asked for is not known (waiting), or the wait for it ran out
+ *  (lapsed), it says so; Roll it back stays open, since a second request waits for the first. */
+function ConfirmRollback({ upload, changes, busy, problem, waiting, lapsed, onCancel, onConfirm }: {
+  upload: Upload; changes: number; busy: boolean; problem: Problem | null; waiting: boolean; lapsed: Lapsed | null;
+  onCancel: () => void; onConfirm: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
   const ready = reason.trim().length >= 10;
@@ -225,6 +301,7 @@ function ConfirmRollback({ upload, changes, busy, problem, onCancel, onConfirm }
         record, marked rolled back, with this report; it is not rolled back twice, and the file goes up again only as a new upload.
       </Note>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {waiting || lapsed ? <RollbackOutcome lapsed={waiting ? null : lapsed} /> : null}
       <Field id="pru-why" label="Why this upload is rolled back" required hint="Ten characters or more; it goes on the upload's record with your name">
         <textarea id="pru-why" className="ctl" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
@@ -244,6 +321,43 @@ function UploadReport({ id, viewer }: { id: string; viewer: Viewer | null }) {
   const [closing, setClosing] = useState(false);
   const [rollback, setRollback] = useState<{ busy: boolean; problem: Problem | null } | null>(null);
   const [reverted, setReverted] = useState<Reverted | null>(null);
+  /** a rollback asked for whose answer never came: when it was asked, while the report is read again for its outcome */
+  const [awaiting, setAwaiting] = useState<{ since: number } | null>(null);
+  /** the wait ran out without the report showing the upload rolled back */
+  const [lapsed, setLapsed] = useState<Lapsed | null>(null);
+
+  // While the outcome is not known the report is read again, at once and then every POLL_MS, as a background read. It ends one of
+  // three ways: the report shows the upload rolled back (the dialog closes and the report says what the rollback did — its counts,
+  // and each change left with why); POLL_FOR_MS pass without that (the officer is told to roll it back again); or the page is left
+  // (the timer is cleared and a read under way is dropped). A second request under way is its own wait: no reading beside it.
+  const asking = rollback?.busy ?? false;
+  useEffect(() => {
+    if (!awaiting || asking) return;
+    let live = true;
+    let timer: number | undefined;
+    const stop = new AbortController();
+    const read = async () => {
+      const report = await readReport(id, stop.signal);
+      if (!live) return;
+      if (report?.upload.state === "REVERTED") {
+        const done = revertedFrom(report);
+        setAwaiting(null);
+        setRollback(null);
+        setReverted(done);
+        setTick((t) => t + 1);
+        notify(rolledBackWords(done));
+      } else if (Date.now() - awaiting.since >= POLL_FOR_MS) {
+        const how: Lapsed = report ? "standing" : "unread";
+        setAwaiting(null);
+        setLapsed(how);
+        notify(`${LAPSED_TITLE[how]}. ${LAPSED[how]}`, "warn", NOTICE_MS);
+      } else {
+        timer = window.setTimeout(() => void read(), POLL_MS);
+      }
+    };
+    timer = window.setTimeout(() => void read(), 0);
+    return () => { live = false; window.clearTimeout(timer); stop.abort(); };
+  }, [id, awaiting, asking]);
 
   /** the upload's heading lines on an export */
   function metaOf(r: Report, more: [string, string][]): [string, string][] {
@@ -313,34 +427,52 @@ function UploadReport({ id, viewer }: { id: string; viewer: Viewer | null }) {
     } finally { setClosing(false); }
   }
 
-  /** a confirmed upload rolled back from its ledger with the reason given; what it left as it was is listed */
+  /** a confirmed upload rolled back from its ledger with the reason given; what it left as it was is listed. The API's own refusal
+   *  is told from no answer by the body, not the status: a JSON problem with a title is the API's, shown in its words; anything else
+   *  that is not the rollback's own answer (a gateway's page, an answer cut short, a dropped connection) leaves the outcome not
+   *  known — the database may still be at work — so nothing is said to have failed and the report is read again until it says */
   async function rollBack(u: Upload, reason: string) {
     setRollback({ busy: true, problem: null });
+    setLapsed(null);
+    let status = 0;
+    let ok = false;
+    let j: unknown = null;
     try {
       const r = await fetch(`${BASE}/${encodeURIComponent(u.id)}/revert`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Old portal upload ${u.ref} rolled back: ${reason}`) },
         body: JSON.stringify({ reason }),
       });
-      const j = await r.json().catch(() => null);
-      if (!r.ok) {
-        const p = (j ?? { status: r.status, title: "The upload was not rolled back" }) as Problem;
-        setRollback({ busy: false, problem: p });
-        notifyProblem(p, "The upload was not rolled back");
-        return;
-      }
-      const a = (j ?? {}) as Partial<Reverted>;
-      const done: Reverted = { ref: a.ref ?? u.ref, state: a.state ?? "REVERTED", undone: Number(a.undone ?? 0), left: Number(a.left ?? 0),
+      status = r.status;
+      ok = r.ok;
+      j = await r.json().catch(() => null);
+    } catch { /* no answer: the connection dropped */ }
+    const a = ok ? answerOf(j) : null;
+    if (a) {
+      // the rollback answered: nothing is read again for it (a wait on for an earlier request ends here too)
+      const done: Reverted = { ref: a.ref ?? u.ref, state: "REVERTED", undone: Number(a.undone ?? 0), left: Number(a.left ?? 0),
         heldDropped: Number(a.heldDropped ?? 0), earlierUndone: Number(a.earlierUndone ?? 0), leftChanges: Array.isArray(a.leftChanges) ? a.leftChanges : [] };
       setReverted(done);
       setRollback(null);
-      notify(`Upload ${done.ref} rolled back — ${done.undone.toLocaleString()} change${done.undone === 1 ? "" : "s"} undone${done.left ? `, ${done.left.toLocaleString()} left as ${done.left === 1 ? "it was" : "they were"}` : ""}${done.heldDropped ? `, ${done.heldDropped.toLocaleString()} held result${done.heldDropped === 1 ? "" : "s"} dropped` : ""}${done.earlierUndone ? `; ${earlierWords(done.earlierUndone)}` : ""}`);
+      setAwaiting(null);
+      notify(rolledBackWords(done));
       setTick((t) => t + 1);
-    } catch {
-      const p = { status: 0, title: "The upload was not rolled back", detail: "The connection to the portal dropped; open the report again to see whether it went through." };
-      setRollback({ busy: false, problem: p });
-      notifyProblem(p);
+      return;
     }
+    const refusal = ok ? null : refusalOf(status, j);
+    if (refusal) {
+      // the API answered: this request rolled nothing back, and no reading is begun for it. A wait already on for an earlier
+      // request goes on (the report is read again as soon as this one is no longer under way), so "it is rolled back already"
+      // is followed by the report saying so
+      setRollback({ busy: false, problem: refusal });
+      notifyProblem(refusal, "The upload was not rolled back");
+      return;
+    }
+    // no answer: never notifyProblem, which says nothing was saved. One warning, in the dialog and as a notice, and the report is
+    // read again until it says
+    setRollback({ busy: false, problem: null });
+    setAwaiting({ since: Date.now() });
+    notify(OUTCOME_NOT_KNOWN, "warn", NOTICE_MS);
   }
 
   if (failed) return (
@@ -387,11 +519,12 @@ function UploadReport({ id, viewer }: { id: string; viewer: Viewer | null }) {
             <Note kind="info" title="This upload was rolled back">
               {`${(Number(rc.undone ?? 0)).toLocaleString()} change${Number(rc.undone ?? 0) === 1 ? " was" : "s were"} undone`}
               {Number(rc.left ?? 0) ? `; ${Number(rc.left).toLocaleString()} ${Number(rc.left) === 1 ? "was" : "were"} left as ${Number(rc.left) === 1 ? "it was" : "they were"}, each with why below` : ""}
-              {Number(rc.heldDropped ?? 0) ? `; ${heldWords(Number(rc.heldDropped))}` : ""}
+              {Number(rc.heldDropped ?? 0) ? `; ${heldWords(Number(rc.heldDropped))} (${heldWhich(Number(rc.heldDropped))})` : ""}
               {Number(rc.earlierUndone ?? 0) ? `; ${earlierWords(Number(rc.earlierUndone))}` : ""}.
               {" "}The students and changes below are what the upload did when it went up; each change says whether it was rolled back.
             </Note>
           ) : null}
+          {!rollback && (awaiting || lapsed) ? <RollbackOutcome lapsed={awaiting ? null : lapsed} /> : null}
           {mayRollBack ? (
             <div className="row" style={{ marginTop: 8 }}>
               <Btn kind="secondary" onClick={() => setRollback({ busy: false, problem: null })}>Roll back this upload</Btn>
@@ -400,11 +533,13 @@ function UploadReport({ id, viewer }: { id: string; viewer: Viewer | null }) {
         </PBody>
       </Panel>
       {reverted ? (
-        <Panel title="Rolled back" right={`${reverted.undone.toLocaleString()} undone · ${reverted.left.toLocaleString()} left as they were${reverted.heldDropped ? ` · ${reverted.heldDropped.toLocaleString()} held dropped` : ""}`}>
+        <Panel title="Rolled back" right={`${reverted.undone.toLocaleString()} undone · ${reverted.left.toLocaleString()} left as they were${reverted.heldDropped ? ` · ${reverted.heldDropped.toLocaleString()} no longer held` : ""}`}>
           <PBody>
             {reverted.left > 0 ? (
               <Note kind="info" title={`${reverted.left.toLocaleString()} change${reverted.left === 1 ? " was" : "s were"} left as on record`}>
                 The record has changed there since the upload, or the change is put right elsewhere; each is listed with why.
+                {reverted.leftChanges.length < reverted.left
+                  ? ` This report lists the upload's first ${data.changes.length.toLocaleString()} changes only, so ${reverted.leftChanges.length ? reverted.leftChanges.length.toLocaleString() : "none"} of the ${reverted.left.toLocaleString()} ${reverted.leftChanges.length > 1 ? "are" : "is"} listed here.` : ""}
               </Note>
             ) : (
               <Note kind="ok" title="Every change was undone">
@@ -413,8 +548,12 @@ function UploadReport({ id, viewer }: { id: string; viewer: Viewer | null }) {
             )}
             {reverted.heldDropped > 0 ? (
               <Note kind="info" title={heldWords(reverted.heldDropped)}>
-                They never post under a rolled-back upload; the rows are listed below as dropped with the rollback. Where an earlier upload
-                still standing held the same row before this one, that upload&rsquo;s result is held again and posts when the student is uploaded.
+                A rolled-back upload never posts a result. {reverted.heldDropped === 1 ? "This one was" : "Each was"} dropped, or went back
+                to an earlier upload still standing that held the same row before this one; that upload holds its own result for the row
+                again and posts it when the student is uploaded. {reverted.heldDropped === 1 ? "The row is" : "The rows are"} listed below
+                as held and closed with the rollback, and {reverted.heldDropped === 1 ? "its" : "each row's"} detail says which. A row
+                another upload had taken over before the rollback is not counted here: it is listed below in the same way, and its detail
+                names that upload.
               </Note>
             ) : null}
             {reverted.earlierUndone > 0 ? (
@@ -529,8 +668,8 @@ function UploadReport({ id, viewer }: { id: string; viewer: Viewer | null }) {
         ) : null}
       </Panel>
       {rollback ? (
-        <ConfirmRollback upload={u} changes={data.changesTotal} busy={rollback.busy} problem={rollback.problem}
-          onCancel={() => { if (!rollback.busy) setRollback(null); }} onConfirm={(reason) => void rollBack(u, reason)} />
+        <ConfirmRollback upload={u} changes={data.changesTotal} busy={rollback.busy} problem={rollback.problem} waiting={!!awaiting} lapsed={lapsed}
+          onCancel={() => { if (!rollback.busy) { setRollback(null); setLapsed(null); } }} onConfirm={(reason) => void rollBack(u, reason)} />
       ) : null}
     </>
   );

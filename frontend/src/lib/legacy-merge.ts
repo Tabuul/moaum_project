@@ -209,8 +209,9 @@ export const LINE_WORD: Record<string, [string, string]> = {
   REFUSED: ["Refused", "Will be refused"],
   RESULT_POSTED: ["Result posted", "Result will be posted"],
   HELD: ["Held — student not loaded yet", "Will be held — student not loaded yet"],
-  // V771: a held result its upload's rollback dropped (it never posts under a rolled-back upload)
-  HELD_ROLLED_BACK: ["Held, dropped with the rollback", "Held, dropped with the rollback"],
+  // V771, V775: a held row its upload's rollback closed (it never posts under a rolled-back upload) — dropped, back with an
+  // earlier upload that held it before, or taken over by another upload already; the row's detail says which
+  HELD_ROLLED_BACK: ["Held, closed with the rollback", "Held, closed with the rollback"],
   NO_MARK: ["No mark, or a mark over 100", "No mark, or a mark over 100"],
   // V614: the mark read as the whole (an exam over 60 or alone, a Total, a CA over 40), and a result already on record
   RESULT_AS_TOTAL: ["Result posted — the whole mark, of 100", "Result will be posted — the whole mark, of 100"],

@@ -31,7 +31,12 @@ import org.springframework.transaction.PlatformTransactionManager;
  * approved CGPA as the Senate approved it. The uploads are confirmed, loaded, closed and read by their offices only. A closed upload is
  * rolled back by the Directorate of ICT alone, once, never while it runs: A's corrected units go back to the 3 first loaded, and the
  * report keeps listing the file's rows that were not a plain load (a row without its title among them) with every row counted by
- * status. Needs DATABASE_URL.
+ * status. The report reads each change's category as the record read it on each side — an elective by the programme's basis filed
+ * Core reads ELECTIVE then CORE, a GST course filed Core reads GST — and reads it so still after the course is renamed and
+ * reclassified (the ledger keeps the course's kind); a dropped course approved again under a result entered on the portal reads the
+ * record's own title on both sides, never the file's (V775). A results file loaded for a student whose result is still held posts the
+ * held result first, under the upload that held it, and says so in its check and its answer; meeting a reconcile of the same held rows
+ * in a circle, the batch PostgreSQL ends is loaded again by its door (V775). Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -46,6 +51,8 @@ class HistoricalCourseAsTakenIT {
     JdbcClient jdbc;
     @Autowired
     PlatformTransactionManager transactions;
+    @Autowired
+    javax.sql.DataSource dataSource;
 
     ItSupport it;
     /** one Director of ICT throughout: an upload is loaded and closed by the person who confirmed it */
@@ -142,6 +149,29 @@ class HistoricalCourseAsTakenIT {
                 SELECT e.units FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
                   JOIN catalogue.offering o ON o.id = e.offering_id WHERE r.student_id = :s AND r.session = :ses AND o.course_code = :c
                 """).param("s", id.get(who)).param("ses", session).param("c", course).query(Integer.class).single();
+    }
+
+    /** a row of either template for any course of the run: the course as taken — code, title, credit units, category — and, on a
+     *  results file, the mark */
+    private Map<String, String> taken(String line, String who, String code, String title, int units, String category, String total) {
+        Map<String, String> row = new HashMap<>(Map.of("line", line, "matric", matric.get(who), "course", code, "title", title,
+                "creditUnits", String.valueOf(units), "category", category, "level", "100"));
+        if (total != null) row.put("total", total);
+        return row;
+    }
+
+    /** an upload's report read again: its changes of one course — by the code the ledger kept, which a rename does not move — of the
+     *  kinds named, in the report's order */
+    private List<Map<String, Object>> changes(Object upload, String code, String... kinds) {
+        Map<String, Object> report = ok(it.get(ict, "/api/v1/results/legacy/uploads/" + upload));
+        return ((List<Map<String, Object>>) report.get("changes")).stream()
+                .filter(c -> code.equals(c.get("courseCode")) && List.of(kinds).contains(String.valueOf(c.get("kind")))).collect(Collectors.toList());
+    }
+
+    /** those changes, each as "KIND was>now": the category the record read on each side (null where the course was not on record) */
+    private List<String> categories(Object upload, String code, String... kinds) {
+        return changes(upload, code, kinds).stream().map(c -> c.get("kind") + " " + c.get("wasCategory") + ">" + c.get("nowCategory"))
+                .collect(Collectors.toList());
     }
 
     @Test
@@ -340,5 +370,205 @@ class HistoricalCourseAsTakenIT {
         assertThat((List<Map<String, Object>>) after.get("changes")).singleElement()
                 .satisfies(c -> assertThat(c).containsEntry("kind", "UNITS_CORRECTED").containsKey("revertedAt"));
         assertThat(after).containsEntry("rowsTotal", 2);
+    }
+
+    @Test
+    void theReportReadsACategoryAsTheRecordReadItWhateverTheCatalogueSaysSinceAndACourseKeptAsOnRecordByItsOwnTitle() {
+        // two more courses of the run's own, in the first one's department: one of kind GST, one for a result entered on the portal
+        String px = course.substring(0, 3);
+        String gst = px + " 102";
+        String renamed = px + " 192";
+        String portal = px + " 103";
+        String gstTitle = "Use of Records Kept";
+        String portalTitle = "Records Entered on the Portal";
+        it.db(() -> {
+            String dept = jdbc.sql("SELECT dept_code FROM catalogue.course WHERE code = :c").param("c", course).query(String.class).single();
+            jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max) VALUES (:c, :t, 2, 1, 100, :d, 'GST', 'LIVE', 40)")
+                    .param("c", gst).param("t", gstTitle).param("d", dept).update();
+            return jdbc.sql("INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ca_max) VALUES (:c, :t, 2, 1, 100, :d, 'Core', 'LIVE', 40)")
+                    .param("c", portal).param("t", portalTitle).param("d", dept).update();
+        });
+
+        // ── the registration as the old portal filed it: A's course an elective, C's course core ──
+        Map<String, Object> reg = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads",
+                confirm("REGISTRATION", "HistoricalCourseAsTakenIT: the old portal's registration as exported")));
+        Map<String, Object> registered = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/registration", body(List.of(
+                taken("2", "A", course, TITLE, 3, "Elective", null), taken("3", "C", portal, portalTitle, 2, "Core", null)), reg.get("id"))));
+        assertThat(registered).as(String.valueOf(registered.get("lines"))).containsEntry("refused", 0).containsEntry("entries", 2);
+        ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + reg.get("id") + "/finish", Map.of("complete", true)));
+
+        // A's course typed CURRENT: an elective by the programme's basis alone, which the entry's type does not say
+        assertThat(it.db(() -> jdbc.sql("""
+                UPDATE registration.entry e SET entry_type = 'CURRENT' FROM registration.course_registration r
+                 WHERE r.id = e.registration_id AND r.student_id = :s AND r.session = :ses AND e.entry_type = 'ELECTIVE' AND e.basis = 'Elective'
+                """).param("s", id.get("A")).param("ses", session).update())).as("A's course, filed Elective, typed CURRENT").isEqualTo(1);
+        // C's course: a result entered on the portal (CA 20, exam 35), and the course then dropped
+        assertThat(it.db(() -> {
+            UUID sheet = jdbc.sql("""
+                    INSERT INTO assessment.score_sheet (id, offering_id)
+                    SELECT gen_random_uuid(), o.id FROM catalogue.offering o WHERE o.course_code = :c AND o.session = :ses AND o.semester = 1
+                    RETURNING id
+                    """).param("c", portal).param("ses", session).query(UUID.class).single();
+            jdbc.sql("INSERT INTO assessment.score (sheet_id, student_id, ca, exam, outcome) VALUES (:sh, :s, 20, 35, 'GRADED')")
+                    .param("sh", sheet).param("s", id.get("C")).update();
+            return jdbc.sql("""
+                    UPDATE registration.entry e SET status = 'DROPPED' FROM registration.course_registration r
+                     WHERE r.id = e.registration_id AND r.student_id = :s AND r.session = :ses AND e.status = 'APPROVED'
+                    """).param("s", id.get("C")).param("ses", session).update();
+        })).as("C's course, marked on the portal, dropped").isEqualTo(1);
+
+        // ── the results file: A's course filed Core; the GST course filed Core for B, who has nothing on record; C's dropped course
+        //    under another title, with another mark ──
+        Map<String, Object> res = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads",
+                confirm("RESULTS", "HistoricalCourseAsTakenIT: the old portal's results as exported")));
+        Object upload = res.get("id");
+        Map<String, Object> up = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/results", body(List.of(
+                taken("2", "A", course, TITLE, 3, "Core", "70"), taken("3", "B", gst, gstTitle, 2, "Core", "65"),
+                taken("4", "C", portal, portalTitle + " Retitled", 2, "Core", "61")), upload)));
+        assertThat(up).as(String.valueOf(up.get("lines"))).containsEntry("refused", 0).containsEntry("category_corrected", 1).containsEntry("entries", 1)
+                .containsEntry("results", 2).containsEntry("reapproved", 1).containsEntry("results_on_portal", 1);
+        ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + upload + "/finish", Map.of("complete", true)));
+
+        // ── each change with the category the record read on each side: the programme's basis first (the entry's type, CURRENT on
+        //    both sides, says nothing of it), and a GST course GST whatever the file calls it — nothing before, where it was not on record ──
+        assertThat(categories(upload, course, "CATEGORY_CORRECTED", "RESULT_POSTED"))
+                .containsExactly("CATEGORY_CORRECTED ELECTIVE>CORE", "RESULT_POSTED ELECTIVE>CORE");
+        assertThat(categories(upload, gst, "ENTRY_ADDED", "RESULT_POSTED")).containsExactly("ENTRY_ADDED null>GST", "RESULT_POSTED null>GST");
+
+        // ── the GST course renamed: the report reads as it did, under the code the ledger kept (nothing under the new one) ──
+        assertThat(it.db(() -> jdbc.sql("SELECT catalogue.rename_course(:o, :n)").param("o", gst).param("n", renamed).query(String.class).single()))
+                .isEqualTo(renamed);
+        assertThat(categories(upload, gst, "ENTRY_ADDED", "RESULT_POSTED")).containsExactly("ENTRY_ADDED null>GST", "RESULT_POSTED null>GST");
+        assertThat(changes(upload, renamed, "ENTRY_ADDED", "RESULT_POSTED")).isEmpty();
+
+        // ── and reclassified Core: the report STILL reads GST on both changes — the kind the ledger kept, not today's catalogue ──
+        assertThat(it.db(() -> jdbc.sql("UPDATE catalogue.course SET kind = 'Core' WHERE code = :c").param("c", renamed).update())).isEqualTo(1);
+        assertThat(categories(upload, gst, "ENTRY_ADDED", "RESULT_POSTED")).containsExactly("ENTRY_ADDED null>GST", "RESULT_POSTED null>GST");
+        assertThat(categories(upload, course, "CATEGORY_CORRECTED", "RESULT_POSTED"))
+                .containsExactly("CATEGORY_CORRECTED ELECTIVE>CORE", "RESULT_POSTED ELECTIVE>CORE");
+
+        // ── V775: C's dropped course is approved again as it stands on record — a result entered on the portal stands on it — so the
+        //    change reads the record's code and title on both sides; the file's title was not taken ──
+        assertThat(changes(upload, portal, "ENTRY_REAPPROVED")).singleElement().satisfies(c -> assertThat(c)
+                .containsEntry("wasStatus", "DROPPED").containsEntry("nowStatus", "APPROVED").containsEntry("wasCode", portal).containsEntry("nowCode", portal)
+                .containsEntry("wasTitle", portalTitle).containsEntry("nowTitle", portalTitle));
+    }
+
+    /** one statement of the holder's, on its own connection */
+    @FunctionalInterface
+    private interface Hold {
+        void on(java.sql.Connection holder) throws java.sql.SQLException;
+    }
+
+    private static void run(java.sql.Connection c, String sql) throws java.sql.SQLException {
+        try (java.sql.Statement s = c.createStatement()) {
+            s.execute(sql);
+        }
+    }
+
+    /**
+     * The door called while a connection of the test's own has done {@code first}; once the door waits on what that holds, the
+     * connection does {@code then}, which waits on what the door holds already: a deadlock. PostgreSQL ends the door's transaction,
+     * which waited first (the holder's deadlock_timeout is set long where the role may, so it is never the one ended); the connection's
+     * {@code then} goes through once the door's transaction is ended under it, and the connection lets go. Returns the door's answer.
+     */
+    private ResponseEntity<Map> clash(java.util.function.Supplier<ResponseEntity<Map>> door, Hold first, Hold then) throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try (java.sql.Connection holder = dataSource.getConnection()) {
+            holder.setAutoCommit(false);
+            try {
+                int pid;
+                try (java.sql.Statement s = holder.createStatement()) {
+                    s.execute("SELECT set_config('deadlock_timeout', '60s', true) FROM pg_roles WHERE rolname = current_user AND rolsuper");
+                    try (java.sql.ResultSet r = s.executeQuery("SELECT pg_backend_pid()")) {
+                        r.next();
+                        pid = r.getInt(1);
+                    }
+                }
+                first.on(holder);
+                java.util.concurrent.Future<ResponseEntity<Map>> answer = pool.submit(door::get);
+                boolean waiting = false;
+                for (int i = 0; i < 1200 && !waiting; i++) {   // up to a minute
+                    waiting = jdbc.sql("SELECT EXISTS (SELECT 1 FROM pg_locks l WHERE NOT l.granted AND CAST(:pid AS int) = ANY (pg_blocking_pids(l.pid)))")
+                            .param("pid", pid).query(Boolean.class).single();
+                    if (!waiting) Thread.sleep(50);
+                }
+                assertThat(waiting).as("the door waits on what the connection holds").isTrue();
+                java.util.concurrent.Future<Object> closed = pool.submit(() -> {
+                    then.on(holder);
+                    holder.rollback();
+                    return null;
+                });
+                closed.get(90, java.util.concurrent.TimeUnit.SECONDS);
+                return answer.get(120, java.util.concurrent.TimeUnit.SECONDS);
+            } finally {
+                holder.rollback();
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private BigDecimal counted(UUID student) {
+        return jdbc.sql("SELECT x.total FROM assessment.student_results(:s) x WHERE x.course_code = :c")
+                .param("s", student).param("c", course).query(BigDecimal.class).single();
+    }
+
+    @Test
+    void aResultsFileForAStudentWhoseResultIsStillHeldPostsItFirstAndIsLoadedAgainWhenItMeetsAReconcile() throws Exception {
+        // ── the result goes up before the student is on the register: held under the first upload ──
+        String late = it.freeNumber("MOAUM/HCL/" + String.format("%02d", year % 100) + "/", 6);
+        matric.put("L", late);
+        Map<String, Object> first = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads",
+                confirm("RESULTS", "HistoricalCourseAsTakenIT: results uploaded before their student")));
+        Map<String, Object> held = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/results",
+                body(List.of(taken("2", "L", course, TITLE, 3, "Core", "50")), first.get("id"))));
+        assertThat(((Number) held.get("held")).intValue()).isEqualTo(1);
+        ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + first.get("id") + "/finish", Map.of("complete", true)));
+        java.util.function.IntSupplier holds = () -> jdbc.sql("SELECT count(*) FROM assessment.legacy_result_holding WHERE matric = :m")
+                .param("m", late).query(Integer.class).single();
+        assertThat(holds.getAsInt()).isEqualTo(1);
+
+        // ── the student is put on the register by a route that runs no reconcile; the corrected file is checked ──
+        UUID student = it.student(it.freeSurname("ZZHCTL"), prog, null, late, 100);
+        List<Map<String, String>> corrected = List.of(taken("2", "L", course, TITLE, 3, "Core", "61"));
+        Map<String, Object> check = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/results/preview", body(corrected, null)));
+        assertThat(((Number) check.get("held_posted_first")).intValue()).as("the check says the held result posts first").isEqualTo(1);
+        assertThat(((Number) check.get("results_replaced")).intValue()).isEqualTo(1);
+        assertThat((List<String>) check.get("students_affected")).containsExactly(late);
+        Map<String, Object> picture = ((List<Map<String, Object>>) check.get("gpa")).get(0);
+        assertThat(((Number) ((Map<String, Object>) picture.get("before")).get("tcr")).intValue())
+                .as("against the record as it stands: nothing counted yet").isZero();
+        assertThat(((Number) ((Map<String, Object>) picture.get("after")).get("tcr")).intValue()).isEqualTo(3);
+        assertThat(holds.getAsInt()).as("the check posted nothing").isEqualTo(1);
+
+        // ── the file is loaded while a reconcile has taken the held rows; the reconcile then wants the file's upload (which the batch
+        //    holds): a circle. PostgreSQL ends the batch; its door loads it again, and the answer is the load's ──
+        Map<String, Object> second = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads",
+                confirm("RESULTS", "HistoricalCourseAsTakenIT: the file corrected by the department")));
+        Map<String, Object> loaded = ok(clash(
+                () -> it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/results", body(corrected, second.get("id"))),
+                holder -> run(holder, "SELECT 1 FROM assessment.legacy_result_holding WHERE matric = '" + late + "' FOR UPDATE"),
+                holder -> run(holder, "SELECT 1 FROM assessment.past_upload WHERE id = '" + second.get("id") + "' FOR UPDATE")));
+        assertThat(((Number) loaded.get("held_posted_first")).intValue()).isEqualTo(1);
+        assertThat(((Number) loaded.get("results")).intValue()).isEqualTo(1);
+        assertThat(((Number) loaded.get("results_replaced")).intValue()).isEqualTo(1);
+        ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + second.get("id") + "/finish", Map.of("complete", true)));
+
+        // the held result is the first upload's, the corrected mark the second's, and the corrected mark is what counts
+        assertThat(holds.getAsInt()).isZero();
+        assertThat(changes(first.get("id"), course, "RESULT_POSTED")).hasSize(1);
+        assertThat(changes(first.get("id"), course, "RESULT_REPLACED")).isEmpty();
+        assertThat(changes(second.get("id"), course, "RESULT_REPLACED")).hasSize(1);
+        assertThat(counted(student)).isEqualByComparingTo("61");
+        // the first upload's counts on the Uploads list follow what posted under it after it was closed
+        assertThat(jdbc.sql("SELECT (pu.counts->>'changes')::int FROM assessment.past_upload pu WHERE pu.id = CAST(:u AS uuid)")
+                .param("u", String.valueOf(first.get("id"))).query(Integer.class).single()).isEqualTo(4);
+
+        // rolling the second upload back gives the first upload's result back
+        Map<String, Object> rolled = ok(it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/uploads/" + second.get("id") + "/revert",
+                Map.of("reason", "HistoricalCourseAsTakenIT: the corrected file was the wrong one")));
+        assertThat(rolled).containsEntry("state", "REVERTED");
+        assertThat(counted(student)).isEqualByComparingTo("50");
     }
 }

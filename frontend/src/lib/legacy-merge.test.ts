@@ -160,7 +160,7 @@ test("a row's status in words, its tone, and a refusal without the portal's code
   assert.equal(lineWord("UNITS_CORRECTED", true), "Units will be corrected to the file's");
   assert.equal(lineWord("UNITS_CORRECTED", false), "Units corrected to the file's");
   assert.equal(lineWord("SOMETHING_NEW", false), "SOMETHING_NEW");
-  assert.equal(lineWord("HELD_ROLLED_BACK", false), "Held, dropped with the rollback");
+  assert.equal(lineWord("HELD_ROLLED_BACK", false), "Held, closed with the rollback");
   assert.equal(lineTone("ADDED"), "info");
   assert.equal(lineTone("UNITS_ON_PORTAL"), "warn");
   assert.equal(lineTone("AS_TAKEN_MISSING"), "bad");
