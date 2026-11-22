@@ -28,7 +28,8 @@ all of these:
 - in a configured programme;
 - in a session whose period is not a draft.
 
-It does not apply to a postgraduate, or to a student who has already passed a SIWES course.
+It does not apply to a postgraduate, or to a student who has already passed SIWES: the programme's SIWES course, or a 300 Level
+Second Semester SIWES course (V776).
 
 ## The student
 
@@ -54,9 +55,11 @@ SIWES course.
 
 - **Configuration** for each session:
   - the period, DRAFT, OPEN or CLOSED, with the registration and training dates;
-  - the programmes;
-  - the SIWES course of each programme and curriculum (BMAS or CCMAS).
-- Course mappings are standing: courses are never tied to sessions. Each mapped course shows its catalogue state, with a
+  - the programmes whose students are on SIWES — a programme is added whether or not its SIWES course is known yet (V776);
+  - the SIWES course of each programme and curriculum (BMAS or CCMAS): set here, or — where the programme's Second Semester is a
+    SIWES semester — written down from its own structure as it is added; otherwise found and taken with one press;
+  - the SIWES courses of the catalogue.
+- A course set for a programme is standing: courses are never tied to sessions. Each course shows its catalogue state, with a
   warning when it is not LIVE.
 - A programme, course or period that students have paid or registered against on the portal cannot be removed or changed
   (`SIWES_PROGRAMME_IN_USE`, `SIWES_COURSE_IN_USE`, `SIWES_PERIOD_IN_USE`). Old-portal payers never lock it.
@@ -77,6 +80,70 @@ the fee can then be refunded. The student cannot drop the SIWES course (`SIWES_C
   receipt and bank-check state, and exports it.
 - The *credits* panel lists second payments, which are money owed back to the student. From there the Bursar records a
   refund made by hand, reopens one recorded in error, or sends the payment to the refund desk.
+
+## SIWES courses, and a programme's SIWES course (V776)
+
+SIWES is not one course. Each department carries it under its own code and title — "SIWES", "Students Industrial Work Experience
+Scheme", "Industrial Training", "Industrial Attachment".
+
+- **A SIWES course** is a catalogue course marked as one (`catalogue.course.industrial_training`). A course whose title reads
+  SIWES, Industrial Training, Industrial Attachment or Industrial Work Experience is marked as it is added to the catalogue or
+  retitled (`catalogue.reads_as_siwes`), whatever its code; V776 marked the ones already there, the ended ones too (a course
+  restored later is a SIWES course as it comes back).
+- **The SIWES courses panel** on the desk lists them all: code and title, department, level and semester, state, the programmes
+  whose structure carries each, the programmes each is the SIWES course of (set, or written down), and the programme semesters it
+  makes an attachment semester (V503). A course set as a programme's SIWES course is listed too, though it is not marked. The
+  Academic Office (or the Registry) **adds a course** to the list — an existing catalogue course, by its code — or takes one off
+  with **Not a SIWES course** (`registration.siwes_mark_course`; API `PUT /api/v1/siwes/admin/siwes-courses`). A course taken
+  off stays off while its title stands. It is not taken off (`SIWES_COURSE_IN_USE`) while it is set for a programme on the desk,
+  while students who have paid or registered read it, or while taking it off would end a programme's attachment semester in which
+  students are registered (they could not submit that semester without it; an elective SIWES-titled course beside the real one
+  does not). A row that only came from the catalogue for a programme, where nobody has paid or registered, goes with it: that
+  cohort waits for a course again.
+- **A programme's SIWES course** is the row `registration.siwes_course` holds for it, for a curriculum or for every curriculum
+  (`registration.siwes_course_of`, the one reading every part of the portal uses, unchanged since V752). A course is a 300 Level
+  course: **Set course** refuses one the programme carries only at another level (`SIWES_COURSE_LEVEL`) — SIWES registration, its
+  fee and its Second Semester are the 300 Level students'.
+
+  **The desk shows what the catalogue offers, and the Academic Office decides.** The catalogue's answer for a programme and
+  curriculum (`registration.siwes_course_recognised`) is:
+  - a SIWES course the programme's own structure carries at 300 Level, taught in the Second Semester — the curriculum's own
+    first, a live one first, then the one of most units (a 1-unit SIWES report beside the 6-unit course is never the SIWES
+    course), the programme's own department's first among equal units;
+  - else, only for a programme whose structure carries no SIWES course at any level: the one such course of its department that
+    no programme's structure carries and no other programme owns;
+  - several of equal standing, or none: no answer — it is never a guess; the desk lists the several (**choices**).
+
+  **It is written down by itself in one situation only**, as a programme is added to a session's SIWES (or when a course is added
+  to the SIWES courses that gives a waiting programme its own structure's course): where the programme's 300 Level Second Semester
+  **is** a SIWES attachment semester — the SIWES course alone, no other required course (V503) — the course comes from its own
+  structure, and every waiting curriculum of the programme has one (`registration.siwes_pin_courses`). A programme that takes part
+  in a planned or current session whose SIWES period is **closed** is never written down this way, whichever session the act is on
+  (the row is the programme's for every session: its cohort would be bound when nobody can pay or register). A programme whose
+  curricula have different courses (a BMAS course and a CCMAS course) is written down when the last of them is marked. That is the case of the seven programmes V752 was written for: adding one binds its 300 Level
+  students to its SIWES course at once, as a course set by hand would.
+
+  **Everywhere else the desk only shows it.** A programme whose Second Semester also carries required courses (a nursing
+  practicum, a SIWES course beside a full load), whose course is the department's, whose curricula do not agree, or whose
+  catalogue changes later, is added with no course: its row shows the course **found**, the **choices**, and what the semester
+  is (the required courses a bound cohort could no longer register), and one press (**Use it**, which asks for a confirmation that
+  says what it binds) sets it. A programme whose SIWES course is a First Semester or a 400 Level course says so — SIWES
+  registration and its fee cover the Second Semester of 300 Level only — instead of inviting a Set course that would be refused.
+  Saving the period changes nobody's binding.
+
+  **What is written down stands.** A row from the catalogue is held exactly as a set one: it is replaced on the desk, never taken
+  away while students have paid or registered (`SIWES_COURSE_IN_USE`), and nothing the catalogue does afterwards — a draft
+  course, a structure upload, another course marked or retitled — moves it under students who have paid or releases a cohort
+  that has not; where the catalogue would now give another (or the course has ended) the row shows it as **found**. Among a
+  structure's SIWES courses the one of most units leads (a 1-unit report is never the SIWES course): where a course labelled for the
+  student's curriculum is not also the course of most units, nothing is chosen and the desk lists the several.
+- **A programme is added to a session's SIWES before its course is known**, and the period opens with programmes still waiting
+  (before V776 both were refused, `SIWES_COURSE_MISSING`, and the desk could set a course only on a programme already added). A
+  cohort no SIWES course reaches is not asked to pay or to register until one does; the desk lists it with its number of
+  students, and how many of them have paid or registered (those stay bound and wait for the course to be set).
+- **SIWES already passed** is a published pass in the programme's own SIWES course, or in a SIWES course of 300 Level — not
+  SIWES I at 200 Level or a seminar, now that every SIWES-titled course is marked (`registration.siwes_passed_among`).
+- **The fee is unchanged**: whichever course it is, the ₦4,000 SIWES registration fee is paid before the student registers it.
 
 ## The money rules
 
@@ -115,8 +182,11 @@ V752 does the following when it is applied:
 - It credits the second payments already on record. On the live-shaped copy that is 20 student-sessions, 5 of them held for
   the bank check.
 
-**Before opening the period**, the Academic Office should confirm the course mappings on the desk. Six students of the seven
-programmes already hold approved 2025/2026 Second Semester registrations, and the opened period treats them as SIWES-bound.
+**Before opening the period**, the Academic Office should confirm each programme's SIWES course on the desk. Six students of
+the seven programmes already hold approved 2025/2026 Second Semester registrations, and the opened period treats them as
+SIWES-bound. Since V776 the same care is due when a programme is added to an open period: where its Second Semester is a SIWES
+semester, its own structure's course is written down as it is added and its 300 Level students are bound from that moment, so read
+the row the desk shows for it; any other programme is added with no course until the Academic Office takes the one found.
 
 **Locks.** V752 takes its locks without waiting, retrying until the deploy's lock timeout (90 s). It blocks writers to the
 13 tables it alters for about one second, never longer.
@@ -127,7 +197,12 @@ Rehearsed on the live-shaped copy as one deploy of V749, V752, V758 and V759: it
 
 ## Checks
 
-- `db/check.sql` has a V752 block with one property.
+- `db/check.sql` has a V752 block with one property, and V776 blocks: programmes added to an open period with no course set; a
+  course marked by its title under its own code; each programme's course recognised in its structure or its department, or none;
+  who is bound and which cohort waits; a course added to the SIWES courses and taken off, never one in use; the fee still paid
+  before registering; a tie never guessed; the department rule shown, never written; a written course standing under students who
+  have paid whatever the catalogue does; written only for a SIWES semester and for all curricula or none; saving the period or
+  marking a course in a closed period changing nobody; the 300 Level refusal; SIWES already passed; V503's attachment semester.
 - `SiwesRegistrationIT` runs the brief's 14 acceptance scenarios through the API, with access and scope.
 - `frontend/src/lib/siwes.test.ts` tests the student page's steps and words.
 

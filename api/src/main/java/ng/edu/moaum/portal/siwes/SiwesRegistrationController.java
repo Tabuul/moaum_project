@@ -181,14 +181,22 @@ class SiwesRegistrationController {
     public record ProgrammeIn(@NotBlank @Pattern(regexp = SESSION) String session, @NotBlank @Size(max = 10) String programmeCode) {
     }
 
+    /** a course code as long as the catalogue allows (ck_course_code: up to 20 characters; it was held to 16 here) */
     public record CourseIn(@NotBlank @Size(max = 10) String programmeCode, @Pattern(regexp = "^(?i)(CCMAS|BMAS)?$") String curriculum,
-                           @Size(max = 16) String courseCode) {
+                           @Size(max = 20) String courseCode) {
+    }
+
+    /** V776: a catalogue course added to the SIWES courses (siwes true, the default) or taken off them */
+    public record SiwesCourseIn(@NotBlank @Size(max = 20) String courseCode, Boolean siwes) {
     }
 
     /** a session's SIWES as the Academic Office configures it: the period, the programmes taking part (each with its SIWES course, for
-     *  every curriculum its 300 Level students hold, and the course's catalogue state — LIVE, or BOARD, SENATE or ENDED, which the desk
-     *  warns of), the programmes that could, the fee and the sessions. A department or faculty office reads its own programmes; `access`
-     *  says what the acting office may do */
+     *  every curriculum its 300 Level students hold, the course's catalogue state — LIVE, or BOARD, SENATE or ENDED, which the desk
+     *  warns of — and, V776, how the course is known: SET on the desk, or recognised in the programme's STRUCTURE or its DEPARTMENT
+     *  and written down as the programme was added; where there is none, the course the catalogue now gives it (`found`) or the
+     *  several it offers (`choices`)), the programmes that could, the SIWES courses of the catalogue (`siwesCourses`), the cohorts no
+     *  live SIWES course reaches (`unreached`, with how many of them have paid or registered and so wait bound), the fee and the
+     *  sessions. A department or faculty office reads its own programmes; `access` says what the acting office may do */
     @GetMapping("/api/v1/siwes/admin/config")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -204,6 +212,15 @@ class SiwesRegistrationController {
             }
             out.put("programmes", own);
             out.put("candidates", List.of());   // the setters (University offices) add programmes; a unit office reads its own
+            // V776: the cohorts still waiting for a SIWES course, of its own programmes alone
+            Set<String> mine = new java.util.HashSet<>();
+            for (Object p : own) mine.add(String.valueOf(((Map<?, ?>) p).get("code")));
+            List<Object> waiting = new ArrayList<>();
+            for (Object u : (List<?>) out.getOrDefault("unreached", List.of())) {
+                if (mine.contains(String.valueOf(((Map<?, ?>) u).get("programmeCode")))) waiting.add(u);
+            }
+            out.put("unreached", waiting);
+            out.put("siwesCourses", ownSiwesCourses(out.get("siwesCourses"), own, waiting, mine));
         }
         // who last set the period, by name (the period's own JSON carries the office alone; set_by is a person's id, never shown)
         if (out.get("period") instanceof Map<?, ?> p && p.get("session") != null) {
@@ -222,8 +239,50 @@ class SiwesRegistrationController {
         return bound == null || bound.equalsIgnoreCase(String.valueOf(value));
     }
 
-    /** the session's period: opened only with both windows dated (SIWES_PERIOD_DATES) and every configured programme's 300 Level students
-     *  reached by a SIWES course (SIWES_COURSE_MISSING names each programme and curriculum with its count) */
+    /** V776: the SIWES courses a held office reads: those its own programmes carry, are set or written down for, or are offered — each
+     *  with only its own programmes in programmes, setFor and attachmentFor (the other units' stay theirs). {@code own} is the office's
+     *  programme rows (with their curricula), {@code waiting} its cohorts still without a course, {@code mine} their codes */
+    private static List<Object> ownSiwesCourses(Object all, List<Object> own, List<Object> waiting, Set<String> mine) {
+        Set<String> codes = new java.util.HashSet<>();
+        List<Object> offers = new ArrayList<>(own);
+        for (Object p : own) {
+            Object curricula = ((Map<?, ?>) p).get("curricula");
+            if (curricula instanceof List<?> cs) offers.addAll(cs);
+        }
+        offers.addAll(waiting);
+        for (Object o : offers) {
+            Map<?, ?> m = (Map<?, ?>) o;
+            if (m.get("course") instanceof Map<?, ?> c && c.get("code") != null) codes.add(String.valueOf(c.get("code")));
+            if (m.get("found") instanceof Map<?, ?> f && f.get("code") != null) codes.add(String.valueOf(f.get("code")));
+            for (String key : List.of("choices", "elsewhere")) {
+                if (m.get(key) instanceof List<?> l) {
+                    for (Object x : l) if (x instanceof Map<?, ?> xm && xm.get("code") != null) codes.add(String.valueOf(xm.get("code")));
+                }
+            }
+        }
+        List<Object> kept = new ArrayList<>();
+        if (!(all instanceof List<?> courses)) return kept;
+        for (Object c : courses) {
+            Map<?, ?> m = (Map<?, ?>) c;
+            Map<String, Object> mine1 = new LinkedHashMap<>();
+            m.forEach((k, v) -> mine1.put(String.valueOf(k), v));
+            boolean carried = false;
+            for (String key : List.of("programmes", "setFor", "attachmentFor")) {
+                List<Object> own1 = new ArrayList<>();
+                if (m.get(key) instanceof List<?> l) {
+                    for (Object x : l) if (x instanceof Map<?, ?> xm && mine.contains(String.valueOf(xm.get("code")))) own1.add(x);
+                }
+                if (!own1.isEmpty()) carried = true;
+                mine1.put(key, own1);
+            }
+            if (carried || codes.contains(String.valueOf(m.get("code")))) kept.add(mine1);
+        }
+        return kept;
+    }
+
+    /** the session's period: opened only with both windows dated (SIWES_PERIOD_DATES). V776: it opens whether or not every configured
+     *  programme's SIWES course is known — a cohort no course reaches is not bound until one does, and the configuration lists it
+     *  (`unreached`); each save recognises the course the catalogue now gives a programme still waiting */
     @PutMapping("/api/v1/siwes/admin/period")
     @PreAuthorize(SETTERS)
     @Transactional
@@ -236,6 +295,10 @@ class SiwesRegistrationController {
                 .query(String.class).single());
     }
 
+    /** a programme taking part in the session's SIWES. V776: added whether or not its SIWES course is known yet — the course is
+     *  recognised from the catalogue as the programme is added (a SIWES course of the programme's 300 Level Second Semester structure,
+     *  else its department's one; several of equal standing: none, never a guess) and written down as the programme's, so it stands as
+     *  a course set on the desk does; or it is set afterwards (PUT courses) */
     @PostMapping("/api/v1/siwes/admin/programmes")
     @PreAuthorize(SETTERS)
     @Transactional
@@ -263,6 +326,19 @@ class SiwesRegistrationController {
     Map<String, Object> course(@Valid @RequestBody CourseIn body) {
         return json(jdbc.sql("SELECT registration.siwes_set_course(:p, :c, :k)::text").param("p", body.programmeCode().trim())
                 .param("c", blank(body.curriculum()), Types.VARCHAR).param("k", blank(body.courseCode()), Types.VARCHAR).query(String.class).single());
+    }
+
+    /** V776: an existing catalogue course added to the SIWES courses — the programmes still waiting for a course are recognised
+     *  again — or taken off them (never one set as a programme's SIWES course, one students have paid or registered on, or one whose
+     *  attachment semester students are registered in: 422 SIWES_COURSE_IN_USE; a row that only recognised it goes with it). Each
+     *  department carries SIWES under its own code and title; a course whose title reads SIWES or Industrial Training is marked by the
+     *  catalogue as it is added. Answers the list */
+    @PutMapping("/api/v1/siwes/admin/siwes-courses")
+    @PreAuthorize(SETTERS)
+    @Transactional
+    Map<String, Object> siwesCourse(@Valid @RequestBody SiwesCourseIn body) {
+        return json(jdbc.sql("SELECT jsonb_build_object('siwesCourses', registration.siwes_mark_course(:k, :on))::text")
+                .param("k", body.courseCode().trim()).param("on", body.siwes() == null || body.siwes(), Types.BOOLEAN).query(String.class).single());
     }
 
     /** the students of a session's SIWES — eligible, paid, registered — filtered by unit, status and a search, a page at a time; a unit

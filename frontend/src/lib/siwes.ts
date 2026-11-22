@@ -493,12 +493,85 @@ export function siwesFormRows(d: Pick<MySiwes, "period" | "paid"> | null | undef
 
 // ── the Academic Office's desk ──────────────────────────────────────────────────────────────────────────────────────────────
 
-export interface SiwesConfigProgramme {
+/** V776: how a programme (or one curriculum of it) came by its SIWES course, as registration.siwes_course_source names it: SET on the
+ *  desk; else written down from the catalogue by one of the desk's own acts (a programme added, a course added to the SIWES courses),
+ *  only where the programme's 300 Level Second Semester is the SIWES semester — a SIWES course the programme's own 300 Level
+ *  STRUCTURE carries (DEPARTMENT: the one SIWES course of its department, of an older answer). A written-down course stands as a set
+ *  one does. Absent where there is no course, and from an older answer */
+export type SiwesCourseSource = "SET" | "STRUCTURE" | "DEPARTMENT";
+
+/** V776: a SIWES course the programme's own structure carries where SIWES registration does not reach it — SIWES registration and its
+ *  fee are the Second Semester of 300 Level's. `semester`: FIRST, SECOND or BOTH, as registration.siwes_courses_elsewhere names it */
+export interface SiwesElsewhere { code: string; title?: string | null; level?: number | null; semester?: "FIRST" | "SECOND" | "BOTH" | string | null }
+
+/** V776: what a programme's 300 Level Second Semester is (registration.siwes_semester_load): `attachment`, the SIWES semester — the
+ *  SIWES course alone, no other required course; otherwise `otherRequired`, the required courses (Core, GST) it carries besides SIWES,
+ *  which students bound to SIWES could no longer register. Absent from an older answer (nothing is then said of the semester) */
+export interface SiwesSemesterLoad { attachment?: boolean | null; otherRequired?: { courses?: number | null; units?: number | null } | null }
+
+/** V776: what the catalogue offers where no SIWES course is set or written down yet (the API leaves a key with nothing in it out):
+ *  `found`, the one course the catalogue now gives — setting it takes it — and `choices`, every candidate (several of equal standing
+ *  and no `found`: the Academic Office says which); `elsewhere`, the SIWES courses the programme carries where SIWES registration does
+ *  not reach. `found` also comes beside a course written down from the catalogue (source STRUCTURE) when the catalogue would now give
+ *  another, or the course has ended; a course set on the desk never has one */
+export interface SiwesCourseOffer { found?: SiwesCourse | null; choices?: SiwesCourse[] | null; elsewhere?: SiwesElsewhere[] | null }
+
+/** a curriculum of a programme taking SIWES (one its 300 Level students hold, or one a course is written down for; none: the row
+ *  written down for every curriculum, which the API sends without the key) */
+export interface SiwesConfigCurriculum extends SiwesCourseOffer {
+  curriculum?: string | null;
+  /** a course is written down (set, or recognised) for this very curriculum: false where the course read is the one written down for
+   *  another curriculum, or for every curriculum */
+  mapped?: boolean | null;
+  course?: SiwesCourse | null;
+  source?: SiwesCourseSource | string | null;
+}
+
+export interface SiwesConfigProgramme extends SiwesCourseOffer, SiwesSemesterLoad {
   code: string; name: string; department?: UnitRef; faculty?: UnitRef;
   /** the students eligible in the programme for the session (a count), as the API reports it */
   eligible?: number | boolean | null;
-  course: SiwesCourse | null;
-  curricula?: { curriculum: string | null; course: SiwesCourse | null }[];
+  course?: SiwesCourse | null;
+  /** V776: how the course is known (SiwesCourseSource) */
+  source?: SiwesCourseSource | string | null;
+  curricula?: SiwesConfigCurriculum[];
+}
+
+/** V776: a SIWES course of the catalogue as the desk lists it (registration.siwes_course_list) — each department carries SIWES under its
+ *  own code and title */
+export interface SiwesCatalogueCourse {
+  id?: string | null; code: string; title?: string | null; units?: number | null; level?: number | null;
+  /** FIRST, SECOND or BOTH; any other semester of the catalogue by its number */
+  semester?: "FIRST" | "SECOND" | "BOTH" | string | null;
+  state?: "LIVE" | "BOARD" | "SENATE" | "ENDED" | string | null;
+  curriculum?: string | null; departmentCode?: string | null; department?: string | null;
+  /** its title reads SIWES or Industrial Training (the catalogue listed it as it was added); otherwise the Academic Office added it */
+  byTitle?: boolean | null;
+  /** on the SIWES courses (the catalogue's marker). False: listed only because it is set as a programme's SIWES course on the desk —
+   *  it is not on the SIWES courses, and is not taken off them. Absent from an older answer, which listed marked courses alone */
+  marked?: boolean | null;
+  /** 300 Level, Second Semester, not ended: a programme can come by it without it being set */
+  recognised?: boolean | null;
+  /** the programmes whose structure carries it, and the level each carries it at */
+  programmes?: { code: string; name?: string | null; level?: number | null }[] | null;
+  /** the programmes (and curricula; none: every curriculum) whose SIWES course it is, and how: SET on the desk, or recognised
+   *  (STRUCTURE, DEPARTMENT). An older answer listed those set on the desk, with no source */
+  setFor?: SiwesCourseSetFor[] | null;
+  /** the programme semesters that are attachment semesters because of it (V503: the semester holds the SIWES course alone); taking
+   *  the course off the SIWES courses ends them */
+  attachmentFor?: SiwesAttachment[] | null;
+}
+
+export interface SiwesCourseSetFor { code: string; curriculum?: string | null; source?: SiwesCourseSource | string | null }
+
+/** a programme's attachment semester: the level, and the semester by its number (1, 2) */
+export interface SiwesAttachment { code: string; name?: string | null; level?: number | null; semester?: number | string | null }
+
+/** V776: 300 Level students of a programme taking SIWES (of one curriculum) whom no live SIWES course reaches. `paid` of them have paid
+ *  on the portal or registered: SIWES holds those still, and they cannot register until the course is set; the rest are not bound.
+ *  `found` and `choices`: what the catalogue offers the cohort now (SiwesCourseOffer) */
+export interface SiwesUnreached extends SiwesCourseOffer {
+  programmeCode: string; programme?: string | null; curriculum?: string | null; students?: number | null; paid?: number | null;
 }
 
 export interface SiwesConfig {
@@ -510,6 +583,9 @@ export interface SiwesConfig {
   sessions: (string | { name: string })[];
   /** if the API reports the caller's access; otherwise the acting office decides what the screen offers */
   access?: { set?: boolean; read?: boolean } | null;
+  /** V776: the SIWES courses of the catalogue, and the cohorts no SIWES course reaches yet (both absent from an older answer) */
+  siwesCourses?: SiwesCatalogueCourse[] | null;
+  unreached?: SiwesUnreached[] | null;
 }
 
 /** K25: a SIWES course's catalogue state in words, with its tone: live, or not yet live (at the Board or Senate), or ended */
@@ -542,15 +618,471 @@ export function courseStateWarning(c: Pick<SiwesCourse, "code" | "state"> | null
 export function configWarnings(config: Pick<SiwesConfig, "programmes"> | null | undefined): { programme: string; curriculum: string | null; course: string; ended: boolean; words: string }[] {
   const out: { programme: string; curriculum: string | null; course: string; ended: boolean; words: string }[] = [];
   for (const p of config?.programmes ?? []) {
-    const curricula = (p.curricula ?? []).filter((c) => c.curriculum);
-    const courses: [string | null, SiwesCourse | null][] = curricula.length ? curricula.map((c) => [c.curriculum, c.course]) : [[null, p.course]];
-    for (const [curriculum, c] of courses) {
+    for (const { curriculum, course: c } of programmeCourseLines(p)) {
       const words = courseStateWarning(c);
       if (c && words) out.push({ programme: p.name || p.code, curriculum, course: c.code, ended: c.state === "ENDED", words });
     }
   }
   return out;
 }
+
+// ── V776: a programme is added before its SIWES course is known; the SIWES courses are recognised from the catalogue ─────────────
+
+/** how a programme's SIWES course is known, in words: set on this desk, or written down from the catalogue (the programme's own
+ *  structure; an older answer: its department's one SIWES course) */
+export const COURSE_SOURCE_WORD: Record<string, string> = {
+  SET: "Set here",
+  STRUCTURE: "Written down from the programme's own structure",
+  DEPARTMENT: "Written down: its department's one SIWES course",
+};
+
+/** a course written down from the catalogue is written by the desk's own acts, never read afresh: what that means for the officer */
+export const RECOGNISED_STANDS = "A course written down stands until the Academic Office sets another; the catalogue changing later does not move it.";
+
+/** the sentence under the programmes taking SIWES: whose Second Semester changes, how a programme comes by its course, and that a
+ *  course once written down stands. Saving the period and adding a programme do not take every course by themselves: the course is
+ *  written down only where the programme's Second Semester is the SIWES semester, or when a course added to the SIWES courses gives a
+ *  waiting programme its own structure's course; otherwise the row says what is found and the Academic Office takes it */
+export const PROGRAMMES_HINT = "A programme not taking SIWES keeps its Second Semester as before. A programme's SIWES course is the one set here. "
+  + "A course its own 300 Level structure carries is written down as its course when the programme is added — only where its Second Semester is the SIWES semester, "
+  + "the SIWES course alone — or when a course is added to the SIWES courses that gives a waiting programme its own structure's course; "
+  + "otherwise the row says what the catalogue offers and the Academic Office takes the course. "
+  + `${RECOGNISED_STANDS} `
+  + "The course stands for every session, and the students it binds are the programme's 300 Level students of the session, once a SIWES course reaches them.";
+
+/** the words of a course's source; nothing for an answer that carries none, or one not known here (never the code itself) */
+export function courseSourceWords(source: string | null | undefined): string {
+  return source ? COURSE_SOURCE_WORD[source] ?? "" : "";
+}
+
+/** the same for one curriculum of a programme: a course set here for another curriculum, or for every curriculum, and read for this
+ *  one says which (mapped false beside SET) */
+export function curriculumSourceWords(p: Pick<SiwesConfigProgramme, "curricula">, c: SiwesConfigCurriculum): string {
+  if (c.source !== "SET" || c.mapped !== false || !c.course) return courseSourceWords(c.source);
+  const from = (p.curricula ?? []).find((x) => x.mapped === true && x.course?.code === c.course?.code);
+  if (!from) return COURSE_SOURCE_WORD.SET;
+  return from.curriculum ? `Set here for ${from.curriculum}, read for ${c.curriculum ?? "this curriculum"} too` : "Set here for every curriculum";
+}
+
+/** a line of a programme's row on the desk: a curriculum (null: the programme whole), its SIWES course and how the course is known;
+ *  with no course, what the catalogue offers now (`found`, `choices`, `elsewhere`: each present only when the answer carries it); with
+ *  a course written down from the catalogue, `found` when the catalogue would now give another or the course has ended */
+export interface SiwesCourseLine {
+  curriculum: string | null; course: SiwesCourse | null; known: string; found?: SiwesCourse; choices?: SiwesCourse[]; elsewhere?: SiwesElsewhere[];
+}
+
+const aCourse = (c: SiwesCourse | null | undefined): c is SiwesCourse => !!c && !!c.code;
+
+/** what the catalogue offers, as the answer carries it. Beside no course: the course found, the choices, the SIWES courses carried
+ *  where SIWES registration does not reach. Beside a course written down from the catalogue (source other than SET): the course found
+ *  when it is another's — a course set on the desk has no such offer, from an older answer too. Nothing from an older answer */
+function offerOf(o: SiwesCourseOffer & { course?: SiwesCourse | null; source?: string | null }): Pick<SiwesCourseLine, "found" | "choices" | "elsewhere"> {
+  const found = o.found;
+  if (o.course) return o.source && o.source !== "SET" && aCourse(found) && found.code !== o.course.code ? { found } : {};
+  const choices = (o.choices ?? []).filter(aCourse);
+  const elsewhere = (o.elsewhere ?? []).filter((e) => !!e && !!e.code);
+  return { ...(aCourse(found) ? { found } : {}), ...(choices.length ? { choices } : {}), ...(elsewhere.length ? { elsewhere } : {}) };
+}
+
+/** a programme's SIWES course as its row lists it: one line for each curriculum its students hold (or one is written down for) where
+ *  it has any, else the programme's own — the one rule the row, the warnings and the notice of a programme just added read */
+export function programmeCourseLines(p: Pick<SiwesConfigProgramme, "course" | "source" | "curricula" | "found" | "choices" | "elsewhere">): SiwesCourseLine[] {
+  const curricula = (p.curricula ?? []).filter((c) => c.curriculum);
+  return curricula.length
+    ? curricula.map((c) => ({ curriculum: c.curriculum ?? null, course: c.course ?? null, known: c.course ? curriculumSourceWords(p, c) : "", ...offerOf(c) }))
+    : [{ curriculum: null, course: p.course ?? null, known: p.course ? courseSourceWords(p.source) : "", ...offerOf(p) }];
+}
+
+/** what a row says where no SIWES course is found for the programme (or one of its curricula), and what is done about it: by the
+ *  offices that set it, or by a reader who asks the Academic Office */
+export const NO_COURSE_FOUND = "No SIWES course found";
+
+/** the pill of a row with no SIWES course written down though the catalogue offers one or several */
+export const NO_COURSE_YET = "No SIWES course yet";
+
+export function noCourseAction(maySet: boolean): string {
+  return maySet ? "set it, or add the course to the SIWES courses below" : "the Academic Office sets it, or adds the course to the SIWES courses";
+}
+
+export function noCourseWords(maySet: boolean): string {
+  return `${NO_COURSE_FOUND} — ${noCourseAction(maySet)}`;
+}
+
+/** "ZZK 397 SIWES II (6 units)": a course the catalogue offers, by its code, title and units */
+export function offeredCourseWords(c: Pick<SiwesCourse, "code" | "title" | "units">): string {
+  return `${c.code}${c.title ? ` ${c.title}` : ""}${c.units != null ? ` (${c.units} unit${c.units === 1 ? "" : "s"})` : ""}`;
+}
+
+/** the pill of a row whose SIWES course the programme carries only where SIWES registration does not reach it */
+export const NO_COURSE_300 = "No 300 Level SIWES course";
+
+/** the First Semester (or another) in words where a course is not taught in the Second Semester; nothing for one that is (SECOND, BOTH) */
+const outsideSecond = (semester: string | null | undefined): string => (semester && semester !== "SECOND" && semester !== "BOTH" ? semesterWords(semester) : "");
+
+/** a SIWES course the programme carries outside the Second Semester of 300 Level, by where it stands: "a First Semester course (300
+ *  Level)", "a 400 Level course" — a course of another level is that level's, whatever its semester */
+export function elsewhereWhere(e: Pick<SiwesElsewhere, "level" | "semester">): string {
+  const semester = outsideSecond(e.semester);
+  if (e.level != null && e.level !== 300) return `a ${e.level} Level course`;
+  if (semester) return `a ${semester} course${e.level != null ? ` (${e.level} Level)` : ""}`;
+  return "a course outside the Second Semester of 300 Level";
+}
+
+/** the same inside brackets, for a list of several: "300 Level, First Semester", "400 Level" */
+function elsewhereShort(e: Pick<SiwesElsewhere, "level" | "semester">): string {
+  const semester = outsideSecond(e.semester);
+  return [e.level != null ? `${e.level} Level` : null, semester || null].filter(Boolean).join(", ") || "outside the Second Semester of 300 Level";
+}
+
+/** what a programme or cohort with no SIWES course in the Second Semester of 300 Level but one carried elsewhere is told: where that
+ *  course stands, and that SIWES registration and its fee do not reach it yet (the University has decided every SIWES course is charged: the
+ *  desk follows). Plain: no "set it"
+ *  invitation the database would refuse. `words` and `action` are two sentences, each without its full stop; null with nothing carried
+ *  elsewhere */
+export function elsewhereWords(list: SiwesElsewhere[] | null | undefined, most = 3): { words: string; action: string } | null {
+  const all = (list ?? []).filter((e) => !!e && !!e.code);
+  if (!all.length) return null;
+  const name = (e: SiwesElsewhere) => `${e.code}${e.title ? ` ${e.title}` : ""}`;
+  const one = all.length === 1;
+  const named = all.slice(0, most);
+  const rest = all.length - named.length;
+  const words = one ? `Its SIWES course ${name(all[0])} is ${elsewhereWhere(all[0])}`
+    : `Its SIWES courses are ${named.map((e) => `${name(e)} (${elsewhereShort(e)})`).join("; ")}${rest > 0 ? `; and ${rest} more` : ""}`;
+  return { words, action: `SIWES registration and its fee cover the Second Semester of 300 Level only for now, so ${one ? "it cannot" : "they cannot"} be set for this programme yet` };
+}
+
+/** where no SIWES course is written down for a programme, a curriculum or a cohort: what the catalogue offers and what is done.
+ *  FOUND, the one course the catalogue now gives (the row offers "Use it" to the offices that set; `action` is what the note under
+ *  the table and a reader are told); CHOICES, several and no one of them at the head — never a guess, the Academic Office says
+ *  which; ELSEWHERE, nothing at 300 Level in the Second Semester but a SIWES course the programme carries where SIWES registration
+ *  does not reach (its words and what follows from that: nothing is invited that the database would refuse); NONE, nothing: as before.
+ *  An older answer, with none of the keys, is NONE */
+export interface SiwesCourseHint { kind: "FOUND" | "CHOICES" | "ELSEWHERE" | "NONE"; found: SiwesCourse | null; words: string; action: string }
+
+export function courseHint(o: SiwesCourseOffer | null | undefined, maySet: boolean): SiwesCourseHint {
+  const found = o?.found;
+  if (aCourse(found)) {
+    return { kind: "FOUND", found, words: `Found in the catalogue: ${offeredCourseWords(found)}`,
+      action: maySet ? "set it as the programme's course above" : "the Academic Office sets it" };
+  }
+  const choices = (o?.choices ?? []).filter(aCourse);
+  if (choices.length) {
+    const one = choices.length === 1;
+    return { kind: "CHOICES", found: null, words: `${one ? "A SIWES course found" : "Several SIWES courses found"}: ${choices.map(offeredCourseWords).join("; ")}`,
+      action: `${maySet ? "set" : "the Academic Office sets"} ${one ? "it, if it is the one" : "the one"} the programme's students register` };
+  }
+  const away = elsewhereWords(o?.elsewhere);
+  if (away) return { kind: "ELSEWHERE", found: null, ...away };
+  return { kind: "NONE", found: null, words: NO_COURSE_FOUND, action: noCourseAction(maySet) };
+}
+
+/** a hint as one sentence without its full stop: "Found in the catalogue: … — set it as the programme's course above"; an ELSEWHERE
+ *  hint is two sentences, "Its SIWES course … is a 400 Level course. SIWES registration and its fee cover …" */
+export function courseHintWords(h: Pick<SiwesCourseHint, "words" | "action"> & { kind?: SiwesCourseHint["kind"] }): string {
+  return h.kind === "ELSEWHERE" ? `${h.words}. ${h.action}` : `${h.words} — ${h.action}`;
+}
+
+/** what a programme's 300 Level Second Semester is, said where a SIWES course is found and not yet taken: the SIWES semester — its
+ *  students register the SIWES course alone — or a semester that also carries required courses, which students bound to SIWES could
+ *  no longer register. A sentence without its full stop; empty from an older answer, and where the semester carries no other required
+ *  course though it is not the SIWES semester */
+export function secondSemesterWords(p: SiwesSemesterLoad | null | undefined): string {
+  if (!p) return "";
+  if (p.attachment === true) return "Its Second Semester is the SIWES semester: students register the SIWES course alone";
+  const n = num(p.otherRequired?.courses);
+  if (p.attachment !== false || n <= 0) return "";
+  const u = num(p.otherRequired?.units);
+  return `Its Second Semester also carries ${n} required course${n === 1 ? "" : "s"} (${u} unit${u === 1 ? "" : "s"}), which students bound to SIWES could no longer register`;
+}
+
+/** the amount the SIWES registration fee is, until the Bursary publishes another (Fee Setup) */
+export const SIWES_FEE_STANDARD = 4000;
+
+/** what "Use it" asks before it sets a course on a programme whose 300 Level Second Semester is not the SIWES semester, in the
+ *  officer's words: what the Second Semester also carries, and that SIWES registration holds the 300 Level students to the SIWES
+ *  course alone and asks them the fee (the published one when there is one) first. Null where the semester is the SIWES semester, and
+ *  from an older answer that does not say (nothing is asked, as before) */
+export function confirmUseItWords(p: SiwesSemesterLoad | null | undefined, course: Pick<SiwesCourse, "code" | "title">, fee?: SiwesConfig["fee"]): string | null {
+  if (!p || p.attachment !== false) return null;
+  const n = num(p.otherRequired?.courses);
+  const u = num(p.otherRequired?.units);
+  const amount = fee && fee.state === "PUBLISHED" && num(fee.amount) > 0 ? naira(fee.amount) : naira(SIWES_FEE_STANDARD);
+  const carries = n > 0 ? `Its 300 Level Second Semester also carries ${n} required course${n === 1 ? "" : "s"} (${u} unit${u === 1 ? "" : "s"}). ` : "";
+  return `${carries}SIWES registration holds its 300 Level students to the SIWES course alone in that semester and asks them ${amount} first. `
+    + `Use ${course.code}${course.title ? ` ${course.title}` : ""} as the programme's SIWES course?`;
+}
+
+/** where a course written down from the catalogue stands beside what the catalogue now gives (the row's `found`): another course, or
+ *  the course has ended — a sentence without its full stop, the row's "Use it" beside it */
+export function foundInsteadWords(course: Pick<SiwesCourse, "code" | "state">, found: Pick<SiwesCourse, "code" | "title" | "units">): string {
+  const instead = `catalogue now offers ${offeredCourseWords(found)} instead`;
+  return course.state === "ENDED" ? `${course.code} has ended; the ${instead}` : `The ${instead}`;
+}
+
+/** the hint under the Set course form: the desk refuses a course the programme does not carry at 300 Level (SIWES_COURSE_LEVEL) */
+export const SIWES_COURSE_LEVEL_HINT = "A programme's SIWES course is a 300 Level course, taught in the Second Semester.";
+
+const studentsWord = (n: number) => `${n.toLocaleString("en-NG")} student${n === 1 ? "" : "s"}`;
+
+/** what SIWES does with a student no course reaches who has paid on the portal or registered */
+const HELD = "held to SIWES, and cannot register until the course is set";
+
+/** of a cohort no SIWES course reaches, those who have paid or registered — never said of them that they are not asked to pay.
+ *  Never more than the cohort (the server counts the programme's and curriculum's payers; the cohort is its 300 Level students) */
+export function paidHeldWords(paid: number | null | undefined, students: number | null | undefined): string {
+  const all = num(students);
+  const n = Math.min(num(paid), all);
+  if (n <= 0) return "";
+  if (n >= all) return `${all === 1 ? "the student has" : "all of them have"} paid or registered — ${HELD}`;
+  return `${n.toLocaleString("en-NG")} of them ${n === 1 ? "has" : "have"} paid or registered — ${HELD}`;
+}
+
+export interface SiwesUnreachedLine {
+  key: string; name: string;
+  /** "2 students at 300 Level; 1 of them has paid or registered — held to SIWES, and cannot register until the course is set" */
+  words: string;
+  /** what the catalogue offers the cohort and what is done: a hint's sentence */
+  course: string;
+  /** what the programme's 300 Level Second Semester is (secondSemesterWords), said where a course is found or several are offered;
+   *  absent where the answer does not say, and where nothing is offered */
+  semester?: string;
+}
+
+/** the cohorts no SIWES course reaches yet, as the desk's note names them: each programme (and curriculum) with its number of 300
+ *  Level students, how many of them have paid or registered, and what the catalogue offers it — and, where a course is offered, what
+ *  the programme's Second Semester is (read from the programme's row, `programmes`); the numbers in all, the note's title and what
+ *  holds them. Empty from an older answer; one without the newer keys says of every cohort that no course is found */
+export function unreachedLines(config: Pick<SiwesConfig, "unreached"> & { programmes?: SiwesConfigProgramme[] | null } | null | undefined, maySet = false): {
+  lines: SiwesUnreachedLine[]; students: number; paid: number; title: string; words: string;
+} {
+  const rows = (config?.unreached ?? []).filter((u) => !!u && num(u.students) > 0);
+  const total = rows.reduce((n, u) => n + num(u.students), 0);
+  const paid = rows.reduce((n, u) => n + Math.min(num(u.paid), num(u.students)), 0);
+  return {
+    lines: rows.map((u) => {
+      const held = paidHeldWords(u.paid, u.students);
+      const hint = courseHint(u, maySet);
+      const programme = (config?.programmes ?? []).find((p) => p.code === u.programmeCode);
+      const semester = hint.kind === "FOUND" || hint.kind === "CHOICES" ? secondSemesterWords(programme) : "";
+      // the course written down for the programme has ended: said first, so "no course found" is not read beside a course the row lists
+      const own = programmeCourseLines(programme ?? { code: u.programmeCode } as SiwesConfigProgramme).find((l) => (l.curriculum ?? "") === (u.curriculum ?? "") || !l.curriculum);
+      const ended = own?.course && own.course.state === "ENDED" ? `${own.course.code} has ended. ` : "";
+      return {
+        key: `${u.programmeCode}|${u.curriculum ?? ""}`,
+        name: `${u.programme || u.programmeCode}${u.curriculum ? ` (${u.curriculum})` : ""}`,
+        words: `${studentsWord(num(u.students))} at 300 Level${held ? `; ${held}` : ""}`,
+        course: `${ended}${courseHintWords(hint)}`,
+        ...(semester ? { semester } : {}),
+      };
+    }),
+    students: total,
+    paid,
+    title: total ? `No SIWES course reaches ${studentsWord(total)} at 300 Level yet` : "",
+    words: total ? unreachedWords(paid, total) : "",
+  };
+}
+
+/** what holds the cohorts no SIWES course reaches: those who have not paid are not asked to pay or to register until a course
+ *  reaches them; those who have paid on the portal or registered stay held to SIWES and wait for the course */
+export function unreachedWords(paid = 0, students = 0): string {
+  const waits = "not asked to pay the SIWES registration fee or to register until a SIWES course reaches them";
+  if (paid <= 0) return `They are ${waits}.`;
+  if (paid >= students) return `They have paid or registered: they stay ${HELD}.`;
+  return `Those who have paid or registered stay ${HELD}; the others are ${waits}.`;
+}
+
+/** what the desk says once a programme is added (POST /programmes answers the session's configuration): with no SIWES course written
+ *  down for it, or for one of its curricula, so — a warning, never a bare success, saying what the catalogue offers (several: the one
+ *  is set; one found: it is used on the row; nothing: as before); with one, the course. An answer that does not list the programme
+ *  says only that it was added */
+export function programmeAddedWords(config: { programmes?: SiwesConfigProgramme[] | null } | null | undefined, code: string, session: string): { words: string; tone: "ok" | "warn" } {
+  const p = (config?.programmes ?? []).find((x) => x.code === code);
+  const added = `${p?.name || code} takes SIWES in ${session}`;
+  if (!p) return { words: added, tone: "ok" };
+  const lines = programmeCourseLines(p);
+  const none = lines.filter((l) => !l.course);
+  if (none.length) {
+    const which = none.filter((l) => l.curriculum).map((l) => l.curriculum).join(" and ");
+    const waits = "Its 300 Level students are not asked to pay or register until a SIWES course reaches them.";
+    const hints = none.map((l) => courseHint(l, true));
+    const offered = hints.find((h) => h.kind === "FOUND" || h.kind === "CHOICES");
+    if (offered) {
+      // what the programme's Second Semester is, said where a course is offered: the officer takes it knowing what that binds
+      const semester = secondSemesterWords(p);
+      return { tone: "warn", words: `${added}, but its SIWES course${which ? ` (${which})` : ""} is not set yet. ${offered.words} — `
+        + `${offered.kind === "FOUND" ? "use it on the programme's row, or set another" : offered.action}. ${semester ? `${semester}. ` : ""}${waits}` };
+    }
+    // its SIWES course is carried where SIWES registration does not reach yet: nothing to set that the database would not refuse
+    const away = hints.find((h) => h.kind === "ELSEWHERE");
+    if (away) return { tone: "warn", words: `${added}. ${courseHintWords(away)}.` };
+    return { tone: "warn", words: `${added}, but no SIWES course is found for it${which ? ` (${which})` : ""} yet: set it, or add the course to the SIWES courses. ${waits}` };
+  }
+  const codes = [...new Set(lines.map((l) => l.course!.code))];
+  return { tone: "ok", words: `${added}: ${codes.length === 1 ? `its SIWES course is ${codes[0]}`
+    : `its SIWES courses are ${lines.map((l) => `${l.course!.code}${l.curriculum ? ` (${l.curriculum})` : ""}`).join(", ")}`}` };
+}
+
+/** a catalogue semester in words, as registration.siwes_course_list names it (a course's: FIRST, SECOND, BOTH; an attachment
+ *  semester's: its number) */
+export const SEMESTER_WORD: Record<string, string> = {
+  FIRST: "First Semester", SECOND: "Second Semester", BOTH: "Both semesters", "1": "First Semester", "2": "Second Semester", "3": "Third Semester",
+};
+
+export function semesterWords(semester: string | null | undefined): string {
+  return semester ? SEMESTER_WORD[semester] ?? `Semester ${semester}` : "";
+}
+
+/** "300 Level · Second Semester · CCMAS": where the catalogue holds a SIWES course */
+export function levelSemesterWords(c: Pick<SiwesCatalogueCourse, "level" | "semester" | "curriculum">): string {
+  return [c.level != null ? `${c.level} Level` : null, semesterWords(c.semester) || null, c.curriculum || null].filter(Boolean).join(" · ") || "—";
+}
+
+/** whether a listed course is on the SIWES courses: not only on the server's explicit word (marked false: it is listed because it is
+ *  set as a programme's SIWES course on the desk). An older answer listed the courses on them alone */
+export function onSiwesCourses(c: Pick<SiwesCatalogueCourse, "marked">): boolean {
+  return c.marked !== false;
+}
+
+/** how the desk knows a course is a SIWES course: by its title (SIWES, Industrial Training — listed as it was added to the catalogue),
+ *  or added here by the Academic Office; one not on the SIWES courses is listed because it is set as a programme's SIWES course */
+export function siwesCourseKnownWords(c: Pick<SiwesCatalogueCourse, "byTitle" | "marked">): string {
+  if (!onSiwesCourses(c)) return "Set as a programme's SIWES course";
+  return c.byTitle ? "By its title" : "Added here";
+}
+
+/** why no programme comes by a SIWES course on its own, from the course's own fields (recognised false: not 300 Level, not taught in
+ *  the Second Semester, or ended), and what it still counts for; null for a course a programme can come by, or an answer that does
+ *  not say */
+export function notRecognisedWords(c: Pick<SiwesCatalogueCourse, "recognised" | "state" | "level" | "semester">): string | null {
+  if (c.recognised !== false) return null;
+  const ended = c.state === "ENDED";
+  const level = c.level != null && c.level !== 300;
+  const semester = !!c.semester && c.semester !== "SECOND" && c.semester !== "BOTH";
+  const why = [
+    ended ? "it has ended in the catalogue" : null,
+    level ? `it is a ${c.level} Level course, not 300 Level` : null,
+    semester ? `it is taught in the ${semesterWords(c.semester)}, not the Second` : null,
+  ].filter(Boolean);
+  if (!why.length) return "No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.";
+  // a Second Semester course in force at another level is still a programme's SIWES course where it is set for the programme
+  return `No programme comes by it on its own: ${why.join("; ")}.${!ended && !semester ? " It is a programme's SIWES course only where it is set for the programme." : ""}`;
+}
+
+/** the names of the programmes the configuration knows (those taking SIWES, those that could, and those a SIWES course's structure
+ *  or attachment semesters name), by code */
+export function programmeNames(config: Pick<SiwesConfig, "programmes" | "candidates" | "siwesCourses"> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const c of config?.siwesCourses ?? []) for (const p of [...(c.attachmentFor ?? []), ...(c.programmes ?? [])]) if (p.name) out[p.code] = p.name;
+  for (const p of config?.candidates ?? []) if (p.name) out[p.code] = p.name;
+  for (const p of config?.programmes ?? []) if (p.name) out[p.code] = p.name;
+  return out;
+}
+
+/** the programmes whose structure carries a SIWES course, by name; one that carries it at another level than 300 says so (its
+ *  students do not come by the course on their own); the first few named and the rest counted */
+export function carriedByWords(c: Pick<SiwesCatalogueCourse, "programmes">, most = 6): string {
+  const all = (c.programmes ?? []).map((p) => `${p.name || p.code}${p.level != null && p.level !== 300 ? ` (at ${p.level} Level)` : ""}`);
+  if (!all.length) return "";
+  return all.length > most ? `${all.slice(0, most).join("; ")}; and ${all.length - most} more` : all.join("; ");
+}
+
+/** a programme a course is written down for was recognised by it (STRUCTURE, DEPARTMENT), not set on the desk (SET; an older answer
+ *  listed those set, with no source) */
+const recognisedFor = (s: SiwesCourseSetFor) => !!s.source && s.source !== "SET";
+
+const setForNames = (list: SiwesCourseSetFor[], names: Record<string, string>) =>
+  list.map((s) => `${names[s.code] || s.code}${s.curriculum ? ` (${s.curriculum})` : ""}`).join("; ");
+
+/** the programmes (and curricula) a SIWES course is set for on the desk, by name where the configuration knows it */
+export function setForWords(c: Pick<SiwesCatalogueCourse, "setFor">, names: Record<string, string> = {}): string {
+  return setForNames((c.setFor ?? []).filter((s) => !recognisedFor(s)), names);
+}
+
+/** the programmes (and curricula) a SIWES course was recognised for — written down as theirs without being set — by name */
+export function recognisedForWords(c: Pick<SiwesCatalogueCourse, "setFor">, names: Record<string, string> = {}): string {
+  return setForNames((c.setFor ?? []).filter(recognisedFor), names);
+}
+
+/** the attachment semesters that rest on a SIWES course — "B.Sc. Chemistry (300 Level, Second Semester)" — the first few named and
+ *  the rest counted. None on a course that is not on the SIWES courses: no attachment semester rests on it */
+export function attachmentForWords(c: Pick<SiwesCatalogueCourse, "attachmentFor" | "marked">, most = 6): string {
+  if (!onSiwesCourses(c)) return "";
+  const all = (c.attachmentFor ?? []).map((a) => {
+    const where = [a.level != null ? `${a.level} Level` : null, a.semester != null ? semesterWords(String(a.semester)) || null : null].filter(Boolean).join(", ");
+    return `${a.name || a.code}${where ? ` (${where})` : ""}`;
+  });
+  if (!all.length) return "";
+  return all.length > most ? `${all.slice(0, most).join("; ")}; and ${all.length - most} more` : all.join("; ");
+}
+
+/** a course code as the catalogue holds it: capitals, single spaces */
+export function courseCodeTyped(code: string | null | undefined): string {
+  return (code ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+/** the programmes a course was recognised for by an act of the desk: those the list names after it (`after`: PUT /siwes-courses'
+ *  answer) as recognised that the list before it did not — a course added to the SIWES courses has the programmes still waiting
+ *  recognised again, by that course or by one the catalogue came to hold since they were added */
+export function newlyRecognised(before: SiwesCatalogueCourse[] | null | undefined, after: SiwesCatalogueCourse[] | null | undefined): { code: string; curriculum: string | null; course: string }[] {
+  const key = (course: string, s: SiwesCourseSetFor) => `${course}|${s.code}|${s.curriculum ?? ""}`;
+  const had = new Set((before ?? []).flatMap((c) => (c.setFor ?? []).map((s) => key(c.code, s))));
+  return (after ?? []).flatMap((c) => (c.setFor ?? []).filter((s) => recognisedFor(s) && !had.has(key(c.code, s)))
+    .map((s) => ({ code: s.code, curriculum: s.curriculum ?? null, course: c.code })));
+}
+
+/** what the desk says once a course is added to the SIWES courses (PUT /siwes-courses answers the list): the course by the code the
+ *  catalogue holds it under; where no programme comes by it on its own, why — a warning; and, given the list as it stood before
+ *  (`before`: the configuration's — nothing is claimed without it), the waiting programmes that came by their course by the act */
+export function siwesCourseAddedWords(list: SiwesCatalogueCourse[] | null | undefined, typed: string,
+  before?: SiwesCatalogueCourse[] | null, names: Record<string, string> = {}): { words: string; tone: "ok" | "warn" } {
+  const code = courseCodeTyped(typed);
+  const c = (list ?? []).find((x) => x.code === code);
+  const why = c ? notRecognisedWords(c) : null;
+  const fresh = Array.isArray(before) ? newlyRecognised(before, list) : [];
+  const told = fresh.slice(0, 4).map((f) => `${names[f.code] || f.code}${f.curriculum ? ` (${f.curriculum})` : ""} — ${f.course}`).join("; ");
+  const recognised = fresh.length ? `Now written down as the course of: ${told}${fresh.length > 4 ? `; and ${fresh.length - 4} more` : ""}.` : "";
+  const added = `${code} is now a SIWES course`;
+  if (!why && !recognised) return { words: added, tone: "ok" };
+  return { words: [`${added}.`, why, recognised].filter(Boolean).join(" "), tone: why ? "warn" : "ok" };
+}
+
+/** what "Not a SIWES course" does, asked before it is done (registration.siwes_mark_course's rules): the programmes it was only
+ *  recognised for wait for a course again, and the attachment semesters that rest on it end — each named */
+/** what the desk says instead of asking, when a course is set here as a programme's SIWES course: the database refuses taking it off while
+ *  it is (SIWES_COURSE_IN_USE) — the officer is told which programme, and to set another course for it first. Empty when it is not set */
+export function siwesCourseSetHereWords(c: Pick<SiwesCatalogueCourse, "code" | "setFor">, names: Record<string, string> = {}): string {
+  const who = setForWords(c, names);
+  return who ? `${c.code} is set here as the SIWES course of ${who}: set another course for ${(c.setFor ?? []).filter((s) => !recognisedFor(s)).length === 1 ? "it" : "them"} first, and then it can be taken off.` : "";
+}
+
+export function siwesCourseOffWords(c: Pick<SiwesCatalogueCourse, "code" | "title" | "setFor" | "attachmentFor" | "marked">, names: Record<string, string> = {}): string {
+  const recognised = recognisedForWords(c, names);
+  const one = (c.setFor ?? []).filter(recognisedFor).length === 1;
+  const attachment = attachmentForWords(c, Infinity);
+  return `Take ${c.code}${c.title ? ` — ${c.title}` : ""} off the SIWES courses?\n\n`
+    + "The portal then reads it as an ordinary course: no programme comes by it as its SIWES course. "
+    + (recognised ? `${one ? "The programme it was written down for" : "The programmes it was written down for"} (${recognised}) ${one ? "waits" : "wait"} for a SIWES course again: `
+      + `${one ? "its" : "their"} 300 Level students are not asked to pay the SIWES registration fee or to register until one is set or written down. ` : "")
+    + "It stays off while its title stands, until it is added here again.\n\n"
+    + (attachment ? `Taking it off also ends the attachment semester — the semester that holds the SIWES course alone — of ${attachment}.\n\n` : "")
+    + "It is refused while the course is set here as a programme's SIWES course, while students who have paid or registered for SIWES are reached by it, "
+    + "or while students are registered in an attachment semester it makes.";
+}
+
+/** the sentence under the SIWES courses: each department's own course, how one comes to be listed, and the fee before any of them —
+ *  the amount named only once the Bursary has published it */
+export function siwesCoursesHint(fee: SiwesConfig["fee"] | undefined): string {
+  const amount = fee && fee.state === "PUBLISHED" && num(fee.amount) > 0 ? `${naira(fee.amount)} ` : "";
+  return "Each department carries SIWES under its own course code and title; a course whose title reads SIWES or Industrial Training is listed "
+    + `as it is added to the catalogue; the ${amount}SIWES registration fee is paid before a student registers the SIWES course of the Second Semester of 300 Level `
+    + "(a SIWES course at another level or in the First Semester is not covered yet).";
+}
+
+/** what adding a course here does for the programmes taking SIWES: a programme still waiting whose own 300 Level structure carries it
+ *  and whose Second Semester is the SIWES semester is given it as its course; every other is left as it is, the row saying what is
+ *  found; nothing written down moves */
+export const SIWES_COURSE_ADD_HINT = "As a course is added here, a programme still waiting for a SIWES course whose own 300 Level structure carries it, and whose Second Semester is the SIWES semester, is given it as its course; "
+  + "every other programme is left as it is, its row saying what is found. A course already set or written down for a programme is not moved.";
 
 export function sessionNames(list: (string | { name: string })[] | null | undefined): string[] {
   return (list ?? []).map((s) => (typeof s === "string" ? s : s.name)).filter(Boolean);

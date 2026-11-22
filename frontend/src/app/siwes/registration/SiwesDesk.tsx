@@ -5,6 +5,17 @@
  *    in months, DRAFT until opened), the programmes taking SIWES that session and each programme's SIWES course per curriculum — a course
  *    of the catalogue named by its code, never a new course and never tied to a session. The Academic Office, the Registrar, the Deputy
  *    Registrar and the Super Administrator set it (the database checks again); everyone else reads it.
+ *    V776 (the user's word of 22 November 2026): a programme is added before its SIWES course is known — each row says how the course is
+ *    known (set here, or written down from the programme's own structure when it was added or a course was added to the SIWES courses
+ *    — only where its Second Semester is the SIWES semester — standing until another is set) or that there is none yet, with what the
+ *    catalogue offers now: one course found ("Use it" sets it; where the programme's Second Semester also carries required courses it
+ *    asks first what that binds), several (the office sets the one), a SIWES course the programme carries where SIWES registration does
+ *    not reach (a First Semester or 400 Level course: said plainly, nothing to set), or nothing; where a course is found the row says
+ *    what the programme's Second Semester is (the SIWES semester, or one that also carries required courses); a note names the cohorts
+ *    no course reaches yet, those of them who have paid or registered and so stay held to SIWES, and the same offer; the SIWES courses
+ *    of the catalogue are listed, each department's under its own code and title, with the programmes each is set or written down for
+ *    and the attachment semesters that rest on it, a course added to them by its code (a waiting programme whose own structure carries
+ *    it is given it where its Second Semester is the SIWES semester) or taken off them.
  *  - Students: the eligible students of the session (300 Level, a programme taking SIWES), paid or not, registered or not, filtered by
  *    faculty, department, programme and status, searched and paged on the server, each one's detail, and the whole list as a branded
  *    Excel workbook or a printed list.
@@ -24,10 +35,13 @@ import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { day } from "@/lib/format";
 import {
-  GROUP_HEAD, HISTORY_HEAD, SIWES_SETTERS, STATUSES, STATUS_WORD, STUDENT_HEAD, apiStatus, byWords, configWarnings, courseStateWarning, courseStateWord, courseWords,
-  dateWord, emptyPeriodForm, groupLine, historyLine,
-  naira, num, otherCoursesOf, periodProblems, periodWords, reasonWords, rowState, scopeWords, sessionNames, shownStatus, siwesCourseOf, siwesQuery,
-  sourceWord, studentLine, trainingWords, unitName, unitOptions, type MySiwes, type Opt, type PeriodForm, type SiwesConfig, type SiwesConfigProgramme, type SiwesCourse,
+  GROUP_HEAD, HISTORY_HEAD, NO_COURSE_300, NO_COURSE_FOUND, NO_COURSE_YET, PROGRAMMES_HINT, SIWES_COURSE_ADD_HINT, SIWES_COURSE_LEVEL_HINT, SIWES_SETTERS, STATUSES, STATUS_WORD,
+  STUDENT_HEAD, apiStatus, attachmentForWords, byWords, carriedByWords, configWarnings, confirmUseItWords, courseCodeTyped, courseHint, courseHintWords, courseStateWarning,
+  courseStateWord, courseWords, dateWord, emptyPeriodForm, foundInsteadWords, groupLine, historyLine, levelSemesterWords, naira, notRecognisedWords, num, onSiwesCourses,
+  otherCoursesOf, periodProblems, periodWords, programmeAddedWords, programmeCourseLines, programmeNames, reasonWords, recognisedForWords, rowState, scopeWords,
+  secondSemesterWords, sessionNames, setForWords, shownStatus, siwesCourseAddedWords, siwesCourseKnownWords, siwesCourseOf, siwesCourseOffWords, siwesCourseSetHereWords, siwesCoursesHint,
+  siwesQuery, sourceWord, studentLine, trainingWords, unitName, unitOptions, unreachedLines,
+  type MySiwes, type Opt, type PeriodForm, type SiwesCatalogueCourse, type SiwesConfig, type SiwesConfigProgramme, type SiwesCourse, type SiwesCourseLine,
   type SiwesFilters, type SiwesGroup, type SiwesHistoryRow, type SiwesStats, type SiwesStudentPage, type SiwesStudentRow,
 } from "@/lib/siwes";
 
@@ -133,8 +147,111 @@ function CourseModal({ programme, onClose, onDone }: { programme: SiwesConfigPro
           <input id="swc-code" className="ctl tnum" value={code} onChange={(e) => setCode(e.target.value)} placeholder="CSC 399" />
         </Field>
       </div>
+      {/* SIWES_COURSE_LEVEL: a course the programme carries only at another level is refused (shown by notifyProblem above) */}
+      <div className="sub2 mt-1">{SIWES_COURSE_LEVEL_HINT}</div>
       {problem ? <ProblemNotice problem={problem} /> : null}
     </Modal>
+  );
+}
+
+/** V776 · the SIWES courses of the catalogue: each department carries SIWES under its own code and title. A course whose title reads
+ *  SIWES or Industrial Training is listed as the catalogue takes it; the offices that set SIWES add any other by its code (a waiting
+ *  programme whose own structure carries it is given it where its Second Semester is the SIWES semester), or take one off ("Not a
+ *  SIWES course": refused by the database while it is set for a programme, reaches students who have paid or registered, or makes an
+ *  attachment semester students are registered in; the programmes it was only written down for wait again). A course set as a
+ *  programme's SIWES course without being on the SIWES courses is listed too, and said so: there is nothing to take off */
+function SiwesCoursesPanel({ config, maySet, onDone }: { config: SiwesConfig; maySet: boolean; onDone: () => void }) {
+  const courses = config.siwesCourses ?? [];
+  const names = programmeNames(config);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  async function add() {
+    const courseCode = courseCodeTyped(code);
+    if (!courseCode) { notifyProblem({ status: 422, title: "Give the course code, as the catalogue holds it." }); return; }
+    setBusy("add");
+    setProblem(null);
+    try {
+      const r = await call("PUT", "/siwes-courses", { courseCode, siwes: true }, `SIWES courses: ${courseCode} added`);
+      if (!r.ok) { setProblem(r.problem); notifyProblem(r.problem); return; }
+      // a course no programme comes by on its own (not 300 Level, say) is added as asked, and said so at once; the programmes still
+      // waiting are given it by the act where their structure carries it and their Second Semester is the SIWES semester — those that
+      // came by their course are named (the list before it is the configuration's)
+      const said = siwesCourseAddedWords((r.data.siwesCourses ?? null) as SiwesCatalogueCourse[] | null, courseCode, config.siwesCourses, names);
+      // a notice that says more than the bare success stays long enough to be read
+      notify(said.words, said.tone, said.tone === "warn" || said.words.length > 80 ? 12000 : undefined);
+      setCode("");
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function takeOff(c: SiwesCatalogueCourse) {
+    // set here as a programme's SIWES course: the database refuses it, so the officer is told which programme instead of being asked
+    const setHere = siwesCourseSetHereWords(c, names);
+    if (setHere) { notify(setHere, "warn", 12000); return; }
+    if (!window.confirm(siwesCourseOffWords(c, names))) return;
+    setBusy(c.code);
+    setProblem(null);
+    try {
+      const r = await call("PUT", "/siwes-courses", { courseCode: c.code, siwes: false }, `SIWES courses: ${c.code} taken off`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(`${c.code} is no longer a SIWES course`);
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Panel title="SIWES courses" right={`${courses.length} course${courses.length === 1 ? "" : "s"}`}>
+      {courses.length ? (
+        <DTable cols={["Course", "Department", "Level and semester", "Catalogue", "How it is known", "Programmes", "|mid"]}
+          texts={courses.map((c) => [c.code, c.title, c.department, carriedByWords(c, Infinity), setForWords(c, names), recognisedForWords(c, names), attachmentForWords(c, Infinity)].filter(Boolean).join(" "))}
+          rows={courses.map((c) => {
+            const st = courseStateWord(c);
+            const carried = carriedByWords(c);
+            // whose SIWES course it is: set here, or written down from the programme's structure
+            const setFor = setForWords(c, names);
+            const recognisedFor = recognisedForWords(c, names);
+            // the attachment semesters that rest on it: taking it off the SIWES courses ends them
+            const attachment = attachmentForWords(c);
+            const why = notRecognisedWords(c);
+            return [
+              <span key="c"><b className="tnum">{c.code}</b> {c.title ?? ""}{c.units != null ? <span className="sub2"> · {c.units} unit{c.units === 1 ? "" : "s"}</span> : null}</span>,
+              <span key="d" className="sub2">{c.department || "—"}</span>,
+              <span key="l">{levelSemesterWords(c)}</span>,
+              <span key="s">{st ? <Pil kind={st[1]}>{st[0].toUpperCase()}</Pil> : "—"}</span>,
+              <span key="k" className="sub2">{siwesCourseKnownWords(c)}</span>,
+              <span key="p">
+                <span className="blk">{carried ? <><span className="sub2">In the structure of</span> {carried}</> : <span className="sub2">In no programme&rsquo;s structure</span>}</span>
+                {setFor ? <span className="blk"><span className="sub2">Set here for</span> {setFor}</span> : null}
+                {recognisedFor ? <span className="blk"><span className="sub2">Written down for</span> {recognisedFor}</span> : null}
+                {attachment ? <span className="blk sub2">Attachment semester of {attachment}</span> : null}
+                {why ? <span className="blk sub2">{why}</span> : null}
+              </span>,
+              // a course listed only because it is set as a programme's SIWES course is not on the SIWES courses: nothing to take off
+              maySet && onSiwesCourses(c) ? (
+                <Btn key="a" kind="ghost" size="sm" busy={busy === c.code} disabled={busy !== null} onClick={() => void takeOff(c)}>Not a SIWES course</Btn>
+              ) : <span key="a" />,
+            ];
+          })} />
+      ) : (
+        <PBody><div className="sub2">No course of the catalogue is listed as SIWES yet{maySet ? "; add each department's SIWES course below, by its code" : ""}.</div></PBody>
+      )}
+      {maySet ? (
+        <PBody>
+          <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
+            <Field id="sw-siwes-course" label="Add a course" hint="A course code as the catalogue holds it, e.g. CSC 399. A course the catalogue does not hold is refused; none is created here.">
+              <input id="sw-siwes-course" className="ctl tnum" value={code} onChange={(e) => setCode(e.target.value)} placeholder="CSC 399"
+                onKeyDown={(e) => { if (e.key === "Enter" && busy === null && code.trim()) void add(); }} />
+            </Field>
+            <Btn kind="secondary" size="sm" busy={busy === "add"} busyLabel="Adding…" disabled={busy !== null || !code.trim()} onClick={() => void add()}>Add course</Btn>
+          </div>
+          {problem ? <ProblemNotice problem={problem} /> : null}
+        </PBody>
+      ) : null}
+      <PBody><div className="sub2">{siwesCoursesHint(config.fee)} {SIWES_COURSE_ADD_HINT}</div></PBody>
+    </Panel>
   );
 }
 
@@ -150,7 +267,9 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
     try {
       const r = await call("POST", "/programmes", { session, programmeCode: adding }, `SIWES ${session}: programme ${adding} added`);
       if (!r.ok) { notifyProblem(r.problem); return; }
-      notify(`${adding} takes SIWES in ${session}`);
+      // V776: the programme is added whether or not its SIWES course is known; one with no course found is said so, never a bare success
+      const said = programmeAddedWords(r.data as { programmes?: SiwesConfigProgramme[] | null }, adding, session);
+      notify(said.words, said.tone, said.tone === "warn" ? 12000 : undefined);
       setAdding("");
       onDone();
     } finally {
@@ -169,14 +288,69 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
       setBusy(null);
     }
   }
+  // V776: the one course the catalogue now gives a programme (or one curriculum of it) with no course written down, set as its course
+  // in one press: the same call "Set course" makes, with that course and that curriculum
+  const foundKey = (x: SiwesConfigProgramme, l: SiwesCourseLine) => `found|${x.code}|${l.curriculum ?? ""}`;
+  async function takeFound(x: SiwesConfigProgramme, l: SiwesCourseLine) {
+    const found = l.found;
+    if (!found) return;
+    // a programme whose Second Semester is not the SIWES semester: what taking the course binds is told first, in the officer's words
+    // (the published fee when there is one); where the semester is the SIWES semester, or the answer does not say, nothing is asked
+    const ask = confirmUseItWords(x, found, config.fee);
+    if (ask && !window.confirm(ask)) return;
+    const whose = `${x.code}${l.curriculum ? ` (${l.curriculum})` : ""}`;
+    setBusy(foundKey(x, l));
+    try {
+      const r = await call("PUT", "/courses", { programmeCode: x.code, curriculum: l.curriculum || null, courseCode: found.code }, `SIWES course of ${whose} set to ${found.code}`);
+      if (!r.ok) { notifyProblem(r.problem); return; }
+      notify(`${whose}: SIWES course ${found.code}`);
+      // K25: a course not LIVE in the catalogue is set as asked, and said so at once
+      const warning = courseStateWarning((r.data.course ?? null) as SiwesCourse | null);
+      if (warning) notify(warning, "warn", 12000);
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
   const eligibleWord = (e: SiwesConfigProgramme["eligible"]) => (typeof e === "number" ? String(e) : typeof e === "boolean" ? (e ? "Yes" : "No") : "—");
-  // K25: a mapped course with its catalogue state — a course not LIVE is warned of, under the table
-  const courseCell = (c: SiwesCourse | null) => {
-    if (!c) return <Pil kind="warn">NOT SET</Pil>;
-    const st = courseStateWord(c);
-    return <>{courseWords(c)}{st ? <> <Pil kind={st[1]}>{st[0].toUpperCase()}</Pil></> : null}</>;
+  const foundButton = (x: SiwesConfigProgramme, l: SiwesCourseLine) => (
+    <> <Btn kind="secondary" size="sm" busy={busy === foundKey(x, l)} busyLabel="Setting…" disabled={busy !== null} onClick={() => void takeFound(x, l)}>Use it</Btn></>
+  );
+  // K25: a programme's course with its catalogue state — a course not LIVE is warned of, under the table. V776: and how the course is
+  // known (set here, or written down from the programme's structure); where there is none the row says what the catalogue offers
+  // now — one course found (the offices that set take it with "Use it"), several (the one is set), a SIWES course carried where SIWES
+  // registration does not reach (said plainly: nothing to set), or nothing — and what is done. Where a course is found and not yet
+  // taken the row says what the programme's Second Semester is; beside a course written down from the catalogue, "the catalogue now
+  // offers X instead" (or the course has ended), with the same press
+  const courseCell = (x: SiwesConfigProgramme, l: SiwesCourseLine) => {
+    if (!l.course) {
+      const h = courseHint(l, maySet);
+      if (h.kind === "NONE") return <><Pil kind="warn">{NO_COURSE_FOUND.toUpperCase()}</Pil> <span className="sub2">{h.action}</span></>;
+      if (h.kind === "ELSEWHERE") return <><Pil kind="grey">{NO_COURSE_300.toUpperCase()}</Pil> <span className="sub2">{courseHintWords(h)}.</span></>;
+      const st = h.found && h.found.state !== "LIVE" ? courseStateWord(h.found) : null;
+      const load = secondSemesterWords(x);
+      return (
+        <>
+          <Pil kind="warn">{NO_COURSE_YET.toUpperCase()}</Pil> <span className="sub2">{h.words}</span>{st ? <> <Pil kind={st[1]}>{st[0].toUpperCase()}</Pil></> : null}
+          {h.kind === "FOUND" && maySet ? foundButton(x, l) : <span className="sub2"> — {h.action}</span>}
+          {load ? <span className="blk sub2">{load}.</span> : null}
+        </>
+      );
+    }
+    const st = courseStateWord(l.course);
+    const load = l.found ? secondSemesterWords(x) : "";
+    return (
+      <>
+        {courseWords(l.course)}{st ? <> <Pil kind={st[1]}>{st[0].toUpperCase()}</Pil></> : null}{l.known ? <span className="sub2"> · {l.known}</span> : null}
+        {l.found ? <span className="blk"><span className="sub2">{foundInsteadWords(l.course, l.found)}.</span>{maySet ? foundButton(x, l) : null}</span> : null}
+        {load ? <span className="blk sub2">{load}.</span> : null}
+      </>
+    );
   };
   const warnings = configWarnings(config);
+  // V776: the cohorts of the programmes taking SIWES that no SIWES course reaches yet, those of them who have paid or registered (held
+  // to SIWES, waiting for the course), and what the catalogue offers each
+  const unreached = unreachedLines(config, maySet);
   return (
     <>
       <Panel title={`SIWES ${session}`} right={<Pil kind={pt}>{pw.toUpperCase()}</Pil>}>
@@ -196,15 +370,16 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
       <Panel title="Programmes taking SIWES" right={`${config.programmes.length} programme${config.programmes.length === 1 ? "" : "s"}`}>
         {config.programmes.length ? (
           <DTable cols={["Programme", "Department", "Faculty", "Eligible|num", "SIWES course", "|mid"]} rows={config.programmes.map((x) => {
-            const curricula = (x.curricula ?? []).filter((c) => c.curriculum);
+            // one line for each curriculum the programme's students hold, where it has any
+            const lines = programmeCourseLines(x);
             return [
               <span key="p"><b className="tnum">{x.code}</b> {x.name}</span>,
               <span key="d" className="sub2">{unitName(x.department) || "—"}</span>,
               <span key="f" className="sub2">{unitName(x.faculty) || "—"}</span>,
               <span key="e" className="tnum">{eligibleWord(x.eligible)}</span>,
-              <span key="c">{curricula.length
-                ? curricula.map((c) => <span key={c.curriculum} className="blk"><span className="sub2">{c.curriculum}:</span> {courseCell(c.course)}</span>)
-                : courseCell(x.course)}</span>,
+              <span key="c">{lines.map((l) => (l.curriculum
+                ? <span key={l.curriculum} className="blk"><span className="sub2">{l.curriculum}:</span> {courseCell(x, l)}</span>
+                : <span key="programme">{courseCell(x, l)}</span>))}</span>,
               maySet ? (
                 <span key="a" className="row row--inline row--tight">
                   <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => setCourse(x)}>Set course</Btn>
@@ -214,6 +389,16 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
             ];
           })} />
         ) : <PBody><div className="sub2">No programme takes SIWES in {session} yet.</div></PBody>}
+        {unreached.lines.length ? (
+          <PBody>
+            <Note kind={unreached.paid ? "bad" : "info"} title={unreached.title}>
+              {unreached.words}
+              <ul style={{ margin: 0, paddingLeft: "1.2em" }}>
+                {unreached.lines.map((u) => <li key={u.key}><b>{u.name}:</b> {u.words}. {u.course}.{u.semester ? ` ${u.semester}.` : ""}</li>)}
+              </ul>
+            </Note>
+          </PBody>
+        ) : null}
         {warnings.length ? (
           <PBody>
             <Note kind={warnings.some((w) => w.ended) ? "bad" : "info"} title={`${warnings.length} SIWES course${warnings.length === 1 ? " is" : "s are"} not live in the catalogue`}>
@@ -226,18 +411,19 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
         {maySet && p ? (
           <PBody>
             <div className="row" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
-              <Field id="sw-add" label="Add a programme" hint="Undergraduate programmes not yet taking SIWES this session.">
+              <Field id="sw-add" label="Add a programme" hint="Undergraduate programmes not yet taking SIWES this session. A programme whose students are on SIWES is added whether or not its SIWES course is known yet.">
                 <select id="sw-add" className="ctl" value={adding} onChange={(e) => setAdding(e.target.value)}>
                   <option value="">Choose a programme…</option>
                   {config.candidates.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}
                 </select>
               </Field>
-              <Btn kind="secondary" size="sm" busy={busy === "add"} disabled={busy !== null || !adding} onClick={() => void add()}>Add programme</Btn>
+              <Btn kind="secondary" size="sm" busy={busy === "add"} busyLabel="Adding…" disabled={busy !== null || !adding} onClick={() => void add()}>Add programme</Btn>
             </div>
           </PBody>
         ) : null}
-        <PBody><div className="sub2">A programme not taking SIWES keeps its Second Semester as before. A programme&rsquo;s SIWES course stands for every session; the students it binds are its 300 Level students of the session.</div></PBody>
+        <PBody><div className="sub2">{PROGRAMMES_HINT}</div></PBody>
       </Panel>
+      <SiwesCoursesPanel config={config} maySet={maySet} onDone={onDone} />
       {course ? <CourseModal programme={course} onClose={() => setCourse(null)} onDone={onDone} /> : null}
     </>
   );

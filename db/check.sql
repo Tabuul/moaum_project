@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 676
+\set EXPECTED 695
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -36949,8 +36949,8 @@ END $$;
 --          registers (APPROVED, AUTO), and again the same; G registers on the old portal's payment; B is refused while the Second Semester
 --          school fees are owed; the period (OPEN undated) and fee rules (a statement is a draft beside the fee in force; the Bursar
 --          publishes). The reviews: the old fees history started over keeps G's payment and registration; no refund is raised on A's
---          payment; whether SIWES binds (applies); a programme neither added to an open period nor the period opened while a configured
---          programme's cohort has no SIWES course, an old-portal payer binding and holding nothing. The third round: an old-portal credit
+--          payment; whether SIWES binds (applies); a programme added to an open period and the period opened (V776) while a configured
+--          programme's course is not set (it is recognised in its structure as the programme is added), an old-portal payer holding nothing. The third round: an old-portal credit
 --          refunded by hand kept by the reset, the office's drop of a course in the way and of a SIWES course registered in error, a SIWES
 --          payment refunded whole, a SIWES registration staying approved, the Second Semester school fees in the eligibility. The fourth
 --          round: G's second old-portal payment (an open credit) taken away by the reset with its credit, G's registered one kept; H's
@@ -36996,9 +36996,9 @@ BEGIN
         ('C97521', 'B.Sc. SIWES Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4), ('C97522', 'B.Sc. SIWES Check Unconfigured', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
         ('C97523', 'M.Sc. SIWES Check', dept, fac, 'POST GRADUATE', 0, 900, 2);
     INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
-        ('ZZN 302', 'SIWES check training', 6, 2, 300, dept, 'Core', 'LIVE', true), ('ZZN 304', 'SIWES check elective', 3, 2, 300, dept, 'Elective', 'LIVE', false),
-        ('ZZN 301', 'SIWES check first', 3, 1, 300, dept, 'Core', 'LIVE', false), ('ZZN 399', 'SIWES check attachment', 6, 2, 300, dept, 'Core', 'LIVE', true),
-        ('ZZN 702', 'SIWES check postgraduate', 3, 2, 700, dept, 'Core', 'LIVE', false);
+        ('ZZN 302', 'SIWES check training', 6, 2, 300, dept, 'Core', 'LIVE', true), ('ZZN 304', 'Check V752 elective', 3, 2, 300, dept, 'Elective', 'LIVE', false),
+        ('ZZN 301', 'Check V752 first', 3, 1, 300, dept, 'Core', 'LIVE', false), ('ZZN 399', 'SIWES check attachment', 6, 2, 300, dept, 'Core', 'LIVE', true),
+        ('ZZN 702', 'Check V752 postgraduate', 3, 2, 700, dept, 'Core', 'LIVE', false);
     INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
         ('ZZN 302', 'C97521', 300, 'Core'), ('ZZN 301', 'C97521', 300, 'Core'), ('ZZN 304', 'C97521', 300, 'Elective'),
         ('ZZN 399', 'C97522', 300, 'Core'), ('ZZN 304', 'C97522', 300, 'Elective'), ('ZZN 702', 'C97523', 700, 'Core');
@@ -37119,8 +37119,9 @@ BEGIN
     EXCEPTION WHEN check_violation THEN fixes := fixes || '/' || split_part(SQLERRM, ':', 1); END;
     fixes := fixes || '/' || (registration.siwes_eligibility(a, S) ->> 'applies') || '/' || (registration.siwes_eligibility(c, S) ->> 'applies');
     PERFORM set_config('moaum.actor_office', 'academic', true);
-    -- C97522 is not added to the open period while C (its 300 Level) has no SIWES course; configured all the same (as an earlier build
-    -- let it), the period is not opened again; C's old-portal SIWES payment binds C to nothing and holds nothing: taken out again
+    -- V776: C97522 is added to the open period with no SIWES course set — its course is recognised in its structure (ZZN 399) and written
+    -- down as it is added, so C (its 300 Level) is bound; the period opens again; C's old-portal SIWES payment holds nothing: the
+    -- programme is taken out again
     BEGIN PERFORM registration.siwes_add_programme(S, 'C97522'); fixes := fixes || '/added';
     EXCEPTION WHEN check_violation THEN fixes := fixes || '/' || split_part(SQLERRM, ':', 1); END;
     INSERT INTO registration.siwes_programme (session, programme_code, added_by, added_office) VALUES (S, 'C97522', who, 'academic') ON CONFLICT DO NOTHING;
@@ -37373,7 +37374,7 @@ BEGIN
                      || ' | reference true/4000.00/true/SIWES/SIWES_PAID | registered before 0'
                      || ' | register APPROVED/AUTO/ZZN 302:APPROVED again true | G APPROVED/true | B REG_SEMESTER_FEES_DUE'
                      || ' | rules SIWES_PERIOD_DATES/SIWES_FEE_OFFICE/4000.00/5000.00/SIWES_NOT_ELIGIBLE'
-                     || ' | reviews 1/REFUND_SIWES_REGISTERED/true/false/SIWES_COURSE_MISSING/SIWES_COURSE_MISSING/false/0/removed'
+                     || ' | reviews 1/REFUND_SIWES_REGISTERED/true/false/added/opened/true/0/removed'
                      || ' | round 2 REFUND_SIWES_CREDIT_SETTLED/SIWES_CREDIT_REFUND_DESK/REFUNDED:true/REG_RETURN_SIWES/office dropped/dropped/0/SIWES_COURSE_IN_USE/true/SIWES_COURSE_MISSING'
                      || ' | round 3 OPEN/refunded/true/REFUND_SIWES_CREDIT_SETTLED | true/office dropped/false/false | REG_STATUS_SIWES/A dropped/REFUND_SIWES_PART/raised'
                      || ' | round 4 OPEN/true/0/1 | 1/1/SIWES_CREDIT_CHECK_BANK/REFUND_SIWES_CHECK_BANK/true:null/PROPOSED:true:true/true:true | APPROVED/AUTO/true/true'
@@ -41649,6 +41650,1083 @@ BEGIN
                    || ' | 13 NONE_DUE settled true 0', false), msg);
 END $$;
 
+-- ── V776: SIWES — a programme is added before its SIWES course is known, and SIWES courses are recognised from the catalogue. In
+--          9896/9897 (current; an OPEN period, the fee published), a made-up department with four programmes: C97761, whose structure
+--          carries ZZK 399 "Industrial Training (check)" at 300/2 — added to the catalogue unmarked, marked by its title; C97762, with
+--          no SIWES course anywhere; C97763, whose department course ZZK 398 "Students Industrial Work Experience Scheme" is in no
+--          structure; C97764, in a second department with two such courses. Each added to the open period with no course set (once
+--          refused SIWES_COURSE_MISSING); the course written down for it and how (round 3: only the structure's course, and only for
+--          a programme whose 300 Level Second Semester is a SIWES semester — C97761's, as it is added; the department's one course
+--          is SHOWN as found, never written: C97763's cohort waits, unbound, until the Academic Office takes it with Set course);
+--          who is bound; the cohorts that wait and what the catalogue offers them (found, choices); the Academic Office setting
+--          C97762's and C97764's course; a course added to the SIWES courses (C97762's structure's, written as it is marked) and
+--          taken off; one never taken off while in use; the fee still paid before registering. The block undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9895/9896'; S text := '9896/9897'; who uuid := gen_random_uuid(); fac text;
+    a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid();
+    marked text; added text := ''; found text; bound text; waits text; cfg jsonb; setc text; marks text := ''; fee text; lst jsonb; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V776', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9895-10-01', DATE '9896-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9896-10-01', DATE '9897-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9896/776' WHERE name = S;
+    SELECT p.faculty_code INTO fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.department (code, name, faculty_code) VALUES ('ZD7761', 'Check V776 Department One', fac), ('ZD7762', 'Check V776 Department Two', fac);
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97761', 'B.Sc. Check V776 Structure', 'ZD7761', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97762', 'B.Sc. Check V776 None', 'ZD7762', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97763', 'B.Sc. Check V776 Department', 'ZD7761', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97764', 'B.Sc. Check V776 Two', 'ZD7762', fac, 'UNDER GRADUATE', 0, 400, 4);
+    -- none is given the marker: the title marks the three that read as SIWES, each under its own code and title
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZK 399', 'Industrial Training (check)', 6, 2, 300, 'ZD7761', 'Core', 'LIVE'),
+        ('ZZK 398', 'Students Industrial Work Experience Scheme', 6, 2, 300, 'ZD7761', 'Core', 'LIVE'),
+        ('ZZK 397', 'SIWES II (check)', 6, 2, 300, 'ZD7762', 'Core', 'LIVE'),
+        ('ZZK 396', 'Industrial Attachment (check)', 6, 2, 300, 'ZD7762', 'Core', 'LIVE'),
+        ('ZZK 301', 'Check V776 field course', 6, 2, 300, 'ZD7762', 'Core', 'LIVE'),
+        ('ZZK 302', 'Check V776 elective', 3, 2, 300, 'ZD7761', 'Elective', 'LIVE');
+    SELECT string_agg(k.code || ':' || k.industrial_training, ',' ORDER BY k.code) INTO marked FROM catalogue.course k WHERE k.code LIKE 'ZZK %';
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZK 399', 'C97761', 300, 'Core'), ('ZZK 302', 'C97761', 300, 'Elective'), ('ZZK 301', 'C97762', 300, 'Core');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a, 'MOAUM/ADM/98/977601', 'MOAU/ZSK/98/7761', 'ZZSIWES', 'A', 'C97761', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (b, 'MOAUM/ADM/98/977602', 'MOAU/ZSK/98/7762', 'ZZSIWES', 'B', 'C97762', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (c, 'MOAUM/ADM/98/977603', 'MOAU/ZSK/98/7763', 'ZZSIWES', 'C', 'C97763', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (d, 'MOAUM/ADM/98/977604', 'MOAU/ZSK/98/7764', 'ZZSIWES', 'D', 'C97764', 'UTME', S0, 100, 300, 'ACTIVE', now());
+    -- an OPEN period with no programme, and the fee published
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.siwes_fee_state(S, 4000, 'check V776');
+    PERFORM finance.siwes_fee_publish(S);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    -- each programme added to the open period with no course set for it
+    BEGIN PERFORM registration.siwes_add_programme(S, 'C97761'); added := added || 'added';
+    EXCEPTION WHEN check_violation THEN added := added || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.siwes_add_programme(S, 'C97762'); added := added || '/added';
+    EXCEPTION WHEN check_violation THEN added := added || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.siwes_add_programme(S, 'C97763'); added := added || '/added';
+    EXCEPTION WHEN check_violation THEN added := added || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.siwes_add_programme(S, 'C97764'); added := added || '/added';
+    EXCEPTION WHEN check_violation THEN added := added || '/' || split_part(SQLERRM, ':', 1); END;
+    -- and the period saved OPEN again with a cohort still waiting
+    BEGIN PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776');
+          added := added || '/opened';
+    EXCEPTION WHEN check_violation THEN added := added || '/' || split_part(SQLERRM, ':', 1); END;
+    -- the course of each, and how it is known: the structure's; none; the department's one course no structure carries; two, so none
+    SELECT string_agg(x.p || ' ' || coalesce(registration.siwes_course_of(x.p, NULL), 'none') || ' ' || coalesce(registration.siwes_course_source(x.p, NULL), '-'), ', ' ORDER BY x.p)
+      INTO found FROM (VALUES ('C97761'), ('C97762'), ('C97763'), ('C97764')) x(p);
+    SELECT string_agg(x.k || ':' || registration.siwes_applies(x.id, S), ',' ORDER BY x.k) INTO bound FROM (VALUES ('A', a), ('B', b), ('C', c), ('D', d)) x(k, id);
+    cfg := registration.siwes_config(S);
+    -- the cohorts no course reaches, and what the catalogue offers each (found: the one course it gives; choices: all it offers)
+    SELECT coalesce(string_agg((u->>'programmeCode') || ' ' || (u->>'students') || ' found ' || coalesce(u->'found'->>'code', '-') || ' choices '
+                               || coalesce((SELECT string_agg(ch->>'code', ',' ORDER BY ch->>'code')
+                                              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(u->'choices') = 'array' THEN u->'choices' ELSE '[]'::jsonb END) ch), '-'),
+                               ', ' ORDER BY u->>'programmeCode'), 'none') INTO waits FROM jsonb_array_elements(cfg->'unreached') u;
+    waits := waits || ' | listed ' || (SELECT count(*) FROM jsonb_array_elements(cfg->'siwesCourses') k WHERE k->>'code' LIKE 'ZZK %')
+             || ' | ' || (SELECT string_agg((p->>'code') || ' ' || coalesce(p->>'source', '-'), ', ' ORDER BY p->>'code') FROM jsonb_array_elements(cfg->'programmes') p);
+    -- the Academic Office adds C97762's course to the SIWES courses (its structure's: written down as it is marked — its Second
+    -- Semester is then a SIWES semester), takes the department's one course for C97763 (Set course: the catalogue's course found
+    -- is the desk's by one press) and says which of C97764's two
+    lst := registration.siwes_mark_course('ZZK 301', true);
+    setc := (SELECT k->>'byTitle' FROM jsonb_array_elements(lst) k WHERE k->>'code' = 'ZZK 301') || '/'
+            || coalesce(registration.siwes_course_of('C97762', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97762', NULL), '-');
+    PERFORM registration.siwes_set_course('C97763', NULL, 'ZZK 398');
+    setc := setc || '/' || registration.siwes_course_of('C97763', NULL) || ' ' || registration.siwes_course_source('C97763', NULL);
+    PERFORM registration.siwes_set_course('C97764', NULL, 'ZZK 397');
+    setc := setc || '/' || registration.siwes_course_of('C97764', NULL) || ' ' || registration.siwes_course_source('C97764', NULL)
+            || '/' || (SELECT string_agg(x.k || ':' || registration.siwes_applies(x.id, S), ',' ORDER BY x.k) FROM (VALUES ('B', b), ('C', c), ('D', d)) x(k, id))
+            || '/waiting ' || jsonb_array_length(registration.siwes_config(S)->'unreached');
+    -- a course is taken off the SIWES courses, and stays off; never one set for a programme, nor one a paid student is reached by
+    BEGIN PERFORM registration.siwes_mark_course('ZZK 396', false); marks := 'off';
+    EXCEPTION WHEN check_violation THEN marks := split_part(SQLERRM, ':', 1); END;
+    UPDATE catalogue.course SET units = 5 WHERE code = 'ZZK 396';
+    marks := marks || ':' || (SELECT k.industrial_training FROM catalogue.course k WHERE k.code = 'ZZK 396');
+    BEGIN PERFORM registration.siwes_mark_course('ZZK 397', false); marks := marks || '/off';
+    EXCEPTION WHEN check_violation THEN marks := marks || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_purpose_reference(a, S, 4000, 'SIWES registration fee ' || S), 'Bank transfer', 'check V776');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM registration.siwes_mark_course('ZZK 399', false); marks := marks || '/off';
+    EXCEPTION WHEN check_violation THEN marks := marks || '/' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.siwes_mark_course('ZZK 999', true); marks := marks || '/on';
+    EXCEPTION WHEN check_violation THEN marks := marks || '/' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'lecturer', true);
+    BEGIN PERFORM registration.siwes_mark_course('ZZK 302', true); marks := marks || '/on';
+    EXCEPTION WHEN check_violation THEN marks := marks || '/' || split_part(SQLERRM, ':', 1); END;
+    -- the fee: C, bound by the department's course, registers nothing before paying
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', c::text, true);
+    BEGIN PERFORM registration.siwes_register(c); fee := 'registered';
+    EXCEPTION WHEN check_violation THEN fee := split_part(SQLERRM, ':', 1); END;
+    fee := fee || '/' || (registration.siwes_eligibility(c, S)->'course'->>'code') || '/' || (registration.siwes_eligibility(c, S)->'fee'->>'amount');
+    msg := concat_ws(' | ', 'marked ' || marked, 'added ' || added, 'course ' || found, 'bound ' || bound, 'waiting ' || waits, 'set ' || setc,
+                     'marks ' || marks, 'fee ' || fee);
+    RAISE EXCEPTION 'the V776 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V776 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V776: SIWES — a programme is added to an open period before its SIWES course is known; a course whose title reads SIWES or Industrial Training is a SIWES course under its own code; the course of a programme''s own structure is written down as it is added where its Second Semester is a SIWES semester, the department''s one course is only shown as found, and the Academic Office sets the rest; the fee is still paid before registering',
+      coalesce(msg = 'marked ZZK 301:false,ZZK 302:false,ZZK 396:true,ZZK 397:true,ZZK 398:true,ZZK 399:true'
+                     || ' | added added/added/added/added/opened'
+                     || ' | course C97761 ZZK 399 STRUCTURE, C97762 none -, C97763 none -, C97764 none -'
+                     || ' | bound A:true,B:false,C:false,D:false'
+                     || ' | waiting C97762 1 found - choices ZZK 396,ZZK 397, C97763 1 found ZZK 398 choices ZZK 398, C97764 1 found - choices ZZK 396,ZZK 397'
+                     || ' | listed 4 | C97761 STRUCTURE, C97762 -, C97763 -, C97764 -'
+                     || ' | set false/ZZK 301 STRUCTURE/ZZK 398 SET/ZZK 397 SET/B:true,C:true,D:true/waiting 0'
+                     || ' | marks off:false/SIWES_COURSE_IN_USE/SIWES_COURSE_IN_USE/SIWES_COURSE_UNKNOWN/SIWES_OFFICE'
+                     || ' | fee SIWES_UNPAID/ZZK 398/4000.00', false),
+      msg);
+END $$;
+-- ── V776, the review's round 2 (as round 3 reads it): a programme's SIWES course is found in the catalogue; the course of its own
+--          structure is WRITTEN DOWN at the desk's own acts where its 300 Level Second Semester is a SIWES semester, everything else
+--          is only SHOWN (found, choices) until the Academic Office takes it with Set course; and what is written or set then stands.
+--          In 9896/9897 (current; an OPEN period, the fee published), four made-up departments and nine programmes, each added
+--          with no course set. C97771's 300 Level Second Semester structure carries the 6-unit ZZM 399 beside the 1-unit ZZM 398 "SIWES
+--          Report and Seminar"; C97772's two SIWES courses of equal units; C97773's its own department's and another department's.
+--          C97774 has no SIWES course in its structure, and its department one that no structure carries — beside a draft, one
+--          another programme owns and one a structure carries: that one is found and shown, NEVER written (round 3), and the Academic
+--          Office takes it with Set course; C97775, of that department, carries a SIWES course at 400 Level. C97776's one course is
+--          taken off the SIWES courses, put back, then set on the desk. C97777 carries "SIWES I" at 200 Level and "SIWES II" at 300 (E1
+--          passed the first, F1 the second). C97778 is NOT configured: its 300 Level Second Semester is V503's attachment semester,
+--          which G1 registers. C97779's SIWES course has ended, is restored (found, shown; saving the period writes nothing) and is
+--          taken with Set course. Last, A1 of C97771 and D1 of C97774 pay the ₦4,000 and the catalogue and the desk change around
+--          them (a draft, a course marked, the course given to another programme, a second course of the structure marked, the
+--          period saved): each still registers the course it paid on, and A2 and D2, who have not paid, stay bound to it. A
+--          registration made to see so is undone at once. The block undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9895/9896'; S text := '9896/9897'; who uuid := gen_random_uuid(); fac text;
+    a1 uuid := gen_random_uuid(); a2 uuid := gen_random_uuid(); t1 uuid := gen_random_uuid(); w1 uuid := gen_random_uuid();
+    d1 uuid := gen_random_uuid(); d2 uuid := gen_random_uuid(); x1 uuid := gen_random_uuid(); u1 uuid := gen_random_uuid();
+    e1 uuid := gen_random_uuid(); f1 uuid := gen_random_uuid(); g1 uuid := gen_random_uuid(); r1 uuid := gen_random_uuid();
+    rg uuid := gen_random_uuid(); cfg jsonb; k text; sid uuid; probe text; st text; st0 text; i int; v_err text;
+    m_tie text; m_dept text; m_stands text; m_undone text; m_passed text; m_attach text; m_ended text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V776 round 2', true);
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9895-10-01', DATE '9896-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9896-10-01', DATE '9897-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9896/776' WHERE name = S;
+    SELECT p.faculty_code INTO fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.department (code, name, faculty_code) VALUES
+        ('ZD7765', 'Check V776 R2 Department Five', fac), ('ZD7766', 'Check V776 R2 Department Six', fac),
+        ('ZD7767', 'Check V776 R2 Department Seven', fac), ('ZD7768', 'Check V776 R2 Department Eight', fac);
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97771', 'B.Sc. Check V776 R2 Report', 'ZD7765', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97772', 'B.Sc. Check V776 R2 Tie', 'ZD7765', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97773', 'B.Sc. Check V776 R2 Two Departments', 'ZD7765', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97774', 'B.Sc. Check V776 R2 Department', 'ZD7767', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97775', 'B.Sc. Check V776 R2 Elsewhere', 'ZD7767', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97776', 'B.Sc. Check V776 R2 Undone', 'ZD7766', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97777', 'B.Sc. Check V776 R2 Passed', 'ZD7768', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97778', 'B.Sc. Check V776 R2 Attachment', 'ZD7768', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97779', 'B.Sc. Check V776 R2 Restored', 'ZD7768', fac, 'UNDER GRADUATE', 0, 400, 4);
+    -- none is given the marker: the title marks every one that reads as SIWES (ZZM 393 and ZZM 380 do not), the ended one too
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZM 399', 'SIWES (check r2)', 6, 2, 300, 'ZD7765', 'Core', 'LIVE'),
+        ('ZZM 398', 'SIWES Report and Seminar', 1, 2, 300, 'ZD7765', 'Core', 'LIVE'),
+        ('ZZM 393', 'Check V776 R2 field course', 6, 2, 300, 'ZD7765', 'Elective', 'LIVE'),
+        ('ZZM 397', 'Industrial Training (option A)', 6, 2, 300, 'ZD7765', 'Core', 'LIVE'),
+        ('ZZM 396', 'Industrial Training (option B)', 6, 2, 300, 'ZD7765', 'Core', 'LIVE'),
+        ('ZZM 395', 'Industrial Attachment (check r2)', 6, 2, 300, 'ZD7765', 'Core', 'LIVE'),
+        ('ZZM 394', 'Students Industrial Work Experience Scheme (another department)', 6, 2, 300, 'ZD7766', 'Core', 'LIVE'),
+        ('ZZM 385', 'Industrial Training (undone)', 6, 2, 300, 'ZD7766', 'Core', 'LIVE'),
+        ('ZZM 389', 'Students Industrial Work Experience Scheme', 6, 2, 300, 'ZD7767', 'Core', 'LIVE'),
+        ('ZZM 388', 'SIWES (a draft)', 6, 2, 300, 'ZD7767', 'Core', 'BOARD'),
+        ('ZZM 386', 'Industrial Attachment (carried at 400 Level)', 6, 2, 300, 'ZD7767', 'Core', 'LIVE'),
+        ('ZZM 380', 'Check V776 R2 field practicum', 3, 2, 300, 'ZD7767', 'Core', 'LIVE'),
+        ('ZZM 299', 'SIWES I', 2, 2, 200, 'ZD7768', 'Core', 'LIVE'),
+        ('ZZM 379', 'SIWES II', 6, 2, 300, 'ZD7768', 'Core', 'LIVE'),
+        ('ZZM 369', 'Industrial Attachment (attachment semester)', 6, 2, 300, 'ZD7768', 'Core', 'LIVE');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, owner_programme) VALUES
+        ('ZZM 387', 'Industrial Training (owned)', 6, 2, 300, 'ZD7767', 'Core', 'LIVE', 'C97775');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, ended_on) VALUES
+        ('ZZM 359', 'Students Industrial Work Experience Scheme (ended)', 6, 2, 300, 'ZD7768', 'Core', 'ENDED', current_date - 30);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZM 399', 'C97771', 300, 'Core'), ('ZZM 398', 'C97771', 300, 'Core'), ('ZZM 393', 'C97771', 300, 'Elective'),
+        ('ZZM 397', 'C97772', 300, 'Core'), ('ZZM 396', 'C97772', 300, 'Core'),
+        ('ZZM 395', 'C97773', 300, 'Core'), ('ZZM 394', 'C97773', 300, 'Core'),
+        ('ZZM 386', 'C97775', 400, 'Core'),
+        ('ZZM 385', 'C97776', 300, 'Core'),
+        ('ZZM 299', 'C97777', 200, 'Core'), ('ZZM 379', 'C97777', 300, 'Core'),
+        ('ZZM 369', 'C97778', 300, 'Core'),
+        ('ZZM 359', 'C97779', 300, 'Core');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at) VALUES
+        (a1, 'MOAUM/ADM/98/977701', 'MOAU/ZSM/98/7701', 'ZZSIWES', 'A1', 'C97771', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (a2, 'MOAUM/ADM/98/977702', 'MOAU/ZSM/98/7702', 'ZZSIWES', 'A2', 'C97771', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (t1, 'MOAUM/ADM/98/977703', 'MOAU/ZSM/98/7703', 'ZZSIWES', 'T1', 'C97772', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (w1, 'MOAUM/ADM/98/977704', 'MOAU/ZSM/98/7704', 'ZZSIWES', 'W1', 'C97773', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (d1, 'MOAUM/ADM/98/977705', 'MOAU/ZSM/98/7705', 'ZZSIWES', 'D1', 'C97774', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (d2, 'MOAUM/ADM/98/977706', 'MOAU/ZSM/98/7706', 'ZZSIWES', 'D2', 'C97774', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (x1, 'MOAUM/ADM/98/977707', 'MOAU/ZSM/98/7707', 'ZZSIWES', 'X1', 'C97775', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (u1, 'MOAUM/ADM/98/977708', 'MOAU/ZSM/98/7708', 'ZZSIWES', 'U1', 'C97776', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (e1, 'MOAUM/ADM/98/977709', 'MOAU/ZSM/98/7709', 'ZZSIWES', 'E1', 'C97777', 'UTME', S0, 200, 300, 'ACTIVE', now()),
+        (f1, 'MOAUM/ADM/98/977710', 'MOAU/ZSM/98/7710', 'ZZSIWES', 'F1', 'C97777', 'UTME', S0, 300, 300, 'ACTIVE', now()),
+        (g1, 'MOAUM/ADM/98/977711', 'MOAU/ZSM/98/7711', 'ZZSIWES', 'G1', 'C97778', 'UTME', S0, 100, 300, 'ACTIVE', now()),
+        (r1, 'MOAUM/ADM/98/977712', 'MOAU/ZSM/98/7712', 'ZZSIWES', 'R1', 'C97779', 'UTME', S0, 100, 300, 'ACTIVE', now());
+    -- A1's and D1's school fees of the session stated and paid: once the SIWES fee is paid too, the SIWES course is registered whole
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES
+        (S, 'School fees (check V776 r2)', 100000, 300, 'C97771'), (S, 'School fees (check V776 r2)', 100000, 300, 'C97774');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(a1, S, 100000, NULL), 'Bank transfer', 'check V776 r2');
+    PERFORM finance.confirm_payment(finance.new_reference(d1, S, 100000, NULL), 'Bank transfer', 'check V776 r2');
+    -- the session before: E1 passed SIWES I (200 Level), F1 the programme's own 300 Level SIWES course — published results
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSM/98/7709', 'course', 'ZZM 299', 'total', '70', 'level', '200'),
+        jsonb_build_object('matric', 'MOAU/ZSM/98/7710', 'course', 'ZZM 379', 'total', '65', 'level', '300')), true);
+    -- an OPEN period, the fee published, and every programme but C97778 added with no course set
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r2');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.siwes_fee_state(S, 4000, 'check V776 r2');
+    PERFORM finance.siwes_fee_publish(S);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.siwes_add_programme(S, x.p)
+       FROM (VALUES ('C97771'), ('C97772'), ('C97773'), ('C97774'), ('C97775'), ('C97776'), ('C97777'), ('C97779')) x(p);
+    cfg := registration.siwes_config(S);
+
+    -- ── 1 · a tie is never a guess: each programme's course and how it is known, what the catalogue offers it (top: at the head of
+    --        its list), what was written down as it was added, the cohort that waits, who is bound ──
+    m_tie := 'course ' || (SELECT string_agg(x.p || ' ' || coalesce(registration.siwes_course_of(x.p, NULL), 'none') || ' ' || coalesce(registration.siwes_course_source(x.p, NULL), '-'), ', ' ORDER BY x.p)
+                             FROM (VALUES ('C97771'), ('C97772'), ('C97773')) x(p))
+        || ' | offered ' || (SELECT string_agg(x.p || ' ' || coalesce((SELECT string_agg(c.course_code || ':' || c.units || CASE WHEN c.top THEN ':top' ELSE '' END, ',' ORDER BY c.course_code)
+                                                                       FROM registration.siwes_course_candidates(x.p, NULL) c), 'none'), '; ' ORDER BY x.p)
+                               FROM (VALUES ('C97771'), ('C97772'), ('C97773')) x(p))
+        || ' | written ' || coalesce((SELECT string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin, ', ' ORDER BY sc.programme_code, sc.curriculum)
+                                        FROM registration.siwes_course sc WHERE sc.programme_code IN ('C97771', 'C97772', 'C97773')), 'none')
+        || ' | waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students') || ' found ' || coalesce(u->'found'->>'code', '-') || ' choices '
+                                                        || coalesce((SELECT string_agg(c->>'code', ',' ORDER BY c->>'code')
+                                                                       FROM jsonb_array_elements(CASE WHEN jsonb_typeof(u->'choices') = 'array' THEN u->'choices' ELSE '[]'::jsonb END) c), '-'),
+                                                        ', ' ORDER BY u->>'programmeCode')
+                                        FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' IN ('C97771', 'C97772', 'C97773')), 'none')
+        || ' | bound ' || (SELECT string_agg(x.k || ':' || registration.siwes_applies(x.id, S), ',' ORDER BY x.k) FROM (VALUES ('A1', a1), ('T1', t1), ('W1', w1)) x(k, id));
+    -- the Academic Office says which of C97772's two
+    PERFORM registration.siwes_set_course('C97772', NULL, 'ZZM 397');
+    m_tie := m_tie || ' | set ' || coalesce(registration.siwes_course_of('C97772', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97772', NULL), '-')
+                   || ' T1:' || registration.siwes_applies(t1, S)
+                   || ' waiting ' || (SELECT count(*) FROM jsonb_array_elements(registration.siwes_config(S)->'unreached') u WHERE u->>'programmeCode' = 'C97772');
+
+    -- ── 2 · the department rule (round 3: shown, never written): the SIWES courses of the department as the catalogue holds them, and
+    --        what each programme is offered; C97774's is found and shown (nobody bound), and the Academic Office takes it ──
+    m_dept := 'catalogue ' || (SELECT string_agg(c.code || ':' || c.state || coalesce(':owner ' || c.owner_programme, '')
+                                                 || coalesce(':in ' || (SELECT string_agg(o.programme_code || '@' || o.level, '+' ORDER BY o.programme_code, o.level)
+                                                                          FROM catalogue.course_offer o WHERE o.course_code = c.code), ''), ', ' ORDER BY c.code)
+                                 FROM catalogue.course c WHERE c.dept_code = 'ZD7767' AND c.industrial_training)
+        || ' | course ' || (SELECT string_agg(x.p || ' ' || coalesce(registration.siwes_course_of(x.p, NULL), 'none') || ' ' || coalesce(registration.siwes_course_source(x.p, NULL), '-'), ', ' ORDER BY x.p)
+                              FROM (VALUES ('C97774'), ('C97775')) x(p))
+        || ' | offered ' || (SELECT string_agg(x.p || ' ' || coalesce((SELECT string_agg(c.course_code || ':' || c.units || CASE WHEN c.top THEN ':top' ELSE '' END, ',' ORDER BY c.course_code)
+                                                                       FROM registration.siwes_course_candidates(x.p, NULL) c), 'none'), '; ' ORDER BY x.p)
+                               FROM (VALUES ('C97774'), ('C97775')) x(p))
+        || ' | written ' || coalesce((SELECT string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin, ', ' ORDER BY sc.programme_code, sc.curriculum)
+                                        FROM registration.siwes_course sc WHERE sc.programme_code IN ('C97774', 'C97775')), 'none')
+        || ' | waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students') || ' found ' || coalesce(u->'found'->>'code', '-') || ' choices '
+                                                        || coalesce((SELECT string_agg(c->>'code', ',' ORDER BY c->>'code')
+                                                                       FROM jsonb_array_elements(CASE WHEN jsonb_typeof(u->'choices') = 'array' THEN u->'choices' ELSE '[]'::jsonb END) c), '-'),
+                                                        ', ' ORDER BY u->>'programmeCode')
+                                        FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' IN ('C97774', 'C97775')), 'none')
+        || ' | bound ' || (SELECT string_agg(x.k || ':' || registration.siwes_applies(x.id, S), ',' ORDER BY x.k) FROM (VALUES ('D1', d1), ('D2', d2), ('X1', x1)) x(k, id));
+    -- one press on "Use it": the course found is the desk's, and C97774's students are bound to it (X1's programme has nothing to take)
+    PERFORM registration.siwes_set_course('C97774', NULL, 'ZZM 389');
+    m_dept := m_dept || ' | taken ' || coalesce(registration.siwes_course_of('C97774', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97774', NULL), '-')
+        || ' ' || (SELECT string_agg(x.k || ':' || registration.siwes_applies(x.id, S), ',' ORDER BY x.k) FROM (VALUES ('D1', d1), ('D2', d2), ('X1', x1)) x(k, id))
+        || ' waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students'), ', ' ORDER BY u->>'programmeCode')
+                                      FROM jsonb_array_elements(registration.siwes_config(S)->'unreached') u WHERE u->>'programmeCode' IN ('C97774', 'C97775')), 'none');
+
+    -- ── 5 · SIWES already passed: the published pass each holds, and what SIWES makes of it ──
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', e1::text, true);
+    BEGIN PERFORM registration.siwes_register(e1); probe := 'registered';
+    EXCEPTION WHEN check_violation THEN probe := split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    m_passed := 'marked ' || (SELECT string_agg(c.code || ':' || c.level || ':' || c.industrial_training, ',' ORDER BY c.code) FROM catalogue.course c WHERE c.code IN ('ZZM 299', 'ZZM 379'))
+        || ' | course ' || coalesce(registration.siwes_course_of('C97777', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97777', NULL), '-')
+        || (SELECT string_agg(' | ' || x.k || ' holds ' || coalesce((SELECT string_agg(o.course_code, ',' ORDER BY o.course_code)
+                                                                    FROM registration.course_registration r
+                                                                    JOIN registration.entry e ON e.registration_id = r.id
+                                                                    JOIN catalogue.offering o ON o.id = e.offering_id
+                                                                   WHERE r.student_id = x.id
+                                                                     AND EXISTS (SELECT 1 FROM assessment.course_final(x.id, o.id) cf
+                                                                                  WHERE cf.stage = 'PUBLISHED' AND cf.outcome = 'GRADED' AND cf.points > 0)), 'nothing')
+                              || ' passed ' || registration.siwes_passed(x.id, S)
+                              || ' reasons ' || coalesce(nullif(array_to_string(registration.siwes_reasons(x.id, S), '+'), ''), '-')
+                              || ' bound ' || registration.siwes_applies(x.id, S), '' ORDER BY x.k)
+              FROM (VALUES ('E1', e1), ('F1', f1)) x(k, id))
+        || ' | E1 registers ' || probe;
+
+    -- ── 7 · an ended course, restored: marked by its title though ended, recognised for no programme while it is ──
+    m_ended := 'ended ' || (SELECT c.code || ':' || c.state || ':' || c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 359')
+        || ' course ' || coalesce(registration.siwes_course_of('C97779', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97779', NULL), '-')
+        || ' offered ' || coalesce((SELECT string_agg(c.course_code, ',' ORDER BY c.course_code) FROM registration.siwes_course_candidates('C97779', NULL) c), 'none')
+        || ' waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students') || ' found ' || coalesce(u->'found'->>'code', '-'), ', ')
+                                      FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' = 'C97779'), 'none')
+        || ' R1:' || registration.siwes_applies(r1, S);
+    -- restored (the Department courses page): the configuration shows it as found, and reading it writes nothing
+    PERFORM catalogue.restore_course('ZZM 359');
+    cfg := registration.siwes_config(S);
+    m_ended := m_ended || ' | restored ' || (SELECT c.code || ':' || c.state || ':' || c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 359')
+        || ' course ' || coalesce((SELECT p->'course'->>'code' FROM jsonb_array_elements(cfg->'programmes') p WHERE p->>'code' = 'C97779'), 'none')
+        || ' found ' || coalesce((SELECT p->'found'->>'code' FROM jsonb_array_elements(cfg->'programmes') p WHERE p->>'code' = 'C97779'), '-')
+        || ' waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students') || ' found ' || coalesce(u->'found'->>'code', '-'), ', ')
+                                      FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' = 'C97779'), 'none')
+        || ' written ' || coalesce((SELECT string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin, ', ')
+                                      FROM registration.siwes_course sc WHERE sc.programme_code = 'C97779'), 'none')
+        || ' R1:' || registration.siwes_applies(r1, S);
+    -- the period saved (round 3): nothing is written and nobody is bound — the course stays found, shown; the Academic Office takes it
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r2');
+    cfg := registration.siwes_config(S);
+    m_ended := m_ended || ' | saved ' || coalesce(registration.siwes_course_of('C97779', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97779', NULL), '-')
+        || ' waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students'), ', ')
+                                      FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' = 'C97779'), 'none')
+        || ' written ' || coalesce((SELECT string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin, ', ')
+                                      FROM registration.siwes_course sc WHERE sc.programme_code = 'C97779'), 'none')
+        || ' found ' || coalesce((SELECT p->'found'->>'code' FROM jsonb_array_elements(cfg->'programmes') p WHERE p->>'code' = 'C97779'), '-')
+        || ' R1:' || registration.siwes_applies(r1, S);
+    -- one press on "Use it": the course is the desk's and the cohort is bound
+    PERFORM registration.siwes_set_course('C97779', NULL, 'ZZM 359');
+    cfg := registration.siwes_config(S);
+    m_ended := m_ended || ' | taken ' || coalesce(registration.siwes_course_of('C97779', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97779', NULL), '-')
+        || ' found ' || coalesce((SELECT p->'found'->>'code' FROM jsonb_array_elements(cfg->'programmes') p WHERE p->>'code' = 'C97779'), '-')
+        || ' waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students'), ', ')
+                                      FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' = 'C97779'), 'none')
+        || ' R1:' || registration.siwes_applies(r1, S);
+
+    -- ── 4 · a recognition nobody paid on is undone with its course; a course set on the desk is not ──
+    m_undone := 'recognised ' || coalesce(registration.siwes_course_of('C97776', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97776', NULL), '-')
+                || ' U1:' || registration.siwes_applies(u1, S);
+    BEGIN PERFORM registration.siwes_mark_course('ZZM 385', false); m_undone := m_undone || ' | off accepted';
+    EXCEPTION WHEN check_violation THEN m_undone := m_undone || ' | off ' || SQLERRM; END;
+    cfg := registration.siwes_config(S);
+    m_undone := m_undone || ' marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 385')
+        || ' written ' || coalesce((SELECT string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin, ', ')
+                                      FROM registration.siwes_course sc WHERE sc.programme_code = 'C97776'), 'none')
+        || ' waiting ' || coalesce((SELECT string_agg((u->>'programmeCode') || ' ' || (u->>'students') || ' found ' || coalesce(u->'found'->>'code', '-') || ' choices '
+                                                      || coalesce((SELECT string_agg(c->>'code', ',' ORDER BY c->>'code')
+                                                                     FROM jsonb_array_elements(CASE WHEN jsonb_typeof(u->'choices') = 'array' THEN u->'choices' ELSE '[]'::jsonb END) c), '-'),
+                                                      ', ' ORDER BY u->>'programmeCode')
+                                      FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' = 'C97776'), 'none')
+        || ' U1:' || registration.siwes_applies(u1, S);
+    -- put back on the SIWES courses, it is recognised again; then the Academic Office sets it on the desk, and it is the desk's
+    PERFORM registration.siwes_mark_course('ZZM 385', true);
+    m_undone := m_undone || ' | on ' || coalesce(registration.siwes_course_of('C97776', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97776', NULL), '-')
+                || ' U1:' || registration.siwes_applies(u1, S);
+    PERFORM registration.siwes_set_course('C97776', NULL, 'ZZM 385');
+    m_undone := m_undone || ' | set ' || coalesce(registration.siwes_course_of('C97776', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97776', NULL), '-');
+    BEGIN PERFORM registration.siwes_mark_course('ZZM 385', false); m_undone := m_undone || ' | off accepted';
+    EXCEPTION WHEN check_violation THEN m_undone := m_undone || ' | off ' || SQLERRM; END;
+    m_undone := m_undone || ' marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 385') || ' U1:' || registration.siwes_applies(u1, S);
+    -- and another course set on the desk over a recognised one: C97773's other department's course over its own department's
+    PERFORM registration.siwes_set_course('C97773', NULL, 'ZZM 394');
+    m_undone := m_undone || ' | over ' || coalesce(registration.siwes_course_of('C97773', NULL), 'none') || ' ' || coalesce(registration.siwes_course_source('C97773', NULL), '-')
+                || ' W1:' || registration.siwes_applies(w1, S);
+
+    -- ── 6 · V503's attachment semester, for a programme not configured ──
+    cfg := registration.siwes_config(S);
+    m_attach := 'configured ' || EXISTS (SELECT 1 FROM registration.siwes_programme sp WHERE sp.programme_code = 'C97778')
+        || ' units ' || coalesce(registration.siwes_units('C97778', 300, 2)::text, '-')
+        || ' attachment for ' || coalesce((SELECT string_agg((af->>'code') || ' ' || (af->>'name') || ' ' || (af->>'level') || ' Level semester ' || (af->>'semester'), ', ')
+                                             FROM jsonb_array_elements(cfg->'siwesCourses') c, jsonb_array_elements(c->'attachmentFor') af WHERE c->>'code' = 'ZZM 369'), 'none');
+    -- nobody registered in it: the course is taken off the SIWES courses (and put back)
+    BEGIN PERFORM registration.siwes_mark_course('ZZM 369', false); m_attach := m_attach || ' | nobody registered: off accepted';
+    EXCEPTION WHEN check_violation THEN m_attach := m_attach || ' | nobody registered: off ' || SQLERRM; END;
+    m_attach := m_attach || ' units ' || coalesce(registration.siwes_units('C97778', 300, 2)::text, '-');
+    PERFORM registration.siwes_mark_course('ZZM 369', true);
+    m_attach := m_attach || ' | on units ' || coalesce(registration.siwes_units('C97778', 300, 2)::text, '-');
+    -- G1 registers it under V503 (SIWES does not bind G1: the programme is not configured)
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (rg, g1, S, 2, 300, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rg, catalogue.open_class('ZZM 369', S, 2, 'REGULAR'), 6, 'REGISTERED');
+    BEGIN PERFORM registration.siwes_mark_course('ZZM 369', false); m_attach := m_attach || ' | G1 registered: off accepted';
+    EXCEPTION WHEN check_violation THEN m_attach := m_attach || ' | G1 registered: off ' || SQLERRM; END;
+    m_attach := m_attach || ' units ' || coalesce(registration.siwes_units('C97778', 300, 2)::text, '-')
+        || ' marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 369') || ' G1:' || registration.siwes_applies(g1, S);
+
+    -- ── 3 · what is recognised stands: A1 (C97771, its structure's course) and D1 (C97774, its department's) pay the ₦4,000; then,
+    --        after each act, the four students read again — the course, how it is known, bound or not, and what registering answers ──
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_purpose_reference(a1, S, 4000, 'SIWES registration fee ' || S), 'Bank transfer', 'check V776 r2');
+    PERFORM finance.confirm_payment(finance.new_purpose_reference(d1, S, 4000, 'SIWES registration fee ' || S), 'Bank transfer', 'check V776 r2');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    FOR i IN 0..6 LOOP
+        CASE i
+            WHEN 0 THEN m_stands := 'paid: ';
+            WHEN 1 THEN   -- (a) a draft SIWES-titled course in C97774's department
+                INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind) VALUES ('ZZM 381', 'SIWES (proposed for a new option)', 6, 2, 300, 'ZD7767', 'Core');
+                m_stands := m_stands || ' | a draft ' || (SELECT c.code || ':' || c.state || ':' || c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 381') || ': ';
+            WHEN 2 THEN   -- (b) another course of the department added to the SIWES courses
+                PERFORM registration.siwes_mark_course('ZZM 380', true);
+                m_stands := m_stands || ' | ZZM 380 marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 380') || ': ';
+            WHEN 3 THEN   -- (c) the department's course given to another programme's structure
+                INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZM 389', 'C97775', 200, 'Elective');
+                m_stands := m_stands || ' | ZZM 389 in ' || (SELECT string_agg(o.programme_code || '@' || o.level, '+') FROM catalogue.course_offer o WHERE o.course_code = 'ZZM 389') || ': ';
+            WHEN 4 THEN   -- (d) a second course of C97771's own 300 Level structure added to the SIWES courses
+                PERFORM registration.siwes_mark_course('ZZM 393', true);
+                m_stands := m_stands || ' | ZZM 393 marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZM 393') || ': ';
+            WHEN 5 THEN   -- (e) the period saved again — by now the catalogue alone would give each programme another answer
+                PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r2');
+                m_stands := m_stands || ' | saved, the catalogue now giving '
+                            || (SELECT string_agg(x.p || ' ' || coalesce((registration.siwes_course_recognised(x.p, NULL)).course_code, 'none'), ', ' ORDER BY x.p)
+                                  FROM (VALUES ('C97771'), ('C97774')) x(p)) || ': ';
+            WHEN 6 THEN   -- a course paid on is never taken off the SIWES courses; the second course of (d) is
+                m_stands := m_stands || ' | off';
+                FOREACH k IN ARRAY ARRAY['ZZM 399', 'ZZM 389', 'ZZM 393'] LOOP
+                    BEGIN PERFORM registration.siwes_mark_course(k, false); m_stands := m_stands || ' ' || k || ' accepted';
+                    EXCEPTION WHEN check_violation THEN m_stands := m_stands || ' ' || k || ' ' || SQLERRM || ' /'; END;
+                END LOOP;
+                m_stands := m_stands || ': ';
+        END CASE;
+        st := '';
+        FOR k, sid IN SELECT x.k, x.id FROM (VALUES ('A1', a1), ('A2', a2), ('D1', d1), ('D2', d2)) x(k, id) ORDER BY x.k LOOP
+            BEGIN   -- the student registers SIWES; a registration made is undone again, so the next reading meets the same student
+                PERFORM set_config('moaum.actor_office', 'student', true);
+                PERFORM set_config('moaum.actor_id', sid::text, true);
+                probe := 'registers ' || (registration.siwes_register(sid) ->> 'courseCode');
+                RAISE EXCEPTION 'the registration is undone';
+            EXCEPTION
+                WHEN check_violation THEN probe := split_part(SQLERRM, ':', 1);
+                WHEN raise_exception THEN
+                    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+                    IF v_err <> 'the registration is undone' THEN RAISE; END IF;
+            END;
+            st := st || CASE WHEN st = '' THEN '' ELSE ', ' END || k || ' ' || coalesce(registration.siwes_course_for(sid), 'none') || ' '
+                     || coalesce((SELECT registration.siwes_course_source(stu.programme_code, stu.curriculum_version) FROM people.student stu WHERE stu.id = sid), '-')
+                     || ' bound ' || registration.siwes_applies(sid, S) || ' ' || probe;
+        END LOOP;
+        IF i = 0 THEN st0 := st; END IF;
+        m_stands := m_stands || CASE WHEN i > 0 AND st = st0 THEN 'same' ELSE st END;
+    END LOOP;
+    RAISE EXCEPTION 'the V776 round 2 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V776 round 2 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V776: SIWES — a tie is never a guess: of the SIWES courses a programme''s 300 Level structure carries, the 6-unit course is recognised over a 1-unit report and the programme''s own department''s over another department''s, each written down as the programme is added (their Second Semester is a SIWES semester); two of equal standing are both offered to the desk, none is recognised and nobody is bound until the Academic Office sets one',
+      coalesce(m_tie = 'course C97771 ZZM 399 STRUCTURE, C97772 none -, C97773 ZZM 395 STRUCTURE'
+                       || ' | offered C97771 ZZM 398:1,ZZM 399:6:top; C97772 ZZM 396:6:top,ZZM 397:6:top; C97773 ZZM 394:6,ZZM 395:6:top'
+                       || ' | written C97771 every ZZM 399 STRUCTURE, C97773 every ZZM 395 STRUCTURE'
+                       || ' | waiting C97772 1 found - choices ZZM 396,ZZM 397'
+                       || ' | bound A1:true,T1:false,W1:true'
+                       || ' | set ZZM 397 SET T1:true waiting 0', false),
+      m_tie);
+  PERFORM pg_temp.assert('V776: SIWES — the department''s one SIWES course that no structure carries is FOUND and shown, never written, and only for a programme whose own structure carries no SIWES course at any level: never a course another programme owns nor one a programme''s structure carries, a draft beside the live course does not unseat it as the course found, nobody is bound until the Academic Office takes it with Set course (then it reads SET)',
+      coalesce(m_dept = 'catalogue ZZM 386:LIVE:in C97775@400, ZZM 387:LIVE:owner C97775, ZZM 388:BOARD, ZZM 389:LIVE'
+                        || ' | course C97774 none -, C97775 none -'
+                        || ' | offered C97774 ZZM 388:6,ZZM 389:6:top; C97775 none'
+                        || ' | written none'
+                        || ' | waiting C97774 2 found ZZM 389 choices ZZM 388,ZZM 389, C97775 1 found - choices -'
+                        || ' | bound D1:false,D2:false,X1:false'
+                        || ' | taken ZZM 389 SET D1:true,D2:true,X1:false waiting C97775 1', false),
+      m_dept);
+  PERFORM pg_temp.assert('V776: SIWES — what is written down or set stands: once students have paid the ₦4,000, a draft course, a course added to the SIWES courses, the course given to another programme''s structure, a second course of the structure marked and the period saved again move nothing — each student who paid still registers the course paid on, the classmates who have not stay bound to it — and a course paid on, or set on the desk, is never taken off the SIWES courses',
+      coalesce(m_stands = 'paid: A1 ZZM 399 STRUCTURE bound true registers ZZM 399, A2 ZZM 399 STRUCTURE bound true SIWES_UNPAID,'
+                          || ' D1 ZZM 389 SET bound true registers ZZM 389, D2 ZZM 389 SET bound true SIWES_UNPAID'
+                          || ' | a draft ZZM 381:BOARD:true: same'
+                          || ' | ZZM 380 marked true: same'
+                          || ' | ZZM 389 in C97775@200: same'
+                          || ' | ZZM 393 marked true: same'
+                          || ' | saved, the catalogue now giving C97771 none, C97774 ZZM 380: same'
+                          || ' | off ZZM 399 SIWES_COURSE_IN_USE: 1 student(s) have paid or registered for SIWES on ZZM 399; it stays a SIWES course /'
+                          || ' ZZM 389 SIWES_COURSE_IN_USE: ZZM 389 is set as the SIWES course of C97774; it stays a SIWES course /'
+                          || ' ZZM 393 accepted: same', false),
+      m_stands);
+  PERFORM pg_temp.assert('V776: SIWES — a recognition nobody has paid on is undone with its course: taken off the SIWES courses, the programme''s course is gone and its cohort waits again, unbound, and is recognised again when the course is put back; a course set on the desk is never taken off the SIWES courses, and a course set on the desk over a recognised one reads SET',
+      coalesce(m_undone = 'recognised ZZM 385 STRUCTURE U1:true'
+                          || ' | off accepted marked false written none waiting C97776 1 found - choices - U1:false'
+                          || ' | on ZZM 385 STRUCTURE U1:true'
+                          || ' | set ZZM 385 SET'
+                          || ' | off SIWES_COURSE_IN_USE: ZZM 385 is set as the SIWES course of C97776; it stays a SIWES course marked true U1:true'
+                          || ' | over ZZM 394 SET W1:true', false),
+      m_undone);
+  PERFORM pg_temp.assert('V776: SIWES — SIWES already passed is a published pass in the programme''s own 300 Level SIWES course, not in SIWES I at 200 Level: the student who passed SIWES I is bound and pays the fee before registering',
+      coalesce(m_passed = 'marked ZZM 299:200:true,ZZM 379:300:true | course ZZM 379 STRUCTURE'
+                          || ' | E1 holds ZZM 299 passed false reasons - bound true'
+                          || ' | F1 holds ZZM 379 passed true reasons ALREADY_PASSED bound false'
+                          || ' | E1 registers SIWES_UNPAID', false),
+      m_passed);
+  PERFORM pg_temp.assert('V776: SIWES — a course is not taken off the SIWES courses while a student is registered in the attachment semester it makes for a programme that is not configured (V503); with nobody registered in it, it is',
+      coalesce(m_attach = 'configured false units 6 attachment for C97778 B.Sc. Check V776 R2 Attachment 300 Level semester 2'
+                          || ' | nobody registered: off accepted units -'
+                          || ' | on units 6'
+                          || ' | G1 registered: off SIWES_COURSE_IN_USE: 1 student(s) of C97778 at 300 Level are registered in the attachment semester ZZM 369 makes; it stays a SIWES course'
+                          || ' units 6 marked true G1:false', false),
+      m_attach);
+  PERFORM pg_temp.assert('V776: SIWES — a SIWES-titled course that has ended is a SIWES course recognised for no programme; restored, the configuration shows it as found (a reading writes nothing), saving the period writes nothing either and binds nobody, and the cohort is bound when the Academic Office takes the course found with Set course',
+      coalesce(m_ended = 'ended ZZM 359:ENDED:true course none - offered none waiting C97779 1 found - R1:false'
+                         || ' | restored ZZM 359:LIVE:true course none found ZZM 359 waiting C97779 1 found ZZM 359 written none R1:false'
+                         || ' | saved none - waiting C97779 1 written none found ZZM 359 R1:false'
+                         || ' | taken ZZM 359 SET found - waiting none R1:true', false),
+      m_ended);
+END $$;
+-- ── V776, the review's round 3: the catalogue's recognition is WRITTEN DOWN in exactly one situation — as a programme is added (or a
+--          course is added to the SIWES courses) for a programme whose own 300 Level Second Semester is V503's SIWES attachment
+--          semester, and only when every waiting curriculum has its structure's course — and SHOWN everywhere else (found, choices,
+--          elsewhere), for the Academic Office to take with Set course. In 9896/9897 (current; an OPEN period, the fee published), six
+--          made-up departments and nine programmes, twelve students. (a) C97781's 300 Level Second Semester carries its SIWES course
+--          beside two other required courses (not an attachment semester); C97782's carries it alone (an attachment semester).
+--          (b) C97783's CCMAS students have one SIWES course, its BMAS students two of equal standing. (c) C97784 and C97785, of two
+--          departments, carry a course each that is not yet a SIWES course: the period is saved and closed and opened again, courses
+--          are marked while it is CLOSED and while it is OPEN. (d) C97786's department has one SIWES course no structure carries, one
+--          another programme owns, and C97787 carries one at 400 Level. (e) The Academic Office sets C97787's course (a 400 Level
+--          course; a course in no structure with catalogue level 400; a 300 Level course in no structure); C97789's SIWES course is a
+--          First Semester course. (f) Written and set rows left behind by the catalogue: a course added beside the written one, the
+--          written one ended, a course added beside one set on the desk. (g) C97788 carries a 3-unit SIWES-titled elective beside its
+--          6-unit Core SIWES course, which a student registers. (h) H1 passed a First Semester SIWES course of 300 Level, H2 SIWES I at
+--          200 Level. A registration made to see so is undone at once. The block undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9895/9896'; S text := '9896/9897'; who uuid := gen_random_uuid(); fac text;
+    sa1 uuid := gen_random_uuid(); sa2 uuid := gen_random_uuid(); sf2 uuid := gen_random_uuid(); sb1 uuid := gen_random_uuid();
+    sb2 uuid := gen_random_uuid(); sc4 uuid := gen_random_uuid(); sc5 uuid := gen_random_uuid(); sd6 uuid := gen_random_uuid();
+    sd7 uuid := gen_random_uuid(); sg8 uuid := gen_random_uuid(); sh1 uuid := gen_random_uuid(); sh2 uuid := gen_random_uuid();
+    sf5 uuid := gen_random_uuid();
+    rg uuid := gen_random_uuid(); sid uuid; cfg jsonb; lst jsonb; i int; k text; v_err text; probe text; snap text; snap0 text;
+    all_p text[] := ARRAY['C97781', 'C97782', 'C97783', 'C97784', 'C97785', 'C97786', 'C97787', 'C97788', 'C97789'];
+    m_a text; m_b text; m_c text; m_d text; m_e text; m_f text; m_g text; m_h text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V776 round 3', true);
+    -- small readers of the desk's configuration, made here and undone with the block
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_codes(j jsonb) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce((SELECT string_agg(x->>'code', ',' ORDER BY x->>'code')
+                           FROM jsonb_array_elements(CASE WHEN jsonb_typeof(j) = 'array' THEN j ELSE '[]'::jsonb END) x), '-') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_else(j jsonb) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce((SELECT string_agg((x->>'code') || '@' || (x->>'level') || '/' || (x->>'semester'), ',' ORDER BY x->>'code')
+                           FROM jsonb_array_elements(CASE WHEN jsonb_typeof(j) = 'array' THEN j ELSE '[]'::jsonb END) x), '-') $g$ $f$;
+    -- a programme's row: the course read and how it is known, the course found, the choices, what is elsewhere, and the load of its
+    -- 300 Level Second Semester (attachment: V503's SIWES semester; other: the required courses beside SIWES, their number/units)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_prog(cfg jsonb, prog text) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT 'course ' || coalesce(p->'course'->>'code', '-') || CASE WHEN p->'course'->>'state' IN ('LIVE') THEN '' ELSE coalesce(':' || (p->'course'->>'state'), '') END
+               || ' source ' || coalesce(p->>'source', '-') || ' found ' || coalesce(p->'found'->>'code', '-')
+               || ' choices ' || pg_temp.r3_codes(p->'choices') || ' elsewhere ' || pg_temp.r3_else(p->'elsewhere')
+               || ' attachment ' || (p->>'attachment') || ' other ' || (p->'otherRequired'->>'courses') || '/' || (p->'otherRequired'->>'units')
+          FROM jsonb_array_elements(cfg->'programmes') p WHERE p->>'code' = prog $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_cur(cfg jsonb, prog text) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce(string_agg(coalesce(c->>'curriculum', '-') || ' mapped ' || (c->>'mapped') || ' course ' || coalesce(c->'course'->>'code', '-')
+                                   || ' source ' || coalesce(c->>'source', '-') || ' found ' || coalesce(c->'found'->>'code', '-')
+                                   || ' choices ' || pg_temp.r3_codes(c->'choices'), '; ' ORDER BY c->>'curriculum' NULLS FIRST), 'none')
+          FROM jsonb_array_elements(cfg->'programmes') p, jsonb_array_elements(p->'curricula') c WHERE p->>'code' = prog $g$ $f$;
+    -- the cohorts no live SIWES course reaches (programme/curriculum, students, how many paid, the course found, the choices)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_waiting(cfg jsonb, progs text[]) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce(string_agg((u->>'programmeCode') || '/' || coalesce(u->>'curriculum', '-') || ' ' || (u->>'students') || ' paid ' || (u->>'paid')
+                                   || ' found ' || coalesce(u->'found'->>'code', '-') || ' choices ' || pg_temp.r3_codes(u->'choices'),
+                                   ', ' ORDER BY u->>'programmeCode', u->>'curriculum'), 'none')
+          FROM jsonb_array_elements(cfg->'unreached') u WHERE u->>'programmeCode' = ANY (progs) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_written(progs text[]) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce(string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin,
+                                   ', ' ORDER BY sc.programme_code, sc.curriculum), 'none')
+          FROM registration.siwes_course sc WHERE sc.programme_code = ANY (progs) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_course(prog text, cur text) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce(registration.siwes_course_of(prog, cur), 'none') || ' ' || coalesce(registration.siwes_course_source(prog, cur), '-') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r3_bound(sess text, labels text[]) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT string_agg(s.other_names || ':' || registration.siwes_applies(s.id, sess), ',' ORDER BY s.other_names)
+          FROM people.student s WHERE s.matric_no LIKE 'MOAU/ZSP/98/78%' AND s.other_names = ANY (labels) $g$ $f$;
+
+    -- the two sessions, as the other checks make them
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9895-10-01', DATE '9896-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9896-10-01', DATE '9897-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9896/776' WHERE name = S;
+    SELECT p.faculty_code INTO fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.department (code, name, faculty_code) VALUES
+        ('ZD7781', 'Check V776 R3 Department One', fac), ('ZD7782', 'Check V776 R3 Department Two', fac),
+        ('ZD7783', 'Check V776 R3 Department Three', fac), ('ZD7784', 'Check V776 R3 Department Four', fac),
+        ('ZD7785', 'Check V776 R3 Department Five', fac), ('ZD7786', 'Check V776 R3 Department Six', fac);
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97781', 'B.Sc. Check V776 R3 Other Required', 'ZD7781', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97782', 'B.Sc. Check V776 R3 Attachment', 'ZD7781', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97783', 'B.Sc. Check V776 R3 Curricula', 'ZD7782', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97784', 'B.Sc. Check V776 R3 Waiting', 'ZD7783', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97785', 'B.Sc. Check V776 R3 Another Department', 'ZD7784', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97786', 'B.Sc. Check V776 R3 Department Course', 'ZD7785', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97787', 'B.Sc. Check V776 R3 Level Four', 'ZD7785', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97788', 'B.Sc. Check V776 R3 Elective', 'ZD7782', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97789', 'B.Sc. Check V776 R3 First Semester', 'ZD7786', fac, 'UNDER GRADUATE', 0, 400, 4);
+    -- a title that reads SIWES or Industrial Training marks the course as it is added; the three whose titles do not (ZZP 371, ZZP 372,
+    -- and the courses of the other required load) are not SIWES courses until the Academic Office marks them
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZP 381', 'SIWES (check r3 a)', 6, 2, 300, 'ZD7781', 'Core', 'LIVE'),
+        ('ZZP 382', 'Check V776 R3 methods', 3, 2, 300, 'ZD7781', 'Core', 'LIVE'),
+        ('ZZP 383', 'Check V776 R3 seminar', 2, 2, 300, 'ZD7781', 'Core', 'LIVE'),
+        ('ZZP 384', 'Check V776 R3 option', 1, 2, 300, 'ZD7781', 'Elective', 'LIVE'),
+        ('ZZP 385', 'Industrial Training (check r3 a attachment)', 6, 2, 300, 'ZD7781', 'Core', 'LIVE'),
+        ('ZZP 371', 'Check V776 R3 practicum X', 6, 2, 300, 'ZD7783', 'Core', 'LIVE'),
+        ('ZZP 372', 'Check V776 R3 practicum Y', 6, 2, 300, 'ZD7784', 'Core', 'LIVE'),
+        ('ZZP 361', 'Industrial Training (check r3 d department course)', 6, 2, 300, 'ZD7785', 'Core', 'LIVE'),
+        ('ZZP 363', 'Industrial Attachment (check r3 d carried at 400)', 6, 2, 300, 'ZD7785', 'Core', 'LIVE'),
+        ('ZZP 364', 'SIWES (check r3 e a 400 Level course)', 6, 2, 400, 'ZD7786', 'Core', 'LIVE'),
+        ('ZZP 365', 'SIWES (check r3 e a 300 Level course in no structure)', 6, 2, 300, 'ZD7786', 'Core', 'LIVE'),
+        ('ZZP 366', 'Industrial Training (check r3 e first semester)', 6, 1, 300, 'ZD7786', 'Core', 'LIVE'),
+        ('ZZP 267', 'SIWES I (check r3 h)', 2, 2, 200, 'ZD7786', 'Core', 'LIVE'),
+        ('ZZP 341', 'SIWES (check r3 g core)', 6, 2, 300, 'ZD7782', 'Core', 'LIVE'),
+        ('ZZP 342', 'SIWES report (check r3 g elective)', 3, 2, 300, 'ZD7782', 'Elective', 'LIVE');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, owner_programme) VALUES
+        ('ZZP 362', 'SIWES (check r3 d owned)', 6, 2, 300, 'ZD7785', 'Core', 'LIVE', 'C97787');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, curriculum) VALUES
+        ('ZZP 391', 'SIWES (check r3 b CCMAS)', 6, 2, 300, 'ZD7782', 'Core', 'LIVE', 'CCMAS'),
+        ('ZZP 392', 'Industrial Training (check r3 b BMAS one)', 6, 2, 300, 'ZD7782', 'Core', 'LIVE', 'BMAS'),
+        ('ZZP 393', 'Industrial Attachment (check r3 b BMAS two)', 6, 2, 300, 'ZD7782', 'Core', 'LIVE', 'BMAS');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZP 381', 'C97781', 300, 'Core'), ('ZZP 382', 'C97781', 300, 'Core'), ('ZZP 383', 'C97781', 300, 'Core'), ('ZZP 384', 'C97781', 300, 'Elective'),
+        ('ZZP 385', 'C97782', 300, 'Core'),
+        ('ZZP 391', 'C97783', 300, 'Core'), ('ZZP 392', 'C97783', 300, 'Core'), ('ZZP 393', 'C97783', 300, 'Core'),
+        ('ZZP 371', 'C97784', 300, 'Core'), ('ZZP 372', 'C97785', 300, 'Core'),
+        ('ZZP 363', 'C97787', 400, 'Core'),
+        ('ZZP 366', 'C97789', 300, 'Core'), ('ZZP 267', 'C97789', 200, 'Core'),
+        ('ZZP 341', 'C97788', 300, 'Core'), ('ZZP 342', 'C97788', 300, 'Elective');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, curriculum_version) VALUES
+        (sa1, 'MOAUM/ADM/98/977801', 'MOAU/ZSP/98/7801', 'ZZSIWES', 'A1', 'C97781', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sa2, 'MOAUM/ADM/98/977802', 'MOAU/ZSP/98/7802', 'ZZSIWES', 'A2', 'C97782', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sf2, 'MOAUM/ADM/98/977803', 'MOAU/ZSP/98/7803', 'ZZSIWES', 'F2', 'C97782', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sb1, 'MOAUM/ADM/98/977804', 'MOAU/ZSP/98/7804', 'ZZSIWES', 'B1', 'C97783', 'UTME', S0, 100, 300, 'ACTIVE', now(), 'CCMAS'),
+        (sb2, 'MOAUM/ADM/98/977805', 'MOAU/ZSP/98/7805', 'ZZSIWES', 'B2', 'C97783', 'UTME', S0, 100, 300, 'ACTIVE', now(), 'BMAS'),
+        (sc4, 'MOAUM/ADM/98/977806', 'MOAU/ZSP/98/7806', 'ZZSIWES', 'C4', 'C97784', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sc5, 'MOAUM/ADM/98/977807', 'MOAU/ZSP/98/7807', 'ZZSIWES', 'C5', 'C97785', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sd6, 'MOAUM/ADM/98/977808', 'MOAU/ZSP/98/7808', 'ZZSIWES', 'D6', 'C97786', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sd7, 'MOAUM/ADM/98/977809', 'MOAU/ZSP/98/7809', 'ZZSIWES', 'D7', 'C97787', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sg8, 'MOAUM/ADM/98/977810', 'MOAU/ZSP/98/7810', 'ZZSIWES', 'G8', 'C97788', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (sh1, 'MOAUM/ADM/98/977811', 'MOAU/ZSP/98/7811', 'ZZSIWES', 'H1', 'C97789', 'UTME', S0, 300, 300, 'ACTIVE', now(), NULL),
+        (sh2, 'MOAUM/ADM/98/977812', 'MOAU/ZSP/98/7812', 'ZZSIWES', 'H2', 'C97789', 'UTME', S0, 200, 300, 'ACTIVE', now(), NULL),
+        (sf5, 'MOAUM/ADM/98/977813', 'MOAU/ZSP/98/7813', 'ZZSIWES', 'F5', 'C97785', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL);
+    -- a student's curriculum is filled from the matric number and entry session on insert (CCMAS here); B2 is a BMAS student
+    UPDATE people.student SET curriculum_version = 'BMAS' WHERE id = sb2;
+    -- F2's and F5's school fees of the session, stated and paid (once the SIWES fee is paid too, the SIWES course is registered whole)
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES
+        (S, 'School fees (check V776 r3)', 100000, 300, 'C97782'), (S, 'School fees (check V776 r3)', 100000, 300, 'C97785');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_reference(sf2, S, 100000, NULL), 'Bank transfer', 'check V776 r3');
+    PERFORM finance.confirm_payment(finance.new_reference(sf5, S, 100000, NULL), 'Bank transfer', 'check V776 r3');
+    -- the session before: H1 passed a First Semester SIWES course of 300 Level, H2 SIWES I at 200 Level — published results
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.import_legacy_semester(S0, 1, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSP/98/7811', 'course', 'ZZP 366', 'total', '70', 'level', '300')), true);
+    PERFORM assessment.import_legacy_semester(S0, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSP/98/7812', 'course', 'ZZP 267', 'total', '65', 'level', '200')), true);
+    -- an OPEN period with no programme, and the fee published
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r3');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.siwes_fee_state(S, 4000, 'check V776 r3');
+    PERFORM finance.siwes_fee_publish(S);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- ── a · a programme that is not an attachment semester is added and nothing is written; one that is, is written and bound ──
+    PERFORM registration.siwes_add_programme(S, 'C97781');
+    PERFORM registration.siwes_add_programme(S, 'C97782');
+    cfg := registration.siwes_config(S);
+    m_a := 'C97781 ' || pg_temp.r3_prog(cfg, 'C97781') || ' | C97782 ' || pg_temp.r3_prog(cfg, 'C97782')
+        || ' | written ' || pg_temp.r3_written(ARRAY['C97781', 'C97782']) || ' | bound ' || pg_temp.r3_bound(S, ARRAY['A1', 'A2'])
+        || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97781', 'C97782']);
+    PERFORM registration.siwes_set_course('C97781', NULL, 'ZZP 381');
+    cfg := registration.siwes_config(S);
+    m_a := m_a || ' | set ' || pg_temp.r3_course('C97781', NULL) || ' bound ' || pg_temp.r3_bound(S, ARRAY['A1', 'A2'])
+        || ' | C97781 ' || pg_temp.r3_prog(cfg, 'C97781') || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97781', 'C97782']);
+
+    -- ── b · all or nothing across curricula: registration.curriculum_open() hands a row for one curriculum to the other ──
+    UPDATE registration.flex_policy SET curriculum_open = true WHERE id = 1;
+    PERFORM registration.siwes_add_programme(S, 'C97783');
+    cfg := registration.siwes_config(S);
+    m_b := 'open ' || registration.curriculum_open() || ' | written ' || pg_temp.r3_written(ARRAY['C97783']) || ' | bound ' || pg_temp.r3_bound(S, ARRAY['B1', 'B2'])
+        || ' | ' || pg_temp.r3_cur(cfg, 'C97783') || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97783']);
+    -- the same where the BMAS cohort has none to recognise (curricula kept apart, the two BMAS courses ended): the CCMAS one still waits
+    UPDATE registration.flex_policy SET curriculum_open = false WHERE id = 1;
+    UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code IN ('ZZP 392', 'ZZP 393');
+    PERFORM registration.siwes_mark_course('ZZP 391', true);
+    cfg := registration.siwes_config(S);
+    m_b := m_b || ' | BMAS none, open ' || registration.curriculum_open() || ' | written ' || pg_temp.r3_written(ARRAY['C97783'])
+        || ' | bound ' || pg_temp.r3_bound(S, ARRAY['B1', 'B2']) || ' | ' || pg_temp.r3_cur(cfg, 'C97783');
+    UPDATE catalogue.course SET state = 'LIVE', ended_on = NULL WHERE code IN ('ZZP 392', 'ZZP 393');
+    UPDATE registration.flex_policy SET curriculum_open = true WHERE id = 1;
+    -- the Academic Office sets each cohort's course: both are then bound
+    PERFORM registration.siwes_set_course('C97783', 'CCMAS', 'ZZP 391');
+    PERFORM registration.siwes_set_course('C97783', 'BMAS', 'ZZP 392');
+    cfg := registration.siwes_config(S);
+    m_b := m_b || ' | set CCMAS ' || pg_temp.r3_course('C97783', 'CCMAS') || ', BMAS ' || pg_temp.r3_course('C97783', 'BMAS')
+        || ' | written ' || pg_temp.r3_written(ARRAY['C97783']) || ' | bound ' || pg_temp.r3_bound(S, ARRAY['B1', 'B2'])
+        || ' | ' || pg_temp.r3_cur(cfg, 'C97783') || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97783']);
+
+    -- ── c · the period saved, closed and opened again writes nothing and moves nobody; a course marked while it is CLOSED writes
+    --        nothing; marked while it is OPEN it gives only the waiting programmes whose own 300 Level structure carries THAT course ──
+    PERFORM registration.siwes_add_programme(S, 'C97784');
+    PERFORM registration.siwes_add_programme(S, 'C97785');
+    m_c := '';
+    FOR i IN 0..5 LOOP
+        CASE i
+            WHEN 0 THEN m_c := 'added: ';
+            WHEN 1 THEN   -- saved OPEN again
+                PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r3');
+                m_c := m_c || ' | saved OPEN: ';
+            WHEN 2 THEN   -- closed
+                PERFORM registration.siwes_set_period(S, 'CLOSED', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r3');
+                m_c := m_c || ' | saved CLOSED: ';
+            WHEN 3 THEN   -- a course marked while the period is CLOSED
+                PERFORM registration.siwes_mark_course('ZZP 371', true);
+                m_c := m_c || ' | ZZP 371 marked ' || (SELECT x.industrial_training FROM catalogue.course x WHERE x.code = 'ZZP 371') || ' while CLOSED: ';
+            WHEN 4 THEN   -- and opened again
+                PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 r3');
+                m_c := m_c || ' | saved OPEN again: ';
+            WHEN 5 THEN   -- a course of another department marked while the period is OPEN
+                PERFORM registration.siwes_mark_course('ZZP 372', true);
+                m_c := m_c || ' | ZZP 372 marked ' || (SELECT x.industrial_training FROM catalogue.course x WHERE x.code = 'ZZP 372') || ' while OPEN: ';
+        END CASE;
+        snap := pg_temp.r3_written(all_p) || ' / ' || pg_temp.r3_bound(S, ARRAY['A1', 'A2', 'B1', 'B2', 'C4', 'C5', 'D6', 'D7', 'F2', 'F5', 'G8', 'H1', 'H2']);
+        IF i = 0 THEN snap0 := snap; END IF;
+        cfg := registration.siwes_config(S);
+        m_c := m_c || CASE WHEN i BETWEEN 1 AND 4 AND snap = snap0 THEN 'same' ELSE snap END
+            || ' [C97784 ' || pg_temp.r3_prog(cfg, 'C97784') || '; C97785 ' || pg_temp.r3_prog(cfg, 'C97785') || ']';
+    END LOOP;
+
+    -- ── d · the department never writes: its one SIWES course no structure carries is found for a programme whose structure carries
+    --        none at any level, and taken with Set course; another programme's own course, or one carried at another level, is not offered ──
+    PERFORM registration.siwes_add_programme(S, 'C97786');
+    PERFORM registration.siwes_add_programme(S, 'C97787');
+    cfg := registration.siwes_config(S);
+    m_d := 'catalogue ' || (SELECT string_agg(c.code || ':' || c.state || coalesce(':owner ' || c.owner_programme, '')
+                                              || coalesce(':in ' || (SELECT string_agg(o.programme_code || '@' || o.level, '+' ORDER BY o.programme_code, o.level)
+                                                                       FROM catalogue.course_offer o WHERE o.course_code = c.code), ''), ', ' ORDER BY c.code)
+                              FROM catalogue.course c WHERE c.dept_code = 'ZD7785' AND c.industrial_training)
+        || ' | course C97786 ' || pg_temp.r3_course('C97786', NULL) || ', C97787 ' || pg_temp.r3_course('C97787', NULL)
+        || ' | offered ' || (SELECT string_agg(x.p || ' ' || coalesce((SELECT string_agg(c.course_code || ':' || c.units || CASE WHEN c.top THEN ':top' ELSE '' END, ',' ORDER BY c.course_code)
+                                                                       FROM registration.siwes_course_candidates(x.p, NULL) c), 'none'), '; ' ORDER BY x.p)
+                               FROM (VALUES ('C97786'), ('C97787')) x(p))
+        || ' | written ' || pg_temp.r3_written(ARRAY['C97786', 'C97787'])
+        || ' | C97786 ' || pg_temp.r3_prog(cfg, 'C97786') || ' | C97787 ' || pg_temp.r3_prog(cfg, 'C97787')
+        || ' | bound ' || pg_temp.r3_bound(S, ARRAY['D6', 'D7']);
+    PERFORM registration.siwes_set_course('C97786', NULL, 'ZZP 361');
+    cfg := registration.siwes_config(S);
+    m_d := m_d || ' | taken ' || pg_temp.r3_course('C97786', NULL) || ' bound ' || pg_temp.r3_bound(S, ARRAY['D6', 'D7'])
+        || ' | C97786 ' || pg_temp.r3_prog(cfg, 'C97786') || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97786', 'C97787']);
+
+    -- ── e · a programme's SIWES course is a 300 Level course; a First Semester SIWES course reads none ──
+    m_e := 'C97787';
+    FOREACH k IN ARRAY ARRAY['ZZP 363', 'ZZP 364', 'ZZP 365'] LOOP
+        BEGIN PERFORM registration.siwes_set_course('C97787', NULL, k); m_e := m_e || ' | ' || k || ' accepted ' || pg_temp.r3_course('C97787', NULL);
+        EXCEPTION WHEN check_violation THEN m_e := m_e || ' | ' || k || ' ' || split_part(SQLERRM, ';', 1); END;
+    END LOOP;
+    PERFORM registration.siwes_add_programme(S, 'C97789');
+    cfg := registration.siwes_config(S);
+    m_e := m_e || ' | C97789 ' || pg_temp.r3_prog(cfg, 'C97789') || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97789'])
+        || ' | bound ' || pg_temp.r3_bound(S, ARRAY['H1', 'H2']);
+    BEGIN PERFORM registration.siwes_set_course('C97789', NULL, 'ZZP 366'); m_e := m_e || ' | set ZZP 366 accepted';
+    EXCEPTION WHEN check_violation THEN m_e := m_e || ' | set ZZP 366 ' || split_part(SQLERRM, ';', 1); END;
+    m_e := m_e || ' | course ' || pg_temp.r3_course('C97789', NULL);
+
+    -- ── h · SIWES already passed: a published pass in a First Semester SIWES course of 300 Level counts, SIWES I at 200 Level does not ──
+    m_h := 'marked ' || (SELECT string_agg(c.code || ':' || c.level || ':' || c.semester || ':' || c.industrial_training, ',' ORDER BY c.code)
+                           FROM catalogue.course c WHERE c.code IN ('ZZP 267', 'ZZP 366'))
+        || (SELECT string_agg(' | ' || x.k || ' holds ' || coalesce((SELECT string_agg(o.course_code, ',' ORDER BY o.course_code)
+                                                                    FROM registration.course_registration r
+                                                                    JOIN registration.entry e ON e.registration_id = r.id
+                                                                    JOIN catalogue.offering o ON o.id = e.offering_id
+                                                                   WHERE r.student_id = x.id
+                                                                     AND EXISTS (SELECT 1 FROM assessment.course_final(x.id, o.id) cf
+                                                                                  WHERE cf.stage = 'PUBLISHED' AND cf.outcome = 'GRADED' AND cf.points > 0)), 'nothing')
+                              || ' passed ' || registration.siwes_passed(x.id, S)
+                              || ' reasons ' || coalesce(nullif(array_to_string(registration.siwes_reasons(x.id, S), '+'), ''), '-'), '' ORDER BY x.k)
+              FROM (VALUES ('H1', sh1), ('H2', sh2)) x(k, id));
+
+    -- ── g · the attachment guard asks what removal changes: a 3-unit SIWES-titled elective beside the 6-unit Core SIWES course ──
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (rg, sg8, S, 2, 300, 'DRAFT');
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rg, catalogue.open_class('ZZP 341', S, 2, 'REGULAR'), 6, 'REGISTERED');
+    lst := registration.siwes_course_list();
+    m_g := 'units ' || coalesce(registration.siwes_units('C97788', 300, 2)::text, '-') || ' | attachmentFor '
+        || (SELECT string_agg(x.code || ' ' || coalesce((SELECT string_agg((af->>'code') || '@' || (af->>'level') || '/' || (af->>'semester'), ',' ORDER BY af->>'code')
+                                                           FROM jsonb_array_elements(c->'attachmentFor') af), 'none'), '; ' ORDER BY x.code)
+              FROM (VALUES ('ZZP 341'), ('ZZP 342')) x(code) JOIN jsonb_array_elements(lst) c ON c->>'code' = x.code);
+    BEGIN lst := registration.siwes_mark_course('ZZP 342', false); m_g := m_g || ' | ZZP 342 off accepted';
+    EXCEPTION WHEN check_violation THEN m_g := m_g || ' | ZZP 342 off ' || SQLERRM; END;
+    m_g := m_g || ' marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZP 342') || ' units ' || coalesce(registration.siwes_units('C97788', 300, 2)::text, '-');
+    BEGIN lst := registration.siwes_mark_course('ZZP 341', false); m_g := m_g || ' | ZZP 341 off accepted';
+    EXCEPTION WHEN check_violation THEN m_g := m_g || ' | ZZP 341 off ' || SQLERRM; END;
+    m_g := m_g || ' marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZP 341') || ' units ' || coalesce(registration.siwes_units('C97788', 300, 2)::text, '-');
+
+    -- ── f · a written row is not left stale silently: the catalogue has since ended its course or given another; a row set on the
+    --        desk never shows found; the student who paid keeps the row ──
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(finance.new_purpose_reference(sf2, S, 4000, 'SIWES registration fee ' || S), 'Bank transfer', 'check V776 r3');
+    PERFORM finance.confirm_payment(finance.new_purpose_reference(sf5, S, 4000, 'SIWES registration fee ' || S), 'Bank transfer', 'check V776 r3');
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    cfg := registration.siwes_config(S);
+    m_f := 'before: C97782 ' || pg_temp.r3_prog(cfg, 'C97782') || ' | C97785 ' || pg_temp.r3_prog(cfg, 'C97785') || ' | C97781 ' || pg_temp.r3_prog(cfg, 'C97781');
+    -- C97782: a course of more units now stands beside the written one; C97785: the written one has ended and another stands in its place;
+    -- C97781 (set on the desk): a course of more units now stands beside the one set
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZP 351', 'Industrial Training (check r3 f a newer course)', 8, 2, 300, 'ZD7781', 'Core', 'LIVE'),
+        ('ZZP 352', 'SIWES (check r3 f in the place of the ended one)', 6, 2, 300, 'ZD7784', 'Core', 'LIVE'),
+        ('ZZP 353', 'Industrial Attachment (check r3 f beside the one set)', 8, 2, 300, 'ZD7781', 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZP 351', 'C97782', 300, 'Core'), ('ZZP 352', 'C97785', 300, 'Core'), ('ZZP 353', 'C97781', 300, 'Core');
+    PERFORM catalogue.end_course('ZZP 372');
+    cfg := registration.siwes_config(S);
+    m_f := m_f || ' | after: C97782 ' || pg_temp.r3_prog(cfg, 'C97782') || ' | C97785 ' || pg_temp.r3_prog(cfg, 'C97785') || ' | C97781 ' || pg_temp.r3_prog(cfg, 'C97781')
+        || ' | written ' || pg_temp.r3_written(ARRAY['C97781', 'C97782', 'C97785'])
+        || ' | waiting ' || pg_temp.r3_waiting(cfg, ARRAY['C97781', 'C97782', 'C97785'])
+        || ' | bound ' || pg_temp.r3_bound(S, ARRAY['A1', 'A2', 'C5']);
+    -- F2 and F5 paid: each keeps the row they paid on. F2 registers its course, though the catalogue now gives another; F5's has
+    -- ended (V752: bound, registering waits on SIWES_COURSE_MISSING) until the Academic Office takes the course found with Set course.
+    -- A registration made to see so is undone at once
+    FOR i IN 1..3 LOOP
+        IF i = 3 THEN
+            PERFORM registration.siwes_set_course('C97785', NULL, 'ZZP 352');
+            m_f := m_f || ' | taken ' || pg_temp.r3_course('C97785', NULL);
+        END IF;
+        sid := CASE i WHEN 1 THEN sf2 ELSE sf5 END;
+        k := CASE i WHEN 1 THEN 'F2' ELSE 'F5' END;
+        BEGIN
+            PERFORM set_config('moaum.actor_office', 'student', true);
+            PERFORM set_config('moaum.actor_id', sid::text, true);
+            probe := 'registers ' || (registration.siwes_register(sid) ->> 'courseCode');
+            RAISE EXCEPTION 'the registration is undone';
+        EXCEPTION
+            WHEN check_violation THEN probe := split_part(SQLERRM, ':', 1);
+            WHEN raise_exception THEN
+                GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+                IF v_err <> 'the registration is undone' THEN RAISE; END IF;
+        END;
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        m_f := m_f || ' | ' || k || ' ' || coalesce(registration.siwes_course_for(sid), 'none') || ' bound ' || registration.siwes_applies(sid, S) || ' ' || probe;
+    END LOOP;
+
+    RAISE EXCEPTION 'the V776 round 3 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V776 round 3 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V776: SIWES — a programme whose 300 Level Second Semester is not a SIWES attachment semester (its SIWES course stands beside other required courses) is added to an open period with nothing written and nobody bound: the desk shows the course found and what binding would take from the cohort, and Set course binds it (SET); a programme whose Second Semester is an attachment semester is written down (STRUCTURE) and bound as it is added',
+      coalesce(m_a = 'C97781 course - source - found ZZP 381 choices ZZP 381 elsewhere - attachment false other 2/5'
+                     || ' | C97782 course ZZP 385 source STRUCTURE found - choices - elsewhere - attachment true other 0/0'
+                     || ' | written C97782 every ZZP 385 STRUCTURE | bound A1:false,A2:true'
+                     || ' | waiting C97781/CCMAS 1 paid 0 found ZZP 381 choices ZZP 381'
+                     || ' | set ZZP 381 SET bound A1:true,A2:true'
+                     || ' | C97781 course ZZP 381 source SET found - choices - elsewhere - attachment false other 2/5 | waiting none', false),
+      m_a);
+  PERFORM pg_temp.assert('V776: SIWES — all or nothing across curricula: where one curriculum''s cohort recognises a course and the other''s is a tie (or has none to recognise) nothing is written and neither cohort is bound — the desk shows the course found for the one and the choices for the other — and once the Academic Office sets both, both are bound',
+      coalesce(m_b = 'open true | written none | bound B1:false,B2:false'
+                     || ' | BMAS mapped false course - source - found - choices ZZP 391,ZZP 392,ZZP 393;'
+                     || ' CCMAS mapped false course - source - found ZZP 391 choices ZZP 391,ZZP 392,ZZP 393'
+                     || ' | waiting C97783/BMAS 1 paid 0 found - choices ZZP 391,ZZP 392,ZZP 393,'
+                     || ' C97783/CCMAS 1 paid 0 found ZZP 391 choices ZZP 391,ZZP 392,ZZP 393'
+                     || ' | BMAS none, open false | written none | bound B1:false,B2:false'
+                     || ' | BMAS mapped false course - source - found - choices -; CCMAS mapped false course - source - found ZZP 391 choices ZZP 391'
+                     || ' | set CCMAS ZZP 391 SET, BMAS ZZP 392 SET | written C97783 BMAS ZZP 392 DESK, C97783 CCMAS ZZP 391 DESK | bound B1:true,B2:true'
+                     || ' | BMAS mapped true course ZZP 392 source SET found - choices -; CCMAS mapped true course ZZP 391 source SET found - choices -'
+                     || ' | waiting none', false),
+      m_b);
+  PERFORM pg_temp.assert('V776: SIWES — saving the period (open, closed, open again) writes nothing and moves nobody; a course marked while the period is closed writes nothing; marked while it is open it gives only the waiting programmes whose own 300 Level structure carries that course — an attachment-semester programme of another department stays waiting, its course found and shown',
+      coalesce(m_c = 'added: C97781 every ZZP 381 DESK, C97782 every ZZP 385 STRUCTURE, C97783 BMAS ZZP 392 DESK, C97783 CCMAS ZZP 391 DESK'
+                     || ' / A1:true,A2:true,B1:true,B2:true,C4:false,C5:false,D6:false,D7:false,F2:true,F5:false,G8:false,H1:false,H2:false'
+                     || ' [C97784 course - source - found - choices - elsewhere - attachment false other 1/6;'
+                     || ' C97785 course - source - found - choices - elsewhere - attachment false other 1/6]'
+                     || ' | saved OPEN: same [C97784 course - source - found - choices - elsewhere - attachment false other 1/6;'
+                     || ' C97785 course - source - found - choices - elsewhere - attachment false other 1/6]'
+                     || ' | saved CLOSED: same [C97784 course - source - found - choices - elsewhere - attachment false other 1/6;'
+                     || ' C97785 course - source - found - choices - elsewhere - attachment false other 1/6]'
+                     || ' | ZZP 371 marked true while CLOSED: same [C97784 course - source - found ZZP 371 choices ZZP 371 elsewhere - attachment true other 0/0;'
+                     || ' C97785 course - source - found - choices - elsewhere - attachment false other 1/6]'
+                     || ' | saved OPEN again: same [C97784 course - source - found ZZP 371 choices ZZP 371 elsewhere - attachment true other 0/0;'
+                     || ' C97785 course - source - found - choices - elsewhere - attachment false other 1/6]'
+                     || ' | ZZP 372 marked true while OPEN: C97781 every ZZP 381 DESK, C97782 every ZZP 385 STRUCTURE, C97783 BMAS ZZP 392 DESK,'
+                     || ' C97783 CCMAS ZZP 391 DESK, C97785 every ZZP 372 STRUCTURE'
+                     || ' / A1:true,A2:true,B1:true,B2:true,C4:false,C5:true,D6:false,D7:false,F2:true,F5:true,G8:false,H1:false,H2:false'
+                     || ' [C97784 course - source - found ZZP 371 choices ZZP 371 elsewhere - attachment true other 0/0;'
+                     || ' C97785 course ZZP 372 source STRUCTURE found - choices - elsewhere - attachment true other 0/0]', false),
+      m_c);
+  PERFORM pg_temp.assert('V776: SIWES — the department never writes: its one SIWES course that no structure carries is found (never written) for a programme whose structure carries no SIWES course at any level, and Set course takes it and binds the cohort; a course another programme owns, or one carried at another level, is not offered',
+      coalesce(m_d = 'catalogue ZZP 361:LIVE, ZZP 362:LIVE:owner C97787, ZZP 363:LIVE:in C97787@400'
+                     || ' | course C97786 none -, C97787 none -'
+                     || ' | offered C97786 ZZP 361:6:top; C97787 none | written none'
+                     || ' | C97786 course - source - found ZZP 361 choices ZZP 361 elsewhere - attachment false other 0/0'
+                     || ' | C97787 course - source - found - choices - elsewhere ZZP 363@400/SECOND attachment false other 0/0'
+                     || ' | bound D6:false,D7:false'
+                     || ' | taken ZZP 361 SET bound D6:true,D7:false'
+                     || ' | C97786 course ZZP 361 source SET found - choices - elsewhere - attachment false other 0/0'
+                     || ' | waiting C97787/CCMAS 1 paid 0 found - choices -', false),
+      m_d);
+  PERFORM pg_temp.assert('V776: SIWES — a programme''s SIWES course is a 300 Level course (SIWES_COURSE_LEVEL for one its structure carries only at 400 Level and for one in no structure whose catalogue level is 400; a 300 Level course in no structure is accepted); a programme whose SIWES course is a First Semester course reads none, the desk lists it as elsewhere (with its level and FIRST) and Set course on it is refused SIWES_COURSE_SEMESTER',
+      coalesce(m_e = 'C97787'
+                     || ' | ZZP 363 SIWES_COURSE_LEVEL: ZZP 363 is not a 300 Level course of B.Sc. Check V776 R3 Level Four'
+                     || ' | ZZP 364 SIWES_COURSE_LEVEL: ZZP 364 is not a 300 Level course'
+                     || ' | ZZP 365 accepted ZZP 365 SET'
+                     || ' | C97789 course - source - found - choices - elsewhere ZZP 267@200/SECOND,ZZP 366@300/FIRST attachment false other 0/0'   -- every SIWES course outside 300/2
+                     || ' | waiting C97789/CCMAS 1 paid 0 found - choices -'   -- H1 has passed: not waiting
+                     || ' | bound H1:false,H2:false'
+                     || ' | set ZZP 366 SIWES_COURSE_SEMESTER: ZZP 366 is taught in the first semester | course none -', false),
+      m_e);
+  PERFORM pg_temp.assert('V776: SIWES — a written row is not left stale silently: the catalogue giving another course beside it, or having ended its course, shows the course found on the programme''s row (source STRUCTURE), a row set on the desk never shows one; students who paid keep the row (a paid student whose course has ended is bound and waits, V752, until the Academic Office takes the course found)',
+      coalesce(m_f = 'before: C97782 course ZZP 385 source STRUCTURE found - choices - elsewhere - attachment true other 0/0'
+                     || ' | C97785 course ZZP 372 source STRUCTURE found - choices - elsewhere - attachment true other 0/0'
+                     || ' | C97781 course ZZP 381 source SET found - choices - elsewhere - attachment false other 2/5'
+                     || ' | after: C97782 course ZZP 385 source STRUCTURE found ZZP 351 choices - elsewhere - attachment true other 0/0'
+                     || ' | C97785 course ZZP 372:ENDED source STRUCTURE found ZZP 352 choices - elsewhere - attachment true other 0/0'
+                     || ' | C97781 course ZZP 381 source SET found - choices - elsewhere - attachment false other 2/5'
+                     || ' | written C97781 every ZZP 381 DESK, C97782 every ZZP 385 STRUCTURE, C97785 every ZZP 372 STRUCTURE'
+                     || ' | waiting C97785/CCMAS 2 paid 1 found ZZP 352 choices ZZP 352'
+                     || ' | bound A1:true,A2:true,C5:false'
+                     || ' | F2 ZZP 385 bound true registers ZZP 385'
+                     || ' | F5 ZZP 372 bound true SIWES_COURSE_MISSING'
+                     || ' | taken ZZP 352 SET | F5 ZZP 352 bound true registers ZZP 352', false),
+      m_f);
+  PERFORM pg_temp.assert('V776: SIWES — the attachment guard asks what removal changes: a 3-unit SIWES-titled elective beside the 6-unit Core SIWES course of an attachment-semester programme is removable while students are registered (it makes no attachment semester), and the 6-unit course is refused SIWES_COURSE_IN_USE while a student is registered in the semester it makes',
+      coalesce(m_g = 'units 6 | attachmentFor ZZP 341 C97788@300/2; ZZP 342 none'
+                     || ' | ZZP 342 off accepted marked false units 6'
+                     || ' | ZZP 341 off SIWES_COURSE_IN_USE: 1 student(s) of C97788 at 300 Level are registered in the attachment semester ZZP 341 makes; it stays a SIWES course'
+                     || ' marked true units 6', false),
+      m_g);
+  PERFORM pg_temp.assert('V776: SIWES — SIWES already passed counts a published pass in a First Semester SIWES course of 300 Level (catalogue level 300, semester 1) that a student of the programme holds, and still not SIWES I at 200 Level',
+      coalesce(m_h = 'marked ZZP 267:200:2:true,ZZP 366:300:1:true'
+                     || ' | H1 holds ZZP 366 passed true reasons NO_COURSE+ALREADY_PASSED'
+                     || ' | H2 holds ZZP 267 passed false reasons NO_COURSE', false),
+      m_h);
+END $$;
+-- ── V776, the final review: (a) a programme in a CLOSED period of any planned or current session is never written down by a desk act on another
+--          session; (b) a programme whose curricula recognise different courses (a BMAS course and a CCMAS course, the shape of Computer
+--          Science) is written down by the mark that completes the set — and by the mark of a report that makes the semester an
+--          attachment semester; (c) a course labelled for the student's curriculum does not beat an unlabelled course of more units
+--          (a labelled 1-unit report beside the 6-unit SIWES course: the programme waits and the desk lists both). In 9896/9897 (current)
+--          and 9897/9898 (planned), six made-up programmes, nine students. The block undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9895/9896'; S text := '9896/9897'; N text := '9897/9898'; who uuid := gen_random_uuid(); fac text;
+    x1 uuid := gen_random_uuid(); b1 uuid := gen_random_uuid(); b2 uuid := gen_random_uuid(); r1 uuid := gen_random_uuid();
+    r2 uuid := gen_random_uuid(); l1 uuid := gen_random_uuid(); m1 uuid := gen_random_uuid();
+    v_err text; ma text := ''; mb text := ''; mc text := ''; cfg jsonb;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V776 final review', true);
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r4_written(progs text[]) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce(string_agg(sc.programme_code || ' ' || coalesce(sc.curriculum, 'every') || ' ' || sc.course_code || ' ' || sc.origin,
+                                   ', ' ORDER BY sc.programme_code, sc.curriculum), 'none')
+          FROM registration.siwes_course sc WHERE sc.programme_code = ANY (progs) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r4_bound(labels text[]) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT string_agg(s.other_names || ':' || registration.siwes_applies(s.id, '9896/9897'), ',' ORDER BY s.other_names)
+          FROM people.student s WHERE s.matric_no LIKE 'MOAU/ZSR/98/79%' AND s.other_names = ANY (labels) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r4_cfg(cfg jsonb, prog text) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT 'course ' || coalesce(p->'course'->>'code', '-') || ' found ' || coalesce(p->'found'->>'code', '-') || ' choices '
+               || coalesce((SELECT string_agg(x->>'code', ',' ORDER BY x->>'code') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p->'choices') = 'array' THEN p->'choices' ELSE '[]'::jsonb END) x), '-')
+          FROM jsonb_array_elements(cfg->'programmes') p WHERE p->>'code' = prog $g$ $f$;
+    -- the same for each curriculum entry of the programme's row (what the desk shows when the programme has students of a curriculum)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.r4_cur(cfg jsonb, prog text) RETURNS text LANGUAGE sql STABLE AS $g$
+        SELECT coalesce(string_agg(coalesce(c->>'curriculum', '-') || ' course ' || coalesce(c->'course'->>'code', '-') || ' found ' || coalesce(c->'found'->>'code', '-') || ' choices '
+               || coalesce((SELECT string_agg(x->>'code', ',' ORDER BY x->>'code') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(c->'choices') = 'array' THEN c->'choices' ELSE '[]'::jsonb END) x), '-'),
+               '; ' ORDER BY c->>'curriculum'), 'none')
+          FROM jsonb_array_elements(cfg->'programmes') p, jsonb_array_elements(p->'curricula') c WHERE p->>'code' = prog $g$ $f$;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9895-10-01', DATE '9896-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9896-10-01', DATE '9897-08-31', 'PLANNED'),
+        (gen_random_uuid(), N, DATE '9897-10-01', DATE '9898-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9896/776' WHERE name = S;
+    SELECT p.faculty_code INTO fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.department (code, name, faculty_code) VALUES
+        ('ZD7791', 'Check V776 R4 Department One', fac), ('ZD7792', 'Check V776 R4 Department Two', fac), ('ZD7793', 'Check V776 R4 Department Three', fac);
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97791', 'B.Sc. Check V776 R4 Cross Session', 'ZD7791', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97792', 'B.Sc. Check V776 R4 Mixed Curricula', 'ZD7791', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97793', 'B.Sc. Check V776 R4 Report Completes', 'ZD7792', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97794', 'B.Sc. Check V776 R4 Labelled Report', 'ZD7792', fac, 'UNDER GRADUATE', 0, 400, 4),
+        ('C97795', 'B.Sc. Check V776 R4 Labelled Course', 'ZD7793', fac, 'UNDER GRADUATE', 0, 400, 4);
+    -- (a) one required course of the semester, not yet a SIWES course; (b) a BMAS and a CCMAS required course; the report completes
+    -- C97793's attachment semester when it is marked; (c) a CCMAS-labelled report (its title reads SIWES, so it is marked as it is added)
+    -- beside an unlabelled 6-unit course; and a BMAS-labelled 6-unit course beside an unlabelled 1-unit report
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZR 301', 'Check V776 R4 field practicum', 6, 2, 300, 'ZD7791', 'Core', 'LIVE'),
+        ('ZZR 371', 'Check V776 R4 attachment report', 1, 2, 300, 'ZD7792', 'Core', 'LIVE'),
+        ('ZZR 372', 'Industrial Training (check r4 report completes)', 6, 2, 300, 'ZD7792', 'Core', 'LIVE'),
+        ('ZZR 382', 'Students Industrial Work Experience Scheme (check r4 unlabelled)', 6, 2, 300, 'ZD7792', 'Core', 'LIVE'),
+        ('ZZR 392', 'SIWES report (check r4 unlabelled)', 1, 2, 300, 'ZD7793', 'Core', 'LIVE');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, curriculum) VALUES
+        ('ZZR 360', 'Check V776 R4 practicum BMAS', 6, 2, 300, 'ZD7791', 'Core', 'LIVE', 'BMAS'),
+        ('ZZR 398', 'Check V776 R4 practicum CCMAS', 6, 2, 300, 'ZD7791', 'Core', 'LIVE', 'CCMAS'),
+        ('ZZR 381', 'SIWES Report and Seminar (check r4 CCMAS)', 1, 2, 300, 'ZD7792', 'Core', 'LIVE', 'CCMAS'),
+        ('ZZR 391', 'SIWES (check r4 BMAS)', 6, 2, 300, 'ZD7793', 'Core', 'LIVE', 'BMAS');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZR 301', 'C97791', 300, 'Core'),
+        ('ZZR 360', 'C97792', 300, 'Core'), ('ZZR 398', 'C97792', 300, 'Core'),
+        ('ZZR 371', 'C97793', 300, 'Core'), ('ZZR 372', 'C97793', 300, 'Core'),
+        ('ZZR 381', 'C97794', 300, 'Core'), ('ZZR 382', 'C97794', 300, 'Core'),
+        ('ZZR 391', 'C97795', 300, 'Core'), ('ZZR 392', 'C97795', 300, 'Core');
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, curriculum_version) VALUES
+        (x1, 'MOAUM/ADM/98/977901', 'MOAU/ZSR/98/7901', 'ZZSIWES', 'X1', 'C97791', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (b1, 'MOAUM/ADM/98/977902', 'MOAU/ZSR/98/7902', 'ZZSIWES', 'B1', 'C97792', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (b2, 'MOAUM/ADM/98/977903', 'MOAU/ZSR/98/7903', 'ZZSIWES', 'B2', 'C97792', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (r1, 'MOAUM/ADM/98/977904', 'MOAU/ZSR/98/7904', 'ZZSIWES', 'R1', 'C97793', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (r2, 'MOAUM/ADM/98/977905', 'MOAU/ZSR/98/7905', 'ZZSIWES', 'R2', 'C97794', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL),
+        (l1, 'MOAUM/ADM/98/977906', 'MOAU/ZSR/98/7906', 'ZZSIWES', 'L1', 'C97795', 'UTME', S0, 100, 300, 'ACTIVE', now(), NULL);
+    UPDATE people.student SET curriculum_version = 'BMAS' WHERE id = b2;   -- a student's curriculum is filled on insert (CCMAS); B2 is a BMAS student
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 R4');
+    PERFORM registration.siwes_set_period(N, 'DRAFT', NULL, NULL, NULL, NULL, 6, 'check V776 R4');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.siwes_fee_state(S, 4000, 'check V776 R4'); PERFORM finance.siwes_fee_publish(S);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- (a) C97791 waits in the current session (its one required course is no SIWES course yet); that session's period is then CLOSED; the
+    -- course is marked while it is closed (nothing: no open session carries the programme), and the programme is added to the PLANNED
+    -- next session, its period a draft (nothing: the programme takes part in a session whose period is CLOSED); the current session's period
+    -- is OPENED again, and the same act writes the row
+    PERFORM registration.siwes_add_programme(S, 'C97791');
+    PERFORM registration.siwes_set_period(S, 'CLOSED', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 R4');
+    PERFORM registration.siwes_mark_course('ZZR 301', true);
+    ma := 'closed: marked ' || pg_temp.r4_written(ARRAY['C97791']) || ' bound ' || pg_temp.r4_bound(ARRAY['X1']);
+    PERFORM registration.siwes_add_programme(N, 'C97791');
+    ma := ma || ' | next session added ' || pg_temp.r4_written(ARRAY['C97791']) || ' bound ' || pg_temp.r4_bound(ARRAY['X1']);
+    PERFORM registration.siwes_mark_course('ZZR 301', true);
+    ma := ma || ' | marked again ' || pg_temp.r4_written(ARRAY['C97791']) || ' bound ' || pg_temp.r4_bound(ARRAY['X1']);
+    PERFORM registration.siwes_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V776 R4');
+    PERFORM registration.siwes_add_programme(N, 'C97791');
+    ma := ma || ' | open again, added ' || pg_temp.r4_written(ARRAY['C97791']) || ' bound ' || pg_temp.r4_bound(ARRAY['X1']);
+
+    -- (b) C97792: a BMAS and a CCMAS required course, neither a SIWES course; the first mark leaves the semester a required load beside it
+    -- (nothing), the second makes it an attachment semester and every waiting curriculum then has its course: both are written
+    PERFORM registration.siwes_add_programme(S, 'C97792');
+    mb := 'added ' || pg_temp.r4_written(ARRAY['C97792']);
+    PERFORM registration.siwes_mark_course('ZZR 360', true);
+    mb := mb || ' | BMAS course marked ' || pg_temp.r4_written(ARRAY['C97792']) || ' bound ' || pg_temp.r4_bound(ARRAY['B1', 'B2']);
+    PERFORM registration.siwes_mark_course('ZZR 398', true);
+    mb := mb || ' | CCMAS course marked ' || pg_temp.r4_written(ARRAY['C97792']) || ' bound ' || pg_temp.r4_bound(ARRAY['B1', 'B2']);
+    -- C97793: the 6-unit SIWES course beside a required 1-unit report (a required load beside it): the report marked completes the
+    -- attachment semester, and the course recognised is the 6-unit one (the marked report is not it)
+    PERFORM registration.siwes_add_programme(S, 'C97793');
+    mb := mb || ' | C97793 added ' || pg_temp.r4_written(ARRAY['C97793']);
+    PERFORM registration.siwes_mark_course('ZZR 371', true);
+    mb := mb || ' | report marked ' || pg_temp.r4_written(ARRAY['C97793']) || ' bound ' || pg_temp.r4_bound(ARRAY['R1']);
+
+    -- (c) C97794: a CCMAS-labelled 1-unit report beside an unlabelled 6-unit course: nothing is written, both are listed; C97795: a
+    -- BMAS-labelled 6-unit course beside an unlabelled 1-unit report: the 6-unit course is the programme's
+    PERFORM registration.siwes_add_programme(S, 'C97794');
+    PERFORM registration.siwes_add_programme(S, 'C97795');
+    cfg := registration.siwes_config(S);
+    mc := 'C97794 written ' || pg_temp.r4_written(ARRAY['C97794']) || ' [' || pg_temp.r4_cur(cfg, 'C97794') || '] bound ' || pg_temp.r4_bound(ARRAY['R2'])
+          || ' | C97795 written ' || pg_temp.r4_written(ARRAY['C97795']) || ' [' || pg_temp.r4_cur(cfg, 'C97795') || '] bound ' || pg_temp.r4_bound(ARRAY['L1']);
+    PERFORM registration.siwes_set_course('C97794', NULL, 'ZZR 382');
+    mc := mc || ' | set ' || pg_temp.r4_written(ARRAY['C97794']) || ' bound ' || pg_temp.r4_bound(ARRAY['R2']);
+    RAISE EXCEPTION 'the V776 final-review check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V776 final-review check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V776: SIWES — what the catalogue offers is written down for a programme only where no period of any planned or current session it takes part in is closed',
+      coalesce(ma = 'closed: marked none bound X1:false | next session added none bound X1:false | marked again none bound X1:false | open again, added C97791 every ZZR 301 STRUCTURE bound X1:true', false), ma);
+  PERFORM pg_temp.assert('V776: SIWES — a programme whose curricula recognise different courses is written down by the mark that completes the set, and by the mark of a report that makes its semester an attachment semester',
+      coalesce(mb = 'added none | BMAS course marked none bound B1:false,B2:false | CCMAS course marked C97792 BMAS ZZR 360 STRUCTURE, C97792 CCMAS ZZR 398 STRUCTURE bound B1:true,B2:true | C97793 added none | report marked C97793 every ZZR 372 STRUCTURE bound R1:true', false), mb);
+  PERFORM pg_temp.assert('V776: SIWES — a course labelled for the curriculum does not beat an unlabelled course of more units: the programme waits and the desk lists both',
+      coalesce(mc = 'C97794 written none [CCMAS course - found - choices ZZR 381,ZZR 382] bound R2:false | C97795 written C97795 every ZZR 391 STRUCTURE [CCMAS course ZZR 391 found - choices -; - course ZZR 391 found - choices -] bound L1:true | set C97794 every ZZR 382 DESK bound R2:true', false), mc);
+END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

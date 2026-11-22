@@ -42,15 +42,15 @@ import org.springframework.web.client.RestClient;
  * recorded refunded first (the refund desk refuses, REFUND_SIWES_CREDIT_SETTLED) or the refund desk first (the credit waits,
  * SIWES_CREDIT_REFUND_DESK, and the approval settles it); the settling payment refunded on the desk and the open credit settling the
  * fee in its place (listed settles, nothing to refund); a partial refund ending the settlement; an old-portal payment's credit refunded
- * by the Bursar; the period not opened while no SIWES course reaches the programme (SIWES_COURSE_MISSING), and a mapping students paid
+ * by the Bursar; the period opened while no SIWES course is set for the programme (since V776, below), and a mapping students paid
  * on replaced, never taken away (SIWES_COURSE_IN_USE); after a remap, a registered student's own course (registration.courseCode, never
  * among otherCourses); a carry-over and a deferred course placed while the period was a draft dropped on the student's door, then SIWES
  * registered (K9); the Head of Department's return refused (REG_RETURN_SIWES); the credits and payments in the screens' shapes (K4',
  * K6'). The third round's: the Second Semester school fees on the SIWES page (K10: semesterFees, canRegister waiting on them); the
  * reset offered and made in a SIWES-bound Second Semester while add/drop is closed (K11, K9); ICT Support dropping a course in the
  * SIWES course's way with no override (K12); an office submit of a SIWES registration refused (REG_STATUS_SIWES) and a part of a SIWES
- * payment refused on the refund desk, raised or approved (REFUND_SIWES_PART, K13); a programme added to the open period only once its
- * students have a course, and a paid student whose course ended told SIWES_COURSE_MISSING on registering; a registered student whose
+ * payment refused on the refund desk, raised or approved (REFUND_SIWES_PART, K13); a programme added to the open period before its
+ * SIWES course is known (V776, below), and a paid student whose course ended told SIWES_COURSE_MISSING on registering; a registered student whose
  * level is corrected (no longer bound) having the SIWES course dropped by the Student edit with no override, then the fee refunded whole
  * (K12). The fourth round's: an office's undoing leaving an ordinary registration (the desk's and the history's siwes flag false) and the
  * student's SIWES of every session on their page (history); an old-portal SIWES credit that may be a bank double charge (V561) refused by
@@ -75,7 +75,32 @@ import org.springframework.web.client.RestClient;
  * last review of V752): one SIWES payment refunded once, whatever arrives at the same moment — two refunds of one credit raised at one
  * moment (a double submit), one raised and the other refused; two approvals at one moment (two officers), one approved and the other
  * refused; a third refund of the payment given back whole refused; each REFUND_SIWES_GIVEN_BACK, a 422 with the database's words and
- * remedy; and a hand refund of a credit racing a refund raised on the desk for it, one of the two and never both (K36). The test
+ * remedy; and a hand refund of a credit racing a refund raised on the desk for it, one of the two and never both (K36). V776 (the
+ * University's word of 22 November 2026: a programme is added before its SIWES course is known, and SIWES courses are recognised from
+ * the catalogue — written down in one situation only and shown everywhere else, never read live): a programme added and the period
+ * opened with no SIWES course set, neither refused SIWES_COURSE_MISSING any more, and the period saved changing nobody's binding;
+ * the course the catalogue gives a programme written down as the programme's (STRUCTURE) only where its 300 Level Second Semester IS a
+ * SIWES attachment semester (V503: the SIWES course alone) and only at the desk's own acts — as the programme is added (P and Q, added
+ * to the open period; T added again), or as a course is added to the SIWES courses that gives such a waiting programme the course its
+ * own structure carries (T) — the desk saying how each is known (source); a written row stands as a course set on the desk does: never
+ * cleared while students have paid (SIWES_COURSE_IN_USE, P's written row), kept when the programme is taken out again (Q), unmoved when
+ * a second course of the department is added after a student has paid (M's E registers the course E paid on), and taken with the course
+ * when it is taken off the SIWES courses while nobody has paid or registered (T), never while students are registered in the attachment
+ * semester it makes (Q's C); a programme whose Second Semester is not a SIWES semester — a required course beside any SIWES course
+ * (M) — is added with nothing written: its cohort is listed unreached with what the catalogue offers (found, or choices), the desk says
+ * attachment false and what its bound students could no longer register (otherRequired), and the Academic Office takes the course with
+ * one press (PUT courses: SET, binding the cohort at once); a programme never added, with no course set, reads none (C: NOT_CONFIGURED
+ * and NO_COURSE); of two courses of equal standing neither is guessed — a department's two (M's cohort listed unreached with the
+ * choices, and the one the catalogue gives once one remains: found) and a structure's two of equal units (T, until one is set: SET); a
+ * 400 Level course is no SIWES course of the 300 Level cohort (SIWES_COURSE_LEVEL, one a programme's structure carries only at 400
+ * Level and one it does not carry); the SIWES courses of the catalogue on the desk (siwesCourses), each under its own code and title —
+ * one marked by its title alone as the catalogue takes it, one the Academic Office adds and takes off again (PUT siwes-courses), the
+ * programme semesters each makes an attachment semester (attachmentFor), never one set for a programme or one students have paid or
+ * registered on (SIWES_COURSE_IN_USE), nor a code the catalogue lacks (SIWES_COURSE_UNKNOWN); a course set for a programme though not
+ * on the SIWES courses listed too (marked false); a course code of 20 characters taken on both doors (400 only beyond); the setters
+ * alone (403 for the Bursar, a Head of Department and a lecturer; SIWES_OFFICE for a setter acting as a lecturer); a cohort whose set
+ * course has ended listed with how many of it have paid (unreached.paid); a student whose course is written down or set still pays the
+ * fee before registering (SIWES_UNPAID). The test
  * makes its session CURRENT (an IT database has none of its own) and puts the calendar, the fee lines, the approval rule and the gateway
  * key back, and the course it ended live again.
  */
@@ -160,6 +185,30 @@ class SiwesRegistrationIT {
 
     private List<String> codes(List<Map<String, Object>> rows, String key) {
         return rows.stream().map(r -> String.valueOf(r.get(key))).toList();
+    }
+
+    /** a programme's row of the SIWES desk's configuration (GET config, or the answer of adding a programme), by its code (null: the
+     *  programme does not take part, or is not the office's to read) */
+    private static Map<String, Object> programmeRow(Map<String, Object> config, String programme) {
+        return ((List<Map<String, Object>>) config.get("programmes")).stream().filter(p -> programme.equals(p.get("code"))).findFirst().orElse(null);
+    }
+
+    /** V776: the rows registration.siwes_course holds for a programme — a course written down or set for it; none while the catalogue's
+     *  recognition is only shown (found, choices) */
+    private int siwesRows(String programme) {
+        return jdbc.sql("SELECT count(*) FROM registration.siwes_course WHERE programme_code = :p").param("p", programme).query(Integer.class).single();
+    }
+
+    /** V776: the origin of the one row registration.siwes_course holds for a programme (DESK: set on the desk; STRUCTURE: written down
+     *  from the programme's own structure), with the course and its curriculum ("every curriculum" for one that states none) */
+    private String siwesRowOf(String programme) {
+        return jdbc.sql("SELECT string_agg(coalesce(sc.curriculum, 'every curriculum') || ':' || sc.course_code || ':' || sc.origin, ',' ORDER BY sc.curriculum NULLS FIRST) "
+                + "FROM registration.siwes_course sc WHERE sc.programme_code = :p").param("p", programme).query(String.class).optional().orElse(null);
+    }
+
+    /** V776: a course among the SIWES courses the desk lists (siwesCourses), by its code (null: not a SIWES course) */
+    private static Map<String, Object> siwesCourse(Object siwesCourses, String course) {
+        return ((List<Map<String, Object>>) siwesCourses).stream().filter(k -> course.equals(k.get("code"))).findFirst().orElse(null);
     }
 
     /** the Bursar's SIWES credit on a payment, as GET /credits lists it (null: not listed) */
@@ -265,6 +314,17 @@ class SiwesRegistrationIT {
         String carry = px + " 204", deferred = px + " 206", remap = px + " 306";
         // the SIWES course of a programme added at the end (M), ended after its student E paid (SIWES_COURSE_MISSING), then restored
         String missing = px + " 308";
+        // V776: a course whose title reads SIWES, Industrial Training, Industrial Attachment or Industrial Work is marked a SIWES course
+        // as the catalogue takes it, whatever marker the insert states — so only the SIWES courses read so here, and every ordinary
+        // course is titled plainly (the title is these words and the course's code)
+        String plainTitle = "Invented course ";
+        // V776: the SIWES course of M's department under its own title ("Industrial Training"): given no marker, marked by its title
+        String industrial = px + " 310";
+        // V776: the two SIWES courses of equal units T's own structure carries (neither is guessed; T's Second Semester is a SIWES
+        // attachment semester all the same: twinB is its one required course, twinA stands beside it as an elective), a course of the
+        // catalogue under a code of 20 characters — the longest the catalogue allows — that reads as no SIWES course, and a 400
+        // Level SIWES course that P's structure carries at 400 Level only: no SIWES course of the 300 Level cohort
+        String twinA = px + " 312", twinB = px + " 314", longCode = px + " 316/LONG-CODE-20", level400 = px + " 402";
         String yy = String.format("%02d", y % 100);
         // J and L are made at the end, for the fourth round's cases alone (K15, K17), N for the fifth round's (K20), and O and W for the
         // seventh round's (K32; K33, K35), V for V762's (K36): reserved here, out of every count before
@@ -279,17 +339,27 @@ class SiwesRegistrationIT {
         });
         Map<String, String> matric = new HashMap<>();
         for (int i = 0; i < who.length; i++) matric.put(who[i], "MOAU/" + px + "/" + yy + "/" + (n + i));
-        // four programme codes no run has used (the register's shape: C and five digits): P configured, Q not (its 300/2 is a V503
-        // attachment semester), R postgraduate, M added to the open period at the end
+        // five programme codes no run has used (the register's shape: C and five digits): P configured, Q not (its 300/2 is a V503
+        // attachment semester), R postgraduate, M added to the open period at the end (V776: its 300/2 is no attachment semester — a
+        // required course and no SIWES course in its structure), and T (V776: no student; its structure carries two SIWES courses of
+        // equal units, its 300/2 an attachment semester) added and taken out after it
         List<String> progs = jdbc.sql("""
                 SELECT 'C' || lpad(k::text, 5, '0') FROM generate_series(97000, 99999) k
                  WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C' || lpad(k::text, 5, '0'))
-                 ORDER BY random() LIMIT 4
+                 ORDER BY random() LIMIT 5
                 """).query(String.class).list();
-        String P = progs.get(0), Q = progs.get(1), R = progs.get(2), M = progs.get(3);
+        String P = progs.get(0), Q = progs.get(1), R = progs.get(2), M = progs.get(3), T = progs.get(4);
         String dept = jdbc.sql("SELECT dept_code FROM ref.programme WHERE category = 'UNDER GRADUATE' AND dept_code IS NOT NULL AND NOT archived ORDER BY code LIMIT 1")
                 .query(String.class).single();
         String otherDept = jdbc.sql("SELECT code FROM ref.department WHERE ended_on IS NULL AND code <> :d ORDER BY code LIMIT 1").param("d", dept).query(String.class).single();
+        // V776: M's own department, made up for this run alone (in the faculty of the others'). The SIWES course a programme comes by
+        // from its department is the department's ONE such course no structure carries, and a department that other runs and other
+        // tests leave courses in would hold several: M's holds this run's two
+        String deptM = jdbc.sql("""
+                SELECT 'ZS' || lpad(k::text, 4, '0') FROM generate_series(1000, 9999) k
+                 WHERE NOT EXISTS (SELECT 1 FROM ref.department d WHERE d.code = 'ZS' || lpad(k::text, 4, '0'))
+                 ORDER BY random() LIMIT 1
+                """).query(String.class).single();
         LocalDate today = LocalDate.now(java.time.ZoneId.of("Africa/Lagos"));
         LocalDate trainingStarts = today.plusDays(30), trainingEnds = trainingStarts.plusMonths(6);
         String ict = ItSupport.token("ict");
@@ -299,26 +369,44 @@ class SiwesRegistrationIT {
                 jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE state = 'CURRENT'").update();
                 jdbc.sql("UPDATE policy.academic_session SET state = 'CLOSED' WHERE name = :n").param("n", before).update();
                 jdbc.sql("UPDATE policy.academic_session SET state = 'CURRENT', senate_minute = coalesce(senate_minute, 'SEN/IT/752') WHERE name = :n").param("n", session).update();
+                jdbc.sql("INSERT INTO ref.department (code, name, faculty_code) SELECT :m, 'SIWES IT ' || :m, d.faculty_code FROM ref.department d WHERE d.code = :d")
+                        .param("m", deptM).param("d", dept).update();
                 jdbc.sql("""
                         INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years)
                         SELECT x.code, x.name, d.code, d.faculty_code, x.category, 0, x.final_level, x.years
-                          FROM ref.department d,
-                               (VALUES (:p, 'B.Sc. SIWES IT ' || :p, 'UNDER GRADUATE', 400, 4), (:q, 'B.Sc. SIWES IT ' || :q, 'UNDER GRADUATE', 400, 4),
-                                       (:r, 'M.Sc. SIWES IT ' || :r, 'POST GRADUATE', 900, 2), (:m, 'B.Sc. SIWES IT ' || :m, 'UNDER GRADUATE', 400, 4))
-                                       x(code, name, category, final_level, years)
-                         WHERE d.code = :d
+                          FROM (VALUES (:p, 'B.Sc. SIWES IT ' || :p, 'UNDER GRADUATE', 400, 4, :d), (:q, 'B.Sc. SIWES IT ' || :q, 'UNDER GRADUATE', 400, 4, :d),
+                                       (:r, 'M.Sc. SIWES IT ' || :r, 'POST GRADUATE', 900, 2, :d), (:m, 'B.Sc. SIWES IT ' || :m, 'UNDER GRADUATE', 400, 4, :dm),
+                                       (:t, 'B.Sc. SIWES IT ' || :t, 'UNDER GRADUATE', 400, 4, :d))
+                                       x(code, name, category, final_level, years, dept)
+                          JOIN ref.department d ON d.code = x.dept
                         ON CONFLICT (code) DO NOTHING
-                        """).param("p", P).param("q", Q).param("r", R).param("m", M).param("d", dept).update();
-                for (Object[] c : new Object[][] {{siwesCode, 6, 2, 300, "Core", true}, {elective, 3, 2, 300, "Elective", false}, {first, 3, 1, 300, "Core", false},
-                        {v503, 6, 2, 300, "Core", true}, {pgCourse, 3, 2, 700, "Core", false}, {carry, 3, 2, 200, "Core", false},
-                        {deferred, 3, 2, 200, "Core", false}, {remap, 6, 2, 300, "Core", true}, {missing, 6, 2, 300, "Core", true}}) {
+                        """).param("p", P).param("q", Q).param("r", R).param("m", M).param("t", T).param("d", dept).param("dm", deptM).update();
+                // V776: each SIWES course under its own code and title, as each department carries it. P's, Q's and the one mapped in
+                // P's place later are marked by hand, as V155 seeded the marker, and so are the two T's structure carries and the 400
+                // Level one P's does. M's department holds two courses of its own, in no programme's structure: `industrial` states
+                // no marker and is marked by its title alone ("Industrial Training"); `missing` reads as no SIWES course and is none
+                // until the Academic Office adds it to the SIWES courses on the desk. `longCode` is an ordinary course under a code of
+                // 20 characters
+                for (Object[] c : new Object[][] {{siwesCode, 6, 2, 300, "Core", true, "SIWES IT ", dept}, {elective, 3, 2, 300, "Elective", false, plainTitle, dept},
+                        {first, 3, 1, 300, "Core", false, plainTitle, dept}, {v503, 6, 2, 300, "Core", true, "SIWES IT ", dept},
+                        {pgCourse, 3, 2, 700, "Core", false, plainTitle, dept}, {carry, 3, 2, 200, "Core", false, plainTitle, dept},
+                        {deferred, 3, 2, 200, "Core", false, plainTitle, dept}, {remap, 6, 2, 300, "Core", true, "SIWES IT ", dept},
+                        {industrial, 6, 2, 300, "Core", false, "Industrial Training IT ", deptM}, {missing, 6, 2, 300, "Core", false, plainTitle, deptM},
+                        {twinA, 6, 2, 300, "Core", true, "SIWES IT ", dept}, {twinB, 6, 2, 300, "Core", true, "SIWES IT ", dept},
+                        {longCode, 6, 2, 300, "Core", false, plainTitle, dept}, {level400, 6, 2, 400, "Core", true, "SIWES IT ", dept}}) {
                     jdbc.sql("""
                             INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training)
-                            VALUES (:c, 'SIWES IT ' || :c, :u, :s, :l, :d, :k, 'LIVE', :it) ON CONFLICT (code) DO NOTHING
-                            """).param("c", c[0]).param("u", c[1]).param("s", c[2]).param("l", c[3]).param("d", dept).param("k", c[4]).param("it", c[5]).update();
+                            VALUES (:c, :t, :u, :s, :l, :d, :k, 'LIVE', :it) ON CONFLICT (code) DO NOTHING
+                            """).param("c", c[0]).param("t", String.valueOf(c[6]) + c[0]).param("u", c[1]).param("s", c[2]).param("l", c[3]).param("d", c[7]).param("k", c[4])
+                            .param("it", c[5]).update();
                 }
-                for (Object[] o : new Object[][] {{siwesCode, P, 300, "Core"}, {first, P, 300, "Core"}, {elective, P, 300, "Elective"},
-                        {v503, Q, 300, "Core"}, {elective, Q, 300, "Elective"}, {pgCourse, R, 700, "Core"}}) {
+                // V776: the structures decide which Second Semesters are SIWES attachment semesters (V503: the SIWES course alone, no
+                // other required course): P's (the elective is no required course), Q's and T's (twinB its required course, twinA
+                // beside it an elective) are; M's is not — `elective` is a required course (Core) of M's, and no SIWES course is in
+                // its structure. P's structure carries the 400 Level SIWES course at 400 Level only
+                for (Object[] o : new Object[][] {{siwesCode, P, 300, "Core"}, {first, P, 300, "Core"}, {elective, P, 300, "Elective"}, {level400, P, 400, "Core"},
+                        {v503, Q, 300, "Core"}, {elective, Q, 300, "Elective"}, {elective, M, 300, "Core"}, {pgCourse, R, 700, "Core"},
+                        {twinA, T, 300, "Elective"}, {twinB, T, 300, "Core"}}) {
                     jdbc.sql("INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES (:c, :p, :l, :b) ON CONFLICT DO NOTHING")
                             .param("c", o[0]).param("p", o[1]).param("l", o[2]).param("b", o[3]).update();
                 }
@@ -344,9 +432,12 @@ class SiwesRegistrationIT {
                         """).param("id", pgId).param("m", matric.get("D")).param("s", "ZZSIWESD" + n).param("p", R).param("e", before).update();
                 jdbc.sql("UPDATE people.student SET entry_session = :e WHERE id = ANY (CAST(:ids AS uuid[])) AND entry_mode <> 'POSTGRADUATE'")
                         .param("e", before).param("ids", id.values().toArray(new UUID[0])).update();
-                // the session's school fees, stated for both undergraduate programmes and paid by A, C and H; a clearance scheme in force where none is
-                jdbc.sql("INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code) VALUES (:s, 'School fees', 100000, 300, :p), (:s, 'School fees', 100000, 300, :q)")
-                        .param("s", session).param("p", P).param("q", Q).update();
+                // the session's school fees, stated for the undergraduate programmes with students and paid by A, C and H — and by E
+                // (V776: E registers the SIWES course at the end of M's case); a clearance scheme in force where none is
+                jdbc.sql("""
+                        INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code)
+                        VALUES (:s, 'School fees', 100000, 300, :p), (:s, 'School fees', 100000, 300, :q), (:s, 'School fees', 100000, 300, :m)
+                        """).param("s", session).param("p", P).param("q", Q).param("m", M).update();
                 jdbc.sql("""
                         INSERT INTO policy.version (id, kind, scope, validity, instrument, decided_by)
                         SELECT gen_random_uuid(), 'clearance', 'UNIVERSITY',
@@ -359,7 +450,7 @@ class SiwesRegistrationIT {
                         INSERT INTO policy.clearance_rule SELECT v.id, p.code, CASE p.code WHEN 'HOSTEL' THEN 'NEVER_GATED' ELSE 'INSTALMENT_1' END
                           FROM policy.version v, ref.clearance_purpose p WHERE v.instrument = :i ON CONFLICT DO NOTHING
                         """).param("i", instrument).update();
-                for (String w : List.of("A", "C", "H")) {
+                for (String w : List.of("A", "C", "H", "E")) {
                     String ref = jdbc.sql("SELECT finance.new_purpose_reference(:s, :ses, 100000, 'School fees ' || :ses)").param("s", id.get(w)).param("ses", session)
                             .query(String.class).single();
                     jdbc.sql("SELECT finance.confirm_payment(:r, 'BANK_BRANCH', 'teller for the SIWES test')").param("r", ref).query(String.class).single();
@@ -381,6 +472,39 @@ class SiwesRegistrationIT {
             assertThat(cfg0.get("period")).isNull();
             assertThat((List<Map<String, Object>>) cfg0.get("candidates")).anySatisfy(c -> assertThat(c).containsEntry("code", P).containsEntry("attachment", true));
             assertThat((Map<String, Object>) cfg0.get("access")).containsEntry("set", true);
+            // V776: the desk lists the SIWES courses of the catalogue, each under its own code and title — those marked by hand and
+            // the one its title alone marked as the catalogue took it (no marker stated); never an ordinary course, nor one whose title
+            // does not read so (until the Academic Office adds it: M's case, below — or sets it for a programme: T's). Each says whose
+            // structure carries it, the programmes it is the SIWES course of (none yet: nothing is written down before the desk
+            // acts), and whether a programme can come by it as it stands (300 Level, Second Semester, not ended)
+            assertThat(longCode).as("the longest code the catalogue allows").hasSize(20);
+            List<Map<String, Object>> listed0 = (List<Map<String, Object>>) cfg0.get("siwesCourses");
+            assertThat(codes(listed0, "code")).contains(siwesCode, v503, remap, industrial, twinA, twinB, level400)
+                    .doesNotContain(elective, first, pgCourse, carry, deferred, missing, longCode);
+            Map<String, Object> listedSiwes = siwesCourse(listed0, siwesCode);
+            assertThat(listedSiwes).as(String.valueOf(listedSiwes)).containsEntry("title", "SIWES IT " + siwesCode).containsEntry("units", 6).containsEntry("level", 300)
+                    .containsEntry("semester", "SECOND").containsEntry("state", "LIVE").containsEntry("departmentCode", dept).containsEntry("byTitle", true)
+                    .containsEntry("marked", true).containsEntry("recognised", true);
+            assertThat(codes((List<Map<String, Object>>) listedSiwes.get("programmes"), "code")).containsExactly(P);
+            assertThat((List<?>) listedSiwes.get("setFor")).isEmpty();
+            Map<String, Object> listedIndustrial = siwesCourse(listed0, industrial);
+            assertThat(listedIndustrial).as(String.valueOf(listedIndustrial)).containsEntry("title", "Industrial Training IT " + industrial).containsEntry("byTitle", true)
+                    .containsEntry("recognised", true).containsEntry("departmentCode", deptM);
+            assertThat((List<?>) listedIndustrial.get("programmes")).as("in no programme's structure").isEmpty();
+            // V776: each course also says whose Second Semester it makes a SIWES attachment semester (V503: the SIWES course alone) — taking
+            // the course off the SIWES courses would end that (attachmentFor): P's 300 Level semester for its one SIWES course; none for a
+            // course in no structure; none for T's twinA, which stands beside T's required twinB (removable), T's semester for twinB (the
+            // required one); and a 400 Level course says P's 400 Level semester though no programme can come by it as it stands
+            assertThat((List<Map<String, Object>>) listedSiwes.get("attachmentFor")).singleElement().satisfies(a ->
+                    assertThat(a).containsEntry("code", P).containsEntry("level", 300).containsEntry("semester", 2));
+            assertThat((List<?>) listedIndustrial.get("attachmentFor")).as("in no programme's structure").isEmpty();
+            assertThat((List<?>) siwesCourse(listed0, twinA).get("attachmentFor")).as("beside T's required SIWES course: removable").isEmpty();
+            assertThat(codes((List<Map<String, Object>>) siwesCourse(listed0, twinB).get("attachmentFor"), "code")).containsExactly(T);
+            Map<String, Object> listed400 = siwesCourse(listed0, level400);
+            assertThat(listed400).as(String.valueOf(listed400)).containsEntry("level", 400).containsEntry("marked", true).containsEntry("recognised", false);
+            assertThat((List<Map<String, Object>>) listed400.get("attachmentFor")).singleElement().satisfies(a ->
+                    assertThat(a).containsEntry("code", P).containsEntry("level", 400).containsEntry("semester", 2));
+            assertThat((List<?>) cfg0.get("unreached")).as("no programme takes part yet: no cohort waits").isEmpty();
             ResponseEntity<Map> pg = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", R));
             assertThat(status(pg)).isEqualTo(422);
             assertThat(code(pg)).isEqualTo("SIWES_NOT_UNDERGRADUATE");
@@ -388,19 +512,48 @@ class SiwesRegistrationIT {
             ResponseEntity<Map> added = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", P));
             assertThat(status(added)).as(String.valueOf(added.getBody())).isEqualTo(200);
             assertThat(codes((List<Map<String, Object>>) added.getBody().get("programmes"), "code")).containsExactly(P);
-            // the period does not open while no SIWES course reaches P's 300 Level students (nothing is written)
-            Map<String, Object> tooSoon = new HashMap<>();
-            tooSoon.put("session", session);
-            tooSoon.put("state", "OPEN");
-            tooSoon.put("registrationOpens", today.minusDays(1).toString());
-            tooSoon.put("registrationCloses", today.plusDays(10).toString());
-            tooSoon.put("trainingStarts", trainingStarts.toString());
-            tooSoon.put("trainingEnds", trainingEnds.toString());
-            tooSoon.put("durationMonths", 6);
-            ResponseEntity<Map> unmapped = it.call(academic, HttpMethod.PUT, admin + "/period", tooSoon);
-            assertThat(status(unmapped)).as(String.valueOf(unmapped.getBody())).isEqualTo(422);
-            assertThat(code(unmapped)).isEqualTo("SIWES_COURSE_MISSING");
-            assertThat(String.valueOf(unmapped.getBody().get("detail"))).contains(P);
+            // V776: P is added with no SIWES course set for it. Its 300 Level Second Semester is a SIWES attachment semester (V503: the
+            // SIWES course alone — its elective is no required course), so the course P's own structure carries there is written down
+            // as P's as P is added, for every curriculum (the one row, which the curriculum of its 300 Level students reads too): the
+            // desk says how it is known (STRUCTURE) and that the semester is an attachment one with no other required course to lose,
+            // nothing is left to find or to choose, and no cohort waits
+            Map<String, Object> addedP = programmeRow(added.getBody(), P);
+            assertThat(addedP).as(String.valueOf(addedP)).containsEntry("source", "STRUCTURE").doesNotContainKeys("found", "choices").containsEntry("attachment", true);
+            assertThat((Map<String, Object>) addedP.get("otherRequired")).containsEntry("courses", 0).containsEntry("units", 0);
+            assertThat((Map<String, Object>) addedP.get("course")).containsEntry("code", siwesCode).containsEntry("state", "LIVE");
+            assertThat(siwesRowOf(P)).as("one row for every curriculum").isEqualTo("every curriculum:" + siwesCode + ":STRUCTURE");
+            assertThat((List<Map<String, Object>>) addedP.get("curricula")).isNotEmpty().allSatisfy(k -> {
+                assertThat(k).containsEntry("source", "STRUCTURE");
+                assertThat((Map<String, Object>) k.get("course")).containsEntry("code", siwesCode);
+            }).anySatisfy(k -> assertThat(k).as("the row written, for every curriculum").containsEntry("mapped", true).doesNotContainKey("curriculum"));
+            assertThat((List<?>) added.getBody().get("unreached")).isEmpty();
+            // and the SIWES courses say whose course it now is, and how it came to be
+            assertThat((List<Map<String, Object>>) siwesCourse(added.getBody().get("siwesCourses"), siwesCode).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", P).containsEntry("source", "STRUCTURE").doesNotContainKey("curriculum"));
+            // V776: the period opens with no SIWES course set for P (once refused SIWES_COURSE_MISSING, until each programme's course
+            // was mapped): the course written down as P was added binds P's 300 Level students at once, to the course P's structure
+            // carries — saving the period writes nothing and moves nothing, P's row stays as it was written. Nobody has paid or
+            // registered yet, so the Academic Office puts the period back to a draft for what follows
+            Map<String, Object> unset = new HashMap<>();
+            unset.put("session", session);
+            unset.put("state", "OPEN");
+            unset.put("registrationOpens", today.minusDays(1).toString());
+            unset.put("registrationCloses", today.plusDays(10).toString());
+            unset.put("trainingStarts", trainingStarts.toString());
+            unset.put("trainingEnds", trainingEnds.toString());
+            unset.put("durationMonths", 6);
+            ResponseEntity<Map> openedUnset = it.call(academic, HttpMethod.PUT, admin + "/period", unset);
+            assertThat(status(openedUnset)).as(String.valueOf(openedUnset.getBody())).isEqualTo(200);
+            assertThat(openedUnset.getBody()).containsEntry("state", "OPEN");
+            Map<String, Object> recognisedA = it.get(student(A), "/api/v1/me/siwes").getBody();
+            assertThat(recognisedA).as(String.valueOf(recognisedA)).containsEntry("applies", true).containsEntry("eligible", true);
+            assertThat((Map<String, Object>) recognisedA.get("course")).containsEntry("code", siwesCode);
+            assertThat(siwesRowOf(P)).as("saving the period wrote nothing").isEqualTo("every curriculum:" + siwesCode + ":STRUCTURE");
+            unset.put("state", "DRAFT");
+            ResponseEntity<Map> draftAgain = it.call(academic, HttpMethod.PUT, admin + "/period", unset);
+            assertThat(status(draftAgain)).as(String.valueOf(draftAgain.getBody())).isEqualTo(200);
+            assertThat(draftAgain.getBody()).containsEntry("state", "DRAFT");
+            assertThat(siwesRowOf(P)).as("nor does putting it back to a draft").isEqualTo("every curriculum:" + siwesCode + ":STRUCTURE");
             Map<String, Object> mapping = new HashMap<>();
             mapping.put("programmeCode", P);
             mapping.put("curriculum", null);
@@ -408,15 +561,47 @@ class SiwesRegistrationIT {
             assertThat(code(it.call(academic, HttpMethod.PUT, admin + "/courses", mapping))).isEqualTo("SIWES_COURSE_SEMESTER");
             mapping.put("courseCode", px + " 999");
             assertThat(code(it.call(academic, HttpMethod.PUT, admin + "/courses", mapping))).isEqualTo("SIWES_COURSE_UNKNOWN");
-            mapping.put("courseCode", siwesCode);
-            ResponseEntity<Map> mapped = it.call(academic, HttpMethod.PUT, admin + "/courses", mapping);
-            assertThat(status(mapped)).as(String.valueOf(mapped.getBody())).isEqualTo(200);
-            assertThat((Map<String, Object>) mapped.getBody().get("course")).containsEntry("code", siwesCode).containsEntry("units", 6).containsEntry("state", "LIVE");
-            // K25: the desk reads each mapped course with its catalogue state (it warns of one not LIVE)
-            assertThat((List<Map<String, Object>>) it.get(academic, admin + "/config?session=" + session).getBody().get("programmes")).singleElement().satisfies(p -> {
-                assertThat(p).containsEntry("code", P);
+            // V776: a course code is as long as the catalogue allows, 20 characters (the desk once stopped at 16): one of 20 is looked
+            // for in the catalogue, and only a longer one is refused as it arrives (400) — on a programme's course here, and on the
+            // SIWES courses below (T's case, at the end, sets and adds the catalogue's own course of 20 characters)
+            String unknown20 = px + " 9999999999999999";
+            assertThat(unknown20).hasSize(20);
+            mapping.put("courseCode", unknown20);
+            ResponseEntity<Map> twentySet = it.call(academic, HttpMethod.PUT, admin + "/courses", mapping);
+            assertThat(status(twentySet)).as(String.valueOf(twentySet.getBody())).isEqualTo(422);
+            assertThat(code(twentySet)).isEqualTo("SIWES_COURSE_UNKNOWN");
+            mapping.put("courseCode", unknown20 + "9");
+            assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/courses", mapping))).as("21 characters").isEqualTo(400);
+            // V776: SIWES registration is the 300 Level cohort's (its fee, its Second Semester): a course P's structure carries only at 400
+            // Level is refused (SIWES_COURSE_LEVEL) — and so is one in no structure of P's whose catalogue level is another (M's case, below)
+            mapping.put("courseCode", level400);
+            ResponseEntity<Map> levelSet = it.call(academic, HttpMethod.PUT, admin + "/courses", mapping);
+            assertThat(status(levelSet)).as(String.valueOf(levelSet.getBody())).isEqualTo(422);
+            assertThat(code(levelSet)).isEqualTo("SIWES_COURSE_LEVEL");
+            assertThat(String.valueOf(levelSet.getBody().get("detail"))).contains(level400 + " is not a 300 Level course of");
+            // the refusals wrote nothing: P's course is the row written as P was added (STRUCTURE), set on the desk below, once students
+            // have paid, and K25: the desk reads each programme's course with its catalogue state (it warns of one not LIVE)
+            Map<String, Object> cfgWritten = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat((List<Map<String, Object>>) cfgWritten.get("programmes")).singleElement().satisfies(p -> {
+                assertThat(p).containsEntry("code", P).containsEntry("source", "STRUCTURE");
                 assertThat((Map<String, Object>) p.get("course")).containsEntry("code", siwesCode).containsEntry("state", "LIVE");
+                // (the row for every curriculum carries no curriculum: the API leaves a null out)
+                assertThat((List<Map<String, Object>>) p.get("curricula")).allSatisfy(k -> assertThat(k).containsEntry("source", "STRUCTURE"))
+                        .anySatisfy(k -> assertThat(k).containsEntry("mapped", true).doesNotContainKey("curriculum"));
             });
+            // V776: a SIWES course is an existing course of the catalogue, never one made on the desk (SIWES_COURSE_UNKNOWN: a code of 20
+            // characters is looked for like any other, one of 21 is refused as it arrives); and the SIWES courses are the setters' to
+            // change — the Bursary reads the desk and changes nothing (403). (A course set for a programme is never taken off them
+            // (SIWES_COURSE_IN_USE): P's, below, once P's course is set on the desk)
+            ResponseEntity<Map> notInCatalogue = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", px + " 999", "siwes", true));
+            assertThat(status(notInCatalogue)).as(String.valueOf(notInCatalogue.getBody())).isEqualTo(422);
+            assertThat(code(notInCatalogue)).isEqualTo("SIWES_COURSE_UNKNOWN");
+            ResponseEntity<Map> twentyMarked = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", unknown20, "siwes", true));
+            assertThat(status(twentyMarked)).as(String.valueOf(twentyMarked.getBody())).isEqualTo(422);
+            assertThat(code(twentyMarked)).isEqualTo("SIWES_COURSE_UNKNOWN");
+            assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", unknown20 + "9", "siwes", true)))).as("21 characters").isEqualTo(400);
+            assertThat(status(it.call(bursar, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", elective, "siwes", true)))).isEqualTo(403);
+            assertThat(siwesCourse(it.get(academic, admin + "/config?session=" + session).getBody().get("siwesCourses"), siwesCode)).as("still a SIWES course").isNotNull();
 
             // a draft binds nobody: A is not yet in SIWES (K1: applies says so)
             Map<String, Object> draft = it.get(student(A), "/api/v1/me/siwes").getBody();
@@ -452,6 +637,13 @@ class SiwesRegistrationIT {
             ResponseEntity<Map> asLecturer = it.callWith(academicLecturer, HttpMethod.PUT, admin + "/period", period, Map.of("X-Active-Office", "lecturer"));
             assertThat(status(asLecturer)).isEqualTo(422);
             assertThat(code(asLecturer)).isEqualTo("SIWES_OFFICE");
+            // V776: nor does a person of the Academic Office acting as a lecturer add a course to the SIWES courses: the database checks
+            // the office again, and the course stays an ordinary one
+            ResponseEntity<Map> markedAsLecturer = it.callWith(academicLecturer, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", elective, "siwes", true),
+                    Map.of("X-Active-Office", "lecturer"));
+            assertThat(status(markedAsLecturer)).as(String.valueOf(markedAsLecturer.getBody())).isEqualTo(422);
+            assertThat(code(markedAsLecturer)).isEqualTo("SIWES_OFFICE");
+            assertThat(siwesCourse(it.get(academic, admin + "/config?session=" + session).getBody().get("siwesCourses"), elective)).as("no SIWES course").isNull();
             ResponseEntity<Map> opened = it.call(academic, HttpMethod.PUT, admin + "/period", period);
             assertThat(status(opened)).as(String.valueOf(opened.getBody())).isEqualTo(200);
             assertThat(opened.getBody()).containsEntry("state", "OPEN").containsEntry("durationMonths", 6);
@@ -706,7 +898,12 @@ class SiwesRegistrationIT {
 
             // ── (8) a programme not configured is not restricted: C keeps V503's attachment semester and registers as before ──
             Map<String, Object> mineC = it.get(student(C), "/api/v1/me/siwes").getBody();
-            assertThat((List<String>) mineC.get("reasons")).contains("NOT_CONFIGURED");
+            // V776: Q was never added to a session's SIWES and no course is set for it, so none is written down for Q: C reads "not
+            // configured" and "no course" both, as before V776 — a programme's SIWES course is recognised at the desk's acts (as it is
+            // added: Q's case, below), never read live from the catalogue, though Q's own structure carries a SIWES course (which
+            // V503's attachment semester offers C here)
+            assertThat((List<String>) mineC.get("reasons")).containsExactly("NOT_CONFIGURED", "NO_COURSE");
+            assertThat(mineC.get("course")).isNull();
             assertThat(mineC).containsEntry("applies", false);
             assertThat(it.get(student(C), "/api/v1/me").getBody()).containsEntry("siwesArea", false);
             Map<String, Object> viewC = it.get(student(C), "/api/v1/me/registration?session=" + session + "&semester=2").getBody();
@@ -750,7 +947,7 @@ class SiwesRegistrationIT {
             assertThat(status(confirmed)).as(String.valueOf(confirmed.getBody())).isEqualTo(200);
             String uploadId = String.valueOf(confirmed.getBody().get("id"));
             ResponseEntity<Map> history = it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/registration", Map.of("session", before, "semester", 2,
-                    "rows", List.of(Map.of("line", "2", "matric", matric.get("B"), "course", elective, "title", "SIWES IT " + elective, "creditUnits", "3",
+                    "rows", List.of(Map.of("line", "2", "matric", matric.get("B"), "course", elective, "title", plainTitle + elective, "creditUnits", "3",
                                            "category", "Elective", "level", "300")), "uploadId", uploadId));
             assertThat(status(history)).as(String.valueOf(history.getBody())).isEqualTo(200);
             assertThat(((Number) history.getBody().get("entries")).intValue()).isEqualTo(1);
@@ -758,9 +955,9 @@ class SiwesRegistrationIT {
                     .as("SIWES binds that past semester, and its history loaded all the same").isTrue();
             // (6) the upload is an office's path into a registration that stands, too: A's approved SIWES registration takes nothing else
             ResponseEntity<Map> current = it.call(ict, HttpMethod.POST, "/api/v1/results/legacy/registration", Map.of("session", session, "semester", 2,
-                    "rows", List.of(Map.of("line", "2", "matric", matric.get("G"), "course", elective, "title", "SIWES IT " + elective, "creditUnits", "3",
+                    "rows", List.of(Map.of("line", "2", "matric", matric.get("G"), "course", elective, "title", plainTitle + elective, "creditUnits", "3",
                                            "category", "Elective", "level", "300"),
-                                    Map.of("line", "3", "matric", matric.get("A"), "course", elective, "title", "SIWES IT " + elective, "creditUnits", "3",
+                                    Map.of("line", "3", "matric", matric.get("A"), "course", elective, "title", plainTitle + elective, "creditUnits", "3",
                                            "category", "Elective", "level", "300")), "uploadId", uploadId));
             assertThat(status(current)).as(String.valueOf(current.getBody())).isEqualTo(200);
             assertThat(((Number) current.getBody().get("entries")).intValue()).isZero();
@@ -885,8 +1082,11 @@ class SiwesRegistrationIT {
                 return null;
             });
 
-            // ── [0.1] the mapping paid and registered students need is replaced, never taken away; K7: a registered student keeps the
-            //    course the registration was made on, whatever the mapping says since ──
+            // ── [0.1] the mapping paid and registered students need is replaced, never taken away (SIWES_COURSE_IN_USE). V776 leaves that
+            //    as V752 made it, and holds the row written down as P was added (STRUCTURE) as it holds a course set on the desk: a
+            //    programme's course is written at the desk's own acts and never read live, so with P's row gone nothing would reach A
+            //    and H, though P's own structure carries the course still. Set on the desk it is DESK's, over the written row (SET).
+            //    K7: a registered student keeps the course the registration was made on, whatever the mapping says since ──
             Map<String, Object> remapping = new HashMap<>();
             remapping.put("programmeCode", P);
             remapping.put("curriculum", null);
@@ -894,10 +1094,29 @@ class SiwesRegistrationIT {
             ResponseEntity<Map> cleared = it.call(academic, HttpMethod.PUT, admin + "/courses", remapping);
             assertThat(status(cleared)).as(String.valueOf(cleared.getBody())).isEqualTo(422);
             assertThat(code(cleared)).isEqualTo("SIWES_COURSE_IN_USE");
+            Map<String, Object> keptP = programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), P);
+            assertThat(keptP).as("the written row stands: " + keptP).containsEntry("source", "STRUCTURE");
+            assertThat((Map<String, Object>) keptP.get("course")).containsEntry("code", siwesCode);
+            assertThat(siwesRowOf(P)).isEqualTo("every curriculum:" + siwesCode + ":STRUCTURE");
             remapping.put("courseCode", remap);
             ResponseEntity<Map> replaced = it.call(academic, HttpMethod.PUT, admin + "/courses", remapping);
             assertThat(status(replaced)).as(String.valueOf(replaced.getBody())).isEqualTo(200);
-            assertThat((Map<String, Object>) replaced.getBody().get("course")).containsEntry("code", remap);
+            assertThat((Map<String, Object>) replaced.getBody().get("course")).containsEntry("code", remap).containsEntry("units", 6).containsEntry("state", "LIVE");
+            // set on the desk now (SET, over the row P's adding wrote), for every curriculum
+            Map<String, Object> cfgReplaced = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgReplaced, P)).containsEntry("source", "SET");
+            assertThat((List<Map<String, Object>>) programmeRow(cfgReplaced, P).get("curricula")).allSatisfy(k -> assertThat(k).containsEntry("source", "SET"))
+                    .anySatisfy(k -> assertThat(k).containsEntry("mapped", true).doesNotContainKey("curriculum"));
+            assertThat(siwesRowOf(P)).isEqualTo("every curriculum:" + remap + ":DESK");
+            // V776: the SIWES courses say which programmes a course is the SIWES course of, and how (set on the desk now); a course set for
+            // a programme is never taken off them (SIWES_COURSE_IN_USE), whoever has paid
+            assertThat((List<Map<String, Object>>) siwesCourse(cfgReplaced.get("siwesCourses"), remap).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", P).containsEntry("source", "SET").doesNotContainKey("curriculum"));
+            assertThat((List<?>) siwesCourse(cfgReplaced.get("siwesCourses"), siwesCode).get("setFor")).as("replaced").isEmpty();
+            ResponseEntity<Map> offWhileSet = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", remap, "siwes", false));
+            assertThat(status(offWhileSet)).as(String.valueOf(offWhileSet.getBody())).isEqualTo(422);
+            assertThat(code(offWhileSet)).isEqualTo("SIWES_COURSE_IN_USE");
+            assertThat(String.valueOf(offWhileSet.getBody().get("detail"))).contains(remap + " is set as the SIWES course of " + P);
             Map<String, Object> remappedA = it.get(student(A), "/api/v1/me/siwes").getBody();
             assertThat((Map<String, Object>) remappedA.get("course")).as("today's mapping").containsEntry("code", remap);
             assertThat((Map<String, Object>) remappedA.get("registration")).as("the course registered").containsEntry("courseCode", siwesCode).containsEntry("status", "APPROVED");
@@ -907,12 +1126,20 @@ class SiwesRegistrationIT {
             ResponseEntity<Map> keptA = it.call(student(A), HttpMethod.POST, "/api/v1/me/registration/drop", Map.of("session", session, "semester", 2, "offering", siwesOff));
             assertThat(status(keptA)).isEqualTo(422);
             assertThat(code(keptA)).isEqualTo("SIWES_COURSE_KEPT");
+            // V776: the course A and H registered is no longer P's SIWES course, and it is still not taken off the SIWES courses: they
+            // registered on it (SIWES_COURSE_IN_USE, in the words of the students who paid or registered, no programme's set course now)
+            ResponseEntity<Map> offWhileRegistered = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", siwesCode, "siwes", false));
+            assertThat(status(offWhileRegistered)).as(String.valueOf(offWhileRegistered.getBody())).isEqualTo(422);
+            assertThat(code(offWhileRegistered)).isEqualTo("SIWES_COURSE_IN_USE");
+            assertThat(String.valueOf(offWhileRegistered.getBody().get("detail"))).contains("2 student(s) have paid or registered for SIWES on " + siwesCode);
+            assertThat(siwesCourse(it.get(academic, admin + "/config?session=" + session).getBody().get("siwesCourses"), siwesCode)).as("still a SIWES course").isNotNull();
             // the replacement is not taken away either; the course put back
             remapping.put("courseCode", null);
             assertThat(code(it.call(academic, HttpMethod.PUT, admin + "/courses", remapping))).isEqualTo("SIWES_COURSE_IN_USE");
             remapping.put("courseCode", siwesCode);
             assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/courses", remapping))).isEqualTo(200);
             assertThat((Map<String, Object>) it.get(student(G), "/api/v1/me/siwes").getBody().get("course")).containsEntry("code", siwesCode);
+            assertThat(programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), P)).containsEntry("source", "SET");
 
             // ── (12) the statistics, the lists and the Bursary's reconciliation read the records: A registered (paid on the portal), H
             //    registered (paid on the old portal), B and K paid on the old portal, G yet to pay ──
@@ -979,6 +1206,16 @@ class SiwesRegistrationIT {
             Map<String, Object> ownConfig = it.get(hodOwn, admin + "/config?session=" + session).getBody();
             assertThat(codes((List<Map<String, Object>>) ownConfig.get("programmes"), "code")).contains(P);
             assertThat((Map<String, Object>) ownConfig.get("access")).containsEntry("set", false);
+            // V776: the Head reads how the department's programme comes by its SIWES course and the SIWES courses of the catalogue, and
+            // changes none: the SIWES courses are the setters' to add to or take off (403 for a Head of Department, as for a lecturer)
+            assertThat(programmeRow(ownConfig, P)).containsEntry("source", "SET");
+            assertThat(siwesCourse(ownConfig.get("siwesCourses"), siwesCode)).as("the Head reads the SIWES courses").isNotNull();
+            assertThat(status(it.call(hodOwn, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", elective, "siwes", true)))).isEqualTo(403);
+            assertThat(status(it.call(hodOwn, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", remap, "siwes", false)))).isEqualTo(403);
+            assertThat(status(it.call(ItSupport.token("lecturer"), HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", elective, "siwes", true)))).isEqualTo(403);
+            Object listedAfter = it.get(academic, admin + "/config?session=" + session).getBody().get("siwesCourses");
+            assertThat(siwesCourse(listedAfter, elective)).as("not added by an office that does not set SIWES").isNull();
+            assertThat(siwesCourse(listedAfter, remap)).as("nor taken off").isNotNull();
             // the department's registrations desk labels the SIWES registration, at its units
             List<Map<String, Object>> desk = (List<Map<String, Object>>) (List<?>) it.getList(hodOwn, "/api/v1/registration/course-registrations?session=" + session
                     + "&semester=2&status=ALL").getBody();
@@ -1171,26 +1408,252 @@ class SiwesRegistrationIT {
             assertThat((List<Map<String, Object>>) republished.getBody().get("history")).filteredOn(h -> "PUBLISHED".equals(h.get("action")) && h.get("wasAmount") != null)
                     .extracting(h -> money(h.get("amount")).intValue() + "/" + money(h.get("wasAmount")).intValue()).contains("5000/4000");
             assertThat(money(((Map<String, Object>) it.get(student(G), "/api/v1/me/siwes").getBody().get("fee")).get("amount"))).isEqualByComparingTo("5000");
-            // ── a programme is added to the open period only once its 300 Level students have a SIWES course; a student who paid on the
-            //    portal, whose course has since ended, is told so plainly (SIWES_COURSE_MISSING) and is still bound; the course restored,
-            //    the student's SIWES is as before. M, E and its course are this case's alone ──
-            ResponseEntity<Map> tooSoonM = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", M));
-            assertThat(status(tooSoonM)).as(String.valueOf(tooSoonM.getBody())).isEqualTo(422);
-            assertThat(code(tooSoonM)).isEqualTo("SIWES_COURSE_MISSING");
-            assertThat(String.valueOf(tooSoonM.getBody().get("detail"))).contains(M);
-            assertThat(codes((List<Map<String, Object>>) it.get(academic, admin + "/config?session=" + session).getBody().get("programmes"), "code")).doesNotContain(M);
-            Map<String, Object> mappingM = new HashMap<>();
-            mappingM.put("programmeCode", M);
-            mappingM.put("curriculum", null);
-            mappingM.put("courseCode", missing);
-            assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM))).isEqualTo(200);
+            // ── V776: a programme is added to the open period before its SIWES course is set (once refused SIWES_COURSE_MISSING, "the
+            //    programme takes part only once each is mapped" — while the desk sets a course only on a programme already added). Q,
+            //    whose own structure carries its SIWES course and whose 300 Level Second Semester is a SIWES attachment semester (the
+            //    SIWES course alone), is added with none set: the course is written down as Q's as Q is added (STRUCTURE), and binds C,
+            //    who still pays the SIWES fee before registering. Nobody of Q has paid, so Q is taken out again and C is unbound (V503)
+            //    — and what the adding wrote stays written, as a course set for a programme that takes no part stands: C reads Q's
+            //    course now, and "not configured" alone. C's ordinary registration of that semester (made before SIWES bound C) keeps
+            //    the course off the SIWES courses: C's students are registered in the attachment semester it makes ──
+            ResponseEntity<Map> addedQ = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", Q));
+            assertThat(status(addedQ)).as(String.valueOf(addedQ.getBody())).isEqualTo(200);
+            Map<String, Object> rowQ = programmeRow(addedQ.getBody(), Q);
+            assertThat(rowQ).as(String.valueOf(addedQ.getBody().get("programmes"))).isNotNull().containsEntry("source", "STRUCTURE").containsEntry("attachment", true);
+            assertThat((Map<String, Object>) rowQ.get("course")).containsEntry("code", v503);
+            assertThat(siwesRowOf(Q)).isEqualTo("every curriculum:" + v503 + ":STRUCTURE");
+            assertThat((List<Map<String, Object>>) rowQ.get("curricula")).as("the row written as Q was added, for every curriculum")
+                    .anySatisfy(k -> assertThat(k).containsEntry("mapped", true).containsEntry("source", "STRUCTURE").doesNotContainKey("curriculum"));
+            assertThat((List<?>) addedQ.getBody().get("unreached")).as("every cohort is reached").isEmpty();
+            Map<String, Object> boundC = it.get(student(C), "/api/v1/me/siwes").getBody();
+            assertThat(boundC).as(String.valueOf(boundC)).containsEntry("applies", true).containsEntry("eligible", true).containsEntry("canPay", true);
+            assertThat((Map<String, Object>) boundC.get("course")).containsEntry("code", v503);
+            ResponseEntity<Map> unpaidC = it.call(student(C), HttpMethod.POST, "/api/v1/me/siwes/register", Map.of());
+            assertThat(status(unpaidC)).as(String.valueOf(unpaidC.getBody())).isEqualTo(422);
+            assertThat(code(unpaidC)).isEqualTo("SIWES_UNPAID");
+            ResponseEntity<Map> removedQ = it.call(academic, HttpMethod.DELETE, admin + "/programmes?session=" + session + "&programmeCode=" + Q, null);
+            assertThat(status(removedQ)).as(String.valueOf(removedQ.getBody())).isEqualTo(200);
+            assertThat(codes((List<Map<String, Object>>) removedQ.getBody().get("programmes"), "code")).contains(P).doesNotContain(Q);
+            Map<String, Object> unboundC = it.get(student(C), "/api/v1/me/siwes").getBody();
+            assertThat(unboundC).containsEntry("applies", false);
+            assertThat((List<String>) unboundC.get("reasons")).containsExactly("NOT_CONFIGURED");
+            assertThat((Map<String, Object>) unboundC.get("course")).as("the course written down as Q was added, kept").containsEntry("code", v503);
+            assertThat((List<Map<String, Object>>) siwesCourse(removedQ.getBody().get("siwesCourses"), v503).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", Q).containsEntry("source", "STRUCTURE"));
+            // the course written down for Q is no programme's set course and nobody of Q has paid, yet it is not taken off the SIWES courses:
+            // C is registered in the attachment semester it makes (V503: C could not submit that semester without it), whatever Q's part
+            ResponseEntity<Map> offWhileRegisteredC = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", v503, "siwes", false));
+            assertThat(status(offWhileRegisteredC)).as(String.valueOf(offWhileRegisteredC.getBody())).isEqualTo(422);
+            assertThat(code(offWhileRegisteredC)).isEqualTo("SIWES_COURSE_IN_USE");
+            assertThat(String.valueOf(offWhileRegisteredC.getBody().get("detail"))).contains("1 student(s) of " + Q + " at 300 Level are registered in the attachment semester "
+                    + v503 + " makes");
+            assertThat(siwesCourse(it.get(academic, admin + "/config?session=" + session).getBody().get("siwesCourses"), v503)).as("still a SIWES course").isNotNull();
+            assertThat(siwesRowOf(Q)).as("and Q's row stands").isEqualTo("every curriculum:" + v503 + ":STRUCTURE");
+
+            // ── V776: M, of a department of its own, whose 300 Level Second Semester is no SIWES attachment semester: its structure
+            //    carries a required (Core) course and no SIWES course, so what the catalogue offers M is SHOWN and never written down
+            //    (binding E to the SIWES course alone would take the required course from E). The Academic Office adds the course M's
+            //    students are to register to the SIWES courses (its title does not read as SIWES: listed, marked on the desk and not by its
+            //    title). The department then holds two SIWES courses no programme's structure carries, and the portal guesses neither: M
+            //    is added to the open period all the same (once refused SIWES_COURSE_MISSING), nothing written for it, its course not
+            //    known (the desk offers both: choices; attachment false, and the one required course a bound cohort could no longer
+            //    register: otherRequired), its cohort listed as waiting (unreached) and not bound — and the period is saved open again
+            //    with that cohort waiting (once refused too), which writes nothing and binds nobody. The course taken off the SIWES courses
+            //    again, the desk says which one course the catalogue now gives M (found) and nothing is M's yet; the period saved
+            //    again, nor is it. A 400 Level course is refused (SIWES_COURSE_LEVEL). One press (PUT courses) sets it for M (SET) and
+            //    binds E. A course set for M stays a SIWES course (SIWES_COURSE_IN_USE): the mapping is cleared first, while nobody has
+            //    paid, the course taken off, and the cohort waits again with nothing to find; the other added, nothing is written either:
+            //    found again, set for M (SET) it binds E, who still pays before registering. E pays on it — and from then nothing the
+            //    catalogue does moves it: the department's second course added to the SIWES courses again changes neither M's row nor
+            //    the course E reads (read live, two courses of equal standing would have left E with none); the course E paid on is not
+            //    taken off the SIWES courses, and M's mapping is replaced, never taken away (SIWES_COURSE_IN_USE). A student who paid
+            //    on the portal, whose course has since ended, is told so plainly (SIWES_COURSE_MISSING) and is still bound, the desk
+            //    listing the cohort with the one who paid; the course restored, the student's SIWES is as before and E registers the
+            //    course E paid on. M, its department, E and their courses are this case's alone ──
+            ResponseEntity<Map> markedOn = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", missing, "siwes", true));
+            assertThat(status(markedOn)).as(String.valueOf(markedOn.getBody())).isEqualTo(200);
+            Map<String, Object> listedMissing = siwesCourse(markedOn.getBody().get("siwesCourses"), missing);
+            assertThat(listedMissing).as(String.valueOf(markedOn.getBody())).isNotNull().containsEntry("title", plainTitle + missing).containsEntry("byTitle", false)
+                    .containsEntry("marked", true).containsEntry("recognised", true).containsEntry("units", 6).containsEntry("departmentCode", deptM);
+            assertThat((List<?>) listedMissing.get("programmes")).isEmpty();
+            assertThat((List<?>) listedMissing.get("setFor")).isEmpty();
             ResponseEntity<Map> addedM = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", M));
             assertThat(status(addedM)).as(String.valueOf(addedM.getBody())).isEqualTo(200);
             assertThat(codes((List<Map<String, Object>>) addedM.getBody().get("programmes"), "code")).contains(P, M);
-            assertThat(it.get(student(E), "/api/v1/me/siwes").getBody()).containsEntry("eligible", true).containsEntry("applies", true).containsEntry("canPay", true);
+            Map<String, Object> waitingM = programmeRow(addedM.getBody(), M);
+            assertThat(waitingM).as(String.valueOf(waitingM)).doesNotContainKeys("course", "source", "found");
+            assertThat(codes((List<Map<String, Object>>) waitingM.get("choices"), "code")).as("both offered, neither guessed").containsExactly(missing, industrial);
+            assertThat(waitingM).containsEntry("attachment", false);
+            assertThat((Map<String, Object>) waitingM.get("otherRequired")).as("what a bound cohort could no longer register: `elective`")
+                    .containsEntry("courses", 1).containsEntry("units", 3);
+            assertThat(siwesRows(M)).as("nothing is written for M as it is added").isZero();
+            Map<String, Object> waitingE = it.get(student(E), "/api/v1/me/siwes").getBody();
+            assertThat(waitingE).as(String.valueOf(waitingE)).containsEntry("applies", false).containsEntry("eligible", false).containsEntry("canPay", false);
+            assertThat((List<String>) waitingE.get("reasons")).containsExactly("NO_COURSE");
+            assertThat(waitingE.get("course")).isNull();
+            assertThat((List<Map<String, Object>>) addedM.getBody().get("unreached")).as(String.valueOf(addedM.getBody().get("unreached"))).singleElement().satisfies(u -> {
+                assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 0).doesNotContainKey("found");
+                assertThat(u.get("curriculum")).as("the cohort's curriculum: E's").isEqualTo(waitingE.get("curriculum"));
+                assertThat(codes((List<Map<String, Object>>) u.get("choices"), "code")).containsExactly(missing, industrial);
+            });
+            // a department office reads the waiting cohorts of its own programmes alone: the Head of M's department reads M's, the Head
+            // of P's department none
+            Map<String, Object> configOfM = it.get(it.officer("hod", "department", deptM), admin + "/config?session=" + session).getBody();
+            assertThat(codes((List<Map<String, Object>>) configOfM.get("programmes"), "code")).containsExactly(M);
+            assertThat(codes((List<Map<String, Object>>) configOfM.get("unreached"), "programmeCode")).containsExactly(M);
+            assertThat((List<?>) it.get(hodOwn, admin + "/config?session=" + session).getBody().get("unreached")).isEmpty();
+            // the period saved open with the cohort waiting: saving it writes nothing and binds nobody, and two courses of equal
+            // standing are still two
+            ResponseEntity<Map> openedAgain = it.call(academic, HttpMethod.PUT, admin + "/period", period);
+            assertThat(status(openedAgain)).as(String.valueOf(openedAgain.getBody())).isEqualTo(200);
+            assertThat(openedAgain.getBody()).containsEntry("state", "OPEN");
+            Map<String, Object> stillWaitingM = programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), M);
+            assertThat(stillWaitingM).as("still waiting").doesNotContainKeys("course", "source", "found");
+            assertThat(codes((List<Map<String, Object>>) stillWaitingM.get("choices"), "code")).containsExactly(missing, industrial);
+            assertThat(siwesRows(M)).as("saving the period writes nothing").isZero();
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("and binds nobody").containsExactly("NO_COURSE");
+            // the course taken off the SIWES courses (nobody has it set: nothing goes with it): the catalogue now gives M one course,
+            // the department's one SIWES course in no structure, and the desk says so (found) — it is not M's yet, for a taking off
+            // and a reading write nothing: E still waits
+            ResponseEntity<Map> markedOff = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", missing, "siwes", false));
+            assertThat(status(markedOff)).as(String.valueOf(markedOff.getBody())).isEqualTo(200);
+            assertThat(siwesCourse(markedOff.getBody().get("siwesCourses"), missing)).as("taken off the SIWES courses").isNull();
+            assertThat(siwesCourse(markedOff.getBody().get("siwesCourses"), industrial)).isNotNull();
+            Map<String, Object> cfgFound = it.get(academic, admin + "/config?session=" + session).getBody();
+            Map<String, Object> foundM = programmeRow(cfgFound, M);
+            assertThat(foundM).as(String.valueOf(foundM)).doesNotContainKeys("course", "source").containsEntry("attachment", false);
+            assertThat((Map<String, Object>) foundM.get("found")).as("the one course the catalogue gives M now").containsEntry("code", industrial);
+            assertThat(codes((List<Map<String, Object>>) foundM.get("choices"), "code")).containsExactly(industrial);
+            assertThat((Map<String, Object>) foundM.get("otherRequired")).containsEntry("courses", 1).containsEntry("units", 3);
+            assertThat((List<Map<String, Object>>) cfgFound.get("unreached")).singleElement().satisfies(u -> {
+                assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 0);
+                assertThat((Map<String, Object>) u.get("found")).containsEntry("code", industrial);
+            });
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("not written by a reading").containsExactly("NO_COURSE");
+            // the period saved again: still nothing is written and nobody is bound — M's Second Semester is no SIWES semester, so the
+            // desk shows the course the catalogue gives M (found) and the Academic Office takes it
+            assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/period", period))).isEqualTo(200);
+            Map<String, Object> savedM = programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), M);
+            assertThat(savedM).as(String.valueOf(savedM)).doesNotContainKeys("course", "source");
+            assertThat((Map<String, Object>) savedM.get("found")).containsEntry("code", industrial);
+            assertThat(siwesRows(M)).as("saving the period writes nothing").isZero();
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("and binds nobody").containsExactly("NO_COURSE");
+            // SIWES registration is the 300 Level cohort's: a 400 Level course, in no structure of M's, is refused (SIWES_COURSE_LEVEL)
+            Map<String, Object> mappingM = new HashMap<>();
+            mappingM.put("programmeCode", M);
+            mappingM.put("curriculum", null);
+            mappingM.put("courseCode", level400);
+            ResponseEntity<Map> levelM = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM);
+            assertThat(status(levelM)).as(String.valueOf(levelM.getBody())).isEqualTo(422);
+            assertThat(code(levelM)).isEqualTo("SIWES_COURSE_LEVEL");
+            assertThat(String.valueOf(levelM.getBody().get("detail"))).contains(level400 + " is not a 300 Level course;");
+            assertThat(siwesRows(M)).isZero();
+            // one press takes the course the desk found: it is set for M (SET), for every curriculum, and binds E
+            mappingM.put("courseCode", industrial);
+            ResponseEntity<Map> usedM = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM);
+            assertThat(status(usedM)).as(String.valueOf(usedM.getBody())).isEqualTo(200);
+            assertThat((Map<String, Object>) usedM.getBody().get("course")).containsEntry("code", industrial).containsEntry("units", 6).containsEntry("state", "LIVE");
+            Map<String, Object> cfgDept = it.get(academic, admin + "/config?session=" + session).getBody();
+            Map<String, Object> setM = programmeRow(cfgDept, M);
+            assertThat(setM).as(String.valueOf(setM)).containsEntry("source", "SET").doesNotContainKeys("found", "choices");
+            assertThat((Map<String, Object>) setM.get("course")).containsEntry("code", industrial);
+            assertThat((List<Map<String, Object>>) setM.get("curricula")).isNotEmpty().allSatisfy(k -> assertThat(k).containsEntry("source", "SET"))
+                    .anySatisfy(k -> assertThat(k).containsEntry("mapped", true).doesNotContainKey("curriculum"));
+            assertThat((List<Map<String, Object>>) siwesCourse(cfgDept.get("siwesCourses"), industrial).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", M).containsEntry("source", "SET"));
+            assertThat(siwesRowOf(M)).isEqualTo("every curriculum:" + industrial + ":DESK");
+            assertThat((List<?>) cfgDept.get("unreached")).as("no cohort waits").isEmpty();
+            Map<String, Object> boundE = it.get(student(E), "/api/v1/me/siwes").getBody();
+            assertThat(boundE).as(String.valueOf(boundE)).containsEntry("eligible", true).containsEntry("applies", true).containsEntry("canPay", true);
+            assertThat((Map<String, Object>) boundE.get("course")).containsEntry("code", industrial);
+            // a course set for M stays a SIWES course though nobody has paid (SIWES_COURSE_IN_USE) ...
+            ResponseEntity<Map> offWhileSetM = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", industrial, "siwes", false));
+            assertThat(status(offWhileSetM)).as(String.valueOf(offWhileSetM.getBody())).isEqualTo(422);
+            assertThat(code(offWhileSetM)).isEqualTo("SIWES_COURSE_IN_USE");
+            assertThat(String.valueOf(offWhileSetM.getBody().get("detail"))).contains(industrial + " is set as the SIWES course of " + M);
+            // ... the mapping is cleared first (nobody of M has paid or registered), then the course is taken off the SIWES courses, and the
+            // cohort waits for a course again (the department holds no SIWES course now: nothing found, nothing to choose). Taken off, a
+            // course stays off though its title reads as SIWES
+            mappingM.put("courseCode", null);
+            ResponseEntity<Map> clearedUse = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM);
+            assertThat(status(clearedUse)).as(String.valueOf(clearedUse.getBody())).isEqualTo(200);
+            assertThat(clearedUse.getBody().get("course")).isNull();
+            assertThat(siwesRows(M)).isZero();
+            ResponseEntity<Map> recognisedOff = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", industrial, "siwes", false));
+            assertThat(status(recognisedOff)).as(String.valueOf(recognisedOff.getBody())).isEqualTo(200);
+            assertThat(siwesCourse(recognisedOff.getBody().get("siwesCourses"), industrial)).as("taken off the SIWES courses").isNull();
+            Map<String, Object> cfgWaiting = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgWaiting, M)).as(String.valueOf(programmeRow(cfgWaiting, M))).doesNotContainKeys("course", "source", "found", "choices");
+            assertThat((List<Map<String, Object>>) cfgWaiting.get("unreached")).singleElement().satisfies(u ->
+                    assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 0).doesNotContainKeys("found", "choices"));
+            Map<String, Object> waitingAgainE = it.get(student(E), "/api/v1/me/siwes").getBody();
+            assertThat(waitingAgainE).as(String.valueOf(waitingAgainE)).containsEntry("applies", false).containsEntry("canPay", false);
+            assertThat((List<String>) waitingAgainE.get("reasons")).containsExactly("NO_COURSE");
+            // the other course added to the SIWES courses (`siwes` left out adds): M's Second Semester is no SIWES semester, so nothing is
+            // written for M at that act either — the desk offers the department's one SIWES course now (found) and E waits; one press sets
+            // it for M (SET) and binds E, who pays before registering
+            ResponseEntity<Map> addedAgain = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", missing));
+            assertThat(status(addedAgain)).as(String.valueOf(addedAgain.getBody())).isEqualTo(200);
+            assertThat((List<?>) siwesCourse(addedAgain.getBody().get("siwesCourses"), missing).get("setFor")).as("nothing written as it was added").isEmpty();
+            assertThat(siwesRows(M)).isZero();
+            Map<String, Object> cfgOffered = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgOffered, M)).as(String.valueOf(programmeRow(cfgOffered, M))).doesNotContainKeys("course", "source");
+            assertThat((Map<String, Object>) programmeRow(cfgOffered, M).get("found")).containsEntry("code", missing);
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).containsExactly("NO_COURSE");
+            mappingM.put("courseCode", missing);
+            ResponseEntity<Map> usedMissing = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM);
+            assertThat(status(usedMissing)).as(String.valueOf(usedMissing.getBody())).isEqualTo(200);
+            assertThat((Map<String, Object>) usedMissing.getBody().get("course")).containsEntry("code", missing);
+            Map<String, Object> cfgGiven = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgGiven, M)).as(String.valueOf(programmeRow(cfgGiven, M))).containsEntry("source", "SET").doesNotContainKeys("found", "choices");
+            assertThat((Map<String, Object>) programmeRow(cfgGiven, M).get("course")).containsEntry("code", missing);
+            assertThat((List<Map<String, Object>>) siwesCourse(cfgGiven.get("siwesCourses"), missing).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", M).containsEntry("source", "SET").doesNotContainKey("curriculum"));
+            assertThat((List<?>) cfgGiven.get("unreached")).as("no cohort waits").isEmpty();
+            Map<String, Object> givenE = it.get(student(E), "/api/v1/me/siwes").getBody();
+            assertThat(givenE).as(String.valueOf(givenE)).containsEntry("eligible", true).containsEntry("applies", true).containsEntry("canPay", true);
+            assertThat((Map<String, Object>) givenE.get("course")).containsEntry("code", missing);
+            ResponseEntity<Map> unpaidE = it.call(student(E), HttpMethod.POST, "/api/v1/me/siwes/register", Map.of());
+            assertThat(status(unpaidE)).as(String.valueOf(unpaidE.getBody())).isEqualTo(422);
+            assertThat(code(unpaidE)).isEqualTo("SIWES_UNPAID");
             String refE = String.valueOf(it.call(student(E), HttpMethod.POST, "/api/v1/me/siwes/reference", Map.of()).getBody().get("reference"));
             confirm(refE);
             assertThat((Map<String, Object>) it.get(student(E), "/api/v1/me/siwes").getBody().get("paid")).containsEntry("reference", refE).containsEntry("source", "PORTAL");
+            // E has paid: the department's second course added to the SIWES courses again (200) moves nothing — M's row and the course E
+            // reads are as they were, whatever the catalogue offers now (two courses of equal standing: read live, E would have been
+            // left with none), and saving the period moves nothing either
+            ResponseEntity<Map> secondAdded = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", industrial, "siwes", true));
+            assertThat(status(secondAdded)).as(String.valueOf(secondAdded.getBody())).isEqualTo(200);
+            Map<String, Object> listedSecond = siwesCourse(secondAdded.getBody().get("siwesCourses"), industrial);
+            assertThat(listedSecond).as("a SIWES course again").isNotNull().containsEntry("marked", true).containsEntry("byTitle", true).containsEntry("recognised", true);
+            assertThat((List<?>) listedSecond.get("setFor")).as("no programme's course").isEmpty();
+            assertThat((List<Map<String, Object>>) siwesCourse(secondAdded.getBody().get("siwesCourses"), missing).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", M).containsEntry("source", "SET"));
+            assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/period", period))).isEqualTo(200);
+            Map<String, Object> cfgUnmoved = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgUnmoved, M)).as(String.valueOf(programmeRow(cfgUnmoved, M))).containsEntry("source", "SET").doesNotContainKeys("found", "choices");
+            assertThat((Map<String, Object>) programmeRow(cfgUnmoved, M).get("course")).containsEntry("code", missing).containsEntry("state", "LIVE");
+            assertThat((List<?>) cfgUnmoved.get("unreached")).isEmpty();
+            assertThat(siwesRowOf(M)).as("M's one row, as the Academic Office set it").isEqualTo("every curriculum:" + missing + ":DESK");
+            Map<String, Object> unmovedE = it.get(student(E), "/api/v1/me/siwes").getBody();
+            assertThat(unmovedE).as(String.valueOf(unmovedE)).containsEntry("applies", true).containsEntry("eligible", true).containsEntry("canRegister", true);
+            assertThat((Map<String, Object>) unmovedE.get("course")).containsEntry("code", missing);
+            assertThat((Map<String, Object>) unmovedE.get("paid")).containsEntry("reference", refE);
+            // the course E paid on is not taken off the SIWES courses: it is M's set course (SIWES_COURSE_IN_USE) ...
+            ResponseEntity<Map> offWhilePaid = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", missing, "siwes", false));
+            assertThat(status(offWhilePaid)).as(String.valueOf(offWhilePaid.getBody())).isEqualTo(422);
+            assertThat(code(offWhilePaid)).isEqualTo("SIWES_COURSE_IN_USE");
+            assertThat(String.valueOf(offWhilePaid.getBody().get("detail"))).contains(missing + " is set as the SIWES course of " + M);
+            // ... and the mapping E paid on is replaced, never taken away: the row gone, E would be left with no SIWES course (none is
+            // read live from the catalogue). The mapping stands
+            mappingM.put("courseCode", null);
+            ResponseEntity<Map> clearedM = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM);
+            assertThat(status(clearedM)).as(String.valueOf(clearedM.getBody())).isEqualTo(422);
+            assertThat(code(clearedM)).isEqualTo("SIWES_COURSE_IN_USE");
+            Map<String, Object> heldM = programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), M);
+            assertThat(heldM).as(String.valueOf(heldM)).containsEntry("source", "SET");
+            assertThat((Map<String, Object>) heldM.get("course")).as("the mapping stands").containsEntry("code", missing);
+            assertThat(siwesRowOf(M)).isEqualTo("every curriculum:" + missing + ":DESK");
             // K25: the desk reads the catalogue state of each programme's SIWES course — a course still at the Board shows so (the desk
             // warns of it), as does one ended below
             it.db(() -> jdbc.sql("UPDATE catalogue.course SET state = 'BOARD' WHERE code = :c").param("c", missing).update());
@@ -1201,9 +1664,14 @@ class SiwesRegistrationIT {
             // the department ends the course on the catalogue
             ResponseEntity<Map> ended = it.call(academic, HttpMethod.POST, "/api/v1/registration/courses/" + missing + "/end", Map.of());
             assertThat(status(ended)).as(String.valueOf(ended.getBody())).isEqualTo(200);
-            assertThat(((List<Map<String, Object>>) it.get(academic, admin + "/config?session=" + session).getBody().get("programmes")).stream()
+            Map<String, Object> cfgEnded = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(((List<Map<String, Object>>) cfgEnded.get("programmes")).stream()
                     .filter(p -> M.equals(p.get("code"))).findFirst().orElseThrow().get("course")).as("ended")
                     .satisfies(c -> assertThat((Map<String, Object>) c).containsEntry("state", "ENDED"));
+            // V776: the desk lists M's cohort among those no live SIWES course reaches, and says how many of it have paid or registered:
+            // E, who stays bound and waits for the course to register (the rest of such a cohort would not be bound)
+            assertThat((List<Map<String, Object>>) cfgEnded.get("unreached")).as(String.valueOf(cfgEnded.get("unreached"))).singleElement().satisfies(u ->
+                    assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 1));
             ResponseEntity<Map> regE = it.call(student(E), HttpMethod.POST, "/api/v1/me/siwes/register", Map.of());
             assertThat(status(regE)).as(String.valueOf(regE.getBody())).isEqualTo(422);
             assertThat(code(regE)).isEqualTo("SIWES_COURSE_MISSING");
@@ -1215,6 +1683,114 @@ class SiwesRegistrationIT {
             Map<String, Object> restoredE = it.get(student(E), "/api/v1/me/siwes").getBody();
             assertThat((List<String>) restoredE.get("reasons")).isEmpty();
             assertThat((Map<String, Object>) restoredE.get("course")).containsEntry("code", missing);
+            assertThat((List<?>) it.get(academic, admin + "/config?session=" + session).getBody().get("unreached")).as("reached again").isEmpty();
+            // V776: and E registers the course E paid on — the one given to M as it was added to the SIWES courses, whatever was added to
+            // them since — approved on the fee (M's school fees of the session are stated and E's are paid)
+            ResponseEntity<Map> registeredE = it.call(student(E), HttpMethod.POST, "/api/v1/me/siwes/register", Map.of());
+            assertThat(status(registeredE)).as(String.valueOf(registeredE.getBody())).isEqualTo(200);
+            assertThat(registeredE.getBody()).containsEntry("status", "APPROVED").containsEntry("courseCode", missing).containsEntry("semester", 2).containsEntry("level", 300);
+            assertThat((Map<String, Object>) it.get(student(E), "/api/v1/me/siwes").getBody().get("registration")).containsEntry("courseCode", missing).containsEntry("status", "APPROVED");
+
+            // ── V776: T, whose own structure carries two SIWES courses of equal units at 300 Level in the Second Semester: neither is
+            //    guessed, though T's Second Semester is a SIWES attachment semester (twinB its one required course, twinA beside it an
+            //    elective). T is added all the same and reads no course — the desk offers both (choices) and finds none — until the
+            //    Academic Office sets one (SET). A course set for a programme need not be on the SIWES courses: the catalogue's course
+            //    under a code of 20 characters (the longest the catalogue allows; the desk once stopped at 16) is set for T in its
+            //    place and listed with the SIWES courses as set, not marked (marked false), then added to them (marked) — and, set for
+            //    T, it stays a SIWES course (SIWES_COURSE_IN_USE). Nobody of T has paid, so its mapping is taken away — T reads no
+            //    course again, the two offered as before. Then the catalogue's recognition is written down for an attachment-semester
+            //    programme at the desk's own acts and at no other: twinA taken off the SIWES courses leaves T one SIWES course, which
+            //    the desk finds (nothing is written by taking a course off); T added again is given it (STRUCTURE); that course taken
+            //    off while nobody of T has paid or registered takes the row that only recognised it with it, and added to the SIWES
+            //    courses again gives T its course at that act (STRUCTURE). Last the longer-coded course is taken off and T taken out.
+            //    T (no student) and its courses are this case's alone ──
+            ResponseEntity<Map> addedT = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", T));
+            assertThat(status(addedT)).as(String.valueOf(addedT.getBody())).isEqualTo(200);
+            Map<String, Object> waitingT = programmeRow(addedT.getBody(), T);
+            assertThat(waitingT).as(String.valueOf(addedT.getBody().get("programmes"))).isNotNull().doesNotContainKeys("course", "source", "found").containsEntry("attachment", true);
+            assertThat((Map<String, Object>) waitingT.get("otherRequired")).containsEntry("courses", 0).containsEntry("units", 0);
+            assertThat(siwesRows(T)).as("two of equal standing: none is written").isZero();
+            assertThat(codes((List<Map<String, Object>>) waitingT.get("choices"), "code")).as("both offered, neither guessed").containsExactly(twinA, twinB);
+            assertThat((List<Map<String, Object>>) waitingT.get("choices")).allSatisfy(k -> assertThat(k).containsEntry("units", 6).containsEntry("state", "LIVE"));
+            Map<String, Object> mappingT = new HashMap<>();
+            mappingT.put("programmeCode", T);
+            mappingT.put("curriculum", null);
+            mappingT.put("courseCode", twinB);
+            ResponseEntity<Map> setT = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingT);
+            assertThat(status(setT)).as(String.valueOf(setT.getBody())).isEqualTo(200);
+            assertThat((Map<String, Object>) setT.getBody().get("course")).containsEntry("code", twinB);
+            Map<String, Object> cfgSetT = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgSetT, T)).as(String.valueOf(programmeRow(cfgSetT, T))).containsEntry("source", "SET").doesNotContainKeys("found", "choices");
+            assertThat((Map<String, Object>) programmeRow(cfgSetT, T).get("course")).containsEntry("code", twinB);
+            assertThat((List<Map<String, Object>>) siwesCourse(cfgSetT.get("siwesCourses"), twinB).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", T).containsEntry("source", "SET"));
+            assertThat((List<?>) siwesCourse(cfgSetT.get("siwesCourses"), twinA).get("setFor")).isEmpty();
+            // the course of 20 characters set in its place: T's course, set on the desk, and listed with the SIWES courses though it is
+            // not on them (marked false: listed only because it is set as a programme's course)
+            mappingT.put("courseCode", longCode);
+            ResponseEntity<Map> setLong = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingT);
+            assertThat(status(setLong)).as(String.valueOf(setLong.getBody())).isEqualTo(200);
+            assertThat((Map<String, Object>) setLong.getBody().get("course")).containsEntry("code", longCode);
+            Map<String, Object> cfgLong = it.get(academic, admin + "/config?session=" + session).getBody();
+            assertThat(programmeRow(cfgLong, T)).containsEntry("source", "SET");
+            assertThat((Map<String, Object>) programmeRow(cfgLong, T).get("course")).containsEntry("code", longCode);
+            Map<String, Object> listedLong = siwesCourse(cfgLong.get("siwesCourses"), longCode);
+            assertThat(listedLong).as("listed: " + cfgLong.get("siwesCourses")).isNotNull().containsEntry("marked", false).containsEntry("byTitle", false)
+                    .containsEntry("title", plainTitle + longCode).containsEntry("departmentCode", dept);
+            assertThat((List<Map<String, Object>>) listedLong.get("setFor")).singleElement().satisfies(f -> assertThat(f).containsEntry("code", T).containsEntry("source", "SET"));
+            assertThat((List<?>) siwesCourse(cfgLong.get("siwesCourses"), twinB).get("setFor")).as("replaced").isEmpty();
+            // added to the SIWES courses under its 20 characters: marked now
+            ResponseEntity<Map> longAdded = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", longCode, "siwes", true));
+            assertThat(status(longAdded)).as(String.valueOf(longAdded.getBody())).isEqualTo(200);
+            assertThat(siwesCourse(longAdded.getBody().get("siwesCourses"), longCode)).isNotNull().containsEntry("marked", true).containsEntry("byTitle", false);
+            // set for T, it is not taken off the SIWES courses
+            ResponseEntity<Map> longOffWhileSet = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", longCode, "siwes", false));
+            assertThat(status(longOffWhileSet)).as(String.valueOf(longOffWhileSet.getBody())).isEqualTo(422);
+            assertThat(code(longOffWhileSet)).isEqualTo("SIWES_COURSE_IN_USE");
+            assertThat(String.valueOf(longOffWhileSet.getBody().get("detail"))).contains(longCode + " is set as the SIWES course of " + T);
+            // nobody of T has paid or registered: its mapping is taken away, and T reads no course again
+            mappingT.put("courseCode", null);
+            ResponseEntity<Map> clearedT = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingT);
+            assertThat(status(clearedT)).as(String.valueOf(clearedT.getBody())).isEqualTo(200);
+            assertThat(clearedT.getBody().get("course")).isNull();
+            Map<String, Object> clearedRowT = programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), T);
+            assertThat(clearedRowT).as(String.valueOf(clearedRowT)).doesNotContainKeys("course", "source", "found");
+            assertThat(codes((List<Map<String, Object>>) clearedRowT.get("choices"), "code")).containsExactly(twinA, twinB);
+            assertThat(siwesRows(T)).isZero();
+            // twinA taken off the SIWES courses (nothing is set for it): T's structure carries one SIWES course now, and the desk finds it —
+            // nothing is written by taking a course off
+            ResponseEntity<Map> twinAOff = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", twinA, "siwes", false));
+            assertThat(status(twinAOff)).as(String.valueOf(twinAOff.getBody())).isEqualTo(200);
+            Map<String, Object> foundT = programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), T);
+            assertThat(foundT).as(String.valueOf(foundT)).doesNotContainKeys("course", "source").containsEntry("attachment", true);
+            assertThat((Map<String, Object>) foundT.get("found")).containsEntry("code", twinB);
+            assertThat(codes((List<Map<String, Object>>) foundT.get("choices"), "code")).containsExactly(twinB);
+            assertThat(siwesRows(T)).isZero();
+            // T added again: its Second Semester is a SIWES attachment semester and its one SIWES course is written down at that act
+            ResponseEntity<Map> addedTAgain = it.call(academic, HttpMethod.POST, admin + "/programmes", Map.of("session", session, "programmeCode", T));
+            assertThat(status(addedTAgain)).as(String.valueOf(addedTAgain.getBody())).isEqualTo(200);
+            Map<String, Object> writtenT = programmeRow(addedTAgain.getBody(), T);
+            assertThat(writtenT).as(String.valueOf(writtenT)).containsEntry("source", "STRUCTURE").doesNotContainKeys("found", "choices");
+            assertThat((Map<String, Object>) writtenT.get("course")).containsEntry("code", twinB);
+            assertThat(siwesRowOf(T)).isEqualTo("every curriculum:" + twinB + ":STRUCTURE");
+            // that course taken off the SIWES courses while nobody of T has paid or registered: the row that only recognised it goes with it
+            ResponseEntity<Map> twinBOff = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", twinB, "siwes", false));
+            assertThat(status(twinBOff)).as(String.valueOf(twinBOff.getBody())).isEqualTo(200);
+            assertThat(siwesCourse(twinBOff.getBody().get("siwesCourses"), twinB)).as("taken off the SIWES courses").isNull();
+            assertThat(siwesRows(T)).as("the row that only recognised it went with it").isZero();
+            assertThat(programmeRow(it.get(academic, admin + "/config?session=" + session).getBody(), T)).doesNotContainKeys("course", "source");
+            // added to the SIWES courses again, it is given to the waiting programme whose own structure carries it, at that act
+            ResponseEntity<Map> twinBOn = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", twinB, "siwes", true));
+            assertThat(status(twinBOn)).as(String.valueOf(twinBOn.getBody())).isEqualTo(200);
+            assertThat((List<Map<String, Object>>) siwesCourse(twinBOn.getBody().get("siwesCourses"), twinB).get("setFor")).singleElement().satisfies(f ->
+                    assertThat(f).containsEntry("code", T).containsEntry("source", "STRUCTURE").doesNotContainKey("curriculum"));
+            assertThat(siwesRowOf(T)).isEqualTo("every curriculum:" + twinB + ":STRUCTURE");
+            ResponseEntity<Map> longOff = it.call(academic, HttpMethod.PUT, admin + "/siwes-courses", Map.of("courseCode", longCode, "siwes", false));
+            assertThat(status(longOff)).as(String.valueOf(longOff.getBody())).isEqualTo(200);
+            assertThat(siwesCourse(longOff.getBody().get("siwesCourses"), longCode)).as("neither marked nor set: not listed").isNull();
+            ResponseEntity<Map> removedT = it.call(academic, HttpMethod.DELETE, admin + "/programmes?session=" + session + "&programmeCode=" + T, null);
+            assertThat(status(removedT)).as(String.valueOf(removedT.getBody())).isEqualTo(200);
+            assertThat(codes((List<Map<String, Object>>) removedT.getBody().get("programmes"), "code")).contains(P, M).doesNotContain(T);
 
             // ── K12: a SIWES registration made in error is undone by an office. A's level is corrected to 200, so SIWES no longer binds A;
             //    the student still never drops the SIWES course, the Academic Office's Student edit drops it with no override (add/drop
