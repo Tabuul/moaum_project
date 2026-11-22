@@ -2,16 +2,22 @@
  * V764: the Direct Entry admission template — the list that goes back to JAMB for Direct Entry, as the Academic Office's desk
  * builds it from GET …/de-template (the University's decisions of 14 November 2026): the same five sheets as the UTME template
  * (Admission_Summary, Merit_List, Other_Qualified_Cases, Non_Qualified_Cases, Ranked_sheet; Programme_Summary for the whole
- * session), every registered Direct Entry applicant a row, ranked by the points of their qualification — the A-Level group
- * (A-Level, IJMB, JUPEB) before the diplomas (ND, HND, NCE), the three best subjects summed — qualified or not with the reasons.
+ * session), every registered Direct Entry applicant a row, qualified or not with the reasons. Ranked since V773 (the University's
+ * word of 15 November 2026) by the score of their qualification — its points as a percentage of its own maximum, every
+ * qualification together, ties by name — as the Direct Entry candidates workbook ranks them (lib/de-candidates.ts); DE POINTS
+ * shows the score beside the points, so the order reads off the sheet.
  */
 import type { Cell } from "./xlsx-write";
+import { DE_RANKING } from "./de-candidates.ts";
 
 export interface DeSubject { subject: string; grade: string | null; points: number | null }
 export interface DeRow {
   rank: number; applicationNo: string | null; regNo: string; name: string; gender: string | null; state: string | null; lga: string | null;
-  programme: string; entryLevel: number | null; qualification: string | null; institution: string | null; awardedYear: number | null;
+  programme: string; /** V773: the programme's code, the rank's own partition (absent from an older API) */ programmeCode?: string | null;
+  entryLevel: number | null; qualification: string | null; institution: string | null; awardedYear: number | null;
   subjects: DeSubject[]; otherQualifications: string | null; points: number | null; unreadGrades?: string | null; deStatus: string;
+  /** V773: the maximum of the qualification's own scale, and the points as a percentage of it (two decimals) — the rank's order */
+  maxPoints?: number | null; score?: number | null;
   olevelUploaded: boolean; olevelMissing: string | null; engGrade: string | null; mathsGrade: string | null; sittings: number | null;
   recordedDecision: string | null; decision: "OFFERED" | "WAITING" | "NOT_OFFERED"; decisionBasis: string | null; decisionNote: string | null;
   released: boolean; qualified: boolean; reason: string | null;
@@ -25,13 +31,19 @@ export interface DeTemplate {
   perProgramme?: { programme: string; summary: Record<string, number | null> }[];
 }
 
-/** the qualification as JAMB's list names it */
-export const DE_BASIS: Record<string, string> = { A_LEVEL: "A-Level", IJMB: "IJMB", JUPEB: "JUPEB", NCE: "NCE", ND: "ND", HND: "HND" };
+/** the qualification as JAMB's list names it (V773: a degree, a University Diploma, and what CAPS showed when it showed no type) */
+export const DE_BASIS: Record<string, string> = {
+  A_LEVEL: "A-Level", IJMB: "IJMB", JUPEB: "JUPEB", NCE: "NCE", ND: "ND", HND: "HND",
+  DEGREE: "Degree", DEGREE_FOREIGN: "Foreign degree", UNIVERSITY_DIPLOMA: "University Diploma", NOT_STATED: "Not stated", NOT_AVAILABLE: "Not available",
+};
 /** the Direct Entry requirement's verdict, in words */
 export const DE_STATUS: Record<string, string> = {
   MET: "Meets the requirement", SHORT: "Short of the requirement", NO_RULE: "No requirement set", UNVERIFIED: "Not captured",
 };
 const BASIS_LABEL: Record<string, string> = { NM: "National Merit", SM: "State Merit", ELG: "Equality of LG", LOCALITY: "Locality", PLWD: "PLWD", OTHER: "Other" };
+/** V773: the RANKING note — the Direct Entry candidates workbook's ranking, the grades not read named under their column */
+export const DE_RANKING_NOTE = "By the score of the qualification that counts: "
+  + DE_RANKING.replace(/^Candidates/, "candidates").replace("named, with its qualification", "named under GRADES NOT READ, with its qualification");
 
 /** the columns of a Direct Entry sheet; the non-qualified and ranked sheets add DE REMARKS (the reasons) */
 export const DE_COLS = ["SN", "RANK", "REG_NO", "NAME", "GENDER", "STATE", "LGA", "ENTRY LEVEL", "QUALIFICATION", "INSTITUTION", "YEAR",
@@ -45,13 +57,20 @@ export function deRemark(x: DeRow): string {
   return x.decision === "OFFERED" ? "Recommended" : x.decision === "WAITING" ? "Waiting list" : "Not recommended";
 }
 
+/** V773: DE POINTS — the points with the score beside them ("15/16 (93.75%)"), so the order reads off the sheet; the bare points
+ *  from an API that sends no maximum */
+export function dePoints(x: Pick<DeRow, "points" | "maxPoints" | "score">): Cell {
+  if (x.points === null || x.points === undefined) return null;
+  return x.maxPoints != null && x.score != null ? `${x.points}/${x.maxPoints} (${Number(x.score).toFixed(2)}%)` : x.points;
+}
+
 /** one applicant's line, numbered i + 1 on its sheet */
 export function deLine(x: DeRow, i: number, withReasons = false): Cell[] {
   const s = x.subjects ?? [];
   const line: Cell[] = [i + 1, x.rank, x.regNo, x.name, x.gender ?? "", x.state ?? "", x.lga ?? "", x.entryLevel ?? null,
     x.qualification ? DE_BASIS[x.qualification] ?? x.qualification : null, x.institution ?? null, x.awardedYear ?? null,
     s[0]?.subject ?? null, s[0]?.grade ?? null, s[1]?.subject ?? null, s[1]?.grade ?? null, s[2]?.subject ?? null, s[2]?.grade ?? null,
-    x.points ?? null, x.otherQualifications ?? null, DE_STATUS[x.deStatus] ?? x.deStatus, x.engGrade ?? null, x.mathsGrade ?? null,
+    dePoints(x), x.otherQualifications ?? null, DE_STATUS[x.deStatus] ?? x.deStatus, x.engGrade ?? null, x.mathsGrade ?? null,
     x.sittings ?? null, x.unreadGrades ?? null, deRemark(x)];
   if (withReasons) line.push(x.reason ?? "Qualified");
   return line;
@@ -81,7 +100,7 @@ export function deSheets(t: DeTemplate, summaryOnly = false): [string, Cell[][]]
     t.lgaAnalysis.forEach((l, i) => summary.push([i + 1, l.lga, l.elg, l.sm, l.nm, l.total]));
     summary.push([null, t.lgaTotal.lga, t.lgaTotal.elg, t.lgaTotal.sm, t.lgaTotal.nm, t.lgaTotal.total]);
   }
-  summary.push([], [null, "RANKING"], [null, "By the points of the qualification that counts: A-Level, IJMB and JUPEB (A 5, B 4, C 3, D 2, E 1; A* counts as A) before ND, HND and NCE (Distinction 4, Upper Credit 3, Credit or Lower Credit 2, Merit or Pass 1; a diploma graded A–E counts as A-Level grades); the three best subjects summed; ties by name. A fail counts nothing; a grade that cannot be read counts nothing and is named under GRADES NOT READ, with its qualification."]);
+  summary.push([], [null, "RANKING"], [null, DE_RANKING_NOTE]);
   const sheets: [string, Cell[][]][] = [["Admission_Summary", summary]];
   if (t.perProgramme?.length) {
     sheets.push(["Programme_Summary", [...head("SUMMARY BY PROGRAMME"),
@@ -90,7 +109,9 @@ export function deSheets(t: DeTemplate, summaryOnly = false): [string, Cell[][]]
         p.summary.nonQualifiedCases, p.summary.totalQuota, p.summary.deQuota, p.summary.numberOnMeritList] as Cell[])]]);
   }
   if (!summaryOnly) {
-    const ranked = [...t.rows].sort((a, b) => a.programme.localeCompare(b.programme) || a.rank - b.rank);
+    // by programme (its code: two records may spell one programme differently), then by rank
+    const of = (x: DeRow) => x.programmeCode ?? x.programme;
+    const ranked = [...t.rows].sort((a, b) => of(a).localeCompare(of(b)) || a.rank - b.rank);
     const merit = ranked.filter((x) => x.decision === "OFFERED");
     const other = ranked.filter((x) => x.decision === "WAITING");
     const non = ranked.filter((x) => x.decision === "NOT_OFFERED");

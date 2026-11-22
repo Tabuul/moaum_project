@@ -18,6 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Modal, Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { OlevelGrading } from "./OlevelGrading";
+import { DeFitRules } from "./DeFitRules";
 import { LoadCutoff } from "../LoadCutoff";
 
 export interface PolicySummary {
@@ -129,6 +130,8 @@ const ADM_TABS: [string, string, ReactNode][] = [
   ["session", "Session and criteria", "Quota, weighting and the four criteria"],
   ["faculty", "Faculty settings", "NUC ceiling and the UTME:Direct-Entry split"],
   ["prog", "Programme requirements", <>O&rsquo;Level, UTME subjects, Direct Entry</>],
+  // V773: how a Direct Entry qualification is read against a programme on the candidates workbook — never a decision
+  ["defit", "Direct Entry fit", "Preliminary Fit rules — a guide only"],
   ["force", "Put in force", "What stands in the way, and the minute that clears it"],
 ];
 
@@ -745,7 +748,8 @@ export function AdmissionSettings({
 
       {problem && tab !== "force" ? <ProblemNotice problem={problem} /> : null}
 
-      {tab === "session" ? sessionTab : tab === "faculty" ? facultyTab : tab === "prog" ? progTab : forceTab}
+      {tab === "session" ? sessionTab : tab === "faculty" ? facultyTab : tab === "prog" ? progTab
+        : tab === "defit" ? <DeFitRules session={session} policy={policy} actingOffice={actingOffice} /> : forceTab}
     </>
   );
 }

@@ -353,20 +353,42 @@ public class CapsIntakeService {
         return out;
     }
 
-    /** the Direct Entry awards captured for a candidate, each with its subjects (V200) */
+    /** the Direct Entry awards captured for a candidate, each with its subjects (V200); V773: with the discipline, class, exam/matric
+     *  number and source of each, the subjects in their places */
     @Transactional(readOnly = true)
     public java.util.List<java.util.Map<String, Object>> deAwards(String session, String jambKey) {
-        return caps.deAwards(session, jambKey);
+        java.util.List<java.util.Map<String, Object>> awards = caps.deAwards(session, jambKey);
+        for (java.util.Map<String, Object> a : awards) {
+            // the subjects are a JSON aggregate: read as text and parsed, so the screen receives the list it reads (left as the
+            // driver's object it would reach the JSON as {"type":"json","value":…})
+            a.put("subjects", json.readValue((String) a.get("subjects"),
+                    new tools.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() { }));
+        }
+        return awards;
     }
 
-    /** record (replace whole) a candidate's Direct Entry award and its subjects; returns the candidate's awards (V200) */
+    /** record (replace whole) a candidate's Direct Entry award and its subjects; returns the candidate's awards (V200). V773: a
+     *  degree, a University Diploma, an ND or an HND is recorded by its discipline and class and holds no subjects; an A'Level, IJMB,
+     *  JUPEB or NCE by its subjects in their places — and one with nothing to record is refused. */
     @Transactional
     public java.util.List<java.util.Map<String, Object>> recordDeAward(String session, String jambKey, String basis,
-            Integer year, String institution, java.util.List<java.util.Map<String, String>> subjects) {
+            Integer year, String institution, String discipline, String awardClass, String examNo,
+            java.util.List<java.util.Map<String, String>> subjects) {
         AuditContext actor = AuditContextHolder.required();
-        caps.recordDeAward(session, jambKey, basis == null ? null : basis.trim().toUpperCase(), year, institution,
-                subjects == null ? java.util.List.of() : subjects, actor.actorId());
-        return caps.deAwards(session, jambKey);
+        String b = basis == null ? null : basis.trim().toUpperCase();
+        boolean classKind = b != null && CapsRepository.DE_CLASS_KINDS.contains(b);
+        java.util.List<java.util.Map<String, String>> subs = classKind || subjects == null ? java.util.List.of() : subjects;
+        String disc = classKind ? blankToNull(discipline) : null;
+        String cls = classKind ? blankToNull(awardClass) : null;
+        boolean empty = classKind ? disc == null && cls == null
+                : subs.stream().noneMatch(s -> s.get("subject") != null && !s.get("subject").isBlank());
+        if (empty) {
+            throw new DomainRuleViolation("DE_AWARD_EMPTY",
+                    "A degree or diploma needs its discipline or its class; an A'Level or NCE at least one subject.",
+                    new DomainRuleViolation.Remedy("Fill the discipline and class, or the subjects.", "Admissions Office"));
+        }
+        caps.recordDeAward(session, jambKey, b, year, institution, disc, cls, blankToNull(examNo), subs, actor.actorId());
+        return deAwards(session, jambKey);
     }
 
     /** remove one Direct Entry award (V200) */

@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import ng.edu.moaum.portal.shared.AuditContext;
+import ng.edu.moaum.portal.shared.AuditContextHolder;
+
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -517,5 +520,16 @@ class AdmissionSettingsRepository {
                 INSERT INTO admissions.rule_subject (group_id, subject)
                 SELECT s.new_id, rs.subject FROM src s JOIN admissions.rule_subject rs ON rs.group_id = s.old_id
                 """).param("id", id).param("from", from).update();
+        /* V773: the Direct Entry Preliminary Fit rules come too — the University's default and each programme's own — set, in the
+           new session, by whoever begins it */
+        AuditContext actor = AuditContextHolder.required();
+        jdbc.sql("""
+                INSERT INTO admissions.de_fit_rule (policy_id, programme_code, kind, core_disciplines, relevant_min, partly_min, related_disciplines,
+                                                    related_relevant_min, related_partly_min, other_fit, relevant_passes, partly_passes, set_by, set_office)
+                SELECT :id, f.programme_code, f.kind, f.core_disciplines, f.relevant_min, f.partly_min, f.related_disciplines,
+                       f.related_relevant_min, f.related_partly_min, f.other_fit, f.relevant_passes, f.partly_passes, :by, :office
+                  FROM admissions.de_fit_rule f
+                  JOIN admissions.session_policy p ON p.id = f.policy_id WHERE p.session = :from
+                """).param("id", id).param("from", from).param("by", actor.actorId()).param("office", actor.actorOffice()).update();
     }
 }

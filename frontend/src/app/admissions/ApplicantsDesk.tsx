@@ -6,15 +6,18 @@
  * bank's record, documents reviewed, screening batches made and seated,
  * scores entered and released, the Board's decisions entered and released,
  * the Registry's clearance — and the list that goes back to JAMB, in JAMB's
- * own template. Every act is the office's, on the record.
+ * own template; beside it (V773) the Admissions Committee's screening sheet of
+ * the Direct Entry candidates with their qualifications. Every act is the
+ * office's, on the record.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import { reasonHeader } from "@/lib/reason";
 import { BASES, STAGES, dob, BODY, type Application } from "@/lib/applicant";
 import { xlsx, zipStored, type Cell, type XlsxLogo } from "@/lib/xlsx-write";
 import { deFileName, deSheets, mergeDeTemplates, type DeTemplate } from "@/lib/de-template";
+import { deCandidatesFileName, deCandidatesSheets, deCandidatesSummarySheets, type DeCandidateProgramme, type DeCandidates } from "@/lib/de-candidates";
 import { buildXlsx, loadCrest, xlsxRowsAsync } from "@/lib/xlsx";
 import { downloadBlob } from "@/lib/exportbrand";
 import { Btn, IcoBtn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components/proto/ui";
@@ -68,7 +71,29 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
   const [jambMsg, setJambMsg] = useState<string | null>(null);
   const [jambList, setJambList] = useState<{ tiles: Record<string, number>; rows: Record<string, unknown>[] } | null>(null);
   const [nowMs] = useState(() => Date.now());
+  // V773: the Direct Entry candidates with their qualifications — the programmes on JAMB's live Direct Entry list, one chosen or every one
+  const [dePick, setDePick] = useState("");
+  const [deList, setDeList] = useState<DeCandidateProgramme[] | null>(null);
+  const [deListProblem, setDeListProblem] = useState<Problem | null>(null);
+  const [deBuilding, setDeBuilding] = useState(false);
+  const [deProgress, setDeProgress] = useState<string | null>(null);
   const base = `/api/bff/api/v1/admissions/sessions/${desk.session}`;
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const r = await fetch(`${base}/de-candidates/programmes`, { cache: "no-store" });
+        const j = await r.json().catch(() => null);
+        if (!live) return;
+        if (r.ok && j) setDeList(((j as { programmes?: DeCandidateProgramme[] }).programmes ?? []));
+        else { setDeList([]); setDeListProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText || "The Direct Entry programmes could not be read." }); }
+      } catch {
+        if (live) { setDeList([]); setDeListProblem({ status: 0, title: "The network dropped the request.", detail: "Reload the page to try again." }); }
+      }
+    })();
+    return () => { live = false; };
+  }, [base]);
   const office = ["academic", "registrar", "dregistrar"].includes(actingOffice ?? "");
   const ageOf = (iso: string | null): number | null => ageAt(iso, new Date(nowMs));   // V717: JAMB's "12-09-2003" is 12 September
 
@@ -318,7 +343,16 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
       };
       await Promise.all([worker(), worker(), worker()]);
       if (failed) return;
-      const all = parts as DeTemplate[];
+      // one workbook a programme: two candidates' records may carry one programme under two texts (its name, its code), and
+      // each text's read returns the programme's whole list — the later read of the same list is left out
+      const seen = new Set<string>();
+      const all = (parts as DeTemplate[]).filter((t) => {
+        const key = t.rows.map((x) => x.regNo).sort().join("|");
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       const merged = mergeDeTemplates(all, desk.session, new Date().toISOString().slice(0, 10));
       const session = merged.session.replace("/", "-");
       const used = new Set<string>();
@@ -334,6 +368,61 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
     } finally {
       setExporting(false);
       setExportProgress(null);
+    }
+  }
+
+  /** V773: one programme's Direct Entry candidates with their qualifications — GET …/de-candidates?programme=<code> */
+  async function fetchDeCandidates(code: string): Promise<DeCandidates | null> {
+    const r = await fetch(`${base}/de-candidates?programme=${encodeURIComponent(code)}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { const refusal = (j ?? { status: r.status, title: r.statusText }) as Problem; setProblem(refusal); notifyProblem(refusal); return null; }
+    return j as DeCandidates;
+  }
+
+  /** V773: the Admissions Committee's screening sheet — one programme's workbook, or every programme on JAMB's live Direct Entry list,
+   *  a workbook each and the session's summary, in one ZIP (three requests at a time, as the JAMB lists are built) */
+  async function exportDeCandidates(code: string) {
+    setDeBuilding(true);
+    setDeProgress(null);
+    setProblem(null);
+    try {
+      if (code) {
+        const t = await fetchDeCandidates(code);
+        if (!t) return;
+        save(xlsx(deCandidatesSheets(t)), deCandidatesFileName(t), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return;
+      }
+      const codes = (deList ?? []).map((p) => p.code);
+      const parts: (DeCandidates | null)[] = new Array(codes.length).fill(null);
+      let next = 0, done = 0, failed = false;
+      const worker = async () => {
+        while (!failed) {
+          const i = next++;
+          if (i >= codes.length) return;
+          const p = await fetchDeCandidates(codes[i]);
+          if (!p) { failed = true; return; }
+          parts[i] = p;
+          setDeProgress(`${++done} of ${codes.length}`);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (failed) return;
+      const all = parts as DeCandidates[];
+      const session = desk.session.replace(/\//g, "-");
+      const used = new Set<string>();
+      const entries: [string, Uint8Array][] = [[`DE CANDIDATES SUMMARY ALL PROGRAMMES ${session}.xlsx`,
+        xlsx(deCandidatesSummarySheets(all, desk.session, all[0]?.asAt ?? new Date().toISOString().slice(0, 10)))]];
+      for (const t of all) {
+        let name = deCandidatesFileName(t);
+        for (let k = 2; used.has(name); k++) name = deCandidatesFileName(t).replace(/\.xlsx$/, ` (${k}).xlsx`);
+        used.add(name);
+        entries.push([name, xlsx(deCandidatesSheets(t))]);
+      }
+      save(zipStored(entries), `DE CANDIDATES WITH QUALIFICATIONS EVERY PROGRAMME ${session}.zip`, "application/zip");
+      notify(`${all.length} Direct Entry candidate workbooks and the summary, in one ZIP`);
+    } finally {
+      setDeBuilding(false);
+      setDeProgress(null);
     }
   }
 
@@ -487,14 +576,30 @@ export function ApplicantsDesk({ desk, actingOffice }: { desk: Desk; actingOffic
         <PBody>
           <div className="sub2">
             Admission summary, merit list, other qualified and non-qualified cases, per programme — for the UTME list, or for Direct
-            Entry: every registered Direct Entry applicant, ranked by the points of their qualification (A-Level, IJMB and JUPEB before
-            ND, HND and NCE), qualified or not with the reasons.
+            Entry: every registered Direct Entry applicant, ranked by the score of their qualification (its points as a percentage of
+            its own maximum, every qualification together), qualified or not with the reasons.
           </div>
           <div className="row mt-2">
             <SearchSelect value={exportKind} onChange={(v) => setEdits({ ...edits, exportKind: v || "UTME", export: "" })} options={[{ value: "UTME", label: "UTME list" }, { value: "DE", label: "Direct Entry list" }]} />
             <SearchSelect value={val("export", "")} onChange={(v) => setEdits({ ...edits, export: v })} allLabel="Every programme, a workbook each (ZIP)" placeholder="Every programme, a workbook each (ZIP)" options={(exportKind === "DE" ? dePrograms : programmes).map((p) => ({ value: p, label: p }))} />
             <Btn kind="primary" disabled={exporting || !rows.length || (exportKind === "DE" && !dePrograms.length)} onClick={() => void exportTemplate(val("export", ""), exportKind)}>{exporting ? (exportProgress ? `Building ${exportProgress}…` : "Building…") : "Download for JAMB"}</Btn>
           </div>
+        </PBody>
+      </Panel>
+
+      <Panel title="Direct Entry candidates with qualifications" right="The Admissions Committee’s screening sheet">
+        <PBody>
+          <div className="sub2">
+            Everyone on JAMB&rsquo;s live Direct Entry list for a programme, registered or not, with the qualification recorded, its score,
+            a Preliminary Fit (a guide, never a decision) and the O&rsquo;Level held — ranked by score, ties by name.
+          </div>
+          {deListProblem ? <ProblemNotice problem={deListProblem} /> : null}
+          <div className="row mt-2">
+            <SearchSelect value={dePick} onChange={setDePick} allLabel="Every programme, a workbook each (ZIP)" placeholder="Every programme, a workbook each (ZIP)"
+              options={(deList ?? []).map((p) => ({ value: p.code, label: `${p.name} · ${p.onList}`, sub: `${p.code} · ${p.registered} registered · ${p.recorded} with a qualification recorded` }))} />
+            <Btn kind="primary" disabled={deBuilding || !deList?.length} onClick={() => void exportDeCandidates(dePick)}>{deBuilding ? (deProgress ? `Building ${deProgress}…` : "Building…") : "Download"}</Btn>
+          </div>
+          {deList && !deList.length && !deListProblem ? <div className="sub2 mt-2">No candidate on JAMB&rsquo;s live Direct Entry list for {desk.session} yet.</div> : null}
         </PBody>
       </Panel>
 

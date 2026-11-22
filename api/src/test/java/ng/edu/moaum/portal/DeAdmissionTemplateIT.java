@@ -22,9 +22,11 @@ import org.springframework.transaction.PlatformTransactionManager;
  * share of 2) and a Direct Entry requirement of two of Chemistry, Biology and Physics. Three made-up Direct Entry applicants — D1
  * A-Level A B C offered by the Board on National Merit, D2 JUPEB A A B and no decision yet, D3 with no qualification captured —
  * a fourth on JAMB's Direct Entry list who never registered, and a UTME applicant of the same programme. The rows are the three
- * registered Direct Entry applicants, ranked by points (D2 14, D1 12, D3 last), each placed and explained; the summary counts JAMB's
- * Direct Entry list, the registered, the qualified and not, the quota and its Direct Entry share, the merit list; the quota
- * distribution is over the Direct Entry share; an office that does not read admissions is refused.
+ * registered Direct Entry applicants, ranked (V773) by the score of their qualification — its points as a percentage of its own
+ * maximum, an A-Level's three subjects plus 1 when none is a fail, of 16 (D2 15 of 16, 93.75; D1 13 of 16, 81.25; D3, with nothing
+ * captured, last) — each placed and explained; the summary counts JAMB's Direct Entry list, the registered, the qualified and not,
+ * the quota and its Direct Entry share, the merit list; the quota distribution is over the Direct Entry share; an office that does
+ * not read admissions is refused.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -162,15 +164,21 @@ class DeAdmissionTemplateIT {
         List<Map<String, Object>> rows = (List<Map<String, Object>>) r.getBody().get("rows");
         assertThat(rows).extracting(x -> x.get("name")).containsExactly("ZZDEIT D2", "ZZDEIT D1", "ZZDEIT D3");
         assertThat(rows).extracting(x -> x.get("rank")).containsExactly(1, 2, 3);
-        assertThat(rows.get(0)).containsEntry("qualification", "JUPEB").containsEntry("points", 14).containsEntry("decision", "WAITING")
+        assertThat(rows.get(0)).containsEntry("qualification", "JUPEB").containsEntry("points", 15).containsEntry("maxPoints", 16)
+                .containsEntry("score", 93.75).containsEntry("decision", "WAITING")
                 .containsEntry("qualified", true).containsEntry("deStatus", "MET").containsEntry("decisionNote", "Qualified: no decision recorded yet")
                 .containsEntry("engGrade", "B3").containsEntry("mathsGrade", "C4");
         assertThat((List<Map<String, Object>>) rows.get(0).get("subjects")).first()
                 .satisfies(s -> assertThat(s).containsEntry("subject", "Biology").containsEntry("grade", "A").containsEntry("points", 5));
-        assertThat(rows.get(1)).containsEntry("qualification", "A_LEVEL").containsEntry("points", 12).containsEntry("decision", "OFFERED")
+        assertThat(rows.get(1)).containsEntry("qualification", "A_LEVEL").containsEntry("points", 13).containsEntry("maxPoints", 16)
+                .containsEntry("score", 81.25).containsEntry("decision", "OFFERED")
                 .containsEntry("decisionBasis", "NM").containsEntry("recordedDecision", "OFFERED");
         assertThat(rows.get(2)).containsEntry("decision", "NOT_OFFERED").containsEntry("qualified", false)
                 .containsEntry("reason", "Direct Entry qualification not captured").containsEntry("deStatus", "UNVERIFIED");
+        // nothing captured: no points, no scale, no score
+        assertThat(rows.get(2).get("points")).isNull();
+        assertThat(rows.get(2).get("maxPoints")).isNull();
+        assertThat(rows.get(2).get("score")).isNull();
         List<Map<String, Object>> quota = (List<Map<String, Object>>) r.getBody().get("quotaDistribution");
         assertThat(quota).anySatisfy(q -> assertThat(q).containsEntry("criterion", "National Merit").containsEntry("percent", 50)
                 .containsEntry("quota", 1).containsEntry("admitted", 1));

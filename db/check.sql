@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 644
+\set EXPECTED 650
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -37790,12 +37790,14 @@ BEGIN
                      || ' | record in B | offices A:open', false), msg);
 END $$;
 -- ── V764: the Direct Entry admission template. In 9764/9765, programme C00019 with a Direct Entry requirement (two of Chemistry,
---          Biology, Physics), seven made-up Direct Entry applicants: D2 JUPEB A A B (14 points), D1 A-Level A B C (12, offered by
---          the Board on National Merit), D7 A-Level B B B (12, never submitted), D4 A-Level C D E (6, Mathematics a pass at
---          O'Level), D3 HND Distinction, Upper Credit, Credit (9), D6 ND Mathematics only (short of the requirement), D5 nothing
---          captured, D8 A-Level A* (as A), A1 (not read, named), B and a blank subject (never counted) — 9; and U1, a UTME applicant, not a row. The A-Level group ranks before the diplomas, ties by name, nothing
---          captured last; each row qualified or not with the reasons, placed by the Board's decision or, without one, by whether it
---          qualifies. The block undoes its writes ──
+--          Biology, Physics), seven made-up Direct Entry applicants: D2 JUPEB A A B (15 of 16 with no fail, 93.75), D1 A-Level A B C
+--          (13, 81.25, offered by the Board on National Merit), D7 A-Level B B B (13, never submitted), D4 A-Level C D E (7, 43.75,
+--          Mathematics a pass at O'Level), D3 HND Distinction, Upper Credit, Credit typed as subjects before V773 (its best a
+--          Distinction, 5 of 5, 100.00), D6 ND Mathematics Credit only (2 of 4, 50.00, short of the requirement), D5 nothing
+--          captured, D8 A-Level A* (as A), A1 (not read, named, no +1), B and a blank subject (never counted) — 9 (56.25); and U1, a
+--          UTME applicant, not a row. V773: ranked by the score of the qualification (its points as a percentage of its own
+--          maximum), every kind together, ties by name, nothing captured last; each row qualified or not with the reasons, placed by
+--          the Board's decision or, without one, by whether it qualifies. The block undoes its writes ──
 DO $$
 DECLARE
     ses text := '9764/9765'; v_pol uuid := gen_random_uuid(); v_batch uuid := gen_random_uuid(); v_ubatch uuid := gen_random_uuid();
@@ -37881,16 +37883,14 @@ BEGIN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
     IF v_err <> 'the V764 check undoes its writes' THEN RAISE; END IF;
   END;
-  PERFORM pg_temp.assert('V764: the Direct Entry template lists every registered Direct Entry applicant of the programme, ranked by the points of their qualification (the A-Level group before the diplomas, ties by name, nothing captured last), each qualified or not with the reasons and placed by the Board''s decision',
-      coalesce(msg = '1:D2:WAITING:14:- | 2:D1:OFFERED:12:- | 3:D10:WAITING:12:-:not read A-Level: Biology A., Chemistry A., Physics A.'
-                     || ' | 4:D7:NOT_OFFERED:12:Application not submitted'
-                     || ' | 5:D8:WAITING:9:-:not read A-Level: Biology A1'
-                     || ' | 6:D4:NOT_OFFERED:6:No O''Level credit in Mathematics | 7:D3:WAITING:9:-'
-                     || ' | 8:D6:NOT_OFFERED:2:Direct Entry subjects short of the programme''s requirement'
+  PERFORM pg_temp.assert('V764, V773: the Direct Entry template lists every registered Direct Entry applicant of the programme, ranked by the score of their qualification (its points as a percentage of its own maximum, every qualification together, ties by name, nothing captured last), each qualified or not with the reasons and placed by the Board''s decision',
+      coalesce(msg = '1:D3:WAITING:5:- | 2:D2:WAITING:15:- | 3:D1:OFFERED:13:- | 4:D10:WAITING:13:-:not read A-Level: Biology A., Chemistry A., Physics A.'
+                     || ' | 5:D7:NOT_OFFERED:13:Application not submitted | 6:D8:WAITING:9:-:not read A-Level: Biology A1'
+                     || ' | 7:D6:NOT_OFFERED:2:Direct Entry subjects short of the programme''s requirement | 8:D4:NOT_OFFERED:7:No O''Level credit in Mathematics'
                      || ' | 9:D5:NOT_OFFERED:-:Direct Entry qualification not captured'
-                     || ' || D2=JUPEB/MET/Biology A/B3/B3,D1=A_LEVEL/MET/Chemistry A/B3/C4,D10=JUPEB/MET/Biology B/B3/C4,D7=A_LEVEL/MET/Biology B/B3/A1'
-                     || ',D8=A_LEVEL/MET/Chemistry A*/B3/B2,D4=A_LEVEL/MET/Chemistry C/B3/F9,D3=HND/MET/Chemistry Distinction/B3/C6,D6=ND/SHORT/Mathematics Credit/B3/B2'
-                     || ' || grades 5,4,3,3,4,3,2,1,-,0,0,0,0,0', false), msg);
+                     || ' || D3=HND/MET/Chemistry Distinction/B3/C6,D2=JUPEB/MET/Biology A/B3/B3,D1=A_LEVEL/MET/Chemistry A/B3/C4,D10=JUPEB/MET/Biology B/B3/C4'
+                     || ',D7=A_LEVEL/MET/Biology B/B3/A1,D8=A_LEVEL/MET/Chemistry A*/B3/B2,D6=ND/SHORT/Mathematics Credit/B3/B2,D4=A_LEVEL/MET/Chemistry C/B3/F9'
+                     || ' || grades -,-,4,4,5,4,3,2,-,0,0,0,0,0', false), msg);
 END $$;
 
 -- ── V765: a staff identity card is valid while its holder is in service. A made-up member of staff in office is issued a card: it
@@ -39232,6 +39232,597 @@ BEGIN
   PERFORM pg_temp.assert('V772: only the Director of ICT removes, with a reason, a counted course, one removal at a time; the student''s history lists every correction',
       coalesce(msg3 = 'office RCR_OFFICE | reason RCR_REASON | not counted RCR_NOT_COUNTED | open RCR_OPEN | history 6', false), msg3);
 END $$;
+-- ── V773: Direct Entry candidates with their qualifications. In 9773/9774 (its own settings in force: DOCTOR OF PHARMACY's O'Level
+--          subjects English Language, Mathematics, Physics, Chemistry, Biology in that order; C00019's O'Level "Mathematics." and
+--          English Language and its Direct Entry set two of Chemistry, Biology, Physics; LL.B (LAW) requiring Literature in English),
+--          made-up candidates (CHECKV773, JAMB numbers 29773…) on JAMB's Direct Entry lists: the scoring of every kind, the
+--          Preliminary Fit under the University's default and Pharmacy's own rule, the O'Level block, the rows, the upload, and the
+--          fit rules. The helpers below set the session up; each block undoes its writes ──
+CREATE OR REPLACE FUNCTION pg_temp.v773_setup(who uuid)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE ses text := '9773/9774'; v_pol uuid := gen_random_uuid(); g uuid;
+BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V773', true);
+    INSERT INTO iam.person (id, surname, given_names) VALUES (who, 'CHECKV773', 'Recorder');
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), ses, date '9773-10-01', date '9774-08-31') ON CONFLICT (name) DO NOTHING;
+    INSERT INTO admissions.session_policy (id, session, nuc_quota, weight_utme, weight_putme, ratio_utme, ratio_de, instrument, in_force, state)
+    VALUES (v_pol, ses, 10, 70, 30, 80, 20, 'CHECK CAC/9773/1', tstzrange(now(), NULL), 'IN_FORCE');
+    INSERT INTO admissions.programme_rule (policy_id, programme_code, quota, olevel_text, utme_text, de_text) VALUES
+        (v_pol, 'C73770', 10, 'English Language, Mathematics, Physics, Chemistry and Biology', 'check', 'check'),
+        (v_pol, 'C00033', 10, 'check', 'check', 'check'),
+        (v_pol, 'C00019', 10, 'check', 'check', 'check');
+    g := gen_random_uuid();
+    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (g, v_pol, 'C73770', 'OLEVEL', 5);
+    INSERT INTO admissions.rule_subject (group_id, subject) VALUES (g, 'English Language'), (g, 'Mathematics'), (g, 'Physics'), (g, 'Chemistry'), (g, 'Biology');
+    g := gen_random_uuid();
+    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (g, v_pol, 'C00019', 'OLEVEL', 2);
+    INSERT INTO admissions.rule_subject (group_id, subject) VALUES (g, 'Mathematics.'), (g, 'English Language');
+    g := gen_random_uuid();
+    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (g, v_pol, 'C00019', 'DE', 2);
+    INSERT INTO admissions.rule_subject (group_id, subject) VALUES (g, 'Chemistry'), (g, 'Biology'), (g, 'Physics');
+    g := gen_random_uuid();
+    INSERT INTO admissions.rule_subject_group (id, policy_id, programme_code, scope, choose) VALUES (g, v_pol, 'C00033', 'OLEVEL_REQUIRED', 1);
+    INSERT INTO admissions.rule_subject (group_id, subject) VALUES (g, 'Literature in English');
+    RETURN v_pol;
+END $$;
+
+-- a candidate on JAMB's list of 9773/9774 (live or withdrawn), registered on the portal or not
+CREATE OR REPLACE FUNCTION pg_temp.v773_row(p_tag text, p_jamb text, p_code text, p_registered boolean DEFAULT false, p_raw jsonb DEFAULT '{}',
+                                            p_mode text DEFAULT 'DIRECT_ENTRY', p_offer text DEFAULT 'PROPOSED', p_withdrawn boolean DEFAULT false)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE ses text := '9773/9774'; b uuid; cr uuid := gen_random_uuid(); cand uuid := gen_random_uuid(); acct uuid := gen_random_uuid();
+        f text := CASE WHEN p_withdrawn THEN 'withdrawn' ELSE 'live' END;
+BEGIN
+    SELECT x.id INTO b FROM admissions.caps_batch x WHERE x.session = ses AND x.list_kind = p_mode AND x.filename = f;
+    IF b IS NULL THEN
+        b := gen_random_uuid();
+        INSERT INTO admissions.caps_batch (id, session, source, filename, list_kind, file_sha256, rows_read, downloaded_on, uploaded_by, uploaded_office)
+        VALUES (b, ses, 'CAPS_DOWNLOAD', f, p_mode, decode(md5(b::text), 'hex'), 1, current_date, current_setting('moaum.actor_id')::uuid, 'academic');
+    END IF;
+    INSERT INTO admissions.caps_row (id, batch_id, session, jamb_reg_no, raw, surname, other_names, jamb_code, aggregate, entry_mode, sex, state_of_origin, lga, withdrawn)
+    VALUES (cr, b, ses, p_jamb, p_raw, 'CHECKV773', p_tag, p_code, CASE WHEN p_mode = 'UTME' THEN 250 END, p_mode, 'F', 'Benue', 'Makurdi', p_withdrawn);
+    IF p_registered THEN
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state, admitted_from)
+        VALUES (cand, ses, p_jamb, 'CHECKV773', p_tag, (SELECT p.name FROM ref.programme p WHERE p.code = p_code), p_mode,
+                CASE WHEN p_mode = 'UTME' THEN 100 ELSE 200 END, p_offer, cr);
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (acct, ses, cand, p_jamb, lower(p_jamb) || '@example.com', '08030007730', 'SET_ON_FIRST_LOGIN');
+        INSERT INTO admissions.application (id, account_id, candidate_id, session, application_no, fee_confirmed_at, submitted_at)
+        VALUES (gen_random_uuid(), acct, cand, ses, 'APP/73/' || right(p_jamb, 6), now(), now());
+    END IF;
+END $$;
+
+-- a qualification recorded for a candidate: subjects [[subject, grade], …] in their places (p_legacy: typed before V773, no place)
+CREATE OR REPLACE FUNCTION pg_temp.v773_award(p_key text, p_basis text, p_subj jsonb DEFAULT '[]', p_disc text DEFAULT NULL, p_class text DEFAULT NULL,
+                                              p_legacy boolean DEFAULT false)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE aw uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO admissions.de_award (id, session, jamb_key, basis, awarded_year, recorded_by, discipline, award_class)
+    VALUES (aw, '9773/9774', p_key, p_basis, 2025, current_setting('moaum.actor_id')::uuid, p_disc, p_class);
+    INSERT INTO admissions.de_award_subject (award_id, subject, grade, ord)
+    SELECT aw, x.e->>0, x.e->>1, CASE WHEN p_legacy THEN NULL ELSE x.o END FROM jsonb_array_elements(p_subj) WITH ORDINALITY x(e, o);
+    RETURN aw;
+END $$;
+
+-- an O'Level sitting of a candidate, on an attachment of its own: {subject: grade, …}
+CREATE OR REPLACE FUNCTION pg_temp.v773_olevel(p_key text, p_body text, p_year text, p_no text, p_grades jsonb)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE att uuid := gen_random_uuid(); sit uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as)
+    VALUES (att, '9773/9774', 'OLEVEL', p_key || '-' || att || '.json', p_key, 'EXACT');
+    INSERT INTO admissions.olevel_sitting (id, attachment_id, session, jamb_key, exam_body, exam_year, exam_number, ord)
+    VALUES (sit, att, '9773/9774', p_key, p_body, p_year, p_no, 1);
+    INSERT INTO admissions.olevel_grade (sitting_id, subject, grade) SELECT sit, g.key, g.value FROM jsonb_each_text(p_grades) g;
+END $$;
+
+-- ── V773 · 1. the scoring: each kind on its own scale, the A-Level's +1, a type CAPS left blank read by its letters, the highest score counting ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_pol uuid; k text; pts text; msg text; v_err text;
+BEGIN
+  BEGIN
+    v_pol := pg_temp.v773_setup(who);
+    k := '297730001';
+    PERFORM pg_temp.v773_award(k || '01', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]');
+    PERFORM pg_temp.v773_award(k || '02', 'JUPEB', '[["Biology","B"],["Chemistry","F"],["Physics","C"]]');
+    PERFORM pg_temp.v773_award(k || '03', 'IJMB', '[["Biology","A*"],["Chemistry","B"],["Physics","E"]]');
+    PERFORM pg_temp.v773_award(k || '04', 'A_LEVEL', '[["Biology","—"],["Chemistry",""],["Physics",null]]');
+    PERFORM pg_temp.v773_award(k || '05', 'A_LEVEL', '[["Biology","A1"],["Chemistry","B"],["Physics","C"]]');
+    PERFORM pg_temp.v773_award(k || '06', 'DEGREE', '[]', 'Chemistry', '2nd Class Upper');
+    PERFORM pg_temp.v773_award(k || '07', 'DEGREE_FOREIGN', '[]', 'Law', 'Second Class Lower');
+    PERFORM pg_temp.v773_award(k || '08', 'DEGREE', '[]', 'Physics', 'First Class');
+    PERFORM pg_temp.v773_award(k || '09', 'DEGREE', '[]', 'History', '3rd Class');
+    PERFORM pg_temp.v773_award(k || '10', 'DEGREE', '[]', 'English', 'Pass');
+    PERFORM pg_temp.v773_award(k || '11', 'DEGREE', '[]', 'Chemistry', '2nd Class');
+    PERFORM pg_temp.v773_award(k || '12', 'HND', '[]', 'Chemistry', 'Upper Credit');
+    PERFORM pg_temp.v773_award(k || '13', 'HND', '[]', 'Chemistry', 'Lower Credit');
+    PERFORM pg_temp.v773_award(k || '14', 'ND', '[]', 'Chemistry', 'Upper Credit');
+    PERFORM pg_temp.v773_award(k || '15', 'ND', '[]', 'Chemistry', 'Pass');
+    PERFORM pg_temp.v773_award(k || '16', 'UNIVERSITY_DIPLOMA', '[]', 'Law', 'Credit');
+    PERFORM pg_temp.v773_award(k || '17', 'UNIVERSITY_DIPLOMA', '[]', 'Law', 'Merit');
+    PERFORM pg_temp.v773_award(k || '18', 'NCE', '[["English","Merit"],["History","Merit"],["Education","Credit"]]');
+    PERFORM pg_temp.v773_award(k || '19', 'NCE', '[["English","Merit"],["English","Merit"],["Education","Merit"]]');
+    PERFORM pg_temp.v773_award(k || '20', 'NOT_STATED', '[["Biology","C"],["Chemistry","B"],["Physics","D"]]');
+    PERFORM pg_temp.v773_award(k || '21', 'NOT_AVAILABLE');
+    PERFORM pg_temp.v773_award(k || '22', 'HND', '[["Chemistry","Distinction"],["Biology","Upper Credit"],["Physics","Credit"]]', NULL, NULL, true);
+    PERFORM pg_temp.v773_award(k || '23', 'DEGREE', '[]', 'Chemistry', '2nd Class Upper');
+    PERFORM pg_temp.v773_award(k || '23', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]');
+    SELECT string_agg(right(s.jamb_key, 2) || '=' || s.basis || '/' || s.kind || ':' || coalesce(s.points::text, '-') || '/' || coalesce(s.max_points::text, '-')
+                      || '/' || coalesce(s.score::text, '-')
+                      || CASE WHEN right(s.jamb_key, 2) IN ('19', '22') THEN ':' || s.discipline ELSE '' END
+                      || coalesce(':' || s.unread, '') || CASE WHEN s.captured THEN '' ELSE ':not captured' END, ' ' ORDER BY s.jamb_key)
+      INTO pts FROM admissions.de_award_scores('9773/9774') s WHERE s.counts;
+    msg := pts
+        || ' || A_LEVEL ' || (SELECT string_agg(coalesce(admissions.de_grade_points('A_LEVEL', g)::text, '-'), ',' ORDER BY o)
+                                FROM unnest(ARRAY['A*', 'b+', 'e', 'A1', 'F', '', NULL, 'Distinction']) WITH ORDINALITY u(g, o))
+        || ' HND ' || (SELECT string_agg(coalesce(admissions.de_grade_points('HND', g)::text, '-'), ',' ORDER BY o)
+                         FROM unnest(ARRAY['Upper-Credit', 'U/C', 'Dist.', 'Credit (Upper)', 'Lower credit', 'Credit', 'Merit', 'Pass', 'A*', 'Fail']) WITH ORDINALITY u(g, o))
+        || ' ND ' || (SELECT string_agg(coalesce(admissions.de_grade_points('ND', g)::text, '-'), ',' ORDER BY o)
+                        FROM unnest(ARRAY['Distinction', 'UC', 'L/C', 'Credit', 'Pass']) WITH ORDINALITY u(g, o))
+        || ' UNIVERSITY_DIPLOMA ' || (SELECT string_agg(coalesce(admissions.de_grade_points('UNIVERSITY_DIPLOMA', g)::text, '-'), ',' ORDER BY o)
+                                        FROM unnest(ARRAY['Distinction', 'Credit', 'Merit', 'Pass']) WITH ORDINALITY u(g, o))
+        || ' NCE ' || (SELECT string_agg(coalesce(admissions.de_grade_points('NCE', g)::text, '-'), ',' ORDER BY o)
+                         FROM unnest(ARRAY['Distinction', 'Credit', 'Merit', 'Pass', 'B']) WITH ORDINALITY u(g, o))
+        || ' DEGREE ' || (SELECT string_agg(coalesce(admissions.de_grade_points('DEGREE', g)::text, '-'), ',' ORDER BY o)
+                            FROM unnest(ARRAY['2nd Class Upper', '2:1', 'Second Class Upper', 'Upper Second', 'First Class', '1st Class', '2nd Class Lower',
+                                              '2:2', '3rd Class', 'Third Class', 'Pass', '2nd Class', 'A']) WITH ORDINALITY u(g, o));
+    RAISE EXCEPTION 'the V773 scoring check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V773 scoring check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V773: a Direct Entry qualification is scored on its own scale — A-Level three subjects plus 1 when none fails (of 16), a degree, HND, ND, University Diploma and NCE on theirs, a type CAPS left blank read by its letters, no grades no score, the highest score counts',
+      coalesce(msg = '01=JUPEB/A_LEVEL:10/16/62.50 02=JUPEB/A_LEVEL:7/16/43.75 03=IJMB/A_LEVEL:11/16/68.75 04=A_LEVEL/A_LEVEL:-/16/- 05=A_LEVEL/A_LEVEL:7/16/43.75:Biology A1 06=DEGREE/DEGREE:4/5/80.00'
+                     || ' 07=DEGREE_FOREIGN/DEGREE:3/5/60.00 08=DEGREE/DEGREE:5/5/100.00 09=DEGREE/DEGREE:2/5/40.00 10=DEGREE/DEGREE:1/5/20.00 11=DEGREE/DEGREE:-/5/-:Chemistry 2nd Class 12=HND/HND:4/5/80.00'
+                     || ' 13=HND/HND:3/5/60.00 14=ND/ND:3/4/75.00 15=ND/ND:1/4/25.00 16=UNIVERSITY_DIPLOMA/UNIVERSITY_DIPLOMA:3/4/75.00 17=UNIVERSITY_DIPLOMA/UNIVERSITY_DIPLOMA:2/4/50.00 18=NCE/NCE:10/15/66.67'
+                     || ' 19=NCE/NCE:9/15/60.00:English / Education 20=NOT_STATED/A_LEVEL:10/16/62.50 21=NOT_AVAILABLE/NONE:-/-/-:not captured 22=HND/HND:5/5/100.00:Chemistry 23=DEGREE/DEGREE:4/5/80.00'
+                     || ' || A_LEVEL 5,4,1,-,0,0,0,- HND 4,4,5,4,3,3,2,2,-,0 ND 4,3,2,2,1 UNIVERSITY_DIPLOMA 4,3,2,1 NCE 5,4,3,2,4 DEGREE 4,4,4,4,5,5,3,3,2,2,1,-,-', false), msg);
+END $$;
+
+-- ── V773 · 2 and 6. the Preliminary Fit under the University's default (LL.B (LAW), C00019 with its Direct Entry set) and Pharmacy's
+--          own rule (copied from the 2026/2027 seed), each reason saying only what was checked; the fit rules and their words ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_pol uuid; seed uuid; r record; d19 text; fit_law text; fit_ph text; fit_19 text; names text;
+        src_before text; src_after text; refused text := ''; seeded text; crit_default text; crit_ph text; classed text; msg2 text; msg6 text; v_err text;
+BEGIN
+  BEGIN
+    v_pol := pg_temp.v773_setup(who);
+    SELECT p.name INTO d19 FROM ref.programme p WHERE p.code = 'C00019';
+    seed := (SELECT p.id FROM admissions.session_policy p WHERE p.session = '2026/2027');
+    seeded := (SELECT count(*) FILTER (WHERE f.programme_code IS NULL) || ' default, ' || count(*) FILTER (WHERE f.programme_code = 'C73770') || ' C73770'
+                 FROM admissions.de_fit_rule f WHERE f.policy_id = seed);
+    src_before := (SELECT string_agg(DISTINCT f.source, ',') FROM admissions.de_fit_rules(v_pol, 'C00033') f);
+    -- Pharmacy's own rule, as the 2026/2027 settings hold it
+    INSERT INTO admissions.de_fit_rule (policy_id, programme_code, kind, core_disciplines, relevant_min, partly_min, related_disciplines, related_relevant_min,
+                                        related_partly_min, other_fit, relevant_passes, partly_passes, set_by, set_office)
+    SELECT v_pol, f.programme_code, f.kind, f.core_disciplines, f.relevant_min, f.partly_min, f.related_disciplines, f.related_relevant_min,
+           f.related_partly_min, f.other_fit, f.relevant_passes, f.partly_passes, who, 'academic'
+      FROM admissions.de_fit_rule f WHERE f.policy_id = seed AND f.programme_code = 'C73770';
+    FOR r IN SELECT * FROM (VALUES
+        -- LL.B (LAW), under the default
+        ('L01', '29773000201', 'C00033', 'DEGREE', '[]', 'Political Science', '2nd Class Lower'),
+        ('L02', '29773000202', 'C00033', 'DEGREE', '[]', 'History', '3rd Class'),
+        ('L03', '29773000203', 'C00033', 'DEGREE', '[]', 'English', 'Pass'),
+        ('L04', '29773000204', 'C00033', 'DEGREE_FOREIGN', '[]', 'Law', '2nd Class Upper'),
+        ('L05', '29773000205', 'C00033', 'DEGREE', '[]', 'Management', '2nd Class Upper'),
+        ('L06', '29773000206', 'C00033', 'UNIVERSITY_DIPLOMA', '[]', 'Law', 'Credit'),
+        ('L07', '29773000207', 'C00033', 'UNIVERSITY_DIPLOMA', '[]', 'Law', 'Pass'),
+        ('L08', '29773000208', 'C00033', 'UNIVERSITY_DIPLOMA', '[]', 'Theology', 'Credit'),
+        ('L09', '29773000209', 'C00033', 'ND', '[]', 'Public Administration', 'Upper Credit'),
+        ('L10', '29773000210', 'C00033', 'NCE', '[["English","Merit"],["Education","Merit"],["History","Credit"]]', NULL, NULL),
+        ('L11', '29773000211', 'C00033', 'JUPEB', '[["Government","C"],["Literature in English","C"],["CRK","C"]]', NULL, NULL),
+        ('L12', '29773000212', 'C00033', 'JUPEB', '[["Government","B"],["Literature in English","F"],["CRK","C"]]', NULL, NULL),
+        ('L13', '29773000213', 'C00033', 'JUPEB', '[["Government","F"],["Literature in English","F"],["CRK","C"]]', NULL, NULL),
+        ('L14', '29773000214', 'C00033', 'JUPEB', '[["Government","—"],["Literature in English","—"],["CRK","—"]]', NULL, NULL),
+        ('L15', '29773000215', 'C00033', 'NOT_STATED', '[["Government","B"],["Literature in English","C"],["CRK","A"]]', NULL, NULL),
+        ('L16', '29773000216', 'C00033', 'NOT_STATED', '[["Government","F"],["Literature in English","F"],["CRK","F"]]', NULL, NULL),
+        ('L17', '29773000217', 'C00033', 'NOT_AVAILABLE', '[]', NULL, NULL),
+        ('L18', '29773000218', 'C00033', NULL, '[]', NULL, NULL),
+        ('L19', '29773000219', 'C00033', 'DEGREE', '[]', 'History', NULL),
+        -- DOCTOR OF PHARMACY, under its own rule
+        ('P01', '29773000231', 'C73770', 'DEGREE', '[]', 'Biochemistry', '2nd Class Upper'),
+        ('P02', '29773000232', 'C73770', 'DEGREE', '[]', 'Chemistry', '2nd Class Lower'),
+        ('P03', '29773000233', 'C73770', 'DEGREE', '[]', 'Nursing', '3rd Class'),
+        ('P04', '29773000234', 'C73770', 'DEGREE', '[]', 'Forestry', '2nd Class Upper'),
+        ('P05', '29773000235', 'C73770', 'DEGREE', '[]', 'Forestry', '3rd Class'),
+        ('P06', '29773000236', 'C73770', 'DEGREE', '[]', 'Economics', 'First Class'),
+        ('P07', '29773000237', 'C73770', 'ND', '[]', 'Pharmaceutical Technology (Chemistry)', 'Upper Credit'),
+        ('P08', '29773000238', 'C73770', 'ND', '[]', 'Community Development (Health)', 'Upper Credit'),
+        ('P09', '29773000239', 'C73770', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]', NULL, NULL),
+        ('P10', '29773000240', 'C73770', 'JUPEB', '[["Zoology","C"],["Chemistry","C"],["Physics","C"]]', NULL, NULL),
+        ('P11', '29773000241', 'C73770', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Physics","D"]]', NULL, NULL),
+        ('P12', '29773000242', 'C73770', 'JUPEB', '[["Biology","B"],["Chemistry","F"],["Physics","C"]]', NULL, NULL),
+        ('P13', '29773000243', 'C73770', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Mathematics","C"]]', NULL, NULL),
+        ('P14', '29773000244', 'C73770', 'JUPEB', '[["Government","C"],["Literature in English","C"],["CRK","C"]]', NULL, NULL),
+        ('P15', '29773000245', 'C73770', 'JUPEB', '[["Biology","—"],["Chemistry","—"],["Physics","—"]]', NULL, NULL),
+        ('P16', '29773000246', 'C73770', 'UNIVERSITY_DIPLOMA', '[]', 'Theology', 'Credit'),
+        ('P17', '29773000247', 'C73770', 'UNIVERSITY_DIPLOMA', '[]', 'Pharmacy', 'Credit'),
+        ('P18', '29773000248', 'C73770', 'DEGREE', '[]', 'Pharmacy', '2nd Class Upper'),
+        -- C00019 (two of Chemistry, Biology, Physics), under the default
+        ('A01', '29773000261', 'C00019', 'JUPEB', '[["Chemistry","A"],["Biology","B"],["Mathematics","C"]]', NULL, NULL),
+        ('A02', '29773000262', 'C00019', 'JUPEB', '[["Chemistry","A"],["Mathematics","C"],["Economics","B"]]', NULL, NULL),
+        ('A03', '29773000263', 'C00019', 'JUPEB', '[["Chemistry","F"],["Biology","F"],["Physics","C"]]', NULL, NULL),
+        ('A04', '29773000264', 'C00019', 'JUPEB', '[["Government","C"],["Literature in English","C"],["CRK","C"]]', NULL, NULL)
+    ) AS t(tag, jamb, code, basis, subj, disc, cls)
+    LOOP
+        PERFORM pg_temp.v773_row(r.tag, r.jamb, r.code);
+        IF r.basis IS NOT NULL THEN PERFORM pg_temp.v773_award(r.jamb, r.basis, r.subj::jsonb, r.disc, r.cls); END IF;
+    END LOOP;
+    SELECT string_agg(right(c.name, 3) || '=' || c.fit || ': ' || c.reason, ' | ' ORDER BY c.name) INTO fit_law FROM admissions.de_candidates('9773/9774', 'C00033') c;
+    SELECT string_agg(right(c.name, 3) || '=' || c.fit || ': ' || c.reason, ' | ' ORDER BY c.name) INTO fit_ph FROM admissions.de_candidates('9773/9774', 'C73770') c;
+    SELECT string_agg(right(c.name, 3) || '=' || c.fit || ': ' || replace(c.reason, d19, '<D19>'), ' | ' ORDER BY c.name) INTO fit_19
+      FROM admissions.de_candidates('9773/9774', 'C00019') c;
+    SELECT string_agg(admissions.de_names_programme(v.d, v.p)::text, ',' ORDER BY v.o) INTO names
+      FROM (VALUES (1, 'Law', 'LL.B (LAW)'), (2, 'Pharmacy', 'DOCTOR OF PHARMACY'), (3, 'English Language', 'B.A. ENGLISH'),
+                   (4, 'Medical Laboratory Science', 'BACHELOR OF MEDICAL LABORATORY SCIENCE (BMLS)'), (5, 'English', 'LL.B (LAW)'),
+                   (6, 'Management', 'B.Sc. BUSINESS MANAGEMENT'), (7, 'Economics', 'B.Sc. (ED) HOME ECONOMICS'), (8, 'Chemistry', 'B.Sc INDUSTRIAL CHEMISTRY'),
+                   (9, 'Science Laboratory Technology', 'B.Sc. (ED) TECHNOLOGY')) v(o, d, p);
+    msg2 := 'LAW ' || fit_law || ' || PHARMACY ' || fit_ph || ' || C00019 ' || fit_19 || ' || names ' || names;
+    -- 6: the University's default set for the session, Pharmacy's own replacing it whole, and in words
+    INSERT INTO admissions.de_fit_rule (policy_id, programme_code, kind, core_disciplines, relevant_min, partly_min, related_disciplines, related_relevant_min,
+                                        related_partly_min, other_fit, relevant_passes, partly_passes, set_by, set_office)
+    SELECT v_pol, NULL, b.kind, b.core_disciplines, b.relevant_min, b.partly_min, b.related_disciplines, b.related_relevant_min,
+           b.related_partly_min, b.other_fit, b.relevant_passes, b.partly_passes, who, 'academic'
+      FROM admissions.de_fit_builtin() b;
+    src_after := (SELECT string_agg(DISTINCT f.source, ',') FROM admissions.de_fit_rules(v_pol, 'C00033') f) || '/'
+              || (SELECT string_agg(DISTINCT f.source, ',') || ' ' || count(*) FROM admissions.de_fit_rules(v_pol, 'C73770') f);
+    SELECT string_agg(c.qualification || ' => ' || c.rule_applied || ' [' || c.source || ']', ' | ' ORDER BY c.ord) INTO crit_default
+      FROM admissions.de_fit_criteria('9773/9774', 'C00033') c;
+    SELECT string_agg(c.qualification || ' => ' || c.rule_applied || ' [' || c.source || ']', ' | ' ORDER BY c.ord) INTO crit_ph
+      FROM admissions.de_fit_criteria('9773/9774', 'C73770') c;
+    BEGIN
+        INSERT INTO admissions.de_fit_rule (policy_id, programme_code, kind, relevant_min, partly_min, relevant_passes, partly_passes, set_by, set_office)
+        VALUES (v_pol, 'C00019', 'A_LEVEL', NULL, 1, 3, 2, who, 'academic');
+        refused := refused || 'A_LEVEL without relevant_min taken; ';
+    EXCEPTION WHEN check_violation THEN refused := refused || 'no relevant_min refused; ';
+    END;
+    BEGIN
+        INSERT INTO admissions.de_fit_rule (policy_id, programme_code, kind, core_disciplines, relevant_min, partly_min, relevant_passes, partly_passes, set_by, set_office)
+        VALUES (v_pol, 'C00019', 'A_LEVEL', '{}', 1, 1, 3, 2, who, 'academic');
+        refused := refused || 'A_LEVEL empty list taken';
+    EXCEPTION WHEN check_violation THEN refused := refused || 'empty list refused';
+    END;
+    classed := (SELECT r2.policy FROM ref.programme_reference r2 WHERE r2.tab = 'admissions.de_fit_rule' AND r2.col = 'programme_code');
+    msg6 := 'seed ' || seeded || ' | sources ' || src_before || ' then ' || src_after || ' | ' || refused || ' | classed ' || coalesce(classed, '-')
+            || ' || DEFAULT ' || crit_default || ' || PHARMACY ' || crit_ph;
+    RAISE EXCEPTION 'the V773 fit check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V773 fit check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V773: the Preliminary Fit — the University''s default for every programme and Pharmacy''s own rule, each reason saying only what was checked',
+      coalesce(msg2 = 'LAW L01=Relevant: Degree in Political Science (2nd Class Lower); any discipline accepted under the University''s default rule (no rule of its own for LL.B (LAW))'
+                     || ' | L02=Partly relevant: Degree in History but 3rd Class; below the usual 2nd Class Lower threshold for LL.B (LAW) DE'
+                     || ' | L03=Not relevant: Degree in English but Pass; below the 3rd Class minimum for LL.B (LAW) DE'
+                     || ' | L04=Relevant: Already holds a degree in Law (2nd Class Upper); confirm why a second LL.B (LAW) degree is sought'
+                     || ' | L05=Relevant: Degree in Management (2nd Class Upper); any discipline accepted under the University''s default rule (no rule of its own for LL.B (LAW))'
+                     || ' | L06=Relevant: Diploma in Law at Credit; directly related to the programme'
+                     || ' | L07=Partly relevant: Diploma in Law but Pass; below the usual Credit threshold for LL.B (LAW) DE'
+                     || ' | L08=Check manually: Diploma in Theology (Credit): to be assessed by the Faculty for LL.B (LAW) DE'
+                     || ' | L09=Partly relevant: National Diploma in Public Administration (Upper Credit); ND/HND acceptance for LL.B (LAW) DE must be confirmed by the Faculty'
+                     || ' | L10=Partly relevant: NCE in English / Education / History (Merit, Merit, Credit); NCE acceptance for LL.B (LAW) DE must be confirmed by the Faculty'
+                     || ' | L11=Relevant: Passed all 3 subjects (Government / Literature in English / CRK); combination not checked: no Direct Entry subject set for LL.B (LAW)'
+                     || ' | L12=Partly relevant: Passed 2 of 3; failed Literature in English'
+                     || ' | L13=Not relevant: Only 1 A''Level pass; failed Government, Literature in English'
+                     || ' | L14=Check manually: Subject combination shown but no grades released in CAPS yet'
+                     || ' | L15=Check manually: Grades look good but qualification type/year missing in CAPS — Passed all 3 subjects (Government / Literature in English / CRK); combination not checked: no Direct Entry subject set for LL.B (LAW)'
+                     || ' | L16=Not relevant: Qualification type/year missing in CAPS; No A''Level pass; failed Government, Literature in English, CRK'
+                     || ' | L17=Check manually: Grade window returned no data on CAPS'
+                     || ' | L18=Check manually: No qualification recorded'
+                     || ' | L19=Check manually: Degree in History: class not shown; check manually'
+                     || ' || PHARMACY P01=Relevant: Degree in Biochemistry (2nd Class Upper): a core discipline for DOCTOR OF PHARMACY DE'
+                     || ' | P02=Partly relevant: Degree in Chemistry but 2nd Class Lower; below the usual 2nd Class Upper threshold for DOCTOR OF PHARMACY DE'
+                     || ' | P03=Not relevant: Degree in Nursing but 3rd Class; below the 2nd Class Lower minimum for DOCTOR OF PHARMACY DE'
+                     || ' | P04=Partly relevant: Degree in Forestry (2nd Class Upper): a related discipline, not a core one for DOCTOR OF PHARMACY DE'
+                     || ' | P05=Not relevant: Degree in Forestry but 3rd Class; a related discipline below the 2nd Class Lower minimum for DOCTOR OF PHARMACY DE'
+                     || ' | P06=Not relevant: Degree in Economics (First Class): not a discipline DOCTOR OF PHARMACY DE accepts'
+                     || ' | P07=Partly relevant: National Diploma in Pharmaceutical Technology (Chemistry) (Upper Credit): directly related, but ND/HND acceptance for DOCTOR OF PHARMACY DE must be confirmed by the Faculty'
+                     || ' | P08=Not relevant: National Diploma in Community Development (Health) (Upper Credit): not a discipline DOCTOR OF PHARMACY DE accepts'
+                     || ' | P09=Relevant: Passed Biology, Chemistry and Physics (C, C, C); points 10'
+                     || ' | P10=Relevant: Passed Zoology, Chemistry and Physics (C, C, C); points 10'
+                     || ' | P11=Partly relevant: Passed all 3 but with weak grade(s) in Physics; points 9'
+                     || ' | P12=Not relevant: Failed Chemistry; points 7'
+                     || ' | P13=Not relevant: Does not offer Physics; DOCTOR OF PHARMACY DE asks for Biology, Chemistry and Physics'
+                     || ' | P14=Not relevant: Does not offer Biology, Chemistry, Physics; DOCTOR OF PHARMACY DE asks for Biology, Chemistry and Physics'
+                     || ' | P15=Check manually: Biology/Chemistry/Physics combination is right, but no grades released in CAPS yet'
+                     || ' | P16=Check manually: Diploma in Theology (Credit): to be assessed by the Faculty for DOCTOR OF PHARMACY DE'
+                     || ' | P17=Check manually: Diploma in Pharmacy (Credit): to be assessed by the Faculty for DOCTOR OF PHARMACY DE'
+                     || ' | P18=Relevant: Already holds a degree in Pharmacy (2nd Class Upper); confirm why a second DOCTOR OF PHARMACY degree is sought'
+                     || ' || C00019 A01=Relevant: Passed the programme''s Direct Entry subjects (Chemistry / Biology)'
+                     || ' | A02=Partly relevant: Passed 1 of the 2 Direct Entry subjects <D19> asks for (Chemistry)'
+                     || ' | A03=Partly relevant: Passed 1 of the 2 Direct Entry subjects <D19> asks for (Chemistry / Biology / Physics); failed Chemistry, Biology'
+                     || ' | A04=Not relevant: None of the programme''s Direct Entry subjects offered'
+                     || ' || names true,true,true,true,false,false,false,false,false', false), msg2);
+  PERFORM pg_temp.assert('V773: the fit rules — the University''s default for every programme seeded for 2026/2027, Pharmacy''s own replacing it whole, the built-in default where a session states none — and the rules in words',
+      coalesce(msg6 = 'seed 6 default, 6 C73770'
+                     || ' | sources BUILT_IN then DEFAULT/PROGRAMME 6'
+                     || ' | no relevant_min refused; empty list refused'
+                     || ' | classed MOVE_UNLESS_HELD'
+                     || ' || DEFAULT 1st Degree (Nigerian or foreign), any discipline => First Class/2nd Class Upper/2nd Class Lower = Relevant; 3rd Class = Partly relevant; Pass = Not relevant [DEFAULT]'
+                     || ' | University Diploma in the programme''s own discipline => Distinction/Credit = Relevant; Merit/Pass = Partly relevant [DEFAULT]'
+                     || ' | University Diploma in any other discipline => Check manually [DEFAULT]'
+                     || ' | Higher National Diploma (HND), any discipline => Any class = Partly relevant (acceptance to be confirmed by the Faculty) [DEFAULT]'
+                     || ' | National Diploma (ND), any discipline => Any class = Partly relevant (acceptance to be confirmed by the Faculty) [DEFAULT]'
+                     || ' | Nigeria Certificate in Education (NCE), any subjects => Any pass = Partly relevant (acceptance to be confirmed by the Faculty) [DEFAULT]'
+                     || ' | A''Level (GCE, IJMB, JUPEB): the programme''s Direct Entry subjects where set, else any => 3 passes (A–E) = Relevant; 2 passes (A–E) = Partly relevant; fewer = Not relevant; F is a fail; where the programme has a Direct Entry subject set: its subjects all passed = Relevant, one short = Partly relevant [DEFAULT]'
+                     || ' | A''Level with no grades released => Check manually [DEFAULT]'
+                     || ' | Qualification type / year blank in CAPS => Check manually, unless the grades already fail [DEFAULT]'
+                     || ' | Grade window returned no data, or no qualification recorded => Check manually [DEFAULT]'
+                     || ' | Foreign degree => Assessed as above; Other Notes flags that equivalence must be confirmed [DEFAULT]'
+                     || ' | A degree or diploma in the programme''s own discipline => Assessed as a core discipline; the Reason notes it [DEFAULT]'
+                     || ' || PHARMACY 1st Degree (Nigerian or foreign) in Chemistry, Biochemistry, Pharmacology, Microbiology, Physiology, Anatomy, Medical Laboratory Science, Nursing, Biology, Zoology => First Class/2nd Class Upper = Relevant; 2nd Class Lower = Partly relevant; 3rd Class/Pass = Not relevant [PROGRAMME]'
+                     || ' | 1st Degree (Nigerian or foreign) in a related discipline (Physics, Forestry, Botany/Plant Science, Agriculture/Agricultural Science, Food Science, Biomedical Technology, Laboratory Technology) => First Class/2nd Class Upper/2nd Class Lower = Partly relevant; 3rd Class/Pass = Not relevant [PROGRAMME]'
+                     || ' | 1st Degree (Nigerian or foreign) in any other discipline => Not relevant [PROGRAMME]'
+                     || ' | University Diploma, any discipline => Check manually [PROGRAMME]'
+                     || ' | Higher National Diploma (HND) in Pharmaceutical Technology/Pharmacy Technician => Any class = Partly relevant (acceptance to be confirmed by the Faculty) [PROGRAMME]'
+                     || ' | Higher National Diploma (HND) in any other discipline => Not relevant [PROGRAMME]'
+                     || ' | National Diploma (ND) in Pharmaceutical Technology/Pharmacy Technician => Any class = Partly relevant (acceptance to be confirmed by the Faculty) [PROGRAMME]'
+                     || ' | National Diploma (ND) in any other discipline => Not relevant [PROGRAMME]'
+                     || ' | Nigeria Certificate in Education (NCE), any subjects => Check manually [PROGRAMME]'
+                     || ' | A''Level (GCE, IJMB, JUPEB) in Biology/Zoology/Botany, Chemistry and Physics => 3 passes at A–C = Relevant; 3 passes (A–E) = Partly relevant; fewer = Not relevant; F is a fail [PROGRAMME]'
+                     || ' | A''Level with no grades released => Check manually [PROGRAMME]'
+                     || ' | Qualification type / year blank in CAPS => Check manually, unless the grades already fail [PROGRAMME]'
+                     || ' | Grade window returned no data, or no qualification recorded => Check manually [PROGRAMME]'
+                     || ' | Foreign degree => Assessed as above; Other Notes flags that equivalence must be confirmed [PROGRAMME]'
+                     || ' | A degree or diploma in the programme''s own discipline => Assessed as a core discipline; the Reason notes it [PROGRAMME]', false), msg6);
+END $$;
+
+-- ── V773 · 3. the O'Level block: on DOCTOR OF PHARMACY's list O01 nothing; O02 one sitting with the five; O03 Mathematics D7; O04
+--          English Language F9 with a Literature credit; O05 Mathematics awaiting; O06 three sittings (five credits in all, four in the
+--          best pair); O07 three credits; O08 two sittings, Mathematics in each spelt two ways; O09 one sitting on two attachments;
+--          O10 no Physics; on LL.B (LAW)'s (Literature in English required) O11 without a Literature credit, O12 with one ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_pol uuid; k text := '297730003'; ol text; c19 text; req text; msg text; v_err text;
+BEGIN
+  BEGIN
+    v_pol := pg_temp.v773_setup(who);
+    PERFORM pg_temp.v773_row('O' || lpad(n::text, 2, '0'), k || lpad(n::text, 2, '0'), CASE WHEN n >= 11 THEN 'C00033' ELSE 'C73770' END, true)
+       FROM generate_series(1, 12) n;
+    PERFORM pg_temp.v773_olevel(k || '02', 'WAEC', '2019', 'ZZ7730302', '{"English Language":"B3","Mathematics":"C4","Physics":"C5","Chemistry":"C6","Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '03', 'WAEC', '2019', 'ZZ7730303', '{"English Language":"B3","Mathematics":"D7","Physics":"C5","Chemistry":"C6","Biology":"C4","Economics":"B2"}');
+    PERFORM pg_temp.v773_olevel(k || '04', 'WAEC', '2019', 'ZZ7730304', '{"English Language":"F9","Literature in English":"C5","Mathematics":"C4","Physics":"C5","Chemistry":"C6","Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '05', 'NECO', '2019', 'ZZ7730305', '{"English Language":"B3","Mathematics":"A/R","Physics":"C5","Chemistry":"C6","Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '06', 'WAEC', '2017', 'ZZ7730306A', '{"English Language":"C4","Mathematics":"C5"}');
+    PERFORM pg_temp.v773_olevel(k || '06', 'NECO', '2018', 'ZZ7730306B', '{"Physics":"C5","Chemistry":"C6"}');
+    PERFORM pg_temp.v773_olevel(k || '06', 'NABTEB', '2019', 'ZZ7730306C', '{"Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '07', 'WAEC', '2019', 'ZZ7730307', '{"English Language":"C4","Mathematics":"C5","Physics":"D7","Chemistry":"E8","Biology":"F9","Economics":"C6"}');
+    PERFORM pg_temp.v773_olevel(k || '08', 'WAEC', '2018', 'ZZ7730308A', '{"English Language":"B3","Mathematics":"C4","Physics":"C5"}');
+    PERFORM pg_temp.v773_olevel(k || '08', 'NECO', '2019', 'ZZ7730308B', '{"MATHEMATICS":"C5","Chemistry":"C6","Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '09', 'WAEC', '2019', 'ZZ7730309', '{"English Language":"B3","Mathematics":"C4","Physics":"C5","Chemistry":"C6","Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '09', 'WAEC', '2019', 'zz7730309 ', '{"English Language":"B3","Mathematics":"C4","Physics":"C5","Chemistry":"C6","Biology":"C4"}');
+    PERFORM pg_temp.v773_olevel(k || '10', 'OTHER', NULL, NULL, '{"English Language":"B3","Mathematics":"C4","Chemistry":"C6","Biology":"C4","Economics":"B2","Geography":"C5"}');
+    PERFORM pg_temp.v773_olevel(k || '11', 'WAEC', '2019', 'ZZ7730311', '{"English Language":"B3","Mathematics":"C4","Literature in English":"D7","Government":"C5","Christian Religious Studies":"C6"}');
+    PERFORM pg_temp.v773_olevel(k || '12', 'WAEC', '2019', 'ZZ7730312', '{"English Language":"B3","Mathematics":"C4","Literature in English":"C5","Government":"C5","Christian Religious Studies":"C6"}');
+    SELECT string_agg(right(c.name, 3) || '=' || c.olevel_check || ' [' || c.olevel_check_kind || '] key ' || c.key_credits || '/' || c.key_of
+                      || ' total ' || c.total_credits || ' has5 ' || coalesce(c.has_five_credits::text, '-') || ' sittings ' || c.sittings
+                      || CASE WHEN right(c.name, 3) IN ('O02', 'O10')
+                              THEN ' grades ' || (SELECT string_agg(e->>'subject' || ' ' || coalesce(e->>'grade', '-') || CASE WHEN (e->>'credit')::boolean THEN '+' ELSE '' END, ', ')
+                                                    FROM jsonb_array_elements(c.olevel_grades) e)
+                              ELSE '' END
+                      || CASE WHEN right(c.name, 3) IN ('O08') THEN ' (' || c.olevel_sittings || ') results ' || c.olevel_results ELSE '' END,
+                      ' | ' ORDER BY c.name)
+      INTO ol FROM admissions.de_candidates('9773/9774', NULL) c;
+    SELECT string_agg(s.item, ',' ORDER BY s.ord) INTO c19 FROM admissions.de_olevel_set('9773/9774', 'C00019') s;
+    INSERT INTO admissions.olevel_compulsory (session, subject, pattern, ord) VALUES
+        ('9773/9774', 'Mathematics', '(?i)^\s*math', 1), ('9773/9774', 'English Language', '(?i)english', 2);
+    SELECT string_agg(s.item, ',' ORDER BY s.ord) INTO req FROM admissions.de_olevel_required('9773/9774', 'C00033') s;
+    msg := ol || ' || C00019 set ' || c19 || ' || required ' || req;
+    RAISE EXCEPTION 'the V773 O''Level check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V773 O''Level check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V773: the O''Level block — the results and sittings held, a grade for each of the programme''s O''Level subjects in the programme''s own order, the key credits, Has 5 Credits within the sittings allowed, and the check phrase in its order',
+      coalesce(msg = 'O01=No O''Level on record: candidate must upload/verify results [NONE] key 0/5 total 0 has5 false sittings 0'
+                     || ' | O02=Credits in English Language and Mathematics (1 sitting) [PASS] key 5/5 total 5 has5 true sittings 1 grades English Language B3+, Mathematics C4+, Physics C5+, Chemistry C6+, Biology C4+'
+                     || ' | O03=No credit in Mathematics [PROBLEM] key 4/5 total 5 has5 true sittings 1'
+                     || ' | O04=No credit in English Language [PROBLEM] key 4/5 total 5 has5 true sittings 1'
+                     || ' | O05=Awaiting result (A/R) in Mathematics [PROBLEM] key 4/5 total 4 has5 false sittings 1'
+                     || ' | O06=Credits spread over 3 sittings (max 2 allowed) [PROBLEM] key 5/5 total 5 has5 false sittings 3'
+                     || ' | O07=Only 3 credits; 5 required [PROBLEM] key 2/5 total 3 has5 false sittings 1'
+                     || ' | O08=Credits in English Language and Mathematics (2 sittings) [PASS] key 5/5 total 5 has5 true sittings 2 (WAEC 2018 (ZZ7730308A); NECO 2019 (ZZ7730308B))'
+                     || ' results Biology: C4; Chemistry: C6; English Language: B3; Mathematics: C4; Physics: C5'
+                     || ' | O09=Credits in English Language and Mathematics (1 sitting) [PASS] key 5/5 total 5 has5 true sittings 1'
+                     || ' | O10=Credits in English Language and Mathematics (1 sitting) [PASS] key 4/5 total 6 has5 true sittings 1 grades English Language B3+, Mathematics C4+, Physics —, Chemistry C6+, Biology C4+'
+                     || ' | O11=No credit in Literature in English [PROBLEM] key 2/2 total 4 has5 false sittings 1'
+                     || ' | O12=Credits in English Language, Mathematics and Literature in English (1 sitting) [PASS] key 2/2 total 5 has5 true sittings 1'
+                     || ' || C00019 set English Language,Mathematics'
+                     || ' || required Mathematics,English Language,Literature in English', false), msg);
+END $$;
+
+-- ── V773 · 4. the rows of DOCTOR OF PHARMACY: R1 registered and admitted, JUPEB C C C (62.50); R2 not registered, NOT CLEARED on the
+--          list, a degree (80.00); R3 NOT CLEARED on the list but CLEARED by an upload, born 12/09/2003, a University Diploma Credit
+--          (75.00); R4 registered, an A-Level with no grades (no score); R5 nothing recorded; R6 under an old code merged into
+--          Pharmacy, A-Level B B B (81.25); R7 JUPEB C C C (62.50, after R1 by name); and not rows: U1 on the list as UTME, W1 a
+--          withdrawn Direct Entry row, X1 on LL.B (LAW)'s list ──
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_pol uuid; k text := '297730004'; up uuid := gen_random_uuid(); ranked text; r2 text; codes text; msg text; v_err text;
+        prog ref.programme;
+BEGIN
+  BEGIN
+    v_pol := pg_temp.v773_setup(who);
+    SELECT * INTO prog FROM ref.programme p WHERE p.code = 'C73770';
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, archived)
+    VALUES ('C97730', 'DOCTOR OF PHARMACY (CHECK V773 OLD CODE)', prog.dept_code, prog.faculty_code, prog.category, 0, true);
+    INSERT INTO ref.programme_alias (alias_code, programme_code) VALUES ('C97730', 'C73770');
+    PERFORM pg_temp.v773_row('R1', k || '01', 'C73770', true, '{"IsDECleared": "1"}', 'DIRECT_ENTRY', 'ADMITTED');
+    PERFORM pg_temp.v773_row('R2', k || '02', 'C73770', false, '{"IsDECleared": "0"}');
+    PERFORM pg_temp.v773_row('R3', k || '03', 'C73770', false, '{"IsDECleared": "0"}');
+    PERFORM pg_temp.v773_row('R4', k || '04', 'C73770', true, '{"IsDECleared": "1"}');
+    PERFORM pg_temp.v773_row('R5', k || '05', 'C73770', false);
+    PERFORM pg_temp.v773_row('R6', k || '06', 'C97730', false, '{"IsDECleared": "1"}');
+    PERFORM pg_temp.v773_row('R7', k || '07', 'C73770', true, '{"IsDECleared": "1"}');
+    PERFORM pg_temp.v773_row('U1', k || '08', 'C73770', true, '{}', 'UTME');
+    PERFORM pg_temp.v773_row('W1', k || '09', 'C73770', false, '{}', 'DIRECT_ENTRY', 'PROPOSED', true);
+    PERFORM pg_temp.v773_row('X1', k || '10', 'C00033', false);
+    PERFORM pg_temp.v773_award(k || '01', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]');
+    PERFORM pg_temp.v773_award(k || '02', 'DEGREE', '[]', 'Biochemistry', '2nd Class Upper');
+    PERFORM pg_temp.v773_award(k || '03', 'UNIVERSITY_DIPLOMA', '[]', 'Pharmacy', 'Credit');
+    PERFORM pg_temp.v773_award(k || '04', 'A_LEVEL', '[["Biology","—"],["Chemistry","—"],["Physics","—"]]');
+    PERFORM pg_temp.v773_award(k || '06', 'A_LEVEL', '[["Biology","B"],["Chemistry","B"],["Physics","B"]]');
+    PERFORM pg_temp.v773_award(k || '07', 'JUPEB', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]');
+    PERFORM pg_temp.v773_award(k || '08', 'JUPEB', '[["Biology","A"],["Chemistry","A"],["Physics","A"]]');
+    PERFORM pg_temp.v773_award(k || '09', 'JUPEB', '[["Biology","A"],["Chemistry","A"],["Physics","A"]]');
+    INSERT INTO admissions.de_upload (id, session, rows_read, rows_recorded, rows_unchanged, rows_skipped, uploaded_by, uploaded_office)
+    VALUES (up, '9773/9774', 1, 1, 0, 0, who, 'academic');
+    INSERT INTO admissions.de_caps_value (session, jamb_key, is_cleared, upload_id, recorded_by) VALUES ('9773/9774', k || '03', true, up, who);
+    INSERT INTO admissions.attachment (id, session, kind, source_name, jamb_key, read_as, payload)
+    VALUES (gen_random_uuid(), '9773/9774', 'DATE_OF_BIRTH', k || '03-dob.json', k || '03', 'EXACT', '{"dob": "12/09/2003"}');
+    SELECT string_agg(c.rank || ':' || right(c.name, 2) || ':' || c.list_no || ':' || coalesce(c.score::text, '-') || ':' || c.registered
+                      || ':' || coalesce(c.is_cleared, '-') || ':' || c.status || ':' || coalesce(c.age::text, '-'), ' | ' ORDER BY c.rank),
+           string_agg(DISTINCT c.programme_code, ',')
+      INTO ranked, codes FROM admissions.de_candidates('9773/9774', 'C73770', date '2026-11-15') c;
+    SELECT c.other_notes INTO r2 FROM admissions.de_candidates('9773/9774', 'C73770', date '2026-11-15') c WHERE c.name = 'CHECKV773 R2';
+    msg := ranked || ' || ' || codes || ' || R2 ' || coalesce(r2, '-');
+    RAISE EXCEPTION 'the V773 rows check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V773 rows check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V773: every candidate on JAMB''s live Direct Entry list of the programme is a row — registered or not, cleared as the list says unless an upload says otherwise, aged from the date of birth, numbered as on the list — ranked by score then name, the unscored after, the unrecorded last',
+      coalesce(msg = '1:R6:6:81.25:false:CLEARED:Not Admitted:-'
+                     || ' | 2:R2:2:80.00:false:NOT CLEARED:Not Admitted:-'
+                     || ' | 3:R3:3:75.00:false:CLEARED:Not Admitted:23'
+                     || ' | 4:R1:1:62.50:true:CLEARED:Admitted:-'
+                     || ' | 5:R7:7:62.50:true:CLEARED:Not Admitted:-'
+                     || ' | 6:R4:4:-:true:CLEARED:Not Admitted:-'
+                     || ' | 7:R5:5:-:false:-:Not Admitted:-'
+                     || ' || C73770'
+                     || ' || R2 O''Level 5 credits not confirmed; Candidate NOT CLEARED in CAPS; Not registered on the portal', false), msg);
+END $$;
+
+-- ── V773 · 5. the upload, from DOCTOR OF PHARMACY's screen (lines 5–18): U01 holding a JUPEB typed by hand, uploaded a JUPEB (and
+--          again, identically, on line 18); U02 holding an A-Level typed by hand, uploaded a degree; U03 holding an earlier upload's
+--          type not stated, uploaded a JUPEB; U04 on LL.B (LAW)'s list, an NCE double major; U05 a JUPEB naming Biology twice; U06 a
+--          grade not read and the reader's note; U07 a type left blank; U08 on C00019's list, a degree alone; X01 off the list; UT1 on
+--          it as UTME; U09 a type not read; U10 on two lines that differ ──
+CREATE OR REPLACE FUNCTION pg_temp.v773_line(p_line int, p_reg text, p_basis text, p_type text, p_subj jsonb DEFAULT '[]', p_disc text DEFAULT NULL,
+                                             p_class text DEFAULT NULL, p_more jsonb DEFAULT '{}')
+RETURNS jsonb LANGUAGE sql AS $$
+    SELECT jsonb_build_object('line', p_line, 'regNo', p_reg, 'capsQualification', NULL, 'capsGrade', NULL, 'hasFiveCredits', NULL, 'isCleared', NULL,
+                              'status', NULL, 'age', NULL, 'ageQualified', NULL, 'admissionCategory', NULL, 'typeText', p_type, 'basis', p_basis,
+                              'discipline', p_disc, 'awardClass', p_class,
+                              'subjects', (SELECT coalesce(jsonb_agg(jsonb_build_object('subject', x.e->>0, 'grade', x.e->>1) ORDER BY x.o), '[]'::jsonb)
+                                             FROM jsonb_array_elements(p_subj) WITH ORDINALITY x(e, o)),
+                              'institution', NULL, 'year', 2026, 'examNo', NULL, 'notes', '[]'::jsonb) || p_more
+$$;
+
+DO $$
+DECLARE who uuid := gen_random_uuid(); v_pol uuid; k text := '297730005'; up0 uuid := gen_random_uuid(); man_jupeb uuid; v_rows jsonb; res jsonb;
+        before_n text; after_n text; audit_before int; audit_after int; uploads_before int; preview text; committed text; again text; facts text;
+        de_info text; msg text; v_err text;
+BEGIN
+  BEGIN
+    v_pol := pg_temp.v773_setup(who);
+    PERFORM pg_temp.v773_row('U01', k || '01', 'C73770', true);
+    PERFORM pg_temp.v773_row('U02', k || '02', 'C73770');
+    PERFORM pg_temp.v773_row('U03', k || '03', 'C73770');
+    PERFORM pg_temp.v773_row('U04', k || '04', 'C00033');
+    PERFORM pg_temp.v773_row('U05', k || '05', 'C73770');
+    PERFORM pg_temp.v773_row('U06', k || '06', 'C73770');
+    PERFORM pg_temp.v773_row('U07', k || '07', 'C73770');
+    PERFORM pg_temp.v773_row('U08', k || '08', 'C00019');
+    PERFORM pg_temp.v773_row('UT1', k || '10', 'C73770', false, '{}', 'UTME');
+    PERFORM pg_temp.v773_row('U09', k || '11', 'C73770');
+    PERFORM pg_temp.v773_row('U10', k || '12', 'C73770');
+    man_jupeb := pg_temp.v773_award(k || '01', 'JUPEB', '[["Biology","B"],["Chemistry","B"],["Physics","B"]]');
+    PERFORM pg_temp.v773_award(k || '02', 'A_LEVEL', '[["Chemistry","A"],["Biology","B"],["Physics","C"]]');
+    -- U03's type not stated, recorded by an earlier upload
+    INSERT INTO admissions.de_upload (id, session, rows_read, rows_recorded, rows_unchanged, rows_skipped, uploaded_by, uploaded_office)
+    VALUES (up0, '9773/9774', 1, 1, 0, 0, who, 'academic');
+    INSERT INTO admissions.de_award (id, session, jamb_key, basis, recorded_by, source, upload_id) VALUES (gen_random_uuid(), '9773/9774', k || '03', 'NOT_STATED', who, 'UPLOAD', up0);
+    v_rows := jsonb_build_array(
+        pg_temp.v773_line(5, k || '01', 'JUPEB', 'JUPEB - A''Level', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]', NULL, NULL,
+                          '{"capsQualification": "JUPEB - A''Level", "capsGrade": 10, "hasFiveCredits": true, "isCleared": true, "status": "Not Admitted", "age": 20, "ageQualified": true, "examNo": "ZZ/773/0501"}'),
+        pg_temp.v773_line(6, k || '02', 'DEGREE', '1st Degree (Nigeria Universities)', '[]', 'Biochemistry', '2nd Class Upper'),
+        pg_temp.v773_line(7, k || '03', 'JUPEB', 'JUPEB - A''Level', '[["Biology","B"],["Chemistry","B"],["Physics","B"]]'),
+        pg_temp.v773_line(8, k || '04', 'NCE', 'Nigeria Certificate in Education (NCE)', '[["English","Merit"],["English","Merit"],["Education","Merit"]]'),
+        pg_temp.v773_line(9, k || '05', 'JUPEB', 'JUPEB - A''Level', '[["Biology","C"],["biology ","B"],["Chemistry","C"]]'),
+        pg_temp.v773_line(10, k || '06', 'A_LEVEL', 'GCE A''Level', '[["Biology","A1"],["Chemistry","B"],["Physics","C"]]', NULL, NULL, '{"notes": ["Age not read: twenty"]}'),
+        pg_temp.v773_line(11, k || '07', 'NOT_STATED', NULL, '[["Biology","C"],["Chemistry","B"],["Physics","D"]]'),
+        pg_temp.v773_line(12, k || '08', 'DEGREE', '1st Degree (Nigeria Universities)', '[]', 'Chemistry', '2nd Class Upper'),
+        pg_temp.v773_line(13, k || '09', 'JUPEB', 'JUPEB - A''Level', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]'),
+        pg_temp.v773_line(14, k || '10', 'JUPEB', 'JUPEB - A''Level', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]'),
+        pg_temp.v773_line(15, k || '11', NULL, 'Higher Something', '[]'),
+        pg_temp.v773_line(16, k || '12', 'JUPEB', 'JUPEB - A''Level', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]'),
+        pg_temp.v773_line(17, k || '12', 'JUPEB', 'JUPEB - A''Level', '[["Biology","B"],["Chemistry","C"],["Physics","C"]]'),
+        pg_temp.v773_line(18, k || '01', 'JUPEB', 'JUPEB - A''Level', '[["Biology","C"],["Chemistry","C"],["Physics","C"]]', NULL, NULL,
+                          '{"capsQualification": "JUPEB - A''Level", "capsGrade": 10, "hasFiveCredits": true, "isCleared": true, "status": "Not Admitted", "age": 20, "ageQualified": true, "examNo": "ZZ/773/0501"}'));
+    -- the preview: every line decided, nothing written
+    before_n := (SELECT count(*) FROM admissions.de_upload) || '/' || (SELECT count(*) FROM admissions.de_award) || '/' || (SELECT count(*) FROM admissions.de_award_subject)
+             || '/' || (SELECT count(*) FROM admissions.de_caps_value);
+    audit_before := (SELECT count(*) FROM audit.entries e WHERE e.subject_type IN ('admissions.de_award', 'admissions.de_award_subject', 'admissions.de_caps_value', 'admissions.de_upload'));
+    SELECT jsonb_agg(to_jsonb(r) ORDER BY r.line) INTO res
+      FROM admissions.de_upload_record('9773/9774', 'C73770', v_rows, 'check.xlsx', NULL, who, 'academic', false) r;
+    after_n := (SELECT count(*) FROM admissions.de_upload) || '/' || (SELECT count(*) FROM admissions.de_award) || '/' || (SELECT count(*) FROM admissions.de_award_subject)
+            || '/' || (SELECT count(*) FROM admissions.de_caps_value);
+    audit_after := (SELECT count(*) FROM audit.entries e WHERE e.subject_type IN ('admissions.de_award', 'admissions.de_award_subject', 'admissions.de_caps_value', 'admissions.de_upload'));
+    preview := (SELECT string_agg((x->>'line') || ':' || (x->>'outcome')
+                                  || coalesce(' [' || (SELECT string_agg((p->>'level') || ' ' || (p->>'text'), '; ') FROM jsonb_array_elements(x->'problems') p) || ']', ''),
+                                  ' | ' ORDER BY (x->>'line')::int)
+                  FROM jsonb_array_elements(res) x)
+            || ' || preview upload ' || coalesce((SELECT max(x->>'upload_id') FROM jsonb_array_elements(res) x), 'none')
+            || ', ' || CASE WHEN before_n = after_n AND audit_before = audit_after THEN 'nothing written' ELSE 'WROTE ' || before_n || ' -> ' || after_n END;
+    -- the commit
+    SELECT jsonb_agg(to_jsonb(r) ORDER BY r.line) INTO res
+      FROM admissions.de_upload_record('9773/9774', 'C73770', v_rows, 'check.xlsx', NULL, who, 'academic', true) r;
+    committed := (SELECT string_agg((x->>'line') || ':' || (x->>'outcome'), ' ' ORDER BY (x->>'line')::int) FROM jsonb_array_elements(res) x)
+              || ' upload ' || CASE WHEN (SELECT count(DISTINCT x->>'upload_id') FROM jsonb_array_elements(res) x) = 1
+                                    AND (SELECT min(x->>'upload_id') FROM jsonb_array_elements(res) x) IS NOT NULL THEN 'set' ELSE 'not set' END;
+    facts := (SELECT string_agg(right(d.jamb_key, 2) || '=' || d.basis || ':' || d.source || ':'
+                                || (SELECT count(*) FROM admissions.de_award_subject y WHERE y.award_id = d.id)
+                                || CASE WHEN d.id = man_jupeb THEN ':kept its id' ELSE '' END, ' ' ORDER BY d.jamb_key, d.basis)
+                FROM admissions.de_award d WHERE d.session = '9773/9774')
+          || ' | NCE ' || (SELECT s.points || '/' || s.max_points || ' ' || s.discipline FROM admissions.de_award_scores('9773/9774', ARRAY[k || '04']) s)
+          || ' | upload ' || (SELECT u.rows_read || ' read, ' || u.rows_recorded || ' recorded, ' || u.rows_unchanged || ' unchanged, ' || u.rows_skipped
+                                     || ' skipped, ' || u.rows_repeated || ' repeated' FROM admissions.de_upload u WHERE u.id <> up0)
+          || ' | caps ' || (SELECT string_agg(right(v.jamb_key, 2) || ' ' || v.qualification || ' ' || v.caps_grade || ' ' || v.age, ', ') FROM admissions.de_caps_value v);
+    SELECT e->>'status' INTO de_info FROM admissions.evaluate_programme('9773/9774', k || '08', 'C00019', 'DIRECT_ENTRY') ev, jsonb_array_elements(ev.checks) e
+     WHERE e->>'kind' = 'DE_COMBINATION';
+    -- the same file again changes nothing
+    uploads_before := (SELECT count(*) FROM admissions.de_upload);
+    audit_before := (SELECT count(*) FROM audit.entries e WHERE e.subject_type IN ('admissions.de_award', 'admissions.de_award_subject', 'admissions.de_caps_value', 'admissions.de_upload'));
+    SELECT jsonb_agg(to_jsonb(r) ORDER BY r.line) INTO res
+      FROM admissions.de_upload_record('9773/9774', 'C73770', v_rows, 'check.xlsx', NULL, who, 'academic', true) r;
+    audit_after := (SELECT count(*) FROM audit.entries e WHERE e.subject_type IN ('admissions.de_award', 'admissions.de_award_subject', 'admissions.de_caps_value', 'admissions.de_upload'));
+    again := (SELECT string_agg((x->>'line') || ':' || (x->>'outcome'), ' ' ORDER BY (x->>'line')::int) FROM jsonb_array_elements(res) x)
+          || ' upload ' || coalesce((SELECT max(x->>'upload_id') FROM jsonb_array_elements(res) x), 'none')
+          || ', uploads ' || uploads_before || ' -> ' || (SELECT count(*) FROM admissions.de_upload) || ', audit ' || (audit_after - audit_before) || ' more';
+    msg := preview || ' || ' || committed || ' || ' || facts || ' || evaluate ' || coalesce(de_info, '-') || ' || again ' || again;
+    RAISE EXCEPTION 'the V773 upload check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V773 upload check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V773: the upload records each candidate''s qualification once — a hand-typed one of another kind kept, the same kind and an earlier upload''s replaced — lists every problem, writes nothing on a preview, and the same file twice changes nothing',
+      coalesce(msg = '5:RECORDED'
+                     || ' | 6:RECORDED'
+                     || ' | 7:RECORDED'
+                     || ' | 8:RECORDED [WARNING On JAMB''s list under LL.B (LAW) (C00033), not DOCTOR OF PHARMACY]'
+                     || ' | 9:RECORDED [WARNING Biology named twice; the first recorded]'
+                     || ' | 10:RECORDED [WARNING Grade not read: Biology A1; WARNING Age not read: twenty]'
+                     || ' | 11:RECORDED [WARNING Qualification type blank in CAPS (recorded as Not stated)]'
+                     || ' | 12:RECORDED [WARNING On JAMB''s list under B.Sc. ACCOUNTING (C00019), not DOCTOR OF PHARMACY]'
+                     || ' | 13:SKIPPED [ERROR Not on JAMB''s live Direct Entry list for 9773/9774]'
+                     || ' | 14:SKIPPED [ERROR On JAMB''s list for 9773/9774 as UTME, not Direct Entry]'
+                     || ' | 15:SKIPPED [ERROR Qualification type not read: Higher Something]'
+                     || ' | 16:SKIPPED [ERROR REG NO. on lines 16, 17 with different details; none of them recorded]'
+                     || ' | 17:SKIPPED [ERROR REG NO. on lines 16, 17 with different details; none of them recorded]'
+                     || ' | 18:REPEATED [WARNING Repeated row: recorded once]'
+                     || ' || preview upload none, nothing written'
+                     || ' || 5:RECORDED 6:RECORDED 7:RECORDED 8:RECORDED 9:RECORDED 10:RECORDED 11:RECORDED 12:RECORDED 13:SKIPPED 14:SKIPPED 15:SKIPPED 16:SKIPPED 17:SKIPPED 18:REPEATED upload set'
+                     || ' || 01=JUPEB:UPLOAD:3:kept its id 02=A_LEVEL:MANUAL:3 02=DEGREE:UPLOAD:0 03=JUPEB:UPLOAD:3 04=NCE:UPLOAD:3 05=JUPEB:UPLOAD:2 06=A_LEVEL:UPLOAD:3'
+                     || ' 07=NOT_STATED:UPLOAD:3 08=DEGREE:UPLOAD:0'
+                     || ' | NCE 9/15 English / Education'
+                     || ' | upload 14 read, 8 recorded, 0 unchanged, 5 skipped, 1 repeated'
+                     || ' | caps 01 JUPEB - A''Level 10 20'
+                     || ' || evaluate INFO'
+                     || ' || again 5:UNCHANGED 6:UNCHANGED 7:UNCHANGED 8:UNCHANGED 9:UNCHANGED 10:UNCHANGED 11:UNCHANGED 12:UNCHANGED 13:SKIPPED 14:SKIPPED 15:SKIPPED 16:SKIPPED 17:SKIPPED 18:REPEATED upload none, uploads 2 -> 2, audit 0 more', false), msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

@@ -3,7 +3,10 @@
 /** Direct Entry screening for a programme: the DE applicants and the subject gate's verdict (V200),
  *  with inline capture of each candidate's prior-qualification subjects. Separate from the UTME merit
  *  list — DE carries no CAPS subjects, so it is checked against what an officer reads off the award.
- *  Screening-only: this reports, it does not gate the offer decision. */
+ *  Screening-only: this reports, it does not gate the offer decision.
+ *  V773: a whole list's qualifications uploaded at once from CAPS's grade windows (DeUpload), a degree or
+ *  diploma recorded as its discipline and class, and a candidate on JAMB's list who has not registered
+ *  found by REG NO. to be corrected. */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -13,6 +16,8 @@ import { Btn, Note, Panel, PBody, Pil, RoleLine, Tiles, Two } from "@/components
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
+import { DE_BASIS_LABEL, isClassKind, type DeBasis } from "@/lib/de-candidates";
+import { DeUpload, type DeLookup } from "./DeUpload";
 
 export interface ProgrammeOption { code: string; name: string; facultyName: string; archived: boolean }
 export interface DeRow {
@@ -21,10 +26,43 @@ export interface DeRow {
 }
 export interface DeView { session: string; programme: string; counts: { pool: number; met: number; shortfall: number; unverified: number }; rows: DeRow[] }
 interface DeSubject { subject: string; grade: string | null }
-interface DeAward { id: string; basis: string; awarded_year: number | null; institution: string | null; subjects: DeSubject[] }
+interface DeAward {
+  id: string; basis: string; awarded_year: number | null; institution: string | null; subjects: DeSubject[];
+  /** V773: a degree or diploma's discipline and class, the exam/matric number, and whether it was typed here or uploaded */
+  discipline?: string | null; award_class?: string | null; exam_no?: string | null; source?: "MANUAL" | "UPLOAD" | string | null;
+}
+/** the candidate a record is for: a row of the screening list, or one found on JAMB's list by REG NO. */
+interface Who { jamb_key: string; jamb_reg_no: string; name: string }
 
-const BASES = ["A_LEVEL", "IJMB", "JUPEB", "NCE", "ND", "HND"] as const;
-const basisLabel = (b: string) => (b === "A_LEVEL" ? "’A’ Level" : b);
+/** the bases an officer may type (V773: a degree, a foreign degree, a University Diploma added); "Not stated" and "Not available"
+ *  are what an upload recorded from CAPS, shown and removable, never typed */
+const BASES: DeBasis[] = ["A_LEVEL", "IJMB", "JUPEB", "NCE", "ND", "HND", "DEGREE", "DEGREE_FOREIGN", "UNIVERSITY_DIPLOMA"];
+const basisLabel = (b: string) => DE_BASIS_LABEL[b as DeBasis] ?? b;
+/** each class kind's classes, for the Class field's suggestions */
+const CLASS_NAMES: Record<string, string[]> = {
+  DEGREE: ["First Class", "2nd Class Upper", "2nd Class Lower", "3rd Class", "Pass"],
+  DEGREE_FOREIGN: ["First Class", "2nd Class Upper", "2nd Class Lower", "3rd Class", "Pass"],
+  UNIVERSITY_DIPLOMA: ["Distinction", "Credit", "Merit", "Pass"],
+  HND: ["Distinction", "Upper Credit", "Lower Credit", "Pass"],
+  ND: ["Distinction", "Upper Credit", "Lower Credit", "Pass"],
+};
+/** the capture form's fields */
+interface Form { basis: string; year: string; institution: string; subjects: string; discipline: string; awardClass: string; examNo: string }
+const BLANK: Form = { basis: "A_LEVEL", year: "", institution: "", subjects: "", discipline: "", awardClass: "", examNo: "" };
+/** the form filled from an award on file; a degree or diploma typed before V773 as one subject row reads its subject as the
+ *  discipline and its grade as the class */
+function formOf(a: DeAward): Form {
+  const legacy = isClassKind(a.basis) ? a.subjects[0] : undefined;
+  return {
+    basis: a.basis, year: a.awarded_year ? String(a.awarded_year) : "", institution: a.institution ?? "",
+    subjects: a.subjects.map((s) => (s.grade ? `${s.subject} = ${s.grade}` : s.subject)).join("\n"),
+    discipline: a.discipline ?? legacy?.subject ?? "", awardClass: a.award_class ?? legacy?.grade ?? "", examNo: a.exam_no ?? "",
+  };
+}
+/** what is on file for an award, in a line */
+const awardWords = (a: DeAward) => isClassKind(a.basis)
+  ? [a.discipline, a.award_class].filter(Boolean).join(" · ") || a.subjects.map((s) => (s.grade ? `${s.subject} ${s.grade}` : s.subject)).join(", ") || "—"
+  : a.subjects.map((s) => (s.grade ? `${s.subject} ${s.grade}` : s.subject)).join(", ") || "—";
 const STATUS: Record<string, { kind: "ok" | "bad" | "warn" | "grey"; label: string }> = {
   MET: { kind: "ok", label: "Meets DE subjects" },
   SHORT: { kind: "bad", label: "Short of subjects" },
@@ -76,16 +114,15 @@ function ProgrammePicker({ programmes, chosen, onPick }: { programmes: Programme
 }
 
 /** The capture form for one candidate's Direct Entry award, prefilled from what is on file. */
-function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: DeRow; mayEdit: boolean; onDone: () => void }) {
+function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: Who; mayEdit: boolean; onDone: () => void }) {
   const [loaded, setLoaded] = useState<DeAward[] | null>(null);
-  const [basis, setBasis] = useState<string>("A_LEVEL");
-  const [year, setYear] = useState("");
-  const [institution, setInstitution] = useState("");
-  const [subjects, setSubjects] = useState("");
+  const [form, setForm] = useState<Form>(BLANK);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const { basis, year, institution, subjects, discipline, awardClass, examNo } = form;
+  const set = (patch: Partial<Form>) => setForm({ ...form, ...patch });
 
-  // load what is on file when the row is opened, and prefill from the first award
+  // load what is on file when the row is opened, and prefill from the first award an officer may type
   useEffect(() => {
     let live = true;
     (async () => {
@@ -95,13 +132,8 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
         const arr = Array.isArray(j) ? j : [];
         if (!live) return;
         setLoaded(arr);
-        const a = arr[0];
-        if (a) {
-          setBasis(a.basis);
-          setYear(a.awarded_year ? String(a.awarded_year) : "");
-          setInstitution(a.institution ?? "");
-          setSubjects(a.subjects.map((s) => (s.grade ? `${s.subject} = ${s.grade}` : s.subject)).join("\n"));
-        }
+        const a = arr.find((x) => BASES.includes(x.basis as DeBasis));
+        if (a) setForm(formOf(a));
       } catch {
         if (live) setLoaded([]);
       }
@@ -110,6 +142,12 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
   }, [session, row.jamb_key]);
 
   const onFile = (loaded ?? []).find((a) => a.basis === basis);
+  const classKind = isClassKind(basis);
+  /** a basis chosen: what is on file under it, if anything, fills the form */
+  function choose(b: string) {
+    const a = (loaded ?? []).find((x) => x.basis === b);
+    setForm(a ? formOf(a) : { ...form, basis: b });
+  }
 
   function parseSubjects(): DeSubject[] {
     return subjects.split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -121,37 +159,45 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
   }
 
   async function save() {
-    const subs = parseSubjects();
-    if (!subs.length) { setProblem({ status: 400, title: "Enter at least one subject" }); notifyProblem({ status: 400, title: "Enter at least one subject" }); return; }
+    const subs = classKind ? [] : parseSubjects();
+    // as the server's DE_AWARD_EMPTY: a degree or diploma needs its discipline or its class; an A'Level or NCE at least one subject
+    const empty = classKind ? !discipline.trim() && !awardClass.trim() : !subs.length;
+    if (empty) {
+      const refusal = { status: 400, title: classKind ? "Enter the discipline or the class" : "Enter at least one subject" };
+      setProblem(refusal); notifyProblem(refusal);
+      return;
+    }
     setBusy(true);
     setProblem(null);
     try {
       const r = await fetch("/api/bff/api/v1/admissions/de-awards", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Direct Entry subjects recorded for ${row.surname}, ${row.other_names} (${row.jamb_reg_no})`) },
-        body: JSON.stringify({ session, jambKey: row.jamb_key, basis, awardedYear: year.trim() ? Number(year.trim()) : null, institution: institution.trim() || null, subjects: subs }),
+        headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Direct Entry qualification recorded for ${row.name} (${row.jamb_reg_no})`) },
+        body: JSON.stringify({
+          session, jambKey: row.jamb_key, basis, awardedYear: year.trim() ? Number(year.trim()) : null, institution: institution.trim() || null, subjects: subs,
+          discipline: classKind ? discipline.trim() || null : null, awardClass: classKind ? awardClass.trim() || null : null, examNo: examNo.trim() || null,
+        }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) { setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      notify(`Direct Entry subjects saved for ${row.surname}, ${row.other_names}`);
+      notify(`Direct Entry qualification saved for ${row.name}`);
       onDone();
     } finally {
       setBusy(false);
     }
   }
 
-  async function remove() {
-    if (!onFile) return;
-    if (!window.confirm(`Remove the ${basisLabel(basis)} record for ${row.surname}, ${row.other_names}?`)) return;
+  async function remove(a: DeAward) {
+    if (!window.confirm(`Remove the ${basisLabel(a.basis)} record for ${row.name}?`)) return;
     setBusy(true);
     setProblem(null);
     try {
-      const r = await fetch(`/api/bff/api/v1/admissions/de-awards/${onFile.id}`, {
+      const r = await fetch(`/api/bff/api/v1/admissions/de-awards/${a.id}`, {
         method: "DELETE",
-        headers: { "X-Reason": reasonHeader(`Direct Entry ${basisLabel(basis)} record removed for ${row.jamb_reg_no}`) },
+        headers: { "X-Reason": reasonHeader(`Direct Entry ${basisLabel(a.basis)} record removed for ${row.jamb_reg_no}`) },
       });
       if (!r.ok) { const j = await r.json().catch(() => null); setProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); notifyProblem(j && typeof j === "object" && "status" in j ? (j as Problem) : { status: r.status, title: r.statusText }); return; }
-      notify(`Record removed for ${row.surname}, ${row.other_names}`);
+      notify(`Record removed for ${row.name}`);
       onDone();
     } finally {
       setBusy(false);
@@ -163,28 +209,53 @@ function CaptureForm({ session, row, mayEdit, onDone }: { session: string; row: 
   return (
     <PBody>
       {problem ? <ProblemNotice problem={problem} /> : null}
+      {loaded.length ? (
+        <div className="mb-3">
+          <DTable noPrint cols={["On file", "Qualification", "Year · exam no.|mid", "Source|mid", "|num"]} rows={loaded.map((a) => [
+            <strong key="b">{basisLabel(a.basis)}</strong>,
+            <span className="sub2" key="w">{awardWords(a)}</span>,
+            <span className="sub2 tnum" key="y">{[a.awarded_year, a.exam_no].filter(Boolean).join(" · ") || "—"}</span>,
+            a.source === "UPLOAD" ? <Pil kind="info" key="s">Uploaded</Pil> : <Pil kind="grey" key="s">Typed</Pil>,
+            mayEdit ? <Btn kind="ghost" key="r" disabled={busy} onClick={() => void remove(a)}>Remove</Btn> : <span key="r" />,
+          ])} />
+        </div>
+      ) : null}
       <div className="grid grid--2 rfgrid">
         <Field id="de-basis" label="Qualification (basis)">
-          <select id="de-basis" className="ctl" value={basis} disabled={!mayEdit} onChange={(e) => setBasis(e.target.value)}>
+          <select id="de-basis" className="ctl" value={basis} disabled={!mayEdit} onChange={(e) => choose(e.target.value)}>
             {BASES.map((b) => <option key={b} value={b}>{basisLabel(b)}</option>)}
           </select>
         </Field>
         <Field id="de-year" label="Year awarded" hint="Optional">
-          <input id="de-year" className="ctl tnum" inputMode="numeric" value={year} disabled={!mayEdit} onChange={(e) => setYear(e.target.value)} placeholder="2024" autoComplete="off" />
+          <input id="de-year" className="ctl tnum" inputMode="numeric" value={year} disabled={!mayEdit} onChange={(e) => set({ year: e.target.value })} placeholder="2024" autoComplete="off" />
         </Field>
-        <Field id="de-inst" label="Awarding body / institution" hint="Optional" full>
-          <input id="de-inst" className="ctl" value={institution} disabled={!mayEdit} onChange={(e) => setInstitution(e.target.value)} placeholder="e.g. IJMB, Ahmadu Bello University" autoComplete="off" />
+        <Field id="de-inst" label="Awarding body / institution" hint="Optional">
+          <input id="de-inst" className="ctl" value={institution} disabled={!mayEdit} onChange={(e) => set({ institution: e.target.value })} placeholder="e.g. IJMB, Ahmadu Bello University" autoComplete="off" />
         </Field>
-        <Field id="de-subs" label="Subjects offered" hint="One per line · add the grade after “=”, “:” or “,” (e.g. Physics = A) · the gate reads the subjects" full>
-          <textarea id="de-subs" className="ctl" rows={4} value={subjects} disabled={!mayEdit} onChange={(e) => setSubjects(e.target.value)} placeholder={"Physics = A\nChemistry = B\nBiology = C"} />
+        <Field id="de-exam" label="Exam / matric no." hint="Optional">
+          <input id="de-exam" className="ctl tnum" value={examNo} disabled={!mayEdit} onChange={(e) => set({ examNo: e.target.value })} autoComplete="off" />
         </Field>
+        {classKind ? (
+          <>
+            <Field id="de-disc" label="Discipline" hint="As the certificate names it (e.g. Biochemistry, Pharmaceutical Technology)">
+              <input id="de-disc" className="ctl" value={discipline} disabled={!mayEdit} onChange={(e) => set({ discipline: e.target.value })} autoComplete="off" />
+            </Field>
+            <Field id="de-class" label="Class" hint="Choose or type the class awarded">
+              <input id="de-class" className="ctl" list="de-class-names" value={awardClass} disabled={!mayEdit} onChange={(e) => set({ awardClass: e.target.value })} autoComplete="off" />
+              <datalist id="de-class-names">{(CLASS_NAMES[basis] ?? []).map((c) => <option key={c} value={c} />)}</datalist>
+            </Field>
+          </>
+        ) : (
+          <Field id="de-subs" label="Subjects offered" hint="One per line · add the grade after “=”, “:” or “,” (e.g. Physics = A) · the gate reads the subjects" full>
+            <textarea id="de-subs" className="ctl" rows={4} value={subjects} disabled={!mayEdit} onChange={(e) => set({ subjects: e.target.value })} placeholder={"Physics = A\nChemistry = B\nBiology = C"} />
+          </Field>
+        )}
       </div>
       {mayEdit ? (
         <div className="row">
           <Btn kind="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : onFile ? "Update the record" : "Save the record"}</Btn>
-          {onFile ? <Btn kind="ghost" disabled={busy} onClick={() => void remove()}>Remove</Btn> : null}
           <span className="grow" />
-          <span className="sub2">Recorded subjects are checked against the programme&rsquo;s DE requirement.</span>
+          <span className="sub2">{classKind ? "A degree or diploma is read by its discipline and class." : "Recorded subjects are checked against the programme’s DE requirement."}</span>
         </div>
       ) : <div className="sub2">You can view what is on file; recording is the Admissions Office&rsquo;s.</div>}
     </PBody>
@@ -199,6 +270,8 @@ export function DeScreening({ session, programme, programmes, view, problem, act
   const chosen = programmes.find((p) => p.code === programme);
   const mayEdit = ["academic", "registrar"].includes(actingOffice ?? "");
   const [openRow, setOpenRow] = useState<string | null>(null);
+  // V773: a candidate on JAMB's live Direct Entry list found by REG NO. — registered or not, whatever programme is chosen
+  const [found, setFound] = useState<DeLookup | null>(null);
 
   return (
     <>
@@ -207,6 +280,19 @@ export function DeScreening({ session, programme, programmes, view, problem, act
       <Note kind="info" title="Direct Entry is screened on its own, not on UTME subjects">
         Checked against the programme&rsquo;s <b>Direct Entry subject set</b> from the certificate subjects recorded below. It reports; it does not gate the Board&rsquo;s decision.
       </Note>
+
+      <DeUpload session={session} programme={programme} mayUpload={mayEdit} onFound={(c) => { setOpenRow(null); setFound(c); }} onRecorded={() => router.refresh()} />
+
+      {found ? (
+        <Panel title={`Direct Entry record — ${found.name ?? found.regNo}`} right={<span className="row row--inline">
+          <span className="tnum sub2">{found.regNo}{found.programme ? ` · ${found.programme}` : ""}</span>
+          {found.registered ? <Pil kind="ok">Registered</Pil> : <Pil kind="grey">Not registered on the portal</Pil>}
+          <Btn kind="ghost" onClick={() => setFound(null)}>Close</Btn>
+        </span>}>
+          <CaptureForm key={found.jambKey} session={session} row={{ jamb_key: found.jambKey, jamb_reg_no: found.regNo, name: found.name ?? found.regNo }} mayEdit={mayEdit}
+            onDone={() => { setFound(null); router.refresh(); }} />
+        </Panel>
+      ) : null}
 
       <Panel title="Choose a programme" right={`${session}`}>
         <div className="card__body row row--end">
@@ -237,7 +323,7 @@ export function DeScreening({ session, programme, programmes, view, problem, act
                     <span className="tnum" key="l">{r.entry_level}</span>,
                     r.has_data ? <Pil kind="ok" key="d">On file</Pil> : <Pil kind="grey" key="d">None</Pil>,
                     <Pil kind={st.kind} key="s">{st.label}</Pil>,
-                    <Btn kind="ghost" key="a" onClick={() => setOpenRow(openRow === r.app_id ? null : r.app_id)}>{openRow === r.app_id ? "Close" : r.has_data ? "Edit subjects" : "Enter subjects"}</Btn>,
+                    <Btn kind="ghost" key="a" onClick={() => { setFound(null); setOpenRow(openRow === r.app_id ? null : r.app_id); }}>{openRow === r.app_id ? "Close" : r.has_data ? "Edit subjects" : "Enter subjects"}</Btn>,
                   ];
                 })}
                 texts={view.rows.map((r) => `${r.surname} ${r.other_names} ${r.jamb_reg_no} ${r.status}`)}
@@ -250,7 +336,8 @@ export function DeScreening({ session, programme, programmes, view, problem, act
             if (!r) return null;
             return (
               <Panel title={`Direct Entry record — ${r.surname}, ${r.other_names}`} right={<span className="tnum sub2">{r.jamb_reg_no}</span>}>
-                <CaptureForm session={session} row={r} mayEdit={mayEdit} onDone={() => { setOpenRow(null); router.refresh(); }} />
+                <CaptureForm key={r.jamb_key} session={session} row={{ jamb_key: r.jamb_key, jamb_reg_no: r.jamb_reg_no, name: `${r.surname}, ${r.other_names}` }} mayEdit={mayEdit}
+                  onDone={() => { setOpenRow(null); router.refresh(); }} />
               </Panel>
             );
           })() : null}

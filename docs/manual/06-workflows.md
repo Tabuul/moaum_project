@@ -34,6 +34,7 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 2.13 The admission lifecycle after the offer: acceptance, online screening, change of programme, fees, registration, matriculation (V269)
    - 2.14 Admission Status Checking (V295)
    - 2.15 Programme changes and the admission correction (V297)
+   - 2.16 Direct Entry candidates with their qualifications (V773)
 3. [Postgraduate admission, research and external examiners](#3-postgraduate-admission-research-and-external-examiners)
    - 3.1 Postgraduate admission
    - 3.2 Coursework registration and results
@@ -261,7 +262,8 @@ Intake (`people.intake(session)`) is run from Report on Admissions `/admissions`
 | CAPS load | The Direct Entry card loads without the load cut-off and without programme-code resolution |
 | Merit list | Excluded ("UTME only for now", V182) and skipped by "Record the merit list" |
 | Screening score | Appears on Compute PUTME Score (O'Level computed); a DE candidate may also sit the CBT if the programme is exam-screened |
-| Qualification capture | Direct Entry Screening `/admissions/de-screening`: basis A_LEVEL / IJMB / JUPEB / NCE / ND / HND, year, awarding body, subjects with grades (`de_award`, `de_award_subject`); status NO_RULE / UNVERIFIED / MET / SHORT from `de_screening`; gate `de_meets_combination` (no rule or no subjects → pass) |
+| Qualification capture | Direct Entry Screening `/admissions/de-screening`: by hand, basis A_LEVEL / IJMB / JUPEB / NCE / ND / HND and (V773) DEGREE / DEGREE_FOREIGN / UNIVERSITY_DIPLOMA, year, awarding body, exam or matric number, subjects with grades for an A'Level or NCE, discipline and class for a degree or diploma (`de_award`, `de_award_subject`); or (V773) from the CAPS grade windows uploaded in the Direct Entry candidates layout, which may also record NOT_STATED and NOT_AVAILABLE (§2.16); status NO_RULE / UNVERIFIED / MET / SHORT from `de_screening` (a degree or diploma with a discipline or class counts as captured); gate `de_meets_combination` (no rule or no subjects → pass) |
+| Ranking | The JAMB return's Direct Entry list (V764) and the Direct Entry candidates workbook (V773) rank by the score of the qualification that counts — its points as a percentage of its own maximum, every qualification together, ties by name (§2.16) |
 | Offer | Entered manually on the desk ("The Board's decision") or arrives through the JAMB status list |
 | Reconcile | "Direct Entry candidate entered at the wrong level" blocks a commit |
 
@@ -344,6 +346,36 @@ Every change of programme is one `admissions.programme_change_request`; which ro
 | Register | every reader (`programme_change_register`) | — | — | — | — | — |
 
 The fees paid are never moved or refunded by the correction: they stay on the student and `finance.position` reads them against the new programme's charges (`finance.charges_as` reads the schedule for a programme named, the same reading as `finance.charges`); a balance is paid in the ordinary way, an excess credited or refunded by the Bursary. Tested by `db/check.sql` (V297) and `ProgrammeCorrectionIT`.
+
+### 2.16 Direct Entry candidates with their qualifications (V773)
+
+The Admissions Committee screens Direct Entry from a workbook it builds out of CAPS's grade windows: every candidate on JAMB's Direct Entry list for a programme, the qualification each holds, its points, a preliminary fit for the programme and the O'Level. The portal reads that workbook (the upload), records each candidate's qualification, and makes the same workbook for every programme (the download), with the rules for the fit held on Admission Settings. The University's decisions of 15 November 2026: the upload and the download in the workbooks' layout, the JAMB return kept with its sheets; every qualification ranked together by its score; the fit set per programme and never a decision; every candidate on JAMB's live list a row, registered or not; every Direct Entry programme, not only those whose workbooks were given.
+
+```text
+CAPS grade windows (.xlsx, the Direct Entry candidates layout)
+ → parsed in the browser (lib/de-candidates.ts)
+ → preview: de_upload_record(…, commit false)  RECORDED | UNCHANGED | SKIPPED | REPEATED, with problems — nothing written
+ → Record n: de_upload_record(…, commit true)  de_upload · de_award (source UPLOAD) · de_award_subject · de_caps_value
+ → corrections: by hand (POST /de-awards; a candidate found by REG NO.) or a corrected re-upload
+ → de_candidates(session, programme): score · fit (de_fit_of under de_fit_rules) · O'Level check
+ → workbook DE Candidates · Summary · Fit Criteria (one programme, or every programme in a ZIP)
+```
+
+| Stage | Who starts / acts | Precondition / validation | Data created / changed | Status change | Notification | Document generated | On refusal / problem |
+|---|---|---|---|---|---|---|---|
+| Set the fit rules | Academic Office, Registrar, Deputy Registrar (`SECRETARIAT`) on Admission Settings → Direct Entry fit | Six qualifications each once (`ADM_DE_FIT_KINDS`); thresholds a class the qualification can reach (`ADM_DE_FIT_RANGE`), Relevant not below Partly relevant (`ADM_DE_FIT_ORDER`), "any other discipline" one of four (`ADM_DE_FIT_OTHER`), the A'Level card's passes (`ADM_DE_FIT_PASSES`), lists of 1–60 (`ADM_DE_FIT_LIST`); DRAFT or in force | `admissions.de_fit_rule` — the University's default (programme NULL) or a programme's own, six rows replacing the six before; seeded for 2026/2027 (the default and DOCTOR OF PHARMACY's own); copied by "Begin from {previous}" | — | none | — | 422 with the code; a session that states none reads the built-in default |
+| Preview an upload | Academic Office, Registrar (`LOADERS`) on Direct Entry Screening, choosing the file | the header row found ("S/N" in column A and a REG NO. column); rows 1–2,000; a row with content and no REG NO. reported by the browser ("Line n: REG NO. blank; not sent") | nothing (read-only transaction) | each row RECORDED / UNCHANGED / SKIPPED / REPEATED | none | — | ERRORs (row skipped): "Not on JAMB's live Direct Entry list for {session}", "On JAMB's list for {session} as {mode}, not Direct Entry", "Qualification type not read: …", "REG NO. on lines … with different details; none of them recorded"; WARNINGs (row recorded): under another programme than the one chosen, a grade or class not read, a discipline or class not given, a subject named twice (the first kept; an NCE keeps both), type blank (Not stated), grade window empty (Not available), a repeated row |
+| Record | the same, "Record {n}" | as the preview — the same decision for every row | only the RECORDED rows: one `de_upload`; the candidate's `de_award` of the same basis updated in place (whatever its source) or inserted, `source` UPLOAD; other uploaded awards of the candidate removed; hand-typed awards of another basis kept; `de_caps_value` replaced when the file's CAPS values differ; V266's `eligibility_touched` marks the candidate's evaluations stale | `de_award.source` MANUAL → UPLOAD where replaced | none | — | 422 `ADM_DE_UPLOAD_OFFICE` for a person who holds the office and is acting as another; nothing written — not even `de_upload` — when no row is RECORDED: the same file twice is a no-op; a candidate absent from a later file is left as recorded |
+| Correct by hand | Academic Office, Registrar on the capture form (from the screening list, or for a candidate found by REG NO. on JAMB's Direct Entry list, registered or not) | `DE_AWARD_EMPTY` ("A degree or diploma needs its discipline or its class; an A'Level or NCE at least one subject."); a subject typed twice kept once, except on an NCE | `de_award` (`source` MANUAL), `de_award_subject` with places | — | none | — | 404 "a Direct Entry candidate on JAMB's list with REG NO. …"; an uploaded NOT_STATED / NOT_AVAILABLE award may be removed, not typed |
+| Download | any admissions reader (academic, registrar, dregistrar, records, bursar, ict, admin, super) on `/admissions`, "Direct Entry candidates with qualifications" | a programme with a live Direct Entry row (else an empty sheet); the session's policy read whatever its state | — | — | none | DE Candidates, Summary, Fit Criteria; every programme: a ZIP with the summary by programme | 404 for an unknown programme; 403 for another office |
+
+*The score.* Each qualification is scored on its own scale and the highest score counts: A'Level, IJMB and JUPEB, the three subjects at A 5 … E 1 (A* as A) plus 1 when none is a fail, of 16; a degree, First Class 5 … Pass 1, of 5; HND, Distinction 5 … Pass 2, of 5; ND, Distinction 4 … Pass 1, of 4; University Diploma, Distinction 4, Credit 3, Merit 2, Pass 1, of 4; NCE, three subjects at Distinction 5, Credit 4, Merit 3, Pass 2, of 15. Score = points × 100 / maximum, to two decimals. No grades released, no score: the row stands after those with one, and an uncaptured candidate last. The JAMB return's Direct Entry list is ranked the same way; its qualified test, reasons and decisions are unchanged.
+
+*The fit* (Relevant, Partly relevant, Not relevant, Check manually) is read from the qualification that counts against the programme's own rule, else the University's default (02 §2.13.9); nothing else reads it — not the rank, the qualified test, the eligibility engine or the Board's decision. *The O'Level check* — "No O'Level on record: candidate must upload/verify results", "Awaiting result (A/R) in …", "Credits spread over n sittings (max m allowed)", "No credit in …", "Only n credits; m required", else "Credits in … (n sitting|sittings)" — asks for the session's compulsory subjects (matched by subject: Literature in English is not English Language) and the programme's `OLEVEL_REQUIRED` subjects, which V773 does not set (the Academic Office's, since the eligibility engine reads them for every entry mode); it never changes the fit.
+
+*The eligibility engine.* Under a programme's Direct Entry subject set, a candidate whose award is a degree, diploma, ND or HND with a discipline or class reads a `DE_COMBINATION` check of status INFO ("a degree or diploma: the A'Level subjects are not checked"), not UNVERIFIED (`evaluate_programme`).
+
+Tested by `db/check.sql` (the V773 block) and `DeCandidatesIT` (the fit rules and their refusals, the preview that writes nothing, the record and the same file again, the rows and their order, the lookup, the copy to a new session, the offices refused); `DeAdmissionTemplateIT` for the return's new order.
 
 ---
 ## 3. Postgraduate admission, research and external examiners

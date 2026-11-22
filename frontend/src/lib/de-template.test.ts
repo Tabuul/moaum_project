@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DE_COLS, deFileName, deLine, deRemark, deSheets, mergeDeTemplates, type DeRow, type DeTemplate } from "./de-template.ts";
+import { DE_BASIS, DE_COLS, DE_RANKING_NOTE, deFileName, deLine, dePoints, deRemark, deSheets, mergeDeTemplates, type DeRow, type DeTemplate } from "./de-template.ts";
 
 /** a made-up Direct Entry applicant, as GET …/de-template gives one */
 const row = (r: Partial<DeRow>): DeRow => ({
@@ -59,7 +59,7 @@ test("the workbook: the summary with the Direct Entry share, then the merit list
   assert.deepEqual(summary[8], [1, "Total Applicants", 9]);
   assert.deepEqual(summary[13], [6, "DE Quota (20%)", 2]);
   assert.ok(summary.some((r) => r[1] === "National Merit"), "the quota distribution over the Direct Entry share");
-  assert.ok(summary.some((r) => typeof r[1] === "string" && r[1].startsWith("By the points of the qualification that counts")), "the ranking rule said");
+  assert.ok(summary.some((r) => typeof r[1] === "string" && r[1].startsWith("By the score of the qualification that counts: candidates are ranked by Total Weighted Score")), "the ranking rule said");
   const names = (i: number) => sheets[i][1].slice(8).map((r) => r[3]);
   assert.deepEqual(names(1), ["CHECKV764 D2"]);
   assert.deepEqual(names(2), ["CHECKV764 D1"]);
@@ -85,4 +85,27 @@ test("the whole session: each programme's summary added up, a ratio only when ev
   assert.equal(sheets[0][1][13][1], "DE Quota");
   assert.equal(deFileName(a), "DE ADMISSION TEMPLATE B Sc ACCOUNTING 9764-9765.xlsx");
   assert.equal(deFileName({ programme: "", session: "2026/2027" }), "DE ADMISSION TEMPLATE ALL PROGRAMMES 2026-2027.xlsx");
+});
+
+test("V773: DE POINTS shows the score beside the points, so the order by score reads off the sheet; an API without the maximum keeps the bare points", () => {
+  assert.equal(dePoints({ points: 15, maxPoints: 16, score: 93.75 }), "15/16 (93.75%)");
+  assert.equal(dePoints({ points: 5, maxPoints: 5, score: 100 }), "5/5 (100.00%)");
+  assert.equal(dePoints({ points: 10, maxPoints: 16, score: 62.5 }), "10/16 (62.50%)");
+  assert.equal(dePoints({ points: 12 }), 12);
+  assert.equal(dePoints({ points: null, maxPoints: 16, score: null }), null);
+  const line = deLine(row({ points: 15, maxPoints: 16, score: 93.75 }), 0);
+  assert.equal(line[DE_COLS.indexOf("DE POINTS")], "15/16 (93.75%)");
+  assert.equal(deLine(row({}), 0)[DE_COLS.indexOf("DE POINTS")], 12, "bare 12 without maxPoints");
+});
+
+test("V773: the RANKING note is the score rule, the grades not read named under their column; the new bases in JAMB's words", () => {
+  assert.ok(DE_RANKING_NOTE.startsWith("By the score of the qualification that counts: candidates are ranked by Total Weighted Score — the points of the qualification that counts as a percentage of its own maximum — highest first, ties by name;"));
+  assert.ok(DE_RANKING_NOTE.includes("plus 1 when none is a fail (of 16)") && DE_RANKING_NOTE.includes("NCE, three subjects at Distinction 5, Credit 4, Merit 3, Pass 2 (of 15)"));
+  assert.ok(DE_RANKING_NOTE.endsWith("counts nothing and is named under GRADES NOT READ, with its qualification."));
+  const summary = deSheets(template([row({})]))[0][1];
+  assert.equal(summary.at(-1)?.[1], DE_RANKING_NOTE);
+  assert.deepEqual([DE_BASIS.DEGREE, DE_BASIS.DEGREE_FOREIGN, DE_BASIS.UNIVERSITY_DIPLOMA, DE_BASIS.NOT_STATED, DE_BASIS.NOT_AVAILABLE],
+    ["Degree", "Foreign degree", "University Diploma", "Not stated", "Not available"]);
+  assert.equal(DE_BASIS.A_LEVEL, "A-Level");
+  assert.equal(deLine(row({ qualification: "DEGREE", subjects: [{ subject: "Chemistry", grade: "2nd Class Upper", points: 4 }], points: 4, maxPoints: 5, score: 80 }), 0)[8], "Degree");
 });

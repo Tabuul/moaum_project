@@ -129,7 +129,8 @@ class AdmissionsController {
         return intake.deScreening(session, programme);
     }
 
-    /** the Direct Entry awards captured for a candidate — the basis and its subjects (V200) */
+    /** the Direct Entry awards captured for a candidate — the basis and its subjects (V200); V773: a degree's or diploma's discipline
+     *  and class, the exam/matric number, and whether it was typed here or uploaded (source) */
     @GetMapping("/de-awards")
     @PreAuthorize(READERS)
     List<Map<String, Object>> deAwards(@RequestParam String session, @RequestParam String jambKey) {
@@ -140,13 +141,20 @@ class AdmissionsController {
                               @jakarta.validation.constraints.Size(max = 20) String grade) {
     }
 
+    /** V773: a degree (of a Nigerian university or another country's) and a University Diploma join the bases an officer types; a
+     *  degree, a University Diploma, an ND and an HND are recorded by their discipline and class, with no subjects (the list may be
+     *  empty); the exam/matric number for every kind. What CAPS left blank or returned nothing for (NOT_STATED, NOT_AVAILABLE) is
+     *  an upload's to record, never typed. At most twenty subjects: each takes a place (ord, 1 to 20). */
     public record DeAwardIn(@jakarta.validation.constraints.NotBlank String session,
                             @jakarta.validation.constraints.NotBlank String jambKey,
-                            @jakarta.validation.constraints.Pattern(regexp = "A_LEVEL|IJMB|JUPEB|NCE|ND|HND",
-                                    message = "basis must be one of A_LEVEL, IJMB, JUPEB, NCE, ND, HND") String basis,
+                            @jakarta.validation.constraints.Pattern(regexp = "A_LEVEL|IJMB|JUPEB|NCE|ND|HND|DEGREE|DEGREE_FOREIGN|UNIVERSITY_DIPLOMA",
+                                    message = "basis must be one of A_LEVEL, IJMB, JUPEB, NCE, ND, HND, DEGREE, DEGREE_FOREIGN, UNIVERSITY_DIPLOMA") String basis,
                             @jakarta.validation.constraints.Min(1960) @jakarta.validation.constraints.Max(2100) Integer awardedYear,
                             @jakarta.validation.constraints.Size(max = 200) String institution,
-                            @jakarta.validation.constraints.NotNull @Valid List<DeSubjectIn> subjects) {
+                            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Size(max = 20) @Valid List<DeSubjectIn> subjects,
+                            @jakarta.validation.constraints.Size(max = 200) String discipline,
+                            @jakarta.validation.constraints.Size(max = 60) String awardClass,
+                            @jakarta.validation.constraints.Size(max = 60) String examNo) {
     }
 
     /** record (replace whole) a candidate's Direct Entry award and its subjects; returns the candidate's awards (V200) */
@@ -156,7 +164,8 @@ class AdmissionsController {
         List<Map<String, String>> subs = body.subjects().stream()
                 .map(s -> Map.of("subject", s.subject(), "grade", s.grade() == null ? "" : s.grade()))
                 .toList();
-        return intake.recordDeAward(body.session(), body.jambKey(), body.basis(), body.awardedYear(), body.institution(), subs);
+        return intake.recordDeAward(body.session(), body.jambKey(), body.basis(), body.awardedYear(), body.institution(),
+                body.discipline(), body.awardClass(), body.examNo(), subs);
     }
 
     /** remove one Direct Entry award (V200) */

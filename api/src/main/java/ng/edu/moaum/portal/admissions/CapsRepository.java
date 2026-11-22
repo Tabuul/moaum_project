@@ -365,43 +365,61 @@ class CapsRepository {
                 .param("s", session).param("p", programme).query().listOfRows();
     }
 
-    /** the Direct Entry awards captured for a candidate, each with its subjects and grades (V200) */
+    /** V773: the kinds of Direct Entry award held as a discipline and a class, with no subject rows — a degree (Nigerian or
+     *  foreign), a University Diploma, an ND, an HND; an A-Level, IJMB, JUPEB or NCE is held as its subjects */
+    static final java.util.Set<String> DE_CLASS_KINDS = java.util.Set.of("DEGREE", "DEGREE_FOREIGN", "UNIVERSITY_DIPLOMA", "ND", "HND");
+
+    /** the Direct Entry awards captured for a candidate, each with its subjects and grades (V200); V773: with its discipline, class,
+     *  exam/matric number and source (MANUAL typed, UPLOAD from a workbook), the subjects in their places (those typed before V773,
+     *  which have none, after them by name) — the subjects as JSON text, for the service to parse */
     java.util.List<java.util.Map<String, Object>> deAwards(String session, String jambKey) {
         return jdbc.sql("""
-                SELECT a.id, a.basis, a.awarded_year, a.institution, a.recorded_at,
+                SELECT a.id, a.basis, a.awarded_year, a.institution, a.recorded_at, a.discipline, a.award_class, a.exam_no, a.source,
                        coalesce(json_agg(json_build_object('subject', s.subject, 'grade', s.grade)
-                                ORDER BY s.subject) FILTER (WHERE s.subject IS NOT NULL), '[]') AS subjects
+                                ORDER BY s.ord NULLS LAST, s.subject) FILTER (WHERE s.subject IS NOT NULL), '[]')::text AS subjects
                   FROM admissions.de_award a
                   LEFT JOIN admissions.de_award_subject s ON s.award_id = a.id
                  WHERE a.session = :s AND a.jamb_key = upper(btrim(:k))
-                 GROUP BY a.id, a.basis, a.awarded_year, a.institution, a.recorded_at
+                 GROUP BY a.id, a.basis, a.awarded_year, a.institution, a.recorded_at, a.discipline, a.award_class, a.exam_no, a.source
                  ORDER BY a.basis
                 """).param("s", session).param("k", jambKey).query().listOfRows();
     }
 
-    /** record (replace whole) one Direct Entry award and its subjects for a candidate (V200) */
-    void recordDeAward(String session, String jambKey, String basis, Integer year, String institution,
-                       java.util.List<java.util.Map<String, String>> subjects, java.util.UUID actor) {
+    /** record (replace whole) one Direct Entry award and its subjects for a candidate (V200). V773: typed by hand, so its source is
+     *  MANUAL (the column's default) whatever recorded the award it replaces; a degree or diploma writes its discipline and class
+     *  and no subject rows; the other kinds write each subject with its place (ord, 1-based) — an NCE keeps a subject typed twice
+     *  (a double major, each its own place), every other kind the first, as the upload does (admissions.de_upload_record) */
+    void recordDeAward(String session, String jambKey, String basis, Integer year, String institution, String discipline, String awardClass,
+                       String examNo, java.util.List<java.util.Map<String, String>> subjects, java.util.UUID actor) {
+        boolean classKind = basis != null && DE_CLASS_KINDS.contains(basis);
         // one award per (session, jamb_key, basis): the subjects cascade off the award, so replace it whole
         jdbc.sql("DELETE FROM admissions.de_award WHERE session = :s AND jamb_key = upper(btrim(:k)) AND basis = :b")
                 .param("s", session).param("k", jambKey).param("b", basis).update();
         java.util.UUID id = java.util.UUID.randomUUID();
         jdbc.sql("""
-                INSERT INTO admissions.de_award (id, session, jamb_key, basis, awarded_year, institution, recorded_by)
-                VALUES (:id, :s, upper(btrim(:k)), :b, :y, :i, :by)
+                INSERT INTO admissions.de_award (id, session, jamb_key, basis, awarded_year, institution, recorded_by, discipline, award_class, exam_no)
+                VALUES (:id, :s, upper(btrim(:k)), :b, :y, :i, :by, :d, :c, :e)
                 """).param("id", id).param("s", session).param("k", jambKey).param("b", basis)
                 .param("y", year, java.sql.Types.INTEGER)
                 .param("i", institution == null || institution.isBlank() ? null : institution.trim(), java.sql.Types.VARCHAR)
-                .param("by", actor).update();
+                .param("by", actor)
+                .param("d", classKind ? discipline : null, java.sql.Types.VARCHAR)
+                .param("c", classKind ? awardClass : null, java.sql.Types.VARCHAR)
+                .param("e", examNo, java.sql.Types.VARCHAR).update();
+        if (classKind) {
+            return;
+        }
+        boolean keepsRepeats = "NCE".equals(basis);
         java.util.Set<String> seen = new java.util.HashSet<>();
+        int ord = 0;
         for (java.util.Map<String, String> s : subjects) {
             String subject = s.get("subject") == null ? "" : s.get("subject").trim();
-            if (subject.isEmpty() || !seen.add(subject.toLowerCase())) {
+            if (subject.isEmpty() || (!seen.add(subject.toLowerCase()) && !keepsRepeats)) {
                 continue;
             }
             String grade = s.get("grade") == null || s.get("grade").isBlank() ? null : s.get("grade").trim();
-            jdbc.sql("INSERT INTO admissions.de_award_subject (award_id, subject, grade) VALUES (:g, :s, :gr)")
-                    .param("g", id).param("s", subject).param("gr", grade, java.sql.Types.VARCHAR).update();
+            jdbc.sql("INSERT INTO admissions.de_award_subject (award_id, subject, grade, ord) VALUES (:g, :s, :gr, :o)")
+                    .param("g", id).param("s", subject).param("gr", grade, java.sql.Types.VARCHAR).param("o", ++ord).update();
         }
     }
 

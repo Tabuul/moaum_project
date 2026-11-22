@@ -20,13 +20,15 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * V764: the Direct Entry admission template — the list that goes back to JAMB for Direct Entry, mirroring the UTME one
  * ({@code ApplicantsController.jambTemplate}). Every registered Direct Entry applicant of the programme is a row
- * (admissions.de_template), ranked by the points of their qualification — the A-Level group (A-Level, IJMB, JUPEB) before the
- * diplomas (ND, HND, NCE), the three best subjects summed, ties by name — and qualified or not, with the reasons; the Board's
- * recorded decision places a row (OFFERED on the merit list, WAITING among the other qualified, NOT_OFFERED among the
- * non-qualified), and without one a qualified applicant is among the other qualified. Beside the rows: the summary (on JAMB's
- * Direct Entry list, registered, qualified and not, the programme's quota and its Direct Entry share by the faculty's or the
- * session's UTME:DE ratio, the number on the merit list), the quota distribution over the Direct Entry share and the LGA
- * analysis of those offered — the University's decisions of 14 November 2026.
+ * (admissions.de_template), ranked (V773) by the score of the qualification that counts — its points as a percentage of its own
+ * maximum (an A-Level, IJMB or JUPEB of 16, an NCE of 15, a degree or an HND of 5, an ND or a University Diploma of 4), every
+ * qualification together, highest first, ties by name, the unscored and then the uncaptured last — and qualified or not, with the
+ * reasons; the Board's recorded decision places a row (OFFERED on the merit list, WAITING among the other qualified, NOT_OFFERED
+ * among the non-qualified), and without one a qualified applicant is among the other qualified. Beside the rows: the summary (on
+ * JAMB's Direct Entry list, registered, qualified and not, the programme's quota and its Direct Entry share by the faculty's or
+ * the session's UTME:DE ratio, the number on the merit list), the quota distribution over the Direct Entry share and the LGA
+ * analysis of those offered — the University's decisions of 14 November 2026, the ranking by its word of 15 November 2026 (the
+ * workbook rule everywhere: the Direct Entry candidates workbook, {@code DeCandidatesController}, ranks the same way).
  */
 @RestController
 @RequestMapping("/api/v1/admissions/sessions/{session}/{year}")
@@ -62,6 +64,8 @@ class DeTemplateController {
             row.put("state", r.get("state_of_origin"));
             row.put("lga", r.get("lga"));
             row.put("programme", r.get("programme"));
+            // V773: the programme the rank is counted within — its code, whatever text the candidate's record carries for it
+            row.put("programmeCode", r.get("programme_code"));
             row.put("entryMode", "DIRECT_ENTRY");
             row.put("entryLevel", r.get("entry_level"));
             row.put("qualification", r.get("qualification"));
@@ -70,6 +74,9 @@ class DeTemplateController {
             row.put("subjects", subjects((String) r.get("subjects_text")));
             row.put("otherQualifications", r.get("other_qualifications"));
             row.put("points", r.get("points"));
+            // V773: the scale the points are on and the score the rows are ranked by (the points as a percentage of that maximum)
+            row.put("maxPoints", r.get("max_points"));
+            row.put("score", r.get("score"));
             row.put("unreadGrades", r.get("unread_grades"));
             row.put("deStatus", r.get("de_status"));
             row.put("olevelUploaded", r.get("olevel_uploaded"));
